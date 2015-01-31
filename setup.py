@@ -11,7 +11,7 @@ requirements = ['cython>=0.17.1', 'numpy', 'scipy']
 
 setup(
     name='natcap.geoprocessing',
-    version=__version__,
+    version='dev',
     description="Geoprocessing routines for GIS",
     long_description=readme + '\n\n' + history,
     author='Rich Sharp',
@@ -21,7 +21,7 @@ setup(
         'natcap.geoprocessing',
         'natcap.geoprocessing.routing',
     ],
-    package_dir={'natcap.geoprocessing': 'natcap.geoprocessing'},
+    package_dir={'natcap/geoprocessing': 'natcap.geoprocessing'},
     include_package_data=True,
     install_requires=requirements,
     license=license,
