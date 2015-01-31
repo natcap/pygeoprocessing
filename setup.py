@@ -23,7 +23,7 @@ setup(
     ],
     package_dir={'natcap.geoprocessing': 'natcap.geoprocessing'},
     include_package_data=True,
-    install_requirements=requirements,
+    install_requires=requirements,
     license=license,
     zip_safe=False,
     keywords='natcap.geoprocessing',
