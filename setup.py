@@ -58,6 +58,7 @@ setup(
     packages=[
         'natcap.geoprocessing',
         'natcap.geoprocessing.routing',
+        'natcap.geoprocessing.tests',
     ],
     package_dir={'natcap/geoprocessing': 'natcap.geoprocessing'},
     include_package_data=True,
