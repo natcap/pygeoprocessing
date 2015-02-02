@@ -10,6 +10,8 @@ except ImportError:
     from distutils.command.sdist import sdist as _sdist
     from distutils.command.build_py import build_py as _build_py
 
+versioning = imp.load_source('natcap.geoprocessing',
+    'natcap/geoprocessing/versioning.py')
 geoprocessing = imp.load_source('natcap.geoprocessing',
     'natcap/geoprocessing/__init__.py')
 
@@ -24,7 +26,7 @@ class CustomSdist(_sdist):
         # source tree) to the build folder's copy of adept.__init__.
         filename = os.path.join(base_dir, 'natcap', 'geoprocessing', '__init__.py')
         print 'Writing version data to %s' % filename
-        geoprocessing.write_build_info(filename)
+        versioning.write_build_info(filename)
 
 class CustomPythonBuilder(_build_py):
     """Custom python build step for distutils.  Builds a python distribution in
@@ -37,7 +39,7 @@ class CustomPythonBuilder(_build_py):
         # source tree) to the build folder's copy of adept.__init__.
         filename = os.path.join(self.build_lib, 'natcap', 'geoprocessing', '__init__.py')
         print 'Writing version data to %s' % filename
-        geoprocessing.write_build_info(filename)
+        versioning.write_build_info(filename)
 
 readme = open('README.rst').read()
 history = open('HISTORY.rst').read().replace('.. :changelog:', '')
