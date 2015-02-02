@@ -1,0 +1,4 @@
+syntax: glob
+.tox/*
+.eggs/*
+*.sw[op]
