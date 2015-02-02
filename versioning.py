@@ -10,8 +10,15 @@ if platform.system() != 'Windows':
     import shutil
     from shutil import WindowsError
 
+try:
+    from setuptools.command.sdist import sdist as _sdist
+    from setuptools.command.build_py import build_py as _build_py
+except ImportError:
+    from distutils.command.sdist import sdist as _sdist
+    from distutils.command.build_py import build_py as _build_py
 
-LOGGER = logging.getLogger('natcap.geoprocessing')
+
+LOGGER = logging.getLogger('versioning')
 LOGGER.setLevel(logging.ERROR)
 
 class VCSQuerier(object):
@@ -110,6 +117,18 @@ class HgRepo(VCSQuerier):
         bytestring."""
         return self._run_command('hg branch')
 
+    @property
+    def version(self):
+        """Return the version string, where the format is dependent on the
+        branch and tag."""
+        if self.branch == 'master':
+            if self.tag_distance == 0:
+                return self.latest_tag
+            return self.latest_tag + '+%s' % self.tag_distance
+        else:
+            cmd = self.HG_CALL + ' --template "{branch}-{node|short}"'
+            return self._run_command(cmd)
+
 REPO = HgRepo()
 
 def _build_data():
@@ -129,17 +148,15 @@ def write_build_info(source_file_uri):
     temp_file_uri = _temporary_filename()
     temp_file = open(temp_file_uri, 'w+')
 
+    # write whatever's in the file first, then write the build info.
     source_file = open(os.path.abspath(source_file_uri))
     for line in source_file:
-        if line == "__version__ = 'dev'\n":
-            temp_file.write("__version__ = '%s'\n" % REPO.version)
-        elif line == "build_data = None\n":
-            build_information = _build_data()
-            temp_file.write("build_data = %s\n" % str(build_information.keys()))
-            for key, value in sorted(build_information.iteritems()):
-                temp_file.write("%s = '%s'\n" % (key, value))
-        else:
-            temp_file.write(line)
+        temp_file.write(line)
+    temp_file.write('__version__ = "%s"\n' % REPO.version)
+    build_information = _build_data()
+    temp_file.write("build_data = %s\n" % str(build_information.keys()))
+    for key, value in sorted(build_information.iteritems()):
+        temp_file.write("%s = '%s'\n" % (key, value))
     source_file.close()
 
     temp_file.flush()
@@ -197,3 +214,33 @@ def _temporary_filename():
 
     atexit.register(remove_file, path)
     return path
+
+geoprocessing_init = lambda base_dir: os.path.join(base_dir, 'natcap',
+    'geoprocessing', '__init__.py')
+
+class CustomSdist(_sdist):
+    """Custom source distribution builder.  Builds a source distribution via the
+    distutils sdist command, but then writes the adept version information to
+    the temp source tree before everything is archived for distribution."""
+    def make_release_tree(self, base_dir, files):
+        _sdist.make_release_tree(self, base_dir, files)
+
+        # Write version information (which is derived from the adept mercurial
+        # source tree) to the build folder's copy of adept.__init__.
+        filename = geoprocessing_init(base_dir)
+        print 'Writing version data to %s' % filename
+        write_build_info(filename)
+
+class CustomPythonBuilder(_build_py):
+    """Custom python build step for distutils.  Builds a python distribution in
+    the specified folder ('build' by default) and writes the adept version
+    information to the temporary source tree therein."""
+    def run(self):
+        _build_py.run(self)
+
+        # Write version information (which is derived from the mercurial
+        # source tree) to the build folder's copy of adept.__init__.
+        filename = geoprocessing_init(self.build_lib)
+        print 'Writing version data to %s' % filename
+        write_build_info(filename)
+

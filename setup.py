@@ -1,5 +1,4 @@
 import os
-import imp
 #import natcap.geoprocessing
 try:
     from setuptools import setup
@@ -10,36 +9,14 @@ except ImportError:
     from distutils.command.sdist import sdist as _sdist
     from distutils.command.build_py import build_py as _build_py
 
-versioning = imp.load_source('natcap.geoprocessing',
-    'natcap/geoprocessing/versioning.py')
-geoprocessing = imp.load_source('natcap.geoprocessing',
-    'natcap/geoprocessing/__init__.py')
-
-class CustomSdist(_sdist):
-    """Custom source distribution builder.  Builds a source distribution via the
-    distutils sdist command, but then writes the adept version information to
-    the temp source tree before everything is archived for distribution."""
-    def make_release_tree(self, base_dir, files):
-        _sdist.make_release_tree(self, base_dir, files)
-
-        # Write version information (which is derived from the adept mercurial
-        # source tree) to the build folder's copy of adept.__init__.
-        filename = os.path.join(base_dir, 'natcap', 'geoprocessing', '__init__.py')
-        print 'Writing version data to %s' % filename
-        versioning.write_build_info(filename)
-
-class CustomPythonBuilder(_build_py):
-    """Custom python build step for distutils.  Builds a python distribution in
-    the specified folder ('build' by default) and writes the adept version
-    information to the temporary source tree therein."""
-    def run(self):
-        _build_py.run(self)
-
-        # Write version information (which is derived from the mercurial
-        # source tree) to the build folder's copy of adept.__init__.
-        filename = os.path.join(self.build_lib, 'natcap', 'geoprocessing', '__init__.py')
-        print 'Writing version data to %s' % filename
-        versioning.write_build_info(filename)
+try:
+    import versioning
+    version = versioning.REPO.version
+    _sdist = versioning.CustomSdist
+    _build_py = versioning.CustomPythonBuilder
+except ImportError:
+    exec(open('natcap/geoprocessing/__init__.py', 'r').read())
+    version = __version__
 
 readme = open('README.rst').read()
 history = open('HISTORY.rst').read().replace('.. :changelog:', '')
@@ -50,7 +27,7 @@ requirements = []
 
 setup(
     name='natcap.geoprocessing',
-    version=geoprocessing.__version__,
+    version=version,
     description="Geoprocessing routines for GIS",
     long_description=readme + '\n\n' + history,
     maintainer='Rich Sharp',
@@ -67,8 +44,8 @@ setup(
     install_requires=requirements,
     setup_requires=['nose>=1.0'],
     cmdclass={
-        'sdist': CustomSdist,
-        'build_py': CustomPythonBuilder,
+        'sdist': _sdist,
+        'build_py': _build_py,
     },
     license=license,
     zip_safe=False,
