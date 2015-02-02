@@ -244,3 +244,6 @@ class CustomPythonBuilder(_build_py):
         print 'Writing version data to %s' % filename
         write_build_info(filename)
 
+if __name__ == '__main__':
+    print REPO.version
+
