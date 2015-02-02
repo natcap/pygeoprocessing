@@ -1,0 +1,4 @@
+cython>=0.17.1
+numpy
+scipy
+nose>=1.0
