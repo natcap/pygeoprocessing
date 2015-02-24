@@ -32,7 +32,7 @@ except ImportError:
 
 readme = open('README.rst').read()
 history = open('HISTORY.rst').read().replace('.. :changelog:', '')
-license = open('LICENSE.txt').read()
+license = open('LICENSE.TXT').read()
 
 #requirements = ['cython>=0.17.1', 'numpy', 'scipy', 'nose>=1.0']
 requirements = []
