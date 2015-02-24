@@ -3,8 +3,6 @@ import sys
 #import natcap.geoprocessing
 try:
     from setuptools import setup
-    from setuptools.command.sdist import sdist as _sdist
-    from setuptools.command.build_py import build_py as _build_py
 
     # Monkeypatch os.link to prevent hard lnks from being formed.  Useful when
     # running tests across filesystems, like in our test docker containers.
@@ -15,8 +13,6 @@ try:
         del os.link
 except ImportError:
     from distutils.core import setup
-    from distutils.command.sdist import sdist as _sdist
-    from distutils.command.build_py import build_py as _build_py
 
 try:
     import versioning
@@ -26,6 +22,13 @@ try:
 except ImportError:
     exec(open('natcap/geoprocessing/__init__.py', 'r').read())
     version = __version__
+    try:
+        from setuptools.command.sdist import sdist as _sdist
+        from setuptools.command.build_py import build_py as _build_py
+    except ImportError:
+        from distutils.command.sdist import sdist as _sdist
+        from distutils.command.build_py import build_py as _build_py
+
 
 readme = open('README.rst').read()
 history = open('HISTORY.rst').read().replace('.. :changelog:', '')
