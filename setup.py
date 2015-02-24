@@ -1,9 +1,18 @@
 import os
+import sys
 #import natcap.geoprocessing
 try:
     from setuptools import setup
     from setuptools.command.sdist import sdist as _sdist
     from setuptools.command.build_py import build_py as _build_py
+
+    # Monkeypatch os.link to prevent hard lnks from being formed.  Useful when
+    # running tests across filesystems, like in our test docker containers.
+    # Only an issue pre python 2.7.9.
+    # See http://bugs.python.org/issue8876
+    py_version = sys.version_info[0:3]
+    if py_version[0] == 2 and py_version[1] <= 7 and py_version[2] < 9:
+        del os.link
 except ImportError:
     from distutils.core import setup
     from distutils.command.sdist import sdist as _sdist
