@@ -1,3 +1,4 @@
+"""Determine the version of the package based on source control."""
 import subprocess
 import logging
 import platform
