@@ -1,6 +1,5 @@
 import os
 import sys
-#import natcap.geoprocessing
 try:
     from setuptools import setup
 
@@ -20,7 +19,7 @@ try:
     _sdist = versioning.CustomSdist
     _build_py = versioning.CustomPythonBuilder
 except ImportError:
-    exec(open('natcap/geoprocessing/__init__.py', 'r').read())
+    exec(open('pygeoprocessing/__init__.py', 'r').read())
     version = __version__
     try:
         from setuptools.command.sdist import sdist as _sdist
@@ -38,20 +37,19 @@ license = open('LICENSE.TXT').read()
 requirements = []
 
 setup(
-    name='natcap.geoprocessing',
+    name='pygeoprocessing',
     version=version,
     description="Geoprocessing routines for GIS",
     long_description=readme + '\n\n' + history,
     maintainer='Rich Sharp',
     maintainer_email='richsharp@stanford.edu',
     url='http://bitbucket.org/richpsharp/pygeoprocessing',
-    namespace_packages=['natcap'],
     packages=[
-        'natcap.geoprocessing',
-        'natcap.geoprocessing.routing',
-        'natcap.geoprocessing.tests',
+        'pygeoprocessing',
+        'pygeoprocessing.routing',
+        'pygeoprocessing.tests',
     ],
-    package_dir={'natcap/geoprocessing': 'natcap.geoprocessing'},
+    package_dir={'pygeoprocessing': 'pygeoprocessing'},
     include_package_data=True,
     install_requires=requirements,
     setup_requires=['nose>=1.0'],
@@ -61,7 +59,7 @@ setup(
     },
     license=license,
     zip_safe=False,
-    keywords='natcap.geoprocessing',
+    keywords='pygeoprocessing',
     classifiers=[
         'Intended Audience :: Developers',
         'Development Status :: 5 - Production/Stable',
