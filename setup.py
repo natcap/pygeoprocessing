@@ -9,7 +9,11 @@ try:
     # See http://bugs.python.org/issue8876
     py_version = sys.version_info[0:3]
     if py_version[0] == 2 and py_version[1] <= 7 and py_version[2] < 9:
-        del os.link
+        try:
+            del os.link
+        except AttributeError:
+            pass
+
 except ImportError:
     from distutils.core import setup
 
