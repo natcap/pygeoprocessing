@@ -1,3 +1,4 @@
+"""Determine the version of the package based on source control."""
 import subprocess
 import logging
 import platform
@@ -215,8 +216,8 @@ def _temporary_filename():
     atexit.register(remove_file, path)
     return path
 
-geoprocessing_init = lambda base_dir: os.path.join(base_dir, 'natcap',
-    'geoprocessing', '__init__.py')
+geoprocessing_init = lambda base_dir: os.path.join(base_dir,
+    'pygeoprocessing', '__init__.py')
 
 class CustomSdist(_sdist):
     """Custom source distribution builder.  Builds a source distribution via the
