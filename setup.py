@@ -19,7 +19,7 @@ except ImportError:
 
 try:
     import versioning
-    version = versioning.REPO.version
+    version = versioning.REPO.pep440
     _sdist = versioning.CustomSdist
     _build_py = versioning.CustomPythonBuilder
 except ImportError:
@@ -31,7 +31,6 @@ except ImportError:
     except ImportError:
         from distutils.command.sdist import sdist as _sdist
         from distutils.command.build_py import build_py as _build_py
-
 
 readme = open('README.rst').read()
 history = open('HISTORY.rst').read().replace('.. :changelog:', '')
