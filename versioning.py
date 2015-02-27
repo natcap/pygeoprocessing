@@ -264,6 +264,5 @@ class CustomPythonBuilder(_build_py):
         write_build_info(filename, 'pep440')
 
 if __name__ == '__main__':
-    #print REPO.version
     print REPO.pep440
 
