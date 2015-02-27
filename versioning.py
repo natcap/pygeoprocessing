@@ -2,10 +2,10 @@
 import subprocess
 import logging
 import platform
-import sys
 import tempfile
 import os
 import atexit
+import time
 
 if platform.system() != 'Windows':
     import shutil
@@ -21,6 +21,7 @@ except ImportError:
 
 LOGGER = logging.getLogger('versioning')
 LOGGER.setLevel(logging.ERROR)
+
 
 class VCSQuerier(object):
     def _run_command(self, cmd):
@@ -226,7 +227,7 @@ def _temporary_filename():
             in atexit"""
         try:
             os.remove(path)
-        except OSError as exception:
+        except OSError:
             #This happens if the file didn't exist, which is okay because maybe
             #we deleted it in a method
             pass
@@ -265,4 +266,3 @@ class CustomPythonBuilder(_build_py):
 
 if __name__ == '__main__':
     print REPO.pep440
-
