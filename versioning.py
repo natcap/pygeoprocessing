@@ -87,6 +87,15 @@ class VCSQuerier(object):
         return '%s%s' % (platform.system().lower(),
             platform.architecture()[0][0:2])
 
+    @property
+    def pep440(self):
+        """Return a string representing the PEP440 version string for the
+        current version of the package."""
+        latest_tag = self.latest_tag
+        if latest_tag == 'null':
+            latest_tag = '0.0'
+        return "%s.dev%s" % (latest_tag, self.tag_distance)
+
 
 class HgRepo(VCSQuerier):
     HG_CALL = 'hg log -r . --config ui.report_untrusted=False'
@@ -143,8 +152,10 @@ def _build_data():
     }
     return data
 
-def write_build_info(source_file_uri):
+def write_build_info(source_file_uri, ver_type='dvcs'):
     """Write the build information to the file specified as `source_file_uri`.
+        source_file_uri (string): The file to write version info to.
+        ver_type='dvcs' (string): One of 'dvcs', or 'pep440'.
     """
     temp_file_uri = _temporary_filename()
     temp_file = open(temp_file_uri, 'w+')
@@ -153,7 +164,14 @@ def write_build_info(source_file_uri):
     source_file = open(os.path.abspath(source_file_uri))
     for line in source_file:
         temp_file.write(line)
-    temp_file.write('__version__ = "%s"\n' % REPO.version)
+
+    if ver_type == 'dvcs':
+        version = REPO.version
+    elif ver_type == 'pep440':
+        version = REPO.pep440
+    else:
+        raise RuntimeError('Version type %s not known' % ver_type)
+    temp_file.write('__version__ = "%s"\n' % version)
     build_information = _build_data()
     temp_file.write("build_data = %s\n" % str(build_information.keys()))
     for key, value in sorted(build_information.iteritems()):
@@ -230,7 +248,7 @@ class CustomSdist(_sdist):
         # source tree) to the build folder's copy of adept.__init__.
         filename = geoprocessing_init(base_dir)
         print 'Writing version data to %s' % filename
-        write_build_info(filename)
+        write_build_info(filename, 'pep440')
 
 class CustomPythonBuilder(_build_py):
     """Custom python build step for distutils.  Builds a python distribution in
@@ -243,8 +261,9 @@ class CustomPythonBuilder(_build_py):
         # source tree) to the build folder's copy of adept.__init__.
         filename = geoprocessing_init(self.build_lib)
         print 'Writing version data to %s' % filename
-        write_build_info(filename)
+        write_build_info(filename, 'pep440')
 
 if __name__ == '__main__':
-    print REPO.version
+    #print REPO.version
+    print REPO.pep440
 
