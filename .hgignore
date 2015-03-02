@@ -5,3 +5,11 @@ syntax: glob
 *.pyc
 setup_environment.py
 pygeoprocessing\geoprocessing_cython.cpp
+build/
+dist/
+pygeoprocessing.egg-info\PKG-INFO
+pygeoprocessing.egg-info\SOURCES.txt
+pygeoprocessing.egg-info\dependency_links.txt
+pygeoprocessing.egg-info\not-zip-safe
+pygeoprocessing.egg-info\requires.txt
+pygeoprocessing.egg-info\top_level.txt

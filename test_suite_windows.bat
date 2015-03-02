@@ -8,8 +8,11 @@ GOTO BULIDDONE
 
 :CLEANBUILD
 DEL /S /Q build
+DEL /S /Q dist
+DEL /S /Q pygeoprocessing.egg-info
 DEL /S /Q %ENVDIR%
 python setup_environment.py --clear --system-site-packages %ENVDIR%
+
 GOTO BULIDDONE
 
 :BULIDDONE
