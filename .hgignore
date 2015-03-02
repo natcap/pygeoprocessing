@@ -2,3 +2,6 @@ syntax: glob
 .tox/*
 .eggs/*
 *.sw[op]
+*.pyc
+setup_environment.py
+pygeoprocessing\geoprocessing_cython.cpp
