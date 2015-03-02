@@ -4,7 +4,6 @@ syntax: glob
 *.sw[op]
 *.pyc
 setup_environment.py
-pygeoprocessing\geoprocessing_cython.cpp
 build/
 dist/
 pygeoprocessing.egg-info\PKG-INFO
@@ -15,3 +14,4 @@ pygeoprocessing.egg-info\requires.txt
 pygeoprocessing.egg-info\top_level.txt
 pygeoprocessing_virtualenv/
 pygeoprocessing\routing\routing_core.cpp
+pygeoprocessing\geoprocessing_core.cpp

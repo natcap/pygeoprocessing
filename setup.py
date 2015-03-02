@@ -94,8 +94,8 @@ setup(
     ],
     ext_modules=cythonize([
         Extension(
-            name="geoprocessing_cython",
-            sources=['pygeoprocessing/geoprocessing_cython.pyx'],
+            name="geoprocessing_core",
+            sources=['pygeoprocessing/geoprocessing_core.pyx'],
             language="c++"),
         Extension(
             name="routing_core",
