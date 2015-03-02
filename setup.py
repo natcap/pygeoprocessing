@@ -1,5 +1,10 @@
 import os
 import sys
+
+from Cython.Distutils import build_ext
+from Cython.Build import cythonize
+import numpy
+
 try:
     from setuptools import setup
 
@@ -22,22 +27,33 @@ try:
     version = versioning.REPO.pep440
     _sdist = versioning.CustomSdist
     _build_py = versioning.CustomPythonBuilder
+    Extension = versioning.Extension
 except ImportError:
     exec(open('pygeoprocessing/__init__.py', 'r').read())
     version = __version__
     try:
         from setuptools.command.sdist import sdist as _sdist
         from setuptools.command.build_py import build_py as _build_py
+        from setuptools.extension import Extension
     except ImportError:
         from distutils.command.sdist import sdist as _sdist
         from distutils.command.build_py import build_py as _build_py
+        from distutils.extension import Extension
 
 readme = open('README.rst').read()
 history = open('HISTORY.rst').read().replace('.. :changelog:', '')
 license = open('LICENSE.TXT').read()
 
 #requirements = ['cython>=0.17.1', 'numpy', 'scipy', 'nose>=1.0']
-requirements = []
+REQUIREMENTS = [
+    'cython',
+    'numpy',
+    'scipy',
+    'nose',
+    'shapely',
+    'osgeo.gdal',
+    'osgeo.ogr',
+    'osgeo.osr']
 
 setup(
     name='pygeoprocessing',
@@ -54,11 +70,13 @@ setup(
     ],
     package_dir={'pygeoprocessing': 'pygeoprocessing'},
     include_package_data=True,
-    install_requires=requirements,
+    install_requires=REQUIREMENTS,
+    include_dirs=[numpy.get_include()],
     setup_requires=['nose>=1.0'],
     cmdclass={
         'sdist': _sdist,
         'build_py': _build_py,
+        'build_ext': build_ext,
     },
     license=license,
     zip_safe=False,
@@ -73,5 +91,10 @@ setup(
         'Operating System :: POSIX',
         'Programming Language :: Python :: 2 :: Only',
         'Topic :: Scientific/Engineering :: GIS'
-    ]
+    ],
+    ext_modules=cythonize(
+        Extension(
+            name="geoprocessing_cython",
+            sources=['pygeoprocessing/geoprocessing_cython.pyx'],
+            language="c++")),
 )
