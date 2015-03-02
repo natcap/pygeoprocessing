@@ -13,3 +13,4 @@ pygeoprocessing.egg-info\dependency_links.txt
 pygeoprocessing.egg-info\not-zip-safe
 pygeoprocessing.egg-info\requires.txt
 pygeoprocessing.egg-info\top_level.txt
+pygeoprocessing_virtualenv/
