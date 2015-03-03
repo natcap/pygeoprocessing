@@ -29,8 +29,11 @@ try:
     _build_py = versioning.CustomPythonBuilder
     Extension = versioning.Extension
 except ImportError:
-    exec(open('pygeoprocessing/__init__.py', 'r').read())
-    version = __version__
+    try:
+        exec(open('pygeoprocessing/__init__.py', 'r').read())
+        version = __version__
+    except ImportError:
+        version = 'dev'
     try:
         from setuptools.command.sdist import sdist as _sdist
         from setuptools.command.build_py import build_py as _build_py
