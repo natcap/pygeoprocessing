@@ -47,6 +47,32 @@ readme = open('README.rst').read()
 history = open('HISTORY.rst').read().replace('.. :changelog:', '')
 license = open('LICENSE.TXT').read()
 
+def no_cythonize(extensions, **_ignore):
+    for extension in extensions:
+        sources = []
+        for sfile in extension.sources:
+            path, ext = os.path.splitext(sfile)
+            if ext in ('.pyx', '.py'):
+                if extension.language == 'c++':
+                    ext = '.cpp'
+                else:
+                    ext = '.c'
+                sfile = path + ext
+            sources.append(sfile)
+        extension.sources[:] = sources
+    return extensions
+
+EXTENSION_LIST = no_cythonize([
+    Extension(
+        "pygeoprocessing.geoprocessing_core",
+        sources=['pygeoprocessing/geoprocessing_core.pyx'],
+        language="c++"),
+    Extension(
+        "pygeoprocessing.routing.routing_core",
+        sources=['pygeoprocessing/routing/routing_core.pyx'],
+        language="c++")
+    ])
+
 REQUIREMENTS = [
     'cython',
     'numpy',
@@ -94,13 +120,5 @@ setup(
         'Programming Language :: Python :: 2 :: Only',
         'Topic :: Scientific/Engineering :: GIS'
     ],
-    ext_modules=cythonize([
-        Extension(
-            "pygeoprocessing.geoprocessing_core",
-            sources=['pygeoprocessing/geoprocessing_core.pyx'],
-            language="c++"),
-        Extension(
-            "pygeoprocessing.routing.routing_core",
-            sources=['pygeoprocessing/routing/routing_core.pyx'],
-            language="c++")]),
+    ext_modules=EXTENSION_LIST,
 )
