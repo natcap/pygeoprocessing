@@ -3,6 +3,4 @@ numpy
 scipy
 nose
 shapely
-osgeo.gdal
-osgeo.ogr
-osgeo.osr
+gdal

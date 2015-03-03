@@ -50,9 +50,7 @@ REQUIREMENTS = [
     'scipy',
     'nose',
     'shapely',
-    'osgeo.gdal',
-    'osgeo.ogr',
-    'osgeo',
+    'gdal',
     ]
 
 setup(
