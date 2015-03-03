@@ -1,4 +1,8 @@
-cython>=0.17.1
+cython
 numpy
 scipy
-nose>=1.0
+nose
+shapely
+osgeo.gdal
+osgeo.ogr
+osgeo.osr

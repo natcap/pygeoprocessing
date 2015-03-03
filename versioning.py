@@ -7,16 +7,18 @@ import os
 import atexit
 import time
 
+import shutil
 if platform.system() != 'Windows':
-    import shutil
     from shutil import WindowsError
 
 try:
     from setuptools.command.sdist import sdist as _sdist
     from setuptools.command.build_py import build_py as _build_py
+    from setuptools.extension import Extension
 except ImportError:
     from distutils.command.sdist import sdist as _sdist
     from distutils.command.build_py import build_py as _build_py
+    from distutils.extension import Extension
 
 
 LOGGER = logging.getLogger('versioning')
