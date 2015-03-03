@@ -31,7 +31,7 @@ import os
 from osgeo import gdal
 import numpy
 
-import pygeoprocessing.routing
+import pygeoprocessing.routing.routing_core
 
 logging.basicConfig(format='%(asctime)s %(name)-18s %(levelname)-8s \
     %(message)s', level=logging.DEBUG, datefmt='%m/%d/%Y %H:%M:%S ')

@@ -32,7 +32,7 @@ import shapely.ops
 from shapely import speedups
 import shapely.prepared
 
-import pygeoprocessing
+import pygeoprocessing.geoprocessing_core
 from pygeoprocessing import fileio
 
 GDAL_TO_NUMPY_TYPE = {
