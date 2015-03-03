@@ -56,3 +56,6 @@ class TestRoutingFunctions(unittest.TestCase):
 
         pygeoprocessing.routing.flow_direction_inf(
             self.dem_filename, self.flow_direction_filename)
+
+if __name__ == '__main__':
+    unittest.main()
