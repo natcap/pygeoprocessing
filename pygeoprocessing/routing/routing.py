@@ -31,8 +31,7 @@ import os
 from osgeo import gdal
 import numpy
 
-import pygeoprocessing
-import routing_core
+import pygeoprocessing.routing
 
 logging.basicConfig(format='%(asctime)s %(name)-18s %(levelname)-8s \
     %(message)s', level=logging.DEBUG, datefmt='%m/%d/%Y %H:%M:%S ')
@@ -90,12 +89,12 @@ def route_flux(
     outflow_weights_uri = pygeoprocessing.temporary_filename(suffix='.tif')
     outflow_direction_uri = pygeoprocessing.temporary_filename(suffix='.tif')
 
-    outlet_cell_set = routing_core.find_outlets(
+    outlet_cell_set = pygeoprocessing.routing.routing_core.find_outlets(
         dem_uri, flow_direction_uri)
-    routing_core.calculate_flow_weights(
+    pygeoprocessing.routing.routing_core.calculate_flow_weights(
         flow_direction_uri, outflow_weights_uri, outflow_direction_uri)
 
-    routing_core.calculate_transport(
+    pygeoprocessing.routing.routing_core.calculate_transport(
         outflow_direction_uri, outflow_weights_uri, outlet_cell_set,
         source_uri, absorption_rate_uri, loss_uri, flux_uri, absorption_mode,
         stream_uri)
@@ -230,7 +229,7 @@ def pixel_amount_exported(
     #Calculate flow direction and weights
     outflow_weights_uri = pygeoprocessing.temporary_filename(suffix='.tif')
     outflow_direction_uri = pygeoprocessing.temporary_filename(suffix='.tif')
-    routing_core.calculate_flow_weights(
+    pygeoprocessing.routing.routing_core.calculate_flow_weights(
         flow_direction_uri, outflow_weights_uri, outflow_direction_uri)
 
     #Calculate the percent to sink
@@ -239,7 +238,7 @@ def pixel_amount_exported(
     else:
         effect_uri = pygeoprocessing.temporary_filename(suffix='.tif')
 
-    routing_core.percent_to_sink(
+    pygeoprocessing.routing.routing_core.percent_to_sink(
         stream_uri, export_rate_uri, outflow_direction_uri,
         outflow_weights_uri, effect_uri)
 
@@ -288,9 +287,9 @@ def calculate_stream(dem_uri, flow_threshold, stream_uri):
     flow_direction_uri = pygeoprocessing.temporary_filename(suffix='.tif')
     dem_offset_uri = pygeoprocessing.temporary_filename(suffix='.tif')
 
-    routing_core.resolve_flat_regions_for_drainage(
+    pygeoprocessing.routing.routing_core.resolve_flat_regions_for_drainage(
         dem_uri, dem_offset_uri)
-    routing_core.flow_direction_inf(dem_offset_uri, flow_direction_uri)
+    pygeoprocessing.routing.routing_core.flow_direction_inf(dem_offset_uri, flow_direction_uri)
     flow_accumulation(
         flow_direction_uri, dem_offset_uri, flow_accumulation_uri)
     stream_threshold(flow_accumulation_uri, flow_threshold, stream_uri)
@@ -316,7 +315,7 @@ def flow_direction_inf(dem_uri, flow_direction_uri):
 
        returns nothing"""
 
-    routing_core.flow_direction_inf(dem_uri, flow_direction_uri)
+    pygeoprocessing.routing.routing_core.flow_direction_inf(dem_uri, flow_direction_uri)
 
 
 def fill_pits(dem_uri, dem_out_uri):
@@ -329,7 +328,7 @@ def fill_pits(dem_uri, dem_out_uri):
             value
 
         returns nothing"""
-    routing_core.fill_pits(dem_uri, dem_out_uri)
+    pygeoprocessing.routing.routing_core.fill_pits(dem_uri, dem_out_uri)
 
 
 def resolve_flat_regions_for_drainage(dem_uri, dem_out_uri):
@@ -347,7 +346,7 @@ def resolve_flat_regions_for_drainage(dem_uri, dem_out_uri):
             value
 
         returns nothing"""
-    routing_core.resolve_flat_regions_for_drainage(dem_uri, dem_out_uri)
+    pygeoprocessing.routing.routing_core.resolve_flat_regions_for_drainage(dem_uri, dem_out_uri)
 
 
 def distance_to_stream(
@@ -364,7 +363,7 @@ def distance_to_stream(
 
         returns nothing"""
 
-    routing_core.distance_to_stream(
+    pygeoprocessing.routing.routing_core.distance_to_stream(
         flow_direction_uri, stream_uri, distance_uri, factor_uri=factor_uri)
 
 
@@ -398,7 +397,7 @@ def flow_direction_d_inf(
     #Do the second pass with the flat mask and overwrite the flow direction
     #nodata that was not calculated on the first pass
     if flats_exist:
-        routing_core.flow_direction_inf_masked_flow_dirs(
+        pygeoprocessing.routing.routing_core.flow_direction_inf_masked_flow_dirs(
             flat_mask_uri, labels_uri, flow_direction_uri)
 
 
@@ -417,7 +416,7 @@ def resolve_flats(dem_uri, flow_direction_uri, flat_mask_uri, labels_uri):
         Returns:
             True if there were flats to resolve, False otherwise"""
 
-    high_edges, low_edges = routing_core.flat_edges(
+    high_edges, low_edges = pygeoprocessing.routing.routing_core.flat_edges(
         dem_uri, flow_direction_uri)
     if len(low_edges) == 0:
         if len(high_edges) != 0:
@@ -427,12 +426,12 @@ def resolve_flats(dem_uri, flow_direction_uri, flat_mask_uri, labels_uri):
         return False
 
     LOGGER.info('labeling flats')
-    routing_core.label_flats(dem_uri, low_edges, labels_uri)
+    pygeoprocessing.routing.routing_core.label_flats(dem_uri, low_edges, labels_uri)
 
     LOGGER.info('cleaning high edges')
-    routing_core.clean_high_edges(labels_uri, high_edges)
+    pygeoprocessing.routing.routing_core.clean_high_edges(labels_uri, high_edges)
 
-    routing_core.drain_flats(
+    pygeoprocessing.routing.routing_core.drain_flats(
         high_edges, low_edges, labels_uri, flow_direction_uri, flat_mask_uri)
 
     return True

@@ -18,4 +18,8 @@ GOTO BULIDDONE
 :BULIDDONE
 copy C:\Python27\Lib\distutils\distutils.cfg .\%ENVDIR%\Lib\distutils\distutils.cfg
 %ENVDIR%\Scripts\python setup.py install
-%ENVDIR%\Scripts\nosetests -vs --nologcapture
+
+cd pygeoprocessing\tests
+..\..\%ENVDIR%\Scripts\nosetests -vs --nologcapture .
+cd ..\..\
+

@@ -44,7 +44,6 @@ readme = open('README.rst').read()
 history = open('HISTORY.rst').read().replace('.. :changelog:', '')
 license = open('LICENSE.TXT').read()
 
-#requirements = ['cython>=0.17.1', 'numpy', 'scipy', 'nose>=1.0']
 REQUIREMENTS = [
     'cython',
     'numpy',
@@ -53,7 +52,8 @@ REQUIREMENTS = [
     'shapely',
     'osgeo.gdal',
     'osgeo.ogr',
-    'osgeo.osr']
+    'osgeo',
+    ]
 
 setup(
     name='pygeoprocessing',
@@ -67,6 +67,7 @@ setup(
         'pygeoprocessing',
         'pygeoprocessing.routing',
         'pygeoprocessing.tests',
+        'pygeoprocessing.dbfpy',
     ],
     package_dir={'pygeoprocessing': 'pygeoprocessing'},
     include_package_data=True,
@@ -94,11 +95,11 @@ setup(
     ],
     ext_modules=cythonize([
         Extension(
-            name="geoprocessing_core",
+            "pygeoprocessing.geoprocessing_core",
             sources=['pygeoprocessing/geoprocessing_core.pyx'],
             language="c++"),
         Extension(
-            name="routing_core",
+            "pygeoprocessing.routing.routing_core",
             sources=['pygeoprocessing/routing/routing_core.pyx'],
             language="c++")]),
 )
