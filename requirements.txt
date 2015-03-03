@@ -1,6 +1,0 @@
-cython
-numpy
-scipy
-nose
-shapely
-gdal
