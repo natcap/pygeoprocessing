@@ -31,16 +31,16 @@ except ImportError:
 
 try:
     import versioning
-    VERSION = versioning.REPO.pep440
+    version = versioning.REPO.pep440
     _sdist = versioning.CustomSdist
     _build_py = versioning.CustomPythonBuilder
     Extension = versioning.Extension
 except ImportError:
     try:
         exec(open('pygeoprocessing/__init__.py', 'r').read())
-        VERSION = __version__
+        version = __version__
     except ImportError:
-        VERSION = 'dev'
+        version = 'dev'
     try:
         from setuptools.command.sdist import sdist as _sdist
         from setuptools.command.build_py import build_py as _build_py
@@ -50,9 +50,9 @@ except ImportError:
         from distutils.command.build_py import build_py as _build_py
         from distutils.extension import Extension
 
-README = open('README.rst').read()
-HISTORY = open('HISTORY.rst').read().replace('.. :changelog:', '')
-LICENSE = open('LICENSE.TXT').read()
+readme = open('README.rst').read()
+history = open('HISTORY.rst').read().replace('.. :changelog:', '')
+license = open('LICENSE.TXT').read()
 
 def no_cythonize(extensions, **_):
     """Replaces instances of .pyx to .c or .cpp depending on the language
@@ -97,9 +97,9 @@ REQUIREMENTS = [
 
 setup(
     name='pygeoprocessing',
-    VERSION=VERSION,
+    version=version,
     description="Geoprocessing routines for GIS",
-    long_description=README + '\n\n' + HISTORY,
+    long_description=readme + '\n\n' + history,
     maintainer='Rich Sharp',
     maintainer_email='richsharp@stanford.edu',
     url='http://bitbucket.org/richpsharp/pygeoprocessing',
@@ -119,7 +119,7 @@ setup(
         'build_py': _build_py,
         'build_ext': build_ext,
     },
-    LICENSE=LICENSE,
+    license=license,
     zip_safe=False,
     keywords='pygeoprocessing',
     classifiers=[
