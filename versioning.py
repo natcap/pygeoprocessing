@@ -97,6 +97,9 @@ class VCSQuerier(object):
         latest_tag = self.latest_tag
         if latest_tag == 'null':
             latest_tag = '0.0'
+
+        if self.tag_distance == 0:
+            return latest_tag
         return "%s.dev%s" % (latest_tag, self.tag_distance)
 
 
