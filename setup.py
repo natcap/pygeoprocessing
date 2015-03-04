@@ -1,4 +1,4 @@
-"""setup.py module for pygeoprocessing"""
+"""setup.py module for PyGeoprocessing"""
 
 import os
 import sys
@@ -22,8 +22,8 @@ try:
     # running tests across filesystems, like in our test docker containers.
     # Only an issue pre python 2.7.9.
     # See http://bugs.python.org/issue8876
-    py_version = sys.version_info[0:3]
-    if py_version[0] == 2 and py_version[1] <= 7 and py_version[2] < 9:
+    PY_VERSION = sys.version_info[0:3]
+    if PY_VERSION[0] == 2 and PY_VERSION[1] <= 7 and PY_VERSION[2] < 9:
         try:
             del os.link
         except AttributeError:
