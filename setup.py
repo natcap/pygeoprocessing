@@ -29,8 +29,11 @@ try:
     _build_py = versioning.CustomPythonBuilder
     Extension = versioning.Extension
 except ImportError:
-    exec(open('pygeoprocessing/__init__.py', 'r').read())
-    version = __version__
+    try:
+        exec(open('pygeoprocessing/__init__.py', 'r').read())
+        version = __version__
+    except ImportError:
+        version = 'dev'
     try:
         from setuptools.command.sdist import sdist as _sdist
         from setuptools.command.build_py import build_py as _build_py
@@ -44,15 +47,39 @@ readme = open('README.rst').read()
 history = open('HISTORY.rst').read().replace('.. :changelog:', '')
 license = open('LICENSE.TXT').read()
 
+def no_cythonize(extensions, **_ignore):
+    for extension in extensions:
+        sources = []
+        for sfile in extension.sources:
+            path, ext = os.path.splitext(sfile)
+            if ext in ('.pyx', '.py'):
+                if extension.language == 'c++':
+                    ext = '.cpp'
+                else:
+                    ext = '.c'
+                sfile = path + ext
+            sources.append(sfile)
+        extension.sources[:] = sources
+    return extensions
+
+EXTENSION_LIST = no_cythonize([
+    Extension(
+        "pygeoprocessing.geoprocessing_core",
+        sources=['pygeoprocessing/geoprocessing_core.pyx'],
+        language="c++"),
+    Extension(
+        "pygeoprocessing.routing.routing_core",
+        sources=['pygeoprocessing/routing/routing_core.pyx'],
+        language="c++")
+    ])
+
 REQUIREMENTS = [
     'cython',
     'numpy',
     'scipy',
     'nose',
     'shapely',
-    'osgeo.gdal',
-    'osgeo.ogr',
-    'osgeo',
+    'gdal',
     ]
 
 setup(
@@ -93,13 +120,5 @@ setup(
         'Programming Language :: Python :: 2 :: Only',
         'Topic :: Scientific/Engineering :: GIS'
     ],
-    ext_modules=cythonize([
-        Extension(
-            "pygeoprocessing.geoprocessing_core",
-            sources=['pygeoprocessing/geoprocessing_core.pyx'],
-            language="c++"),
-        Extension(
-            "pygeoprocessing.routing.routing_core",
-            sources=['pygeoprocessing/routing/routing_core.pyx'],
-            language="c++")]),
+    ext_modules=EXTENSION_LIST,
 )
