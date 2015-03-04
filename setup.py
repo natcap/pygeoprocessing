@@ -1,8 +1,16 @@
 import os
 import sys
 
-from Cython.Distutils import build_ext
-from Cython.Build import cythonize
+# Try to import cython modules, if they don't import assume that Cython is
+# not installed and the .c and .cpp files are distributed along with the
+# package.
+try:
+    from Cython.Distutils import build_ext
+    USE_CYTHON = True
+except ImportError:
+    USE_CYTHON = False
+    build_ext = {}
+
 import numpy
 
 try:
@@ -18,22 +26,21 @@ try:
             del os.link
         except AttributeError:
             pass
-
 except ImportError:
     from distutils.core import setup
 
 try:
     import versioning
-    version = versioning.REPO.pep440
+    VERSION = versioning.REPO.pep440
     _sdist = versioning.CustomSdist
     _build_py = versioning.CustomPythonBuilder
     Extension = versioning.Extension
 except ImportError:
     try:
         exec(open('pygeoprocessing/__init__.py', 'r').read())
-        version = __version__
+        VERSION = __version__
     except ImportError:
-        version = 'dev'
+        VERSION = 'dev'
     try:
         from setuptools.command.sdist import sdist as _sdist
         from setuptools.command.build_py import build_py as _build_py
@@ -43,11 +50,14 @@ except ImportError:
         from distutils.command.build_py import build_py as _build_py
         from distutils.extension import Extension
 
-readme = open('README.rst').read()
-history = open('HISTORY.rst').read().replace('.. :changelog:', '')
-license = open('LICENSE.TXT').read()
+README = open('README.rst').read()
+HISTORY = open('HISTORY.rst').read().replace('.. :changelog:', '')
+LICENSE = open('LICENSE.TXT').read()
 
-def no_cythonize(extensions, **_ignore):
+def no_cythonize(extensions, **_):
+    """Replaces instances of .pyx to .c or .cpp depending on the language
+        extension."""
+
     for extension in extensions:
         sources = []
         for sfile in extension.sources:
@@ -62,7 +72,7 @@ def no_cythonize(extensions, **_ignore):
         extension.sources[:] = sources
     return extensions
 
-EXTENSION_LIST = no_cythonize([
+EXTENSION_LIST = ([
     Extension(
         "pygeoprocessing.geoprocessing_core",
         sources=['pygeoprocessing/geoprocessing_core.pyx'],
@@ -72,6 +82,9 @@ EXTENSION_LIST = no_cythonize([
         sources=['pygeoprocessing/routing/routing_core.pyx'],
         language="c++")
     ])
+
+if not USE_CYTHON:
+    EXTENSION_LIST = no_cythonize(EXTENSION_LIST)
 
 REQUIREMENTS = [
     'cython',
@@ -84,9 +97,9 @@ REQUIREMENTS = [
 
 setup(
     name='pygeoprocessing',
-    version=version,
+    VERSION=VERSION,
     description="Geoprocessing routines for GIS",
-    long_description=readme + '\n\n' + history,
+    long_description=README + '\n\n' + HISTORY,
     maintainer='Rich Sharp',
     maintainer_email='richsharp@stanford.edu',
     url='http://bitbucket.org/richpsharp/pygeoprocessing',
@@ -106,7 +119,7 @@ setup(
         'build_py': _build_py,
         'build_ext': build_ext,
     },
-    license=license,
+    LICENSE=LICENSE,
     zip_safe=False,
     keywords='pygeoprocessing',
     classifiers=[
