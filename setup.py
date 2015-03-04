@@ -1,3 +1,5 @@
+"""setup.py module for pygeoprocessing"""
+
 import os
 import sys
 
@@ -87,12 +89,11 @@ if not USE_CYTHON:
     EXTENSION_LIST = no_cythonize(EXTENSION_LIST)
 
 REQUIREMENTS = [
-    'cython',
-    'numpy',
-    'scipy',
-    'nose',
-    'shapely',
-    'gdal',
+    'cython>=0.20.2',
+    'numpy>=1.9.0',
+    'scipy>=0.14.0',
+    'shapely>=1.3.3',
+    'gdal>=1.10.0',
     ]
 
 setup(
