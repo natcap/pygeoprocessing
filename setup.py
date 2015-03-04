@@ -1,8 +1,14 @@
 import os
 import sys
 
-from Cython.Distutils import build_ext
-from Cython.Build import cythonize
+# Handle cython modules
+try:
+    from Cython.Distutils import build_ext
+    use_cython = True
+except ImportError:
+    use_cython = False
+    build_ext = {}
+
 import numpy
 
 try:
@@ -62,7 +68,7 @@ def no_cythonize(extensions, **_ignore):
         extension.sources[:] = sources
     return extensions
 
-EXTENSION_LIST = no_cythonize([
+EXTENSION_LIST = ([
     Extension(
         "pygeoprocessing.geoprocessing_core",
         sources=['pygeoprocessing/geoprocessing_core.pyx'],
@@ -72,6 +78,9 @@ EXTENSION_LIST = no_cythonize([
         sources=['pygeoprocessing/routing/routing_core.pyx'],
         language="c++")
     ])
+
+if not use_cython:
+    EXTENSION_LIST = no_cythonize(EXTENSION_LIST)
 
 REQUIREMENTS = [
     'cython',
