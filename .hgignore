@@ -2,3 +2,16 @@ syntax: glob
 .tox/*
 .eggs/*
 *.sw[op]
+*.pyc
+setup_environment.py
+build/
+dist/
+pygeoprocessing.egg-info\PKG-INFO
+pygeoprocessing.egg-info\SOURCES.txt
+pygeoprocessing.egg-info\dependency_links.txt
+pygeoprocessing.egg-info\not-zip-safe
+pygeoprocessing.egg-info\requires.txt
+pygeoprocessing.egg-info\top_level.txt
+pygeoprocessing_virtualenv/
+pygeoprocessing/routing/routing_core.cpp
+pygeoprocessing/geoprocessing_core.cpp
