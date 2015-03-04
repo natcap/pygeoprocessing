@@ -54,7 +54,7 @@ except ImportError:
 
 readme = open('README.rst').read()
 history = open('HISTORY.rst').read().replace('.. :changelog:', '')
-license = open('LICENSE.TXT').read()
+license = open('LICENSE.txt').read()
 
 def no_cythonize(extensions, **_):
     """Replaces instances of .pyx to .c or .cpp depending on the language
