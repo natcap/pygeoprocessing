@@ -90,10 +90,10 @@ if not USE_CYTHON:
 
 REQUIREMENTS = [
     'cython>=0.20.2',
-    'numpy>=1.9.0',
-    'scipy>=0.14.0',
+    'numpy>=1.8.2',
+    'scipy>=0.13.3',
     'shapely>=1.3.3',
-    'gdal>=1.10.0',
+    'gdal>=1.10.1',
     ]
 
 setup(
