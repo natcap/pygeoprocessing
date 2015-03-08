@@ -1,6 +1,15 @@
-PyGeoprocessing is a Python/Cython based library that provides a set of commonly used raster, vector, and hydrological operations for GIS processing.  Similar functionality can be found in ArcGIS/QGIS raster algebra, ArcGIS zonal statistics, and ArcGIS/GRASS/TauDEM hydrological routing routines.
+PyGeoprocessing is a Python/Cython based library that provides a set of commonly
+used raster, vector, and hydrological operations for GIS processing.  Similar
+functionality can be found in ArcGIS/QGIS raster algebra, ArcGIS zonal
+statistics, and ArcGIS/GRASS/TauDEM hydrological routing routines.
 
-PyGeoprocessing was developed at the Natural Capital Project to create a programmable, open source, and free GIS processing library to support the ecosystem service software InVEST.  PyGeoprocessing's design prioritizes computation and memory efficient runtimes, easy installation and cross compatibility with other open source and proprietary software licenses, and a simplified set of orthogonal GIS processing routines that interact with GIS data via filename. Specifically the functionally provided by PyGeoprocessing includes
+PyGeoprocessing was developed at the Natural Capital Project to create a
+programmable, open source, and free GIS processing library to support the
+ecosystem service software InVEST.  PyGeoprocessing's design prioritizes
+computation and memory efficient runtimes, easy installation and cross
+compatibility with other open source and proprietary software licenses, and a
+simplified set of orthogonal GIS processing routines that interact with GIS data
+via filename. Specifically the functionally provided by PyGeoprocessing includes
 
 * programmable raster algebra routine (vectorize_datasets)
 * routines for simplified raster creation and statistics
