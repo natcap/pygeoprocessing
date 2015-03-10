@@ -6,12 +6,13 @@ import sys
 # Try to import cython modules, if they don't import assume that Cython is
 # not installed and the .c and .cpp files are distributed along with the
 # package.
+CMDCLASS = {}
 try:
     from Cython.Distutils import build_ext
     USE_CYTHON = True
+    CMDCLASS['build_ext'] = build_ext
 except ImportError:
     USE_CYTHON = False
-    build_ext = {}
 
 import numpy
 
@@ -52,9 +53,15 @@ except ImportError:
         from distutils.command.build_py import build_py as _build_py
         from distutils.extension import Extension
 
+# Defining the command classes for sdist and build_py here so we can access
+# the commandclasses in the setup function.
+CMDCLASS['sdist'] = _sdist
+CMDCLASS['build_py'] = _build_py
+
 readme = open('README.rst').read()
 history = open('HISTORY.rst').read().replace('.. :changelog:', '')
 license = open('LICENSE.txt').read()
+
 
 def no_cythonize(extensions, **_):
     """Replaces instances of .pyx to .c or .cpp depending on the language
@@ -115,11 +122,7 @@ setup(
     install_requires=REQUIREMENTS,
     include_dirs=[numpy.get_include()],
     setup_requires=['nose>=1.0'],
-    cmdclass={
-        'sdist': _sdist,
-        'build_py': _build_py,
-        'build_ext': build_ext,
-    },
+    cmdclass=CMDCLASS,
     license=license,
     zip_safe=False,
     keywords='pygeoprocessing',
