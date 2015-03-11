@@ -420,22 +420,5 @@ def resolve_flats(dem_uri, flow_direction_uri, flat_mask_uri, labels_uri):
         Returns:
             True if there were flats to resolve, False otherwise"""
 
-    high_edges, low_edges = pygeoprocessing.routing.routing_core.flat_edges(
-        dem_uri, flow_direction_uri)
-    if len(low_edges) == 0:
-        if len(high_edges) != 0:
-            LOGGER.warn('There were undrainable flats')
-        else:
-            LOGGER.info('There were no flats')
-        return False
-
-    LOGGER.info('labeling flats')
-    pygeoprocessing.routing.routing_core.label_flats(dem_uri, low_edges, labels_uri)
-
-    LOGGER.info('cleaning high edges')
-    pygeoprocessing.routing.routing_core.clean_high_edges(labels_uri, high_edges)
-
-    pygeoprocessing.routing.routing_core.drain_flats(
-        high_edges, low_edges, labels_uri, flow_direction_uri, flat_mask_uri)
-
-    return True
+    return pygeoprocessing.routing.routing_core.resolve_flats(
+        dem_uri, flow_direction_uri, flat_mask_uri, labels_uri)

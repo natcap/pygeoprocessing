@@ -1469,7 +1469,9 @@ def percent_to_sink(
 @cython.boundscheck(False)
 @cython.wraparound(False)
 @cython.cdivision(True)
-def flat_edges(dem_uri, flow_direction_uri):
+cdef flat_edges(
+        dem_uri, flow_direction_uri, deque[int] high_edges,
+        deque[int] low_edges):
     """This function locates flat cells that border on higher and lower terrain
         and places them into sets for further processing.
 
@@ -1479,14 +1481,13 @@ def flat_edges(dem_uri, flow_direction_uri):
                 elevation values
             flow_direction_uri (string) - (input/output) a uri to a single band
                 GDAL Dataset with partially defined d_infinity flow directions
+            high_edges (deque) - (output) will contain all the high edge cells as
+                flat row major order indexes
+            low_edges (deque) - (output) will contain all the low edge cells as flat
+                row major order indexes"""
 
-        Returns:
-            high_edges, low_edges where,
-
-                high_edges (list) - contain all the high edge cells as flat row
-                    major order indexes
-                low_edges (list) - will contain all the low edge cells as flat
-                    row major order indexes"""
+    high_edges.clear()
+    low_edges.clear()
 
     cdef int *neighbor_row_offset = [0, -1, -1, -1,  0,  1, 1, 1]
     cdef int *neighbor_col_offset = [1,  1,  0, -1, -1, -1, 0, 1]
@@ -1540,9 +1541,6 @@ def flat_edges(dem_uri, flow_direction_uri):
         dem_uri)
     cdef float flow_nodata = pygeoprocessing.get_nodata_from_uri(
         flow_direction_uri)
-
-    high_edges = []
-    low_edges = []
 
     cdef time_t last_time, current_time
     time(&last_time)
@@ -1606,19 +1604,18 @@ def flat_edges(dem_uri, flow_direction_uri):
                         if (cell_flow != flow_nodata and
                                 neighbor_flow == flow_nodata and
                                 cell_dem == neighbor_dem):
-                            low_edges.append(global_row * n_cols + global_col)
+                            low_edges.push_back(global_row * n_cols + global_col)
                             break
                         elif (cell_flow == flow_nodata and
                                 cell_dem < neighbor_dem):
-                            high_edges.append(global_row * n_cols + global_col)
+                            high_edges.push_back(global_row * n_cols + global_col)
                             break
-    return high_edges, low_edges
 
 
 @cython.boundscheck(False)
 @cython.wraparound(False)
 @cython.cdivision(True)
-def label_flats(dem_uri, low_edges, labels_uri):
+cdef label_flats(dem_uri, deque[int] low_edges, labels_uri):
     """A flood fill function to give all the cells of each flat a unique
         label
 
@@ -1698,13 +1695,16 @@ def label_flats(dem_uri, low_edges, labels_uri):
     cdef queue[int] to_fill
     cdef float flat_height, current_flat_height
     cdef int visit_number = 0
-    for flat_cell_index in low_edges:
+    for _ in xrange(low_edges.size()):
+        flat_cell_index = low_edges.front()
+        low_edges.pop_front()
+        low_edges.push_back(flat_cell_index)
         visit_number += 1
         time(&current_time)
         if current_time - last_time > 5.0:
             LOGGER.info(
                 "label_flats %.1f%% complete",
-                float(visit_number) / len(low_edges) * 100)
+                float(visit_number) / low_edges.size() * 100)
             last_time = current_time
         global_row = flat_cell_index / n_cols
         global_col = flat_cell_index % n_cols
@@ -1771,7 +1771,7 @@ def label_flats(dem_uri, low_edges, labels_uri):
 @cython.boundscheck(False)
 @cython.wraparound(False)
 @cython.cdivision(True)
-def clean_high_edges(labels_uri, high_edges):
+cdef clean_high_edges(labels_uri, deque[int] high_edges):
     """Removes any high edges that do not have labels and reports them if so.
 
         Args:
@@ -1817,7 +1817,10 @@ def clean_high_edges(labels_uri, high_edges):
     cdef int flat_index
     cdef int flat_row, flat_col
     unlabled_set = set()
-    for flat_index in high_edges:
+    for _ in xrange(high_edges.size()):
+        flat_index = high_edges.front()
+        high_edges.pop_front()
+        high_edges.push_back(flat_index)
         flat_row = flat_index / n_cols
         flat_col = flat_index % n_cols
 
@@ -1835,8 +1838,12 @@ def clean_high_edges(labels_uri, high_edges):
             unlabled_set.add(flat_index)
 
     if len(unlabled_set) > 0:
-        #want to preserve the order of the high edges so there's this n^2ish
-        high_edges[:] = [x for x in high_edges if x not in unlabled_set]
+        #remove high edges that are unlabeled
+        for _ in xrange(high_edges.size()):
+            flat_index = high_edges.front()
+            high_edges.pop_front()
+            if flat_index not in unlabled_set:
+                high_edges.push_back(flat_index)
         LOGGER.warn("Not all flats have outlets")
     block_cache.flush_cache()
 
@@ -1844,15 +1851,16 @@ def clean_high_edges(labels_uri, high_edges):
 @cython.boundscheck(False)
 @cython.wraparound(False)
 @cython.cdivision(True)
-def drain_flats(
-        high_edges, low_edges, labels_uri, flow_direction_uri, flat_mask_uri):
+cdef drain_flats(
+        deque[int] high_edges, deque[int] low_edges, labels_uri,
+        flow_direction_uri, flat_mask_uri):
     """A wrapper function for draining flats so it can be called from a
         Python level, but use a C++ map at the Cython level.
 
         Args:
-            high_edges (list) - (input) A list of row major order indicating the
+            high_edges (deque[int]) - (input) A list of row major order indicating the
                 high edge lists.
-            low_edges (list) - (input)  A list of row major order indicating the
+            low_edges (deque[int]) - (input)  A list of row major order indicating the
                 high edge lists.
             labels_uri (string) - (input) A uri to a gdal raster that has
                 unique integer labels for each flat in the DEM.
@@ -1881,7 +1889,7 @@ def drain_flats(
 @cython.wraparound(False)
 @cython.cdivision(True)
 cdef away_from_higher(
-        high_edges, labels_uri, flow_direction_uri, flat_mask_uri,
+        deque[int] high_edges, labels_uri, flow_direction_uri, flat_mask_uri,
         map[int, int] &flat_height):
     """Builds a gradient away from higher terrain.
 
@@ -1973,7 +1981,11 @@ cdef away_from_higher(
 
     cdef queue[int] high_edges_queue
 
-    for flat_index in high_edges:
+    #seed the queue with the high edges
+    for _ in xrange(high_edges.size()):
+        flat_index = high_edges.front()
+        high_edges.pop_front()
+        high_edges.push_back(flat_index)
         high_edges_queue.push(flat_index)
 
     marker = -1
@@ -2057,7 +2069,7 @@ cdef away_from_higher(
 @cython.wraparound(False)
 @cython.cdivision(True)
 cdef towards_lower(
-        low_edges, labels_uri, flow_direction_uri, flat_mask_uri,
+        deque[int] low_edges, labels_uri, flow_direction_uri, flat_mask_uri,
         map[int, int] &flat_height):
     """Builds a gradient towards lower terrain.
 
@@ -2137,9 +2149,11 @@ cdef towards_lower(
     cdef float flow_nodata = pygeoprocessing.get_nodata_from_uri(
         flow_direction_uri)
 
-    for flat_index in low_edges:
-        low_edges_queue.push(flat_index)
-
+    #seed the queue with the low edges
+    for _ in xrange(low_edges.size()):
+        flat_index = low_edges.front()
+        low_edges.pop_front()
+        low_edges.push_back(flat_index)
 
     cdef time_t last_time, current_time
     time(&last_time)
@@ -2562,3 +2576,44 @@ def find_outlets(dem_uri, flow_direction_uri):
 
     return outlet_set
 
+
+def resolve_flats(dem_uri, flow_direction_uri, flat_mask_uri, labels_uri):
+    """Function to resolve the flat regions in the dem given a first attempt
+        run at calculating flow direction.  Will provide regions of flat areas
+        and their labels.
+
+        Based on: Barnes, Richard, Clarence Lehman, and David Mulla. "An
+            efficient assignment of drainage direction over flat surfaces in
+            raster digital elevation models." Computers & Geosciences 62
+            (2014): 128-135.
+
+        Args:
+            dem_uri (string) - (input) a uri to a single band GDAL Dataset with
+                elevation values
+            flow_direction_uri (string) - (input/output) a uri to a single band
+                GDAL Dataset with partially defined d_infinity flow directions
+
+        Returns:
+            True if there were flats to resolve, False otherwise"""
+
+    cdef deque[int] high_edges
+    cdef deque[int] low_edges
+    flat_edges(dem_uri, flow_direction_uri, high_edges, low_edges)
+
+    if low_edges.size() == 0:
+        if high_edges.size() != 0:
+            LOGGER.warn('There were undrainable flats')
+        else:
+            LOGGER.info('There were no flats')
+        return False
+
+    LOGGER.info('labeling flats')
+    label_flats(dem_uri, low_edges, labels_uri)
+
+    LOGGER.info('cleaning high edges')
+    clean_high_edges(labels_uri, high_edges)
+
+    drain_flats(
+        high_edges, low_edges, labels_uri, flow_direction_uri, flat_mask_uri)
+
+    return True
