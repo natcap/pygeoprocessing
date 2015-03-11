@@ -406,8 +406,12 @@ def resolve_flats(dem_uri, flow_direction_uri, flat_mask_uri, labels_uri):
         run at calculating flow direction.  Will provide regions of flat areas
         and their labels.
 
-        Args:
+        Based on: Barnes, Richard, Clarence Lehman, and David Mulla. "An
+            efficient assignment of drainage direction over flat surfaces in
+            raster digital elevation models." Computers & Geosciences 62
+            (2014): 128-135.
 
+        Args:
             dem_uri (string) - (input) a uri to a single band GDAL Dataset with
                 elevation values
             flow_direction_uri (string) - (input/output) a uri to a single band
