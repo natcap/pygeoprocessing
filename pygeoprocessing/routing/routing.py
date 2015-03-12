@@ -74,41 +74,10 @@ def route_flux(
 
         returns nothing"""
 
-    dem_uri = pygeoprocessing.temporary_filename(suffix='.tif')
-    flow_direction_uri = pygeoprocessing.temporary_filename(suffix='.tif')
-    source_uri = pygeoprocessing.temporary_filename(suffix='.tif')
-    absorption_rate_uri = pygeoprocessing.temporary_filename(suffix='.tif')
-    out_pixel_size = pygeoprocessing.get_cell_size_from_uri(in_flow_direction)
-
-    pygeoprocessing.align_dataset_list(
-        [in_flow_direction, in_dem, in_source_uri, in_absorption_rate_uri],
-        [flow_direction_uri, dem_uri, source_uri, absorption_rate_uri],
-        ["nearest", "nearest", "nearest", "nearest"], out_pixel_size,
-        "intersection", 0, aoi_uri=aoi_uri, assert_datasets_projected=False)
-
-    outflow_weights_uri = pygeoprocessing.temporary_filename(suffix='.tif')
-    outflow_direction_uri = pygeoprocessing.temporary_filename(suffix='.tif')
-
-    outlet_cell_set = pygeoprocessing.routing.routing_core.find_outlets(
-        dem_uri, flow_direction_uri)
-    pygeoprocessing.routing.routing_core.calculate_flow_weights(
-        flow_direction_uri, outflow_weights_uri, outflow_direction_uri)
-
-    pygeoprocessing.routing.routing_core.calculate_transport(
-        outflow_direction_uri, outflow_weights_uri, outlet_cell_set,
-        source_uri, absorption_rate_uri, loss_uri, flux_uri, absorption_mode,
-        stream_uri)
-
-    cleanup_uri_list = [
-        dem_uri, flow_direction_uri, source_uri, absorption_rate_uri,
-        outflow_weights_uri, outflow_direction_uri]
-
-    for ds_uri in cleanup_uri_list:
-        try:
-            os.remove(ds_uri)
-        except OSError as exception:
-            LOGGER.warn("couldn't remove %s because it's still open", ds_uri)
-            LOGGER.warn(exception)
+    pygeoprocessing.routing.routing_core.route_flux(
+        in_flow_direction, in_dem, in_source_uri, in_absorption_rate_uri,
+        loss_uri, flux_uri, absorption_mode, aoi_uri=aoi_uri,
+        stream_uri=stream_uri)
 
 
 def flow_accumulation(

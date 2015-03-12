@@ -4,6 +4,7 @@ import logging
 import os
 import collections
 
+import faulthandler
 import numpy
 cimport numpy
 cimport cython
@@ -28,6 +29,7 @@ cdef extern from "time.h" nogil:
 
 import pygeoprocessing
 
+faulthandler.enable()
 
 logging.basicConfig(format='%(asctime)s %(name)-18s %(levelname)-8s \
     %(message)s', lnevel=logging.DEBUG, datefmt='%m/%d/%Y %H:%M:%S ')
@@ -177,9 +179,10 @@ cdef class BlockCache:
 
 @cython.boundscheck(False)
 @cython.wraparound(False)
-def calculate_transport(
-    outflow_direction_uri, outflow_weights_uri, sink_cell_set, source_uri,
-    absorption_rate_uri, loss_uri, flux_uri, absorption_mode, stream_uri=None):
+cdef calculate_transport(
+        outflow_direction_uri, outflow_weights_uri, c_set[int] &sink_cell_set,
+        source_uri, absorption_rate_uri, loss_uri, flux_uri, absorption_mode,
+        stream_uri=None):
     """This is a generalized flux transport algorithm that operates
         on a 2D grid given a per pixel flow direction, per pixel source,
         and per pixel absorption rate.  It produces a grid of loss per
@@ -196,8 +199,8 @@ def calculate_transport(
         outflow_weights_uri - a uri to a float32 dataset whose elements
             correspond to the percent outflow from the current cell to its
             first counter-clockwise neighbor
-        sink_cell_set - a set of flat integer indexes for the cells in flow
-            graph that have no outflow
+        sink_cell_set (set[int])- a set of flat integer indexes for the cells in
+            flow graph that have no outflow
         source_uri - a GDAL dataset that has source flux per pixel
         absorption_rate_uri - a GDAL floating point dataset that has a percent
             of flux absorbed per pixel
@@ -1470,8 +1473,8 @@ def percent_to_sink(
 @cython.wraparound(False)
 @cython.cdivision(True)
 cdef flat_edges(
-        dem_uri, flow_direction_uri, deque[int] high_edges,
-        deque[int] low_edges):
+        dem_uri, flow_direction_uri, deque[int] &high_edges,
+        deque[int] &low_edges):
     """This function locates flat cells that border on higher and lower terrain
         and places them into sets for further processing.
 
@@ -1615,7 +1618,7 @@ cdef flat_edges(
 @cython.boundscheck(False)
 @cython.wraparound(False)
 @cython.cdivision(True)
-cdef label_flats(dem_uri, deque[int] low_edges, labels_uri):
+cdef label_flats(dem_uri, deque[int] &low_edges, labels_uri):
     """A flood fill function to give all the cells of each flat a unique
         label
 
@@ -1771,7 +1774,7 @@ cdef label_flats(dem_uri, deque[int] low_edges, labels_uri):
 @cython.boundscheck(False)
 @cython.wraparound(False)
 @cython.cdivision(True)
-cdef clean_high_edges(labels_uri, deque[int] high_edges):
+cdef clean_high_edges(labels_uri, deque[int] &high_edges):
     """Removes any high edges that do not have labels and reports them if so.
 
         Args:
@@ -1816,7 +1819,7 @@ cdef clean_high_edges(labels_uri, deque[int] high_edges):
 
     cdef int flat_index
     cdef int flat_row, flat_col
-    unlabled_set = set()
+    cdef c_set[int] unlabeled_set
     for _ in xrange(high_edges.size()):
         flat_index = high_edges.front()
         high_edges.pop_front()
@@ -1835,14 +1838,14 @@ cdef clean_high_edges(labels_uri, deque[int] high_edges):
 
         #this is a flat that does not have an outlet
         if flat_cell_label == labels_nodata:
-            unlabled_set.add(flat_index)
+            unlabeled_set.insert(flat_index)
 
-    if len(unlabled_set) > 0:
+    if unlabeled_set.size() > 0:
         #remove high edges that are unlabeled
         for _ in xrange(high_edges.size()):
             flat_index = high_edges.front()
             high_edges.pop_front()
-            if flat_index not in unlabled_set:
+            if unlabeled_set.find(flat_index) != unlabeled_set.end():
                 high_edges.push_back(flat_index)
         LOGGER.warn("Not all flats have outlets")
     block_cache.flush_cache()
@@ -1852,7 +1855,7 @@ cdef clean_high_edges(labels_uri, deque[int] high_edges):
 @cython.wraparound(False)
 @cython.cdivision(True)
 cdef drain_flats(
-        deque[int] high_edges, deque[int] low_edges, labels_uri,
+        deque[int] &high_edges, deque[int] &low_edges, labels_uri,
         flow_direction_uri, flat_mask_uri):
     """A wrapper function for draining flats so it can be called from a
         Python level, but use a C++ map at the Cython level.
@@ -1889,7 +1892,7 @@ cdef drain_flats(
 @cython.wraparound(False)
 @cython.cdivision(True)
 cdef away_from_higher(
-        deque[int] high_edges, labels_uri, flow_direction_uri, flat_mask_uri,
+        deque[int] &high_edges, labels_uri, flow_direction_uri, flat_mask_uri,
         map[int, int] &flat_height):
     """Builds a gradient away from higher terrain.
 
@@ -2069,7 +2072,7 @@ cdef away_from_higher(
 @cython.wraparound(False)
 @cython.cdivision(True)
 cdef towards_lower(
-        deque[int] low_edges, labels_uri, flow_direction_uri, flat_mask_uri,
+        deque[int] &low_edges, labels_uri, flow_direction_uri, flat_mask_uri,
         map[int, int] &flat_height):
     """Builds a gradient towards lower terrain.
 
@@ -2500,7 +2503,7 @@ def flow_direction_inf_masked_flow_dirs(
 @cython.boundscheck(False)
 @cython.wraparound(False)
 @cython.cdivision(True)
-def find_outlets(dem_uri, flow_direction_uri):
+cdef find_outlets(dem_uri, flow_direction_uri, c_set[int] &outlet_set):
     """Discover and return the outlets in the dem array
 
         Args:
@@ -2508,9 +2511,12 @@ def find_outlets(dem_uri, flow_direction_uri):
                 height values
             flow_direction_uri (string) - (input) a uri to gdal dataset
                 representing flow direction values
+            outlet_set (set[int]) - (output) a reference to a c++ set that
+                contains the set of flat integer index indicating the outlets
+                in dem
 
         Returns:
-            A (Set) of flat integer index indicating the outlets in dem"""
+            nothing"""
 
     dem_ds = gdal.Open(dem_uri)
     dem_band = dem_ds.GetRasterBand(1)
@@ -2550,7 +2556,7 @@ def find_outlets(dem_uri, flow_direction_uri):
     cdef int flat_index
     cdef float dem_value, flow_direction
 
-    outlet_set = set()
+    outlet_set.clear()
 
     for cell_row_index in xrange(n_rows):
         for cell_col_index in xrange(n_cols):
@@ -2572,9 +2578,7 @@ def find_outlets(dem_uri, flow_direction_uri):
 
             if dem_value != dem_nodata and flow_direction == flow_nodata:
                 flat_index = cell_row_index * n_cols + cell_col_index
-                outlet_set.add(flat_index)
-
-    return outlet_set
+                outlet_set.insert(flat_index)
 
 
 def resolve_flats(dem_uri, flow_direction_uri, flat_mask_uri, labels_uri):
@@ -2617,3 +2621,76 @@ def resolve_flats(dem_uri, flow_direction_uri, flat_mask_uri, labels_uri):
         high_edges, low_edges, labels_uri, flow_direction_uri, flat_mask_uri)
 
     return True
+
+
+def route_flux(
+        in_flow_direction, in_dem, in_source_uri, in_absorption_rate_uri,
+        loss_uri, flux_uri, absorption_mode, aoi_uri=None, stream_uri=None):
+
+    """This function will route flux across a landscape given a dem to
+        guide flow from a d-infinty flow algorithm, and a custom function
+        that will operate on input flux and other user defined arguments
+        to determine nodal output flux.
+
+        in_flow_direction - a URI to a d-infinity flow direction raster
+        in_dem - a uri to the dem that generated in_flow_direction, they
+            should be aligned rasters
+        in_source_uri - a GDAL dataset that has source flux per pixel
+        in_absorption_rate_uri - a GDAL floating point dataset that has a
+            percent of flux absorbed per pixel
+        loss_uri - an output URI to to the dataset that will output the
+            amount of flux absorbed by each pixel
+        flux_uri - a URI to an output dataset that records the amount of flux
+            travelling through each pixel
+        absorption_mode - either 'flux_only' or 'source_and_flux'. For
+            'flux_only' the outgoing flux is (in_flux * absorption + source).
+            If 'source_and_flux' then the output flux
+            is (in_flux + source) * absorption.
+        aoi_uri - an OGR datasource for an area of interest polygon.
+            the routing flux calculation will only occur on those pixels
+            and neighboring pixels will either be raw outlets or
+            non-contibuting inputs depending on the orientation of the DEM.
+        stream_uri - (optional) a GDAL dataset that classifies pixels as stream
+            (1) or not (0).  If during routing we hit a stream pixel, all
+            upstream flux is considered to wash to zero because it will
+            reach the outlet.  The advantage here is that it can't then
+            route out of the stream
+
+        returns nothing"""
+
+    dem_uri = pygeoprocessing.temporary_filename(suffix='.tif')
+    flow_direction_uri = pygeoprocessing.temporary_filename(suffix='.tif')
+    source_uri = pygeoprocessing.temporary_filename(suffix='.tif')
+    absorption_rate_uri = pygeoprocessing.temporary_filename(suffix='.tif')
+    out_pixel_size = pygeoprocessing.get_cell_size_from_uri(in_flow_direction)
+
+    pygeoprocessing.align_dataset_list(
+        [in_flow_direction, in_dem, in_source_uri, in_absorption_rate_uri],
+        [flow_direction_uri, dem_uri, source_uri, absorption_rate_uri],
+        ["nearest", "nearest", "nearest", "nearest"], out_pixel_size,
+        "intersection", 0, aoi_uri=aoi_uri, assert_datasets_projected=False)
+
+    outflow_weights_uri = pygeoprocessing.temporary_filename(suffix='.tif')
+    outflow_direction_uri = pygeoprocessing.temporary_filename(suffix='.tif')
+
+    cdef c_set[int] outlet_cell_set
+
+    find_outlets(dem_uri, flow_direction_uri, outlet_cell_set)
+    calculate_flow_weights(
+        flow_direction_uri, outflow_weights_uri, outflow_direction_uri)
+
+    calculate_transport(
+        outflow_direction_uri, outflow_weights_uri, outlet_cell_set,
+        source_uri, absorption_rate_uri, loss_uri, flux_uri, absorption_mode,
+        stream_uri)
+
+    cleanup_uri_list = [
+        dem_uri, flow_direction_uri, source_uri, absorption_rate_uri,
+        outflow_weights_uri, outflow_direction_uri]
+
+    for ds_uri in cleanup_uri_list:
+        try:
+            os.remove(ds_uri)
+        except OSError as exception:
+            LOGGER.warn("couldn't remove %s because it's still open", ds_uri)
+            LOGGER.warn(exception)
