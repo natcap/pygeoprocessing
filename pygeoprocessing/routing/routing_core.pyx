@@ -12,10 +12,8 @@ import osgeo
 from osgeo import gdal
 from cython.operator cimport dereference as deref
 
-from libcpp.stack cimport stack
-from libcpp.queue cimport queue
-from libcpp.deque cimport deque
 from libcpp.set cimport set as c_set
+from libcpp.deque cimport deque
 from libcpp.map cimport map
 from libc.math cimport atan
 from libc.math cimport atan2
@@ -180,7 +178,7 @@ cdef class BlockCache:
 @cython.boundscheck(False)
 @cython.wraparound(False)
 cdef calculate_transport(
-        outflow_direction_uri, outflow_weights_uri, c_set[int] &sink_cell_set,
+        outflow_direction_uri, outflow_weights_uri, deque[int] &sink_cell_deque,
         source_uri, absorption_rate_uri, loss_uri, flux_uri, absorption_mode,
         stream_uri=None):
     """This is a generalized flux transport algorithm that operates
@@ -199,8 +197,8 @@ cdef calculate_transport(
         outflow_weights_uri - a uri to a float32 dataset whose elements
             correspond to the percent outflow from the current cell to its
             first counter-clockwise neighbor
-        sink_cell_set (set[int])- a set of flat integer indexes for the cells in
-            flow graph that have no outflow
+        sink_cell_deque (deque[int])- a deque of flat integer indexes for the
+            cells in flow graph that have no outflow
         source_uri - a GDAL dataset that has source flux per pixel
         absorption_rate_uri - a GDAL floating point dataset that has a percent
             of flux absorbed per pixel
@@ -311,12 +309,12 @@ cdef calculate_transport(
         N_BLOCK_ROWS, N_BLOCK_COLS, n_rows, n_cols, block_row_size, block_col_size, band_list, block_list, update_list, cache_dirty)
 
     #Process flux through the grid
-    cdef stack[int] cells_to_process
-    for cell in sink_cell_set:
-        cells_to_process.push(cell)
-    cdef stack[int] cell_neighbor_to_process
+    cdef deque[int] cells_to_process
+    for cell in sink_cell_deque:
+        cells_to_process.push_front(cell)
+    cdef deque[int] cell_neighbor_to_process
     for _ in range(cells_to_process.size()):
-        cell_neighbor_to_process.push(0)
+        cell_neighbor_to_process.push_front(0)
 
     #Diagonal offsets are based off the following index notation for neighbors
     #    3 2 1
@@ -344,8 +342,8 @@ cdef calculate_transport(
             LOGGER.info('calculate transport cells_to_process.size() = %d' % (cells_to_process.size()))
             last_time = current_time
 
-        current_index = cells_to_process.top()
-        cells_to_process.pop()
+        current_index = cells_to_process.front()
+        cells_to_process.pop_front()
         with cython.cdivision(True):
             global_row = current_index / n_cols
             global_col = current_index % n_cols
@@ -378,8 +376,8 @@ cdef calculate_transport(
                     absorption_rate * flux_block[row_index, col_index, row_block_offset, col_block_offset])
                 flux_block[row_index, col_index, row_block_offset, col_block_offset] *= (1 - absorption_rate)
 
-        current_neighbor_index = cell_neighbor_to_process.top()
-        cell_neighbor_to_process.pop()
+        current_neighbor_index = cell_neighbor_to_process.front()
+        cell_neighbor_to_process.pop_front()
         for direction_index in xrange(current_neighbor_index, 8):
             #get percent flow from neighbor to current cell
             neighbor_row = global_row + row_offsets[direction_index]
@@ -430,14 +428,14 @@ cdef calculate_transport(
             else:
                 #we need to process the neighbor, remember where we were
                 #then add the neighbor to the process stack
-                cells_to_process.push(current_index)
-                cell_neighbor_to_process.push(direction_index)
+                cells_to_process.push_front(current_index)
+                cell_neighbor_to_process.push_front(direction_index)
 
                 #Calculating the flat index for the neighbor and starting
                 #at it's neighbor index of 0
                 #a global neighbor row needs to be calculated
-                cells_to_process.push(neighbor_row * n_cols + neighbor_col)
-                cell_neighbor_to_process.push(0)
+                cells_to_process.push_front(neighbor_row * n_cols + neighbor_col)
+                cell_neighbor_to_process.push_front(0)
                 break
 
     block_cache.flush_cache()
@@ -1384,7 +1382,7 @@ def percent_to_sink(
     cdef int *col_offsets = [1,  1,  0, -1, -1, -1, 0, 1]
     cdef int *inflow_offsets = [4, 5, 6, 7, 0, 1, 2, 3]
     cdef int flat_index
-    cdef queue[int] process_queue
+    cdef deque[int] process_queue
     #Queue the sinks
     for global_block_row in xrange(int(numpy.ceil(float(n_rows) / block_row_size))):
         for global_block_col in xrange(int(numpy.ceil(float(n_cols) / block_col_size))):
@@ -1394,11 +1392,11 @@ def percent_to_sink(
                     if sink_pixels_block[row_index, col_index, row_block_offset, col_block_offset] == 1:
                         effect_block[row_index, col_index, row_block_offset, col_block_offset] = 1.0
                         cache_dirty[row_index, col_index] = 1
-                        process_queue.push(global_row * n_cols + global_col)
+                        process_queue.push_back(global_row * n_cols + global_col)
 
     while process_queue.size() > 0:
         flat_index = process_queue.front()
-        process_queue.pop()
+        process_queue.pop_front()
         with cython.cdivision(True):
             global_row = flat_index / n_cols
             global_col = flat_index % n_cols
@@ -1450,7 +1448,7 @@ def percent_to_sink(
             if it_flows_here:
                 #If we haven't processed that effect yet, set it to 0 and append to the queue
                 if effect_block[neighbor_row_index, neighbor_col_index, neighbor_row_block_offset, neighbor_col_block_offset] == effect_nodata:
-                    process_queue.push(neighbor_row * n_cols + neighbor_col)
+                    process_queue.push_back(neighbor_row * n_cols + neighbor_col)
                     effect_block[neighbor_row_index, neighbor_col_index, neighbor_row_block_offset, neighbor_col_block_offset] = 0.0
                     cache_dirty[neighbor_row_index, neighbor_col_index] = 1
 
@@ -1610,7 +1608,7 @@ cdef flat_edges(
                             low_edges.push_back(global_row * n_cols + global_col)
                             break
                         elif (cell_flow == flow_nodata and
-                                cell_dem < neighbor_dem):
+                              cell_dem < neighbor_dem):
                             high_edges.push_back(global_row * n_cols + global_col)
                             break
 
@@ -1695,7 +1693,7 @@ cdef label_flats(dem_uri, deque[int] &low_edges, labels_uri):
     cdef int flat_fill_cell_index
     cdef int label = 1
     cdef int fill_cell_row, fill_cell_col
-    cdef queue[int] to_fill
+    cdef deque[int] to_fill
     cdef float flat_height, current_flat_height
     cdef int visit_number = 0
     for _ in xrange(low_edges.size()):
@@ -1725,10 +1723,10 @@ cdef label_flats(dem_uri, deque[int] &low_edges, labels_uri):
 
         if cell_label == labels_nodata:
             #label flats
-            to_fill.push(flat_cell_index)
+            to_fill.push_back(flat_cell_index)
             while not to_fill.empty():
                 flat_fill_cell_index = to_fill.front()
-                to_fill.pop()
+                to_fill.pop_front()
                 fill_cell_row = flat_fill_cell_index / n_cols
                 fill_cell_col = flat_fill_cell_index % n_cols
                 if (fill_cell_row < 0 or fill_cell_row >= n_rows or
@@ -1765,7 +1763,7 @@ cdef label_flats(dem_uri, deque[int] &low_edges, labels_uri):
                         fill_cell_row + neighbor_row_offset[neighbor_index])
                     neighbor_col = (
                         fill_cell_col + neighbor_col_offset[neighbor_index])
-                    to_fill.push(neighbor_row * n_cols + neighbor_col)
+                    to_fill.push_back(neighbor_row * n_cols + neighbor_col)
 
             label += 1
     block_cache.flush_cache()
@@ -1982,17 +1980,17 @@ cdef away_from_higher(
     cdef time_t last_time, current_time
     time(&last_time)
 
-    cdef queue[int] high_edges_queue
+    cdef deque[int] high_edges_queue
 
     #seed the queue with the high edges
     for _ in xrange(high_edges.size()):
         flat_index = high_edges.front()
         high_edges.pop_front()
         high_edges.push_back(flat_index)
-        high_edges_queue.push(flat_index)
+        high_edges_queue.push_back(flat_index)
 
     marker = -1
-    high_edges_queue.push(marker)
+    high_edges_queue.push_back(marker)
 
     while high_edges_queue.size() > 1:
         time(&current_time)
@@ -2003,10 +2001,10 @@ cdef away_from_higher(
             last_time = current_time
 
         flat_index = high_edges_queue.front()
-        high_edges_queue.pop()
+        high_edges_queue.pop_front()
         if flat_index == marker:
             loops += 1
-            high_edges_queue.push(marker)
+            high_edges_queue.push_back(marker)
             continue
 
         flat_row = flat_index / n_cols
@@ -2063,7 +2061,7 @@ cdef away_from_higher(
             if (neighbor_label != labels_nodata and
                     neighbor_label == cell_label and
                     neighbor_flow == flow_nodata):
-                high_edges_queue.push(neighbor_row * n_cols + neighbor_col)
+                high_edges_queue.push_back(neighbor_row * n_cols + neighbor_col)
 
     block_cache.flush_cache()
 
@@ -2141,7 +2139,7 @@ cdef towards_lower(
 
     cdef int loops = 1
 
-    cdef queue[int] low_edges_queue
+    cdef deque[int] low_edges_queue
     cdef int neighbor_row, neighbor_col
     cdef int flat_index
     cdef int flat_row, flat_col
@@ -2162,19 +2160,20 @@ cdef towards_lower(
     time(&last_time)
 
     marker = -1
-    low_edges_queue.push(marker)
+    low_edges_queue.push_back(marker)
     while low_edges_queue.size() > 1:
 
         time(&current_time)
         if current_time - last_time > 5.0:
-            LOGGER.info("toward_lower work queue size: %d", low_edges_queue.size())
+            LOGGER.info(
+                "toward_lower work queue size: %d", low_edges_queue.size())
             last_time = current_time
 
         flat_index = low_edges_queue.front()
-        low_edges_queue.pop()
+        low_edges_queue.pop_front()
         if flat_index == marker:
             loops += 1
-            low_edges_queue.push(marker)
+            low_edges_queue.push_back(marker)
             continue
 
         flat_row = flat_index / n_cols
@@ -2234,7 +2233,7 @@ cdef towards_lower(
             if (neighbor_label != labels_nodata and
                     neighbor_label == cell_label and
                     neighbor_flow == flow_nodata):
-                low_edges_queue.push(neighbor_row * n_cols + neighbor_col)
+                low_edges_queue.push_back(neighbor_row * n_cols + neighbor_col)
 
     block_cache.flush_cache()
 
@@ -2503,7 +2502,7 @@ def flow_direction_inf_masked_flow_dirs(
 @cython.boundscheck(False)
 @cython.wraparound(False)
 @cython.cdivision(True)
-cdef find_outlets(dem_uri, flow_direction_uri, c_set[int] &outlet_set):
+cdef find_outlets(dem_uri, flow_direction_uri, deque[int] &outlet_deque):
     """Discover and return the outlets in the dem array
 
         Args:
@@ -2511,7 +2510,7 @@ cdef find_outlets(dem_uri, flow_direction_uri, c_set[int] &outlet_set):
                 height values
             flow_direction_uri (string) - (input) a uri to gdal dataset
                 representing flow direction values
-            outlet_set (set[int]) - (output) a reference to a c++ set that
+            outlet_deque (deque[int]) - (output) a reference to a c++ set that
                 contains the set of flat integer index indicating the outlets
                 in dem
 
@@ -2556,9 +2555,18 @@ cdef find_outlets(dem_uri, flow_direction_uri, c_set[int] &outlet_set):
     cdef int flat_index
     cdef float dem_value, flow_direction
 
-    outlet_set.clear()
+    outlet_deque.clear()
+
+    cdef time_t last_time, current_time
+    time(&last_time)
 
     for cell_row_index in xrange(n_rows):
+        time(&current_time)
+        if current_time - last_time > 5.0:
+            LOGGER.info(
+                'find outlet percent complete = %.2f, outlet_deque size = %d',
+                float(cell_row_index)/n_rows * 100, outlet_deque.size())
+            last_time = current_time
         for cell_col_index in xrange(n_cols):
 
             block_cache.update_cache(
@@ -2578,7 +2586,7 @@ cdef find_outlets(dem_uri, flow_direction_uri, c_set[int] &outlet_set):
 
             if dem_value != dem_nodata and flow_direction == flow_nodata:
                 flat_index = cell_row_index * n_cols + cell_col_index
-                outlet_set.insert(flat_index)
+                outlet_deque.push_front(flat_index)
 
 
 def resolve_flats(dem_uri, flow_direction_uri, flat_mask_uri, labels_uri):
@@ -2664,6 +2672,7 @@ def route_flux(
     absorption_rate_uri = pygeoprocessing.temporary_filename(suffix='.tif')
     out_pixel_size = pygeoprocessing.get_cell_size_from_uri(in_flow_direction)
 
+    LOGGER.debug('route flux: align dataset list')
     pygeoprocessing.align_dataset_list(
         [in_flow_direction, in_dem, in_source_uri, in_absorption_rate_uri],
         [flow_direction_uri, dem_uri, source_uri, absorption_rate_uri],
@@ -2673,14 +2682,16 @@ def route_flux(
     outflow_weights_uri = pygeoprocessing.temporary_filename(suffix='.tif')
     outflow_direction_uri = pygeoprocessing.temporary_filename(suffix='.tif')
 
-    cdef c_set[int] outlet_cell_set
+    cdef deque[int] outlet_cell_deque
 
-    find_outlets(dem_uri, flow_direction_uri, outlet_cell_set)
+    LOGGER.debug('route flux: find_outlets')
+    find_outlets(dem_uri, flow_direction_uri, outlet_cell_deque)
     calculate_flow_weights(
         flow_direction_uri, outflow_weights_uri, outflow_direction_uri)
 
+    LOGGER.debug('route flux: calculate_transport')
     calculate_transport(
-        outflow_direction_uri, outflow_weights_uri, outlet_cell_set,
+        outflow_direction_uri, outflow_weights_uri, outlet_cell_deque,
         source_uri, absorption_rate_uri, loss_uri, flux_uri, absorption_mode,
         stream_uri)
 
