@@ -4,7 +4,6 @@ import logging
 import os
 import collections
 
-import faulthandler
 import numpy
 cimport numpy
 cimport cython
@@ -26,8 +25,6 @@ cdef extern from "time.h" nogil:
     time_t time(time_t*)
 
 import pygeoprocessing
-
-faulthandler.enable()
 
 logging.basicConfig(format='%(asctime)s %(name)-18s %(levelname)-8s \
     %(message)s', lnevel=logging.DEBUG, datefmt='%m/%d/%Y %H:%M:%S ')
