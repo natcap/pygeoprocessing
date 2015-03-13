@@ -1900,7 +1900,7 @@ cdef away_from_higher(
             Those Who Tell The Truth Shall Live Forever
 
         Args:
-            high_edges (set) - (input) all the high edge cells of the DEM which
+            high_edges (deque) - (input) all the high edge cells of the DEM which
                 are part of drainable flats.
             labels_uri (string) - (input) a uri to a single band integer gdal
                 dataset that contain labels for the cells that lie in
@@ -2155,6 +2155,7 @@ cdef towards_lower(
         flat_index = low_edges.front()
         low_edges.pop_front()
         low_edges.push_back(flat_index)
+        low_edges_queue.push_back(flat_index)
 
     cdef time_t last_time, current_time
     time(&last_time)
