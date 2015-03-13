@@ -1,3 +1,7 @@
+#####################
+About PyGeoprocessing
+#####################
+
 PyGeoprocessing is a Python/Cython based library that provides a set of commonly
 used raster, vector, and hydrological operations for GIS processing.  Similar
 functionality can be found in ArcGIS/QGIS raster algebra, ArcGIS zonal
