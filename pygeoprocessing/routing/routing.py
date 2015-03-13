@@ -93,6 +93,7 @@ def flow_accumulation(
             accumulation
         aoi_uri - (optional) uri to a datasource to mask out the dem"""
 
+    LOGGER.debug('starting flow accumulation')
     constant_flux_source_uri = pygeoprocessing.temporary_filename(suffix='.tif')
     zero_absorption_source_uri = pygeoprocessing.temporary_filename(suffix='.tif')
     loss_uri = pygeoprocessing.temporary_filename(suffix='.tif')
@@ -258,7 +259,8 @@ def calculate_stream(dem_uri, flow_threshold, stream_uri):
 
     pygeoprocessing.routing.routing_core.resolve_flat_regions_for_drainage(
         dem_uri, dem_offset_uri)
-    pygeoprocessing.routing.routing_core.flow_direction_inf(dem_offset_uri, flow_direction_uri)
+    pygeoprocessing.routing.routing_core.flow_direction_inf(
+        dem_offset_uri, flow_direction_uri)
     flow_accumulation(
         flow_direction_uri, dem_offset_uri, flow_accumulation_uri)
     stream_threshold(flow_accumulation_uri, flow_threshold, stream_uri)
@@ -284,7 +286,8 @@ def flow_direction_inf(dem_uri, flow_direction_uri):
 
        returns nothing"""
 
-    pygeoprocessing.routing.routing_core.flow_direction_inf(dem_uri, flow_direction_uri)
+    pygeoprocessing.routing.routing_core.flow_direction_inf(
+        dem_uri, flow_direction_uri)
 
 
 def fill_pits(dem_uri, dem_out_uri):
@@ -366,8 +369,11 @@ def flow_direction_d_inf(
     #Do the second pass with the flat mask and overwrite the flow direction
     #nodata that was not calculated on the first pass
     if flats_exist:
+        LOGGER.debug('flats exist, calculating flow direction for them')
         pygeoprocessing.routing.routing_core.flow_direction_inf_masked_flow_dirs(
             flat_mask_uri, labels_uri, flow_direction_uri)
+    else:
+        LOGGER.debug('flats don\'t exist')
 
 
 def resolve_flats(dem_uri, flow_direction_uri, flat_mask_uri, labels_uri):
