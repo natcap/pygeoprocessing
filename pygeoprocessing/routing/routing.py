@@ -74,41 +74,10 @@ def route_flux(
 
         returns nothing"""
 
-    dem_uri = pygeoprocessing.temporary_filename(suffix='.tif')
-    flow_direction_uri = pygeoprocessing.temporary_filename(suffix='.tif')
-    source_uri = pygeoprocessing.temporary_filename(suffix='.tif')
-    absorption_rate_uri = pygeoprocessing.temporary_filename(suffix='.tif')
-    out_pixel_size = pygeoprocessing.get_cell_size_from_uri(in_flow_direction)
-
-    pygeoprocessing.align_dataset_list(
-        [in_flow_direction, in_dem, in_source_uri, in_absorption_rate_uri],
-        [flow_direction_uri, dem_uri, source_uri, absorption_rate_uri],
-        ["nearest", "nearest", "nearest", "nearest"], out_pixel_size,
-        "intersection", 0, aoi_uri=aoi_uri, assert_datasets_projected=False)
-
-    outflow_weights_uri = pygeoprocessing.temporary_filename(suffix='.tif')
-    outflow_direction_uri = pygeoprocessing.temporary_filename(suffix='.tif')
-
-    outlet_cell_set = pygeoprocessing.routing.routing_core.find_outlets(
-        dem_uri, flow_direction_uri)
-    pygeoprocessing.routing.routing_core.calculate_flow_weights(
-        flow_direction_uri, outflow_weights_uri, outflow_direction_uri)
-
-    pygeoprocessing.routing.routing_core.calculate_transport(
-        outflow_direction_uri, outflow_weights_uri, outlet_cell_set,
-        source_uri, absorption_rate_uri, loss_uri, flux_uri, absorption_mode,
-        stream_uri)
-
-    cleanup_uri_list = [
-        dem_uri, flow_direction_uri, source_uri, absorption_rate_uri,
-        outflow_weights_uri, outflow_direction_uri]
-
-    for ds_uri in cleanup_uri_list:
-        try:
-            os.remove(ds_uri)
-        except OSError as exception:
-            LOGGER.warn("couldn't remove %s because it's still open", ds_uri)
-            LOGGER.warn(exception)
+    pygeoprocessing.routing.routing_core.route_flux(
+        in_flow_direction, in_dem, in_source_uri, in_absorption_rate_uri,
+        loss_uri, flux_uri, absorption_mode, aoi_uri=aoi_uri,
+        stream_uri=stream_uri)
 
 
 def flow_accumulation(
@@ -124,6 +93,7 @@ def flow_accumulation(
             accumulation
         aoi_uri - (optional) uri to a datasource to mask out the dem"""
 
+    LOGGER.debug('starting flow accumulation')
     constant_flux_source_uri = pygeoprocessing.temporary_filename(suffix='.tif')
     zero_absorption_source_uri = pygeoprocessing.temporary_filename(suffix='.tif')
     loss_uri = pygeoprocessing.temporary_filename(suffix='.tif')
@@ -289,7 +259,8 @@ def calculate_stream(dem_uri, flow_threshold, stream_uri):
 
     pygeoprocessing.routing.routing_core.resolve_flat_regions_for_drainage(
         dem_uri, dem_offset_uri)
-    pygeoprocessing.routing.routing_core.flow_direction_inf(dem_offset_uri, flow_direction_uri)
+    pygeoprocessing.routing.routing_core.flow_direction_inf(
+        dem_offset_uri, flow_direction_uri)
     flow_accumulation(
         flow_direction_uri, dem_offset_uri, flow_accumulation_uri)
     stream_threshold(flow_accumulation_uri, flow_threshold, stream_uri)
@@ -315,7 +286,8 @@ def flow_direction_inf(dem_uri, flow_direction_uri):
 
        returns nothing"""
 
-    pygeoprocessing.routing.routing_core.flow_direction_inf(dem_uri, flow_direction_uri)
+    pygeoprocessing.routing.routing_core.flow_direction_inf(
+        dem_uri, flow_direction_uri)
 
 
 def fill_pits(dem_uri, dem_out_uri):
@@ -397,8 +369,11 @@ def flow_direction_d_inf(
     #Do the second pass with the flat mask and overwrite the flow direction
     #nodata that was not calculated on the first pass
     if flats_exist:
+        LOGGER.debug('flats exist, calculating flow direction for them')
         pygeoprocessing.routing.routing_core.flow_direction_inf_masked_flow_dirs(
             flat_mask_uri, labels_uri, flow_direction_uri)
+    else:
+        LOGGER.debug('flats don\'t exist')
 
 
 def resolve_flats(dem_uri, flow_direction_uri, flat_mask_uri, labels_uri):
@@ -406,8 +381,12 @@ def resolve_flats(dem_uri, flow_direction_uri, flat_mask_uri, labels_uri):
         run at calculating flow direction.  Will provide regions of flat areas
         and their labels.
 
-        Args:
+        Based on: Barnes, Richard, Clarence Lehman, and David Mulla. "An
+            efficient assignment of drainage direction over flat surfaces in
+            raster digital elevation models." Computers & Geosciences 62
+            (2014): 128-135.
 
+        Args:
             dem_uri (string) - (input) a uri to a single band GDAL Dataset with
                 elevation values
             flow_direction_uri (string) - (input/output) a uri to a single band
@@ -416,22 +395,5 @@ def resolve_flats(dem_uri, flow_direction_uri, flat_mask_uri, labels_uri):
         Returns:
             True if there were flats to resolve, False otherwise"""
 
-    high_edges, low_edges = pygeoprocessing.routing.routing_core.flat_edges(
-        dem_uri, flow_direction_uri)
-    if len(low_edges) == 0:
-        if len(high_edges) != 0:
-            LOGGER.warn('There were undrainable flats')
-        else:
-            LOGGER.info('There were no flats')
-        return False
-
-    LOGGER.info('labeling flats')
-    pygeoprocessing.routing.routing_core.label_flats(dem_uri, low_edges, labels_uri)
-
-    LOGGER.info('cleaning high edges')
-    pygeoprocessing.routing.routing_core.clean_high_edges(labels_uri, high_edges)
-
-    pygeoprocessing.routing.routing_core.drain_flats(
-        high_edges, low_edges, labels_uri, flow_direction_uri, flat_mask_uri)
-
-    return True
+    return pygeoprocessing.routing.routing_core.resolve_flats(
+        dem_uri, flow_direction_uri, flat_mask_uri, labels_uri)
