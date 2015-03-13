@@ -4,6 +4,12 @@
 History
 #######
 
+0.1.4 (2015-03-13)
+---------------------
+
+* Fixed a memory issue for DEMs on the order of 25k X 25k, still may have issues
+    with larger DEMs.
+
 0.1.3 (2015-03-08)
 ---------------------
 
