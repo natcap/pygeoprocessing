@@ -11,10 +11,8 @@ import osgeo
 from osgeo import gdal
 from cython.operator cimport dereference as deref
 
-from libcpp.stack cimport stack
-from libcpp.queue cimport queue
-from libcpp.deque cimport deque
 from libcpp.set cimport set as c_set
+from libcpp.deque cimport deque
 from libcpp.map cimport map
 from libc.math cimport atan
 from libc.math cimport atan2
@@ -27,7 +25,6 @@ cdef extern from "time.h" nogil:
     time_t time(time_t*)
 
 import pygeoprocessing
-
 
 logging.basicConfig(format='%(asctime)s %(name)-18s %(levelname)-8s \
     %(message)s', lnevel=logging.DEBUG, datefmt='%m/%d/%Y %H:%M:%S ')
@@ -177,9 +174,10 @@ cdef class BlockCache:
 
 @cython.boundscheck(False)
 @cython.wraparound(False)
-def calculate_transport(
-    outflow_direction_uri, outflow_weights_uri, sink_cell_set, source_uri,
-    absorption_rate_uri, loss_uri, flux_uri, absorption_mode, stream_uri=None):
+cdef calculate_transport(
+        outflow_direction_uri, outflow_weights_uri, deque[int] &sink_cell_deque,
+        source_uri, absorption_rate_uri, loss_uri, flux_uri, absorption_mode,
+        stream_uri=None):
     """This is a generalized flux transport algorithm that operates
         on a 2D grid given a per pixel flow direction, per pixel source,
         and per pixel absorption rate.  It produces a grid of loss per
@@ -196,8 +194,8 @@ def calculate_transport(
         outflow_weights_uri - a uri to a float32 dataset whose elements
             correspond to the percent outflow from the current cell to its
             first counter-clockwise neighbor
-        sink_cell_set - a set of flat integer indexes for the cells in flow
-            graph that have no outflow
+        sink_cell_deque (deque[int])- a deque of flat integer indexes for the
+            cells in flow graph that have no outflow
         source_uri - a GDAL dataset that has source flux per pixel
         absorption_rate_uri - a GDAL floating point dataset that has a percent
             of flux absorbed per pixel
@@ -308,12 +306,12 @@ def calculate_transport(
         N_BLOCK_ROWS, N_BLOCK_COLS, n_rows, n_cols, block_row_size, block_col_size, band_list, block_list, update_list, cache_dirty)
 
     #Process flux through the grid
-    cdef stack[int] cells_to_process
-    for cell in sink_cell_set:
-        cells_to_process.push(cell)
-    cdef stack[int] cell_neighbor_to_process
+    cdef deque[int] cells_to_process
+    for cell in sink_cell_deque:
+        cells_to_process.push_front(cell)
+    cdef deque[int] cell_neighbor_to_process
     for _ in range(cells_to_process.size()):
-        cell_neighbor_to_process.push(0)
+        cell_neighbor_to_process.push_front(0)
 
     #Diagonal offsets are based off the following index notation for neighbors
     #    3 2 1
@@ -341,8 +339,8 @@ def calculate_transport(
             LOGGER.info('calculate transport cells_to_process.size() = %d' % (cells_to_process.size()))
             last_time = current_time
 
-        current_index = cells_to_process.top()
-        cells_to_process.pop()
+        current_index = cells_to_process.front()
+        cells_to_process.pop_front()
         with cython.cdivision(True):
             global_row = current_index / n_cols
             global_col = current_index % n_cols
@@ -375,8 +373,8 @@ def calculate_transport(
                     absorption_rate * flux_block[row_index, col_index, row_block_offset, col_block_offset])
                 flux_block[row_index, col_index, row_block_offset, col_block_offset] *= (1 - absorption_rate)
 
-        current_neighbor_index = cell_neighbor_to_process.top()
-        cell_neighbor_to_process.pop()
+        current_neighbor_index = cell_neighbor_to_process.front()
+        cell_neighbor_to_process.pop_front()
         for direction_index in xrange(current_neighbor_index, 8):
             #get percent flow from neighbor to current cell
             neighbor_row = global_row + row_offsets[direction_index]
@@ -427,14 +425,14 @@ def calculate_transport(
             else:
                 #we need to process the neighbor, remember where we were
                 #then add the neighbor to the process stack
-                cells_to_process.push(current_index)
-                cell_neighbor_to_process.push(direction_index)
+                cells_to_process.push_front(current_index)
+                cell_neighbor_to_process.push_front(direction_index)
 
                 #Calculating the flat index for the neighbor and starting
                 #at it's neighbor index of 0
                 #a global neighbor row needs to be calculated
-                cells_to_process.push(neighbor_row * n_cols + neighbor_col)
-                cell_neighbor_to_process.push(0)
+                cells_to_process.push_front(neighbor_row * n_cols + neighbor_col)
+                cell_neighbor_to_process.push_front(0)
                 break
 
     block_cache.flush_cache()
@@ -1381,7 +1379,7 @@ def percent_to_sink(
     cdef int *col_offsets = [1,  1,  0, -1, -1, -1, 0, 1]
     cdef int *inflow_offsets = [4, 5, 6, 7, 0, 1, 2, 3]
     cdef int flat_index
-    cdef queue[int] process_queue
+    cdef deque[int] process_queue
     #Queue the sinks
     for global_block_row in xrange(int(numpy.ceil(float(n_rows) / block_row_size))):
         for global_block_col in xrange(int(numpy.ceil(float(n_cols) / block_col_size))):
@@ -1391,11 +1389,11 @@ def percent_to_sink(
                     if sink_pixels_block[row_index, col_index, row_block_offset, col_block_offset] == 1:
                         effect_block[row_index, col_index, row_block_offset, col_block_offset] = 1.0
                         cache_dirty[row_index, col_index] = 1
-                        process_queue.push(global_row * n_cols + global_col)
+                        process_queue.push_back(global_row * n_cols + global_col)
 
     while process_queue.size() > 0:
         flat_index = process_queue.front()
-        process_queue.pop()
+        process_queue.pop_front()
         with cython.cdivision(True):
             global_row = flat_index / n_cols
             global_col = flat_index % n_cols
@@ -1447,7 +1445,7 @@ def percent_to_sink(
             if it_flows_here:
                 #If we haven't processed that effect yet, set it to 0 and append to the queue
                 if effect_block[neighbor_row_index, neighbor_col_index, neighbor_row_block_offset, neighbor_col_block_offset] == effect_nodata:
-                    process_queue.push(neighbor_row * n_cols + neighbor_col)
+                    process_queue.push_back(neighbor_row * n_cols + neighbor_col)
                     effect_block[neighbor_row_index, neighbor_col_index, neighbor_row_block_offset, neighbor_col_block_offset] = 0.0
                     cache_dirty[neighbor_row_index, neighbor_col_index] = 1
 
@@ -1469,7 +1467,9 @@ def percent_to_sink(
 @cython.boundscheck(False)
 @cython.wraparound(False)
 @cython.cdivision(True)
-def flat_edges(dem_uri, flow_direction_uri):
+cdef flat_edges(
+        dem_uri, flow_direction_uri, deque[int] &high_edges,
+        deque[int] &low_edges):
     """This function locates flat cells that border on higher and lower terrain
         and places them into sets for further processing.
 
@@ -1479,14 +1479,13 @@ def flat_edges(dem_uri, flow_direction_uri):
                 elevation values
             flow_direction_uri (string) - (input/output) a uri to a single band
                 GDAL Dataset with partially defined d_infinity flow directions
+            high_edges (deque) - (output) will contain all the high edge cells as
+                flat row major order indexes
+            low_edges (deque) - (output) will contain all the low edge cells as flat
+                row major order indexes"""
 
-        Returns:
-            high_edges, low_edges where,
-
-                high_edges (list) - contain all the high edge cells as flat row
-                    major order indexes
-                low_edges (list) - will contain all the low edge cells as flat
-                    row major order indexes"""
+    high_edges.clear()
+    low_edges.clear()
 
     cdef int *neighbor_row_offset = [0, -1, -1, -1,  0,  1, 1, 1]
     cdef int *neighbor_col_offset = [1,  1,  0, -1, -1, -1, 0, 1]
@@ -1540,9 +1539,6 @@ def flat_edges(dem_uri, flow_direction_uri):
         dem_uri)
     cdef float flow_nodata = pygeoprocessing.get_nodata_from_uri(
         flow_direction_uri)
-
-    high_edges = []
-    low_edges = []
 
     cdef time_t last_time, current_time
     time(&last_time)
@@ -1606,19 +1602,18 @@ def flat_edges(dem_uri, flow_direction_uri):
                         if (cell_flow != flow_nodata and
                                 neighbor_flow == flow_nodata and
                                 cell_dem == neighbor_dem):
-                            low_edges.append(global_row * n_cols + global_col)
+                            low_edges.push_back(global_row * n_cols + global_col)
                             break
                         elif (cell_flow == flow_nodata and
-                                cell_dem < neighbor_dem):
-                            high_edges.append(global_row * n_cols + global_col)
+                              cell_dem < neighbor_dem):
+                            high_edges.push_back(global_row * n_cols + global_col)
                             break
-    return high_edges, low_edges
 
 
 @cython.boundscheck(False)
 @cython.wraparound(False)
 @cython.cdivision(True)
-def label_flats(dem_uri, low_edges, labels_uri):
+cdef label_flats(dem_uri, deque[int] &low_edges, labels_uri):
     """A flood fill function to give all the cells of each flat a unique
         label
 
@@ -1695,16 +1690,19 @@ def label_flats(dem_uri, low_edges, labels_uri):
     cdef int flat_fill_cell_index
     cdef int label = 1
     cdef int fill_cell_row, fill_cell_col
-    cdef queue[int] to_fill
+    cdef deque[int] to_fill
     cdef float flat_height, current_flat_height
     cdef int visit_number = 0
-    for flat_cell_index in low_edges:
+    for _ in xrange(low_edges.size()):
+        flat_cell_index = low_edges.front()
+        low_edges.pop_front()
+        low_edges.push_back(flat_cell_index)
         visit_number += 1
         time(&current_time)
         if current_time - last_time > 5.0:
             LOGGER.info(
                 "label_flats %.1f%% complete",
-                float(visit_number) / len(low_edges) * 100)
+                float(visit_number) / low_edges.size() * 100)
             last_time = current_time
         global_row = flat_cell_index / n_cols
         global_col = flat_cell_index % n_cols
@@ -1722,10 +1720,10 @@ def label_flats(dem_uri, low_edges, labels_uri):
 
         if cell_label == labels_nodata:
             #label flats
-            to_fill.push(flat_cell_index)
+            to_fill.push_back(flat_cell_index)
             while not to_fill.empty():
                 flat_fill_cell_index = to_fill.front()
-                to_fill.pop()
+                to_fill.pop_front()
                 fill_cell_row = flat_fill_cell_index / n_cols
                 fill_cell_col = flat_fill_cell_index % n_cols
                 if (fill_cell_row < 0 or fill_cell_row >= n_rows or
@@ -1762,7 +1760,7 @@ def label_flats(dem_uri, low_edges, labels_uri):
                         fill_cell_row + neighbor_row_offset[neighbor_index])
                     neighbor_col = (
                         fill_cell_col + neighbor_col_offset[neighbor_index])
-                    to_fill.push(neighbor_row * n_cols + neighbor_col)
+                    to_fill.push_back(neighbor_row * n_cols + neighbor_col)
 
             label += 1
     block_cache.flush_cache()
@@ -1771,7 +1769,7 @@ def label_flats(dem_uri, low_edges, labels_uri):
 @cython.boundscheck(False)
 @cython.wraparound(False)
 @cython.cdivision(True)
-def clean_high_edges(labels_uri, high_edges):
+cdef clean_high_edges(labels_uri, deque[int] &high_edges):
     """Removes any high edges that do not have labels and reports them if so.
 
         Args:
@@ -1816,8 +1814,11 @@ def clean_high_edges(labels_uri, high_edges):
 
     cdef int flat_index
     cdef int flat_row, flat_col
-    unlabled_set = set()
-    for flat_index in high_edges:
+    cdef c_set[int] unlabeled_set
+    for _ in xrange(high_edges.size()):
+        flat_index = high_edges.front()
+        high_edges.pop_front()
+        high_edges.push_back(flat_index)
         flat_row = flat_index / n_cols
         flat_col = flat_index % n_cols
 
@@ -1832,11 +1833,15 @@ def clean_high_edges(labels_uri, high_edges):
 
         #this is a flat that does not have an outlet
         if flat_cell_label == labels_nodata:
-            unlabled_set.add(flat_index)
+            unlabeled_set.insert(flat_index)
 
-    if len(unlabled_set) > 0:
-        #want to preserve the order of the high edges so there's this n^2ish
-        high_edges[:] = [x for x in high_edges if x not in unlabled_set]
+    if unlabeled_set.size() > 0:
+        #remove high edges that are unlabeled
+        for _ in xrange(high_edges.size()):
+            flat_index = high_edges.front()
+            high_edges.pop_front()
+            if unlabeled_set.find(flat_index) != unlabeled_set.end():
+                high_edges.push_back(flat_index)
         LOGGER.warn("Not all flats have outlets")
     block_cache.flush_cache()
 
@@ -1844,15 +1849,16 @@ def clean_high_edges(labels_uri, high_edges):
 @cython.boundscheck(False)
 @cython.wraparound(False)
 @cython.cdivision(True)
-def drain_flats(
-        high_edges, low_edges, labels_uri, flow_direction_uri, flat_mask_uri):
+cdef drain_flats(
+        deque[int] &high_edges, deque[int] &low_edges, labels_uri,
+        flow_direction_uri, flat_mask_uri):
     """A wrapper function for draining flats so it can be called from a
         Python level, but use a C++ map at the Cython level.
 
         Args:
-            high_edges (list) - (input) A list of row major order indicating the
+            high_edges (deque[int]) - (input) A list of row major order indicating the
                 high edge lists.
-            low_edges (list) - (input)  A list of row major order indicating the
+            low_edges (deque[int]) - (input)  A list of row major order indicating the
                 high edge lists.
             labels_uri (string) - (input) A uri to a gdal raster that has
                 unique integer labels for each flat in the DEM.
@@ -1881,7 +1887,7 @@ def drain_flats(
 @cython.wraparound(False)
 @cython.cdivision(True)
 cdef away_from_higher(
-        high_edges, labels_uri, flow_direction_uri, flat_mask_uri,
+        deque[int] &high_edges, labels_uri, flow_direction_uri, flat_mask_uri,
         map[int, int] &flat_height):
     """Builds a gradient away from higher terrain.
 
@@ -1891,7 +1897,7 @@ cdef away_from_higher(
             Those Who Tell The Truth Shall Live Forever
 
         Args:
-            high_edges (set) - (input) all the high edge cells of the DEM which
+            high_edges (deque) - (input) all the high edge cells of the DEM which
                 are part of drainable flats.
             labels_uri (string) - (input) a uri to a single band integer gdal
                 dataset that contain labels for the cells that lie in
@@ -1971,13 +1977,17 @@ cdef away_from_higher(
     cdef time_t last_time, current_time
     time(&last_time)
 
-    cdef queue[int] high_edges_queue
+    cdef deque[int] high_edges_queue
 
-    for flat_index in high_edges:
-        high_edges_queue.push(flat_index)
+    #seed the queue with the high edges
+    for _ in xrange(high_edges.size()):
+        flat_index = high_edges.front()
+        high_edges.pop_front()
+        high_edges.push_back(flat_index)
+        high_edges_queue.push_back(flat_index)
 
     marker = -1
-    high_edges_queue.push(marker)
+    high_edges_queue.push_back(marker)
 
     while high_edges_queue.size() > 1:
         time(&current_time)
@@ -1988,10 +1998,10 @@ cdef away_from_higher(
             last_time = current_time
 
         flat_index = high_edges_queue.front()
-        high_edges_queue.pop()
+        high_edges_queue.pop_front()
         if flat_index == marker:
             loops += 1
-            high_edges_queue.push(marker)
+            high_edges_queue.push_back(marker)
             continue
 
         flat_row = flat_index / n_cols
@@ -2048,7 +2058,7 @@ cdef away_from_higher(
             if (neighbor_label != labels_nodata and
                     neighbor_label == cell_label and
                     neighbor_flow == flow_nodata):
-                high_edges_queue.push(neighbor_row * n_cols + neighbor_col)
+                high_edges_queue.push_back(neighbor_row * n_cols + neighbor_col)
 
     block_cache.flush_cache()
 
@@ -2057,7 +2067,7 @@ cdef away_from_higher(
 @cython.wraparound(False)
 @cython.cdivision(True)
 cdef towards_lower(
-        low_edges, labels_uri, flow_direction_uri, flat_mask_uri,
+        deque[int] &low_edges, labels_uri, flow_direction_uri, flat_mask_uri,
         map[int, int] &flat_height):
     """Builds a gradient towards lower terrain.
 
@@ -2126,7 +2136,7 @@ cdef towards_lower(
 
     cdef int loops = 1
 
-    cdef queue[int] low_edges_queue
+    cdef deque[int] low_edges_queue
     cdef int neighbor_row, neighbor_col
     cdef int flat_index
     cdef int flat_row, flat_col
@@ -2137,27 +2147,31 @@ cdef towards_lower(
     cdef float flow_nodata = pygeoprocessing.get_nodata_from_uri(
         flow_direction_uri)
 
-    for flat_index in low_edges:
-        low_edges_queue.push(flat_index)
-
+    #seed the queue with the low edges
+    for _ in xrange(low_edges.size()):
+        flat_index = low_edges.front()
+        low_edges.pop_front()
+        low_edges.push_back(flat_index)
+        low_edges_queue.push_back(flat_index)
 
     cdef time_t last_time, current_time
     time(&last_time)
 
     marker = -1
-    low_edges_queue.push(marker)
+    low_edges_queue.push_back(marker)
     while low_edges_queue.size() > 1:
 
         time(&current_time)
         if current_time - last_time > 5.0:
-            LOGGER.info("toward_lower work queue size: %d", low_edges_queue.size())
+            LOGGER.info(
+                "toward_lower work queue size: %d", low_edges_queue.size())
             last_time = current_time
 
         flat_index = low_edges_queue.front()
-        low_edges_queue.pop()
+        low_edges_queue.pop_front()
         if flat_index == marker:
             loops += 1
-            low_edges_queue.push(marker)
+            low_edges_queue.push_back(marker)
             continue
 
         flat_row = flat_index / n_cols
@@ -2217,7 +2231,7 @@ cdef towards_lower(
             if (neighbor_label != labels_nodata and
                     neighbor_label == cell_label and
                     neighbor_flow == flow_nodata):
-                low_edges_queue.push(neighbor_row * n_cols + neighbor_col)
+                low_edges_queue.push_back(neighbor_row * n_cols + neighbor_col)
 
     block_cache.flush_cache()
 
@@ -2486,7 +2500,7 @@ def flow_direction_inf_masked_flow_dirs(
 @cython.boundscheck(False)
 @cython.wraparound(False)
 @cython.cdivision(True)
-def find_outlets(dem_uri, flow_direction_uri):
+cdef find_outlets(dem_uri, flow_direction_uri, deque[int] &outlet_deque):
     """Discover and return the outlets in the dem array
 
         Args:
@@ -2494,9 +2508,12 @@ def find_outlets(dem_uri, flow_direction_uri):
                 height values
             flow_direction_uri (string) - (input) a uri to gdal dataset
                 representing flow direction values
+            outlet_deque (deque[int]) - (output) a reference to a c++ set that
+                contains the set of flat integer index indicating the outlets
+                in dem
 
         Returns:
-            A (Set) of flat integer index indicating the outlets in dem"""
+            nothing"""
 
     dem_ds = gdal.Open(dem_uri)
     dem_band = dem_ds.GetRasterBand(1)
@@ -2536,9 +2553,18 @@ def find_outlets(dem_uri, flow_direction_uri):
     cdef int flat_index
     cdef float dem_value, flow_direction
 
-    outlet_set = set()
+    outlet_deque.clear()
+
+    cdef time_t last_time, current_time
+    time(&last_time)
 
     for cell_row_index in xrange(n_rows):
+        time(&current_time)
+        if current_time - last_time > 5.0:
+            LOGGER.info(
+                'find outlet percent complete = %.2f, outlet_deque size = %d',
+                float(cell_row_index)/n_rows * 100, outlet_deque.size())
+            last_time = current_time
         for cell_col_index in xrange(n_cols):
 
             block_cache.update_cache(
@@ -2558,7 +2584,122 @@ def find_outlets(dem_uri, flow_direction_uri):
 
             if dem_value != dem_nodata and flow_direction == flow_nodata:
                 flat_index = cell_row_index * n_cols + cell_col_index
-                outlet_set.add(flat_index)
+                outlet_deque.push_front(flat_index)
 
-    return outlet_set
 
+def resolve_flats(dem_uri, flow_direction_uri, flat_mask_uri, labels_uri):
+    """Function to resolve the flat regions in the dem given a first attempt
+        run at calculating flow direction.  Will provide regions of flat areas
+        and their labels.
+
+        Based on: Barnes, Richard, Clarence Lehman, and David Mulla. "An
+            efficient assignment of drainage direction over flat surfaces in
+            raster digital elevation models." Computers & Geosciences 62
+            (2014): 128-135.
+
+        Args:
+            dem_uri (string) - (input) a uri to a single band GDAL Dataset with
+                elevation values
+            flow_direction_uri (string) - (input/output) a uri to a single band
+                GDAL Dataset with partially defined d_infinity flow directions
+
+        Returns:
+            True if there were flats to resolve, False otherwise"""
+
+    cdef deque[int] high_edges
+    cdef deque[int] low_edges
+    flat_edges(dem_uri, flow_direction_uri, high_edges, low_edges)
+
+    if low_edges.size() == 0:
+        if high_edges.size() != 0:
+            LOGGER.warn('There were undrainable flats')
+        else:
+            LOGGER.info('There were no flats')
+        return False
+
+    LOGGER.info('labeling flats')
+    label_flats(dem_uri, low_edges, labels_uri)
+
+    LOGGER.info('cleaning high edges')
+    clean_high_edges(labels_uri, high_edges)
+
+    drain_flats(
+        high_edges, low_edges, labels_uri, flow_direction_uri, flat_mask_uri)
+
+    return True
+
+
+def route_flux(
+        in_flow_direction, in_dem, in_source_uri, in_absorption_rate_uri,
+        loss_uri, flux_uri, absorption_mode, aoi_uri=None, stream_uri=None):
+
+    """This function will route flux across a landscape given a dem to
+        guide flow from a d-infinty flow algorithm, and a custom function
+        that will operate on input flux and other user defined arguments
+        to determine nodal output flux.
+
+        in_flow_direction - a URI to a d-infinity flow direction raster
+        in_dem - a uri to the dem that generated in_flow_direction, they
+            should be aligned rasters
+        in_source_uri - a GDAL dataset that has source flux per pixel
+        in_absorption_rate_uri - a GDAL floating point dataset that has a
+            percent of flux absorbed per pixel
+        loss_uri - an output URI to to the dataset that will output the
+            amount of flux absorbed by each pixel
+        flux_uri - a URI to an output dataset that records the amount of flux
+            travelling through each pixel
+        absorption_mode - either 'flux_only' or 'source_and_flux'. For
+            'flux_only' the outgoing flux is (in_flux * absorption + source).
+            If 'source_and_flux' then the output flux
+            is (in_flux + source) * absorption.
+        aoi_uri - an OGR datasource for an area of interest polygon.
+            the routing flux calculation will only occur on those pixels
+            and neighboring pixels will either be raw outlets or
+            non-contibuting inputs depending on the orientation of the DEM.
+        stream_uri - (optional) a GDAL dataset that classifies pixels as stream
+            (1) or not (0).  If during routing we hit a stream pixel, all
+            upstream flux is considered to wash to zero because it will
+            reach the outlet.  The advantage here is that it can't then
+            route out of the stream
+
+        returns nothing"""
+
+    dem_uri = pygeoprocessing.temporary_filename(suffix='.tif')
+    flow_direction_uri = pygeoprocessing.temporary_filename(suffix='.tif')
+    source_uri = pygeoprocessing.temporary_filename(suffix='.tif')
+    absorption_rate_uri = pygeoprocessing.temporary_filename(suffix='.tif')
+    out_pixel_size = pygeoprocessing.get_cell_size_from_uri(in_flow_direction)
+
+    LOGGER.debug('route flux: align dataset list')
+    pygeoprocessing.align_dataset_list(
+        [in_flow_direction, in_dem, in_source_uri, in_absorption_rate_uri],
+        [flow_direction_uri, dem_uri, source_uri, absorption_rate_uri],
+        ["nearest", "nearest", "nearest", "nearest"], out_pixel_size,
+        "intersection", 0, aoi_uri=aoi_uri, assert_datasets_projected=False)
+
+    outflow_weights_uri = pygeoprocessing.temporary_filename(suffix='.tif')
+    outflow_direction_uri = pygeoprocessing.temporary_filename(suffix='.tif')
+
+    cdef deque[int] outlet_cell_deque
+
+    LOGGER.debug('route flux: find_outlets')
+    find_outlets(dem_uri, flow_direction_uri, outlet_cell_deque)
+    calculate_flow_weights(
+        flow_direction_uri, outflow_weights_uri, outflow_direction_uri)
+
+    LOGGER.debug('route flux: calculate_transport')
+    calculate_transport(
+        outflow_direction_uri, outflow_weights_uri, outlet_cell_deque,
+        source_uri, absorption_rate_uri, loss_uri, flux_uri, absorption_mode,
+        stream_uri)
+
+    cleanup_uri_list = [
+        dem_uri, flow_direction_uri, source_uri, absorption_rate_uri,
+        outflow_weights_uri, outflow_direction_uri]
+
+    for ds_uri in cleanup_uri_list:
+        try:
+            os.remove(ds_uri)
+        except OSError as exception:
+            LOGGER.warn("couldn't remove %s because it's still open", ds_uri)
+            LOGGER.warn(exception)
