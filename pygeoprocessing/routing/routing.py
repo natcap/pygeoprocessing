@@ -296,7 +296,8 @@ def flow_direction_d_inf(
     labels_uri = pygeoprocessing.temporary_filename()
 
     flats_exist = pygeoprocessing.routing.routing_core.resolve_flats(
-        dem_uri, flow_direction_uri, flat_mask_uri, labels_uri)
+        dem_uri, flow_direction_uri, flat_mask_uri, labels_uri,
+        drain_off_edge=False)
 
     #Do the second pass with the flat mask and overwrite the flow direction
     #nodata that was not calculated on the first pass
@@ -305,5 +306,33 @@ def flow_direction_d_inf(
         pygeoprocessing.routing.routing_core.\
             flow_direction_inf_masked_flow_dirs(
                 flat_mask_uri, labels_uri, flow_direction_uri)
+        try:
+            os.remove(flat_mask_uri)
+            os.remove(labels_uri)
+        except OSError:
+            pass #just a file lock
+        flat_mask_uri = pygeoprocessing.temporary_filename()
+        labels_uri = pygeoprocessing.temporary_filename()
+
+        #check to make sure there isn't a flat only region that should drain
+        #off the edge of the raster
+        flats_exist = pygeoprocessing.routing.routing_core.resolve_flats(
+            dem_uri, flow_direction_uri, flat_mask_uri, labels_uri,
+            drain_off_edge=True)
+        if flats_exist:
+            LOGGER.info(
+                'flats exist on second pass, must be flat areas that abut the '
+                'raster edge')
+            pygeoprocessing.routing.routing_core.\
+                flow_direction_inf_masked_flow_dirs(
+                    flat_mask_uri, labels_uri, flow_direction_uri)
+
     else:
         LOGGER.debug('flats don\'t exist')
+
+    #clean up temp files
+    try:
+        os.remove(flat_mask_uri)
+        os.remove(labels_uri)
+    except OSError:
+        pass #just a file lock
