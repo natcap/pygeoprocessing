@@ -1466,7 +1466,7 @@ def percent_to_sink(
 @cython.cdivision(True)
 cdef flat_edges(
         dem_uri, flow_direction_uri, deque[int] &high_edges,
-        deque[int] &low_edges):
+        deque[int] &low_edges, int drain_off_edge=0):
     """This function locates flat cells that border on higher and lower terrain
         and places them into sets for further processing.
 
@@ -1479,7 +1479,9 @@ cdef flat_edges(
             high_edges (deque) - (output) will contain all the high edge cells as
                 flat row major order indexes
             low_edges (deque) - (output) will contain all the low edge cells as flat
-                row major order indexes"""
+                row major order indexes
+            drain_off_edge (int) - (input) if True will drain flat regions off
+                the nodata edge of a DEM"""
 
     high_edges.clear()
     low_edges.clear()
@@ -1540,6 +1542,8 @@ cdef flat_edges(
     cdef time_t last_time, current_time
     time(&last_time)
 
+    cdef neighbor_nodata
+
     for global_block_row in xrange(n_global_block_rows):
         time(&current_time)
         if current_time - last_time > 5.0:
@@ -1568,6 +1572,7 @@ cdef flat_edges(
                     cell_flow = flow_block[cell_row_index, cell_col_index,
                         cell_row_block_offset, cell_col_block_offset]
 
+                    neighbor_nodata = 0
                     for neighbor_index in xrange(8):
                         neighbor_row = (
                             neighbor_row_offset[neighbor_index] + global_row)
@@ -1589,6 +1594,7 @@ cdef flat_edges(
                             neighbor_col_block_offset]
 
                         if neighbor_dem == dem_nodata:
+                            neighbor_nodata = 1
                             continue
 
                         neighbor_flow = flow_block[
@@ -1605,6 +1611,8 @@ cdef flat_edges(
                               cell_dem < neighbor_dem):
                             high_edges.push_back(global_row * n_cols + global_col)
                             break
+                    if drain_off_edge and neighbor_nodata:
+                        low_edges.push_back(global_row * n_cols + global_col)
 
 
 @cython.boundscheck(False)
@@ -2584,7 +2592,9 @@ cdef find_outlets(dem_uri, flow_direction_uri, deque[int] &outlet_deque):
                 outlet_deque.push_front(flat_index)
 
 
-def resolve_flats(dem_uri, flow_direction_uri, flat_mask_uri, labels_uri):
+def resolve_flats(
+    dem_uri, flow_direction_uri, flat_mask_uri, labels_uri,
+    drain_off_edge=False):
     """Function to resolve the flat regions in the dem given a first attempt
         run at calculating flow direction.  Will provide regions of flat areas
         and their labels.
@@ -2599,13 +2609,17 @@ def resolve_flats(dem_uri, flow_direction_uri, flat_mask_uri, labels_uri):
                 elevation values
             flow_direction_uri (string) - (input/output) a uri to a single band
                 GDAL Dataset with partially defined d_infinity flow directions
+            drain_off_edge (boolean) - input if true will drain flat areas off
+                the edge of the raster
 
         Returns:
             True if there were flats to resolve, False otherwise"""
 
     cdef deque[int] high_edges
     cdef deque[int] low_edges
-    flat_edges(dem_uri, flow_direction_uri, high_edges, low_edges)
+    flat_edges(
+        dem_uri, flow_direction_uri, high_edges, low_edges,
+        drain_off_edge=drain_off_edge)
 
     if low_edges.size() == 0:
         if high_edges.size() != 0:
@@ -2617,8 +2631,8 @@ def resolve_flats(dem_uri, flow_direction_uri, flat_mask_uri, labels_uri):
     LOGGER.info('labeling flats')
     label_flats(dem_uri, low_edges, labels_uri)
 
-    LOGGER.info('cleaning high edges')
-    clean_high_edges(labels_uri, high_edges)
+    #LOGGER.info('cleaning high edges')
+    #clean_high_edges(labels_uri, high_edges)
 
     drain_flats(
         high_edges, low_edges, labels_uri, flow_direction_uri, flat_mask_uri)
@@ -2667,7 +2681,6 @@ def route_flux(
     absorption_rate_uri = pygeoprocessing.temporary_filename(suffix='.tif')
     out_pixel_size = pygeoprocessing.get_cell_size_from_uri(in_flow_direction)
 
-    LOGGER.debug('route flux: align dataset list')
     pygeoprocessing.align_dataset_list(
         [in_flow_direction, in_dem, in_source_uri, in_absorption_rate_uri],
         [flow_direction_uri, dem_uri, source_uri, absorption_rate_uri],
@@ -2679,12 +2692,10 @@ def route_flux(
 
     cdef deque[int] outlet_cell_deque
 
-    LOGGER.debug('route flux: find_outlets')
     find_outlets(dem_uri, flow_direction_uri, outlet_cell_deque)
     calculate_flow_weights(
         flow_direction_uri, outflow_weights_uri, outflow_direction_uri)
 
-    LOGGER.debug('route flux: calculate_transport')
     calculate_transport(
         outflow_direction_uri, outflow_weights_uri, outlet_cell_deque,
         source_uri, absorption_rate_uri, loss_uri, flux_uri, absorption_mode,
