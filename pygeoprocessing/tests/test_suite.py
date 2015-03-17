@@ -54,7 +54,7 @@ class TestRoutingFunctions(unittest.TestCase):
             pixel_matrix, pygeoprocessing.tests.COLOMBIA_SRS, geotransform,
             nodata, filename=self.dem_filename)
 
-        pygeoprocessing.routing.flow_direction_inf(
+        pygeoprocessing.routing.flow_direction_d_inf(
             self.dem_filename, self.flow_direction_filename)
 
 if __name__ == '__main__':
