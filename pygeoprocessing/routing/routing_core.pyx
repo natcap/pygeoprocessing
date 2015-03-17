@@ -690,12 +690,9 @@ def flow_direction_inf(dem_uri, flow_direction_uri):
     cdef double e_0, e_1, e_2, s_1, s_2, d_1, d_2, flow_direction, slope, \
         flow_direction_max_slope, slope_max, nodata_flow
 
-    cdef float dem_nodata
-    #need this if statement because dem_nodata is statically typed
-    if pygeoprocessing.get_nodata_from_uri(dem_uri) != None:
-        dem_nodata = pygeoprocessing.get_nodata_from_uri(dem_uri)
-    else:
-        #we don't have a nodata value, traditional one
+    cdef double dem_nodata = pygeoprocessing.get_nodata_from_uri(dem_uri)
+    #if it is not set, set it to a traditional nodata value
+    if dem_nodata == None:
         dem_nodata = -9999
 
     dem_ds = gdal.Open(dem_uri)
