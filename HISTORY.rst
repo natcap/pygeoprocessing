@@ -4,11 +4,16 @@
 History
 #######
 
+0.1.5 (2015-03-16)
+---------------------
+
+* Fixed an issue where int32 dems with INT_MIN as the nodata value were being treated as real DEM values because of an internal cast to a float for the nodata type, but a cast to double for the DEM values.
+* Fixed an issue where flat regions, such as reservoirs, that could only drain off the edge of the DEM now correctly drain as opposed to having undefined flow directions.
+
 0.1.4 (2015-03-13)
 ---------------------
 
-* Fixed a memory issue for DEMs on the order of 25k X 25k, still may have issues
-    with larger DEMs.
+* Fixed a memory issue for DEMs on the order of 25k X 25k, still may have issues with larger DEMs.
 
 0.1.3 (2015-03-08)
 ---------------------
