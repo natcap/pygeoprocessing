@@ -4,6 +4,11 @@
 History
 #######
 
+0.1.6 (2015-03-24)
+---------------------
+
+* Fixing LICENSE.TXT to .txt issue that keeps reoccuring.
+
 0.1.5 (2015-03-16)
 ---------------------
 
