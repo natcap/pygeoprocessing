@@ -96,10 +96,10 @@ if not USE_CYTHON:
     EXTENSION_LIST = no_cythonize(EXTENSION_LIST)
 
 REQUIREMENTS = [
-    'numpy>=1.8.2',
-    'scipy>=0.13.3',
-    'shapely>=1.3.3',
-    'gdal>=1.10.1',
+    'numpy',
+    'scipy',
+    'shapely',
+    'gdal',
     ]
 
 setup(
