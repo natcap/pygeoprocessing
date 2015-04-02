@@ -112,7 +112,7 @@ class OrderedDict(DictMixin):
 logging.basicConfig(format='%(asctime)s %(name)-18s %(levelname)-8s \
     %(message)s', level=logging.DEBUG, datefmt='%m/%d/%Y %H:%M:%S ')
 
-LOGGER = logging.getLogger('geoprocessing')
+LOGGER = logging.getLogger('pygeoprocessing.geoprocessing')
 
 #The following line of code hides some errors that seem important and doesn't
 #raise exceptions on them.  FOr example:
