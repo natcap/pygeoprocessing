@@ -8,6 +8,7 @@ History
 -----
 
 * Package logger objects are now identified by python heirarchical package paths (e.g. pygeoprocessing.routing)
+* Fixed an issue where rasters that had undefined nodata values caused striping in the reclassify_dataset_uri function.
 
 0.1.6 (2015-03-24)
 ---------------------
