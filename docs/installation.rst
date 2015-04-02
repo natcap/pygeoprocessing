@@ -2,11 +2,10 @@
 Installation
 ============
 
-At the command line::
+To compile both pygeoprocessing and dependencies from source::
 
-    $ easy_install pygeoprocessing
-
-Or, if you have virtualenvwrapper installed::
-
-    $ mkvirtualenv pygeoprocessing
     $ pip install pygeoprocessing
+
+Or if the dependencies are already installed (gdal, shapely, numpy, scipy, cython), add the 'no-deps' flag to compile pygeoprocessing::
+
+    $ pip install pygeoprocessing --no-deps

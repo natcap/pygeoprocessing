@@ -112,7 +112,7 @@ class OrderedDict(DictMixin):
 logging.basicConfig(format='%(asctime)s %(name)-18s %(levelname)-8s \
     %(message)s', level=logging.DEBUG, datefmt='%m/%d/%Y %H:%M:%S ')
 
-LOGGER = logging.getLogger('geoprocessing')
+LOGGER = logging.getLogger('pygeoprocessing.geoprocessing')
 
 #The following line of code hides some errors that seem important and doesn't
 #raise exceptions on them.  FOr example:
@@ -138,8 +138,6 @@ def get_nodata_from_uri(dataset_uri):
     dataset = gdal.Open(dataset_uri)
     band = dataset.GetRasterBand(1)
     nodata = band.GetNoDataValue()
-    if nodata is None:
-        LOGGER.warn("Warning the nodata value in %s is not set" % (dataset_uri))
 
     #cast to an unsigned
     if band.DataType == gdal.GDT_Byte and nodata is not None:
@@ -149,7 +147,13 @@ def get_nodata_from_uri(dataset_uri):
     #not give a reliable type underneath
     data_type = band.ReadAsArray(0, 0, 1, 1).dtype
     #awkwardly cram this in a 1 element numpy array to get the type correct
-    nodata_cast = numpy.array([nodata], dtype=data_type)
+    if nodata is not None:
+        nodata_cast = numpy.array([nodata], dtype=data_type)
+    else:
+        LOGGER.warn(
+            "Warning the nodata value in %s is not set", dataset_uri)
+        #mirror the format from above
+        nodata_cast = numpy.array([None])
 
     #Make sure the dataset is closed and cleaned up
     band = None
@@ -1818,12 +1822,14 @@ def reclassify_dataset_uri(
         """Converts a block of original values to the lookup values"""
         all_mapped = numpy.empty(original_values.shape, dtype=numpy.bool)
         out_array = numpy.empty(original_values.shape, dtype=numpy.float)
+        nodata_mask = numpy.zeros(original_values.shape, dtype=numpy.bool)
         for key, value in value_map.iteritems():
             mask = original_values == key
             all_mapped = all_mapped | mask
             out_array[mask] = value
-        nodata_mask = original_values == nodata
-        all_mapped = all_mapped | nodata_mask
+        if nodata != None:
+            nodata_mask = original_values == nodata
+            all_mapped = all_mapped | nodata_mask
         out_array[nodata_mask] = out_nodata
         if not all_mapped.all() and exception_flag == 'values_required':
             raise Exception(
@@ -2171,6 +2177,11 @@ def resize_and_resample_dataset_uri(
     original_dataset = gdal.Open(original_dataset_uri)
     original_band = original_dataset.GetRasterBand(1)
     original_nodata = original_band.GetNoDataValue()
+
+    if original_nodata is None:
+        original_nodata = float(
+            calculate_value_not_in_dataset(original_dataset))
+
     #gdal python doesn't handle unsigned nodata values well and sometime returns
     #negative numbers.  this guards against that
     if original_band.DataType == gdal.GDT_Byte:
@@ -2212,9 +2223,6 @@ def resize_and_resample_dataset_uri(
         output_uri, new_x_size, new_y_size, 1, original_band.DataType,
         options=gtiff_creation_options)
     output_band = output_dataset.GetRasterBand(1)
-    if original_nodata is None:
-        original_nodata = float(
-            calculate_value_not_in_dataset(original_dataset))
 
     output_band.SetNoDataValue(original_nodata)
 
