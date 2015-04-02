@@ -4,6 +4,11 @@
 History
 #######
 
+0.1.7
+-----
+
+* Package logger objects are now identified by python heirarchical package paths (e.g. pygeoprocessing.routing)
+
 0.1.6 (2015-03-24)
 ---------------------
 
