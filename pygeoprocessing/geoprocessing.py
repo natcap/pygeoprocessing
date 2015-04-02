@@ -1822,12 +1822,14 @@ def reclassify_dataset_uri(
         """Converts a block of original values to the lookup values"""
         all_mapped = numpy.empty(original_values.shape, dtype=numpy.bool)
         out_array = numpy.empty(original_values.shape, dtype=numpy.float)
+        nodata_mask = numpy.zeros(original_values.shape, dtype=numpy.bool)
         for key, value in value_map.iteritems():
             mask = original_values == key
             all_mapped = all_mapped | mask
             out_array[mask] = value
-        nodata_mask = original_values == nodata
-        all_mapped = all_mapped | nodata_mask
+        if nodata != None:
+            nodata_mask = original_values == nodata
+            all_mapped = all_mapped | nodata_mask
         out_array[nodata_mask] = out_nodata
         if not all_mapped.all() and exception_flag == 'values_required':
             raise Exception(
