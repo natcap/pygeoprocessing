@@ -3291,40 +3291,6 @@ def distance_transform_edt(
         LOGGER.warn("couldn't remove file %s", mask_as_byte_uri)
 
 
-def email_report(message, email_address):
-    """
-    A simple wrapper around an SMTP call.  Can be used to send text messages
-    if the email address is constructed as the following:
-
-    Alltel [10-digit phone number]@message.alltel.com
-    AT&T (formerly Cingular) [10-digit phone number]@txt.att.net
-    Boost Mobile [10-digit phone number]@myboostmobile.com
-    Nextel (now Sprint Nextel) [10-digit telephone number]@messaging.nextel.com
-    Sprint PCS (now Sprint Nextel) [10-digit phone number]@messaging.sprintpcs.com
-    T-Mobile [10-digit phone number]@tmomail.net
-    US Cellular [10-digit phone number]email.uscc.net (SMS)
-    Verizon [10-digit phone number]@vtext.com
-    Virgin Mobile USA [10-digit phone number]@vmobl.com
-
-    Args:
-        message (string): the message to send
-        email_address (string): where to send the message
-
-    Returns:
-        nothing
-
-    """
-
-    try:
-        server = smtplib.SMTP('smtp.gmail.com:587')
-        server.starttls()
-        server.login('natcapsoftwareteam@gmail.com', 'assman64')
-        server.sendmail('natcapsoftwareteam@gmail.com', email_address, message)
-        server.quit()
-    except smtplib.socket.gaierror:
-        LOGGER.warn("Can't connect to email server, no report will be sent.")
-
-
 def convolve_2d_uri(signal_uri, kernel_uri, output_uri, ignore_nodata=True):
     """
     Does a direct convolution on a predefined kernel with the values in
