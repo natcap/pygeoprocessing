@@ -46,24 +46,6 @@ GDAL_TO_NUMPY_TYPE = {
     }
 
 
-class NoDaemonProcess(multiprocessing.Process):
-    """A class to make non-deamonic pools in case we want to have pools of
-        pools"""
-    # make 'daemon' attribute always return False
-    def _get_daemon(self):
-        return False
-
-    def _set_daemon(self, value):
-        pass
-    daemon = property(_get_daemon, _set_daemon)
-
-
-# We sub-class multiprocessing.pool.Pool instead of multiprocessing.Pool
-# because the latter is only a wrapper function, not a proper class.
-class PoolNoDaemon(multiprocessing.pool.Pool):
-    Process = NoDaemonProcess
-
-
 #Used to raise an exception if rasters, shapefiles, or both don't overlap
 #in regions that should
 class SpatialExtentOverlapException(Exception):
