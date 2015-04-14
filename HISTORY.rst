@@ -4,6 +4,11 @@
 History
 #######
 
+0.1.8 (2015-04-13)
+------------------
+
+* Fixed an issue on reclassifying signed byte rasters that had negative nodata values but the internal type stored for vectorize datasets was unsigned.
+
 0.1.7
 -----
 
