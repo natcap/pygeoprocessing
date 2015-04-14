@@ -1027,7 +1027,7 @@ def aggregate_raster_values_uri(
         try:
             os.remove(filename)
         except OSError:
-            LOGGER.warn("couldn't remove file %s" % filename)
+            LOGGER.warn("couldn't remove file %s", filename)
 
     subset_layer = None
     ogr.DataSource.__swig_destroy__(subset_layer_datasouce)
@@ -1035,7 +1035,7 @@ def aggregate_raster_values_uri(
     try:
         shutil.rmtree(layer_dir)
     except OSError:
-        LOGGER.warn("couldn't remove directory %s" % layer_dir)
+        LOGGER.warn("couldn't remove directory %s", layer_dir)
 
     return result_tuple
 
