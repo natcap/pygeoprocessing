@@ -1207,144 +1207,24 @@ def clip_dataset_uri(
         nothing
 
     """
-    #NOTE: I have altered the signature of this function compared to the
-    # previous one because I want to be able to use vectorize_datasets to clip
-    # two sources that are not projected
-
-    #raise NotImplementedError('clip_dataset_uri is not implemented yet')
-
-    # I choose to open up the dataset here because I want to use the
-    # calculate_value_not_in_dataset function which requires a datasource. For
-    # now I do not want to create a uri version of that function.
     source_dataset = gdal.Open(source_dataset_uri)
 
-    band, nodata = extract_band_and_nodata(source_dataset)
+    band = source_dataset.GetRasterBand(1)
+    nodata = band.GetNoDataValue()
     datatype = band.DataType
 
     if nodata is None:
-        nodata = calculate_value_not_in_dataset(source_dataset)
+        nodata = -9999
 
     gdal.Dataset.__swig_destroy__(source_dataset)
     source_dataset = None
 
     pixel_size = get_cell_size_from_uri(source_dataset_uri)
-
     vectorize_datasets(
         [source_dataset_uri], lambda x: x, out_dataset_uri, datatype, nodata,
         pixel_size, 'intersection', aoi_uri=aoi_datasource_uri,
         assert_datasets_projected=assert_projections,
         process_pool=process_pool, vectorize_op=False)
-
-
-def extract_band_and_nodata(dataset, get_array=False):
-    """
-    It's often useful to get the first band and corresponding nodata value
-    for a dataset.  This function does that.
-
-    Args:
-        dataset (?): a GDAL dataset
-
-    Keyword Args:
-        get_array (boolean): if True also returns the dataset as a numpy array
-
-    Returns:
-        band (?): first GDAL band in dataset
-        nodata (?: nodata value for that band
-
-    """
-
-    LOGGER.warn('extract_band_and_nodata is DEPRECATED')
-
-    band = dataset.GetRasterBand(1)
-    nodata = band.GetNoDataValue()
-
-    #gdal has strange behaviors with nodata and byte rasters, this packs it into the right space
-    if band.DataType == gdal.GDT_Byte and nodata is not None:
-        nodata = nodata % 256
-
-    if get_array:
-        array = band.ReadAsArray()
-        return band, nodata, array
-
-    #Otherwise just return the band and nodata
-    return band, nodata
-
-
-def calculate_value_not_in_dataset_uri(dataset_uri):
-    """
-    Calculate a value not contained in a dataset.  Useful for calculating
-    nodata values.
-
-    Args:
-        dataset (?): a GDAL dataset
-
-    Returns:
-        value (?): number not contained in the dataset
-
-    """
-    dataset = gdal.Open(dataset_uri)
-    value = calculate_value_not_in_dataset(dataset)
-
-    #Make sure the dataset is closed and cleaned up
-    gdal.Dataset.__swig_destroy__(dataset)
-    dataset = None
-
-    return value
-
-
-def calculate_value_not_in_dataset(dataset):
-    """
-    Calculate a value not contained in a dataset.  Useful for calculating
-    nodata values.
-
-    Args:
-        dataset (?): a GDAL dataset
-
-    Returns:
-        value (?): number not contained in the dataset
-
-    """
-
-    _, _, array = extract_band_and_nodata(dataset, get_array=True)
-    return calculate_value_not_in_array(array)
-
-
-def calculate_value_not_in_array(array):
-    """
-    This function calculates a number that is not in the given array, if
-    possible.
-
-    Args:
-        array (np.array): a numpy array
-
-    Returns:
-        value (?): a number not in array that is not "close" to any value in
-            array calculated in the middle of the maximum delta between any two
-            consecutive numbers in the array
-
-    """
-
-    sorted_array = numpy.sort(numpy.unique(array.flatten()))
-    #Make sure we don't have a single unique value, if we do just go + or -
-    #1 at the end
-    if len(sorted_array) > 1:
-        array_type = type(sorted_array[0])
-        diff_array = numpy.array([-1, 1])
-        deltas = scipy.signal.correlate(sorted_array, diff_array, mode='valid')
-
-        max_delta_index = numpy.argmax(deltas)
-
-        #Try to return the average of the maximum delta
-        if deltas[max_delta_index] > 0:
-            return array_type((sorted_array[max_delta_index+1] +
-                               sorted_array[max_delta_index])/2.0)
-
-    #Else, all deltas are too small so go one smaller or one larger than the
-    #min or max.  Catching an exception in case there's an overflow.
-    try:
-        return sorted_array[0]-1
-    except OverflowError:
-        return sorted_array[-1]+1
 
 
 def create_rat_uri(dataset_uri, attr_dict, column_name):
@@ -2166,8 +2046,7 @@ def resize_and_resample_dataset_uri(
     original_nodata = original_band.GetNoDataValue()
 
     if original_nodata is None:
-        original_nodata = float(
-            calculate_value_not_in_dataset(original_dataset))
+        original_nodata = -9999
 
     #gdal python doesn't handle unsigned nodata values well and sometime returns
     #negative numbers.  this guards against that
