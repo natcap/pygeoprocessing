@@ -32,24 +32,6 @@ import shapely.prepared
 import pygeoprocessing.geoprocessing_core
 from pygeoprocessing import fileio
 
-def gdal_dataset_to_numpy_type_uri(dataset_uri):
-    """Determines the numpy type of the first rasterband in the Dataset pointed
-        to by dataset_uri
-
-        dataset_uri - a filepath to a dataset
-
-        returns numpy type equivalent of the dataset's band.DataType"""
-
-    dataset = gdal.Open(dataset_uri)
-    band = dataset.GetRasterBand(1)
-    numpy_type = _gdal_to_numpy_type(band)
-
-    band = None
-    gdal.Dataset.__swig_destroy__(dataset)
-    dataset = None
-
-    return numpy_type
-
 
 def _gdal_to_numpy_type(band):
     """Calculates the equivalent numpy datatype from a GDAL raster band type
