@@ -11,11 +11,8 @@ import math
 import errno
 import collections
 import exceptions
-import multiprocessing
-import multiprocessing.pool
 import heapq
 import time
-import smtplib
 from types import StringType
 
 from osgeo import gdal
