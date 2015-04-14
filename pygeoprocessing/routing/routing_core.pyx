@@ -466,9 +466,8 @@ def calculate_flow_weights(
 
     flow_direction_dataset = gdal.Open(flow_direction_uri)
     cdef double flow_direction_nodata
-    flow_direction_band, flow_direction_nodata = \
-        pygeoprocessing.extract_band_and_nodata(flow_direction_dataset)
     flow_direction_band = flow_direction_dataset.GetRasterBand(1)
+    flow_direction_nodata = flow_direction_band.GetNoDataValue()
 
     cdef int block_col_size, block_row_size
     block_col_size, block_row_size = flow_direction_band.GetBlockSize()
