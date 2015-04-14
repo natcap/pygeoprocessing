@@ -11,11 +11,8 @@ import math
 import errno
 import collections
 import exceptions
-import multiprocessing
-import multiprocessing.pool
 import heapq
 import time
-import smtplib
 from types import StringType
 
 from osgeo import gdal
@@ -36,7 +33,7 @@ import pygeoprocessing.geoprocessing_core
 from pygeoprocessing import fileio
 
 GDAL_TO_NUMPY_TYPE = {
-    gdal.GDT_Byte: numpy.uint8,
+    gdal.GDT_Byte: numpy.int8,
     gdal.GDT_Int16: numpy.int16,
     gdal.GDT_Int32: numpy.int32,
     gdal.GDT_UInt16: numpy.uint16,
@@ -44,24 +41,6 @@ GDAL_TO_NUMPY_TYPE = {
     gdal.GDT_Float32: numpy.float32,
     gdal.GDT_Float64: numpy.float64
     }
-
-
-class NoDaemonProcess(multiprocessing.Process):
-    """A class to make non-deamonic pools in case we want to have pools of
-        pools"""
-    # make 'daemon' attribute always return False
-    def _get_daemon(self):
-        return False
-
-    def _set_daemon(self, value):
-        pass
-    daemon = property(_get_daemon, _set_daemon)
-
-
-# We sub-class multiprocessing.pool.Pool instead of multiprocessing.Pool
-# because the latter is only a wrapper function, not a proper class.
-class PoolNoDaemon(multiprocessing.pool.Pool):
-    Process = NoDaemonProcess
 
 
 #Used to raise an exception if rasters, shapefiles, or both don't overlap
@@ -3289,40 +3268,6 @@ def distance_transform_edt(
         os.remove(mask_as_byte_uri)
     except OSError:
         LOGGER.warn("couldn't remove file %s", mask_as_byte_uri)
-
-
-def email_report(message, email_address):
-    """
-    A simple wrapper around an SMTP call.  Can be used to send text messages
-    if the email address is constructed as the following:
-
-    Alltel [10-digit phone number]@message.alltel.com
-    AT&T (formerly Cingular) [10-digit phone number]@txt.att.net
-    Boost Mobile [10-digit phone number]@myboostmobile.com
-    Nextel (now Sprint Nextel) [10-digit telephone number]@messaging.nextel.com
-    Sprint PCS (now Sprint Nextel) [10-digit phone number]@messaging.sprintpcs.com
-    T-Mobile [10-digit phone number]@tmomail.net
-    US Cellular [10-digit phone number]email.uscc.net (SMS)
-    Verizon [10-digit phone number]@vtext.com
-    Virgin Mobile USA [10-digit phone number]@vmobl.com
-
-    Args:
-        message (string): the message to send
-        email_address (string): where to send the message
-
-    Returns:
-        nothing
-
-    """
-
-    try:
-        server = smtplib.SMTP('smtp.gmail.com:587')
-        server.starttls()
-        server.login('natcapsoftwareteam@gmail.com', 'assman64')
-        server.sendmail('natcapsoftwareteam@gmail.com', email_address, message)
-        server.quit()
-    except smtplib.socket.gaierror:
-        LOGGER.warn("Can't connect to email server, no report will be sent.")
 
 
 def convolve_2d_uri(signal_uri, kernel_uri, output_uri, ignore_nodata=True):
