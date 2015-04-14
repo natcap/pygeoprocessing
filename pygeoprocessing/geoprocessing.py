@@ -69,12 +69,6 @@ class SpatialExtentOverlapException(Exception):
         in space"""
     pass
 
-
-class UndefinedValue(Exception):
-    """Used to indicate values that are not defined in dictionary
-        structures"""
-    pass
-
 from UserDict import DictMixin
 
 
@@ -1782,7 +1776,7 @@ def reclassify_dataset(
             unique_set = set(row_array[0])
             if not unique_set.issubset(valid_set):
                 undefined_set = unique_set.difference(valid_set)
-                raise UndefinedValue(
+                raise ValueError(
                     "The following values were in the raster but not in the "
                     "value_map %s" % (list(undefined_set)))
 
@@ -2073,14 +2067,14 @@ def resize_and_resample_dataset_uri(
     #If the original band is tiled, then its x blocksize will be different than
     #the number of columns
     if block_size[0] != original_band.XSize and original_band.XSize > 256 and original_band.YSize > 256:
-        #it makes sense for a wad of invest functions to use 256x256 blocks, lets do that here
+        #it makes sense for many functions to have 256x256 blocks
         block_size[0] = 256
         block_size[1] = 256
         gtiff_creation_options = [
             'TILED=YES', 'BIGTIFF=IF_SAFER', 'BLOCKXSIZE=%d' % block_size[0],
             'BLOCKYSIZE=%d' % block_size[1]]
     else:
-        #this thing is so small or strangely aligned, use the default creation options
+        #it is so small or strangely aligned, use the default creation options
         gtiff_creation_options = []
 
     create_directories([os.path.dirname(output_uri)])
@@ -2268,8 +2262,9 @@ def align_dataset_list(
         first_dataset = None
 
         mask_uri = temporary_filename(suffix='.tif')
-        new_raster_from_base_uri(dataset_out_uri_list[0], mask_uri, 'GTiff', 255,
-            gdal.GDT_Byte, fill_value=0)
+        new_raster_from_base_uri(
+            dataset_out_uri_list[0], mask_uri, 'GTiff', 255, gdal.GDT_Byte,
+            fill_value=0)
 
         mask_dataset = gdal.Open(mask_uri, gdal.GA_Update)
         mask_band = mask_dataset.GetRasterBand(1)
@@ -2308,9 +2303,9 @@ def align_dataset_list(
 
         #Clean up datasets
         out_band_list = None
-        for ds in out_dataset_list:
-            ds.FlushCache()
-            gdal.Dataset.__swig_destroy__(ds)
+        for dataset in out_dataset_list:
+            dataset.FlushCache()
+            gdal.Dataset.__swig_destroy__(dataset)
         out_dataset_list = None
 
 
