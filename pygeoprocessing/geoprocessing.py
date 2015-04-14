@@ -32,15 +32,52 @@ import shapely.prepared
 import pygeoprocessing.geoprocessing_core
 from pygeoprocessing import fileio
 
-GDAL_TO_NUMPY_TYPE = {
-    gdal.GDT_Byte: numpy.int8,
-    gdal.GDT_Int16: numpy.int16,
-    gdal.GDT_Int32: numpy.int32,
-    gdal.GDT_UInt16: numpy.uint16,
-    gdal.GDT_UInt32: numpy.uint32,
-    gdal.GDT_Float32: numpy.float32,
-    gdal.GDT_Float64: numpy.float64
+def gdal_dataset_to_numpy_type_uri(dataset_uri):
+    """Determines the numpy type of the first rasterband in the Dataset pointed
+        to by dataset_uri
+
+        dataset_uri - a filepath to a dataset
+
+        returns numpy type equivalent of the dataset's band.DataType"""
+
+    dataset = gdal.Open(dataset_uri)
+    band = dataset.GetRasterBand(1)
+    numpy_type = _gdal_to_numpy_type(band)
+
+    band = None
+    gdal.Dataset.__swig_destroy__(dataset)
+    dataset = None
+
+    return numpy_type
+
+
+def _gdal_to_numpy_type(band):
+    """Calculates the equivalent numpy datatype from a GDAL raster band type
+
+        band - GDAL band
+
+        returns numpy equivalent of band.DataType"""
+
+    gdal_type_to_numpy_lookup = {
+        gdal.GDT_Int16: numpy.int16,
+        gdal.GDT_Int32: numpy.int32,
+        gdal.GDT_UInt16: numpy.uint16,
+        gdal.GDT_UInt32: numpy.uint32,
+        gdal.GDT_Float32: numpy.float32,
+        gdal.GDT_Float64: numpy.float64
     }
+
+    if band.DataType in gdal_type_to_numpy_lookup:
+        return gdal_type_to_numpy_lookup[band.DataType]
+
+    #only class not in the lookup is a Byte but double check.
+    if band.DataType != gdal.GDT_Byte:
+        raise ValueError("Unknown DataType: %s" % str(band.DataType))
+
+    metadata = band.GetMetadata('IMAGE_STRUCTURE')
+    if 'PIXELTYPE' in metadata and metadata['PIXELTYPE'] == 'SIGNEDBYTE':
+        return numpy.int8
+    return numpy.uint8
 
 
 #Used to raise an exception if rasters, shapefiles, or both don't overlap
@@ -104,7 +141,8 @@ LOGGER = logging.getLogger('pygeoprocessing.geoprocessing')
 
 def get_nodata_from_uri(dataset_uri):
     """
-    Returns the nodata value for the first band from a gdal dataset
+    Returns the nodata value for the first band from a gdal dataset cast to its
+        correct numpy type.
 
     Args:
         dataset_uri (string): a uri to a gdal dataset
@@ -117,30 +155,16 @@ def get_nodata_from_uri(dataset_uri):
     dataset = gdal.Open(dataset_uri)
     band = dataset.GetRasterBand(1)
     nodata = band.GetNoDataValue()
-
-    #cast to an unsigned
-    if band.DataType == gdal.GDT_Byte and nodata is not None:
-        nodata = nodata % 256
-
-    #get the type of the underlying array, i read the array because gdal does
-    #not give a reliable type underneath
-    data_type = band.ReadAsArray(0, 0, 1, 1).dtype
-    #awkwardly cram this in a 1 element numpy array to get the type correct
     if nodata is not None:
-        nodata_cast = numpy.array([nodata], dtype=data_type)
+        nodata = _gdal_to_numpy_type(band)(nodata)
     else:
         LOGGER.warn(
             "Warning the nodata value in %s is not set", dataset_uri)
-        #mirror the format from above
-        nodata_cast = numpy.array([None])
 
-    #Make sure the dataset is closed and cleaned up
     band = None
     gdal.Dataset.__swig_destroy__(dataset)
     dataset = None
-
-    #return the first element in the single element array
-    return nodata_cast[0]
+    return nodata
 
 
 def get_datatype_from_uri(dataset_uri):
@@ -1247,6 +1271,8 @@ def extract_band_and_nodata(dataset, get_array=False):
 
     """
 
+    LOGGER.warn('extract_band_and_nodata is DEPRECATED')
+
     band = dataset.GetRasterBand(1)
     nodata = band.GetNoDataValue()
 
@@ -1934,7 +1960,7 @@ def load_memory_mapped_array(dataset_uri, memory_file, array_type=None):
 
     if array_type == None:
         try:
-            dtype = GDAL_TO_NUMPY_TYPE[band.DataType]
+            dtype = _gdal_to_numpy_type(band)
         except KeyError:
             raise TypeError('Unknown GDAL type %s' % band.DataType)
     else:
@@ -2609,7 +2635,7 @@ def vectorize_datasets(
     dataset_blocks = [
         numpy.zeros(
             (rows_per_block, cols_per_block),
-            dtype=GDAL_TO_NUMPY_TYPE[band.DataType]) for band in aligned_bands]
+            dtype=_gdal_to_numpy_type(band)) for band in aligned_bands]
 
     #If there's an AOI, mask it out
     if aoi_uri != None:
@@ -2635,7 +2661,7 @@ def vectorize_datasets(
     dataset_blocks = [
         numpy.zeros(
             (rows_per_block, cols_per_block),
-            dtype=GDAL_TO_NUMPY_TYPE[band.DataType]) for band in aligned_bands]
+            dtype=_gdal_to_numpy_type(band)) for band in aligned_bands]
 
     last_time = time.time()
 
