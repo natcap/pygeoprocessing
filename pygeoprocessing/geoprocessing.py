@@ -1878,15 +1878,6 @@ def resize_and_resample_dataset_uri(
     if original_nodata is None:
         original_nodata = -9999
 
-    #gdal python doesn't handle unsigned nodata values well and sometime returns
-    #negative numbers.  this guards against that
-    if original_band.DataType == gdal.GDT_Byte:
-        original_nodata %= 2**8
-    if original_band.DataType == gdal.GDT_UInt16:
-        original_nodata %= 2**16
-    if original_band.DataType == gdal.GDT_UInt32:
-        original_nodata %= 2**32
-
     original_sr = osr.SpatialReference()
     original_sr.ImportFromWkt(original_dataset.GetProjection())
 
@@ -1902,13 +1893,18 @@ def resize_and_resample_dataset_uri(
     block_size = original_band.GetBlockSize()
     #If the original band is tiled, then its x blocksize will be different than
     #the number of columns
-    if block_size[0] != original_band.XSize and original_band.XSize > 256 and original_band.YSize > 256:
+    if all([block_size[0] != original_band.XSize,
+            original_band.XSize > 256, original_band.YSize > 256]):
         #it makes sense for many functions to have 256x256 blocks
         block_size[0] = 256
         block_size[1] = 256
         gtiff_creation_options = [
             'TILED=YES', 'BIGTIFF=IF_SAFER', 'BLOCKXSIZE=%d' % block_size[0],
             'BLOCKYSIZE=%d' % block_size[1]]
+
+        metadata = original_band.GetMetadata('IMAGE_STRUCTURE')
+        if 'PIXELTYPE' in metadata:
+            gtiff_creation_options.append('PIXELTYPE=' + metadata['PIXELTYPE'])
     else:
         #it is so small or strangely aligned, use the default creation options
         gtiff_creation_options = []
@@ -2323,11 +2319,6 @@ def vectorize_datasets(
     cols_per_block, rows_per_block = block_size[0], block_size[1]
     n_col_blocks = int(math.ceil(n_cols / float(cols_per_block)))
     n_row_blocks = int(math.ceil(n_rows / float(rows_per_block)))
-
-    dataset_blocks = [
-        numpy.zeros(
-            (rows_per_block, cols_per_block),
-            dtype=_gdal_to_numpy_type(band)) for band in aligned_bands]
 
     #If there's an AOI, mask it out
     if aoi_uri != None:
