@@ -1459,7 +1459,8 @@ def unique_raster_values(dataset):
 
     """
 
-    band, nodata = extract_band_and_nodata(dataset)
+    band = dataset.GetRasterBand(1)
+    nodata = band.GetNoDataValue()
     n_rows = band.YSize
     unique_values = numpy.array([])
     for row_index in xrange(n_rows):
