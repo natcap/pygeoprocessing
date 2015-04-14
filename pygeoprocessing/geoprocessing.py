@@ -1040,64 +1040,6 @@ def aggregate_raster_values_uri(
     return result_tuple
 
 
-def reclassify_by_dictionary(
-        dataset, rules, output_uri, format, nodata, datatype,
-        default_value=None):
-    """
-    Convert all the non-nodata values in dataset to the values mapped to
-    by rules.  If there is no rule for an input value it is replaced by
-    default_value.  If default_value is None, nodata is used.
-
-    If default_value is None, the default_value will only be used if a pixel
-    is not nodata and the pixel does not have a rule defined for its value.
-    If the user wishes to have nodata values also mapped to the default
-    value, this can be achieved by defining a rule such as:
-
-        rules[dataset_nodata] = default_value
-
-    Doing so will override the default nodata behaviour.
-
-    Args:
-        dataset (?): GDAL raster dataset
-        rules (dict): a dictionary of the form:
-            {'dataset_value1' : 'output_value1', ...
-             'dataset_valuen' : 'output_valuen'}
-             used to map dataset input types to output
-        output_uri (string): the location to hold the output raster on disk
-        format (string): either 'MEM' or 'GTiff'
-        nodata (?): output raster dataset nodata value
-        datatype (?): a GDAL output type
-
-    Keyword Args:
-        default_value (?): the value to be used if a reclass rule is not
-            defined.
-
-    Returns:
-        return the mapped raster as a GDAL dataset"""
-
-    # If a default value is not set, assume that the default value is the
-    # used-defined nodata value.
-    # If a default value is defined by the user, assume that nodata values
-    # should remain nodata.  This check is sensitive to different nodata values
-    # between input and output rasters.  This modification is made on a copy of
-    # the rules dictionary.
-    if default_value == None:
-        default_value = nodata
-    else:
-        rules = rules.copy()
-        if nodata not in rules:
-            in_nodata = dataset.GetRasterBand(1).GetNoDataValue()
-            rules[in_nodata] = nodata
-
-    output_dataset = new_raster_from_base(
-        dataset, output_uri, format, nodata, datatype)
-    pygeoprocessing.geoprocessing_core.reclassify_by_dictionary(
-        dataset, rules, output_uri, format, default_value, datatype,
-        output_dataset,)
-    calculate_raster_stats_uri(output_uri)
-    return output_dataset
-
-
 def calculate_slope(
         dem_dataset_uri, slope_uri, aoi_uri=None, process_pool=None):
     """
@@ -1603,7 +1545,8 @@ def get_rat_as_dictionary(dataset):
 
 def reclassify_dataset_uri(
         dataset_uri, value_map, raster_out_uri, out_datatype, out_nodata,
-        exception_flag='none', assert_dataset_projected=True):
+        exception_flag='none', assert_dataset_projected=True,
+        default_value=None):
     """
     A function to reclassify values in dataset to any output type. If there are
     values in the dataset that are not in value map, they will be mapped to
@@ -1627,6 +1570,10 @@ def reclassify_dataset_uri(
         assert_dataset_projected (boolean): if True this operation will
             test if the input dataset is not projected and raise an exception
             if so.
+        default_value (numerical type): if exception_flag == 'none' and
+            there are values in the raster not referenced in value map, they
+            will get set to default value if it is not None. otherwise they are
+            nodata.
 
     Returns:
         reclassified_dataset (?): the new reclassified dataset GDAL raster
@@ -1652,12 +1599,19 @@ def reclassify_dataset_uri(
             nodata_mask = original_values == nodata
             all_mapped = all_mapped | nodata_mask
         out_array[nodata_mask] = out_nodata
-        if not all_mapped.all() and exception_flag == 'values_required':
-            raise Exception(
-                'There was not a value for at least the following codes '
-                'codes %s for this file %s.\nNodata value is: %s' % (
-                    str(numpy.unique(original_values[~all_mapped])),
-                    dataset_uri, str(nodata)))
+        if not all_mapped.all():
+            if exception_flag == 'values_required':
+                raise ValueError(
+                    'There was not a value for at least the following codes '
+                    'codes %s for this file %s.\nNodata value is: %s' % (
+                        str(numpy.unique(original_values[~all_mapped])),
+                        dataset_uri, str(nodata)))
+            elif exception_flag == 'none':
+                if default_value is not None:
+                    out_array[~all_mapped] = default_value
+            else:
+                raise ValueError(
+                    'Unknown exception_flag type %s', exception_flag)
         return out_array
 
     out_pixel_size = get_cell_size_from_uri(dataset_uri)
@@ -1666,85 +1620,6 @@ def reclassify_dataset_uri(
         raster_out_uri, out_datatype, out_nodata, out_pixel_size,
         "intersection", dataset_to_align_index=0,
         vectorize_op=False, assert_datasets_projected=assert_dataset_projected)
-
-
-def reclassify_dataset(
-        dataset, value_map, raster_out_uri, out_datatype, out_nodata,
-        exception_flag='none'):
-
-    """
-    An efficient function to reclassify values in a positive int dataset type
-    to any output type.  If there are values in the dataset that are not in
-    value map, they will be mapped to out_nodata.
-
-    Args:
-        dataset (?): a gdal dataset of some int type
-        value_map (dict): a dictionary of values of
-            {source_value: dest_value, ...}
-            where source_value's type is a postive integer type and dest_value
-            is of type out_datatype.
-        raster_out_uri (string): the uri for the output raster
-        out_datatype (?): the type for the output dataset
-        out_nodata (?): the nodata value for the output raster.  Must be the
-            same type as out_datatype
-
-    Keyword Args:
-        exception_flag (string): either 'none' or 'values_required'.
-            If 'values_required' raise an exception if there is a value in the
-            raster that is not found in value_map
-
-    Returns:
-        reclassified_dataset (?): the new reclassified dataset GDAL raster
-
-    Raises:
-        Exception: if exception_flag == 'values_required' and the value from
-           'key_raster' is not a key in 'attr_dict'
-    """
-
-    out_dataset = new_raster_from_base(
-        dataset, raster_out_uri, 'GTiff', out_nodata, out_datatype)
-    out_band = out_dataset.GetRasterBand(1)
-
-    in_band, in_nodata = extract_band_and_nodata(dataset)
-    in_band.ComputeStatistics(0)
-
-    dataset_max = in_band.GetMaximum()
-
-    #Make an array the same size as the max entry in the dictionary of the same
-    #type as the output type.  The +2 adds an extra entry for the nodata values
-    #The dataset max ensures that there are enough values in the array
-    valid_set = set(value_map.keys())
-    map_array_size = max(dataset_max, max(valid_set)) + 2
-    valid_set.add(map_array_size - 1) #add the index for nodata
-    map_array = numpy.empty(
-        (1, map_array_size), dtype=type(value_map.values()[0]))
-    map_array[:] = out_nodata
-
-    for key, value in value_map.iteritems():
-        map_array[0, key] = value
-
-    for row_index in xrange(in_band.YSize):
-        row_array = in_band.ReadAsArray(0, row_index, in_band.XSize, 1)
-
-        #It's possible for in_nodata to be None if the original raster
-        #is none, we need to skip the index trick in that case.
-        if in_nodata != None:
-            #Remaps pesky nodata values the last index in map_array
-            row_array[row_array == in_nodata] = map_array_size - 1
-
-        if exception_flag == 'values_required':
-            unique_set = set(row_array[0])
-            if not unique_set.issubset(valid_set):
-                undefined_set = unique_set.difference(valid_set)
-                raise ValueError(
-                    "The following values were in the raster but not in the "
-                    "value_map %s" % (list(undefined_set)))
-
-        row_array = map_array[numpy.ix_([0], row_array[0])]
-        out_band.WriteArray(row_array, 0, row_index)
-
-    out_dataset.FlushCache()
-    return out_dataset
 
 
 def load_memory_mapped_array(dataset_uri, memory_file, array_type=None):
