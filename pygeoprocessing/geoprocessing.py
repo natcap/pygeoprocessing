@@ -74,14 +74,6 @@ logging.basicConfig(format='%(asctime)s %(name)-18s %(levelname)-8s \
 
 LOGGER = logging.getLogger('pygeoprocessing.geoprocessing')
 
-#The following line of code hides some errors that seem important and doesn't
-#raise exceptions on them.  FOr example:
-#ERROR 5: Access window out of range in RasterIO().  Requested
-#(1, 15) of size 25x3 on raster of 26x17.
-#disappears when this line is turned on.  Probably not a good idea to uncomment
-#until we know what's happening
-#gdal.UseExceptions()
-
 
 def get_nodata_from_uri(dataset_uri):
     """
