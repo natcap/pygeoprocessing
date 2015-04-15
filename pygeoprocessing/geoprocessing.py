@@ -1158,12 +1158,7 @@ def create_rat(dataset, attr_dict, column_name):
     """
 
     band = dataset.GetRasterBand(1)
-
-    # If there was already a RAT associated with this dataset it will be blown
-    # away and replaced by a new one
-    LOGGER.warn('Blowing away any current raster attribute table')
     rat = gdal.RasterAttributeTable()
-
     rat.SetRowCount(len(attr_dict))
 
     # create columns
