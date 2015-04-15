@@ -2339,7 +2339,8 @@ def vectorize_datasets(
     #efficient call if we don't vectorize.
     if vectorize_op:
         LOGGER.warn("this call is vectorizing which is deprecated and slow")
-        dataset_pixel_op = numpy.vectorize(dataset_pixel_op)
+        dataset_pixel_op = numpy.vectorize(
+            dataset_pixel_op, otypes=[_gdal_to_numpy_type(output_band)])
 
     dataset_blocks = [
         numpy.zeros(
