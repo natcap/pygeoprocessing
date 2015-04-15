@@ -32,15 +32,34 @@ import shapely.prepared
 import pygeoprocessing.geoprocessing_core
 from pygeoprocessing import fileio
 
-GDAL_TO_NUMPY_TYPE = {
-    gdal.GDT_Byte: numpy.int8,
-    gdal.GDT_Int16: numpy.int16,
-    gdal.GDT_Int32: numpy.int32,
-    gdal.GDT_UInt16: numpy.uint16,
-    gdal.GDT_UInt32: numpy.uint32,
-    gdal.GDT_Float32: numpy.float32,
-    gdal.GDT_Float64: numpy.float64
+
+def _gdal_to_numpy_type(band):
+    """Calculates the equivalent numpy datatype from a GDAL raster band type
+
+        band - GDAL band
+
+        returns numpy equivalent of band.DataType"""
+
+    gdal_type_to_numpy_lookup = {
+        gdal.GDT_Int16: numpy.int16,
+        gdal.GDT_Int32: numpy.int32,
+        gdal.GDT_UInt16: numpy.uint16,
+        gdal.GDT_UInt32: numpy.uint32,
+        gdal.GDT_Float32: numpy.float32,
+        gdal.GDT_Float64: numpy.float64
     }
+
+    if band.DataType in gdal_type_to_numpy_lookup:
+        return gdal_type_to_numpy_lookup[band.DataType]
+
+    #only class not in the lookup is a Byte but double check.
+    if band.DataType != gdal.GDT_Byte:
+        raise ValueError("Unknown DataType: %s" % str(band.DataType))
+
+    metadata = band.GetMetadata('IMAGE_STRUCTURE')
+    if 'PIXELTYPE' in metadata and metadata['PIXELTYPE'] == 'SIGNEDBYTE':
+        return numpy.int8
+    return numpy.uint8
 
 
 #Used to raise an exception if rasters, shapefiles, or both don't overlap
@@ -50,61 +69,16 @@ class SpatialExtentOverlapException(Exception):
         in space"""
     pass
 
-
-class UndefinedValue(Exception):
-    """Used to indicate values that are not defined in dictionary
-        structures"""
-    pass
-
-from UserDict import DictMixin
-
-
-class OrderedDict(DictMixin):
-    """A python dictionary that has fast index and preserves order"""
-
-    def __init__(self):
-        self._keys = []
-        self._data = {}
-
-    def __setitem__(self, key, value):
-        if key not in self._data:
-            self._keys.append(key)
-        self._data[key] = value
-
-    def __getitem__(self, key):
-        return self._data[key]
-
-    def __delitem__(self, key):
-        del self._data[key]
-        self._keys.remove(key)
-
-    def keys(self):
-        return list(self._keys)
-
-    def copy(self):
-        copyDict = odict()
-        copyDict._data = self._data.copy()
-        copyDict._keys = self._keys[:]
-        return copyDict
-
-
 logging.basicConfig(format='%(asctime)s %(name)-18s %(levelname)-8s \
     %(message)s', level=logging.DEBUG, datefmt='%m/%d/%Y %H:%M:%S ')
 
 LOGGER = logging.getLogger('pygeoprocessing.geoprocessing')
 
-#The following line of code hides some errors that seem important and doesn't
-#raise exceptions on them.  FOr example:
-#ERROR 5: Access window out of range in RasterIO().  Requested
-#(1, 15) of size 25x3 on raster of 26x17.
-#disappears when this line is turned on.  Probably not a good idea to uncomment
-#until we know what's happening
-#gdal.UseExceptions()
-
 
 def get_nodata_from_uri(dataset_uri):
     """
-    Returns the nodata value for the first band from a gdal dataset
+    Returns the nodata value for the first band from a gdal dataset cast to its
+        correct numpy type.
 
     Args:
         dataset_uri (string): a uri to a gdal dataset
@@ -117,30 +91,16 @@ def get_nodata_from_uri(dataset_uri):
     dataset = gdal.Open(dataset_uri)
     band = dataset.GetRasterBand(1)
     nodata = band.GetNoDataValue()
-
-    #cast to an unsigned
-    if band.DataType == gdal.GDT_Byte and nodata is not None:
-        nodata = nodata % 256
-
-    #get the type of the underlying array, i read the array because gdal does
-    #not give a reliable type underneath
-    data_type = band.ReadAsArray(0, 0, 1, 1).dtype
-    #awkwardly cram this in a 1 element numpy array to get the type correct
     if nodata is not None:
-        nodata_cast = numpy.array([nodata], dtype=data_type)
+        nodata = _gdal_to_numpy_type(band)(nodata)
     else:
         LOGGER.warn(
             "Warning the nodata value in %s is not set", dataset_uri)
-        #mirror the format from above
-        nodata_cast = numpy.array([None])
 
-    #Make sure the dataset is closed and cleaned up
     band = None
     gdal.Dataset.__swig_destroy__(dataset)
     dataset = None
-
-    #return the first element in the single element array
-    return nodata_cast[0]
+    return nodata
 
 
 def get_datatype_from_uri(dataset_uri):
@@ -1067,7 +1027,7 @@ def aggregate_raster_values_uri(
         try:
             os.remove(filename)
         except OSError:
-            LOGGER.warn("couldn't remove file %s" % filename)
+            LOGGER.warn("couldn't remove file %s", filename)
 
     subset_layer = None
     ogr.DataSource.__swig_destroy__(subset_layer_datasouce)
@@ -1075,67 +1035,9 @@ def aggregate_raster_values_uri(
     try:
         shutil.rmtree(layer_dir)
     except OSError:
-        LOGGER.warn("couldn't remove directory %s" % layer_dir)
+        LOGGER.warn("couldn't remove directory %s", layer_dir)
 
     return result_tuple
-
-
-def reclassify_by_dictionary(
-        dataset, rules, output_uri, format, nodata, datatype,
-        default_value=None):
-    """
-    Convert all the non-nodata values in dataset to the values mapped to
-    by rules.  If there is no rule for an input value it is replaced by
-    default_value.  If default_value is None, nodata is used.
-
-    If default_value is None, the default_value will only be used if a pixel
-    is not nodata and the pixel does not have a rule defined for its value.
-    If the user wishes to have nodata values also mapped to the default
-    value, this can be achieved by defining a rule such as:
-
-        rules[dataset_nodata] = default_value
-
-    Doing so will override the default nodata behaviour.
-
-    Args:
-        dataset (?): GDAL raster dataset
-        rules (dict): a dictionary of the form:
-            {'dataset_value1' : 'output_value1', ...
-             'dataset_valuen' : 'output_valuen'}
-             used to map dataset input types to output
-        output_uri (string): the location to hold the output raster on disk
-        format (string): either 'MEM' or 'GTiff'
-        nodata (?): output raster dataset nodata value
-        datatype (?): a GDAL output type
-
-    Keyword Args:
-        default_value (?): the value to be used if a reclass rule is not
-            defined.
-
-    Returns:
-        return the mapped raster as a GDAL dataset"""
-
-    # If a default value is not set, assume that the default value is the
-    # used-defined nodata value.
-    # If a default value is defined by the user, assume that nodata values
-    # should remain nodata.  This check is sensitive to different nodata values
-    # between input and output rasters.  This modification is made on a copy of
-    # the rules dictionary.
-    if default_value == None:
-        default_value = nodata
-    else:
-        rules = rules.copy()
-        if nodata not in rules:
-            in_nodata = dataset.GetRasterBand(1).GetNoDataValue()
-            rules[in_nodata] = nodata
-
-    output_dataset = new_raster_from_base(
-        dataset, output_uri, format, nodata, datatype)
-    pygeoprocessing.geoprocessing_core.reclassify_by_dictionary(
-        dataset, rules, output_uri, format, default_value, datatype,
-        output_dataset,)
-    calculate_raster_stats_uri(output_uri)
-    return output_dataset
 
 
 def calculate_slope(
@@ -1201,142 +1103,24 @@ def clip_dataset_uri(
         nothing
 
     """
-    #NOTE: I have altered the signature of this function compared to the
-    # previous one because I want to be able to use vectorize_datasets to clip
-    # two sources that are not projected
-
-    #raise NotImplementedError('clip_dataset_uri is not implemented yet')
-
-    # I choose to open up the dataset here because I want to use the
-    # calculate_value_not_in_dataset function which requires a datasource. For
-    # now I do not want to create a uri version of that function.
     source_dataset = gdal.Open(source_dataset_uri)
 
-    band, nodata = extract_band_and_nodata(source_dataset)
+    band = source_dataset.GetRasterBand(1)
+    nodata = band.GetNoDataValue()
     datatype = band.DataType
 
     if nodata is None:
-        nodata = calculate_value_not_in_dataset(source_dataset)
+        nodata = -9999
 
     gdal.Dataset.__swig_destroy__(source_dataset)
     source_dataset = None
 
     pixel_size = get_cell_size_from_uri(source_dataset_uri)
-
     vectorize_datasets(
         [source_dataset_uri], lambda x: x, out_dataset_uri, datatype, nodata,
         pixel_size, 'intersection', aoi_uri=aoi_datasource_uri,
         assert_datasets_projected=assert_projections,
         process_pool=process_pool, vectorize_op=False)
-
-
-def extract_band_and_nodata(dataset, get_array=False):
-    """
-    It's often useful to get the first band and corresponding nodata value
-    for a dataset.  This function does that.
-
-    Args:
-        dataset (?): a GDAL dataset
-
-    Keyword Args:
-        get_array (boolean): if True also returns the dataset as a numpy array
-
-    Returns:
-        band (?): first GDAL band in dataset
-        nodata (?: nodata value for that band
-
-    """
-
-    band = dataset.GetRasterBand(1)
-    nodata = band.GetNoDataValue()
-
-    #gdal has strange behaviors with nodata and byte rasters, this packs it into the right space
-    if band.DataType == gdal.GDT_Byte and nodata is not None:
-        nodata = nodata % 256
-
-    if get_array:
-        array = band.ReadAsArray()
-        return band, nodata, array
-
-    #Otherwise just return the band and nodata
-    return band, nodata
-
-
-def calculate_value_not_in_dataset_uri(dataset_uri):
-    """
-    Calculate a value not contained in a dataset.  Useful for calculating
-    nodata values.
-
-    Args:
-        dataset (?): a GDAL dataset
-
-    Returns:
-        value (?): number not contained in the dataset
-
-    """
-    dataset = gdal.Open(dataset_uri)
-    value = calculate_value_not_in_dataset(dataset)
-
-    #Make sure the dataset is closed and cleaned up
-    gdal.Dataset.__swig_destroy__(dataset)
-    dataset = None
-
-    return value
-
-
-def calculate_value_not_in_dataset(dataset):
-    """
-    Calculate a value not contained in a dataset.  Useful for calculating
-    nodata values.
-
-    Args:
-        dataset (?): a GDAL dataset
-
-    Returns:
-        value (?): number not contained in the dataset
-
-    """
-
-    _, _, array = extract_band_and_nodata(dataset, get_array=True)
-    return calculate_value_not_in_array(array)
-
-
-def calculate_value_not_in_array(array):
-    """
-    This function calculates a number that is not in the given array, if
-    possible.
-
-    Args:
-        array (np.array): a numpy array
-
-    Returns:
-        value (?): a number not in array that is not "close" to any value in
-            array calculated in the middle of the maximum delta between any two
-            consecutive numbers in the array
-
-    """
-
-    sorted_array = numpy.sort(numpy.unique(array.flatten()))
-    #Make sure we don't have a single unique value, if we do just go + or -
-    #1 at the end
-    if len(sorted_array) > 1:
-        array_type = type(sorted_array[0])
-        diff_array = numpy.array([-1, 1])
-        deltas = scipy.signal.correlate(sorted_array, diff_array, mode='valid')
-
-        max_delta_index = numpy.argmax(deltas)
-
-        #Try to return the average of the maximum delta
-        if deltas[max_delta_index] > 0:
-            return array_type((sorted_array[max_delta_index+1] +
-                               sorted_array[max_delta_index])/2.0)
-
-    #Else, all deltas are too small so go one smaller or one larger than the
-    #min or max.  Catching an exception in case there's an overflow.
-    try:
-        return sorted_array[0]-1
-    except OverflowError:
-        return sorted_array[-1]+1
 
 
 def create_rat_uri(dataset_uri, attr_dict, column_name):
@@ -1374,12 +1158,7 @@ def create_rat(dataset, attr_dict, column_name):
     """
 
     band = dataset.GetRasterBand(1)
-
-    # If there was already a RAT associated with this dataset it will be blown
-    # away and replaced by a new one
-    LOGGER.warn('Blowing away any current raster attribute table')
     rat = gdal.RasterAttributeTable()
-
     rat.SetRowCount(len(attr_dict))
 
     # create columns
@@ -1675,7 +1454,8 @@ def unique_raster_values(dataset):
 
     """
 
-    band, nodata = extract_band_and_nodata(dataset)
+    band = dataset.GetRasterBand(1)
+    nodata = band.GetNoDataValue()
     n_rows = band.YSize
     unique_values = numpy.array([])
     for row_index in xrange(n_rows):
@@ -1774,8 +1554,8 @@ def reclassify_dataset_uri(
             where source_value's type is a postive integer type and dest_value
             is of type out_datatype.
         raster_out_uri (string): the uri for the output raster
-        out_datatype (?): the type for the output dataset
-        out_nodata (?): the nodata value for the output raster.  Must be the
+        out_datatype (gdal type): the type for the output dataset
+        out_nodata (numerical type): the nodata value for the output raster.  Must be the
             same type as out_datatype
 
     Keyword Args:
@@ -1787,7 +1567,7 @@ def reclassify_dataset_uri(
             if so.
 
     Returns:
-        reclassified_dataset (?): the new reclassified dataset GDAL raster
+        nothing
 
     Raises:
         Exception: if exception_flag == 'values_required' and the value from
@@ -1801,6 +1581,7 @@ def reclassify_dataset_uri(
         """Converts a block of original values to the lookup values"""
         all_mapped = numpy.empty(original_values.shape, dtype=numpy.bool)
         out_array = numpy.empty(original_values.shape, dtype=numpy.float)
+        out_array[:] = out_nodata
         nodata_mask = numpy.zeros(original_values.shape, dtype=numpy.bool)
         for key, value in value_map.iteritems():
             mask = original_values == key
@@ -1810,12 +1591,16 @@ def reclassify_dataset_uri(
             nodata_mask = original_values == nodata
             all_mapped = all_mapped | nodata_mask
         out_array[nodata_mask] = out_nodata
-        if not all_mapped.all() and exception_flag == 'values_required':
-            raise Exception(
-                'There was not a value for at least the following codes '
-                'codes %s for this file %s.\nNodata value is: %s' % (
-                    str(numpy.unique(original_values[~all_mapped])),
-                    dataset_uri, str(nodata)))
+        if not all_mapped.all():
+            if exception_flag == 'values_required':
+                raise ValueError(
+                    'There was not a value for at least the following codes '
+                    'codes %s for this file %s.\nNodata value is: %s' % (
+                        str(numpy.unique(original_values[~all_mapped])),
+                        dataset_uri, str(nodata)))
+            elif exception_flag != 'none':
+                raise ValueError(
+                    'Unknown exception_flag type %s', exception_flag)
         return out_array
 
     out_pixel_size = get_cell_size_from_uri(dataset_uri)
@@ -1824,85 +1609,6 @@ def reclassify_dataset_uri(
         raster_out_uri, out_datatype, out_nodata, out_pixel_size,
         "intersection", dataset_to_align_index=0,
         vectorize_op=False, assert_datasets_projected=assert_dataset_projected)
-
-
-def reclassify_dataset(
-        dataset, value_map, raster_out_uri, out_datatype, out_nodata,
-        exception_flag='none'):
-
-    """
-    An efficient function to reclassify values in a positive int dataset type
-    to any output type.  If there are values in the dataset that are not in
-    value map, they will be mapped to out_nodata.
-
-    Args:
-        dataset (?): a gdal dataset of some int type
-        value_map (dict): a dictionary of values of
-            {source_value: dest_value, ...}
-            where source_value's type is a postive integer type and dest_value
-            is of type out_datatype.
-        raster_out_uri (string): the uri for the output raster
-        out_datatype (?): the type for the output dataset
-        out_nodata (?): the nodata value for the output raster.  Must be the
-            same type as out_datatype
-
-    Keyword Args:
-        exception_flag (string): either 'none' or 'values_required'.
-            If 'values_required' raise an exception if there is a value in the
-            raster that is not found in value_map
-
-    Returns:
-        reclassified_dataset (?): the new reclassified dataset GDAL raster
-
-    Raises:
-        Exception: if exception_flag == 'values_required' and the value from
-           'key_raster' is not a key in 'attr_dict'
-    """
-
-    out_dataset = new_raster_from_base(
-        dataset, raster_out_uri, 'GTiff', out_nodata, out_datatype)
-    out_band = out_dataset.GetRasterBand(1)
-
-    in_band, in_nodata = extract_band_and_nodata(dataset)
-    in_band.ComputeStatistics(0)
-
-    dataset_max = in_band.GetMaximum()
-
-    #Make an array the same size as the max entry in the dictionary of the same
-    #type as the output type.  The +2 adds an extra entry for the nodata values
-    #The dataset max ensures that there are enough values in the array
-    valid_set = set(value_map.keys())
-    map_array_size = max(dataset_max, max(valid_set)) + 2
-    valid_set.add(map_array_size - 1) #add the index for nodata
-    map_array = numpy.empty(
-        (1, map_array_size), dtype=type(value_map.values()[0]))
-    map_array[:] = out_nodata
-
-    for key, value in value_map.iteritems():
-        map_array[0, key] = value
-
-    for row_index in xrange(in_band.YSize):
-        row_array = in_band.ReadAsArray(0, row_index, in_band.XSize, 1)
-
-        #It's possible for in_nodata to be None if the original raster
-        #is none, we need to skip the index trick in that case.
-        if in_nodata != None:
-            #Remaps pesky nodata values the last index in map_array
-            row_array[row_array == in_nodata] = map_array_size - 1
-
-        if exception_flag == 'values_required':
-            unique_set = set(row_array[0])
-            if not unique_set.issubset(valid_set):
-                undefined_set = unique_set.difference(valid_set)
-                raise UndefinedValue(
-                    "The following values were in the raster but not in the "
-                    "value_map %s" % (list(undefined_set)))
-
-        row_array = map_array[numpy.ix_([0], row_array[0])]
-        out_band.WriteArray(row_array, 0, row_index)
-
-    out_dataset.FlushCache()
-    return out_dataset
 
 
 def load_memory_mapped_array(dataset_uri, memory_file, array_type=None):
@@ -1934,7 +1640,7 @@ def load_memory_mapped_array(dataset_uri, memory_file, array_type=None):
 
     if array_type == None:
         try:
-            dtype = GDAL_TO_NUMPY_TYPE[band.DataType]
+            dtype = _gdal_to_numpy_type(band)
         except KeyError:
             raise TypeError('Unknown GDAL type %s' % band.DataType)
     else:
@@ -2158,17 +1864,7 @@ def resize_and_resample_dataset_uri(
     original_nodata = original_band.GetNoDataValue()
 
     if original_nodata is None:
-        original_nodata = float(
-            calculate_value_not_in_dataset(original_dataset))
-
-    #gdal python doesn't handle unsigned nodata values well and sometime returns
-    #negative numbers.  this guards against that
-    if original_band.DataType == gdal.GDT_Byte:
-        original_nodata %= 2**8
-    if original_band.DataType == gdal.GDT_UInt16:
-        original_nodata %= 2**16
-    if original_band.DataType == gdal.GDT_UInt32:
-        original_nodata %= 2**32
+        original_nodata = -9999
 
     original_sr = osr.SpatialReference()
     original_sr.ImportFromWkt(original_dataset.GetProjection())
@@ -2185,15 +1881,20 @@ def resize_and_resample_dataset_uri(
     block_size = original_band.GetBlockSize()
     #If the original band is tiled, then its x blocksize will be different than
     #the number of columns
-    if block_size[0] != original_band.XSize and original_band.XSize > 256 and original_band.YSize > 256:
-        #it makes sense for a wad of invest functions to use 256x256 blocks, lets do that here
+    if all([block_size[0] != original_band.XSize,
+            original_band.XSize > 256, original_band.YSize > 256]):
+        #it makes sense for many functions to have 256x256 blocks
         block_size[0] = 256
         block_size[1] = 256
         gtiff_creation_options = [
             'TILED=YES', 'BIGTIFF=IF_SAFER', 'BLOCKXSIZE=%d' % block_size[0],
             'BLOCKYSIZE=%d' % block_size[1]]
+
+        metadata = original_band.GetMetadata('IMAGE_STRUCTURE')
+        if 'PIXELTYPE' in metadata:
+            gtiff_creation_options.append('PIXELTYPE=' + metadata['PIXELTYPE'])
     else:
-        #this thing is so small or strangely aligned, use the default creation options
+        #it is so small or strangely aligned, use the default creation options
         gtiff_creation_options = []
 
     create_directories([os.path.dirname(output_uri)])
@@ -2381,8 +2082,9 @@ def align_dataset_list(
         first_dataset = None
 
         mask_uri = temporary_filename(suffix='.tif')
-        new_raster_from_base_uri(dataset_out_uri_list[0], mask_uri, 'GTiff', 255,
-            gdal.GDT_Byte, fill_value=0)
+        new_raster_from_base_uri(
+            dataset_out_uri_list[0], mask_uri, 'GTiff', 255, gdal.GDT_Byte,
+            fill_value=0)
 
         mask_dataset = gdal.Open(mask_uri, gdal.GA_Update)
         mask_band = mask_dataset.GetRasterBand(1)
@@ -2421,9 +2123,9 @@ def align_dataset_list(
 
         #Clean up datasets
         out_band_list = None
-        for ds in out_dataset_list:
-            ds.FlushCache()
-            gdal.Dataset.__swig_destroy__(ds)
+        for dataset in out_dataset_list:
+            dataset.FlushCache()
+            gdal.Dataset.__swig_destroy__(dataset)
         out_dataset_list = None
 
 
@@ -2606,11 +2308,6 @@ def vectorize_datasets(
     n_col_blocks = int(math.ceil(n_cols / float(cols_per_block)))
     n_row_blocks = int(math.ceil(n_rows / float(rows_per_block)))
 
-    dataset_blocks = [
-        numpy.zeros(
-            (rows_per_block, cols_per_block),
-            dtype=GDAL_TO_NUMPY_TYPE[band.DataType]) for band in aligned_bands]
-
     #If there's an AOI, mask it out
     if aoi_uri != None:
         mask_uri = temporary_filename(suffix='.tif')
@@ -2630,12 +2327,13 @@ def vectorize_datasets(
     #efficient call if we don't vectorize.
     if vectorize_op:
         LOGGER.warn("this call is vectorizing which is deprecated and slow")
-        dataset_pixel_op = numpy.vectorize(dataset_pixel_op)
+        dataset_pixel_op = numpy.vectorize(
+            dataset_pixel_op, otypes=[_gdal_to_numpy_type(output_band)])
 
     dataset_blocks = [
         numpy.zeros(
             (rows_per_block, cols_per_block),
-            dtype=GDAL_TO_NUMPY_TYPE[band.DataType]) for band in aligned_bands]
+            dtype=_gdal_to_numpy_type(band)) for band in aligned_bands]
 
     last_time = time.time()
 

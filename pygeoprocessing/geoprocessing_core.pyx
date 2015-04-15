@@ -422,8 +422,8 @@ def new_raster_from_base(
 
     base_band = base.GetRasterBand(1)
     block_size = base_band.GetBlockSize()
+    metadata = base_band.GetMetadata('IMAGE_STRUCTURE')
     base_band = None
-
 
     if dataset_options == None:
         #make a new list to make sure we aren't ailiasing one passed in
@@ -436,6 +436,9 @@ def new_raster_from_base(
                 'BLOCKXSIZE=256',
                 'BLOCKYSIZE=256',
                 'BIGTIFF=IF_SAFER']
+        if 'PIXELTYPE' in metadata:
+            dataset_options.append('PIXELTYPE=' + metadata['PIXELTYPE'])
+
     new_raster = driver.Create(
         output_uri.encode('utf-8'), n_cols, n_rows, 1, datatype,
         options=dataset_options)
