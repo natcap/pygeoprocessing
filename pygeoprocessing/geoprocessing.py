@@ -1541,8 +1541,7 @@ def get_rat_as_dictionary(dataset):
 
 def reclassify_dataset_uri(
         dataset_uri, value_map, raster_out_uri, out_datatype, out_nodata,
-        exception_flag='none', assert_dataset_projected=True,
-        default_value=None):
+        exception_flag='none', assert_dataset_projected=True):
     """
     A function to reclassify values in dataset to any output type. If there are
     values in the dataset that are not in value map, they will be mapped to
@@ -1555,8 +1554,8 @@ def reclassify_dataset_uri(
             where source_value's type is a postive integer type and dest_value
             is of type out_datatype.
         raster_out_uri (string): the uri for the output raster
-        out_datatype (?): the type for the output dataset
-        out_nodata (?): the nodata value for the output raster.  Must be the
+        out_datatype (gdal type): the type for the output dataset
+        out_nodata (numerical type): the nodata value for the output raster.  Must be the
             same type as out_datatype
 
     Keyword Args:
@@ -1566,13 +1565,9 @@ def reclassify_dataset_uri(
         assert_dataset_projected (boolean): if True this operation will
             test if the input dataset is not projected and raise an exception
             if so.
-        default_value (numerical type): if exception_flag == 'none' and
-            there are values in the raster not referenced in value map, they
-            will get set to default value if it is not None. otherwise they are
-            nodata.
 
     Returns:
-        reclassified_dataset (?): the new reclassified dataset GDAL raster
+        nothing
 
     Raises:
         Exception: if exception_flag == 'values_required' and the value from
@@ -1586,6 +1581,7 @@ def reclassify_dataset_uri(
         """Converts a block of original values to the lookup values"""
         all_mapped = numpy.empty(original_values.shape, dtype=numpy.bool)
         out_array = numpy.empty(original_values.shape, dtype=numpy.float)
+        out_array[:] = out_nodata
         nodata_mask = numpy.zeros(original_values.shape, dtype=numpy.bool)
         for key, value in value_map.iteritems():
             mask = original_values == key
@@ -1602,10 +1598,7 @@ def reclassify_dataset_uri(
                     'codes %s for this file %s.\nNodata value is: %s' % (
                         str(numpy.unique(original_values[~all_mapped])),
                         dataset_uri, str(nodata)))
-            elif exception_flag == 'none':
-                if default_value is not None:
-                    out_array[~all_mapped] = default_value
-            else:
+            elif exception_flag != 'none':
                 raise ValueError(
                     'Unknown exception_flag type %s', exception_flag)
         return out_array
