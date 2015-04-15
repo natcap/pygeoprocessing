@@ -4,13 +4,22 @@
 History
 #######
 
+0.2.0 (2015-04-14)
+------------------
+
+* Fixed a library wide issue relating to the underlying numpy types of GDT_Byte Datasets.  Now correctly identify the signed and unsigned versions and removed all instances where code used to mod byte data to unsigned data and correctly creates signed/unsigned byte datasets during resampling.
+* Removed extract_band_and_nodata function since it exposes the underlying GDAL types.
+* Removed reclassify_by_dictionary since reclassify_dataset_uri provided almost the same functionality and was widely used.
+* Removed the class OrderedDict that was not used.
+* Removed the function calculate_value_not_in_dataset since it loaded the entire dataset into memory and was not useful.
+
 0.1.8 (2015-04-13)
 ------------------
 
 * Fixed an issue on reclassifying signed byte rasters that had negative nodata values but the internal type stored for vectorize datasets was unsigned.
 
-0.1.7
------
+0.1.7 (2015-04-02)
+------------------
 
 * Package logger objects are now identified by python heirarchical package paths (e.g. pygeoprocessing.routing)
 * Fixed an issue where rasters that had undefined nodata values caused striping in the reclassify_dataset_uri function.
