@@ -8,6 +8,7 @@ History
 * More informative error messages raised on incorrect bounding box mode.
 * Updated docstring on get_lookup_from_table to indicate the headers are case insensitive.
 * Added updates to align dataset list that report which dataset is being aligned.  This is helpful for logging feedback when many datasets are passed in that don't take long enough to get a report from the underlying reproject dataset function.
+* pygeoprocessing.routing.routing_core includes pxd to be `cimport`able from a Cython module.
 
 0.2.0 (2015-04-14)
 ------------------
