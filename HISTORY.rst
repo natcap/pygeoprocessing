@@ -7,7 +7,7 @@ History
 * Updates to reclassify_dataset_uri to use numpy.digitize rather than Python loops across the number of keys.
 * More informative error messages raised on incorrect bounding box mode.
 * Updated docstring on get_lookup_from_table to indicate the headers are case insensitive.
-
+* Added updates to align dataset list that report which dataset is being aligned.  This is helpful for logging feedback when many datasets are passed in that don't take long enough to get a report from the underlying reproject dataset function.
 
 0.2.0 (2015-04-14)
 ------------------

@@ -1995,8 +1995,7 @@ def align_dataset_list(
 
     """
 
-    #This seems a reasonable precursor for some very common issues, numpy gives
-    #me a precedent for this.
+    last_time = time.time()
 
     #make sure that the input lists are of the same length
     list_lengths = [
@@ -2077,8 +2076,16 @@ def align_dataset_list(
             bounding_box[index] = \
                 n_pixels * align_pixel_size + align_bounding_box[index]
 
-    for original_dataset_uri, out_dataset_uri, resample_method in zip(
-            dataset_uri_list, dataset_out_uri_list, resample_method_list):
+    for original_dataset_uri, out_dataset_uri, resample_method, index in zip(
+            dataset_uri_list, dataset_out_uri_list, resample_method_list,
+            range(len(dataset_uri_list))):
+        current_time = time.time()
+        if current_time - last_time > 5.0:
+            last_time = current_time
+            LOGGER.info(
+                "align_dataset_list aligning dataset %d of %d",
+                index, len(dataset_uri_list))
+
         resize_and_resample_dataset_uri(
             original_dataset_uri, bounding_box, out_pixel_size,
             out_dataset_uri, resample_method)
