@@ -1299,16 +1299,31 @@ def reproject_dataset_uri(
     output_dataset.SetProjection(output_wkt)
 
     # Perform the projection/resampling
+    def reproject_callback(df_complete, psz_message, p_progress_arg):
+        """The argument names come from the GDAL API for callbacks."""
+        try:
+            current_time = time.time()
+            if ((current_time - reproject_callback.last_time) > 5.0 or
+                    (df_complete == 1.0 and reproject_callback.total_time >= 5.0)):
+                LOGGER.info(
+                    "ReprojectImage %.1f%% complete %s, psz_message %s",
+                    df_complete * 100, p_progress_arg[0], psz_message)
+                reproject_callback.last_time = current_time
+                reproject_callback.total_time += current_time
+        except AttributeError:
+            reproject_callback.last_time = time.time()
+            reproject_callback.total_time = 0.0
+
     gdal.ReprojectImage(
         original_dataset, output_dataset, original_wkt, output_wkt,
-        resample_dict[resampling_method])
+        resample_dict[resampling_method], 0, 0, reproject_callback,
+        [output_uri])
 
     output_dataset.FlushCache()
 
     #Make sure the dataset is closed and cleaned up
     gdal.Dataset.__swig_destroy__(output_dataset)
     output_dataset = None
-
     calculate_raster_stats_uri(output_uri)
 
 
@@ -1541,11 +1556,10 @@ def get_rat_as_dictionary(dataset):
 
 def reclassify_dataset_uri(
         dataset_uri, value_map, raster_out_uri, out_datatype, out_nodata,
-        exception_flag='none', assert_dataset_projected=True):
+        exception_flag='values_required', assert_dataset_projected=True):
     """
-    A function to reclassify values in dataset to any output type. If there are
-    values in the dataset that are not in value map, they will be mapped to
-    out_nodata.
+    A function to reclassify values in dataset to any output type. By default
+    the values except for nodata must be in value_map.
 
     Args:
         dataset_uri (string): a uri to a gdal dataset
@@ -1555,8 +1569,8 @@ def reclassify_dataset_uri(
             is of type out_datatype.
         raster_out_uri (string): the uri for the output raster
         out_datatype (gdal type): the type for the output dataset
-        out_nodata (numerical type): the nodata value for the output raster.  Must be the
-            same type as out_datatype
+        out_nodata (numerical type): the nodata value for the output raster.
+            Must be the same type as out_datatype
 
     Keyword Args:
         exception_flag (string): either 'none' or 'values_required'.
@@ -1574,41 +1588,37 @@ def reclassify_dataset_uri(
            'key_raster' is not a key in 'attr_dict'
 
     """
+    if exception_flag not in ['none', 'values_required']:
+        raise ValueError('unknown exception_flag %s', exception_flag)
+    values_required = exception_flag == 'values_required'
 
     nodata = get_nodata_from_uri(dataset_uri)
+    value_map_copy = value_map.copy()
+    if nodata not in value_map_copy:
+        value_map_copy[nodata] = out_nodata
+    keys = sorted(numpy.array(value_map_copy.keys()))
+    values = numpy.array([value_map_copy[x] for x in keys])
 
     def map_dataset_to_value(original_values):
         """Converts a block of original values to the lookup values"""
-        all_mapped = numpy.empty(original_values.shape, dtype=numpy.bool)
-        out_array = numpy.empty(original_values.shape, dtype=numpy.float)
-        out_array[:] = out_nodata
-        nodata_mask = numpy.zeros(original_values.shape, dtype=numpy.bool)
-        for key, value in value_map.iteritems():
-            mask = original_values == key
-            all_mapped = all_mapped | mask
-            out_array[mask] = value
-        if nodata != None:
-            nodata_mask = original_values == nodata
-            all_mapped = all_mapped | nodata_mask
-        out_array[nodata_mask] = out_nodata
-        if not all_mapped.all():
-            if exception_flag == 'values_required':
+        if values_required:
+            unique = numpy.unique(original_values)
+            has_map = numpy.in1d(unique, keys)
+            if not all(has_map):
                 raise ValueError(
                     'There was not a value for at least the following codes '
-                    'codes %s for this file %s.\nNodata value is: %s' % (
-                        str(numpy.unique(original_values[~all_mapped])),
-                        dataset_uri, str(nodata)))
-            elif exception_flag != 'none':
-                raise ValueError(
-                    'Unknown exception_flag type %s', exception_flag)
-        return out_array
+                    '%s for this file %s.\nNodata value is: %s' % (
+                        str(unique[~has_map]), dataset_uri, str(nodata)))
+        index = numpy.digitize(original_values.ravel(), keys, right=True)
+        return values[index].reshape(original_values.shape)
 
     out_pixel_size = get_cell_size_from_uri(dataset_uri)
     vectorize_datasets(
         [dataset_uri], map_dataset_to_value,
         raster_out_uri, out_datatype, out_nodata, out_pixel_size,
         "intersection", dataset_to_align_index=0,
-        vectorize_op=False, assert_datasets_projected=assert_dataset_projected)
+        vectorize_op=False, assert_datasets_projected=assert_dataset_projected,
+        datasets_are_pre_aligned=True)
 
 
 def load_memory_mapped_array(dataset_uri, memory_file, array_type=None):
@@ -2261,6 +2271,12 @@ def vectorize_datasets(
             "%s is used as an output file, but it is also an input file "
             "in the input list %s" % (dataset_out_uri, str(dataset_uri_list)))
 
+    valid_bounding_box_modes = ["union", "intersection", "dataset"]
+    if bounding_box_mode not in valid_bounding_box_modes:
+        raise ValueError(
+            "Unknown bounding box mode %s; should be one of %s",
+            bounding_box_mode, valid_bounding_box_modes)
+
     #Create a temporary list of filenames whose files delete on the python
     #interpreter exit
     if not datasets_are_pre_aligned:
@@ -2410,7 +2426,9 @@ def vectorize_datasets(
 def get_lookup_from_table(table_uri, key_field):
     """
     Creates a python dictionary to look up the rest of the fields in a
-    table file table indexed by the given key_field
+    table file table indexed by the given key_field.  This function is case
+    insensitive to field header names and returns a lookup table with lowercase
+    keys.
 
     Args:
         table_uri (string): a URI to a dbf or csv file containing at
@@ -2420,7 +2438,7 @@ def get_lookup_from_table(table_uri, key_field):
     Returns:
         lookup_dict (dict): a dictionary of the form {key_field_0:
             {header_1: val_1_0, header_2: val_2_0, etc.}
-            depending on the values of those fields
+            where key_field_n is the lowercase version of the column name.
 
     """
 
