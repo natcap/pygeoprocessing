@@ -29,7 +29,7 @@ import pygeoprocessing
 logging.basicConfig(format='%(asctime)s %(name)-18s %(levelname)-8s \
     %(message)s', lnevel=logging.DEBUG, datefmt='%m/%d/%Y %H:%M:%S ')
 
-LOGGER = logging.getLogger('routing cython core')
+LOGGER = logging.getLogger('pygeoprocessing.geoprocessing.routing_core')
 
 cdef double PI = 3.141592653589793238462643383279502884
 cdef double INF = numpy.inf
