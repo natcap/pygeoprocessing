@@ -88,7 +88,9 @@ EXTENSION_LIST = ([
         language="c++"),
     Extension(
         "pygeoprocessing.routing.routing_core",
-        sources=['pygeoprocessing/routing/routing_core.pyx'],
+        sources=[
+            'pygeoprocessing/routing/routing_core.pyx',
+            'pygeoprocessing/routing/routing_core.pxd'],
         language="c++")
     ])
 
