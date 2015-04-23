@@ -1891,8 +1891,7 @@ def resize_and_resample_dataset_uri(
     block_size = original_band.GetBlockSize()
     #If the original band is tiled, then its x blocksize will be different than
     #the number of columns
-    if all([block_size[0] != original_band.XSize,
-            original_band.XSize > 256, original_band.YSize > 256]):
+    if original_band.XSize > 256 and original_band.YSize > 256:
         #it makes sense for many functions to have 256x256 blocks
         block_size[0] = 256
         block_size[1] = 256
