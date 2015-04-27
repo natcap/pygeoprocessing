@@ -3,9 +3,15 @@
 
 import unittest
 import logging
-import os
+import types
 
-from pygeoprocessing.geoprocessing import *
+import pygeoprocessing.geoprocessing as geoprocessing
+from geoprocessing import *
+
+__all__ = []
+for attrname in dir(geoprocessing):
+    if type(getattr(geoprocessing, attrname)) is types.FunctionType:
+        __all__.append(attrname)
 
 LOGGER = logging.getLogger('pygeoprocessing')
 LOGGER.setLevel(logging.DEBUG)
