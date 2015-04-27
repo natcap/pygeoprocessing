@@ -4,6 +4,10 @@
 History
 #######
 
+* Fixing an issue with versioning where 'dev' was displayed instead of the version recorded in pygeoprocessing/__init__.py.
+* Adding all pygeoprocessing.geoprocessing functions to pygeoprocessing.__all__, which allows those functions to appear when calling help(pygeoprocessing).
+* Adding routing_core.pxd to the manifest.  This fixes an issue where some users were unable to compiler pygeoprocessing from source.
+
 0.2.1 (2015-04-23)
 ------------------
 
