@@ -2,17 +2,7 @@
 
 import os
 import sys
-
-# Try to import cython modules, if they don't import assume that Cython is
-# not installed and the .c and .cpp files are distributed along with the
-# package.
-CMDCLASS = {}
-try:
-    from Cython.Distutils import build_ext
-    USE_CYTHON = True
-    CMDCLASS['build_ext'] = build_ext
-except ImportError:
-    USE_CYTHON = False
+import platform
 
 import numpy
 
@@ -57,6 +47,20 @@ except ImportError:
         from distutils.command.build_py import build_py as _build_py
         from distutils.extension import Extension
 
+# Try to import cython modules, if they don't import assume that Cython is
+# not installed and the .c and .cpp files are distributed along with the
+# package.
+CMDCLASS = {}
+try:
+    from Cython.Distutils import build_ext
+    USE_CYTHON = True
+except ImportError:
+    try:
+        from setuptools.command.build_ext import build_ext
+    except ImportError:
+        from distutils.command.build_ext import build_ext
+    USE_CYTHON = False
+
 # Defining the command classes for sdist and build_py here so we can access
 # the commandclasses in the setup function.
 CMDCLASS['sdist'] = _sdist
@@ -85,26 +89,40 @@ def no_cythonize(extensions, **_):
         extension.sources[:] = sources
     return extensions
 
-extra_compiler_flags = [
-    '-static-libgcc',
-    '-static-libstdc++',
-]
+class ExtraCompilerFlagsBuilder(build_ext):
+    """
+    Subclass of build_ext for adding specific compiler flags required
+    for compilation on some platforms.  If we're using GNU compilers, we
+    want to statically link libgcc and libstdc++ so that we don't need to
+    package shared objects/dynamically linked libraries with this python
+    package.
+
+    Trying to statically link these two libraries on unix (mac) will crash, so
+    this is only for windows ports of GNU GCC compilers.
+    """
+    def build_extensions(self):
+        compiler_type = self.compiler.compiler_type
+        if compiler_type in ['mingw32', 'cygwin']:
+            for ext in self.extensions:
+                ext.extra_link_args = [
+                    '-static-libgcc',
+                    '-static-libstdc++',
+                ]
+        build_ext.build_extensions(self)
+
+CMDCLASS['build_ext'] = ExtraCompilerFlagsBuilder
 
 EXTENSION_LIST = ([
     Extension(
         "pygeoprocessing.geoprocessing_core",
         sources=['pygeoprocessing/geoprocessing_core.pyx'],
-        language="c++",
-        extra_compile_args=extra_compiler_flags,
-        extra_link_args=extra_compiler_flags),
+        language="c++"),
     Extension(
         "pygeoprocessing.routing.routing_core",
         sources=[
             'pygeoprocessing/routing/routing_core.pyx',
             'pygeoprocessing/routing/routing_core.pxd'],
-        language="c++",
-        extra_compile_args=extra_compiler_flags,
-        extra_link_args=extra_compiler_flags)
+        language="c++")
     ])
 
 if not USE_CYTHON:
