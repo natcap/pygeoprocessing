@@ -95,14 +95,16 @@ EXTENSION_LIST = ([
         "pygeoprocessing.geoprocessing_core",
         sources=['pygeoprocessing/geoprocessing_core.pyx'],
         language="c++",
-        extra_compile_args=extra_compiler_flags),
+        extra_compile_args=extra_compiler_flags,
+        extra_link_args=extra_compiler_flags),
     Extension(
         "pygeoprocessing.routing.routing_core",
         sources=[
             'pygeoprocessing/routing/routing_core.pyx',
             'pygeoprocessing/routing/routing_core.pxd'],
         language="c++",
-        extra_compile_args=extra_compiler_flags)
+        extra_compile_args=extra_compiler_flags,
+        extra_link_args=extra_compiler_flags)
     ])
 
 if not USE_CYTHON:
