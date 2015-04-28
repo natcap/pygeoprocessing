@@ -85,17 +85,24 @@ def no_cythonize(extensions, **_):
         extension.sources[:] = sources
     return extensions
 
+extra_compiler_flags = [
+    '-static-libgcc',
+    '-static-libstdc++',
+]
+
 EXTENSION_LIST = ([
     Extension(
         "pygeoprocessing.geoprocessing_core",
         sources=['pygeoprocessing/geoprocessing_core.pyx'],
-        language="c++"),
+        language="c++",
+        extra_compile_args=extra_compiler_flags),
     Extension(
         "pygeoprocessing.routing.routing_core",
         sources=[
             'pygeoprocessing/routing/routing_core.pyx',
             'pygeoprocessing/routing/routing_core.pxd'],
-        language="c++")
+        language="c++",
+        extra_compile_args=extra_compiler_flags)
     ])
 
 if not USE_CYTHON:
