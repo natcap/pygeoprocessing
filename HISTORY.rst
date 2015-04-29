@@ -4,7 +4,7 @@
 History
 #######
 
-* Adding MinGW-specific compiler flags for including libstdc++ and libgcc.  Fixes an issue on many user's computers when installing from a wheel on the Python Package Index without having two needed DLLs on the PATH, resuling in an ImportError on pygeoprocessing.geoprocessing_core.pyd.
+* Adding MinGW-specific compiler flags for statically linking pygeoprocessing binaries against libstdc++ and libgcc.  Fixes an issue on many user's computers when installing from a wheel on the Python Package Index without having two needed DLLs on the PATH, resuling in an ImportError on pygeoprocessing.geoprocessing_core.pyd.
 * Fixing an issue with versioning where 'dev' was displayed instead of the version recorded in pygeoprocessing/__init__.py.
 * Adding all pygeoprocessing.geoprocessing functions to pygeoprocessing.__all__, which allows those functions to appear when calling help(pygeoprocessing).
 * Adding routing_core.pxd to the manifest.  This fixes an issue where some users were unable to compiler pygeoprocessing from source.
