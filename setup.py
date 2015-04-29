@@ -3,6 +3,18 @@
 import os
 import sys
 
+try:
+    from setuptools.command.sdist import sdist as _sdist
+    from setuptools.command.build_py import build_py as _build_py
+    from setuptools.command.build_ext import build_ext
+    from setuptools.extension import Extension
+except ImportError:
+    from distutils.command.sdist import sdist as _sdist
+    from distutils.command.build_py import build_py as _build_py
+    from distutils.command.build_ext import build_ext
+    from distutils.extension import Extension
+
+
 import numpy
 
 try:
@@ -23,6 +35,9 @@ except ImportError:
 
 try:
     import versioning
+
+    # If we can import versioning, this will override required commands that
+    # have special versioning capabilities.
     version = versioning.REPO.pep440
     _sdist = versioning.CustomSdist
     _build_py = versioning.CustomPythonBuilder
@@ -37,27 +52,15 @@ except ImportError:
         if line.startswith('__version__'):
             version = line.split(' ')[-1].rstrip().replace('"', '')
 
-    try:
-        from setuptools.command.sdist import sdist as _sdist
-        from setuptools.command.build_py import build_py as _build_py
-        from setuptools.extension import Extension
-    except ImportError:
-        from distutils.command.sdist import sdist as _sdist
-        from distutils.command.build_py import build_py as _build_py
-        from distutils.extension import Extension
-
 # Try to import cython modules, if they don't import assume that Cython is
 # not installed and the .c and .cpp files are distributed along with the
 # package.
 CMDCLASS = {}
 try:
+    # Overrides the existing build_ext if we can use the cython version.
     from Cython.Distutils import build_ext
     USE_CYTHON = True
 except ImportError:
-    try:
-        from setuptools.command.build_ext import build_ext
-    except ImportError:
-        from distutils.command.build_ext import build_ext
     USE_CYTHON = False
 
 # Defining the command classes for sdist and build_py here so we can access
