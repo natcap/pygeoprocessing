@@ -2,7 +2,6 @@
 
 import os
 import sys
-import platform
 
 import numpy
 
@@ -68,7 +67,7 @@ CMDCLASS['build_py'] = _build_py
 
 readme = open('README.rst').read()
 history = open('HISTORY.rst').read().replace('.. :changelog:', '')
-license = open('LICENSE.txt').read()
+LICENSE = open('LICENSE.txt').read()
 
 
 def no_cythonize(extensions, **_):
@@ -155,7 +154,7 @@ setup(
     include_dirs=[numpy.get_include()],
     setup_requires=['nose>=1.0'],
     cmdclass=CMDCLASS,
-    license=license,
+    license=LICENSE,
     zip_safe=False,
     keywords='pygeoprocessing',
     classifiers=[
