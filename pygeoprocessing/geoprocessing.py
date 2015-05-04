@@ -84,7 +84,7 @@ def get_nodata_from_uri(dataset_uri):
         dataset_uri (string): a uri to a gdal dataset
 
     Returns:
-        nodata_cast (?): nodata value for dataset band 1
+        nodata_cast: nodata value for dataset band 1
 
     """
 
@@ -111,7 +111,7 @@ def get_datatype_from_uri(dataset_uri):
         dataset_uri (string): a uri to a gdal dataset
 
     Returns:
-        datatype (?): datatype for dataset band 1"""
+        datatype: datatype for dataset band 1"""
 
     dataset = gdal.Open(dataset_uri)
     band = dataset.GetRasterBand(1)
@@ -180,7 +180,7 @@ def get_statistics_from_uri(dataset_uri):
         dataset_uri (string): a uri to a gdal dataset
 
     Returns:
-        statistics (?): min, max, mean, stddev
+        statistics: min, max, mean, stddev
 
     """
 
@@ -206,7 +206,7 @@ def get_cell_size_from_uri(dataset_uri):
         dataset_uri (string): uri to a gdal dataset
 
     Returns:
-        size_meters (?): cell size of the dataset in meters"""
+        size_meters: cell size of the dataset in meters"""
 
     srs = osr.SpatialReference()
     dataset = gdal.Open(dataset_uri)
@@ -267,11 +267,11 @@ def pixel_size_based_on_coordinate_transform(dataset, coord_trans, point):
     dataset may be in lat/long (WGS84).
 
     Args:
-        dataset (?): a projected GDAL dataset in the form of lat/long decimal
+        dataset: a projected GDAL dataset in the form of lat/long decimal
             degrees
-        coord_trans (?): an OSR coordinate transformation from dataset
+        coord_trans: an OSR coordinate transformation from dataset
             coordinate system to meters
-        point (?): a reference point close to the coordinate transform
+        point: a reference point close to the coordinate transform
             coordinate system.  must be in the same coordinate system as
             dataset.
 
@@ -315,20 +315,20 @@ def new_raster_from_base_uri(
             output raster.  See http://gdal.org/formats_list.html for a list
             of available formats.  This parameter expects the format code, such
             as 'GTiff' or 'MEM'
-        nodata (?): a value that will be set as the nodata value for the
+        nodata: a value that will be set as the nodata value for the
             output raster.  Should be the same type as 'datatype'
-        datatype (?): the pixel datatype of the output raster, for example
+        datatype: the pixel datatype of the output raster, for example
             gdal.GDT_Float32.  See the following header file for supported
             pixel types:
             http://www.gdal.org/gdal_8h.html#22e22ce0a55036a96f652765793fb7a4
 
     Keyword Args:
-        fill_value (?): the value to fill in the raster on creation
-        n_rows (?): if set makes the resulting raster have n_rows in it
+        fill_value: the value to fill in the raster on creation
+        n_rows: if set makes the resulting raster have n_rows in it
             if not, the number of rows of the outgoing dataset are equal to
             the base.
-        n_cols (?): similar to n_rows, but for the columns.
-        dataset_options (?): a list of dataset options that gets
+        n_cols: similar to n_rows, but for the columns.
+        dataset_options: a list of dataset options that gets
             passed to the gdal creation driver, overrides defaults
 
     Returns:
@@ -351,31 +351,31 @@ def new_raster_from_base(
     geotranforms of the base GDAL raster dataset.
 
     Args:
-        base (?): a the GDAL raster dataset to base output size, and transforms
+        base: a the GDAL raster dataset to base output size, and transforms
             on
         output_uri (string): a string URI to the new output raster dataset.
         gdal_format (string): a string representing the GDAL file format of the
             output raster.  See http://gdal.org/formats_list.html for a list
             of available formats.  This parameter expects the format code, such
             as 'GTiff' or 'MEM'
-        nodata (?): a value that will be set as the nodata value for the
+        nodata: a value that will be set as the nodata value for the
             output raster.  Should be the same type as 'datatype'
-        datatype (?): the pixel datatype of the output raster, for example
+        datatype: the pixel datatype of the output raster, for example
             gdal.GDT_Float32.  See the following header file for supported
             pixel types:
             http://www.gdal.org/gdal_8h.html#22e22ce0a55036a96f652765793fb7a4
 
     Keyword Args:
-        fill_value (?): the value to fill in the raster on creation
-        n_rows (?): if set makes the resulting raster have n_rows in it
+        fill_value: the value to fill in the raster on creation
+        n_rows: if set makes the resulting raster have n_rows in it
             if not, the number of rows of the outgoing dataset are equal to
             the base.
-        n_cols (?): similar to n_rows, but for the columns.
-        dataset_options (?): a list of dataset options that gets
+        n_cols: similar to n_rows, but for the columns.
+        dataset_options: a list of dataset options that gets
             passed to the gdal creation driver, overrides defaults
 
     Returns:
-        dataset (?): a new GDAL raster dataset.
+        dataset: a new GDAL raster dataset.
 
     """
 
@@ -394,15 +394,15 @@ def new_raster(
     Args:
         cols (int): number of pixel columns
         rows (int): number of pixel rows
-        projection (?): the datum
-        geotransform (?): the coordinate system
+        projection: the datum
+        geotransform: the coordinate system
         format (string): a string representing the GDAL file format of the
             output raster.  See http://gdal.org/formats_list.html for a list
             of available formats.  This parameter expects the format code, such
             as 'GTiff' or 'MEM'
-        nodata (?): a value that will be set as the nodata value for the
+        nodata: a value that will be set as the nodata value for the
             output raster.  Should be the same type as 'datatype'
-        datatype (?): the pixel datatype of the output raster, for example
+        datatype: the pixel datatype of the output raster, for example
             gdal.GDT_Float32.  See the following header file for supported
             pixel types:
             http://www.gdal.org/gdal_8h.html#22e22ce0a55036a96f652765793fb7a4
@@ -411,7 +411,7 @@ def new_raster(
             format is 'MEM' this can be an empty string
 
     Returns:
-        dataset (?): a new GDAL raster with the parameters as described above
+        dataset: a new GDAL raster with the parameters as described above
 
     """
 
@@ -438,7 +438,7 @@ def calculate_intersection_rectangle(dataset_list, aoi=None):
             coordinate system
 
     Keyword Args:
-        aoi (?): an OGR polygon datasource which may optionally also restrict
+        aoi: an OGR polygon datasource which may optionally also restrict
             the extents of the intersection rectangle based on its own
             extents.
 
@@ -516,11 +516,11 @@ def create_raster_from_vector_extents_uri(
     Args:
         shapefile_uri (string): uri to an OGR datasource to use as the extents
             of the raster
-        pixel_size (?): size of output pixels in the projected units of
+        pixel_size: size of output pixels in the projected units of
             shapefile_uri
-        gdal_format (?): the raster pixel format, something like
+        gdal_format: the raster pixel format, something like
             gdal.GDT_Float32
-        nodata_out_value (?): the output nodata value
+        nodata_out_value: the output nodata value
         output_uri (string): the URI to write the gdal dataset
 
     Returns:
@@ -541,17 +541,17 @@ def create_raster_from_vector_extents(
     adapted from http://trac.osgeo.org/gdal/wiki/FAQRaster#HowcanIcreateablankrasterbasedonavectorfilesextentsforusewithgdal_rasterizeGDAL1.8.0
 
     Args:
-        xRes (?): the x size of a pixel in the output dataset must be a
+        xRes: the x size of a pixel in the output dataset must be a
             positive value
-        yRes (?): the y size of a pixel in the output dataset must be a
+        yRes: the y size of a pixel in the output dataset must be a
             positive value
-        format (?): gdal GDT pixel type
-        nodata (?): the output nodata value
+        format: gdal GDT pixel type
+        nodata: the output nodata value
         rasterFile (string): URI to file location for raster
-        shp (?): vector shapefile to base extent of output raster on
+        shp: vector shapefile to base extent of output raster on
 
     Returns:
-        raster (?): blank raster whose bounds fit within `shp`s bounding box
+        raster: blank raster whose bounds fit within `shp`s bounding box
             and features are equivalent to the passed in data
 
     """
@@ -627,9 +627,9 @@ def vectorize_points(
     and interpolates the values in the points onto the given raster
 
     Args:
-        shapefile (?): ogr datasource of points
-        datasource_field (?): a field in shapefile
-        dataset (?): a gdal dataset must be in the same projection as shapefile
+        shapefile: ogr datasource of points
+        datasource_field: a field in shapefile
+        dataset: a gdal dataset must be in the same projection as shapefile
 
     Keyword Args:
         randomize_points (boolean): (description)
@@ -724,7 +724,7 @@ def aggregate_raster_values_uri(
             associate the output dictionary values with whose values are
             associated with ints; if None dictionary returns a value over
             the entire shapefile region that intersects the raster.
-        ignore_nodata (?): if operation == 'mean' then it does not
+        ignore_nodata: if operation == 'mean' then it does not
             account for nodata pixels when determining the pixel_mean,
             otherwise all pixels in the AOI are used for calculation of the
             mean.  This does not affect hectare_mean which is calculated from
@@ -734,7 +734,7 @@ def aggregate_raster_values_uri(
             aggregate value.  The result will be clamped to zero.
         ignore_value_list (list): a list of values to ignore when
             calculating the stats
-        process_pool (?): a process pool for multiprocessing
+        process_pool: a process pool for multiprocessing
         all_touched (boolean): if true will account for any pixel whose
             geometry passes through the pixel, not just the center point
 
@@ -1052,7 +1052,7 @@ def calculate_slope(
 
     Keyword Args:
         aoi_uri (string): a uri to an AOI input
-        process_pool (?): a process pool for multiprocessing
+        process_pool: a process pool for multiprocessing
 
     Returns:
         nothing
@@ -1097,7 +1097,7 @@ def clip_dataset_uri(
     Keyword Args:
         assert_projections (boolean): a boolean value for whether the dataset
             needs to be projected
-        process_pool (?): a process pool for multiprocessing
+        process_pool: a process pool for multiprocessing
 
     Returns:
         nothing
@@ -1147,13 +1147,13 @@ def create_rat(dataset, attr_dict, column_name):
     Create a raster attribute table
 
     Args:
-        dataset (?): a GDAL raster dataset to create the RAT for (...)
+        dataset: a GDAL raster dataset to create the RAT for (...)
         attr_dict (dict): a dictionary with keys that point to a primitive type
            {integer_id_1: value_1, ... integer_id_n: value_n}
         column_name (string): a string for the column name that maps the values
 
     Returns:
-        dataset (?): a GDAL raster dataset with an updated RAT
+        dataset: a GDAL raster dataset with an updated RAT
 
     """
 
@@ -1206,7 +1206,7 @@ def get_raster_properties(dataset):
     *This function can be expanded to return more properties if needed*
 
     Args:
-       dataset (?): a GDAL raster dataset to get the properties from
+       dataset: a GDAL raster dataset to get the properties from
 
     Returns:
         dataset_dict (dictionary): a dictionary with the properties stored
@@ -1234,17 +1234,15 @@ def reproject_dataset_uri(
     Args:
         original_dataset_uri (string): a URI to a gdal Dataset to written to
             disk
-        pixel_spacing (?): output dataset pixel size in projected linear units
-        output_wkt (?): output project in Well Known Text
+        pixel_spacing: output dataset pixel size in projected linear units
+        output_wkt: output project in Well Known Text
         resampling_method (string): a string representing the one of the
             following resampling methods:
             "nearest|bilinear|cubic|cubic_spline|lanczos"
         output_uri (string): location on disk to dump the reprojected dataset
 
     Returns:
-        projected_dataset (?): reprojected dataset
-            (Note from Will: I possibly mislabeled this: looks like it's
-                saved to file, with nothing returned)
+        nothing
     """
 
     # A dictionary to map the resampling method input string to the gdal type
@@ -1335,7 +1333,7 @@ def reproject_datasource_uri(original_dataset_uri, output_wkt, output_uri):
 
     Args:
         original_dataset_uri (string): a uri to an ogr datasource
-        output_wkt (?): the desired projection as Well Known Text
+        output_wkt: the desired projection as Well Known Text
             (by layer.GetSpatialRef().ExportToWkt())
         output_uri (string): the path to where the new shapefile should be
             written to disk.
@@ -1357,13 +1355,13 @@ def reproject_datasource(original_datasource, output_wkt, output_uri):
     as its own.
 
     Args:
-        original_datasource (?): an ogr datasource
-        output_wkt (?): the desired projection as Well Known Text
+        original_datasource: an ogr datasource
+        output_wkt: the desired projection as Well Known Text
             (by layer.GetSpatialRef().ExportToWkt())
         output_uri (string): the filepath to the output shapefile
 
     Returns:
-        output_datasource (?): the reprojected shapefile.
+        output_datasource: the reprojected shapefile.
     """
     # if this file already exists, then remove it
     if os.path.isfile(output_uri):
@@ -1462,7 +1460,7 @@ def unique_raster_values(dataset):
     Returns a list of the unique integer values on the given dataset
 
     Args:
-        dataset (?): a gdal dataset of some integer type
+        dataset: a gdal dataset of some integer type
 
     Returns:
         unique_list (list): a list of dataset's unique non-nodata values
@@ -1489,7 +1487,7 @@ def get_rat_as_dictionary_uri(dataset_uri):
     Returns the RAT of the first band of dataset as a dictionary.
 
     Args:
-        dataset (?): a GDAL dataset that has a RAT associated with the first
+        dataset: a GDAL dataset that has a RAT associated with the first
             band
 
     Returns:
@@ -1513,7 +1511,7 @@ def get_rat_as_dictionary(dataset):
     Returns the RAT of the first band of dataset as a dictionary.
 
     Args:
-        dataset (?): a GDAL dataset that has a RAT associated with the first
+        dataset: a GDAL dataset that has a RAT associated with the first
             band
 
     Returns:
@@ -1634,7 +1632,7 @@ def load_memory_mapped_array(dataset_uri, memory_file, array_type=None):
             and delete this file.
 
     Keyword Args:
-        array_type (?): the type of the resulting array, if None defaults
+        array_type: the type of the resulting array, if None defaults
             to the type of the raster band in the dataset
 
     Returns:
@@ -1678,7 +1676,7 @@ def temporary_filename(suffix=''):
         suffix (string): the suffix to be appended to the temporary file
 
     Returns:
-        fname (?): a unique temporary filename
+        fname: a unique temporary filename
 
     """
 
@@ -1851,7 +1849,7 @@ def resize_and_resample_dataset_uri(
         original_dataset_uri (string): a GDAL dataset
         bounding_box (list): [upper_left_x, upper_left_y, lower_right_x,
             lower_right_y]
-        out_pixel_size (?): the pixel size in projected linear units
+        out_pixel_size: the pixel size in projected linear units
         output_uri (string): the location of the new resampled GDAL dataset
         resample_method (string): the resampling technique, one of
             "nearest|bilinear|cubic|cubic_spline|lanczos"
@@ -1969,7 +1967,7 @@ def align_dataset_list(
         resample_method_list (list): a list of resampling methods for each
             output uri in dataset_out_uri list.  Each element must be one of
             "nearest|bilinear|cubic|cubic_spline|lanczos"
-        out_pixel_size (?): the output pixel size
+        out_pixel_size: the output pixel size
         mode (string): one of "union", "intersection", or "dataset" which
             defines how the output output extents are defined as either the
             union or intersection of the input datasets or to have the same
@@ -1982,7 +1980,7 @@ def align_dataset_list(
             union without adjustment.
 
     Keyword Args:
-        dataset_to_bound_index (?): if mode is "dataset" then this index is
+        dataset_to_bound_index: if mode is "dataset" then this index is
             used to indicate which dataset to define the output bounds of the
             dataset_out_uri_list
         aoi_uri (string): a URI to an OGR datasource to be used for the
@@ -2209,9 +2207,9 @@ def vectorize_datasets(
             does not crash or raise an exception.
         dataset_out_uri (string): the uri of the output dataset.  The
             projection will be the same as the datasets in dataset_uri_list.
-        datatype_out (?): the GDAL output type of the output dataset
-        nodata_out (?): the nodata value of the output dataset.
-        pixel_size_out (?): the pixel size of the output dataset in
+        datatype_out: the GDAL output type of the output dataset
+        nodata_out: the nodata value of the output dataset.
+        pixel_size_out: the pixel size of the output dataset in
             projected coordinates.
         bounding_box_mode (string): one of "union" or "intersection",
             "dataset". If union the output dataset bounding box will be the
@@ -2231,7 +2229,7 @@ def vectorize_datasets(
             rasters to fix on the upper left hand corner of the output
             datasets.  If negative, the bounding box aligns the intersection/
             union without adjustment.
-        dataset_to_bound_index (?): if mode is "dataset" this indicates which
+        dataset_to_bound_index: if mode is "dataset" this indicates which
             dataset should be the output size.
         aoi_uri (string): a URI to an OGR datasource to be used for the
             aoi.  Irrespective of the `mode` input, the aoi will be used
@@ -2239,7 +2237,7 @@ def vectorize_datasets(
         assert_datasets_projected (boolean): if True this operation will
             test if any datasets are not projected and raise an exception
             if so.
-        process_pool (?): a process pool for multiprocessing
+        process_pool: a process pool for multiprocessing
         vectorize_op (boolean): if true the model will try to numpy.vectorize
             dataset_pixel_op.  If dataset_pixel_op is designed to use maximize
             array broadcasting, set this parameter to False, else it may
@@ -2250,7 +2248,7 @@ def vectorize_datasets(
             resample_method_list, dataset_to_align_index, and
             dataset_to_bound_index, if set to True the input dataset list must
             be aligned, probably by raster_utils.align_dataset_list
-        dataset_options (?): this is an argument list that will be
+        dataset_options: this is an argument list that will be
             passed to the GTiff driver.  Useful for blocksizes, compression,
             etc.
 
@@ -2439,7 +2437,7 @@ def get_lookup_from_table(table_uri, key_field):
     Args:
         table_uri (string): a URI to a dbf or csv file containing at
             least the header key_field
-        key_field (?): (description)
+        key_field: (description)
 
     Returns:
         lookup_dict (dict): a dictionary of the form {key_field_0:
@@ -2469,7 +2467,7 @@ def get_lookup_from_csv(csv_table_uri, key_field):
     Args:
         csv_table_uri (string): a URI to a csv file containing at
             least the header key_field
-        key_field (?): (description)
+        key_field: (description)
 
     Returns:
         lookup_dict (dict): returns a dictionary of the form {key_field_0:
@@ -2513,7 +2511,7 @@ def extract_datasource_table_by_key(datasource_uri, key_field):
 
     Args:
         datasource_uri (string): a uri to an OGR datasource
-        key_field (?): a field in datasource_uri that refers to a key value
+        key_field: a field in datasource_uri that refers to a key value
             for each row such as a polygon id.
 
     Returns:
@@ -2558,7 +2556,7 @@ def get_geotransform_uri(dataset_uri):
         dataset_uri (string): a URI for the dataset
 
     Returns:
-        geotransform (?): a dataset geotransform list
+        geotransform: a dataset geotransform list
 
     """
 
@@ -2576,7 +2574,7 @@ def get_spatial_ref_uri(datasource_uri):
         datasource_uri (string): a URI to an ogr datasource
 
     Returns:
-        spat_ref (?): a spatial reference
+        spat_ref: a spatial reference
 
     """
 
@@ -2844,13 +2842,13 @@ def make_constant_raster_from_base_uri(
 
     Args:
         base_dataset_uri (string): the gdal base raster
-        constant_value (?): the value to set the new base raster to
+        constant_value: the value to set the new base raster to
         out_uri (string): the uri of the output raster
 
     Keyword Args:
-        nodata_value (?): the value to set the constant raster's nodata
+        nodata_value: the value to set the constant raster's nodata
             value to.  If not specified, it will be set to constant_value - 1.0
-        dataset_type (?): the datatype to set the dataset to, default
+        dataset_type: the datatype to set the dataset to, default
             will be a float 32 value.
 
     Returns:
@@ -2955,7 +2953,7 @@ def distance_transform_edt(
             closest non-zero pixel.
 
     Keyword Args:
-        process_pool (?): (description)
+        process_pool: (description)
 
     Returns:
         nothing
@@ -3174,10 +3172,10 @@ def _smart_cast(value):
     Attempts to cast value to a float, int, or leave it as string
 
     Args:
-        value (?): (description)
+        value: (description)
 
     Returns:
-        value (?): (description)
+        value: (description)
     """
     #If it's not a string, don't try to cast it because i got a bug
     #where all my floats were happily cast to ints
