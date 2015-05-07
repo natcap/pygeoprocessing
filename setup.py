@@ -3,16 +3,17 @@
 import os
 import sys
 
-# Try to import cython modules, if they don't import assume that Cython is
-# not installed and the .c and .cpp files are distributed along with the
-# package.
-CMDCLASS = {}
 try:
-    from Cython.Distutils import build_ext
-    USE_CYTHON = True
-    CMDCLASS['build_ext'] = build_ext
+    from setuptools.command.sdist import sdist as _sdist
+    from setuptools.command.build_py import build_py as _build_py
+    from setuptools.command.build_ext import build_ext
+    from setuptools.extension import Extension
 except ImportError:
-    USE_CYTHON = False
+    from distutils.command.sdist import sdist as _sdist
+    from distutils.command.build_py import build_py as _build_py
+    from distutils.command.build_ext import build_ext
+    from distutils.extension import Extension
+
 
 import numpy
 
@@ -34,24 +35,33 @@ except ImportError:
 
 try:
     import versioning
+
+    # If we can import versioning, this will override required commands that
+    # have special versioning capabilities.
     version = versioning.REPO.pep440
     _sdist = versioning.CustomSdist
     _build_py = versioning.CustomPythonBuilder
     Extension = versioning.Extension
 except ImportError:
-    try:
-        exec(open('pygeoprocessing/__init__.py', 'r').read())
-        version = __version__
-    except ImportError:
-        version = 'dev'
-    try:
-        from setuptools.command.sdist import sdist as _sdist
-        from setuptools.command.build_py import build_py as _build_py
-        from setuptools.extension import Extension
-    except ImportError:
-        from distutils.command.sdist import sdist as _sdist
-        from distutils.command.build_py import build_py as _build_py
-        from distutils.extension import Extension
+    version = 'dev'
+
+    # Loading the version number from string instead of importing directly.
+    # Importing directly requires geoprocessing_core to already be compiled,
+    # which will never be the case in a source distribution.
+    for line in open('pygeoprocessing/__init__.py', 'r'):
+        if line.startswith('__version__'):
+            version = line.split(' ')[-1].rstrip().replace('"', '')
+
+# Try to import cython modules, if they don't import assume that Cython is
+# not installed and the .c and .cpp files are distributed along with the
+# package.
+CMDCLASS = {}
+try:
+    # Overrides the existing build_ext if we can use the cython version.
+    from Cython.Distutils import build_ext
+    USE_CYTHON = True
+except ImportError:
+    USE_CYTHON = False
 
 # Defining the command classes for sdist and build_py here so we can access
 # the commandclasses in the setup function.
@@ -60,7 +70,7 @@ CMDCLASS['build_py'] = _build_py
 
 readme = open('README.rst').read()
 history = open('HISTORY.rst').read().replace('.. :changelog:', '')
-license = open('LICENSE.txt').read()
+LICENSE = open('LICENSE.txt').read()
 
 
 def no_cythonize(extensions, **_):
@@ -80,6 +90,29 @@ def no_cythonize(extensions, **_):
             sources.append(sfile)
         extension.sources[:] = sources
     return extensions
+
+class ExtraCompilerFlagsBuilder(build_ext):
+    """
+    Subclass of build_ext for adding specific compiler flags required
+    for compilation on some platforms.  If we're using GNU compilers, we
+    want to statically link libgcc and libstdc++ so that we don't need to
+    package shared objects/dynamically linked libraries with this python
+    package.
+
+    Trying to statically link these two libraries on unix (mac) will crash, so
+    this is only for windows ports of GNU GCC compilers.
+    """
+    def build_extensions(self):
+        compiler_type = self.compiler.compiler_type
+        if compiler_type in ['mingw32', 'cygwin']:
+            for ext in self.extensions:
+                ext.extra_link_args = [
+                    '-static-libgcc',
+                    '-static-libstdc++',
+                ]
+        build_ext.build_extensions(self)
+
+CMDCLASS['build_ext'] = ExtraCompilerFlagsBuilder
 
 EXTENSION_LIST = ([
     Extension(
@@ -124,7 +157,7 @@ setup(
     include_dirs=[numpy.get_include()],
     setup_requires=['nose>=1.0'],
     cmdclass=CMDCLASS,
-    license=license,
+    license=LICENSE,
     zip_safe=False,
     keywords='pygeoprocessing',
     classifiers=[
