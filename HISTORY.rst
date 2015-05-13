@@ -1,8 +1,11 @@
-.. :changelog:
-
 #######
 History
 #######
+
+0.2.3dev (XXX)
+--------------
+
+* Fixing a memory leak in block caches that held on to dataset, band, and block references even after the object was destroyed.
 
 0.2.2 (2015-05-07)
 ------------------
