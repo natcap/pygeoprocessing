@@ -338,7 +338,9 @@ def flow_direction_d_inf(
         pass #just a file lock
 
 
-def delineate_watershed(dem_uri, outlet_shapefile_uri, watershed_out_uri):
+def delineate_watershed(
+        dem_uri, outlet_shapefile_uri, watershed_out_uri,
+        snapped_outlet_points_uri):
     """Delinates a watershed based on the dem and the output points specified.
 
         dem_uri (string) - uri to DEM layer
@@ -347,5 +349,9 @@ def delineate_watershed(dem_uri, outlet_shapefile_uri, watershed_out_uri):
         watershed_out_uri (string) - the uri to output the shapefile
 
         returns nothing"""
-    pass
+    flow_direction_uri = pygeoprocessing.temporary_filename()
+    flow_direction_d_inf(dem_uri, flow_direction_uri)
+    pygeoprocessing.routing.routing_core.delineate_watershed(
+        flow_direction_uri, outlet_shapefile_uri, watershed_out_uri,
+        snapped_outlet_points_uri)
 

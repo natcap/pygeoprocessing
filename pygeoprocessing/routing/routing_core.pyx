@@ -2713,3 +2713,9 @@ def route_flux(
         except OSError as exception:
             LOGGER.warn("couldn't remove %s because it's still open", ds_uri)
             LOGGER.warn(exception)
+
+def delineate_watershed(
+        flow_direction_uri, outlet_shapefile_uri, watershed_out_uri,
+        snapped_outlet_points_uri):
+
+    pass
