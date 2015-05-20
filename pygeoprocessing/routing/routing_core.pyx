@@ -2720,6 +2720,10 @@ def delineate_watershed(
         outflow_direction_uri, outflow_weights_uri, outlet_shapefile_uri,
         watershed_out_uri):
 
+    cdef int *row_offsets = [0, -1, -1, -1,  0,  1, 1, 1]
+    cdef int *col_offsets = [1,  1,  0, -1, -1, -1, 0, 1]
+    cdef int *inflow_offsets = [4, 5, 6, 7, 0, 1, 2, 3]
+
     #Pass transport
     cdef time_t start
     time(&start)
@@ -2814,8 +2818,45 @@ def delineate_watershed(
             global_row, global_col, &row_index, &col_index, &row_block_offset,
             &col_block_offset)
 
+        if watershed_block[
+                row_index, col_index, row_block_offset, col_block_offset] == 1:
+            continue
+
         watershed_block[
             row_index, col_index, row_block_offset, col_block_offset] = 1
         cache_dirty[row_index, col_index] = 1
+
+        for direction_index in xrange(8):
+            #get percent flow from neighbor to current cell
+            neighbor_row = global_row + row_offsets[direction_index]
+            neighbor_col = global_col + col_offsets[direction_index]
+
+            #See if neighbor out of bounds
+            if (neighbor_row < 0 or neighbor_row >= n_rows or neighbor_col < 0 or neighbor_col >= n_cols):
+                continue
+
+            block_cache.update_cache(neighbor_row, neighbor_col, &neighbor_row_index, &neighbor_col_index, &neighbor_row_block_offset, &neighbor_col_block_offset)
+            #if neighbor inflows
+            neighbor_direction = outflow_direction_block[neighbor_row_index, neighbor_col_index, neighbor_row_block_offset, neighbor_col_block_offset]
+            if neighbor_direction == outflow_direction_nodata:
+                continue
+
+            #check if the cell flows directly, or is one index off
+            if (inflow_offsets[direction_index] != neighbor_direction and
+                    ((inflow_offsets[direction_index] - 1) % 8) != neighbor_direction):
+                #then neighbor doesn't inflow into current cell
+                continue
+
+            #Calculate the outflow weight
+            outflow_weight = outflow_weights_block[neighbor_row_index, neighbor_col_index, neighbor_row_block_offset, neighbor_col_block_offset]
+
+            if ((inflow_offsets[direction_index] - 1) % 8) == neighbor_direction:
+                outflow_weight = 1.0 - outflow_weight
+
+            if outflow_weight <= 0.0:
+                continue
+
+            work_stack.push(neighbor_row * n_cols + neighbor_col)
+
 
     block_cache.flush_cache()
