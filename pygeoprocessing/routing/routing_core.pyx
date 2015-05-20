@@ -9,6 +9,7 @@ cimport numpy
 cimport cython
 import osgeo
 from osgeo import gdal
+from osgeo import ogr
 from cython.operator cimport dereference as deref
 
 from libcpp.set cimport set as c_set
@@ -2767,7 +2768,7 @@ def delineate_watershed(
     watershed_uri = 'watershed_mask.tif'
     watershed_dataset = pygeoprocessing.new_raster_from_base(
         outflow_direction_dataset, watershed_uri, 'GTiff', watershed_nodata,
-        gdal.GDT_Byte)
+        gdal.GDT_Byte, fill_value=watershed_nodata)
     watershed_band = watershed_dataset.GetRasterBand(1)
 
     cache_dirty[:] = 0
@@ -2779,5 +2780,42 @@ def delineate_watershed(
         N_BLOCK_ROWS, N_BLOCK_COLS, n_rows, n_cols, block_row_size,
         block_col_size, band_list, block_list, update_list, cache_dirty)
 
-
     cdef stack[int] work_stack
+
+    #parse out each point in the input shapefile and determine the x/y coordinate in the raster
+
+    outlet_ds = ogr.Open(outlet_shapefile_uri)
+
+    geotransform = outflow_direction_dataset.GetGeoTransform()
+
+    for layer in outlet_ds:
+        for point_feature in layer:
+            point_geometry = point_feature.GetGeometryRef()
+            point = point_geometry.GetPoint()
+            x_coord = point[0]
+            y_coord = point[1]
+
+            x_index = (x_coord - geotransform[0]) // geotransform[1]
+            y_index = (y_coord - geotransform[3]) // geotransform[5]
+
+            LOGGER.debug("%f, %f", x_coord, y_coord)
+            LOGGER.debug("%d, %d", x_index, y_index)
+
+            work_stack.push(y_index * n_cols + x_index)
+
+    while work_stack.size() > 0:
+        current_index = work_stack.top()
+        work_stack.pop()
+        with cython.cdivision(True):
+            global_row = current_index / n_cols
+            global_col = current_index % n_cols
+
+        block_cache.update_cache(
+            global_row, global_col, &row_index, &col_index, &row_block_offset,
+            &col_block_offset)
+
+        watershed_block[
+            row_index, col_index, row_block_offset, col_block_offset] = 1
+        cache_dirty[row_index, col_index] = 1
+
+    block_cache.flush_cache()
