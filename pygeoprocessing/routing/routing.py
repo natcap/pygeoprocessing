@@ -336,3 +336,16 @@ def flow_direction_d_inf(
         os.remove(labels_uri)
     except OSError:
         pass #just a file lock
+
+
+def delineate_watershed(dem_uri, outlet_shapefile_uri, watershed_out_uri):
+    """Delinates a watershed based on the dem and the output points specified.
+
+        dem_uri (string) - uri to DEM layer
+        outlet_shapefile_uri (string) - a shapefile of points indicating the
+            outflow points of the desired watershed.
+        watershed_out_uri (string) - the uri to output the shapefile
+
+        returns nothing"""
+    pass
+
