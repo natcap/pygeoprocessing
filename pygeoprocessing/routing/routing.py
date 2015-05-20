@@ -351,7 +351,14 @@ def delineate_watershed(
         returns nothing"""
     flow_direction_uri = pygeoprocessing.temporary_filename()
     flow_direction_d_inf(dem_uri, flow_direction_uri)
+
+    outflow_weights_uri = pygeoprocessing.temporary_filename()
+    outflow_direction_uri = pygeoprocessing.temporary_filename()
+    pygeoprocessing.routing.routing_core.calculate_flow_weights(
+        flow_direction_uri, outflow_weights_uri, outflow_direction_uri)
+
+
     pygeoprocessing.routing.routing_core.delineate_watershed(
-        flow_direction_uri, outlet_shapefile_uri, watershed_out_uri,
-        snapped_outlet_points_uri)
+        outflow_direction_uri, outflow_weights_uri, outlet_shapefile_uri,
+        watershed_out_uri)
 

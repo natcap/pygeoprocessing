@@ -14,6 +14,7 @@ from cython.operator cimport dereference as deref
 from libcpp.set cimport set as c_set
 from libcpp.deque cimport deque
 from libcpp.map cimport map
+from libcpp.stack cimport stack
 from libc.math cimport atan
 from libc.math cimport atan2
 from libc.math cimport tan
@@ -2715,7 +2716,68 @@ def route_flux(
             LOGGER.warn(exception)
 
 def delineate_watershed(
-        flow_direction_uri, outlet_shapefile_uri, watershed_out_uri,
-        snapped_outlet_points_uri):
+        outflow_direction_uri, outflow_weights_uri, outlet_shapefile_uri,
+        watershed_out_uri):
 
-    pass
+    #Pass transport
+    cdef time_t start
+    time(&start)
+
+    #Create output arrays for loss and flux
+    outflow_direction_dataset = gdal.Open(outflow_direction_uri)
+    cdef int n_cols = outflow_direction_dataset.RasterXSize
+    cdef int n_rows = outflow_direction_dataset.RasterYSize
+    outflow_direction_band = outflow_direction_dataset.GetRasterBand(1)
+
+    cdef int block_col_size, block_row_size
+    block_col_size, block_row_size = outflow_direction_band.GetBlockSize()
+
+    #center point of global index
+    cdef int global_row, global_col #index into the overall raster
+    cdef int row_index, col_index #the index of the cache block
+    cdef int row_block_offset, col_block_offset #index into the cache block
+    cdef int global_block_row, global_block_col #used to walk the global blocks
+
+    #neighbor sections of global index
+    cdef int neighbor_row, neighbor_col #neighbor equivalent of global_{row,col}
+    cdef int neighbor_row_index, neighbor_col_index #neighbor cache index
+    cdef int neighbor_row_block_offset, neighbor_col_block_offset #index into the neighbor cache block
+
+    #define all the caches
+    cdef numpy.ndarray[numpy.npy_int8, ndim=4] outflow_direction_block = numpy.zeros(
+        (N_BLOCK_ROWS, N_BLOCK_COLS, block_row_size, block_col_size), dtype=numpy.int8)
+    cdef numpy.ndarray[numpy.npy_float32, ndim=4] outflow_weights_block = numpy.zeros(
+        (N_BLOCK_ROWS, N_BLOCK_COLS, block_row_size, block_col_size), dtype=numpy.float32)
+    cdef numpy.ndarray[numpy.npy_int8, ndim=4] watershed_block = numpy.zeros(
+        (N_BLOCK_ROWS, N_BLOCK_COLS, block_row_size, block_col_size), dtype=numpy.int8)
+
+    cdef numpy.ndarray[numpy.npy_int8, ndim=2] cache_dirty = numpy.zeros(
+        (N_BLOCK_ROWS, N_BLOCK_COLS), dtype=numpy.int8)
+
+    cdef int outflow_direction_nodata = pygeoprocessing.get_nodata_from_uri(
+        outflow_direction_uri)
+
+    outflow_weights_dataset = gdal.Open(outflow_weights_uri)
+    outflow_weights_band = outflow_weights_dataset.GetRasterBand(1)
+    cdef int outflow_weights_nodata = pygeoprocessing.get_nodata_from_uri(
+        outflow_weights_uri)
+
+    #Create output arrays for loss and flux
+    watershed_nodata = -1.0
+    watershed_uri = 'watershed_mask.tif'
+    watershed_dataset = pygeoprocessing.new_raster_from_base(
+        outflow_direction_dataset, watershed_uri, 'GTiff', watershed_nodata,
+        gdal.GDT_Byte)
+    watershed_band = watershed_dataset.GetRasterBand(1)
+
+    cache_dirty[:] = 0
+    band_list = [outflow_direction_band, outflow_weights_band, watershed_band]
+    block_list = [outflow_direction_block, outflow_weights_block, watershed_block]
+    update_list = [False, False, True]
+
+    cdef BlockCache block_cache = BlockCache(
+        N_BLOCK_ROWS, N_BLOCK_COLS, n_rows, n_cols, block_row_size,
+        block_col_size, band_list, block_list, update_list, cache_dirty)
+
+
+    cdef stack[int] work_stack
