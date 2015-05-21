@@ -2719,7 +2719,7 @@ def route_flux(
 
 def delineate_watershed(
         outflow_direction_uri, outflow_weights_uri, outlet_shapefile_uri,
-        watershed_out_uri):
+        snap_distance, flow_accumulation_uri, watershed_out_uri):
 
     cdef time_t last_time, current_time
     time(&last_time)
@@ -2829,6 +2829,10 @@ def delineate_watershed(
                 LOGGER.warn('Encountered a point that was outside the bounds of the DEM %s', point_geometry)
                 continue
             n_points_left -= 1
+
+            if snap_distance > 0:
+                pass
+
             work_stack.push(y_index * n_cols + x_index)
 
             while work_stack.size() > 0:
