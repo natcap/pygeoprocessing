@@ -2879,5 +2879,10 @@ def delineate_watershed(
             block_cache.flush_cache()
             gdal.Polygonize(
                 watershed_band, watershed_band, watershed_layer, 0, ["8CONNECTED=8"])
-            return
             watershed_band.Fill(watershed_nodata)
+
+    for feature_id in xrange(watershed_layer.GetFeatureCount()):
+        watershed_feature = watershed_layer.GetFeature(feature_id)
+        pixel_value = watershed_feature.GetField('pixel_valu')
+        if pixel_value == watershed_nodata:
+            watershed_layer.DeleteFeature(feature_id)
