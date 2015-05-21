@@ -2828,7 +2828,6 @@ def delineate_watershed(
             if x_index < 0 or x_index >= n_cols or y_index < 0 or y_index > n_rows:
                 LOGGER.warn('Encountered a point that was outside the bounds of the DEM %s', point_geometry)
                 continue
-            LOGGER.info('%d points left', n_points_left)
             n_points_left -= 1
             work_stack.push(y_index * n_cols + x_index)
 
