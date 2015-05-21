@@ -10,6 +10,7 @@ cimport cython
 import osgeo
 from osgeo import gdal
 from osgeo import ogr
+from osgeo import osr
 from cython.operator cimport dereference as deref
 
 from libcpp.set cimport set as c_set
@@ -2737,6 +2738,27 @@ def delineate_watershed(
     cdef int block_col_size, block_row_size
     block_col_size, block_row_size = outflow_direction_band.GetBlockSize()
 
+
+    if os.path.isfile(watershed_out_uri):
+        os.remove(watershed_out_uri)
+
+    pygeoprocessing.geoprocessing.create_directories(
+        [os.path.dirname(watershed_out_uri)])
+
+    projection_wkt = outflow_direction_dataset.GetProjection()
+    output_sr = osr.SpatialReference()
+    output_sr.ImportFromWkt(projection_wkt)
+
+    output_driver = ogr.GetDriverByName('ESRI Shapefile')
+    watershed_datasource = output_driver.CreateDataSource(
+        watershed_out_uri)
+    watershed_layer = watershed_datasource.CreateLayer(
+            'serviceshed', output_sr, ogr.wkbPolygon)
+
+    field = ogr.FieldDefn('pixel_value', ogr.OFTReal)
+    watershed_layer.CreateField(field)
+
+
     #center point of global index
     cdef int global_row, global_col #index into the overall raster
     cdef int row_index, col_index #the index of the cache block
@@ -2768,11 +2790,12 @@ def delineate_watershed(
         outflow_weights_uri)
 
     #Create output arrays for loss and flux
-    watershed_nodata = -1.0
-    watershed_uri = 'watershed_mask.tif'
-    watershed_dataset = pygeoprocessing.new_raster_from_base(
-        outflow_direction_dataset, watershed_uri, 'GTiff', watershed_nodata,
+    watershed_nodata = 255
+    watershed_mask_uri = 'watershed_mask.tif'
+    pygeoprocessing.new_raster_from_base_uri(
+        outflow_direction_uri, watershed_mask_uri, 'GTiff', watershed_nodata,
         gdal.GDT_Byte, fill_value=watershed_nodata)
+    watershed_dataset = gdal.Open(watershed_mask_uri, gdal.GA_Update)
     watershed_band = watershed_dataset.GetRasterBand(1)
 
     cache_dirty[:] = 0
@@ -2796,67 +2819,65 @@ def delineate_watershed(
         for point_feature in layer:
             point_geometry = point_feature.GetGeometryRef()
             point = point_geometry.GetPoint()
-            x_coord = point[0]
-            y_coord = point[1]
-
-            x_index = (x_coord - geotransform[0]) // geotransform[1]
-            y_index = (y_coord - geotransform[3]) // geotransform[5]
-
-            LOGGER.debug("%f, %f", x_coord, y_coord)
-            LOGGER.debug("%d, %d", x_index, y_index)
+            x_index = (point[0] - geotransform[0]) // geotransform[1]
+            y_index = (point[1] - geotransform[3]) // geotransform[5]
 
             work_stack.push(y_index * n_cols + x_index)
 
-    while work_stack.size() > 0:
-        current_index = work_stack.top()
-        work_stack.pop()
-        with cython.cdivision(True):
-            global_row = current_index / n_cols
-            global_col = current_index % n_cols
+            while work_stack.size() > 0:
+                current_index = work_stack.top()
+                work_stack.pop()
+                with cython.cdivision(True):
+                    global_row = current_index / n_cols
+                    global_col = current_index % n_cols
 
-        block_cache.update_cache(
-            global_row, global_col, &row_index, &col_index, &row_block_offset,
-            &col_block_offset)
+                block_cache.update_cache(
+                    global_row, global_col, &row_index, &col_index, &row_block_offset,
+                    &col_block_offset)
 
-        if watershed_block[
-                row_index, col_index, row_block_offset, col_block_offset] == 1:
-            continue
+                if watershed_block[
+                        row_index, col_index, row_block_offset, col_block_offset] == 1:
+                    continue
 
-        watershed_block[
-            row_index, col_index, row_block_offset, col_block_offset] = 1
-        cache_dirty[row_index, col_index] = 1
+                watershed_block[
+                    row_index, col_index, row_block_offset, col_block_offset] = 1
+                cache_dirty[row_index, col_index] = 1
 
-        for direction_index in xrange(8):
-            #get percent flow from neighbor to current cell
-            neighbor_row = global_row + row_offsets[direction_index]
-            neighbor_col = global_col + col_offsets[direction_index]
+                for direction_index in xrange(8):
+                    #get percent flow from neighbor to current cell
+                    neighbor_row = global_row + row_offsets[direction_index]
+                    neighbor_col = global_col + col_offsets[direction_index]
 
-            #See if neighbor out of bounds
-            if (neighbor_row < 0 or neighbor_row >= n_rows or neighbor_col < 0 or neighbor_col >= n_cols):
-                continue
+                    #See if neighbor out of bounds
+                    if (neighbor_row < 0 or neighbor_row >= n_rows or neighbor_col < 0 or neighbor_col >= n_cols):
+                        continue
 
-            block_cache.update_cache(neighbor_row, neighbor_col, &neighbor_row_index, &neighbor_col_index, &neighbor_row_block_offset, &neighbor_col_block_offset)
-            #if neighbor inflows
-            neighbor_direction = outflow_direction_block[neighbor_row_index, neighbor_col_index, neighbor_row_block_offset, neighbor_col_block_offset]
-            if neighbor_direction == outflow_direction_nodata:
-                continue
+                    block_cache.update_cache(neighbor_row, neighbor_col, &neighbor_row_index, &neighbor_col_index, &neighbor_row_block_offset, &neighbor_col_block_offset)
+                    #if neighbor inflows
+                    neighbor_direction = outflow_direction_block[neighbor_row_index, neighbor_col_index, neighbor_row_block_offset, neighbor_col_block_offset]
+                    if neighbor_direction == outflow_direction_nodata:
+                        continue
 
-            #check if the cell flows directly, or is one index off
-            if (inflow_offsets[direction_index] != neighbor_direction and
-                    ((inflow_offsets[direction_index] - 1) % 8) != neighbor_direction):
-                #then neighbor doesn't inflow into current cell
-                continue
+                    #check if the cell flows directly, or is one index off
+                    if (inflow_offsets[direction_index] != neighbor_direction and
+                            ((inflow_offsets[direction_index] - 1) % 8) != neighbor_direction):
+                        #then neighbor doesn't inflow into current cell
+                        continue
 
-            #Calculate the outflow weight
-            outflow_weight = outflow_weights_block[neighbor_row_index, neighbor_col_index, neighbor_row_block_offset, neighbor_col_block_offset]
+                    #Calculate the outflow weight
+                    outflow_weight = outflow_weights_block[neighbor_row_index, neighbor_col_index, neighbor_row_block_offset, neighbor_col_block_offset]
 
-            if ((inflow_offsets[direction_index] - 1) % 8) == neighbor_direction:
-                outflow_weight = 1.0 - outflow_weight
+                    if ((inflow_offsets[direction_index] - 1) % 8) == neighbor_direction:
+                        outflow_weight = 1.0 - outflow_weight
 
-            if outflow_weight <= 0.0:
-                continue
+                    if outflow_weight <= 0.0:
+                        continue
 
-            work_stack.push(neighbor_row * n_cols + neighbor_col)
+                    work_stack.push(neighbor_row * n_cols + neighbor_col)
 
 
-    block_cache.flush_cache()
+            block_cache.flush_cache()
+            gdal.Polygonize(
+                watershed_band, None, watershed_layer, 0)
+            return
+            watershed_band.Fill(watershed_nodata)
