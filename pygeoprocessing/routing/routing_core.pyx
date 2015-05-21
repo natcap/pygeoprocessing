@@ -2838,7 +2838,7 @@ def delineate_watershed(
             while work_stack.size() > 0:
                 time(&current_time)
                 if current_time - last_time > 5.0:
-                    LOGGER.info('work_stack = %d n_points_left' %, work_stack.size(), n_points_left)
+                    LOGGER.info('work_stack = %d n_points_left %d', work_stack.size(), n_points_left)
                     last_time = current_time
 
                 current_index = work_stack.top()

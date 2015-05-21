@@ -363,6 +363,5 @@ def delineate_watershed(
 
     pygeoprocessing.routing.routing_core.delineate_watershed(
         outflow_direction_uri, outflow_weights_uri,
-        snap_distance, flow_accumulation_uri,
-        outlet_shapefile_uri, watershed_out_uri)
-
+        outlet_shapefile_uri, snap_distance, flow_accumulation_uri,
+        watershed_out_uri)
