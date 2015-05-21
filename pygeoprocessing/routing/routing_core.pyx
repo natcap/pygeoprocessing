@@ -2721,6 +2721,9 @@ def delineate_watershed(
         outflow_direction_uri, outflow_weights_uri, outlet_shapefile_uri,
         watershed_out_uri):
 
+    cdef time_t last_time, current_time
+    time(&last_time)
+
     cdef int *row_offsets = [0, -1, -1, -1,  0,  1, 1, 1]
     cdef int *col_offsets = [1,  1,  0, -1, -1, -1, 0, 1]
     cdef int *inflow_offsets = [4, 5, 6, 7, 0, 1, 2, 3]
@@ -2816,15 +2819,25 @@ def delineate_watershed(
     geotransform = outflow_direction_dataset.GetGeoTransform()
 
     for layer in outlet_ds:
+        n_points_left = layer.GetFeatureCount()
         for point_feature in layer:
             point_geometry = point_feature.GetGeometryRef()
             point = point_geometry.GetPoint()
             x_index = (point[0] - geotransform[0]) // geotransform[1]
             y_index = (point[1] - geotransform[3]) // geotransform[5]
-
+            if x_index < 0 or x_index >= n_cols or y_index < 0 or y_index > n_rows:
+                LOGGER.warn('Encountered a point that was outside the bounds of the DEM %s', point_geometry)
+                continue
+            LOGGER.info('%d points left', n_points_left)
+            n_points_left -= 1
             work_stack.push(y_index * n_cols + x_index)
 
             while work_stack.size() > 0:
+                time(&current_time)
+                if current_time - last_time > 5.0:
+                    LOGGER.info('work_stack = %d n_points_left' %, work_stack.size(), n_points_left)
+                    last_time = current_time
+
                 current_index = work_stack.top()
                 work_stack.pop()
                 with cython.cdivision(True):
