@@ -2878,6 +2878,6 @@ def delineate_watershed(
 
             block_cache.flush_cache()
             gdal.Polygonize(
-                watershed_band, None, watershed_layer, 0)
+                watershed_band, watershed_band, watershed_layer, 0, ["8CONNECTED=8"])
             return
             watershed_band.Fill(watershed_nodata)
