@@ -2765,10 +2765,20 @@ def delineate_watershed(
     field = ogr.FieldDefn('pixel_value', ogr.OFTReal)
     watershed_layer.CreateField(field)
 
+    if os.path.isfile(snapped_outlet_points_uri):
+        os.remove(snapped_outlet_points_uri)
+
     snapped_outlet_points_datasource = output_driver.CreateDataSource(
         snapped_outlet_points_uri)
     snapped_outlet_points_layer = snapped_outlet_points_datasource.CreateLayer(
         'snapped_outlet_points', output_sr, ogr.wkbPoint)
+
+    outlet_ds = ogr.Open(outlet_shapefile_uri)
+    outlet_layer = outlet_ds.GetLayer()
+    outlet_defn = outlet_layer.GetLayerDefn()
+    for index in xrange(outlet_defn.GetFieldCount()):
+        field_defn = outlet_defn.GetFieldDefn(index)
+        snapped_outlet_points_layer.CreateField(field_defn)
 
     #center point of global index
     cdef int global_row, global_col #index into the overall raster
@@ -2821,7 +2831,6 @@ def delineate_watershed(
     cdef stack[int] work_stack
 
     #parse out each point in the input shapefile and determine the x/y coordinate in the raster
-    outlet_ds = ogr.Open(outlet_shapefile_uri)
     geotransform = outflow_direction_dataset.GetGeoTransform()
 
     flow_accumulation_ds = gdal.Open(flow_accumulation_uri)
