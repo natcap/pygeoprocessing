@@ -2886,9 +2886,13 @@ def delineate_watershed(
 
                 # Get the output Layer's Feature Definition
                 feature_def = snapped_outlet_points_layer.GetLayerDefn()
-                point_feature = ogr.Feature(feature_def)
-                point_feature.SetGeometry(point_geometry)
-                snapped_outlet_points_layer.CreateFeature(point_feature)
+                snapped_point_feature = ogr.Feature(feature_def)
+                snapped_point_feature.SetGeometry(point_geometry)
+
+                for index in xrange(point_feature.GetFieldCount()):
+                    snapped_point_feature.SetField(
+                        index, point_feature.GetField(index))
+                snapped_outlet_points_layer.CreateFeature(snapped_point_feature)
 
             work_stack.push(y_index * n_cols + x_index)
             count += 1
