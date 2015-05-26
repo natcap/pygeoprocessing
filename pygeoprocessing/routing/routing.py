@@ -347,6 +347,7 @@ def delineate_watershed(
         outlet_shapefile_uri (string) - a shapefile of points indicating the
             outflow points of the desired watershed.
         watershed_out_uri (string) - the uri to output the shapefile
+        snapped_outlet_points_uri (string) - the uri to output snapped points
 
         returns nothing"""
     flow_direction_uri = pygeoprocessing.temporary_filename()
@@ -358,10 +359,9 @@ def delineate_watershed(
         flow_direction_uri, outflow_weights_uri, outflow_direction_uri)
 
     flow_accumulation_uri = pygeoprocessing.temporary_filename()
-    flow_accumulation(
-        flow_direction_uri, dem_uri, flow_accumulation_uri)
+    flow_accumulation(flow_direction_uri, dem_uri, flow_accumulation_uri)
 
     pygeoprocessing.routing.routing_core.delineate_watershed(
         outflow_direction_uri, outflow_weights_uri,
         outlet_shapefile_uri, snap_distance, flow_accumulation_uri,
-        watershed_out_uri)
+        watershed_out_uri, snapped_outlet_points_uri)

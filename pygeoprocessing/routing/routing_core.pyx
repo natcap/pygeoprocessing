@@ -2722,7 +2722,8 @@ def route_flux(
 
 def delineate_watershed(
         outflow_direction_uri, outflow_weights_uri, outlet_shapefile_uri,
-        snap_distance, flow_accumulation_uri, watershed_out_uri):
+        snap_distance, flow_accumulation_uri, watershed_out_uri,
+        snapped_outlet_points_uri):
 
     cdef time_t last_time, current_time
     time(&last_time)
@@ -2764,6 +2765,10 @@ def delineate_watershed(
     field = ogr.FieldDefn('pixel_value', ogr.OFTReal)
     watershed_layer.CreateField(field)
 
+    snapped_outlet_points_datasource = output_driver.CreateDataSource(
+        snapped_outlet_points_uri)
+    snapped_outlet_points_layer = snapped_outlet_points_datasource.CreateLayer(
+        'snapped_outlet_points', output_sr, ogr.wkbPoint)
 
     #center point of global index
     cdef int global_row, global_col #index into the overall raster
@@ -2797,7 +2802,7 @@ def delineate_watershed(
 
     #Create output arrays for loss and flux
     watershed_nodata = 255
-    watershed_mask_uri = 'watershed_mask.tif'
+    watershed_mask_uri = pygeoprocessing.temporary_filename()
     pygeoprocessing.new_raster_from_base_uri(
         outflow_direction_uri, watershed_mask_uri, 'GTiff', watershed_nodata,
         gdal.GDT_Byte, fill_value=watershed_nodata)
@@ -2816,9 +2821,7 @@ def delineate_watershed(
     cdef stack[int] work_stack
 
     #parse out each point in the input shapefile and determine the x/y coordinate in the raster
-
     outlet_ds = ogr.Open(outlet_shapefile_uri)
-
     geotransform = outflow_direction_dataset.GetGeoTransform()
 
     flow_accumulation_ds = gdal.Open(flow_accumulation_uri)
@@ -2866,6 +2869,17 @@ def delineate_watershed(
 
                 y_index += offset_row
                 x_index += offset_col
+
+                point_geometry = ogr.Geometry(ogr.wkbPoint)
+                point_geometry.AddPoint(
+                    geotransform[0] + x_index * geotransform[1],
+                    geotransform[3] + y_index * geotransform[5])
+
+                # Get the output Layer's Feature Definition
+                feature_def = snapped_outlet_points_layer.GetLayerDefn()
+                point_feature = ogr.Feature(feature_def)
+                point_feature.SetGeometry(point_geometry)
+                snapped_outlet_points_layer.CreateFeature(point_feature)
 
             work_stack.push(y_index * n_cols + x_index)
             count += 1
@@ -2925,14 +2939,10 @@ def delineate_watershed(
 
                     work_stack.push(neighbor_row * n_cols + neighbor_col)
 
-
             block_cache.flush_cache()
             gdal.Polygonize(
                 watershed_band, watershed_band, watershed_layer, 0, ["8CONNECTED=8"])
             watershed_band.Fill(watershed_nodata)
-            #watershed_band.FlushCache()
-            #block_cache.flush_cache()
-
 
     for feature_id in xrange(watershed_layer.GetFeatureCount()):
         watershed_feature = watershed_layer.GetFeature(feature_id)
