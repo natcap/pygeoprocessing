@@ -177,6 +177,9 @@ cdef class BlockCache:
                                 yoff=global_row_offset, xoff=global_col_offset)
         for band in self.band_list:
             band.FlushCache()
+        self.row_tag_cache[:] = -1
+        self.col_tag_cache[:] = -1
+        self.cache_dirty[:] = 0
 
 @cython.boundscheck(False)
 @cython.wraparound(False)
@@ -2818,6 +2821,9 @@ def delineate_watershed(
 
     geotransform = outflow_direction_dataset.GetGeoTransform()
 
+    flow_accumulation_ds = gdal.Open(flow_accumulation_uri)
+    flow_accumulation_band = flow_accumulation_ds.GetRasterBand(1)
+    count = 0
     for layer in outlet_ds:
         n_points_left = layer.GetFeatureCount()
         for point_feature in layer:
@@ -2831,10 +2837,38 @@ def delineate_watershed(
             n_points_left -= 1
 
             if snap_distance > 0:
-                pass
+                x_center = x_index
+                y_center = y_index
+                x_left = x_index - snap_distance
+                if x_left < 0:
+                    x_left = 0
+                y_top = y_index - snap_distance
+                if y_top < 0:
+                    y_top = 0
+                x_right = x_index + snap_distance
+                if x_right >= n_cols:
+                    x_right = n_cols - 1
+                y_bottom = y_index + snap_distance
+                if y_bottom >= n_rows:
+                    y_bottom = n_rows - 1
+
+
+                LOGGER.debug("%s, %s, %s, %s", x_left, y_top, x_right - x_left, y_bottom - y_top)
+                flow_accumulation_window = flow_accumulation_band.ReadAsArray(
+                    int(x_left), int(y_top), int(x_right - x_left), int(y_bottom - y_top))
+
+                max_row, max_col = numpy.unravel_index(
+                    flow_accumulation_window.argmax(),
+                    flow_accumulation_window.shape)
+
+                offset_row = max_row - (y_center - y_top)
+                offset_col = max_col - (x_center - x_left)
+
+                y_index += offset_row
+                x_index += offset_col
 
             work_stack.push(y_index * n_cols + x_index)
-
+            count += 1
             while work_stack.size() > 0:
                 time(&current_time)
                 if current_time - last_time > 5.0:
@@ -2896,6 +2930,9 @@ def delineate_watershed(
             gdal.Polygonize(
                 watershed_band, watershed_band, watershed_layer, 0, ["8CONNECTED=8"])
             watershed_band.Fill(watershed_nodata)
+            #watershed_band.FlushCache()
+            #block_cache.flush_cache()
+
 
     for feature_id in xrange(watershed_layer.GetFeatureCount()):
         watershed_feature = watershed_layer.GetFeature(feature_id)
