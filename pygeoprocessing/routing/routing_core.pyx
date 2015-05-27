@@ -2779,6 +2779,7 @@ def delineate_watershed(
     for index in xrange(outlet_defn.GetFieldCount()):
         field_defn = outlet_defn.GetFieldDefn(index)
         snapped_outlet_points_layer.CreateField(field_defn)
+        watershed_layer.CreateField(field_defn)
 
     #center point of global index
     cdef int global_row, global_col #index into the overall raster
