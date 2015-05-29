@@ -2762,7 +2762,7 @@ def delineate_watershed(
     watershed_layer = watershed_datasource.CreateLayer(
             'serviceshed', output_sr, ogr.wkbPolygon)
 
-    field = ogr.FieldDefn('pixel_value', ogr.OFTReal)
+    field = ogr.FieldDefn('pixel_valu', ogr.OFTReal)
     watershed_layer.CreateField(field)
 
     if os.path.isfile(snapped_outlet_points_uri):
@@ -2866,7 +2866,8 @@ def delineate_watershed(
                     y_bottom = n_rows - 1
 
                 flow_accumulation_window = flow_accumulation_band.ReadAsArray(
-                    int(x_left), int(y_top), int(x_right - x_left), int(y_bottom - y_top))
+                    int(x_left), int(y_top), int(x_right - x_left),
+                    int(y_bottom - y_top))
 
                 max_row, max_col = numpy.unravel_index(
                     flow_accumulation_window.argmax(),
@@ -2898,7 +2899,9 @@ def delineate_watershed(
             while work_stack.size() > 0:
                 time(&current_time)
                 if current_time - last_time > 5.0:
-                    LOGGER.info('work_stack_size=%d, n_outlet_points_left=%d', work_stack.size(), n_points_left)
+                    LOGGER.info(
+                        'work_stack_size=%d, n_outlet_points_left=%d',
+                        work_stack.size(), n_points_left)
                     last_time = current_time
 
                 current_index = work_stack.top()
@@ -2908,15 +2911,17 @@ def delineate_watershed(
                     global_col = current_index % n_cols
 
                 block_cache.update_cache(
-                    global_row, global_col, &row_index, &col_index, &row_block_offset,
-                    &col_block_offset)
+                    global_row, global_col, &row_index, &col_index,
+                    &row_block_offset, &col_block_offset)
 
                 if watershed_block[
-                        row_index, col_index, row_block_offset, col_block_offset] == 1:
+                        row_index, col_index, row_block_offset,
+                        col_block_offset] == 1:
                     continue
 
                 watershed_block[
-                    row_index, col_index, row_block_offset, col_block_offset] = 1
+                    row_index, col_index, row_block_offset,
+                    col_block_offset] = 1
                 cache_dirty[row_index, col_index] = 1
 
                 for direction_index in xrange(8):
@@ -2952,12 +2957,27 @@ def delineate_watershed(
                     work_stack.push(neighbor_row * n_cols + neighbor_col)
 
             block_cache.flush_cache()
+            original_feature_count = watershed_layer.GetFeatureCount()
             gdal.Polygonize(
                 watershed_band, watershed_band, watershed_layer, 0, ["8CONNECTED=8"])
+            #get the last n features and add the point field values
+            #to the polygon feature
+            n_added = watershed_layer.GetFeatureCount() - original_feature_count
+            for added_feature_index in xrange(n_added):
+                watershed_feature = watershed_layer.GetFeature(
+                    watershed_layer.GetFeatureCount() - 1 - added_feature_index)
+                for index in xrange(point_feature.GetFieldCount()):
+                    watershed_feature.SetField(
+                        index+1, point_feature.GetField(index))
+                watershed_layer.SetFeature(watershed_feature)
+                watershed_feature = None
             watershed_band.Fill(watershed_nodata)
+
 
     for feature_id in xrange(watershed_layer.GetFeatureCount()):
         watershed_feature = watershed_layer.GetFeature(feature_id)
         pixel_value = watershed_feature.GetField('pixel_valu')
         if pixel_value == watershed_nodata:
             watershed_layer.DeleteFeature(feature_id)
+    #finally, remove the pixel value field
+    watershed_layer.DeleteField(0)
