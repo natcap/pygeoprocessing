@@ -2,9 +2,10 @@
 History
 #######
 
-0.2.3dev (XXX)
+0.3.0 (XXX)
 --------------
 
+* Added watershed delination routine to pygeoprocessing.routing.delineate_watershed.  Operates on a DEM and point shapefile, optionally snaps outlet points to nearest stream as defined by a thresholded flow accumulation raster and copies the oulet point fields into the constructed watershed shapefile.
 * Fixing a memory leak in block caches that held on to dataset, band, and block references even after the object was destroyed.
 
 0.2.2 (2015-05-07)
