@@ -9,11 +9,14 @@ cimport numpy
 cimport cython
 import osgeo
 from osgeo import gdal
+from osgeo import ogr
+from osgeo import osr
 from cython.operator cimport dereference as deref
 
 from libcpp.set cimport set as c_set
 from libcpp.deque cimport deque
 from libcpp.map cimport map
+from libcpp.stack cimport stack
 from libc.math cimport atan
 from libc.math cimport atan2
 from libc.math cimport tan
@@ -174,6 +177,9 @@ cdef class BlockCache:
                                 yoff=global_row_offset, xoff=global_col_offset)
         for band in self.band_list:
             band.FlushCache()
+        self.row_tag_cache[:] = -1
+        self.col_tag_cache[:] = -1
+        self.cache_dirty[:] = 0
 
 @cython.boundscheck(False)
 @cython.wraparound(False)
@@ -2713,3 +2719,272 @@ def route_flux(
         except OSError as exception:
             LOGGER.warn("couldn't remove %s because it's still open", ds_uri)
             LOGGER.warn(exception)
+
+def delineate_watershed(
+        outflow_direction_uri, outflow_weights_uri, outlet_shapefile_uri,
+        snap_distance, stream_uri, watershed_out_uri,
+        snapped_outlet_points_uri):
+
+    cdef time_t last_time, current_time
+    time(&last_time)
+
+    cdef int *row_offsets = [0, -1, -1, -1,  0,  1, 1, 1]
+    cdef int *col_offsets = [1,  1,  0, -1, -1, -1, 0, 1]
+    cdef int *inflow_offsets = [4, 5, 6, 7, 0, 1, 2, 3]
+
+    #Pass transport
+    cdef time_t start
+    time(&start)
+
+    #Create output arrays for loss and flux
+    outflow_direction_dataset = gdal.Open(outflow_direction_uri)
+    cdef int n_cols = outflow_direction_dataset.RasterXSize
+    cdef int n_rows = outflow_direction_dataset.RasterYSize
+    outflow_direction_band = outflow_direction_dataset.GetRasterBand(1)
+
+    cdef int block_col_size, block_row_size
+    block_col_size, block_row_size = outflow_direction_band.GetBlockSize()
+
+
+    if os.path.isfile(watershed_out_uri):
+        os.remove(watershed_out_uri)
+
+    pygeoprocessing.geoprocessing.create_directories(
+        [os.path.dirname(watershed_out_uri)])
+
+    projection_wkt = outflow_direction_dataset.GetProjection()
+    output_sr = osr.SpatialReference()
+    output_sr.ImportFromWkt(projection_wkt)
+
+    output_driver = ogr.GetDriverByName('ESRI Shapefile')
+    watershed_datasource = output_driver.CreateDataSource(
+        watershed_out_uri)
+    watershed_layer = watershed_datasource.CreateLayer(
+            'serviceshed', output_sr, ogr.wkbPolygon)
+
+    field = ogr.FieldDefn('pixel_valu', ogr.OFTReal)
+    watershed_layer.CreateField(field)
+
+    if os.path.isfile(snapped_outlet_points_uri):
+        os.remove(snapped_outlet_points_uri)
+
+    snapped_outlet_points_datasource = output_driver.CreateDataSource(
+        snapped_outlet_points_uri)
+    snapped_outlet_points_layer = snapped_outlet_points_datasource.CreateLayer(
+        'snapped_outlet_points', output_sr, ogr.wkbPoint)
+
+    outlet_ds = ogr.Open(outlet_shapefile_uri)
+    outlet_layer = outlet_ds.GetLayer()
+    outlet_defn = outlet_layer.GetLayerDefn()
+    for index in xrange(outlet_defn.GetFieldCount()):
+        field_defn = outlet_defn.GetFieldDefn(index)
+        snapped_outlet_points_layer.CreateField(field_defn)
+        watershed_layer.CreateField(field_defn)
+
+    #center point of global index
+    cdef int global_row, global_col #index into the overall raster
+    cdef int row_index, col_index #the index of the cache block
+    cdef int row_block_offset, col_block_offset #index into the cache block
+    cdef int global_block_row, global_block_col #used to walk the global blocks
+
+    #neighbor sections of global index
+    cdef int neighbor_row, neighbor_col #neighbor equivalent of global_{row,col}
+    cdef int neighbor_row_index, neighbor_col_index #neighbor cache index
+    cdef int neighbor_row_block_offset, neighbor_col_block_offset #index into the neighbor cache block
+
+    #define all the caches
+    cdef numpy.ndarray[numpy.npy_int8, ndim=4] outflow_direction_block = numpy.zeros(
+        (N_BLOCK_ROWS, N_BLOCK_COLS, block_row_size, block_col_size), dtype=numpy.int8)
+    cdef numpy.ndarray[numpy.npy_float32, ndim=4] outflow_weights_block = numpy.zeros(
+        (N_BLOCK_ROWS, N_BLOCK_COLS, block_row_size, block_col_size), dtype=numpy.float32)
+    cdef numpy.ndarray[numpy.npy_int8, ndim=4] watershed_block = numpy.zeros(
+        (N_BLOCK_ROWS, N_BLOCK_COLS, block_row_size, block_col_size), dtype=numpy.int8)
+
+    cdef numpy.ndarray[numpy.npy_int8, ndim=2] cache_dirty = numpy.zeros(
+        (N_BLOCK_ROWS, N_BLOCK_COLS), dtype=numpy.int8)
+
+    cdef int outflow_direction_nodata = pygeoprocessing.get_nodata_from_uri(
+        outflow_direction_uri)
+
+    outflow_weights_dataset = gdal.Open(outflow_weights_uri)
+    outflow_weights_band = outflow_weights_dataset.GetRasterBand(1)
+    cdef int outflow_weights_nodata = pygeoprocessing.get_nodata_from_uri(
+        outflow_weights_uri)
+
+    #Create output arrays for loss and flux
+    watershed_nodata = 255
+    watershed_mask_uri = pygeoprocessing.temporary_filename()
+    pygeoprocessing.new_raster_from_base_uri(
+        outflow_direction_uri, watershed_mask_uri, 'GTiff', watershed_nodata,
+        gdal.GDT_Byte, fill_value=watershed_nodata)
+    watershed_dataset = gdal.Open(watershed_mask_uri, gdal.GA_Update)
+    watershed_band = watershed_dataset.GetRasterBand(1)
+
+    cache_dirty[:] = 0
+    band_list = [outflow_direction_band, outflow_weights_band, watershed_band]
+    block_list = [outflow_direction_block, outflow_weights_block, watershed_block]
+    update_list = [False, False, True]
+
+    cdef BlockCache block_cache = BlockCache(
+        N_BLOCK_ROWS, N_BLOCK_COLS, n_rows, n_cols, block_row_size,
+        block_col_size, band_list, block_list, update_list, cache_dirty)
+
+    cdef stack[int] work_stack
+
+    #parse out each point in the input shapefile and determine the x/y coordinate in the raster
+    geotransform = outflow_direction_dataset.GetGeoTransform()
+    stream_ds = gdal.Open(stream_uri)
+    stream_band = stream_ds.GetRasterBand(1)
+    count = 0
+    for layer in outlet_ds:
+        n_points_left = layer.GetFeatureCount()
+        for point_feature in layer:
+            point_geometry = point_feature.GetGeometryRef()
+            point = point_geometry.GetPoint()
+            x_index = (point[0] - geotransform[0]) // geotransform[1]
+            y_index = (point[1] - geotransform[3]) // geotransform[5]
+            if x_index < 0 or x_index >= n_cols or y_index < 0 or y_index > n_rows:
+                LOGGER.warn('Encountered a point that was outside the bounds of the DEM %s', point_geometry)
+                continue
+            n_points_left -= 1
+
+            if snap_distance > 0:
+                x_center = x_index
+                y_center = y_index
+                x_left = x_index - snap_distance
+                if x_left < 0:
+                    x_left = 0
+                y_top = y_index - snap_distance
+                if y_top < 0:
+                    y_top = 0
+                x_right = x_index + snap_distance
+                if x_right >= n_cols:
+                    x_right = n_cols - 1
+                y_bottom = y_index + snap_distance
+                if y_bottom >= n_rows:
+                    y_bottom = n_rows - 1
+
+                #snap to the nearest stream pixel
+                stream_window = stream_band.ReadAsArray(
+                    int(x_left), int(y_top), int(x_right - x_left),
+                    int(y_bottom - y_top))
+                row_indexes, col_indexes = numpy.nonzero(
+                    stream_window == 1)
+                if row_indexes.size > 0:
+                    #calc euclidan distance
+                    distance_array = (
+                        (row_indexes - stream_window.shape[0] / 2) ** 2 +
+                        (col_indexes - stream_window.shape[1] / 2) **2) ** 0.5
+
+                    #closest element
+                    min_index = numpy.argmin(distance_array)
+                    min_row = row_indexes[min_index]
+                    min_col = col_indexes[min_index]
+                    offset_row = min_row - (y_center - y_top)
+                    offset_col = min_col - (x_center - x_left)
+
+                    y_index += offset_row
+                    x_index += offset_col
+
+                point_geometry = ogr.Geometry(ogr.wkbPoint)
+                point_geometry.AddPoint(
+                    geotransform[0] + (x_index + 0.5) * geotransform[1],
+                    geotransform[3] + (y_index + 0.5) * geotransform[5])
+
+                # Get the output Layer's Feature Definition
+                feature_def = snapped_outlet_points_layer.GetLayerDefn()
+                snapped_point_feature = ogr.Feature(feature_def)
+                snapped_point_feature.SetGeometry(point_geometry)
+
+                for index in xrange(point_feature.GetFieldCount()):
+                    snapped_point_feature.SetField(
+                        index, point_feature.GetField(index))
+                snapped_outlet_points_layer.CreateFeature(snapped_point_feature)
+
+            work_stack.push(y_index * n_cols + x_index)
+            count += 1
+            while work_stack.size() > 0:
+                time(&current_time)
+                if current_time - last_time > 5.0:
+                    LOGGER.info(
+                        'work_stack_size=%d, n_outlet_points_left=%d',
+                        work_stack.size(), n_points_left)
+                    last_time = current_time
+
+                current_index = work_stack.top()
+                work_stack.pop()
+                with cython.cdivision(True):
+                    global_row = current_index / n_cols
+                    global_col = current_index % n_cols
+
+                block_cache.update_cache(
+                    global_row, global_col, &row_index, &col_index,
+                    &row_block_offset, &col_block_offset)
+
+                if watershed_block[
+                        row_index, col_index, row_block_offset,
+                        col_block_offset] == 1:
+                    continue
+
+                watershed_block[
+                    row_index, col_index, row_block_offset,
+                    col_block_offset] = 1
+                cache_dirty[row_index, col_index] = 1
+
+                for direction_index in xrange(8):
+                    #get percent flow from neighbor to current cell
+                    neighbor_row = global_row + row_offsets[direction_index]
+                    neighbor_col = global_col + col_offsets[direction_index]
+
+                    #See if neighbor out of bounds
+                    if (neighbor_row < 0 or neighbor_row >= n_rows or neighbor_col < 0 or neighbor_col >= n_cols):
+                        continue
+
+                    block_cache.update_cache(neighbor_row, neighbor_col, &neighbor_row_index, &neighbor_col_index, &neighbor_row_block_offset, &neighbor_col_block_offset)
+                    #if neighbor inflows
+                    neighbor_direction = outflow_direction_block[neighbor_row_index, neighbor_col_index, neighbor_row_block_offset, neighbor_col_block_offset]
+                    if neighbor_direction == outflow_direction_nodata:
+                        continue
+
+                    #check if the cell flows directly, or is one index off
+                    if (inflow_offsets[direction_index] != neighbor_direction and
+                            ((inflow_offsets[direction_index] - 1) % 8) != neighbor_direction):
+                        #then neighbor doesn't inflow into current cell
+                        continue
+
+                    #Calculate the outflow weight
+                    outflow_weight = outflow_weights_block[neighbor_row_index, neighbor_col_index, neighbor_row_block_offset, neighbor_col_block_offset]
+
+                    if ((inflow_offsets[direction_index] - 1) % 8) == neighbor_direction:
+                        outflow_weight = 1.0 - outflow_weight
+
+                    if outflow_weight <= 0.0:
+                        continue
+
+                    work_stack.push(neighbor_row * n_cols + neighbor_col)
+
+            block_cache.flush_cache()
+            original_feature_count = watershed_layer.GetFeatureCount()
+            gdal.Polygonize(
+                watershed_band, watershed_band, watershed_layer, 0, ["8CONNECTED=8"])
+            #get the last n features and add the point field values
+            #to the polygon feature
+            n_added = watershed_layer.GetFeatureCount() - original_feature_count
+            for added_feature_index in xrange(n_added):
+                watershed_feature = watershed_layer.GetFeature(
+                    watershed_layer.GetFeatureCount() - 1 - added_feature_index)
+                for index in xrange(point_feature.GetFieldCount()):
+                    watershed_feature.SetField(
+                        index+1, point_feature.GetField(index))
+                watershed_layer.SetFeature(watershed_feature)
+                watershed_feature = None
+            watershed_band.Fill(watershed_nodata)
+
+
+    for feature_id in xrange(watershed_layer.GetFeatureCount()):
+        watershed_feature = watershed_layer.GetFeature(feature_id)
+        pixel_value = watershed_feature.GetField('pixel_valu')
+        if pixel_value == watershed_nodata:
+            watershed_layer.DeleteFeature(feature_id)
+    #finally, remove the pixel value field
+    watershed_layer.DeleteField(0)

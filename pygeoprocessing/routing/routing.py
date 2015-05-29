@@ -336,3 +336,53 @@ def flow_direction_d_inf(
         os.remove(labels_uri)
     except OSError:
         pass #just a file lock
+
+
+def delineate_watershed(
+        dem_uri, outlet_shapefile_uri, snap_distance, flow_threshold,
+        watershed_out_uri, snapped_outlet_points_uri, stream_out_uri):
+    """Delinates a watershed based on the dem and the outlet points specified.
+        The algorithm will attempt to snap the outlet point to the nearest
+        stream defined by a d-infinity flow accumulation raster thresholded by
+        the 'flow_threshold' parameter.
+
+        dem_uri (string) - uri to DEM layer
+        outlet_shapefile_uri (string) - a shapefile of points indicating the
+            outflow points of the desired watershed.
+        snap_distance (int) - distance in pixels to search for a stream pixel
+            to snap the outlet to
+        flow_threshold (int) - threshold value to classify a stream pixel from
+            the flow accumulation raster
+        watershed_out_uri (string) - the uri to output the shapefile
+        snapped_outlet_points_uri (string) - the uri to output snapped points
+        stream_out_uri (string) - the uri to a raster masking the stream layer
+
+        returns nothing"""
+
+    dem_ds = gdal.Open(dem_uri)
+    dem_band = dem_ds.GetRasterBand(1)
+    block_size = dem_band.GetBlockSize()
+    if ((block_size[0] != 256 or block_size[1] != 256) and
+            (dem_band.XSize >= 256 and dem_band.YSize >= 256)):
+        blocked_dem_uri = pygeoprocessing.temporary_filename()
+        pygeoprocessing.tile_dataset_uri(dem_uri, blocked_dem_uri, 256)
+    else:
+        blocked_dem_uri = dem_uri
+
+    flow_direction_uri = pygeoprocessing.temporary_filename()
+    flow_direction_d_inf(blocked_dem_uri, flow_direction_uri)
+
+    outflow_weights_uri = pygeoprocessing.temporary_filename()
+    outflow_direction_uri = pygeoprocessing.temporary_filename()
+    pygeoprocessing.routing.routing_core.calculate_flow_weights(
+        flow_direction_uri, outflow_weights_uri, outflow_direction_uri)
+
+    flow_accumulation_uri = pygeoprocessing.temporary_filename()
+    flow_accumulation(
+        flow_direction_uri, blocked_dem_uri, flow_accumulation_uri)
+    stream_threshold(flow_accumulation_uri, flow_threshold, stream_out_uri)
+
+    pygeoprocessing.routing.routing_core.delineate_watershed(
+        outflow_direction_uri, outflow_weights_uri,
+        outlet_shapefile_uri, snap_distance, stream_out_uri,
+        watershed_out_uri, snapped_outlet_points_uri)
