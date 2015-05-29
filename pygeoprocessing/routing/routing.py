@@ -350,8 +350,21 @@ def delineate_watershed(
         snapped_outlet_points_uri (string) - the uri to output snapped points
 
         returns nothing"""
+
+    dem_ds = gdal.Open(dem_uri)
+    dem_band = dem_ds.GetRasterBand(1)
+    block_size = dem_band.GetBlockSize()
+    if ((block_size[0] != 256 or block_size[1] != 256) and
+            (dem_band.XSize >= 256 and dem_band.YSize >= 256)):
+
+        blocked_dem_uri = pygeoprocessing.temporary_filename()
+        pygeoprocessing.tile_dataset_uri(dem_uri, blocked_dem_uri, 256)
+    else:
+        blocked_dem_uri = dem_uri
+
+
     flow_direction_uri = pygeoprocessing.temporary_filename()
-    flow_direction_d_inf(dem_uri, flow_direction_uri)
+    flow_direction_d_inf(blocked_dem_uri, flow_direction_uri)
 
     outflow_weights_uri = pygeoprocessing.temporary_filename()
     outflow_direction_uri = pygeoprocessing.temporary_filename()
@@ -359,7 +372,7 @@ def delineate_watershed(
         flow_direction_uri, outflow_weights_uri, outflow_direction_uri)
 
     flow_accumulation_uri = pygeoprocessing.temporary_filename()
-    flow_accumulation(flow_direction_uri, dem_uri, flow_accumulation_uri)
+    flow_accumulation(flow_direction_uri, blocked_dem_uri, flow_accumulation_uri)
 
     pygeoprocessing.routing.routing_core.delineate_watershed(
         outflow_direction_uri, outflow_weights_uri,
