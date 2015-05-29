@@ -356,7 +356,6 @@ def delineate_watershed(
     block_size = dem_band.GetBlockSize()
     if ((block_size[0] != 256 or block_size[1] != 256) and
             (dem_band.XSize >= 256 and dem_band.YSize >= 256)):
-
         blocked_dem_uri = pygeoprocessing.temporary_filename()
         pygeoprocessing.tile_dataset_uri(dem_uri, blocked_dem_uri, 256)
     else:

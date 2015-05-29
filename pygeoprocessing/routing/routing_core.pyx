@@ -2881,8 +2881,8 @@ def delineate_watershed(
 
                 point_geometry = ogr.Geometry(ogr.wkbPoint)
                 point_geometry.AddPoint(
-                    geotransform[0] + x_index * geotransform[1],
-                    geotransform[3] + y_index * geotransform[5])
+                    geotransform[0] + (x_index + 0.5) * geotransform[1],
+                    geotransform[3] + (y_index + 0.5) * geotransform[5])
 
                 # Get the output Layer's Feature Definition
                 feature_def = snapped_outlet_points_layer.GetLayerDefn()
