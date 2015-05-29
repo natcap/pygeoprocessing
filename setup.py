@@ -3,6 +3,9 @@
 import os
 import sys
 
+with open('pygeoprocessing/__version__') as versionfile:
+    __version__ = versionfile.read().rstrip()
+
 try:
     from setuptools.command.sdist import sdist as _sdist
     from setuptools.command.build_py import build_py as _build_py
@@ -32,25 +35,6 @@ try:
             pass
 except ImportError:
     from distutils.core import setup
-
-try:
-    import versioning
-
-    # If we can import versioning, this will override required commands that
-    # have special versioning capabilities.
-    version = versioning.REPO.pep440
-    _sdist = versioning.CustomSdist
-    _build_py = versioning.CustomPythonBuilder
-    Extension = versioning.Extension
-except ImportError:
-    version = 'dev'
-
-    # Loading the version number from string instead of importing directly.
-    # Importing directly requires geoprocessing_core to already be compiled,
-    # which will never be the case in a source distribution.
-    for line in open('pygeoprocessing/__init__.py', 'r'):
-        if line.startswith('__version__'):
-            version = line.split(' ')[-1].rstrip().replace('"', '')
 
 # Try to import cython modules, if they don't import assume that Cython is
 # not installed and the .c and .cpp files are distributed along with the
@@ -139,7 +123,7 @@ REQUIREMENTS = [
 
 setup(
     name='pygeoprocessing',
-    version=version,
+    version=__version__,
     description="Geoprocessing routines for GIS",
     long_description=readme + '\n\n' + history,
     maintainer='Rich Sharp',
