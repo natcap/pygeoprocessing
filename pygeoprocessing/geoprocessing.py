@@ -2650,7 +2650,8 @@ def create_directories(directory_list):
         except OSError as exception:
             #It's okay if the directory already exists, if it fails for
             #some other reason, raise that exception
-            if exception.errno != errno.EEXIST:
+            if (exception.errno != errno.EEXIST and
+                    exception.errno != errno.ENOENT):
                 raise
 
 
