@@ -2722,7 +2722,7 @@ def route_flux(
 
 def delineate_watershed(
         outflow_direction_uri, outflow_weights_uri, outlet_shapefile_uri,
-        snap_distance, flow_accumulation_uri, watershed_out_uri,
+        snap_distance, stream_uri, watershed_out_uri,
         snapped_outlet_points_uri):
 
     cdef time_t last_time, current_time
@@ -2833,9 +2833,8 @@ def delineate_watershed(
 
     #parse out each point in the input shapefile and determine the x/y coordinate in the raster
     geotransform = outflow_direction_dataset.GetGeoTransform()
-
-    flow_accumulation_ds = gdal.Open(flow_accumulation_uri)
-    flow_accumulation_band = flow_accumulation_ds.GetRasterBand(1)
+    stream_ds = gdal.Open(stream_uri)
+    stream_band = stream_ds.GetRasterBand(1)
     count = 0
     for layer in outlet_ds:
         n_points_left = layer.GetFeatureCount()
@@ -2865,19 +2864,27 @@ def delineate_watershed(
                 if y_bottom >= n_rows:
                     y_bottom = n_rows - 1
 
-                flow_accumulation_window = flow_accumulation_band.ReadAsArray(
+                #snap to the nearest stream pixel
+                stream_window = stream_band.ReadAsArray(
                     int(x_left), int(y_top), int(x_right - x_left),
                     int(y_bottom - y_top))
+                row_indexes, col_indexes = numpy.nonzero(
+                    stream_window == 1)
+                if row_indexes.size > 0:
+                    #calc euclidan distance
+                    distance_array = (
+                        (row_indexes - stream_window.shape[0] / 2) ** 2 +
+                        (col_indexes - stream_window.shape[1] / 2) **2) ** 0.5
 
-                max_row, max_col = numpy.unravel_index(
-                    flow_accumulation_window.argmax(),
-                    flow_accumulation_window.shape)
+                    #closest element
+                    min_index = numpy.argmin(distance_array)
+                    min_row = row_indexes[min_index]
+                    min_col = col_indexes[min_index]
+                    offset_row = min_row - (y_center - y_top)
+                    offset_col = min_col - (x_center - x_left)
 
-                offset_row = max_row - (y_center - y_top)
-                offset_col = max_col - (x_center - x_left)
-
-                y_index += offset_row
-                x_index += offset_col
+                    y_index += offset_row
+                    x_index += offset_col
 
                 point_geometry = ogr.Geometry(ogr.wkbPoint)
                 point_geometry.AddPoint(

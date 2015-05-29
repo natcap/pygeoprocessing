@@ -339,15 +339,20 @@ def flow_direction_d_inf(
 
 
 def delineate_watershed(
-        dem_uri, outlet_shapefile_uri, snap_distance, watershed_out_uri,
-        snapped_outlet_points_uri):
+        dem_uri, outlet_shapefile_uri, snap_distance, flow_threshold,
+        watershed_out_uri, snapped_outlet_points_uri, stream_out_uri):
     """Delinates a watershed based on the dem and the output points specified.
 
         dem_uri (string) - uri to DEM layer
         outlet_shapefile_uri (string) - a shapefile of points indicating the
             outflow points of the desired watershed.
+        snap_distance (int) - distance in pixels to search for a stream pixel
+            to snap the outlet to
+        flow_threshold (int) - threshold value to classify a stream pixel from
+            the flow accumulation raster
         watershed_out_uri (string) - the uri to output the shapefile
         snapped_outlet_points_uri (string) - the uri to output snapped points
+        stream_out_uri (string) - the uri to a raster masking the stream layer
 
         returns nothing"""
 
@@ -371,9 +376,11 @@ def delineate_watershed(
         flow_direction_uri, outflow_weights_uri, outflow_direction_uri)
 
     flow_accumulation_uri = pygeoprocessing.temporary_filename()
-    flow_accumulation(flow_direction_uri, blocked_dem_uri, flow_accumulation_uri)
+    flow_accumulation(
+        flow_direction_uri, blocked_dem_uri, flow_accumulation_uri)
+    stream_threshold(flow_accumulation_uri, flow_threshold, stream_out_uri)
 
     pygeoprocessing.routing.routing_core.delineate_watershed(
         outflow_direction_uri, outflow_weights_uri,
-        outlet_shapefile_uri, snap_distance, flow_accumulation_uri,
+        outlet_shapefile_uri, snap_distance, stream_out_uri,
         watershed_out_uri, snapped_outlet_points_uri)
