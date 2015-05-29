@@ -3,9 +3,6 @@
 import os
 import sys
 
-with open('pygeoprocessing/__version__') as versionfile:
-    __version__ = versionfile.read().rstrip()
-
 try:
     from setuptools.command.sdist import sdist as _sdist
     from setuptools.command.build_py import build_py as _build_py
@@ -123,7 +120,7 @@ REQUIREMENTS = [
 
 setup(
     name='pygeoprocessing',
-    version=__version__,
+    version='0.3.0a2',
     description="Geoprocessing routines for GIS",
     long_description=readme + '\n\n' + history,
     maintainer='Rich Sharp',
