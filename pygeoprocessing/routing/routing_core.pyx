@@ -2865,8 +2865,6 @@ def delineate_watershed(
                 if y_bottom >= n_rows:
                     y_bottom = n_rows - 1
 
-
-                LOGGER.debug("%s, %s, %s, %s", x_left, y_top, x_right - x_left, y_bottom - y_top)
                 flow_accumulation_window = flow_accumulation_band.ReadAsArray(
                     int(x_left), int(y_top), int(x_right - x_left), int(y_bottom - y_top))
 
@@ -2900,7 +2898,7 @@ def delineate_watershed(
             while work_stack.size() > 0:
                 time(&current_time)
                 if current_time - last_time > 5.0:
-                    LOGGER.info('work_stack = %d n_points_left %d', work_stack.size(), n_points_left)
+                    LOGGER.info('work_stack_size=%d, n_outlet_points_left=%d', work_stack.size(), n_points_left)
                     last_time = current_time
 
                 current_index = work_stack.top()
