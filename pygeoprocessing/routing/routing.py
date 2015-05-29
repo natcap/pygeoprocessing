@@ -341,7 +341,10 @@ def flow_direction_d_inf(
 def delineate_watershed(
         dem_uri, outlet_shapefile_uri, snap_distance, flow_threshold,
         watershed_out_uri, snapped_outlet_points_uri, stream_out_uri):
-    """Delinates a watershed based on the dem and the output points specified.
+    """Delinates a watershed based on the dem and the outlet points specified.
+        The algorithm will attempt to snap the outlet point to the nearest
+        stream defined by a d-infinity flow accumulation raster thresholded by
+        the 'flow_threshold' parameter.
 
         dem_uri (string) - uri to DEM layer
         outlet_shapefile_uri (string) - a shapefile of points indicating the
@@ -365,7 +368,6 @@ def delineate_watershed(
         pygeoprocessing.tile_dataset_uri(dem_uri, blocked_dem_uri, 256)
     else:
         blocked_dem_uri = dem_uri
-
 
     flow_direction_uri = pygeoprocessing.temporary_filename()
     flow_direction_d_inf(blocked_dem_uri, flow_direction_uri)
