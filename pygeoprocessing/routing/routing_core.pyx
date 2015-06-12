@@ -186,7 +186,7 @@ cdef class BlockCache:
 cdef calculate_transport(
         outflow_direction_uri, outflow_weights_uri, deque[int] &sink_cell_deque,
         source_uri, absorption_rate_uri, loss_uri, flux_uri, absorption_mode,
-        stream_uri=None, include_source=True):
+        stream_uri=None, include_source=1):
     """This is a generalized flux transport algorithm that operates
         on a 2D grid given a per pixel flow direction, per pixel source,
         and per pixel absorption rate.  It produces a grid of loss per
@@ -373,7 +373,7 @@ cdef calculate_transport(
 
         if flux_block[row_index, col_index, row_block_offset, col_block_offset] == transport_nodata:
             if stream_block[row_index, col_index, row_block_offset, col_block_offset] == 0:
-                if include_source_int == 1
+                if include_source_int == 1:
                     flux_block[row_index, col_index, row_block_offset, col_block_offset] = (
                         source_block[row_index, col_index, row_block_offset, col_block_offset])
                 else:
@@ -426,11 +426,17 @@ cdef calculate_transport(
 
                 #If it's not a stream, route the flux normally
                 if stream_block[row_index, col_index, row_block_offset, col_block_offset] == 0:
-                    flux_block[row_index, col_index, row_block_offset, col_block_offset] += (
-                        outflow_weight * in_flux * (1.0 - absorption_rate))
+                    if include_source_int == 0:
+                        flux_block[row_index, col_index, row_block_offset, col_block_offset] += (
+                            outflow_weight * (in_flux + source_block[neighbor_row_index, neighbor_col_index, neighbor_row_block_offset, neighbor_col_block_offset])* (1.0 - absorption_rate))
 
-                    loss_block[row_index, col_index, row_block_offset, col_block_offset] += (
-                        outflow_weight * in_flux * absorption_rate)
+                        loss_block[row_index, col_index, row_block_offset, col_block_offset] += (
+                            outflow_weight * (in_flux + source_block[neighbor_row_index, neighbor_col_index, neighbor_row_block_offset, neighbor_col_block_offset]) * absorption_rate)
+                    else:
+                        flux_block[row_index, col_index, row_block_offset, col_block_offset] += (
+                            outflow_weight * in_flux * (1.0 - absorption_rate))
+                        loss_block[row_index, col_index, row_block_offset, col_block_offset] += (
+                            outflow_weight * in_flux * absorption_rate)
                 else:
                     #Otherwise if it is a stream, all flux routes to the outlet
                     #we don't want it absorbed later
@@ -2716,7 +2722,7 @@ def route_flux(
     calculate_transport(
         outflow_direction_uri, outflow_weights_uri, outlet_cell_deque,
         source_uri, absorption_rate_uri, loss_uri, flux_uri, absorption_mode,
-        stream_uri, include_source=include_source)
+        stream_uri, include_source)
 
     cleanup_uri_list = [
         dem_uri, flow_direction_uri, source_uri, absorption_rate_uri,
