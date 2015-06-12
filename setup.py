@@ -120,7 +120,7 @@ REQUIREMENTS = [
 
 setup(
     name='pygeoprocessing',
-    version='0.3.0a2',
+    version='0.3.0a3',
     description="Geoprocessing routines for GIS",
     long_description=readme + '\n\n' + history,
     maintainer='Rich Sharp',
