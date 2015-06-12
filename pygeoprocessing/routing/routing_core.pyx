@@ -186,7 +186,7 @@ cdef class BlockCache:
 cdef calculate_transport(
         outflow_direction_uri, outflow_weights_uri, deque[int] &sink_cell_deque,
         source_uri, absorption_rate_uri, loss_uri, flux_uri, absorption_mode,
-        stream_uri=None):
+        stream_uri=None, include_source=True):
     """This is a generalized flux transport algorithm that operates
         on a 2D grid given a per pixel flow direction, per pixel source,
         and per pixel absorption rate.  It produces a grid of loss per
@@ -216,6 +216,8 @@ cdef calculate_transport(
             'flux_only' the outgoing flux is (in_flux * absorption + source).
             If 'source_and_flux' then the output flux
             is (in_flux + source) * absorption.
+        include_source - if True, source is added to current pixel, otherwise
+            pixel starts at 0.
         stream_uri - (optional) a raster to a stream classification layer that
             if 1 indicates a stream 0 if not.  If flux hits a stream the total
             flux is set to zero so that it can't be further routed out of the
@@ -339,6 +341,7 @@ cdef calculate_transport(
     cdef int current_neighbor_index
     cdef int current_index
     cdef int absorb_source = (absorption_mode == 'source_and_flux')
+    cdef int include_source_int = include_source
 
     cdef time_t last_time, current_time
     time(&last_time)
@@ -370,8 +373,11 @@ cdef calculate_transport(
 
         if flux_block[row_index, col_index, row_block_offset, col_block_offset] == transport_nodata:
             if stream_block[row_index, col_index, row_block_offset, col_block_offset] == 0:
-                flux_block[row_index, col_index, row_block_offset, col_block_offset] = (
-                    source_block[row_index, col_index, row_block_offset, col_block_offset])
+                if include_source_int == 1
+                    flux_block[row_index, col_index, row_block_offset, col_block_offset] = (
+                        source_block[row_index, col_index, row_block_offset, col_block_offset])
+                else:
+                    flux_block[row_index, col_index, row_block_offset, col_block_offset] = 0.0
             else:
                 flux_block[row_index, col_index, row_block_offset, col_block_offset] = 0.0
             loss_block[row_index, col_index, row_block_offset, col_block_offset] = 0.0
@@ -2650,7 +2656,8 @@ def resolve_flats(
 
 def route_flux(
         in_flow_direction, in_dem, in_source_uri, in_absorption_rate_uri,
-        loss_uri, flux_uri, absorption_mode, aoi_uri=None, stream_uri=None):
+        loss_uri, flux_uri, absorption_mode, aoi_uri=None, stream_uri=None,
+        include_source=True):
 
     """This function will route flux across a landscape given a dem to
         guide flow from a d-infinty flow algorithm, and a custom function
@@ -2680,6 +2687,8 @@ def route_flux(
             upstream flux is considered to wash to zero because it will
             reach the outlet.  The advantage here is that it can't then
             route out of the stream
+        include_source - if True, source is added to current pixel, otherwise
+            pixel starts at 0.
 
         returns nothing"""
 
@@ -2707,7 +2716,7 @@ def route_flux(
     calculate_transport(
         outflow_direction_uri, outflow_weights_uri, outlet_cell_deque,
         source_uri, absorption_rate_uri, loss_uri, flux_uri, absorption_mode,
-        stream_uri)
+        stream_uri, include_source=include_source)
 
     cleanup_uri_list = [
         dem_uri, flow_direction_uri, source_uri, absorption_rate_uri,
