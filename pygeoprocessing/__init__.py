@@ -1,6 +1,8 @@
 """__init__ module for pygeprocessing, imports all the geoprocessing functions
     into the pygeoprocessing namespace"""
 
+__version__ = '0.3.0a2'
+
 import os
 
 import unittest
