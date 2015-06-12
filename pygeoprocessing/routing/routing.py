@@ -41,7 +41,8 @@ LOGGER = logging.getLogger('pygeoprocessing.routing')
 
 def route_flux(
         in_flow_direction, in_dem, in_source_uri, in_absorption_rate_uri,
-        loss_uri, flux_uri, absorption_mode, aoi_uri=None, stream_uri=None):
+        loss_uri, flux_uri, absorption_mode, aoi_uri=None, stream_uri=None,
+        include_source=True):
 
     """This function will route flux across a landscape given a dem to
         guide flow from a d-infinty flow algorithm, and a custom function
@@ -71,13 +72,15 @@ def route_flux(
             upstream flux is considered to wash to zero because it will
             reach the outlet.  The advantage here is that it can't then
             route out of the stream
+        include_source - if True, source is added to current pixel, otherwise
+            pixel starts at 0.
 
         returns nothing"""
 
     pygeoprocessing.routing.routing_core.route_flux(
         in_flow_direction, in_dem, in_source_uri, in_absorption_rate_uri,
         loss_uri, flux_uri, absorption_mode, aoi_uri=aoi_uri,
-        stream_uri=stream_uri)
+        stream_uri=stream_uri, include_source=include_source)
 
 
 def flow_accumulation(
