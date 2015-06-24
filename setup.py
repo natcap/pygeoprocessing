@@ -99,13 +99,15 @@ EXTENSION_LIST = ([
     Extension(
         "pygeoprocessing.geoprocessing_core",
         sources=['pygeoprocessing/geoprocessing_core.pyx'],
-        language="c++"),
+        language="c++",
+        include_dirs=[numpy.get_include()]),
     Extension(
         "pygeoprocessing.routing.routing_core",
         sources=[
             'pygeoprocessing/routing/routing_core.pyx',
             'pygeoprocessing/routing/routing_core.pxd'],
-        language="c++")
+        language="c++",
+        include_dirs=[numpy.get_include()])
     ])
 
 if not USE_CYTHON:
