@@ -8,6 +8,7 @@ History
 * Added watershed delination routine to pygeoprocessing.routing.delineate_watershed.  Operates on a DEM and point shapefile, optionally snaps outlet points to nearest stream as defined by a thresholded flow accumulation raster and copies the oulet point fields into the constructed watershed shapefile.
 * Fixing a memory leak in block caches that held on to dataset, band, and block references even after the object was destroyed.
 * Add an option to route_flux that lets the current pixel's source be included in the flux, or not.  Previous version would include on the source no matter what.
+* Now using natcap.versioner for versioning instead of local versioning logic.
 
 0.2.2 (2015-05-07)
 ------------------

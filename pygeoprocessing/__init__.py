@@ -1,7 +1,8 @@
 """__init__ module for pygeprocessing, imports all the geoprocessing functions
     into the pygeoprocessing namespace"""
 
-__version__ = '0.3.0a3'
+import natcap.versioner
+__version__ = natcap.versioner.get_version('pygeoprocessing')
 
 import os
 
