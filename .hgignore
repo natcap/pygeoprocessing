@@ -6,6 +6,7 @@ syntax: glob
 setup_environment.py
 build/
 dist/
+*.orig
 pygeoprocessing.egg-info\PKG-INFO
 pygeoprocessing.egg-info\SOURCES.txt
 pygeoprocessing.egg-info\dependency_links.txt
