@@ -6,12 +6,18 @@ import shutil
 import unittest
 import tempfile
 import hashlib
+import logging
 
 import nose.tools
 from osgeo import ogr
 from osgeo import osr
 from osgeo import gdal
 import numpy
+
+from pygeoprocessing.testing import scm
+from pygeoprocessing.testing.scm import skipIfDataMissing, _SVN_REPO
+
+LOGGER = logging.getLogger('pygeoprocessing.tests')
 
 GDAL_TYPES = {
     numpy.byte: gdal.GDT_Byte,
@@ -232,3 +238,14 @@ def create_raster_from_array(
     band = None
     new_raster = None
     return out_uri
+
+
+def test(with_data=False):
+    """run modulewide tests"""
+
+    if with_data is True:
+        _SVN_REPO.get()
+
+    LOGGER.info('running tests on %s', os.path.dirname(__file__))
+    suite = unittest.TestLoader().discover(os.path.dirname(__file__))
+    unittest.TextTestRunner(verbosity=2).run(suite)
