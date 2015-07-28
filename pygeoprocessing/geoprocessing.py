@@ -1083,7 +1083,7 @@ def calculate_slope(
 
 def clip_dataset_uri(
         source_dataset_uri, aoi_datasource_uri, out_dataset_uri,
-        assert_projections=True, process_pool=None):
+        assert_projections=True, process_pool=None, all_touched=False):
     """
     This function will clip source_dataset to the bounding box of the
     polygons in aoi_datasource and mask out the values in source_dataset
@@ -1098,6 +1098,8 @@ def clip_dataset_uri(
         assert_projections (boolean): a boolean value for whether the dataset
             needs to be projected
         process_pool: a process pool for multiprocessing
+        all_touched (boolean): if true the clip uses the option ALL_TOUCHED=TRUE
+            when calling RasterizeLayer for AOI masking.
 
     Returns:
         nothing
@@ -1120,7 +1122,7 @@ def clip_dataset_uri(
         [source_dataset_uri], lambda x: x, out_dataset_uri, datatype, nodata,
         pixel_size, 'intersection', aoi_uri=aoi_datasource_uri,
         assert_datasets_projected=assert_projections,
-        process_pool=process_pool, vectorize_op=False)
+        process_pool=process_pool, vectorize_op=False, all_touched=all_touched)
 
 
 def create_rat_uri(dataset_uri, attr_dict, column_name):
@@ -1885,6 +1887,17 @@ def resize_and_resample_dataset_uri(
     new_y_size = abs(
         int(numpy.round((bounding_box[3] - bounding_box[1]) / out_pixel_size)))
 
+    if new_x_size == 0:
+        LOGGER.warn(
+            "bounding_box is so small that x dimension rounds to 0; "
+            "clamping to 1.")
+        new_x_size = 1
+    if new_y_size == 0:
+        LOGGER.warn(
+            "bounding_box is so small that y dimension rounds to 0; "
+            "clamping to 1.")
+        new_y_size = 1
+
     #create the new x and y size
     block_size = original_band.GetBlockSize()
     #If the original band is tiled, then its x blocksize will be different than
@@ -1955,7 +1968,7 @@ def align_dataset_list(
         dataset_uri_list, dataset_out_uri_list, resample_method_list,
         out_pixel_size, mode, dataset_to_align_index,
         dataset_to_bound_index=None, aoi_uri=None,
-        assert_datasets_projected=True):
+        assert_datasets_projected=True, all_touched=False):
     """
     Take a list of dataset uris and generates a new set that is completely
     aligned with identical projections and pixel sizes.
@@ -1978,6 +1991,9 @@ def align_dataset_list(
             rasters to fix on the upper left hand corner of the output
             datasets.  If negative, the bounding box aligns the intersection/
             union without adjustment.
+        all_touched (boolean): if True and an AOI is passed, the
+            ALL_TOUCHED=TRUE option is passed to the RasterizeLayer function
+            when determining the mask of the AOI.
 
     Keyword Args:
         dataset_to_bound_index: if mode is "dataset" then this index is
@@ -2104,7 +2120,12 @@ def align_dataset_list(
         mask_band = mask_dataset.GetRasterBand(1)
         aoi_datasource = ogr.Open(aoi_uri)
         aoi_layer = aoi_datasource.GetLayer()
-        gdal.RasterizeLayer(mask_dataset, [1], aoi_layer, burn_values=[1])
+        if all_touched:
+            option_list = ["ALL_TOUCHED=TRUE"]
+        else:
+            option_list = []
+        gdal.RasterizeLayer(
+            mask_dataset, [1], aoi_layer, burn_values=[1], options=option_list)
         mask_row = numpy.zeros((1, n_cols), dtype=numpy.int8)
 
         out_dataset_list = [
@@ -2178,7 +2199,8 @@ def vectorize_datasets(
         resample_method_list=None, dataset_to_align_index=None,
         dataset_to_bound_index=None, aoi_uri=None,
         assert_datasets_projected=True, process_pool=None, vectorize_op=True,
-        datasets_are_pre_aligned=False, dataset_options=None):
+        datasets_are_pre_aligned=False, dataset_options=None,
+        all_touched=False):
 
     """
     This function applies a user defined function across a stack of
@@ -2251,6 +2273,8 @@ def vectorize_datasets(
         dataset_options: this is an argument list that will be
             passed to the GTiff driver.  Useful for blocksizes, compression,
             etc.
+        all_touched (boolean): if true the clip uses the option ALL_TOUCHED=TRUE
+            when calling RasterizeLayer for AOI masking.
 
     Returns:
         nothing?
@@ -2297,7 +2321,8 @@ def vectorize_datasets(
             pixel_size_out, bounding_box_mode, dataset_to_align_index,
             dataset_to_bound_index=dataset_to_bound_index,
             aoi_uri=aoi_uri,
-            assert_datasets_projected=assert_datasets_projected)
+            assert_datasets_projected=assert_datasets_projected,
+            all_touched=all_touched)
         aligned_datasets = [
             gdal.Open(filename, gdal.GA_ReadOnly) for filename in
             dataset_out_uri_list]
@@ -2337,7 +2362,12 @@ def vectorize_datasets(
         mask_band = mask_dataset.GetRasterBand(1)
         aoi_datasource = ogr.Open(aoi_uri)
         aoi_layer = aoi_datasource.GetLayer()
-        gdal.RasterizeLayer(mask_dataset, [1], aoi_layer, burn_values=[1])
+        if all_touched:
+            option_list = ["ALL_TOUCHED=TRUE"]
+        else:
+            option_list = []
+        gdal.RasterizeLayer(
+            mask_dataset, [1], aoi_layer, burn_values=[1], options=option_list)
         mask_array = numpy.zeros(
             (rows_per_block, cols_per_block), dtype=numpy.int8)
         aoi_layer = None
