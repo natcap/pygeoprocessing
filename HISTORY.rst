@@ -1,10 +1,10 @@
-#######
-History
-#######
+Release History
+===============
 
 0.3.0 (XXX)
---------------
+-----------
 
+* Added support for very small AOIs that result in rasters less than a pixel wide.  Additionally an `all_touched` flag was added to allow the ALL_TOUCHED=TRUE option to be passed to RasterizeLayer in the AOI mask calculation.
 * Added watershed delination routine to pygeoprocessing.routing.delineate_watershed.  Operates on a DEM and point shapefile, optionally snaps outlet points to nearest stream as defined by a thresholded flow accumulation raster and copies the oulet point fields into the constructed watershed shapefile.
 * Fixing a memory leak in block caches that held on to dataset, band, and block references even after the object was destroyed.
 * Add an option to route_flux that lets the current pixel's source be included in the flux, or not.  Previous version would include on the source no matter what.
@@ -26,7 +26,7 @@ History
 * More informative error messages raised on incorrect bounding box mode.
 * Updated docstring on get_lookup_from_table to indicate the headers are case insensitive.
 * Added updates to align dataset list that report which dataset is being aligned.  This is helpful for logging feedback when many datasets are passed in that don't take long enough to get a report from the underlying reproject dataset function.
-* pygeoprocessing.routing.routing_core includes pxd to be `cimport`able from a Cython module.
+* pygeoprocessing.routing.routing_core includes pxd to be \`cimport`able from a Cython module.
 
 0.2.0 (2015-04-14)
 ------------------
@@ -49,39 +49,39 @@ History
 * Fixed an issue where rasters that had undefined nodata values caused striping in the reclassify_dataset_uri function.
 
 0.1.6 (2015-03-24)
----------------------
+------------------
 
 * Fixing LICENSE.TXT to .txt issue that keeps reoccuring.
 
 0.1.5 (2015-03-16)
----------------------
+------------------
 
 * Fixed an issue where int32 dems with INT_MIN as the nodata value were being treated as real DEM values because of an internal cast to a float for the nodata type, but a cast to double for the DEM values.
 * Fixed an issue where flat regions, such as reservoirs, that could only drain off the edge of the DEM now correctly drain as opposed to having undefined flow directions.
 
 0.1.4 (2015-03-13)
----------------------
+------------------
 
 * Fixed a memory issue for DEMs on the order of 25k X 25k, still may have issues with larger DEMs.
 
 0.1.3 (2015-03-08)
----------------------
+------------------
 
 * Fixed an issue so tox correctly executes on the repository.
 * Created a history file to document current and previous releases.
 * Created an informative README.rst.
 
 0.1.2 (2015-03-04)
----------------------
+------------------
 
 * Fixing issue that caused "LICENSE.TXT not found" during pip install.
 
 0.1.1 (2015-03-04)
----------------------
+------------------
 
 * Fixing issue with automatic versioning scheme.
 
 0.1.0 (2015-02-26)
----------------------
+------------------
 
 * First release on PyPI.
