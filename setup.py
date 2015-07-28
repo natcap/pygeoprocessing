@@ -132,6 +132,7 @@ setup(
     packages=[
         'pygeoprocessing',
         'pygeoprocessing.routing',
+        'pygeoprocessing.testing',
         'pygeoprocessing.tests',
         'pygeoprocessing.dbfpy',
     ],
