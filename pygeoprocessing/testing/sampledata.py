@@ -232,6 +232,27 @@ class Factory(object):
             if user_param not in self.allowed_params:
                 raise RuntimeError('Provided parameters "%s" not allowed' % user_param)
 
+    def __getattr__(self, key):
+        """
+        Get any attribute that has been set in this object.
+        """
+        return getattr(self, key)
+
+    def __setattr__(self, key, value):
+        """
+        Overridden attribute setting object method, for allowing raster
+        attributes to be set.  The only attributes allowed are those allowed
+        in the creation function.
+
+        If an attribute is set that is not allowed in the creation function,
+        AttributeError is raised.
+        """
+        if key not in self.allowed_params:
+            error_str = ('The attribute %s is not allowed.  Allowed '
+                'attrs: %s') % (key, self.allowed_params.items())
+            raise AttributeError(error_str)
+        setattr(self, key, value)
+
     def _get_attrs(self):
         """
         Return a dictionary of the parameters that the user provided when
