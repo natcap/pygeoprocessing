@@ -15,3 +15,4 @@ pygeoprocessing.egg-info\top_level.txt
 pygeoprocessing_virtualenv/
 pygeoprocessing/routing/routing_core.cpp
 pygeoprocessing/geoprocessing_core.cpp
+pygeoprocessing/version.py
