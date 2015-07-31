@@ -2368,8 +2368,6 @@ def vectorize_datasets(
             option_list = []
         gdal.RasterizeLayer(
             mask_dataset, [1], aoi_layer, burn_values=[1], options=option_list)
-        mask_array = numpy.zeros(
-            (rows_per_block, cols_per_block), dtype=numpy.int8)
         aoi_layer = None
         aoi_datasource = None
 
@@ -2411,6 +2409,10 @@ def vectorize_datasets(
                         (row_block_width, col_block_width),
                         dtype=_gdal_to_numpy_type(band)) for band in aligned_bands]
 
+                if aoi_uri != None:
+                    mask_array = numpy.zeros(
+                        (row_block_width, col_block_width), dtype=numpy.int8)
+
                 last_row_block_width = row_block_width
                 last_col_block_width = col_block_width
 
@@ -2427,7 +2429,7 @@ def vectorize_datasets(
                 mask_band.ReadAsArray(
                     xoff=col_offset, yoff=row_offset, win_xsize=col_block_width,
                     win_ysize=row_block_width,
-                    buf_obj=mask_array[0:row_block_width,0:col_block_width])
+                    buf_obj=mask_array)
                 out_block[mask_array == 0] = nodata_out
 
             output_band.WriteArray(
