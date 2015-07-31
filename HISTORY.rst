@@ -4,6 +4,7 @@ Release History
 0.3.0 (XXX)
 -----------
 
+* Fixed an issue with reclassify dataset that would occur when small rasters whose first memory block would extend beyond the size of the raster thus passing in "0" values in the out of bounds area. Reclassify dataset identified these as valid pixels, even though vectorize_datsets would mask them out later.  Now vectorize_datasets only passes memory blocks that contain valid pixel data to its kernel op.
 * Added support for very small AOIs that result in rasters less than a pixel wide.  Additionally an `all_touched` flag was added to allow the ALL_TOUCHED=TRUE option to be passed to RasterizeLayer in the AOI mask calculation.
 * Added watershed delination routine to pygeoprocessing.routing.delineate_watershed.  Operates on a DEM and point shapefile, optionally snaps outlet points to nearest stream as defined by a thresholded flow accumulation raster and copies the oulet point fields into the constructed watershed shapefile.
 * Fixing a memory leak in block caches that held on to dataset, band, and block references even after the object was destroyed.

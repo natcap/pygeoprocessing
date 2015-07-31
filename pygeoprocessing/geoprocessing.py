@@ -2380,13 +2380,10 @@ def vectorize_datasets(
         dataset_pixel_op = numpy.vectorize(
             dataset_pixel_op, otypes=[_gdal_to_numpy_type(output_band)])
 
-    dataset_blocks = [
-        numpy.zeros(
-            (rows_per_block, cols_per_block),
-            dtype=_gdal_to_numpy_type(band)) for band in aligned_bands]
-
     last_time = time.time()
 
+    last_row_block_width = None
+    last_col_block_width = None
     for row_block_index in xrange(n_row_blocks):
         row_offset = row_block_index * rows_per_block
         row_block_width = n_rows - row_offset
@@ -2407,11 +2404,21 @@ def vectorize_datasets(
                      float(n_row_blocks * n_col_blocks) * 100.0))
                 last_time = current_time
 
+            if (last_row_block_width != row_block_width or
+                    last_col_block_width != col_block_width):
+                dataset_blocks = [
+                    numpy.zeros(
+                        (row_block_width, col_block_width),
+                        dtype=_gdal_to_numpy_type(band)) for band in aligned_bands]
+
+                last_row_block_width = row_block_width
+                last_col_block_width = col_block_width
+
             for dataset_index in xrange(len(aligned_bands)):
                 aligned_bands[dataset_index].ReadAsArray(
                     xoff=col_offset, yoff=row_offset, win_xsize=col_block_width,
                     win_ysize=row_block_width,
-                    buf_obj=dataset_blocks[dataset_index][0:row_block_width,0:col_block_width])
+                    buf_obj=dataset_blocks[dataset_index])
 
             out_block = dataset_pixel_op(*dataset_blocks)
 
