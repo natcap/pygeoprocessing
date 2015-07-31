@@ -124,7 +124,7 @@ REQUIREMENTS = [
 setup(
     name='pygeoprocessing',
     version=natcap.versioner.parse_version(),
-    natcap_version='pyeoprocessing/version.py',
+    natcap_version=os.path.join('pygeoprocessing', 'version.py'),
     description="Geoprocessing routines for GIS",
     long_description=readme + '\n\n' + history,
     maintainer='Rich Sharp',
