@@ -17,7 +17,7 @@ import numpy
 from pygeoprocessing.testing import scm
 from pygeoprocessing.testing.scm import skipIfDataMissing
 
-_NATCAP_SVN = 'svn://naturalcapitalproject.org/svn/pygeoprocessing-data'
+_NATCAP_SVN = 'svn://scm.naturalcapitalproject.org/svn/pygeoprocessing-test-data'
 SVN_LOCAL_DIR = os.path.join(tempfile.gettempdir(), 'pygeoprocessing-svn-data')
 LOGGER = logging.getLogger('pygeoprocessing.tests')
 
