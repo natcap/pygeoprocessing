@@ -15,8 +15,10 @@ from osgeo import gdal
 import numpy
 
 from pygeoprocessing.testing import scm
-from pygeoprocessing.testing.scm import skipIfDataMissing, _SVN_REPO
+from pygeoprocessing.testing.scm import skipIfDataMissing
 
+_NATCAP_SVN = 'svn://naturalcapitalproject.org/svn/pygeoprocessing-data'
+SVN_LOCAL_DIR = os.path.join(tempfile.gettempdir(), 'pygeoprocessing-svn-data')
 LOGGER = logging.getLogger('pygeoprocessing.tests')
 
 GDAL_TYPES = {
@@ -244,7 +246,7 @@ def test(with_data=False):
     """run modulewide tests"""
 
     if with_data is True:
-        _SVN_REPO.get()
+        scm.checkout_repo(_NATCAP_SVN, SVN_LOCAL_DIR, 0)
 
     LOGGER.info('running tests on %s', os.path.dirname(__file__))
     suite = unittest.TestLoader().discover(os.path.dirname(__file__))

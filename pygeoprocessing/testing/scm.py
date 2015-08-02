@@ -1,69 +1,52 @@
 import os
 import functools
+import subprocess
+import tempfile
 from unittest import SkipTest
 
-import svn
-import svn.local
-import svn.remote
-
-def skipIfDataMissing():
+def skipIfDataMissing(repo_path):
     """
     Decorator for unittest.TestCase test functions.  Raises SkipTest if the
     pygeoprocessing data repository has not been cloned.
+
+    Arguments:
+        repo_path (string): The path to an SVN data repo on disk.
+
+    Returns:
+        A reference to a decorated unittest.TestCase test method that will
+        raise SkipTest when executed.
     """
-    message = 'Data repo is not cloned'
+    message = 'Data repo %s is not cloned' % os.path.basename(repo_path)
 
     def data_repo_aware_skipper(item):
 
         @functools.wraps(item)
         def skip_if_data_not_cloned(self, *args, **kwargs):
-            if _SVN_REPO.missing():
+            if not os.path.exists(repo_path):
                 raise SkipTest(message)
             item(self, *args, **kwargs)
         return skip_if_data_not_cloned
     return data_repo_aware_skipper
 
-class SVNRepo:
-    def __init__(self, local_path, remote_path, rev):
-        self.local_path = local_path
-        self.remote_path = remote_path
-        self.rev = rev
 
-    def missing(self):
-        """
-        Is the repository present?  Returns a boolean.
-        """
-        if os.path.exists(self.local_path):
-            return False
-        return True
+def checkout_svn(local_path, remote_path, rev=None):
+    """
+    Check out (or update) an SVN repository to the target revision.
 
-    def get(self):
-        """
-        If the repository does not exist, clone it.
-        """
-        if not os.path.exists(self.local_path):
-            self.checkout()
-        else:
-            self.update()
+    Arguments:
+        local_path (string): The path to an SVN repository on disk.
+        remote_path (string): The path to the SVN repository to check out.
+        rev=None (string or None): The revision to check out.  If None, the
+            latest revision will be checked out.
 
-    def checkout(self):
-        """
-        Check out the repository to the target rev (self.rev).
-        """
-        repo = svn.remote.RemoteClient(self.remote_path)
-        repo.checkout(self.local_path, self.rev)
+    """
+    if rev is None:
+        rev = 'HEAD'
+    else:
+        rev = str(rev)
 
-    def update(self):
-        """
-        Update an existing repository to the target rev (self.rev).
-        """
-        repo = svn.local.LocalClient(self.local_path)
-        repo.run_command(['update', '-r', str(self.rev)])
-
-_NATCAP_SVN = 'svn://naturalcapitalproject.org/svn/'
-_SVN_REPO = SVNRepo(
-    local_path=os.path.join(os.path.dirname(__file__), 'data'),
-    remote_path=_NATCAP_SVN + 'pygeoprocessing-test-data',
-    rev=0
-)
+    if os.path.exists(local_path):
+        subprocess.call(['cd', local_path, '&&', 'svn', 'update', '-r', rev])
+    else:
+        subprocess.call(['svn', 'checkout', remote_path, local_path, '-r', rev])
 
