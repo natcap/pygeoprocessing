@@ -13,8 +13,8 @@ from osgeo import ogr
 import numpy
 import pygeoprocessing
 
-from natcap.testing import utils
-from natcap.testing import data_storage
+from . import utils
+from . import data_storage
 
 LOGGER = logging.getLogger('natcap.testing.assertions')
 

@@ -2,21 +2,24 @@ import unittest
 import os
 import shutil
 import glob
+import json
 
-from pygeoprocessing.tests import skipIfDataMissing, SVN_LOCAL_DIR
+from pygeoprocessing.tests import skipIfDataMissing
 import pygeoprocessing.testing as testing
 from pygeoprocessing.testing import data_storage
 from pygeoprocessing.testing import test_writing
 import pygeoprocessing as raster_utils
 
-POLLINATION_DATA = os.path.join('invest-data/test/data', 'pollination', 'samp_input')
-CARBON_DATA = os.path.join('invest-data/test/data', 'carbon', 'input')
-REGRESSION_ARCHIVES = os.path.join('invest-data/test/data', 'data_storage', 'regression')
-WRITING_ARCHIVES = os.path.join('invest-data/test/data', 'test_writing')
-TEST_INPUT = os.path.join('invest-data/test/data', 'data_storage', 'test_input')
-TEST_OUT = os.path.join('invest-data/test/data', 'test_out')
-BASE_DATA = os.path.join('invest-data/test/data', 'base_data')
-REGRESSION_INPUT = os.path.join('invest-data/test/data', 'testing_regression')
+SVN_LOCAL_DIR = json.load(open(os.path.join(
+    os.path.dirname(__file__), 'svn_config.json')))['local']
+POLLINATION_DATA = os.path.join(SVN_LOCAL_DIR, 'pollination', 'samp_input')
+CARBON_DATA = os.path.join(SVN_LOCAL_DIR, 'carbon', 'input')
+REGRESSION_ARCHIVES = os.path.join(SVN_LOCAL_DIR, 'data_storage', 'regression')
+WRITING_ARCHIVES = os.path.join(SVN_LOCAL_DIR, 'test_writing')
+TEST_INPUT = os.path.join(SVN_LOCAL_DIR, 'data_storage', 'test_input')
+TEST_OUT = os.path.join(SVN_LOCAL_DIR, 'test_out')
+BASE_DATA = os.path.join(SVN_LOCAL_DIR, 'base_data')
+REGRESSION_INPUT = os.path.join(SVN_LOCAL_DIR, 'testing_regression')
 
 class TestWritingTest(unittest.TestCase):
     @skipIfDataMissing(SVN_LOCAL_DIR)
@@ -41,7 +44,7 @@ class TestWritingTest(unittest.TestCase):
         test_func_name = 'test_new_func'
         in_archive_uri = 'input_archive.tar.gz'
         out_archive_uri = 'output_archive.tar.gz'
-        module = 'invest_natcap.sample_model.script'
+        module = 'natcap.invest.sample_model.script'
         test_writing.add_test_to_class(new_file, test_class_name,
             test_func_name, in_archive_uri, out_archive_uri, module)
 
@@ -59,7 +62,7 @@ class TestWritingTest(unittest.TestCase):
         test_func_name = 'test_new_func'
         in_archive_uri = 'input_archive.tar.gz'
         out_archive_uri = 'output_archive.tar.gz'
-        module = 'invest_natcap.sample_model.script'
+        module = 'natcap.invest.sample_model.script'
         test_writing.add_test_to_class(new_file, test_class_name,
             test_func_name, in_archive_uri, out_archive_uri, module)
 
@@ -77,7 +80,7 @@ class TestWritingTest(unittest.TestCase):
         test_func_name = 'test_new_func'
         in_archive_uri = 'input_archive.tar.gz'
         out_archive_uri = 'output_archive.tar.gz'
-        module = 'invest_natcap.sample_model.script'
+        module = 'natcap.invest.sample_model.script'
         test_writing.add_test_to_class(new_file, test_class_name,
             test_func_name, in_archive_uri, out_archive_uri, module)
 

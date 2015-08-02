@@ -10,7 +10,7 @@ import numpy
 from osgeo import gdal
 import pygeoprocessing
 
-from natcap.testing import data_storage
+from . import data_storage
 
 LOGGER = logging.getLogger('natcap.testing.utils')
 
