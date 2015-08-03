@@ -13,6 +13,8 @@ import pygeoprocessing as raster_utils
 SVN_LOCAL_DIR = json.load(open(os.path.join(
     os.path.dirname(__file__), 'svn_config.json')))['local']
 POLLINATION_DATA = os.path.join(SVN_LOCAL_DIR, 'pollination', 'samp_input')
+SAMPLE_RASTERS = os.path.join(SVN_LOCAL_DIR, 'sample_rasters')
+SAMPLE_VECTORS = os.path.join(SVN_LOCAL_DIR, 'sample_vectors')
 CARBON_DATA = os.path.join(SVN_LOCAL_DIR, 'carbon', 'input')
 REGRESSION_ARCHIVES = os.path.join(SVN_LOCAL_DIR, 'data_storage', 'regression')
 WRITING_ARCHIVES = os.path.join(SVN_LOCAL_DIR, 'test_writing')
@@ -94,7 +96,7 @@ class DataStorageTest(unittest.TestCase):
         params = {
             'a': 1,
             'b': 2,
-            'c': os.path.join(POLLINATION_DATA, 'LU.csv'),
+            'c': os.path.join(TEST_INPUT, 'LU.csv'),
         }
 
         archive_uri = os.path.join(TEST_OUT, 'archive')
@@ -115,9 +117,9 @@ class DataStorageTest(unittest.TestCase):
             'd': {
                 'one': 1,
                 'two': 2,
-                'three': os.path.join(POLLINATION_DATA, 'Guild.csv')
+                'three': os.path.join(TEST_INPUT, 'Guild.csv')
             },
-            'c': os.path.join(POLLINATION_DATA, 'LU.csv'),
+            'c': os.path.join(TEST_INPUT, 'LU.csv'),
         }
 
         archive_uri = os.path.join(TEST_OUT, 'archive_nested_dict')
@@ -133,7 +135,7 @@ class DataStorageTest(unittest.TestCase):
     @skipIfDataMissing(SVN_LOCAL_DIR)
     def test_archive_geotiff(self):
         params = {
-            'raster': os.path.join(POLLINATION_DATA, 'landuse_cur_200m.tif')
+            'raster': os.path.join(TEST_INPUT, 'landuse_cur_200m.tif')
         }
         archive_uri = os.path.join(TEST_OUT, 'raster_geotiff')
         data_storage.collect_parameters(params, archive_uri)
@@ -147,7 +149,7 @@ class DataStorageTest(unittest.TestCase):
     @skipIfDataMissing(SVN_LOCAL_DIR)
     def test_archive_arc_raster_nice(self):
         params = {
-            'raster': os.path.join('invest-data/test/data', 'base_data', 'Freshwater', 'precip')
+            'raster': os.path.join(SAMPLE_RASTERS, 'precip')
         }
 
         archive_uri = os.path.join(TEST_OUT, 'raster_nice')
@@ -176,7 +178,7 @@ class DataStorageTest(unittest.TestCase):
     @skipIfDataMissing(SVN_LOCAL_DIR)
     def test_archive_esri_shapefile(self):
         params = {
-            'vector': os.path.join(CARBON_DATA, 'harv_samp_cur.shp')
+            'vector': os.path.join(SAMPLE_VECTORS, 'harv_samp_cur.shp')
         }
 
         archive_uri = os.path.join(TEST_OUT, 'vector_collected')
@@ -192,17 +194,15 @@ class DataStorageTest(unittest.TestCase):
         params = {
             u'ag_classes': '67 68 71 72 73 74 75 76 78 79 80 81 82 83 84 85 88 90 91 92',
             u'do_valuation': True,
-            u'farms_shapefile':
-            u'invest-data/test/data/pollination/samp_input/farms.shp',
-            u'guilds_uri':
-            u'invest-data/test/data/pollination/samp_input/Guild.csv',
+            u'farms_shapefile': os.path.join(TEST_INPUT, 'farms.shp'),
+            u'guilds_uri': os.path.join(TEST_INPUT, 'Guild.csv'),
             u'half_saturation': 0.125,
-            u'landuse_attributes_uri': u'invest-data/test/data/pollination/samp_input/LU.csv',
-            u'landuse_cur_uri': u'invest-data/test/data/base_data/terrestrial/lulc_samp_cur/hdr.adf',
-            u'landuse_fut_uri': u'invest-data/test/data/base_data/terrestrial/lulc_samp_fut/hdr.adf',
+            u'landuse_attributes_uri': os.path.join(TEST_INPUT, 'LU.csv'),
+            u'landuse_cur_uri': os.path.join(SAMPLE_RASTERS, 'lulc_samp_cur', 'hdr.adf'),
+            u'landuse_fut_uri': os.path.join(SAMPLE_RASTERS, 'lulc_samp_fut', 'hdr.adf'),
             u'results_suffix': 'suff',
             u'wild_pollination_proportion': 1.0,
-            u'workspace_dir': u'/home/jadoug06/workspace/Pollination_Mary',
+            u'workspace_dir': os.path.join(TEST_OUT, 'pollination_workspace'),
         }
 
         archive_uri = os.path.join(TEST_OUT, 'pollination_input')
@@ -226,12 +226,12 @@ class DataStorageTest(unittest.TestCase):
         regression_params = {
             u'ag_classes': u'67 68 71 72 73 74 75 76 78 79 80 81 82 83 84 85 88 90 91 92',
             u'do_valuation': True,
-            u'farms_shapefile': os.path.join(input_folder, u'vector_BEKKTE'),
+            u'farms_shapefile': os.path.join(input_folder, u'vector_3ZRP4E'),
             u'guilds_uri': os.path.join(input_folder, u'Guild.csv'),
             u'half_saturation': 0.125,
             u'landuse_attributes_uri': os.path.join(input_folder, u'LU.csv'),
-            u'landuse_cur_uri': os.path.join(input_folder, u'raster_5C3Z51'),
-            u'landuse_fut_uri': os.path.join(input_folder, u'raster_NC9LSJ'),
+            u'landuse_cur_uri': os.path.join(input_folder, u'raster_UIMHR6'),
+            u'landuse_fut_uri': os.path.join(input_folder, u'raster_6A6DEA'),
             u'results_suffix': u'suff',
             u'wild_pollination_proportion': 1.0,
             u'workspace_dir': workspace,
@@ -251,18 +251,17 @@ class DataStorageTest(unittest.TestCase):
             'd': {
                 'one': 1,
                 'two': 2,
-                'three': os.path.join(POLLINATION_DATA, 'Guild.csv')
+                'three': os.path.join(TEST_INPUT, 'Guild.csv')
             },
-            'c': os.path.join(CARBON_DATA, 'harv_samp_cur.shp'),
+            'c': os.path.join(SAMPLE_VECTORS, 'harv_samp_cur.shp'),
             'raster_list': [
-                os.path.join('invest-data/test/data', 'base_data', 'Freshwater', 'precip'),
+                os.path.join(SAMPLE_RASTERS, 'precip'),
                 {
-                    'lulc_samp_cur': os.path.join('invest-data/test/data', 'base_data',
-                        'terrestrial', 'lulc_samp_cur'),
+                    'lulc_samp_cur': os.path.join(SAMPLE_RASTERS, 'lulc_samp_cur'),
                     'do_biophysical': True,
                 }
             ],
-            'c_again': os.path.join(CARBON_DATA, 'harv_samp_cur.shp'),
+            'c_again': os.path.join(SAMPLE_VECTORS, 'harv_samp_cur.shp'),
         }
         archive_uri = os.path.join(TEST_OUT, 'nested_args')
         data_storage.collect_parameters(input_parameters, archive_uri)
@@ -279,7 +278,7 @@ class DataStorageTest(unittest.TestCase):
                 u'two': 2,
                 u'three': os.path.join(input_folder, u'Guild.csv')
             },
-            u'c': os.path.join(input_folder, u'vector_86FJO8'),
+            u'c': os.path.join(input_folder, u'vector_NCWK6A'),
             u'raster_list': [
                 os.path.join(input_folder, u'raster_HD4O5B'),
                 {
@@ -287,7 +286,7 @@ class DataStorageTest(unittest.TestCase):
                     u'do_biophysical': True,
                 }
             ],
-            u'c_again': os.path.join(input_folder, u'vector_86FJO8'),
+            u'c_again': os.path.join(input_folder, u'vector_NCWK6A'),
             u'workspace_dir': workspace,
         }
         parameters = data_storage.extract_parameters_archive(workspace,
@@ -308,7 +307,7 @@ class DataStorageTest(unittest.TestCase):
     @skipIfDataMissing(SVN_LOCAL_DIR)
     def test_archive_dbf(self):
         input_parameters = {
-            'dbf_file': os.path.join(CARBON_DATA, 'carbon_pools_samp.dbf'),
+            'dbf_file': os.path.join(TEST_INPUT, 'carbon_pools_samp.dbf'),
         }
         archive_uri = os.path.join(TEST_OUT, 'dbf_archive')
         data_storage.collect_parameters(input_parameters, archive_uri)

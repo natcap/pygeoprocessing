@@ -19,6 +19,9 @@ from . import data_storage
 LOGGER = logging.getLogger('natcap.testing.assertions')
 
 def assert_equal(value_a, value_b, msg=None):
+    if msg is None:
+        msg = '%s != %s' % (value_a, value_b)
+
     assert value_a == value_b, msg
 
 def assert_almost_equal(value_a, value_b, places=7, msg=None):
