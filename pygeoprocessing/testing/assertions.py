@@ -29,7 +29,7 @@ def assert_almost_equal(value_a, value_b, places=7, msg=None):
         # Shortcut!
         return
 
-    if round(abs(value_a, value_b), places) == 0:
+    if round(abs(value_b - value_a), places) == 0:
         return
 
     if msg is None:

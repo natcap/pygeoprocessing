@@ -1,6 +1,8 @@
 from assertions import *
+from utils import get_hash
 
 __all__ = [
+    'get_hash',
     'assert_equal',
     'assert_almost_equal',
     'assert_rasters_equal',
