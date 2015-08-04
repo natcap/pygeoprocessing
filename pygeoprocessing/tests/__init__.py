@@ -17,8 +17,6 @@ import numpy
 from pygeoprocessing.testing import scm
 from pygeoprocessing.testing.scm import skipIfDataMissing
 
-_NATCAP_SVN = 'svn://scm.naturalcapitalproject.org/svn/pygeoprocessing-test-data'
-SVN_LOCAL_DIR = os.path.join(tempfile.gettempdir(), 'pygeoprocessing-svn-data')
 LOGGER = logging.getLogger('pygeoprocessing.tests')
 
 GDAL_TYPES = {
@@ -244,9 +242,6 @@ def create_raster_from_array(
 
 def test(with_data=False):
     """run modulewide tests"""
-
-    if with_data is True:
-        scm.checkout_svn(_NATCAP_SVN, SVN_LOCAL_DIR, 0)
 
     LOGGER.info('running tests on %s', os.path.dirname(__file__))
     suite = unittest.TestLoader().discover(os.path.dirname(__file__))
