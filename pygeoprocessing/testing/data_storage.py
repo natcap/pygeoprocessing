@@ -117,15 +117,11 @@ def collect_parameters(parameters, archive_uri):
             shutil.copyfile(raster_file, new_file_location)
             return os.path.basename(file_list[0])
         else:
-            # If the filepath given is a folder itself, we want the new raster dir
-            # to be based on a seed of the folder's basname.  Otherwise, we need to
-            # get the basename from the filepath.
-            if os.path.isdir(filepath):
-                parent_folder = os.path.basename(filepath)
-            else:
-                parent_folder = os.path.dirname(filepath)
-
-            new_raster_dir = make_random_dir(temp_workspace, filepath, 'raster_', True)
+            # Regardless of whether the raster is passed in as a folder or a
+            # single file, use its md5sum as a seed to the new raster's folder
+            # name.
+            seed = pygeoprocessing.testing.get_hash(file_list)
+            new_raster_dir = make_random_dir(temp_workspace, seed, 'raster_', True)
             for raster_file in file_list:
                 # raster_file may be a folder ... we can't copy a folder with
                 # copyfile.
