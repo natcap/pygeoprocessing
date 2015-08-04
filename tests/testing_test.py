@@ -281,7 +281,7 @@ class DataStorageTest(unittest.TestCase):
             },
             u'c': os.path.join(input_folder, u'vector_NCWK6A'),
             u'raster_list': [
-                os.path.join(input_folder, u'raster_HD4O5B'),
+                os.path.join(input_folder, u'raster_I5AI99'),
                 {
                     u'lulc_samp_cur': os.path.join(input_folder, u'raster_7ZA2EY'),
                     u'do_biophysical': True,
