@@ -150,7 +150,7 @@ class DataStorageTest(unittest.TestCase):
     @scm.skipIfDataMissing(SVN_LOCAL_DIR)
     def test_archive_arc_raster_nice(self):
         params = {
-            'raster': os.path.join(SAMPLE_RASTERS, 'precip')
+            'raster': os.path.join(SAMPLE_RASTERS, 'lulc_samp_cur')
         }
 
         archive_uri = os.path.join(TEST_OUT, 'raster_nice')
@@ -231,8 +231,8 @@ class DataStorageTest(unittest.TestCase):
             u'guilds_uri': os.path.join(input_folder, u'Guild.csv'),
             u'half_saturation': 0.125,
             u'landuse_attributes_uri': os.path.join(input_folder, u'LU.csv'),
-            u'landuse_cur_uri': os.path.join(input_folder, u'raster_UIMHR6'),
-            u'landuse_fut_uri': os.path.join(input_folder, u'raster_6A6DEA'),
+            u'landuse_cur_uri': os.path.join(input_folder, u'raster_5FCY50'),
+            u'landuse_fut_uri': os.path.join(input_folder, u'raster_83KJEK'),
             u'results_suffix': u'suff',
             u'wild_pollination_proportion': 1.0,
             u'workspace_dir': workspace,
@@ -256,7 +256,7 @@ class DataStorageTest(unittest.TestCase):
             },
             'c': os.path.join(SAMPLE_VECTORS, 'harv_samp_cur.shp'),
             'raster_list': [
-                os.path.join(SAMPLE_RASTERS, 'precip'),
+                os.path.join(SAMPLE_RASTERS, 'lulc_samp_fut'),
                 {
                     'lulc_samp_cur': os.path.join(SAMPLE_RASTERS, 'lulc_samp_cur'),
                     'do_biophysical': True,
@@ -281,9 +281,9 @@ class DataStorageTest(unittest.TestCase):
             },
             u'c': os.path.join(input_folder, u'vector_NCWK6A'),
             u'raster_list': [
-                os.path.join(input_folder, u'raster_HD4O5B'),
+                os.path.join(input_folder, u'raster_83KJEK'),
                 {
-                    u'lulc_samp_cur': os.path.join(input_folder, u'raster_7ZA2EY'),
+                    u'lulc_samp_cur': os.path.join(input_folder, u'raster_5FCY50'),
                     u'do_biophysical': True,
                 }
             ],
