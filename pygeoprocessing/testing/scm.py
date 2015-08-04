@@ -46,7 +46,10 @@ def checkout_svn(local_path, remote_path, rev=None):
         rev = str(rev)
 
     if os.path.exists(local_path):
-        subprocess.call(['cd', local_path, '&&', 'svn', 'update', '-r', rev])
+        cur_dir = os.getcwd()
+        os.chdir(local_path)
+        subprocess.call(['svn', 'update', '-r', rev])
+        os.chdir(cur_dir)
     else:
         subprocess.call(['svn', 'checkout', remote_path, local_path, '-r', rev])
 
