@@ -7,7 +7,7 @@ import json
 from pygeoprocessing.tests import skipIfDataMissing
 import pygeoprocessing.testing as testing
 from pygeoprocessing.testing import data_storage
-from pygeoprocessing.testing import test_writing
+from pygeoprocessing.testing import testcase_writing
 import pygeoprocessing as raster_utils
 
 SVN_LOCAL_DIR = json.load(open(os.path.join(
@@ -28,13 +28,13 @@ class TestWritingTest(unittest.TestCase):
     @skipIfDataMissing(SVN_LOCAL_DIR)
     def test_file_has_class_pass(self):
         test_file = os.path.join(WRITING_ARCHIVES, 'simple_test.py.txt')
-        cls_exists = test_writing.file_has_class(test_file, 'ExampleClass')
+        cls_exists = testcase_writing.file_has_class(test_file, 'ExampleClass')
         self.assertEqual(cls_exists, True)
 
     @skipIfDataMissing(SVN_LOCAL_DIR)
     def test_file_has_class_fail(self):
         test_file = os.path.join(WRITING_ARCHIVES, 'simple_test.py.txt')
-        cls_exists = test_writing.file_has_class(test_file, 'BadClass')
+        cls_exists = testcase_writing.file_has_class(test_file, 'BadClass')
         self.assertEqual(cls_exists, False)
 
     @skipIfDataMissing(SVN_LOCAL_DIR)
@@ -48,7 +48,7 @@ class TestWritingTest(unittest.TestCase):
         in_archive_uri = 'input_archive.tar.gz'
         out_archive_uri = 'output_archive.tar.gz'
         module = 'natcap.invest.sample_model.script'
-        test_writing.add_test_to_class(new_file, test_class_name,
+        testcase_writing.add_test_to_class(new_file, test_class_name,
             test_func_name, in_archive_uri, out_archive_uri, module)
 
         regression_file = os.path.join(WRITING_ARCHIVES,
@@ -66,7 +66,7 @@ class TestWritingTest(unittest.TestCase):
         in_archive_uri = 'input_archive.tar.gz'
         out_archive_uri = 'output_archive.tar.gz'
         module = 'natcap.invest.sample_model.script'
-        test_writing.add_test_to_class(new_file, test_class_name,
+        testcase_writing.add_test_to_class(new_file, test_class_name,
             test_func_name, in_archive_uri, out_archive_uri, module)
 
         regression_file = os.path.join(WRITING_ARCHIVES,
@@ -84,7 +84,7 @@ class TestWritingTest(unittest.TestCase):
         in_archive_uri = 'input_archive.tar.gz'
         out_archive_uri = 'output_archive.tar.gz'
         module = 'natcap.invest.sample_model.script'
-        test_writing.add_test_to_class(new_file, test_class_name,
+        testcase_writing.add_test_to_class(new_file, test_class_name,
             test_func_name, in_archive_uri, out_archive_uri, module)
 
         regression_file = os.path.join(WRITING_ARCHIVES,

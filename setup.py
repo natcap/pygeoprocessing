@@ -132,6 +132,7 @@ setup(
     url='http://bitbucket.org/richpsharp/pygeoprocessing',
     packages=[
         'pygeoprocessing',
+        'pygeoprocessing.tests',
         'pygeoprocessing.routing',
         'pygeoprocessing.testing',
         'pygeoprocessing.tests',
