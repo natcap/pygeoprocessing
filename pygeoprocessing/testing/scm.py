@@ -1,4 +1,5 @@
 import os
+import json
 import functools
 import subprocess
 import tempfile
@@ -53,3 +54,22 @@ def checkout_svn(local_path, remote_path, rev=None):
     else:
         subprocess.call(['svn', 'checkout', remote_path, local_path, '-r', rev])
 
+def load_config(config_file):
+    """
+    Load the SCM configuration from a JSON configuration file.
+
+    Expects that the config file has three values:
+    {
+        "local": <local path to repo>,
+        "remote": <path to remote repo>,
+        "rev": <target revision>
+    }
+    """
+
+    data = json.load(open(config_file))
+    if not os.path.isabs(data['local']):
+        # assume that the data path is relative to the configuration file.
+        config_file_dir = os.path.dirname(config_file)
+        data['local'] = os.path.join(config_file_dir, data['local'])
+
+    return data
