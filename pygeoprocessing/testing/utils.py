@@ -15,23 +15,35 @@ from . import data_storage
 LOGGER = logging.getLogger('natcap.testing.utils')
 
 def get_hash(uri):
-    """Get the MD5 hash for a single file.  The file is read in a
-        memory-efficient fashion.
+    """Get the MD5 hash for a single file or folder.  If a folder, all files
+        in the folder will be combined into a single md5sum.  Files are read in
+        a memory-efficient fashion.
 
         Args:
-            uri (string): a string uri to the file to be tested.
+            uri (string): a string uri to the file or folder to be tested.
 
         Returns:
             An md5sum of the input file"""
 
     block_size = 2**20
-    file_handler = open(uri, 'rb')
     md5 = hashlib.md5()
-    while True:
-        data = file_handler.read(block_size)
-        if not data:
-            break
-        md5.update(data)
+
+    if os.path.isdir(uri):
+        file_list = []
+        for path, subdirs, files in os.walk(uri):
+            for name in files:
+                file_list.append(os.path.join(path, name))
+    else:
+        file_list = [uri]
+
+    for filename in file_list:
+        file_handler = open(filename, 'rb')
+        while True:
+            data = file_handler.read(block_size)
+            if not data:
+                break
+            md5.update(data)
+
     return md5.hexdigest()
 
 
@@ -43,9 +55,9 @@ def save_workspace(new_workspace):
 
         Example usage with a test case::
 
-            import natcap.invest.testing
+            import pygeoprocessing.testing
 
-            @natcap.invest.testing.save_workspace('/path/to/workspace')
+            @pygeoprocessing.testing.save_workspace('/path/to/workspace')
             def test_workspaces(self):
                 model.execute(self.args)
 
@@ -53,7 +65,7 @@ def save_workspace(new_workspace):
             + Target workspace folder must be saved to ``self.workspace_dir``
                 This decorator is only designed to work with test functions
                 from subclasses of ``unittest.TestCase`` such as
-                ``natcap.invest.testing.GISTest``.
+                ``pygeoprocessing.testing.GISTest``.
 
             + If ``new_workspace`` exists, it will be removed.
                 So be careful where you save things.
@@ -96,9 +108,9 @@ def regression(input_archive, workspace_archive):
 
         Example usage with a test case::
 
-            import natcap.invest.testing
+            import pygeoprocessing.testing
 
-            @natcap.invest.testing.regression('/data/input.tar.gz', /data/output.tar.gz')
+            @pygeoprocessing.testing.regression('/data/input.tar.gz', /data/output.tar.gz')
             def test_workspaces(self):
                 model.execute(self.args)
 
@@ -139,12 +151,12 @@ def build_regression_archives(file_uri, input_archive_uri, output_archive_uri):
         input files and parameters are collected and compressed into a single
         gzip.  Then, the target model is executed and the output workspace is
         zipped up into another gzip.  These could then be used for regression
-        testing, such as with the ``natcap.invest.testing.regression`` decorator.
+        testing, such as with the ``pygeoprocessing.testing.regression`` decorator.
 
         Example configuration file contents (serialized to JSON)::
 
             {
-                    "model": "natcap.invest.pollination.pollination",
+                    "model": "pygeoprocessing.pollination.pollination",
                     "arguments": {
                         # the full set of model arguments here
                     }
@@ -152,12 +164,12 @@ def build_regression_archives(file_uri, input_archive_uri, output_archive_uri):
 
         Example function usage::
 
-            import natcap.invest.testing
+            import pygeoprocessing.testing
 
             file_uri = "/path/to/config.json"
             input_archive_uri = "/path/to/archived_inputs.tar.gz"
             output_archive_uri = "/path/to/archived_outputs.tar.gz"
-            natcap.invest.testing.build_regression_archives(file_uri,
+            pygeoprocessing.testing.build_regression_archives(file_uri,
                 input_archive_uri, output_archive_uri)
 
         Args:
