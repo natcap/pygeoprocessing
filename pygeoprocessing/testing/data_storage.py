@@ -17,6 +17,7 @@ from osgeo import gdal
 from osgeo import ogr
 
 import pygeoprocessing.geoprocessing
+import pygeoprocessing.testing
 
 
 DATA_ARCHIVES = os.path.join('data', 'regression_archives')
@@ -45,6 +46,23 @@ def is_multi_file(filename):
     pass
 
 def make_random_dir(workspace, seed_string, prefix, make_dir=True):
+    """
+    Make a directory in `workspace` where the name is a combination of
+    `prefix` and a 6-character random string based off of `seed_string`.
+
+    Parameters:
+        workspace (string): The string workspace in which to create the new
+            folder.
+        seed_string (string): A string to use as a seed for the random folder
+            name.
+        prefix (string): The prefix of the new folder name.  The first part
+            of the new folder name.
+        make_dir=True (boolean): Whether to make the new folder we are naming.
+
+    Returns:
+        The path to the new folder.  The name of the folder willbe of the
+        pattern: <prefix><random chars>.  Example: raster_1G3GES
+    """
     LOGGER.debug('Random dir seed: %s', seed_string)
     random.seed(seed_string)
     new_dirname = ''.join(random.choice(string.ascii_uppercase + string.digits)
@@ -57,18 +75,6 @@ def make_random_dir(workspace, seed_string, prefix, make_dir=True):
         os.mkdir(raster_dir)
 
     return raster_dir
-
-
-def make_raster_dir(workspace, seed_string, make_dir=True):
-    raster_dir = make_random_dir(workspace, seed_string, 'raster_', make_dir)
-    LOGGER.debug('new raster dir: %s', raster_dir)
-    return raster_dir
-
-
-def make_vector_dir(workspace, seed_string, make_dir=True):
-    vector_dir = make_random_dir(workspace, seed_string, 'vector_', make_dir)
-    LOGGER.debug('new vector dir: %s', vector_dir)
-    return vector_dir
 
 def collect_parameters(parameters, archive_uri):
     """Collect an InVEST model's arguments into a dictionary and archive all
@@ -119,7 +125,7 @@ def collect_parameters(parameters, archive_uri):
             else:
                 parent_folder = os.path.dirname(filepath)
 
-            new_raster_dir = make_raster_dir(temp_workspace, parent_folder)
+            new_raster_dir = make_random_dir(temp_workspace, filepath, 'raster_', True)
             for raster_file in file_list:
                 # raster_file may be a folder ... we can't copy a folder with
                 # copyfile.
@@ -129,8 +135,6 @@ def collect_parameters(parameters, archive_uri):
                     shutil.copyfile(raster_file, new_raster_uri)
 
             return os.path.basename(new_raster_dir)
-
-
 
     class UnsupportedFormat(Exception):
         pass
@@ -151,7 +155,8 @@ def collect_parameters(parameters, archive_uri):
 
         LOGGER.debug('Temp folder seed: %s', parent_folder)
 
-        new_vector_dir = make_vector_dir(temp_workspace, parent_folder)
+        new_vector_dir = make_random_dir(temp_workspace, parent_folder, 'vector_', True)
+
         if driver.name == 'ESRI Shapefile':
             LOGGER.debug('%s is an ESRI Shapefile', filepath)
             # get the layer name
