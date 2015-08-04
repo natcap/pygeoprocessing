@@ -150,7 +150,7 @@ class DataStorageTest(unittest.TestCase):
     @skipIfDataMissing(SVN_LOCAL_DIR)
     def test_archive_arc_raster_nice(self):
         params = {
-            'raster': os.path.join(SAMPLE_RASTERS, 'precip')
+            'raster': os.path.join(SAMPLE_RASTERS, 'lulc_samp_fut')
         }
 
         archive_uri = os.path.join(TEST_OUT, 'raster_nice')
@@ -256,7 +256,7 @@ class DataStorageTest(unittest.TestCase):
             },
             'c': os.path.join(SAMPLE_VECTORS, 'harv_samp_cur.shp'),
             'raster_list': [
-                os.path.join(SAMPLE_RASTERS, 'precip'),
+                os.path.join(SAMPLE_RASTERS, 'lulc_samp_fut'),
                 {
                     'lulc_samp_cur': os.path.join(SAMPLE_RASTERS, 'lulc_samp_cur'),
                     'do_biophysical': True,
