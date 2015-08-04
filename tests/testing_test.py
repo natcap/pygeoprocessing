@@ -227,7 +227,7 @@ class DataStorageTest(unittest.TestCase):
         regression_params = {
             u'ag_classes': u'67 68 71 72 73 74 75 76 78 79 80 81 82 83 84 85 88 90 91 92',
             u'do_valuation': True,
-            u'farms_shapefile': os.path.join(input_folder, u'vector_3ZRP4E'),
+            u'farms_shapefile': os.path.join(input_folder, u'vector_0KMG5O'),
             u'guilds_uri': os.path.join(input_folder, u'Guild.csv'),
             u'half_saturation': 0.125,
             u'landuse_attributes_uri': os.path.join(input_folder, u'LU.csv'),
@@ -279,7 +279,7 @@ class DataStorageTest(unittest.TestCase):
                 u'two': 2,
                 u'three': os.path.join(input_folder, u'Guild.csv')
             },
-            u'c': os.path.join(input_folder, u'vector_NCWK6A'),
+            u'c': os.path.join(input_folder, u'vector_4OSCP6'),
             u'raster_list': [
                 os.path.join(input_folder, u'raster_83KJEK'),
                 {
@@ -287,7 +287,7 @@ class DataStorageTest(unittest.TestCase):
                     u'do_biophysical': True,
                 }
             ],
-            u'c_again': os.path.join(input_folder, u'vector_NCWK6A'),
+            u'c_again': os.path.join(input_folder, u'vector_4OSCP6'),
             u'workspace_dir': workspace,
         }
         parameters = data_storage.extract_parameters_archive(workspace,
