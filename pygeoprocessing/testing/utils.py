@@ -14,13 +14,14 @@ from . import data_storage
 
 LOGGER = logging.getLogger('natcap.testing.utils')
 
-def get_hash(uri):
+def get_hash(filepath):
     """Get the MD5 hash for a single file or folder.  If a folder, all files
         in the folder will be combined into a single md5sum.  Files are read in
         a memory-efficient fashion.
 
         Args:
-            uri (string): a string uri to the file or folder to be tested.
+            filepath (string): a string path to the file or folder to be tested
+                or a list of files to be analyzed.
 
         Returns:
             An md5sum of the input file"""
@@ -28,13 +29,21 @@ def get_hash(uri):
     block_size = 2**20
     md5 = hashlib.md5()
 
-    if os.path.isdir(uri):
+    if isinstance(filepath, list):
+        # User provided list of files, ensure they are files and not folders.
         file_list = []
-        for path, subdirs, files in os.walk(uri):
+        for filepath in filepath:
+            if not os.path.isdir(filepath):
+                file_list.append(filepath)
+    elif os.path.isdir(filepath):
+        # User provided a folder, so recurse through all the files.
+        file_list = []
+        for path, subdirs, files in os.walk(filepath):
             for name in files:
                 file_list.append(os.path.join(path, name))
     else:
-        file_list = [uri]
+        # User only provided a single file.
+        file_list = [filepath]
 
     for filename in file_list:
         file_handler = open(filename, 'rb')
