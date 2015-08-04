@@ -142,16 +142,10 @@ def collect_parameters(parameters, archive_uri):
         shapefile = ogr.Open(filepath)
         driver = shapefile.GetDriver()
 
-        if os.path.isdir(filepath):
-            parent_folder = os.path.basename(filepath)
-        else:
-            folder_name = os.path.basename(os.path.dirname(filepath))
-            file_name = os.path.basename(filepath)
-            parent_folder = os.path.join(folder_name, file_name)
+        seed = pygeoprocessing.testing.get_hash(filepath)
+        LOGGER.debug('Temp folder seed: %s', seed)
 
-        LOGGER.debug('Temp folder seed: %s', parent_folder)
-
-        new_vector_dir = make_random_dir(temp_workspace, parent_folder, 'vector_', True)
+        new_vector_dir = make_random_dir(temp_workspace, seed, 'vector_', True)
 
         if driver.name == 'ESRI Shapefile':
             LOGGER.debug('%s is an ESRI Shapefile', filepath)
