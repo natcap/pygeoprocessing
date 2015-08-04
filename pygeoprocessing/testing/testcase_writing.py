@@ -75,7 +75,7 @@ def class_has_test(test_file_uri, test_class_name, test_func_name):
 def add_test_to_class(file_uri, test_class_name, test_func_name,
         in_archive_uri, out_archive_uri, module):
     """Add a test function to an existing test file.  The test added is a
-    regression test using the natcap.invest.testing.regression archive
+    regression test using the pygeoprocessing.testing.regression archive
     decorator.
 
         file_uri - URI to the test file to modify.
@@ -88,7 +88,7 @@ def add_test_to_class(file_uri, test_class_name, test_func_name,
         in_archive_uri - URI to the input archive.
         out_archive_uri - URI to the output archive.
         module - string module, whose execute function will be run in the test
-            (e.g. 'natcap.invest.pollination.pollination')
+            (e.g. 'pygeoprocessing.pollination.pollination')
 
     WARNING: The input test file is overwritten with the new test file.
 
@@ -108,15 +108,15 @@ def add_test_to_class(file_uri, test_class_name, test_func_name,
         return
 
     def _import():
-        return 'import natcap.invest.testing\n'
+        return 'import pygeoprocessing.testing\n'
 
     def _test_class(test_class):
-        return 'class %s(natcap.invest.testing.GISTest):\n' % test_class
+        return 'class %s(unittest.TestCase):\n' % test_class
 
     def _archive_reg_test(test_name, module, in_archive, out_archive, cur_dir):
         in_archive = os.path.relpath(in_archive, cur_dir)
         out_archive = os.path.relpath(out_archive, cur_dir)
-        return('    @natcap.invest.testing.regression(\n' +\
+        return('    @pygeoprocessing.testing.regression(\n' +\
                '        input_archive="%s",\n' % in_archive +\
                '        workspace_archive="%s")\n' % out_archive +\
                '    def %s(self):\n' % test_name +\
