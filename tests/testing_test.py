@@ -1,4 +1,5 @@
 import unittest
+import tempfile
 import os
 import shutil
 import glob
@@ -8,6 +9,7 @@ from pygeoprocessing.testing import scm
 import pygeoprocessing.testing as testing
 from pygeoprocessing.testing import data_storage
 from pygeoprocessing.testing import testcase_writing
+from pygeoprocessing.testing import utils
 import pygeoprocessing as raster_utils
 
 SVN_LOCAL_DIR = scm.load_config(os.path.join(os.path.dirname(__file__),
@@ -23,6 +25,33 @@ TEST_INPUT = os.path.join(SVN_LOCAL_DIR, 'data_storage', 'test_input')
 TEST_OUT = os.path.join(SVN_LOCAL_DIR, 'test_out')
 BASE_DATA = os.path.join(SVN_LOCAL_DIR, 'base_data')
 REGRESSION_INPUT = os.path.join(SVN_LOCAL_DIR, 'testing_regression')
+
+class DataStorageUtilsTest(unittest.TestCase):
+    def test_get_hash(self):
+        # make a file in tempdir
+        _, new_file = tempfile.mkstemp()
+        open_file = open(new_file, 'w')
+        open_file.write('foobarbaz')
+        open_file.close()
+
+        first_md5sum = utils.get_hash(new_file)
+
+        # move it to a different filename
+        moved_file = new_file + '.txt'
+        shutil.move(new_file, moved_file)
+        second_md5sum = utils.get_hash(moved_file)
+
+        # verify md5sum stays the same across all cases.
+        self.assertEqual(first_md5sum, second_md5sum)
+
+        # move it to a new folder, verify md5sum
+        dirname = tempfile.mkdtemp()
+        shutil.move(moved_file, os.path.join(dirname,
+                                             os.path.basename(moved_file)))
+        dir_md5sum = utils.get_hash(dirname)
+        self.assertEqual(first_md5sum, dir_md5sum)
+
+
 
 class TestWritingTest(unittest.TestCase):
     @scm.skipIfDataMissing(SVN_LOCAL_DIR)
