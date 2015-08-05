@@ -77,7 +77,7 @@ class TestWritingTest(unittest.TestCase):
         in_archive_uri = 'input_archive.tar.gz'
         out_archive_uri = 'output_archive.tar.gz'
         module = 'natcap.invest.sample_model.script'
-        testcase_writing.add_test_to_class(new_file, test_class_name,
+        testcase_writing.add_ftest_to_class(new_file, test_class_name,
             test_func_name, in_archive_uri, out_archive_uri, module)
 
         regression_file = os.path.join(WRITING_ARCHIVES,
@@ -95,7 +95,7 @@ class TestWritingTest(unittest.TestCase):
         in_archive_uri = 'input_archive.tar.gz'
         out_archive_uri = 'output_archive.tar.gz'
         module = 'natcap.invest.sample_model.script'
-        testcase_writing.add_test_to_class(new_file, test_class_name,
+        testcase_writing.add_ftest_to_class(new_file, test_class_name,
             test_func_name, in_archive_uri, out_archive_uri, module)
 
         regression_file = os.path.join(WRITING_ARCHIVES,
@@ -113,7 +113,7 @@ class TestWritingTest(unittest.TestCase):
         in_archive_uri = 'input_archive.tar.gz'
         out_archive_uri = 'output_archive.tar.gz'
         module = 'natcap.invest.sample_model.script'
-        testcase_writing.add_test_to_class(new_file, test_class_name,
+        testcase_writing.add_ftest_to_class(new_file, test_class_name,
             test_func_name, in_archive_uri, out_archive_uri, module)
 
         regression_file = os.path.join(WRITING_ARCHIVES,
