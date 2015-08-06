@@ -26,9 +26,6 @@ def get_hash(filepath):
         Returns:
             An md5sum of the input file"""
 
-    block_size = 2**20
-    md5 = hashlib.md5()
-
     if isinstance(filepath, list):
         # User provided list of files, ensure they are files and not folders.
         file_list = []
@@ -45,15 +42,16 @@ def get_hash(filepath):
         # User only provided a single file.
         file_list = [filepath]
 
-    for filename in file_list:
+    block_size = 2**20
+    all_md5 = hashlib.md5()
+    for filename in sorted(file_list):
         file_handler = open(filename, 'rb')
-        while True:
-            data = file_handler.read(block_size)
-            if not data:
-                break
-            md5.update(data)
+        file_md5 = hashlib.md5()
+        for chunk in iter(lambda: file_handler.read(block_size), ''):
+            file_md5.update(chunk)
+        all_md5.update(file_md5.hexdigest())
 
-    return md5.hexdigest()
+    return all_md5.hexdigest()
 
 
 def save_workspace(new_workspace):
