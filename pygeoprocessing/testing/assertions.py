@@ -19,12 +19,26 @@ from . import data_storage
 LOGGER = logging.getLogger('natcap.testing.assertions')
 
 def assert_equal(value_a, value_b, msg=None):
+    """
+    Assert that values a and b are equal.  If msg is not provided, a
+    standard message will be used.
+
+    Raises AssertionError if the values are not equal.
+    """
     if msg is None:
         msg = '%s != %s' % (value_a, value_b)
 
     assert value_a == value_b, msg
 
 def assert_almost_equal(value_a, value_b, places=7, msg=None):
+    """
+    Assert that values a and b are equal out to `places` places.
+
+    If msg is not provided, a standard one will be used.
+
+    Raises AssertionError if the values are not equal out to the desired
+    precision.
+    """
     if value_a == value_b:
         # Shortcut!
         return
