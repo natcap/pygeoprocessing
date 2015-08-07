@@ -38,7 +38,7 @@ class DataStorageUtilsTest(unittest.TestCase):
 
         # move it to a different filename
         moved_file = new_file + '.txt'
-        shutil.move(new_file, moved_file)
+        shutil.copy(new_file, moved_file)
         second_md5sum = utils.get_hash(moved_file)
 
         # verify md5sum stays the same across all cases.
@@ -50,7 +50,8 @@ class DataStorageUtilsTest(unittest.TestCase):
                                              os.path.basename(moved_file)))
         dir_md5sum = utils.get_hash(dirname)
         self.assertEqual(first_md5sum, dir_md5sum)
-
+        shutil.rmtree(dirname)
+        os.remove(new_file)
 
 
 class TestWritingTest(unittest.TestCase):
