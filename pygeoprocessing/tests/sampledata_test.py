@@ -19,13 +19,13 @@ class RasterFactoryTest(unittest.TestCase):
         self.assertRaises(TypeError, factory.new)
 
         # verify we can make a new raster.
-        reference = sampledata.COLOMBIA_30M
+        reference = sampledata.SRS_COLOMBIA
         filename = factory.new(
             band_matrix=numpy.ones((4, 4), numpy.byte),
             origin=(0, 0),
             projection_wkt=reference.projection,
             nodata=0,
-            pixel_size=(30, -30)
+            pixel_size=reference.pixel_size(30)
         )
         self.assertTrue(os.path.exists(filename))
 
@@ -37,17 +37,17 @@ class VectorFactoryTest(unittest.TestCase):
         self.assertRaises(TypeError, factory.new)
 
         #Verify we can make a new vector
-        _ = factory.new([Point([(1, 1)])], sampledata.COLOMBIA_30M.projection)
+        _ = factory.new([Point([(1, 1)])], sampledata.SRS_COLOMBIA.projection)
 
 class RasterTest(unittest.TestCase):
     def test_init(self):
         pixels = numpy.ones((4, 4), numpy.byte)
         nodata = 0
-        reference = sampledata.COLOMBIA_30M
+        reference = sampledata.SRS_COLOMBIA
         filename = pygeoprocessing.temporary_filename()
 
         sampledata.raster(pixels, reference.origin, reference.projection,
-                          nodata, reference.pixel_size, datatype=gdal.GDT_Byte,
+                          nodata, reference.pixel_size(30), datatype=gdal.GDT_Byte,
                           format='GTiff', filename=filename)
 
         self.assertTrue(os.path.exists(filename))
@@ -67,19 +67,19 @@ class RasterTest(unittest.TestCase):
         self.assertTrue(dataset_sr.IsSame(source_sr))
 
     def test_bad_driver(self):
-        reference = sampledata.COLOMBIA_30M
+        reference = sampledata.SRS_COLOMBIA
         self.assertRaises(RuntimeError, sampledata.raster, numpy.ones((4, 4)),
                           reference.origin, reference.projection, 0,
-                          reference.pixel_size, format='foo')
+                          reference.pixel_size(30), format='foo')
 
     def test_raster_autodtype(self):
         pixels = numpy.ones((4, 4), numpy.uint16)
         nodata = 0
-        reference = sampledata.COLOMBIA_30M
+        reference = sampledata.SRS_COLOMBIA
         filename = pygeoprocessing.temporary_filename()
 
         sampledata.raster(pixels, reference.origin, reference.projection,
-                          nodata, reference.pixel_size, datatype='auto',
+                          nodata, reference.pixel_size(30), datatype='auto',
                           filename=filename)
 
         dataset = gdal.Open(filename)
@@ -95,7 +95,7 @@ class VectorTest(unittest.TestCase):
         polygons = [
             Polygon([(0, 0), (1, 0), (0.5, 1), (0, 0)]),
         ]
-        reference = sampledata.COLOMBIA_30M
+        reference = sampledata.SRS_COLOMBIA
 
         filename = sampledata.vector(polygons, reference.projection)
 

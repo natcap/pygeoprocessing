@@ -44,7 +44,8 @@ for _attrname in dir(gdal):
         _dtype_value = getattr(gdal, _attrname)
         GDAL_DTYPE_LABELS[_dtype_value] = _attrname
 
-_COLOMBIA_SRS = """PROJCS["MAGNA-SIRGAS / Colombia Bogota zone",
+SRS_COLOMBIA = ReferenceData(
+    projection="""PROJCS["MAGNA-SIRGAS / Colombia Bogota zone",
     GEOGCS["MAGNA-SIRGAS",
         DATUM["Marco_Geocentrico_Nacional_de_Referencia",
         SPHEROID["GRS 1980",6378137,298.2572221010002,
@@ -62,12 +63,9 @@ _COLOMBIA_SRS = """PROJCS["MAGNA-SIRGAS / Colombia Bogota zone",
     PARAMETER["false_northing",1000000],
     UNIT["metre",1,
         AUTHORITY["EPSG","9001"]],
-    AUTHORITY["EPSG","3116"]]"""
-_COLOMBIA_ORIGIN = (444720, 3751320)
-COLOMBIA_30M = ReferenceData(
-    projection=_COLOMBIA_SRS,
-    origin=_COLOMBIA_ORIGIN,
-    pixel_size=(30, -30)
+    AUTHORITY["EPSG","3116"]]""",
+    origin=(444720, 3751320),
+    pixel_size = lambda x: (x, -1. * x)
 )
 VECTOR_FIELD_TYPES = {
     str: ogr.OFTString,
