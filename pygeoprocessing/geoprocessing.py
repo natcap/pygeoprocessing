@@ -1,4 +1,4 @@
-"""A collection of GDAL dataset and raster utilities"""
+"""A collection of GDAL dataset and raster utilities."""
 
 import logging
 import os
@@ -2907,7 +2907,7 @@ def calculate_disjoint_polygon_set(shapefile_uri):
 def distance_transform_edt(
         input_mask_uri, output_distance_uri, process_pool=None):
     """Find the Euclidean distance transform on input_mask_uri and output
-    the result into an output raster.
+    the result as raster.
 
     Args:
         input_mask_uri (string): a gdal raster to calculate distance from
