@@ -8,7 +8,6 @@ import tarfile
 import shutil
 import inspect
 import logging
-import tempfile
 import string
 import random
 import glob

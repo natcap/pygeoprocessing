@@ -1,5 +1,5 @@
 {
     "local": "data",
     "remote": "svn://scm.naturalcapitalproject.org/svn/pygeoprocessing-test-data",
-    "rev": 5
+    "rev": 6
 }
