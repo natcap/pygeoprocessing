@@ -189,14 +189,14 @@ def raster(band_matrix, origin, projection_wkt, nodata, pixel_size,
         message %= (numpy_dtype_label, gdal_dtype_label)
         raise warnings.UserWarning(message)
 
-    if dataset_opts is None:
-        dataset_opts = []
-
     # Create a raster given the shape of the pixels given the input driver
     n_rows, n_cols = band_matrix.shape
     driver = gdal.GetDriverByName(format)
     if driver is None:
         raise RuntimeError('GDAL driver %s not found' % format)
+
+    if dataset_opts is None:
+        dataset_opts = []
 
     new_raster = driver.Create(out_uri, n_cols, n_rows, 1, datatype,
                                options=dataset_opts)
@@ -206,8 +206,6 @@ def raster(band_matrix, origin, projection_wkt, nodata, pixel_size,
     srs = osr.SpatialReference()
     srs.ImportFromWkt(projection_wkt)
     new_raster.SetProjection(srs.ExportToWkt())
-
-    # build a geotransform from the pizel size and origin
     geotransform = make_geotransform(pixel_size[0], pixel_size[1], origin)
     new_raster.SetGeoTransform(geotransform)
 
