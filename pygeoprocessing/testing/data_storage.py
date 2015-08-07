@@ -121,6 +121,10 @@ def collect_parameters(parameters, archive_uri):
             # single file, use its md5sum as a seed to the new raster's folder
             # name.
             seed = pygeoprocessing.testing.get_hash(file_list)
+            # Casting to an int affords better compatibility between *nix and
+            # Windows.
+            seed = int(seed, 16)
+
             new_raster_dir = make_random_dir(temp_workspace, seed, 'raster_', True)
             for raster_file in file_list:
                 # raster_file may be a folder ... we can't copy a folder with
@@ -143,8 +147,10 @@ def collect_parameters(parameters, archive_uri):
         driver = shapefile.GetDriver()
 
         seed = pygeoprocessing.testing.get_hash(filepath)
+        # Casting the md5sum seed to an int affords better
+        # cross-platform.compatibility between *nix and Windows.
+        seed = int(seed, 16)
         LOGGER.debug('Temp folder seed: %s', seed)
-
         new_vector_dir = make_random_dir(temp_workspace, seed, 'vector_', True)
 
         if driver.name == 'ESRI Shapefile':
