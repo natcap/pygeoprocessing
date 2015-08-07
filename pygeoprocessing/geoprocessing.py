@@ -126,8 +126,7 @@ def get_datatype_from_uri(dataset_uri):
 
 
 def get_row_col_from_uri(dataset_uri):
-    """
-    Return number of rows and columns of given dataset uri as tuple.
+    """Return number of rows and columns of given dataset uri as tuple.
 
     Args:
         dataset_uri (string): a uri to a gdal dataset
@@ -265,11 +264,11 @@ def pixel_size_based_on_coordinate_transform(dataset, coord_trans, point):
     dataset may be in lat/long (WGS84).
 
     Args:
-        dataset (gdal.Dataset): a projected GDAL dataset in the form of lat/long decimal
-            degrees
-        coord_trans (): an OSR coordinate transformation from dataset
-            coordinate system to meters
-        point (): a reference point close to the coordinate transform
+        dataset (gdal.Dataset): a projected GDAL dataset in the form of
+            lat/long decimal degrees
+        coord_trans (osr.CoordinateTransformation): an OSR coordinate
+            transformation from dataset coordinate system to meters
+        point (tuple): a reference point close to the coordinate transform
             coordinate system.  must be in the same coordinate system as
             dataset.
 
@@ -334,7 +333,7 @@ def new_raster_from_base_uri(
         nothing
     """
     pygeoprocessing.geoprocessing_core.new_raster_from_base_uri(
-        base_uri,output_uri, gdal_format, nodata, datatype,
+        base_uri, output_uri, gdal_format, nodata, datatype,
         fill_value=fill_value, n_rows=n_rows, n_cols=n_rows,
         dataset_options=dataset_options)
 
@@ -565,13 +564,12 @@ def create_raster_from_vector_extents(
                         # define this as the initial state
                         shp_extent = list(feature_extent)
             except AttributeError as e:
-                # For some valid OGR objects the geometry can be undefined since
-                # it's valid to have a NULL entry in the attribute table
+                # For some valid OGR objects the geometry can be undefined
+                # since it's valid to have a NULL entry in the attribute table
                 # this is expressed as a None value in the geometry reference
                 # this feature won't contribute
                 LOGGER.warn(e)
 
-    # shp_extent = [xmin, xmax, ymin, ymax]
     tiff_width = int(numpy.ceil(abs(shp_extent[1] - shp_extent[0]) / xRes))
     tiff_height = int(numpy.ceil(abs(shp_extent[3] - shp_extent[2]) / yRes))
 
@@ -618,8 +616,7 @@ def vectorize_points_uri(
             is 'nearest'
 
     Returns:
-        nothing
-
+        None
     """
 
     datasource = ogr.Open(shapefile_uri)
@@ -648,7 +645,7 @@ def vectorize_points(
             scipy.interpolate.griddata(). Default is 'nearest'
 
     Returns:
-       nothing
+       None
     """
 
     # Define the initial bounding box
@@ -885,7 +882,7 @@ def aggregate_raster_values_uri(
             subset_layer.CreateFeature(poly_feat)
         subset_layer_datasouce.SyncToDisk()
 
-        #nodata out the mask
+        # nodata out the mask
         mask_band = mask_dataset.GetRasterBand(1)
         mask_band.Fill(mask_nodata)
         mask_band = None
@@ -1048,7 +1045,7 @@ def aggregate_raster_values_uri(
 
 def calculate_slope(
         dem_dataset_uri, slope_uri, aoi_uri=None, process_pool=None):
-    """Create slope raster from dem raster.
+    """Create slope raster from DEM raster.
 
     Follows the algorithm described here:
     http://webhelp.esri.com/arcgiSDEsktop/9.3/index.cfm?TopicName=How%20Slope%20works
@@ -1062,7 +1059,7 @@ def calculate_slope(
         process_pool: a process pool for multiprocessing
 
     Returns:
-        nothing
+        None
     """
     out_pixel_size = get_cell_size_from_uri(dem_dataset_uri)
     dem_nodata = get_nodata_from_uri(dem_dataset_uri)
@@ -1109,7 +1106,7 @@ def clip_dataset_uri(
             when calling RasterizeLayer for AOI masking.
 
     Returns:
-        nothing
+        None
     """
     source_dataset = gdal.Open(source_dataset_uri)
 
@@ -1248,7 +1245,7 @@ def reproject_dataset_uri(
         output_uri (string): location on disk to dump the reprojected dataset
 
     Returns:
-        nothing
+        None
     """
     # A dictionary to map the resampling method input string to the gdal type
     resample_dict = {
@@ -1345,7 +1342,7 @@ def reproject_datasource_uri(original_dataset_uri, output_wkt, output_uri):
             written to disk.
 
     Return:
-        nothing
+        None
     """
     original_dataset = ogr.Open(original_dataset_uri)
     _ = reproject_datasource(original_dataset, output_wkt, output_uri)
@@ -1414,7 +1411,7 @@ def reproject_datasource(original_datasource, output_wkt, output_uri):
         for original_feature in original_layer:
             geom = original_feature.GetGeometryRef()
 
-            # Transform the geometry into a format desired for the new projection
+            # Transform the geometry into format desired for the new projection
             geom.Transform(coord_trans)
 
             # Copy original_datasource's feature and set as new shapes feature
@@ -1592,7 +1589,7 @@ def reclassify_dataset_uri(
     values = numpy.array([value_map_copy[x] for x in keys])
 
     def map_dataset_to_value(original_values):
-        """Converts a block of original values to the lookup values"""
+        """Convert a block of original values to the lookup values"""
         if values_required:
             unique = numpy.unique(original_values)
             has_map = numpy.in1d(unique, keys)
@@ -1674,7 +1671,7 @@ def temporary_filename(suffix=''):
 
     def remove_file(path):
         """Function to remove a file and handle exceptions to register
-            in atexit"""
+            in atexit."""
         try:
             os.remove(path)
         except OSError:
@@ -1763,7 +1760,7 @@ def assert_datasets_in_same_projection(dataset_uri_list):
                 dataset_projections[index+1][0].ExportToPrettyWkt())
 
     for dataset in dataset_list:
-        # Make sure the dataset is closed and cleaned up
+        # Close and clean up dataset
         gdal.Dataset.__swig_destroy__(dataset)
     dataset_list = None
     return True
@@ -1835,7 +1832,7 @@ def resize_and_resample_dataset_uri(
             "nearest|bilinear|cubic|cubic_spline|lanczos"
 
     Returns:
-        nothing
+        None
     """
     resample_dict = {
         "nearest": gdal.GRA_NearestNeighbour,
@@ -1982,7 +1979,7 @@ def align_dataset_list(
             to intersect the final bounding box.
 
     Returns:
-        nothing
+        None
     """
     last_time = time.time()
 
@@ -2041,10 +2038,9 @@ def align_dataset_list(
             functools.partial(merge_bounding_boxes, mode=mode),
             [get_bounding_box(dataset_uri) for dataset_uri in dataset_uri_list])
 
-    if aoi_uri != None:
+    if aoi_uri is not None:
         bounding_box = merge_bounding_boxes(
             bounding_box, get_datasource_bounding_box(aoi_uri), "intersection")
-
 
     if (bounding_box[0] >= bounding_box[2] or
             bounding_box[1] <= bounding_box[3]) and mode == "intersection":
@@ -2151,7 +2147,7 @@ def assert_file_existance(dataset_uri_list):
             validate
 
     Returns:
-        nothing
+        None
 
     Raises:
         IOError: if any files are not found
@@ -2474,7 +2470,7 @@ def get_lookup_from_table(table_uri, key_field):
 
 
 def get_lookup_from_csv(csv_table_uri, key_field):
-    """Read csv table file in as dictionary.
+    """Read CSV table file in as dictionary.
 
     Creates a python dictionary to look up the rest of the fields in a
     csv table indexed by the given key_field
@@ -2600,7 +2596,7 @@ def copy_datasource_uri(shape_uri, copy_uri):
             shapefile
 
     Returns:
-        nothing
+        None
     """
     if os.path.isfile(copy_uri):
         os.remove(copy_uri)
@@ -2925,7 +2921,7 @@ def distance_transform_edt(
         process_pool: (description)
 
     Returns:
-        nothing
+        None
     """
     mask_as_byte_uri = temporary_filename(suffix='.tif')
     nodata_mask = get_nodata_from_uri(input_mask_uri)
@@ -3134,10 +3130,10 @@ def _smart_cast(value):
     """Attempt cast to a float, int, else leave as string.
 
     Args:
-        value: (description)
+        value: a string or numeric type
 
     Returns:
-        value: (description)
+        value: new value
     """
     # If it's not a string, don't try to cast it because i got a bug
     # where all my floats were happily cast to ints
