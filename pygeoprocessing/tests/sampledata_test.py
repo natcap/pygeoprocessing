@@ -19,8 +19,15 @@ class RasterFactoryTest(unittest.TestCase):
         self.assertRaises(TypeError, factory.new)
 
         # verify we can make a new raster.
-        factory.new(numpy.ones((4, 4)), 0,
-                    sampledata.SRS_COLOMBIA_30M)
+        reference = sampledata.COLOMBIA_30M
+        filename = factory.new(
+            band_matrix=numpy.ones((4, 4), numpy.byte),
+            origin=(0, 0),
+            projection_wkt=reference.projection,
+            nodata=0,
+            pixel_size=(30, -30)
+        )
+        self.assertTrue(os.path.exists(filename))
 
 class VectorFactoryTest(unittest.TestCase):
     def test_init_noargs(self):
