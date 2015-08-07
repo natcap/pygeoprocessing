@@ -25,7 +25,8 @@ OUTPUT_ARCHIVES = os.path.join(DATA_ARCHIVES, 'output')
 
 COMPLEX_FILES = {
     'ArcInfo Binary Grid': ['dblbnd.adf', 'hdr.adf', 'log', 'metadata.xml',
-        'prj.adf', 'sta.adf', 'vat.adf', 'w001001.adf', 'w001001x.adf'],
+                            'prj.adf', 'sta.adf', 'vat.adf', 'w001001.adf',
+                            'w001001x.adf'],
     'ESRI Shapefile': ['.dbf', '.shp', '.prj', '.shx'],
 }
 
@@ -39,10 +40,12 @@ def archive_uri(name=None):
 
     return(os.path.join(INPUT_ARCHIVES, name))
 
+
 def is_multi_file(filename):
     """Check if the filename given is a file with multiple parts to it, such as
         an ESRI shapefile or an ArcInfo Binary Grid."""
     pass
+
 
 def make_random_dir(workspace, seed_string, prefix, make_dir=True):
     """
@@ -65,7 +68,7 @@ def make_random_dir(workspace, seed_string, prefix, make_dir=True):
     LOGGER.debug('Random dir seed: %s', seed_string)
     random.seed(seed_string)
     new_dirname = ''.join(random.choice(string.ascii_uppercase + string.digits)
-            for x in range(6))
+                          for x in range(6))
     new_dirname = prefix + new_dirname
     LOGGER.debug('New dirname: %s', new_dirname)
     raster_dir = os.path.join(workspace, new_dirname)
@@ -74,6 +77,7 @@ def make_random_dir(workspace, seed_string, prefix, make_dir=True):
         os.mkdir(raster_dir)
 
     return raster_dir
+
 
 def collect_parameters(parameters, archive_uri):
     """Collect an InVEST model's arguments into a dictionary and archive all
@@ -112,7 +116,8 @@ def collect_parameters(parameters, archive_uri):
         if len(file_list) == 1:
             # If there is only one file in the raster, just return the file name
             raster_file = file_list[0]
-            new_file_location = os.path.join(temp_workspace, os.path.basename(raster_file))
+            new_file_location = os.path.join(temp_workspace,
+                                             os.path.basename(raster_file))
             shutil.copyfile(raster_file, new_file_location)
             return os.path.basename(file_list[0])
         else:
@@ -124,7 +129,8 @@ def collect_parameters(parameters, archive_uri):
             # Windows.
             seed = int(seed, 16)
 
-            new_raster_dir = make_random_dir(temp_workspace, seed, 'raster_', True)
+            new_raster_dir = make_random_dir(temp_workspace, seed, 'raster_',
+                                             True)
             for raster_file in file_list:
                 # raster_file may be a folder ... we can't copy a folder with
                 # copyfile.
@@ -160,11 +166,12 @@ def collect_parameters(parameters, archive_uri):
             # get the layer files
             parent_folder_path = os.path.dirname(filepath)
             glob_pattern = os.path.join(parent_folder_path, '%s.*' %
-                layer.GetName())
+                                        layer.GetName())
             layer_files = sorted(glob.glob(glob_pattern))
             LOGGER.debug('Layer files: %s', layer_files)
 
-            layer_extensions = map(lambda x: os.path.splitext(x)[1], layer_files)
+            layer_extensions = map(lambda x: os.path.splitext(x)[1],
+                                   layer_files)
             LOGGER.debug('Layer extensions: %s', layer_extensions)
 
             # It's not a shapefile if there's no file with a .shp extension.
@@ -179,7 +186,7 @@ def collect_parameters(parameters, archive_uri):
                 shutil.copyfile(file_name, new_filename)
         else:
             raise UnsupportedFormat('%s is not a supported OGR Format',
-                driver.name)
+                                    driver.name)
 
         return os.path.basename(new_vector_dir)
 
@@ -188,27 +195,26 @@ def collect_parameters(parameters, archive_uri):
         # that instead of the individual file.
 
         raster_obj = gdal.Open(filepath)
-        if raster_obj != None:
+        if raster_obj is not None:
             # file is a raster
             raster_obj = None
             LOGGER.debug('%s is a raster', filepath)
             return get_multi_part_gdal(filepath)
 
         vector_obj = ogr.Open(filepath)
-        if vector_obj != None:
+        if vector_obj is not None:
             # Need to check the driver name to be sure that this isn't a CSV.
             driver = vector_obj.GetDriver()
             if driver.name != 'CSV':
                 # file is a shapefile
                 vector_obj = None
-                layer = None
                 try:
                     return get_multi_part_ogr(filepath)
                 except NotAVector:
                     # For some reason, the file actually turned out to not be a
                     # vector, so we just want to return from this function.
                     LOGGER.debug('Thought %s was a shapefile, but I was wrong.',
-                        filepath)
+                                 filepath)
                     pass
         return None
 
@@ -228,7 +234,7 @@ def collect_parameters(parameters, archive_uri):
         return_path = None
         try:
             multi_part_folder = get_multi_part(parameter)
-            if multi_part_folder != None:
+            if multi_part_folder is not None:
                 LOGGER.debug('%s is a multi-part file', parameter)
                 return_path = multi_part_folder
 
@@ -236,7 +242,7 @@ def collect_parameters(parameters, archive_uri):
                 LOGGER.debug('%s is a single file', parameter)
                 new_filename = os.path.basename(parameter)
                 shutil.copyfile(parameter, os.path.join(temp_workspace,
-                    new_filename))
+                                new_filename))
                 return_path = new_filename
 
             elif os.path.isdir(parameter):
@@ -245,7 +251,7 @@ def collect_parameters(parameters, archive_uri):
                 # its contents to temp_workspace.
                 folder_name = os.path.basename(parameter)
                 new_foldername = make_random_dir(temp_workspace, folder_name,
-                    'data_', False)
+                                                 'data_', False)
                 shutil.copytree(parameter, new_foldername)
                 return_path = new_foldername
 
@@ -253,13 +259,13 @@ def collect_parameters(parameters, archive_uri):
                 # Parameter does not exist on disk.  Print an error to the
                 # logger and move on.
                 LOGGER.error('File %s does not exist on disk.  Skipping.',
-                    parameter)
+                             parameter)
         except TypeError as e:
             # When the value is not a string.
             LOGGER.warn('%s', e)
 
         LOGGER.debug('Return path: %s', return_path)
-        if return_path != None:
+        if return_path is not None:
             files_found[os.path.abspath(parameter)] = return_path
             return return_path
 
@@ -275,9 +281,9 @@ def collect_parameters(parameters, archive_uri):
     LOGGER.debug('Keys: %s', parameters.keys())
     ignored_keys = []
     for key, restore_key in [
-        ('workspace_dir', False),
-        ('suffix', True),
-        ('results_suffix', True)]:
+            ('workspace_dir', False),
+            ('suffix', True),
+            ('results_suffix', True)]:
         try:
             if restore_key:
                 ignored_keys.append((key, parameters[key]))
@@ -285,7 +291,7 @@ def collect_parameters(parameters, archive_uri):
             del parameters[key]
         except KeyError:
             LOGGER.warn(('Parameters missing the workspace key \'%s\'.'
-                ' Be sure to check your archived data'), key)
+                         ' Be sure to check your archived data'), key)
 
     types = {
         str: get_if_file,
@@ -308,7 +314,7 @@ def collect_parameters(parameters, archive_uri):
     if archive_uri[-7:] == '.tar.gz':
         archive_uri = archive_uri[:-7]
     shutil.make_archive(archive_uri, 'gztar', root_dir=temp_workspace,
-        logger=LOGGER)
+                        logger=LOGGER)
 
 
 def extract_archive(workspace_dir, archive_uri):
@@ -380,14 +386,15 @@ def extract_parameters_archive(workspace_dir, archive_uri, input_folder=None):
 
     # create a new temporary folder just for the input parameters, if the user
     # has not provided one already.
-    if input_folder == None:
+    if input_folder is None:
         input_folder = pygeoprocessing.geoprocessing.temporary_folder()
 
     # extract the archive to the workspace
     extract_archive(input_folder, archive_uri)
 
     # get the arguments dictionary
-    arguments_dict = json.load(open(os.path.join(input_folder, 'parameters.json')))
+    arguments_dict = json.load(open(os.path.join(input_folder,
+                                                 'parameters.json')))
 
     def _get_if_uri(parameter):
         """If the parameter is a file, returns the filepath relative to the

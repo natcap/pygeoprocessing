@@ -3,7 +3,6 @@ import tempfile
 import os
 import shutil
 import glob
-import json
 
 from pygeoprocessing.testing import scm
 import pygeoprocessing.testing as testing
