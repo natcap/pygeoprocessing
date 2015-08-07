@@ -58,6 +58,24 @@ class RasterTest(unittest.TestCase):
                           reference.origin, reference.projection, 0,
                           reference.pixel_size, format='foo')
 
+    def test_raster_autodtype(self):
+        pixels = numpy.ones((4, 4), numpy.uint16)
+        nodata = 0
+        reference = sampledata.COLOMBIA_30M
+        filename = pygeoprocessing.temporary_filename()
+
+        sampledata.raster(pixels, reference.origin, reference.projection,
+                          nodata, reference.pixel_size, datatype='auto',
+                          filename=filename)
+
+        dataset = gdal.Open(filename)
+        band = dataset.GetRasterBand(1)
+        band_dtype = band.DataType
+
+        # numpy.uint16 should translate to gdal.GDT_UInt16
+        self.assertEqual(band_dtype, gdal.GDT_UInt16)
+
+
 class VectorTest(unittest.TestCase):
     def test_init(self):
         polygons = [
