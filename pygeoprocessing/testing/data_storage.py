@@ -79,6 +79,128 @@ def make_random_dir(workspace, seed_string, prefix, make_dir=True):
     return raster_dir
 
 
+def get_multi_part_gdal(filepath, workspace):
+    """Collect all GDAL files into a new folder inside of the temp_workspace
+    (a closure from the collect_parameters funciton).
+
+    This function uses gdal's internal knowledge of the files it contains to
+    determine which files are to be included.
+
+        filepath - a URI to a file that is in a GDAL raster.
+        workspace - the path to the workspace in which this gdal file should
+            be saved.
+
+    Returns the name of the new folder within the temp_workspace that
+    contains all the files in this raster."""
+
+    # Get the file list from GDAL
+    # NOTE: with ESRI Rasters, other files are sometimes included in this
+    # list that are not actually part of the raster.  This is an acceptable
+    # cost of this function, since we are now able to handle ALL raster
+    # types supported by GDAL.
+    dataset = gdal.Open(filepath)
+    file_list = dataset.GetFileList()
+    LOGGER.debug('Files in raster: %s', file_list)
+    dataset = None
+
+    if len(file_list) == 1:
+        # If there is only one file in the raster, just return the file name
+        raster_file = file_list[0]
+        new_file_location = os.path.join(workspace,
+                                         os.path.basename(raster_file))
+        shutil.copyfile(raster_file, new_file_location)
+        return os.path.basename(file_list[0])
+    else:
+        # Regardless of whether the raster is passed in as a folder or a
+        # single file, use its md5sum as a seed to the new raster's folder
+        # name.
+        seed = pygeoprocessing.testing.get_hash(file_list)
+        # Casting to an int affords better compatibility between *nix and
+        # Windows.
+        seed = int(seed, 16)
+
+        new_raster_dir = make_random_dir(workspace, seed, 'raster_',
+                                         True)
+        for raster_file in file_list:
+            # raster_file may be a folder ... we can't copy a folder with
+            # copyfile.
+            if os.path.isfile(raster_file):
+                file_basename = os.path.basename(raster_file)
+                new_raster_uri = os.path.join(new_raster_dir, file_basename)
+                shutil.copyfile(raster_file, new_raster_uri)
+
+        return os.path.basename(new_raster_dir)
+
+
+class UnsupportedFormat(Exception):
+    pass
+
+
+class NotAVector(Exception):
+    pass
+
+
+def get_multi_part_ogr(filepath, workspace):
+    """
+    Collect multi-part vectors into a single folder within the workspace.
+
+    This function currently only supports ESRI Shapefiles.  Any other formats
+    will cause NotAVector to be raised.
+
+    Parameters:
+        filepath (string): The path to one of the member files of the
+            multi-part file.
+        workspace (string): The path to the output folder wherein a new folder
+            will be created that contains the files in the multi-part vector.
+
+    Returns:
+        A string filepath to the new folder created within the `workspace`.
+        This folder will have the name 'vector_[0-9]{6}'.
+    """
+    shapefile = ogr.Open(filepath)
+    driver = shapefile.GetDriver()
+
+    seed = pygeoprocessing.testing.get_hash(filepath)
+    # Casting the md5sum seed to an int affords better
+    # cross-platform.compatibility between *nix and Windows.
+    seed = int(seed, 16)
+    LOGGER.debug('Temp folder seed: %s', seed)
+    new_vector_dir = make_random_dir(workspace, seed, 'vector_', True)
+
+    if driver.name == 'ESRI Shapefile':
+        LOGGER.debug('%s is an ESRI Shapefile', filepath)
+        # get the layer name
+        layer = shapefile.GetLayer()
+
+        # get the layer files
+        parent_folder_path = os.path.dirname(filepath)
+        glob_pattern = os.path.join(parent_folder_path, '%s.*' %
+                                    layer.GetName())
+        layer_files = sorted(glob.glob(glob_pattern))
+        LOGGER.debug('Layer files: %s', layer_files)
+
+        layer_extensions = map(lambda x: os.path.splitext(x)[1],
+                               layer_files)
+        LOGGER.debug('Layer extensions: %s', layer_extensions)
+
+        # It's not a shapefile if there's no file with a .shp extension.
+        if '.shp' not in layer_extensions:
+            shutil.rmtree(new_vector_dir)
+            raise NotAVector()
+
+        # copy the layer files to the new folder.
+        for file_name in layer_files:
+            file_basename = os.path.basename(file_name)
+            new_filename = os.path.join(new_vector_dir, file_basename)
+            shutil.copyfile(file_name, new_filename)
+    else:
+        raise UnsupportedFormat('%s is not a supported OGR Format',
+                                driver.name)
+
+    return os.path.basename(new_vector_dir)
+
+
+
 def collect_parameters(parameters, archive_uri):
     """Collect an InVEST model's arguments into a dictionary and archive all
         the input data.
@@ -91,106 +213,23 @@ def collect_parameters(parameters, archive_uri):
     parameters = parameters.copy()
     temp_workspace = pygeoprocessing.geoprocessing.temporary_folder()
 
-    def get_multi_part_gdal(filepath):
-        """Collect all GDAL files into a new folder inside of the temp_workspace
-        (a closure from the collect_parameters funciton).
-
-        This function uses gdal's internal knowledge of the files it contains to
-        determine which files are to be included.
-
-            filepath - a URI to a file that is in a GDAL raster.
-
-        Returns the name of the new folder within the temp_workspace that
-        contains all the files in this raster."""
-
-        # Get the file list from GDAL
-        # NOTE: with ESRI Rasters, other files are sometimes included in this
-        # list that are not actually part of the raster.  This is an acceptable
-        # cost of this function, since we are now able to handle ALL raster
-        # types supported by GDAL.
-        dataset = gdal.Open(filepath)
-        file_list = dataset.GetFileList()
-        LOGGER.debug('Files in raster: %s', file_list)
-        dataset = None
-
-        if len(file_list) == 1:
-            # If there is only one file in the raster, just return the file name
-            raster_file = file_list[0]
-            new_file_location = os.path.join(temp_workspace,
-                                             os.path.basename(raster_file))
-            shutil.copyfile(raster_file, new_file_location)
-            return os.path.basename(file_list[0])
-        else:
-            # Regardless of whether the raster is passed in as a folder or a
-            # single file, use its md5sum as a seed to the new raster's folder
-            # name.
-            seed = pygeoprocessing.testing.get_hash(file_list)
-            # Casting to an int affords better compatibility between *nix and
-            # Windows.
-            seed = int(seed, 16)
-
-            new_raster_dir = make_random_dir(temp_workspace, seed, 'raster_',
-                                             True)
-            for raster_file in file_list:
-                # raster_file may be a folder ... we can't copy a folder with
-                # copyfile.
-                if os.path.isfile(raster_file):
-                    file_basename = os.path.basename(raster_file)
-                    new_raster_uri = os.path.join(new_raster_dir, file_basename)
-                    shutil.copyfile(raster_file, new_raster_uri)
-
-            return os.path.basename(new_raster_dir)
-
-    class UnsupportedFormat(Exception):
-        pass
-
-    class NotAVector(Exception):
-        pass
-
-    def get_multi_part_ogr(filepath):
-        shapefile = ogr.Open(filepath)
-        driver = shapefile.GetDriver()
-
-        seed = pygeoprocessing.testing.get_hash(filepath)
-        # Casting the md5sum seed to an int affords better
-        # cross-platform.compatibility between *nix and Windows.
-        seed = int(seed, 16)
-        LOGGER.debug('Temp folder seed: %s', seed)
-        new_vector_dir = make_random_dir(temp_workspace, seed, 'vector_', True)
-
-        if driver.name == 'ESRI Shapefile':
-            LOGGER.debug('%s is an ESRI Shapefile', filepath)
-            # get the layer name
-            layer = shapefile.GetLayer()
-
-            # get the layer files
-            parent_folder_path = os.path.dirname(filepath)
-            glob_pattern = os.path.join(parent_folder_path, '%s.*' %
-                                        layer.GetName())
-            layer_files = sorted(glob.glob(glob_pattern))
-            LOGGER.debug('Layer files: %s', layer_files)
-
-            layer_extensions = map(lambda x: os.path.splitext(x)[1],
-                                   layer_files)
-            LOGGER.debug('Layer extensions: %s', layer_extensions)
-
-            # It's not a shapefile if there's no file with a .shp extension.
-            if '.shp' not in layer_extensions:
-                shutil.rmtree(new_vector_dir)
-                raise NotAVector()
-
-            # copy the layer files to the new folder.
-            for file_name in layer_files:
-                file_basename = os.path.basename(file_name)
-                new_filename = os.path.join(new_vector_dir, file_basename)
-                shutil.copyfile(file_name, new_filename)
-        else:
-            raise UnsupportedFormat('%s is not a supported OGR Format',
-                                    driver.name)
-
-        return os.path.basename(new_vector_dir)
+    # For tracking existing files so we don't copy things twice
+    files_found = {}
 
     def get_multi_part(filepath):
+        """
+        Attempt to open a file at `filepath`, first as a gdal dataset, then
+        as an OGR vector.  If the file can be opened by either library, bundle
+        up the multipart file and save its contents to a new folder.  The path
+        to this new folder is returned.
+
+        Parameters:
+            filepath (string): The path to some part of the multipart file on disk.
+
+        Returns:
+            A string filepath to the new folder in the `temp_workspace` that now contains
+            a copy of all files in the multi-part dataset.
+        """
         # If the user provides a mutli-part file, wrap it into a folder and grab
         # that instead of the individual file.
 
@@ -199,7 +238,7 @@ def collect_parameters(parameters, archive_uri):
             # file is a raster
             raster_obj = None
             LOGGER.debug('%s is a raster', filepath)
-            return get_multi_part_gdal(filepath)
+            return get_multi_part_gdal(filepath, temp_workspace)
 
         vector_obj = ogr.Open(filepath)
         if vector_obj is not None:
@@ -209,19 +248,21 @@ def collect_parameters(parameters, archive_uri):
                 # file is a shapefile
                 vector_obj = None
                 try:
-                    return get_multi_part_ogr(filepath)
+                    return get_multi_part_ogr(filepath, temp_workspace)
                 except NotAVector:
                     # For some reason, the file actually turned out to not be a
                     # vector, so we just want to return from this function.
                     LOGGER.debug('Thought %s was a shapefile, but I was wrong.',
-                                 filepath)
+                                filepath)
                     pass
         return None
 
-    # For tracking existing files so we don't copy things twice
-    files_found = {}
 
     def get_if_file(parameter):
+        """
+        If the input parameter exists on disk as a file or folder, collect
+        the appropriate contents and return the path to the new folder.
+        """
         try:
             uri = files_found[os.path.abspath(parameter)]
             LOGGER.debug('Found %s from a previous parameter', uri)
