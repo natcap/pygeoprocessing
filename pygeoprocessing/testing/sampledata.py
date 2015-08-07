@@ -17,6 +17,9 @@ LOGGER = logging.getLogger('pygeoprocessing.testing.sampledata')
 
 ReferenceData = collections.namedtuple('ReferenceData',
                                        'projection origin pixel_size')
+gdal.AllRegister()
+GDAL_DRIVERS = sorted([gdal.GetDriver(i).GetDescription()
+                       for i in range(1, gdal.GetDriverCount())])
 
 # Higher index in list represents higher precision
 DTYPES = [
@@ -168,7 +171,6 @@ def raster(band_matrix, origin, projection_wkt, nodata, pixel_size,
     """
     if filename is None:
         _, out_uri = tempfile.mkstemp()
-        _.close()
         out_uri += '.tif'
     else:
         out_uri = filename
@@ -187,13 +189,15 @@ def raster(band_matrix, origin, projection_wkt, nodata, pixel_size,
                    'allowed precision of the GDAL datatype %s.  Loss of '
                    'precision is likely when saving to the new raster.')
         message %= (numpy_dtype_label, gdal_dtype_label)
-        raise warnings.UserWarning(message)
+        warnings.warn(message)
 
     # Create a raster given the shape of the pixels given the input driver
     n_rows, n_cols = band_matrix.shape
     driver = gdal.GetDriverByName(format)
     if driver is None:
-        raise RuntimeError('GDAL driver %s not found' % format)
+        raise RuntimeError(
+            ('GDAL driver "%s" not found.  '
+             'Available drivers: %s') % (format, ', '.join(GDAL_DRIVERS)))
 
     if dataset_opts is None:
         dataset_opts = []

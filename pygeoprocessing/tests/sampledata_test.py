@@ -33,12 +33,14 @@ class VectorFactoryTest(unittest.TestCase):
 
 class RasterTest(unittest.TestCase):
     def test_init(self):
-        pixels = numpy.ones((4, 4))
+        pixels = numpy.ones((4, 4), numpy.byte)
         nodata = 0
-        reference = sampledata.SRS_COLOMBIA_30M
+        reference = sampledata.COLOMBIA_30M
         filename = pygeoprocessing.temporary_filename()
 
-        sampledata.raster(pixels, nodata, reference, filename)
+        sampledata.raster(pixels, reference.origin, reference.projection,
+                          nodata, reference.pixel_size, datatype=gdal.GDT_Byte,
+                          format='GTiff', filename=filename)
 
         self.assertTrue(os.path.exists(filename))
 
@@ -49,6 +51,12 @@ class RasterTest(unittest.TestCase):
         band = dataset.GetRasterBand(1)
         band_nodata = band.GetNoDataValue()
         self.assertEqual(band_nodata, nodata)
+
+    def test_bad_driver(self):
+        reference = sampledata.COLOMBIA_30M
+        self.assertRaises(RuntimeError, sampledata.raster, numpy.ones((4, 4)),
+                          reference.origin, reference.projection, 0,
+                          reference.pixel_size, format='foo')
 
 class VectorTest(unittest.TestCase):
     def test_init(self):

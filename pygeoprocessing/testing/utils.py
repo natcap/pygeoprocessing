@@ -281,4 +281,3 @@ def snapshot_folder(workspace_uri, logfile_uri):
                 relative_filepath = relative_filepath.replace(os.sep, '/')
 
             _write('{file} :: {md5}'.format(file=relative_filepath, md5=md5sum))
-
