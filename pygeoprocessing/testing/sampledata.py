@@ -78,7 +78,7 @@ VECTOR_FIELD_TYPES = {
 
 def dtype_precision(dtype):
     """
-    Return the prevision index of the datatype provided.
+    Return the precision index of the datatype provided.
 
     Parameters:
         dtype (numpy.dtype or int GDAL datatype)

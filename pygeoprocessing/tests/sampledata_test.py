@@ -3,6 +3,7 @@ import os
 
 from osgeo import gdal
 from osgeo import ogr
+from osgeo import osr
 import numpy
 from shapely.geometry import Polygon, Point
 
@@ -51,6 +52,12 @@ class RasterTest(unittest.TestCase):
         band = dataset.GetRasterBand(1)
         band_nodata = band.GetNoDataValue()
         self.assertEqual(band_nodata, nodata)
+
+        dataset_sr = osr.SpatialReference()
+        dataset_sr.ImportFromWkt(dataset.GetProjection())
+        source_sr = osr.SpatialReference()
+        source_sr.ImportFromWkt(reference.projection)
+        self.assertTrue(dataset_sr.IsSame(source_sr))
 
     def test_bad_driver(self):
         reference = sampledata.COLOMBIA_30M
