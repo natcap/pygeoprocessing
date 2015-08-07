@@ -50,6 +50,7 @@ def get_hash(filepath):
         for chunk in iter(lambda: file_handler.read(block_size), ''):
             file_md5.update(chunk)
         all_md5.update(file_md5.hexdigest())
+        file_handler.close()
 
     return all_md5.hexdigest()
 
