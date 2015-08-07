@@ -2,6 +2,7 @@ import codecs
 import os
 import shutil
 import imp
+import platform
 
 import pygeoprocessing.testing
 import pygeoprocessing.geoprocessing
@@ -116,6 +117,10 @@ def add_ftest_to_class(file_uri, test_class_name, test_func_name,
     def _archive_reg_test(test_name, module, in_archive, out_archive, cur_dir):
         in_archive = os.path.relpath(in_archive, cur_dir)
         out_archive = os.path.relpath(out_archive, cur_dir)
+        if platform.system() == 'Windows':
+            in_archive = in_archive.replace(os.sep, '/')
+            out_archive = out_archive.replace(os.sep, '/')
+
         return('    @pygeoprocessing.testing.regression(\n' +\
                '        input_archive="%s",\n' % in_archive +\
                '        workspace_archive="%s")\n' % out_archive +\
