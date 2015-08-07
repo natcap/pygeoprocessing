@@ -200,7 +200,6 @@ def get_multi_part_ogr(filepath, workspace):
     return os.path.basename(new_vector_dir)
 
 
-
 def collect_parameters(parameters, archive_uri):
     """Collect an InVEST model's arguments into a dictionary and archive all
         the input data.
@@ -224,11 +223,12 @@ def collect_parameters(parameters, archive_uri):
         to this new folder is returned.
 
         Parameters:
-            filepath (string): The path to some part of the multipart file on disk.
+            filepath (string): The path to some part of the multipart file on
+            disk.
 
         Returns:
-            A string filepath to the new folder in the `temp_workspace` that now contains
-            a copy of all files in the multi-part dataset.
+            A string filepath to the new folder in the `temp_workspace` that now
+            contains a copy of all files in the multi-part dataset.
         """
         # If the user provides a mutli-part file, wrap it into a folder and grab
         # that instead of the individual file.
@@ -253,10 +253,9 @@ def collect_parameters(parameters, archive_uri):
                     # For some reason, the file actually turned out to not be a
                     # vector, so we just want to return from this function.
                     LOGGER.debug('Thought %s was a shapefile, but I was wrong.',
-                                filepath)
+                                 filepath)
                     pass
         return None
-
 
     def get_if_file(parameter):
         """
