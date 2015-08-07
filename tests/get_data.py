@@ -9,8 +9,15 @@ To execute:
 
 import os
 import json
+import imp
 
-from pygeoprocessing.testing import scm
+
+# Import pygeoprocessing.testing.scm from source instead of via pygeoprocessing
+# Handy, since I might not want to have to install pygeoprocessing to clone
+# svn data.  Also, scm doesn't import pygeoprocessing, so that's cool.
+scm = imp.load_source('scm', os.path.abspath(
+    os.path.join(os.path.dirname(__file__),
+                 '..', 'pygeoprocessing', 'testing', 'scm.py')))
 
 _FILE = os.path.abspath(os.path.dirname(__file__))
 SVN_CONFIG = os.path.join(_FILE, 'svn_config.json')
