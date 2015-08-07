@@ -65,8 +65,32 @@ SRS_COLOMBIA = ReferenceData(
         AUTHORITY["EPSG","9001"]],
     AUTHORITY["EPSG","3116"]]""",
     origin=(444720, 3751320),
-    pixel_size = lambda x: (x, -1. * x)
+    pixel_size=lambda x: (x, -1. * x)
 )
+SRS_WILLAMETTE = ReferenceData(
+    projection="""PROJCS["UTM Zone 10, Northern Hemisphere",
+        GEOGCS["NAD83",
+            DATUM["North_American_Datum_1983",
+                SPHEROID["GRS 1980",6378137,298.257222101,
+                    AUTHORITY["EPSG","7019"]],
+                TOWGS84[0,0,0,0,0,0,0],
+                AUTHORITY["EPSG","6269"]],
+            PRIMEM["Greenwich",0,
+                AUTHORITY["EPSG","8901"]],
+            UNIT["degree",0.0174532925199433,
+                AUTHORITY["EPSG","9108"]],
+            AUTHORITY["EPSG","4269"]],
+        PROJECTION["Transverse_Mercator"],
+        PARAMETER["latitude_of_origin",0],
+        PARAMETER["central_meridian",-123],
+        PARAMETER["scale_factor",0.9996],
+        PARAMETER["false_easting",500000],
+        PARAMETER["false_northing",0],
+        UNIT["METERS",1]]""",
+    origin=(443723.127327877911739,4956546.905980412848294),
+    pixel_size=lambda x: (x, -1. * x)
+)
+
 VECTOR_FIELD_TYPES = {
     str: ogr.OFTString,
     float: ogr.OFTReal,
