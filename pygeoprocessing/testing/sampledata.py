@@ -5,6 +5,7 @@ import tempfile
 import subprocess
 import logging
 import inspect
+import warnings
 
 import numpy
 
@@ -12,20 +13,33 @@ from osgeo import gdal
 from osgeo import ogr
 from osgeo import osr
 
-LOGGER = logging.getLogger('natcap.testing.sampledata')
+LOGGER = logging.getLogger('pygeoprocessing.testing.sampledata')
 
-CoordSystem = collections.namedtuple('CoordSystem', 'wkt origin geotransform')
+ReferenceData = collections.namedtuple('ReferenceData',
+                                       'projection origin pixel_size')
 
-GDAL_TYPES = {
-    numpy.byte: gdal.GDT_Byte,
-    numpy.int16: gdal.GDT_Int16,
-    numpy.int32: gdal.GDT_Int32,
-    numpy.uint16: gdal.GDT_UInt16,
-    numpy.uint32: gdal.GDT_UInt32,
-    numpy.float32: gdal.GDT_Float32,
-    numpy.float64: gdal.GDT_Float64,
-}
-NUMPY_TYPES = dict((g, n) for (n, g) in GDAL_TYPES.iteritems())
+# Higher index in list represents higher precision
+DTYPES = [
+    (numpy.byte, gdal.GDT_Byte),
+    (numpy.int16, gdal.GDT_Int16),
+    (numpy.int32, gdal.GDT_Int32),
+    (numpy.uint16, gdal.GDT_UInt16),
+    (numpy.uint32, gdal.GDT_UInt32),
+    (numpy.float32, gdal.GDT_Float32),
+    (numpy.float64, gdal.GDT_Float64),
+]
+
+# Mappings of numpy -> GDAL types and GDAL -> numpy types.
+NUMPY_GDAL_DTYPES = dict(DTYPES)
+GDAL_NUMPY_TYPES = dict((g, n) for (n, g) in NUMPY_GDAL_DTYPES.iteritems())
+
+# Build up an index mapping GDAL datatype index to the string label of the
+# datatype.  Helpful for Debug messages.
+GDAL_DTYPE_LABELS = {}
+for _attrname in dir(gdal):
+    if _attrname.startswith('GDT_'):
+        _dtype_value = getattr(gdal, _attrname)
+        GDAL_DTYPE_LABELS[_dtype_value] = _attrname
 
 _COLOMBIA_SRS = """PROJCS["MAGNA-SIRGAS / Colombia Bogota zone",
     GEOGCS["MAGNA-SIRGAS",
@@ -46,28 +60,66 @@ _COLOMBIA_SRS = """PROJCS["MAGNA-SIRGAS / Colombia Bogota zone",
     UNIT["metre",1,
         AUTHORITY["EPSG","9001"]],
     AUTHORITY["EPSG","3116"]]"""
-
 _COLOMBIA_ORIGIN = (444720, 3751320)
-
-def make_geotransform(x_len, y_len, origin):
-    return [origin[0], x_len, 0, origin[1], 0, y_len]
-
-def build_srs(srs_wkt, x_len, y_len, origin):
-    geotransform = make_geotransform(x_len, y_len, origin)
-    return CoordSystem(
-        wkt=srs_wkt,
-        origin=origin,
-        geotransform=geotransform
-    )
-
-# Basic Colombia reference 30m coordinate system
-SRS_COLOMBIA_30M = build_srs(_COLOMBIA_SRS, 30, -30, _COLOMBIA_ORIGIN)
-
+COLOMBIA_30M = ReferenceData(
+    projection=_COLOMBIA_SRS,
+    origin=_COLOMBIA_ORIGIN,
+    pixel_size=(30, -30)
+)
 VECTOR_FIELD_TYPES = {
     str: ogr.OFTString,
     float: ogr.OFTReal,
     int: ogr.OFTInteger,
 }
+
+
+def dtype_precision(dtype):
+    """
+    Return the prevision index of the datatype provided.
+
+    Parameters:
+        dtype (numpy.dtype or int GDAL datatype)
+
+    Returns:
+        The precision index relative to the other numpy/gdal type pairs.
+    """
+
+    if isinstance(dtype, type):
+        # It's a numpy type.
+        dtype_tuple_index = 0
+    elif isinstance(dtype, int):
+        # It's a GDAL type.
+        dtype_tuple_index = 1
+    else:
+        raise RuntimeError(('Datatype %s not recognized.  Must be a numpy or '
+                            'gdal datatype') % dtype)
+    return map(lambda x: x[dtype_tuple_index], DTYPES).index(dtype)
+
+
+def make_geotransform(x_len, y_len, origin):
+    """
+    Build an array of affine transformation coefficients.
+
+
+    Parameters:
+        x_len (int or float): The length of a pixel along the x axis.
+        y_len (int of float): The length of a pixel along the y axis.
+        origin (tuple of ints or floats): The origin of the raster, a
+            2-element tuple.
+
+    Returns:
+        A 6-element list with this structure:
+        [
+            Origin along x-axis,
+            Length of a pixel along the x axis,
+            0.0,  (this is the standard in north-up projections)
+            Origin along y-axis,
+            Length of a pixel along the y axis,
+            0.0   (this is the standard in north-up projections)
+        ]
+    """
+    return [origin[0], x_len, 0, origin[1], 0, y_len]
+
 
 def cleanup(uri):
     """Remove the uri.  If it's a folder, recursively remove its contents."""
@@ -76,46 +128,97 @@ def cleanup(uri):
     else:
         os.remove(uri)
 
-def raster(pixels, nodata, reference, filename=None):
+
+def raster(band_matrix, origin, projection_wkt, nodata, pixel_size,
+           datatype='auto', format='GTiff', dataset_opts=None, filename=None):
     """
     Create a temp GDAL raster on disk.
 
     Parameters:
-        pixels (numpy.ndarray)- a numpy matrix representing pixel values.  The datatype
-            of the resulting raster will be determined by the datatype of this
-            matrix.
-        nodata - the nodata value for this raster.
-        reference - a natcap.testing.sampledata.CoordSystem object representing
-            the coordinate system.
-        filename=None - the URI to which this raster should be written. If
-            none, a random one will be generated.
+        band_matrix (numpy.ndarray) - a numpy matrix representing pixel
+            values.
+        origin (tuple of numbers) - A 2-element tuple representing the origin
+            of the pixel values in the raster.  This must be a tuple of numbers.
+        projection_wkt (string) - A string WKT represntation of the projection
+            to use in the output raster.
+        nodata (int or float) - The nodata value for the raster.
+        pixel_size (tuple of numbers) - A 2-element tuple representing the
+            size of all pixels in the raster arranged in the order (x, y).
+            Either or both of these values could be negative.
+        datatype (int or 'auto') - A GDAL datatype. If 'auto', a reasonable
+            datatype will be chosen based on the datatype of the numpy matrix.
+        format='GTiff' (string) - The string driver name to use.  Determines
+            the output format of the raster.  Defaults to GeoTiff.  See
+            http://www.gdal.org/formats_list.html for a list of available
+            formats.
+        dataset_opts=None (list of strings) - A list of strings to pass to
+            the underlying GDAL driver for creating this raster.  Possible
+            options are usually format dependent.  If None, no options will
+            be passed to the driver.
+        filename=None (string) - If provided, the new raster should be created
+            at this filepath.  If None, a new temporary file will be created
+            within your tempfile directory (within `tempfile.gettempdir()`)
+            and this path will be returned from the function.
 
-    Returns a URI to the resulting GDAL raster (a GeoTiff) on disk."""
+    Outputs:
+        Writes a raster created with the given options.
+
+    Returns:
+        The string path to the new raster created on disk.
+    """
     if filename is None:
         _, out_uri = tempfile.mkstemp()
+        _.close()
         out_uri += '.tif'
     else:
         out_uri = filename
 
-    datatype = GDAL_TYPES[pixels.dtype.type]
-    n_rows, n_cols = pixels.shape
-    driver = gdal.GetDriverByName('GTiff')
-    new_raster = driver.Create(out_uri, n_cols, n_rows, 1, datatype)
+    # Derive reasonable gdal dtype from numpy matrix dtype if needed
+    numpy_dtype = band_matrix.dtype.type
+    if datatype == 'auto':
+        datatype = NUMPY_GDAL_DTYPES[numpy_dtype]
+
+    # Warn the user if loss of precision is likely when converting from numpy
+    # datatype to a gdal datatype.
+    if dtype_precision(numpy_dtype) > dtype_precision(datatype):
+        gdal_dtype_label = GDAL_DTYPE_LABELS[datatype]
+        numpy_dtype_label = numpy_dtype.__name__
+        message = ('Pixels have a datatype of %s, which is greater than the '
+                   'allowed precision of the GDAL datatype %s.  Loss of '
+                   'precision is likely when saving to the new raster.')
+        message %= (numpy_dtype_label, gdal_dtype_label)
+        raise warnings.UserWarning(message)
+
+    if dataset_opts is None:
+        dataset_opts = []
+
+    # Create a raster given the shape of the pixels given the input driver
+    n_rows, n_cols = band_matrix.shape
+    driver = gdal.GetDriverByName(format)
+    if driver is None:
+        raise RuntimeError('GDAL driver %s not found' % format)
+
+    new_raster = driver.Create(out_uri, n_cols, n_rows, 1, datatype,
+                               options=dataset_opts)
 
     # create some projection information based on the GDAL tutorial at
     # http://www.gdal.org/gdal_tutorial.html
     srs = osr.SpatialReference()
-    srs.ImportFromWkt(reference.wkt)
+    srs.ImportFromWkt(projection_wkt)
     new_raster.SetProjection(srs.ExportToWkt())
-    new_raster.SetGeoTransform(reference.geotransform)
+
+    # build a geotransform from the pizel size and origin
+    geotransform = make_geotransform(pixel_size[0], pixel_size[1], origin)
+    new_raster.SetGeoTransform(geotransform)
 
     band = new_raster.GetRasterBand(1)
     band.SetNoDataValue(nodata)
-    band.WriteArray(pixels, 0, 0)
+    band.WriteArray(band_matrix, 0, 0)
 
     band = None
     new_raster = None
     return out_uri
+
 
 def vector(
         geometries, reference, fields=None, features=None,
@@ -126,14 +229,15 @@ def vector(
         reference (CoordSystem)- a CoordSystem reference object
         fields (dict)- a python dictionary mapping string fieldname to a python
             primitive type.  Example: {'ws_id': int}
-        features (dict) - a python dictionary mapping fieldname to field value.  The
-            field value's type must match the type defined in the fields input.
-            It is an error if it doesn't.
-        vector_format (string)- a python string indicating the OGR format to write.
-            GeoJSON is pretty good for most things, but doesn't handle
+        features (dict) - a python dictionary mapping fieldname to field value.
+            The field value's type must match the type defined in the fields
+            input.  It is an error if it doesn't.
+        vector_format (string)- a python string indicating the OGR format to
+            write. GeoJSON is pretty good for most things, but doesn't handle
             multipolygons very well. 'ESRI Shapefile' is usually a good bet.
-        filename=None (None or string)- None or a python string where the file should be saved.
-            If None, the vector will be saved to a temporary folder.
+        filename=None (None or string)- None or a python string where the file
+            should be saved. If None, the vector will be saved to a temporary
+            folder.
 
     Returns a string URI to the location of the vector on disk."""
 
@@ -176,7 +280,6 @@ def vector(
         new_feature.SetGeometry(new_geometry)
 
         for field_name, field_value in fields.iteritems():
-            #assert type(field_value) == fields[field_name]
             new_feature.SetField(field_name, field_value)
         out_layer.CreateFeature(new_feature)
 
@@ -185,23 +288,24 @@ def vector(
 
     return vector_uri
 
+
 class Factory(object):
     """
     The Factory object allows for multiple geospatial files of a consistent
     type (e.g. rasters, vectors) to be created from common parameters.
 
-    For example, a RasterFactory could be instantiated with default pixel values
-    and SRS, and then the user would only be required to provide the nodata value
-    when calling Factory.new(), as the factory instance would use the default
-    values provided on creation.
+    For example, a RasterFactory could be instantiated with default pixel
+    values and SRS, and then the user would only be required to provide the
+    nodata value when calling Factory.new(), as the factory instance would use
+    the default values provided on creation.
 
     Calls to factory.new() allow the user to override any defaults provided by
-    the Factory.  User options provided at this stage will always take precendent
-    over any settings provided at instantiation.
+    the Factory.  User options provided at this stage will always take
+    precendent over any settings provided at instantiation.
 
-    Creating a Factory object does not require that the user provide any arguments,
-    but if you're doing this, then you might as well just call raster() or vector()
-    directly!
+    Creating a Factory object does not require that the user provide any
+    arguments, but if you're doing this, then you might as well just call
+    raster() or vector() directly!
 
     Also, Factory objects will not accept parameters not allowed by their
     creator functions.
@@ -219,7 +323,8 @@ class Factory(object):
         Define the identity function for now.  This method should be
         overridden in the appropriate subclass.
         """
-        return lambda x: x
+        def foo(x): x
+        return foo
 
     def _check_allowed_params(self, kwargs):
         """
@@ -230,7 +335,8 @@ class Factory(object):
         """
         for user_param, user_value in kwargs.iteritems():
             if user_param not in self.allowed_params:
-                raise RuntimeError('Provided parameters "%s" not allowed' % user_param)
+                raise RuntimeError(
+                    'Provided parameters "%s" not allowed' % user_param)
 
     def __getattr__(self, key):
         """
@@ -248,7 +354,8 @@ class Factory(object):
         AttributeError is raised.
         """
         if key not in self.allowed_params:
-            error_str = ('The attribute %s is not allowed.  Allowed '
+            error_str = (
+                'The attribute %s is not allowed.  Allowed '
                 'attrs: %s') % (key, self.allowed_params.items())
             raise AttributeError(error_str)
         setattr(self, key, value)
@@ -318,14 +425,18 @@ class Factory(object):
         # Run the factory's creation function.
         return self.creation_func()(**out_kwargs)
 
+
 class RasterFactory(Factory):
     """
     Factory subclass for creating rasters.
     """
-    allowed_params = set(['pixels', 'nodata', 'reference', 'filename'])
+    allowed_params = set(['band_matrix', 'origin', 'projection_wkt', 'nodata',
+                          'pixel_size', 'datatype', 'format', 'dataset_opts',
+                          'filename'])
 
     def creation_func(self):
         return raster
+
 
 class VectorFactory(Factory):
     """
@@ -333,8 +444,10 @@ class VectorFactory(Factory):
     """
     allowed_params = set(['geometries', 'reference', 'fields', 'features',
                           'vector_format', 'filename'])
+
     def creation_func(self):
         return vector
+
 
 def visualize(file_list):
     """
@@ -356,7 +469,3 @@ def visualize(file_list):
     LOGGER.debug('Executing %s', application_call)
 
     subprocess.call(application_call, shell=True)
-
-
-
-
