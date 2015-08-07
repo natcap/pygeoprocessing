@@ -444,7 +444,7 @@ class VectorFactory(Factory):
     """
     Factory subclass for creating vectors.
     """
-    allowed_params = set(['geometries', 'reference', 'fields', 'features',
+    allowed_params = set(['geometries', 'projection', 'fields', 'features',
                           'vector_format', 'filename'])
 
     def creation_func(self):

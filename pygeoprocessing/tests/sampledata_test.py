@@ -37,7 +37,7 @@ class VectorFactoryTest(unittest.TestCase):
         self.assertRaises(TypeError, factory.new)
 
         #Verify we can make a new vector
-        _ = factory.new([Point([(1, 1)])], sampledata.SRS_COLOMBIA_30M)
+        _ = factory.new([Point([(1, 1)])], sampledata.COLOMBIA_30M.projection)
 
 class RasterTest(unittest.TestCase):
     def test_init(self):
