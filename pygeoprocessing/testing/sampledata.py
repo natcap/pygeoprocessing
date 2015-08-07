@@ -92,10 +92,29 @@ SRS_WILLAMETTE = ReferenceData(
 )
 
 VECTOR_FIELD_TYPES = {
-    str: ogr.OFTString,
-    float: ogr.OFTReal,
-    int: ogr.OFTInteger,
+    'int': ogr.OFTInteger,
+    'intlist': ogr.OFTIntegerList,
+    'real': ogr.OFTReal,
+    'reallist': ogr.OFTRealList,
+    'string': ogr.OFTString,
+    'stringlist': ogr.OFTStringList,
+    'widestring': ogr.OFTWideString,
+    'widestringlist': ogr.OFTWideStringList,
+    'binary': ogr.OFTBinary,
+    'date': ogr.OFTDate,
+    'time': ogr.OFTTime,
+    'datetime': ogr.OFTDateTime,
 }
+
+# Later versions of OGR include 64-bit integer/integerlist types.
+# Add them to the available types if they are available.
+for keyname, typename in [('int64', 'OFTInteger64'),
+                          ('int64list', 'OFTInteger64List')]:
+    try:
+        VECTOR_FIELD_TYPES[keyname] = getattr(ogr, typename)
+    except AttributeError:
+        pass
+
 
 
 def dtype_precision(dtype):
@@ -245,17 +264,21 @@ def raster(band_matrix, origin, projection_wkt, nodata, pixel_size,
 
 
 def vector(
-        geometries, projection, fields=None, features=None,
+        geometries, projection, fields=None, attributes=None,
         vector_format='GeoJSON', filename=None):
     """Create a temp OGR vector on disk.
 
         geometries (list) - a list of Shapely objects.
-        reference (CoordSystem)- a CoordSystem reference object
-        fields (dict)- a python dictionary mapping string fieldname to a python
-            primitive type.  Example: {'ws_id': int}
-        features (dict) - a python dictionary mapping fieldname to field value.
-            The field value's type must match the type defined in the fields
-            input.  It is an error if it doesn't.
+        projection (string)- a WKT representation of the vector's projection.
+        fields (dict or None)- a python dictionary mapping string fieldname
+            to a string datatype representation of the target ogr fieldtype.
+            Example: {'ws_id': 'int'}.  See `VECTOR_FIELD_TYPES.keys()`
+            for the complete list of all allowed types.  If None, the datatype
+            will be determined automatically based on the types of the
+            attribute values.
+        attributes (list of dicts) - a list of python dictionary mapping
+            fieldname to field value.  The field value's type must match the
+            type defined in the fields input.  It is an error if it doesn't.
         vector_format (string)- a python string indicating the OGR format to
             write. GeoJSON is pretty good for most things, but doesn't handle
             multipolygons very well. 'ESRI Shapefile' is usually a good bet.
@@ -268,10 +291,10 @@ def vector(
     if fields is None:
         fields = {}
 
-    if features is None:
-        features = [{} for _ in range(len(geometries))]
+    if attributes is None:
+        attributes = [{} for _ in range(len(geometries))]
 
-    assert len(geometries) == len(features)
+    assert len(geometries) == len(attributes)
 
     if vector_format == 'GeoJSON':
         ext = 'geojson'
@@ -298,7 +321,7 @@ def vector(
         out_layer.CreateField(field_defn)
     layer_defn = out_layer.GetLayerDefn()
 
-    for shapely_feature, fields in zip(geometries, features):
+    for shapely_feature, fields in zip(geometries, attributes):
         new_feature = ogr.Feature(layer_defn)
         new_geometry = ogr.CreateGeometryFromWkb(shapely_feature.wkb)
         new_feature.SetGeometry(new_geometry)
