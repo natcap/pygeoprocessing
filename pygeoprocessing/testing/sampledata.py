@@ -20,6 +20,8 @@ ReferenceData = collections.namedtuple('ReferenceData',
 gdal.AllRegister()
 GDAL_DRIVERS = sorted([gdal.GetDriver(i).GetDescription()
                        for i in range(1, gdal.GetDriverCount())])
+OGR_DRIVERS = sorted([ogr.GetDriver(i).GetName()
+                      for i in range(ogr.GetDriverCount())])
 
 # Higher index in list represents higher precision
 DTYPES = [
@@ -294,21 +296,32 @@ def vector(
     if attributes is None:
         attributes = [{} for _ in range(len(geometries))]
 
-    assert len(geometries) == len(attributes)
+    num_geoms = len(geometries)
+    num_attrs = len(attributes)
+    assert num_geoms == num_attrs, ("Geometry count (%s) and attribute count "
+                                    "(%s) do not match.") % (num_geoms, num_attrs)
 
-    if vector_format == 'GeoJSON':
-        ext = 'geojson'
-    else:
-        # assume ESRI Shapefile
-        ext = 'shp'
+    for field_name, field_type in fields.iteritems():
+        assert field_type in VECTOR_FIELD_TYPES, \
+            ("Vector field type for field %s not "
+             "reconized: %s") % (field_name, field_type)
 
     if filename is None:
+        if vector_format == 'GeoJSON':
+            ext = 'geojson'
+        else:
+            # assume ESRI Shapefile
+            ext = 'shp'
+
         temp_dir = tempfile.mkdtemp()
-        vector_uri = os.path.join(temp_dir, 'shapefile.%s' % ext)
+        vector_uri = os.path.join(temp_dir, 'vector.%s' % ext)
     else:
         vector_uri = filename
 
     out_driver = ogr.GetDriverByName(vector_format)
+    assert out_driver is not None, ('Vector format "%s" not recognized. '
+                                    'Valid formats: %s' ) % (vector_format,
+                                                             OGR_DRIVERS)
     out_vector = out_driver.CreateDataSource(vector_uri)
 
     layer_name = str(os.path.basename(os.path.splitext(vector_uri)[0]))

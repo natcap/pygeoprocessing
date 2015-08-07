@@ -105,4 +105,27 @@ class VectorTest(unittest.TestCase):
         features = layer.GetFeatureCount()
         self.assertEqual(features, 1)
 
+    def test_mismatched_geoms_attrs(self):
+        polygons = [
+            Polygon([(0, 0), (1, 0), (0.5, 1), (0, 0)]),
+        ]
+        reference = sampledata.SRS_COLOMBIA
+        fields = {'foo': 'int'}
+        attrs = []
+        self.assertRaises(AssertionError, sampledata.vector, polygons,
+                          reference.projection, fields, attrs)
+
+    def test_wrong_field_type(self):
+        polygons = []
+        reference = sampledata.SRS_WILLAMETTE
+        fields = {'foo': 'bar'}
+        self.assertRaises(AssertionError, sampledata.vector, polygons,
+                          reference.projection, fields)
+
+    def test_wrong_driver(self):
+        self.assertRaises(AssertionError, sampledata.vector, [],
+                          sampledata.SRS_WILLAMETTE.projection,
+                          vector_format='foobar')
+
+
 
