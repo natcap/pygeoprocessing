@@ -95,9 +95,9 @@ class VectorTest(unittest.TestCase):
         polygons = [
             Polygon([(0, 0), (1, 0), (0.5, 1), (0, 0)]),
         ]
-        reference = sampledata.SRS_COLOMBIA_30M
+        reference = sampledata.COLOMBIA_30M
 
-        filename = sampledata.vector(polygons, reference)
+        filename = sampledata.vector(polygons, reference.projection)
 
         vector = ogr.Open(filename)
         layer = vector.GetLayer()

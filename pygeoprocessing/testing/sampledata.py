@@ -223,7 +223,7 @@ def raster(band_matrix, origin, projection_wkt, nodata, pixel_size,
 
 
 def vector(
-        geometries, reference, fields=None, features=None,
+        geometries, projection, fields=None, features=None,
         vector_format='GeoJSON', filename=None):
     """Create a temp OGR vector on disk.
 
@@ -268,7 +268,7 @@ def vector(
 
     layer_name = str(os.path.basename(os.path.splitext(vector_uri)[0]))
     srs = osr.SpatialReference()
-    srs.ImportFromWkt(reference.wkt)
+    srs.ImportFromWkt(projection)
     out_layer = out_vector.CreateLayer(layer_name, srs=srs)
 
     for field_name, field_type in fields.iteritems():
