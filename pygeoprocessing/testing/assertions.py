@@ -18,6 +18,7 @@ from . import data_storage
 
 LOGGER = logging.getLogger('natcap.testing.assertions')
 
+
 def assert_equal(value_a, value_b, msg=None):
     """
     Assert that values a and b are equal.  If msg is not provided, a
@@ -29,6 +30,7 @@ def assert_equal(value_a, value_b, msg=None):
         msg = '%s != %s' % (value_a, value_b)
 
     assert value_a == value_b, msg
+
 
 def assert_almost_equal(value_a, value_b, places=7, msg=None):
     """
@@ -50,6 +52,7 @@ def assert_almost_equal(value_a, value_b, places=7, msg=None):
         msg = "{a} != {b} within {pl} places".format(
             a=value_a, b=value_b, pl=places)
     raise AssertionError(msg)
+
 
 def assert_rasters_equal(a_uri, b_uri):
     """Tests if datasets a and b are 'almost equal' to each other on a per
@@ -90,14 +93,14 @@ def assert_rasters_equal(a_uri, b_uri):
     b_dataset = gdal.Open(b_uri)
 
     assert_equal(a_dataset.RasterXSize, b_dataset.RasterXSize,
-        "x dimensions are different a=%s, second=%s" %
-        (a_dataset.RasterXSize, b_dataset.RasterXSize))
+                 "x dimensions are different a=%s, second=%s" %
+                 (a_dataset.RasterXSize, b_dataset.RasterXSize))
     assert_equal(a_dataset.RasterYSize, b_dataset.RasterYSize,
-        "y dimensions are different a=%s, second=%s" %
-        (a_dataset.RasterYSize, b_dataset.RasterYSize))
+                 "y dimensions are different a=%s, second=%s" %
+                 (a_dataset.RasterYSize, b_dataset.RasterYSize))
     assert_equal(a_dataset.RasterCount, b_dataset.RasterCount,
-        "different number of rasters a=%s, b=%s" % (
-        (a_dataset.RasterCount, b_dataset.RasterCount)))
+                 "different number of rasters a=%s, b=%s" %
+                 ((a_dataset.RasterCount, b_dataset.RasterCount)))
 
     for band_number in range(1, a_dataset.RasterCount + 1):
         band_a = a_dataset.GetRasterBand(band_number)
@@ -110,10 +113,13 @@ def assert_rasters_equal(a_uri, b_uri):
             numpy.testing.assert_array_almost_equal(a_array, b_array)
         except AssertionError:
             for row_index in xrange(band_a.YSize):
-                for pixel_a, pixel_b in zip(a_array[row_index], b_array[row_index]):
-                    assert_almost_equal(pixel_a, pixel_b,
+                for pixel_a, pixel_b in zip(a_array[row_index],
+                                            b_array[row_index]):
+                    assert_almost_equal(
+                        pixel_a, pixel_b,
                         msg='%s != %s ... Failed at row %s' %
-                        (pixel_a, pixel_b, row_index))
+                            (pixel_a, pixel_b, row_index))
+
 
 def assert_vectors_equal(aUri, bUri):
     """
@@ -157,7 +163,7 @@ def assert_vectors_equal(aUri, bUri):
     layer_count = shape.GetLayerCount()
     layer_count_regression = shape_regression.GetLayerCount()
     assert_equal(layer_count, layer_count_regression,
-                        'The shapes DO NOT have the same number of layers')
+                 'The shapes DO NOT have the same number of layers')
 
     for layer_num in range(layer_count):
         # Get the current layer
@@ -167,11 +173,10 @@ def assert_vectors_equal(aUri, bUri):
         feat_count = layer.GetFeatureCount()
         feat_count_regression = layer_regression.GetFeatureCount()
         assert_equal(feat_count, feat_count_regression,
-                            'The layers DO NOT have the same number of features')
+                     'The layers DO NOT have the same number of features')
 
         assert_equal(layer.GetGeomType(), layer_regression.GetGeomType(),
-            'The layers do not have the same geometry type')
-
+                     'The layers do not have the same geometry type')
 
         # Get the first features of the layers and loop through all the features
         feat = layer.GetNextFeature()
@@ -183,14 +188,14 @@ def assert_vectors_equal(aUri, bUri):
             field_count = layer_def.GetFieldCount()
             field_count_regression = layer_def_regression.GetFieldCount()
             assert_equal(field_count, field_count_regression,
-                                'The shapes DO NOT have the same number of fields')
+                         'The shapes DO NOT have the same number of fields')
 
             for fld_index in range(field_count):
                 # Check that the features have the same field values
                 field = feat.GetField(fld_index)
                 field_regression = feat_regression.GetField(fld_index)
                 assert_equal(field, field_regression,
-                                        'The field values DO NOT match')
+                             'The field values DO NOT match')
                 # Check that the features have the same field name
                 field_ref = feat.GetFieldDefnRef(fld_index)
                 field_ref_regression = \
@@ -198,12 +203,12 @@ def assert_vectors_equal(aUri, bUri):
                 field_name = field_ref.GetNameRef()
                 field_name_regression = field_ref_regression.GetNameRef()
                 assert_equal(field_name, field_name_regression,
-                                        'The fields DO NOT have the same name')
+                             'The fields DO NOT have the same name')
             # Check that the features have the same geometry
             geom = feat.GetGeometryRef()
             geom_regression = feat_regression.GetGeometryRef()
 
-            assert geom.Equals(geom_regression) == True
+            assert geom.Equals(geom_regression) is True
 
             if layer.GetGeomType() != ogr.wkbPoint:
                 # Check that the features have the same area,
@@ -218,6 +223,7 @@ def assert_vectors_equal(aUri, bUri):
 
     shape = None
     shape_regression = None
+
 
 def assert_csv_equal(aUri, bUri):
     """Tests if csv files a and b are 'almost equal' to each other on a per
@@ -245,22 +251,27 @@ def assert_csv_equal(aUri, bUri):
     for index, (a_row, b_row) in enumerate(zip(reader_a, reader_b)):
         try:
             assert_equal(a_row, b_row,
-                'Rows differ at row %s: a=%s b=%s' % (index, a_row, b_row))
+                         'Rows differ at row %s: a=%s b=%s' % (index, a_row,
+                                                               b_row))
         except AssertionError:
-            for col_index, (a_element, b_element) in enumerate(zip(a_row, b_row)):
+            for col_index, (a_element, b_element) in enumerate(zip(a_row,
+                                                                   b_row)):
                 try:
                     a_element = float(a_element)
                     b_element = float(b_element)
-                    assert_almost_equal(a_element, b_element,
-                        msg=('Values are significantly different at row %s col %s:'
-                            ' a=%s b=%s' % (index, col_index, a_element,
-                            b_element)))
+                    assert_almost_equal(
+                        a_element, b_element,
+                        msg=('Values are significantly different at row %s col '
+                             '%s: a=%s b=%s' % (index, col_index, a_element,
+                                                b_element)))
                 except ValueError:
                     # we know for sure they arenot floats, so compare as
                     # non-floats.
-                    assert_equal(a_element, b_element,
+                    assert_equal(
+                        a_element, b_element,
                         msg=('Elements differ at row %s col%s: a=%s b=%s' %
-                        (index, col_index, a_element, b_element)))
+                             (index, col_index, a_element, b_element)))
+
 
 def assert_md5(uri, regression_hash):
     """Assert the MD5sum of a file against a regression MD5sum.
@@ -288,6 +299,7 @@ def assert_md5(uri, regression_hash):
 
     assert_equal(utils.get_hash(uri), regression_hash, "MD5 Hashes differ.")
 
+
 def assert_matrixes(matrix_a, matrix_b, decimal=6):
     """Tests if the input numpy matrices are equal up to `decimal` places.
 
@@ -308,6 +320,7 @@ def assert_matrixes(matrix_a, matrix_b, decimal=6):
     """
 
     numpy.testing.assert_array_almost_equal(matrix_a, matrix_b, decimal)
+
 
 def assert_archives(archive_1_uri, archive_2_uri):
     """
@@ -338,8 +351,9 @@ def assert_archives(archive_1_uri, archive_2_uri):
 
     assert_workspace(archive_1_folder, archive_2_folder)
 
+
 def assert_workspace(archive_1_folder, archive_2_folder,
-        glob_exclude=''):
+                     glob_exclude=''):
     """
     Check the contents of two folders against each other.
 
@@ -356,7 +370,8 @@ def assert_workspace(archive_1_folder, archive_2_folder,
     Args:
         archive_1_folder (string): a uri to a folder on disk
         archive_2_folder (string): a uri to a folder on disk
-        glob_exclude (string): a string in glob format representing files to ignore
+        glob_exclude (string): a string in glob format representing files to
+            ignore
 
     Raises:
         AssertionError: Raised when the two folders are found to have\
@@ -389,15 +404,15 @@ def assert_workspace(archive_1_folder, archive_2_folder,
     if archive_1_size != archive_2_size:
         # find out which archive had more files.
         archive_1_files = map(lambda x: x.replace(archive_1_folder, ''),
-            archive_1_files)
+                              archive_1_files)
         archive_2_files = map(lambda x: x.replace(archive_2_folder, ''),
-            archive_2_files)
+                              archive_2_files)
         missing_from_archive_1 = list(set(archive_2_files) -
-            set(archive_1_files))
+                                      set(archive_1_files))
         missing_from_archive_2 = list(set(archive_1_files) -
-            set(archive_2_files))
+                                      set(archive_2_files))
         raise AssertionError('Elements missing from A:%s, from B:%s' %
-            (missing_from_archive_1, missing_from_archive_2))
+                             (missing_from_archive_1, missing_from_archive_2))
     else:
         # archives have the same number of files that we care about
         for file_1, file_2 in zip(archive_1_files, archive_2_files):
@@ -405,6 +420,7 @@ def assert_workspace(archive_1_folder, archive_2_folder,
             file_2_uri = os.path.join(archive_2_folder, file_2)
             LOGGER.debug('Checking %s, %s', file_1, file_2)
             assert_files(file_1_uri, file_2_uri)
+
 
 def assert_json(json_1_uri, json_2_uri):
     """Assert two JSON files against each other.
@@ -429,6 +445,7 @@ def assert_json(json_1_uri, json_2_uri):
 
     assert_equal(dict_1, dict_2)
 
+
 def assert_text_equal(text_1_uri, text_2_uri):
     """Assert that two text files are equal
 
@@ -447,11 +464,13 @@ def assert_text_equal(text_1_uri, text_2_uri):
         Nothing.
     """
 
-    lines = lambda f: [line for line in open(f)]
-    for index, (a_line, b_line) in enumerate(zip(lines(text_1_uri), lines(text_2_uri))):
-        assert_equal(a_line, b_line, ('Line %s in %s does not match'
-            'regression file. Output: \"%s\" Regression: \"%s\"') % (index,
-            text_1_uri, a_line, b_line))
+    def lines(f): return [line for line in open(f)]
+    for index, (a_line, b_line) in enumerate(zip(lines(text_1_uri),
+                                                 lines(text_2_uri))):
+        assert_equal(a_line, b_line,
+                     ('Line %s in %s does not match regression file. Output'
+                      ' "%s" Regression "%s"') % (index, text_1_uri, a_line,
+                                                  b_line))
 
 
 def assert_files(file_1_uri, file_2_uri):
@@ -480,13 +499,13 @@ def assert_files(file_1_uri, file_2_uri):
 
     for uri in [file_1_uri, file_2_uri]:
         assert_equal(os.path.exists(uri), True,
-            'File %s does not exist' % uri)
+                     'File %s does not exist' % uri)
 
     # assert the extensions are the same
     file_1_ext = os.path.splitext(file_1_uri)[1]
     file_2_ext = os.path.splitext(file_2_uri)[1]
     assert_equal(file_1_ext, file_2_ext, 'Extensions differ: %s, %s' %
-        (file_1_ext, file_2_ext))
+                 (file_1_ext, file_2_ext))
 
     assert_funcs = {
         '.json': assert_json,
@@ -505,7 +524,9 @@ def assert_files(file_1_uri, file_2_uri):
         file_1_md5 = utils.get_hash(file_1_uri)
         file_2_md5 = utils.get_hash(file_2_uri)
         assert_equal(file_1_md5, file_2_md5,
-            'Files %s and %s differ (MD5sum)' % (file_1_uri, file_2_uri))
+                     'Files %s and %s differ (MD5sum)' % (file_1_uri,
+                                                          file_2_uri))
+
 
 def assert_snapshot(folder, snapshot_file):
     """
@@ -562,6 +583,8 @@ def assert_snapshot(folder, snapshot_file):
                                                  num_files=len(files)))
 
     if len(nonmatching_files) != 0:
-        raise AssertionError('{num_err} files out of {num_files} have differing md5sums: {files}'.format(
-            num_err=len(nonmatching_files), num_files=len(files), files=nonmatching_files))
-
+        raise AssertionError((
+            '{num_err} files out of {num_files} have differing '
+            'md5sums: {files}').format(num_err=len(nonmatching_files),
+                                       num_files=len(files),
+                                       files=nonmatching_files))
