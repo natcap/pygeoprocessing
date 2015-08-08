@@ -8,10 +8,13 @@ import ctypes
 
 class ColumnMissingFromTable(KeyError):
     """A custom exception for when a key is missing from a table.
+
     More descriptive than just throwing a KeyError.  This class inherits the
     KeyError exception, so any existing exception handling should still work
-    properly."""
+    properly.
+    """
     pass
+
 
 def get_free_space(folder='/', unit='auto'):
     """Get the free space on the drive/folder marked by folder.  Returns a float
@@ -181,6 +184,7 @@ class CSVDriver(TableDriverTemplate):
 
         # Now that the header has been written, write all the rows.
         writer.writerows(table_list)
+
 
 class DBFDriver(TableDriverTemplate):
     """The DBFDriver class is a subclass of TableDriverTemplate."""
