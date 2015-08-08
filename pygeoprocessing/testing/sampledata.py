@@ -118,7 +118,6 @@ for keyname, typename in [('int64', 'OFTInteger64'),
         pass
 
 
-
 def dtype_precision(dtype):
     """
     Return the precision index of the datatype provided.
