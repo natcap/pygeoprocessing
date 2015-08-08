@@ -11,6 +11,7 @@ import pygeoprocessing
 import pygeoprocessing.testing
 from pygeoprocessing.testing import sampledata
 
+
 class RasterFactoryTest(unittest.TestCase):
     def test_init_noargs(self):
         factory = sampledata.RasterFactory()
@@ -29,6 +30,7 @@ class RasterFactoryTest(unittest.TestCase):
         )
         self.assertTrue(os.path.exists(filename))
 
+
 class VectorFactoryTest(unittest.TestCase):
     def test_init_noargs(self):
         factory = sampledata.VectorFactory()
@@ -36,8 +38,9 @@ class VectorFactoryTest(unittest.TestCase):
         # Insufficient arguments
         self.assertRaises(TypeError, factory.new)
 
-        #Verify we can make a new vector
-        _ = factory.new([Point([(1, 1)])], sampledata.SRS_COLOMBIA.projection)
+        # Verify we can make a new vector
+        factory.new([Point([(1, 1)])], sampledata.SRS_COLOMBIA.projection)
+
 
 class RasterTest(unittest.TestCase):
     def test_init(self):
@@ -47,8 +50,9 @@ class RasterTest(unittest.TestCase):
         filename = pygeoprocessing.temporary_filename()
 
         sampledata.raster(pixels, reference.origin, reference.projection,
-                          nodata, reference.pixel_size(30), datatype=gdal.GDT_Byte,
-                          format='GTiff', filename=filename)
+                          nodata, reference.pixel_size(30),
+                          datatype=gdal.GDT_Byte, format='GTiff',
+                          filename=filename)
 
         self.assertTrue(os.path.exists(filename))
 
@@ -126,6 +130,3 @@ class VectorTest(unittest.TestCase):
         self.assertRaises(AssertionError, sampledata.vector, [],
                           sampledata.SRS_WILLAMETTE.projection,
                           vector_format='foobar')
-
-
-
