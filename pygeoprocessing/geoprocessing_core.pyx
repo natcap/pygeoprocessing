@@ -446,11 +446,16 @@ def new_raster_from_base(
     new_raster.SetGeoTransform(geotransform)
     band = new_raster.GetRasterBand(1)
 
-    band.SetNoDataValue(nodata)
+    if nodata is not None:
+        band.SetNoDataValue(nodata)
+    else:
+        LOGGER.warn(
+            "None is passed in for the nodata value, failed to set any nodata "
+            "value for new raster.")
 
     if fill_value != None:
         band.Fill(fill_value)
-    else:
+    elif nodata is not None:
         band.Fill(nodata)
     band = None
 
