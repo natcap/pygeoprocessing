@@ -599,3 +599,13 @@ class GISTestTester(unittest.TestCase):
         regression_file = os.path.join(REGRESSION_INPUT, 'sample_json.json')
         self.assertRaises(AssertionError, testing.assert_files, sample_file,
             regression_file)
+
+    @scm.skipIfDataMissing(SVN_LOCAL_DIR)
+    def test_snapshot(self):
+        """Check that a new snapshot of a folder asserts properly."""
+        snapshot_file = os.path.join(TEST_OUT, 'snapshot.snap')
+        utils.snapshot_folder(REGRESSION_INPUT, snapshot_file)
+
+        testing.assert_snapshot(REGRESSION_INPUT, snapshot_file)
+        self.assertRaises(AssertionError, testing.assert_snapshot,
+                          POLLINATION_DATA, snapshot_file)

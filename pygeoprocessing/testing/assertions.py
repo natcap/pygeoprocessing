@@ -536,12 +536,30 @@ def assert_snapshot(folder, snapshot_file):
         filename, md5sum = line.split('::')
         files[filename.strip()] = md5sum.strip()
 
+    missing_files = []
     nonmatching_files = []
     for filepath, expected_md5sum in files.iteritems():
         full_filepath = os.path.join(folder, filepath)
-        current_md5sum = utils.get_hash(full_filepath)
+        try:
+            current_md5sum = utils.get_hash(full_filepath)
+        except IOError:
+            # When the file we're looking for doesn't exist
+            missing_files.append(full_filepath)
+            continue
+
         if current_md5sum != expected_md5sum:
             nonmatching_files.append(filepath)
+
+    if len(missing_files) != 0:
+        if len(missing_files) == len(files):
+            raise AssertionError((
+                'All files recorded in the snapshot are missing.  Are you '
+                'testing against the right folder?  Testing {test_dir}. '
+                'Snapshot taken from {snap_dir}.').format(
+                    test_dir=folder, snap_dir=env_params['orig_workspace']))
+        raise AssertionError(('{num_missing} files out of {num_files} are '
+                              'missing.').format(num_missing=len(missing_files),
+                                                 num_files=len(files)))
 
     if len(nonmatching_files) != 0:
         raise AssertionError('{num_err} files out of {num_files} have differing md5sums: {files}'.format(
