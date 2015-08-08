@@ -5,6 +5,8 @@ import shutil
 import logging
 import os
 import platform
+import importlib
+import json
 
 import numpy
 from osgeo import gdal
@@ -13,6 +15,7 @@ import pygeoprocessing
 from . import data_storage
 
 LOGGER = logging.getLogger('natcap.testing.utils')
+
 
 def get_hash(filepath):
     """Get the MD5 hash for a single file or folder.  If a folder, all files
@@ -118,18 +121,20 @@ def regression(input_archive, workspace_archive):
 
             import pygeoprocessing.testing
 
-            @pygeoprocessing.testing.regression('/data/input.tar.gz', /data/output.tar.gz')
+            @pygeoprocessing.testing.regression('/data/input.tar.gz',
+                                                '/data/output.tar.gz')
             def test_workspaces(self):
                 model.execute(self.args)
 
         Args:
-            input_archive (string): The path to a .tar.gz archive with the input data.
-            workspace_archive (string): The path to a .tar.gz archive with the workspace to
-                assert.
+            input_archive (string): The path to a .tar.gz archive with the
+                input data.
+            workspace_archive (string): The path to a .tar.gz archive with the
+                workspace to assert.
 
         Returns:
             Composed function with regression testing.
-         """
+    """
 
     # item is the function being decorated
     def test_inner_function(item):
@@ -137,7 +142,8 @@ def regression(input_archive, workspace_archive):
         @functools.wraps(item)
         def test_and_assert_workspace(self, *args, **kwargs):
             workspace = pygeoprocessing.geoprocessing.temporary_folder()
-            self.args = data_storage.extract_parameters_archive(workspace, input_archive)
+            self.args = data_storage.extract_parameters_archive(workspace,
+                                                                input_archive)
 
             # Actually run the test.  Assumes that self.args is used as the
             # input arguments.
@@ -145,7 +151,7 @@ def regression(input_archive, workspace_archive):
 
             # Extract the archived workspace to a new temporary folder and
             # compare the two workspaces.
-            archived_workspace = pygeoprocessing.geoprocessing.temporary_folder()
+            archived_workspace = pygeoprocessing.temporary_folder()
             data_storage.extract_archive(archived_workspace, workspace_archive)
             self.assertWorkspace(workspace, archived_workspace)
         return test_and_assert_workspace
@@ -159,7 +165,8 @@ def build_regression_archives(file_uri, input_archive_uri, output_archive_uri):
         input files and parameters are collected and compressed into a single
         gzip.  Then, the target model is executed and the output workspace is
         zipped up into another gzip.  These could then be used for regression
-        testing, such as with the ``pygeoprocessing.testing.regression`` decorator.
+        testing, such as with the ``pygeoprocessing.testing.regression``
+        decorator.
 
         Example configuration file contents (serialized to JSON)::
 
@@ -193,18 +200,15 @@ def build_regression_archives(file_uri, input_archive_uri, output_archive_uri):
         Returns:
             Nothing.
         """
-    file_handler = fileio.JSONHandler(file_uri)
-
-    saved_data = file_handler.get_attributes()
+    saved_data = json.loads(open(file_uri).read())
 
     arguments = saved_data['arguments']
     model_id = saved_data['model']
 
-    model_list = model_id.split('.')
-    model = executor.locate_module(model_list)
+    model = importlib.import_module(model_id)
 
     # guarantee that we're running this in a new workspace
-    arguments['workspace_dir'] = pygeoprocessing.geoprocessing.temporary_folder()
+    arguments['workspace_dir'] = pygeoprocessing.temporary_folder()
     workspace = arguments['workspace_dir']
 
     # collect the parameters into a single folder
@@ -214,7 +218,8 @@ def build_regression_archives(file_uri, input_archive_uri, output_archive_uri):
     data_storage.collect_parameters(arguments, input_archive)
     input_archive += '.tar.gz'
 
-    model_args = data_storage.extract_parameters_archive(workspace, input_archive)
+    model_args = data_storage.extract_parameters_archive(workspace,
+                                                         input_archive)
 
     model.execute(model_args)
 
@@ -231,8 +236,8 @@ def snapshot_folder(workspace_uri, logfile_uri):
     metadata will also be recorded to help debug down the road.
 
     This output logfile will have two sections separated by a blank line.
-    The first section will have relevant system information, with keys and values
-    separated by '=' and some whitespace.
+    The first section will have relevant system information, with keys and
+    values separated by '=' and some whitespace.
 
     This second section will identify the files we're snapshotting and the
     md5sums of these files, separated by '::' and some whitspace on each line.
@@ -252,6 +257,7 @@ def snapshot_folder(workspace_uri, logfile_uri):
     """
 
     logfile = open(logfile_uri, 'w')
+
     def _write(line):
         """
         Write a line to the logfile with a trailing newline character.
