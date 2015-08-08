@@ -227,7 +227,8 @@ def build_regression_archives(file_uri, input_archive_uri, output_archive_uri):
     if archive_uri[-7:] == '.tar.gz':
         archive_uri = archive_uri[:-7]
     LOGGER.debug('Archiving the output workspace')
-    shutil.make_archive(archive_uri, 'gztar', root_dir=workspace, logger=LOGGER)
+    shutil.make_archive(archive_uri, 'gztar', root_dir=workspace,
+                        logger=LOGGER)
 
 
 def snapshot_folder(workspace_uri, logfile_uri):
@@ -287,4 +288,5 @@ def snapshot_folder(workspace_uri, logfile_uri):
             if platform.system() == 'Windows':
                 relative_filepath = relative_filepath.replace(os.sep, '/')
 
-            _write('{file} :: {md5}'.format(file=relative_filepath, md5=md5sum))
+            _write('{file} :: {md5}'.format(file=relative_filepath,
+                                            md5=md5sum))

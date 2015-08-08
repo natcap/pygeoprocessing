@@ -27,13 +27,14 @@ def file_has_class(test_file_uri, test_class_name):
         return False
     except ImportError:
         # We couldn't import everything necessary (such as with
-        # invest_test_core), so we need to loop line by line to check and see if
-        # the class has the test required.
+        # invest_test_core), so we need to loop line by line to check and see
+        # if the class has the test required.
         for line in test_file:
             if line.startswith('class %s(' % test_class_name):
                 test_file.close()
                 return True
         return False
+
 
 def class_has_ftest(test_file_uri, test_class_name, test_func_name):
     """Check that a python test file contains the given class and function.
@@ -43,7 +44,8 @@ def class_has_ftest(test_file_uri, test_class_name, test_func_name):
         test_func_name - a string, the test function name we're looking for.
             This function should be located within the target test class.
 
-        Returns True if the function is found within the class, False otherwise."""
+        Returns True if the function is found within the class, False
+        otherwise."""
     test_file = codecs.open(test_file_uri, mode='r', encoding='utf-8')
     try:
         module = imp.load_source('model', test_file_uri)
@@ -56,8 +58,8 @@ def class_has_ftest(test_file_uri, test_class_name, test_func_name):
         return False
     except ImportError:
         # We couldn't import everything necessary (such as with
-        # invest_test_core), so we need to loop line by line to check and see if
-        # the class has the test required.
+        # invest_test_core), so we need to loop line by line to check and see
+        # if the class has the test required.
         in_class = False
         for line in test_file:
             if line.startswith('class %s(' % test_class_name):
@@ -67,22 +69,23 @@ def class_has_ftest(test_file_uri, test_class_name, test_func_name):
                     # We went through the whole class and didn't find the
                     # function.
                     return False
-                elif line.lstrip().startswith('def %s(self):' % test_func_name):
+                elif line.lstrip().startswith('def %s(self):' %
+                                              test_func_name):
                     # We found the function within this class!
                     return True
         return False
 
 
 def add_ftest_to_class(file_uri, test_class_name, test_func_name,
-        in_archive_uri, out_archive_uri, module):
+                       in_archive_uri, out_archive_uri, module):
     """Add a test function to an existing test file.  The test added is a
     regression test using the pygeoprocessing.testing.regression archive
     decorator.
 
         file_uri - URI to the test file to modify.
-        test_class_name - string. The test class name to modify.  If the test class
-            already exists, the test function will be added to the test class.
-            If not, the new class will be created.
+        test_class_name - string. The test class name to modify.  If the test
+            class already exists, the test function will be added to the test
+            class. If not, the new class will be created.
         test_func_name - string.  The name of the test function to write.  If a
             test function by this name already exists in the target class, the
             function will not be written.
@@ -105,7 +108,7 @@ def add_ftest_to_class(file_uri, test_class_name, test_func_name,
 
     if test_exists:
         print ('WARNING: %s.%s exists.  Not writing a new test.' %
-            (test_class_name, test_func_name))
+               (test_class_name, test_func_name))
         return
 
     def _import():
@@ -121,14 +124,15 @@ def add_ftest_to_class(file_uri, test_class_name, test_func_name,
             in_archive = in_archive.replace(os.sep, '/')
             out_archive = out_archive.replace(os.sep, '/')
 
-        return('    @pygeoprocessing.testing.regression(\n' +\
-               '        input_archive="%s",\n' % in_archive +\
-               '        workspace_archive="%s")\n' % out_archive +\
-               '    def %s(self):\n' % test_name +\
-               '        %s.execute(self.args)\n' % module +\
-               '\n')
+        return('    @pygeoprocessing.testing.regression(\n'
+               '        input_archive="{in_arch}",\n'
+               '        workspace_archive="{out_arch}")\n'
+               '    def {test_name}(self):\n'
+               '        {module}.execute(self.args)\n'
+               '\n').format(in_arch=in_archive, out_arch=out_archive,
+                            test_name=test_name, module=module)
 
-    if cls_exists == False:
+    if cls_exists is False:
         for line in test_file:
             new_file.write(line.rstrip() + '\n')
 
@@ -136,19 +140,21 @@ def add_ftest_to_class(file_uri, test_class_name, test_func_name,
         new_file.write(_import())
         new_file.write(_test_class(test_class_name))
         new_file.write(_archive_reg_test(test_func_name, module,
-            in_archive_uri, out_archive_uri, os.path.dirname(file_uri)))
+                       in_archive_uri, out_archive_uri,
+                       os.path.dirname(file_uri)))
     else:
         import_written = False
         for line in test_file:
-            if (not(line.startswith('import') or line.startswith('from')) and not
-                import_written):
+            if ((line.startswith('import') is False or line.startswith('from'))
+                    and not import_written):
                 new_file.write(_import())
                 import_written = True
 
             new_file.write(line.rstrip() + '\n')
             if 'class %s(' % test_class_name in line:
                 new_file.write(_archive_reg_test(test_func_name, module,
-                    in_archive_uri, out_archive_uri, os.path.dirname(file_uri)))
+                               in_archive_uri, out_archive_uri,
+                               os.path.dirname(file_uri)))
 
     test_file = None
     new_file = None
@@ -160,4 +166,3 @@ def add_ftest_to_class(file_uri, test_class_name, test_func_name,
     # copy the new file over the old one.
     shutil.copyfile(temp_file_uri, file_uri)
     print 'copying %s to %s' % (temp_file_uri, file_uri)
-

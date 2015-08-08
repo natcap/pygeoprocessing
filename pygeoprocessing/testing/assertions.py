@@ -178,7 +178,8 @@ def assert_vectors_equal(aUri, bUri):
         assert_equal(layer.GetGeomType(), layer_regression.GetGeomType(),
                      'The layers do not have the same geometry type')
 
-        # Get the first features of the layers and loop through all the features
+        # Get the first features of the layers and loop through all the
+        # features
         feat = layer.GetNextFeature()
         feat_regression = layer_regression.GetNextFeature()
         while feat is not None:
@@ -261,9 +262,10 @@ def assert_csv_equal(aUri, bUri):
                     b_element = float(b_element)
                     assert_almost_equal(
                         a_element, b_element,
-                        msg=('Values are significantly different at row %s col '
-                             '%s: a=%s b=%s' % (index, col_index, a_element,
-                                                b_element)))
+                        msg=('Values are significantly different at row %s'
+                             'col %s: a=%s b=%s' % (index, col_index,
+                                                    a_element,
+                                                    b_element)))
                 except ValueError:
                     # we know for sure they arenot floats, so compare as
                     # non-floats.
@@ -464,7 +466,9 @@ def assert_text_equal(text_1_uri, text_2_uri):
         Nothing.
     """
 
-    def lines(f): return [line for line in open(f)]
+    def lines(f):
+        """Return a list of lines in the opened file."""
+        return [line for line in open(f)]
     for index, (a_line, b_line) in enumerate(zip(lines(text_1_uri),
                                                  lines(text_2_uri))):
         assert_equal(a_line, b_line,
@@ -578,9 +582,10 @@ def assert_snapshot(folder, snapshot_file):
                 'testing against the right folder?  Testing {test_dir}. '
                 'Snapshot taken from {snap_dir}.').format(
                     test_dir=folder, snap_dir=env_params['orig_workspace']))
-        raise AssertionError(('{num_missing} files out of {num_files} are '
-                              'missing.').format(num_missing=len(missing_files),
-                                                 num_files=len(files)))
+        raise AssertionError(
+            ('{num_missing} files out of {num_files} are '
+             'missing.').format(num_missing=len(missing_files),
+                                num_files=len(files)))
 
     if len(nonmatching_files) != 0:
         raise AssertionError((

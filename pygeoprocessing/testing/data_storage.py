@@ -227,11 +227,11 @@ def collect_parameters(parameters, archive_uri):
             disk.
 
         Returns:
-            A string filepath to the new folder in the `temp_workspace` that now
-            contains a copy of all files in the multi-part dataset.
+            A string filepath to the new folder in the `temp_workspace` that
+            now contains a copy of all files in the multi-part dataset.
         """
-        # If the user provides a mutli-part file, wrap it into a folder and grab
-        # that instead of the individual file.
+        # If the user provides a mutli-part file, wrap it into a folder and
+        # grab that instead of the individual file.
 
         raster_obj = gdal.Open(filepath)
         if raster_obj is not None:
@@ -252,8 +252,8 @@ def collect_parameters(parameters, archive_uri):
                 except NotAVector:
                     # For some reason, the file actually turned out to not be a
                     # vector, so we just want to return from this function.
-                    LOGGER.debug('Thought %s was a shapefile, but I was wrong.',
-                                 filepath)
+                    LOGGER.debug(('Thought %s was a shapefile, but I was '
+                                  'wrong.'), filepath)
                     pass
         return None
 
@@ -267,7 +267,8 @@ def collect_parameters(parameters, archive_uri):
             LOGGER.debug('Found %s from a previous parameter', uri)
             return uri
         except KeyError:
-            # we haven't found this file before, so we still need to process it.
+            # we haven't found this file before, so we still need to process
+            # it.
             pass
 
         # initialize the return_path
@@ -373,14 +374,15 @@ def extract_archive(workspace_dir, archive_uri):
 def format_dictionary(input_dict, types_lookup={}):
     """Recurse through the input dictionary and return a formatted dictionary.
 
-        As each element is encountered, the correct function to use is looked up
-        in the types_lookup input.  If a type is not found, we assume that the
-        element should be returned verbatim.
+        As each element is encountered, the correct function to use is looked
+        up in the types_lookup input.  If a type is not found, we assume that
+        the element should be returned verbatim.
 
         input_dict - a dictionary to process
-        types_lookup - a dictionary mapping types to functions.  These functions
-            must take a single parameter of the type that is the key.  These
-            functions must return a formatted version of the input parameter.
+        types_lookup - a dictionary mapping types to functions.  These
+            functions must take a single parameter of the type that is the
+            key.  These functions must return a formatted version of the input
+            parameter.
 
         Returns a formatted dictionary."""
 

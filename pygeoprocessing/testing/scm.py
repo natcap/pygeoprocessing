@@ -5,6 +5,7 @@ import subprocess
 import tempfile
 from unittest import SkipTest
 
+
 def skipIfDataMissing(repo_path):
     """
     Decorator for unittest.TestCase test functions.  Raises SkipTest if the
@@ -52,7 +53,9 @@ def checkout_svn(local_path, remote_path, rev=None):
         subprocess.call(['svn', 'update', '-r', rev])
         os.chdir(cur_dir)
     else:
-        subprocess.call(['svn', 'checkout', remote_path, local_path, '-r', rev])
+        subprocess.call(['svn', 'checkout', remote_path, local_path, '-r',
+                         rev])
+
 
 def load_config(config_file):
     """

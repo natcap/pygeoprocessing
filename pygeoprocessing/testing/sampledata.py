@@ -89,7 +89,7 @@ SRS_WILLAMETTE = ReferenceData(
         PARAMETER["false_easting",500000],
         PARAMETER["false_northing",0],
         UNIT["METERS",1]]""",
-    origin=(443723.127327877911739,4956546.905980412848294),
+    origin=(443723.127327877911739, 4956546.905980412848294),
     pixel_size=lambda x: (x, -1. * x)
 )
 
@@ -183,7 +183,8 @@ def raster(band_matrix, origin, projection_wkt, nodata, pixel_size,
         band_matrix (numpy.ndarray) - a numpy matrix representing pixel
             values.
         origin (tuple of numbers) - A 2-element tuple representing the origin
-            of the pixel values in the raster.  This must be a tuple of numbers.
+            of the pixel values in the raster.  This must be a tuple of
+            numbers.
         projection_wkt (string) - A string WKT represntation of the projection
             to use in the output raster.
         nodata (int or float) - The nodata value for the raster.
@@ -298,7 +299,8 @@ def vector(
     num_geoms = len(geometries)
     num_attrs = len(attributes)
     assert num_geoms == num_attrs, ("Geometry count (%s) and attribute count "
-                                    "(%s) do not match.") % (num_geoms, num_attrs)
+                                    "(%s) do not match.") % (num_geoms,
+                                                             num_attrs)
 
     for field_name, field_type in fields.iteritems():
         assert field_type in VECTOR_FIELD_TYPES, \
@@ -318,9 +320,9 @@ def vector(
         vector_uri = filename
 
     out_driver = ogr.GetDriverByName(vector_format)
-    assert out_driver is not None, ('Vector format "%s" not recognized. '
-                                    'Valid formats: %s' ) % (vector_format,
-                                                             OGR_DRIVERS)
+    assert out_driver is not None, (
+        'Vector format "%s" not recognized. Valid formats: %s') % (
+            vector_format, OGR_DRIVERS)
     out_vector = out_driver.CreateDataSource(vector_uri)
 
     layer_name = str(os.path.basename(os.path.splitext(vector_uri)[0]))
@@ -382,7 +384,9 @@ class Factory(object):
         Define the identity function for now.  This method should be
         overridden in the appropriate subclass.
         """
-        def foo(x): x
+        def foo(x):
+            """Example return function."""
+            x
         return foo
 
     def _check_allowed_params(self, kwargs):
