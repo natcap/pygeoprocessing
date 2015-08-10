@@ -3,6 +3,7 @@
 import os
 import unittest
 
+import gdal
 import numpy
 
 import pygeoprocessing
@@ -31,6 +32,23 @@ class TestRasterFunctions(unittest.TestCase):
             raster_nodata = pygeoprocessing.get_nodata_from_uri(
                 self.raster_filename)
             self.assertEqual(raster_nodata, nodata)
+
+    def test_vectorize_datasets_identity(self):
+        """Verify lambda x:x is correct in vectorize_datasets"""
+        pixel_matrix = numpy.ones((5, 5), numpy.int16)
+        reference = sampledata.SRS_COLOMBIA
+        nodata = -1
+        pygeoprocessing.testing.raster(
+            pixel_matrix, reference.origin, reference.projection, nodata,
+            reference.pixel_size(30), filename=self.raster_filename)
+
+        out_filename = pygeoprocessing.temporary_filename()
+        pygeoprocessing.vectorize_datasets(
+            [self.raster_filename], lambda x: x, out_filename, gdal.GDT_Int32,
+            nodata, 30, 'intersection')
+
+        pygeoprocessing.testing.assert_rasters_equal(self.raster_filename,
+                                                     out_filename)
 
 
 class TestRoutingFunctions(unittest.TestCase):
