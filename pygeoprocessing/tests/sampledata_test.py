@@ -12,36 +12,6 @@ import pygeoprocessing.testing
 from pygeoprocessing.testing import sampledata
 
 
-class RasterFactoryTest(unittest.TestCase):
-    def test_init_noargs(self):
-        factory = sampledata.RasterFactory()
-
-        # Insufficient arguments.
-        self.assertRaises(TypeError, factory.new)
-
-        # verify we can make a new raster.
-        reference = sampledata.SRS_COLOMBIA
-        filename = factory.new(
-            band_matrix=numpy.ones((4, 4), numpy.byte),
-            origin=(0, 0),
-            projection_wkt=reference.projection,
-            nodata=0,
-            pixel_size=reference.pixel_size(30)
-        )
-        self.assertTrue(os.path.exists(filename))
-
-
-class VectorFactoryTest(unittest.TestCase):
-    def test_init_noargs(self):
-        factory = sampledata.VectorFactory()
-
-        # Insufficient arguments
-        self.assertRaises(TypeError, factory.new)
-
-        # Verify we can make a new vector
-        factory.new([Point([(1, 1)])], sampledata.SRS_COLOMBIA.projection)
-
-
 class RasterTest(unittest.TestCase):
     def test_init(self):
         pixels = numpy.ones((4, 4), numpy.byte)

@@ -16,13 +16,11 @@ from assertions import assert_equal, assert_almost_equal, \
     assert_json, assert_text_equal, assert_files, assert_snapshot
 from utils import get_hash, save_workspace, regression, \
     build_regression_archives, snapshot_folder
-from sampledata import raster, vector, RasterFactory, VectorFactory
+from sampledata import raster, vector
 
 __all__ = [
     'raster',
     'vector',
-    'RasterFactory',
-    'VectorFactory',
     'get_hash',
     'save_workspace',
     'regression',
