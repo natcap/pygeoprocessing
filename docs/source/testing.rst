@@ -2,9 +2,6 @@
 Testing with Geospatial Datasets
 ================================
 
-
-.. automodule:: pygeoprocessing.testing.sampledata
-
 .. automodule:: pygeoprocessing.testing
     :members:
     :undoc-members:

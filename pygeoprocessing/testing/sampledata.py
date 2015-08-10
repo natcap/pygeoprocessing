@@ -15,6 +15,19 @@ sample spatial reference data.
 
     A dictionary mapping string field names to OGR field types.
 
+.. class:: ReferenceData
+
+    A namedtuple with two attributes and a function:
+
+        + projection: The well-known-text projection string.
+
+        + origin: A two-tuple of ints or floats representing the origin
+            of the projection in the cartesian plane.
+
+        + pixel_size: A function accepting one parameter (an int or float).
+            Returns a two-tuple of the height and width of pixels in this
+            projection.
+
 """
 import os
 import shutil
@@ -137,10 +150,10 @@ for keyname, typename in [('int64', 'OFTInteger64'),
 
 def dtype_precision(dtype):
     """
-    Return the precision index of the datatype provided.
+    Return the relative precision index of the datatype provided.
 
     Parameters:
-        dtype (numpy.dtype or int GDAL datatype)
+        dtype (numpy.dtype or int GDAL datatype): The dtype to check.
 
     Returns:
         The precision index relative to the other numpy/gdal type pairs.
@@ -171,14 +184,17 @@ def make_geotransform(x_len, y_len, origin):
 
     Returns:
         A 6-element list with this structure:
-        [
-            Origin along x-axis,
-            Length of a pixel along the x axis,
-            0.0,  (this is the standard in north-up projections)
-            Origin along y-axis,
-            Length of a pixel along the y axis,
-            0.0   (this is the standard in north-up projections)
-        ]
+        ::
+
+            [
+                Origin along x-axis,
+                Length of a pixel along the x axis,
+                0.0,  (this is the standard in north-up projections)
+                Origin along y-axis,
+                Length of a pixel along the y axis,
+                0.0   (this is the standard in north-up projections)
+            ]
+
     """
     return [origin[0], x_len, 0, origin[1], 0, y_len]
 
