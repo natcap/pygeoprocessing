@@ -1,10 +1,35 @@
+"""The sampledata module provides functions for creating raster and vector
+data, constants for assisting with the creation of data, and some
+sample spatial reference data.
+
+.. data:: GDAL_DRIVERS
+
+    A list of supported GDAL drivers on this installation.
+
+.. data:: OGR_DRIVERS
+
+    A list of support OGR drivers on this installation.
+
+.. data:: SRS_COLOMBIA
+
+    An instance of the ReferenceData namedtuple for the Colombia projection.
+
+.. data:: SRS_WILLAMETTE
+
+    An instance of the ReferenceData namedtuple for the Willamette projection
+    (UTM zone 10N)
+
+.. data:: VECTOR_FIELD_TYPES
+
+    A dictionary mapping string field names to OGR field types.
+
+"""
 import os
 import shutil
 import collections
 import tempfile
 import subprocess
 import logging
-import inspect
 import warnings
 
 import numpy
@@ -177,43 +202,49 @@ def cleanup(uri):
 def raster(band_matrix, origin, projection_wkt, nodata, pixel_size,
            datatype='auto', format='GTiff', dataset_opts=None, filename=None):
     """
-    Create a temp GDAL raster on disk.
+    Create a GDAL raster on disk.
 
     Parameters:
-        band_matrix (numpy.ndarray) - a numpy matrix representing pixel
+        band_matrix (numpy.ndarray): a numpy matrix representing pixel
             values.
-        origin (tuple of numbers) - A 2-element tuple representing the origin
+        origin (tuple of numbers): A 2-element tuple representing the origin
             of the pixel values in the raster.  This must be a tuple of
             numbers.
-        projection_wkt (string) - A string WKT represntation of the projection
+        projection_wkt (string): A string WKT represntation of the projection
             to use in the output raster.
-        nodata (int or float) - The nodata value for the raster.
-        pixel_size (tuple of numbers) - A 2-element tuple representing the
+        nodata (int or float): The nodata value for the raster.
+        pixel_size (tuple of numbers): A 2-element tuple representing the
             size of all pixels in the raster arranged in the order (x, y).
             Either or both of these values could be negative.
-        datatype (int or 'auto') - A GDAL datatype. If 'auto', a reasonable
+        datatype (int or 'auto'): A GDAL datatype. If 'auto', a reasonable
             datatype will be chosen based on the datatype of the numpy matrix.
-        format='GTiff' (string) - The string driver name to use.  Determines
+        format='GTiff' (string): The string driver name to use.  Determines
             the output format of the raster.  Defaults to GeoTiff.  See
             http://www.gdal.org/formats_list.html for a list of available
             formats.
-        dataset_opts=None (list of strings) - A list of strings to pass to
+        dataset_opts=None (list of strings): A list of strings to pass to
             the underlying GDAL driver for creating this raster.  Possible
             options are usually format dependent.  If None, no options will
             be passed to the driver.
-        filename=None (string) - If provided, the new raster should be created
+        filename=None (string): If provided, the new raster should be created
             at this filepath.  If None, a new temporary file will be created
             within your tempfile directory (within `tempfile.gettempdir()`)
             and this path will be returned from the function.
 
-    Outputs:
-        Writes a raster created with the given options.
+    Notes:
+        * Writes a raster created with the given options.
+        * File management is up to the user.  This raster will not be deleted
+          from the disk.  If you desire this behavior, use
+          ``pygeoprocessing.temporary_filename()`` to generate a filename to
+          provide to the `filename` parameter.  Filenames created with this
+          method will be deleted at interpreter exit.
 
     Returns:
         The string path to the new raster created on disk.
     """
     if filename is None:
-        _, out_uri = tempfile.mkstemp()
+        temp, out_uri = tempfile.mkstemp()
+        os.close(temp)
         out_uri += '.tif'
     else:
         out_uri = filename
@@ -268,27 +299,38 @@ def raster(band_matrix, origin, projection_wkt, nodata, pixel_size,
 def vector(
         geometries, projection, fields=None, attributes=None,
         vector_format='GeoJSON', filename=None):
-    """Create a temp OGR vector on disk.
+    """Create an OGR vector on disk.
 
-        geometries (list) - a list of Shapely objects.
-        projection (string)- a WKT representation of the vector's projection.
-        fields (dict or None)- a python dictionary mapping string fieldname
+    Parameters:
+        geometries (list): a list of Shapely objects.
+        projection (string): a WKT representation of the vector's projection.
+        fields (dict or None): a python dictionary mapping string fieldname
             to a string datatype representation of the target ogr fieldtype.
-            Example: {'ws_id': 'int'}.  See `VECTOR_FIELD_TYPES.keys()`
+            Example: {'ws_id': 'int'}.  See
+            ``pygeoprocessing.testing.sampledata.VECTOR_FIELD_TYPES.keys()``
             for the complete list of all allowed types.  If None, the datatype
             will be determined automatically based on the types of the
             attribute values.
-        attributes (list of dicts) - a list of python dictionary mapping
+        attributes (list of dicts): a list of python dictionary mapping
             fieldname to field value.  The field value's type must match the
             type defined in the fields input.  It is an error if it doesn't.
-        vector_format (string)- a python string indicating the OGR format to
+        vector_format (string): a python string indicating the OGR format to
             write. GeoJSON is pretty good for most things, but doesn't handle
             multipolygons very well. 'ESRI Shapefile' is usually a good bet.
-        filename=None (None or string)- None or a python string where the file
+        filename=None (None or string): None or a python string where the file
             should be saved. If None, the vector will be saved to a temporary
             folder.
 
-    Returns a string URI to the location of the vector on disk."""
+    Notes:
+        * Writes a vector created with the given options.
+        * File management is up to the user.  This vector will not be deleted
+          from the disk of its own accord.  If you desire this behavior, use
+          ``pygeoprocessing.temporary_filename()`` to generate a filename to
+          provide to the `filename` parameter.  Filenames created with this
+          method will be deleted at interpreter exit.
+
+    Returns:
+        A string filepath to the location of the vector on disk."""
 
     if fields is None:
         fields = {}

@@ -189,13 +189,13 @@ def build_regression_archives(file_uri, input_archive_uri, output_archive_uri):
 
         Args:
             file_uri (string): a URI to a json file on disk containing the
-            above configuration options.
+                above configuration options.
 
             input_archive_uri (string): the URI to where the gzip archive
-            of inputs should be saved once it is created.
+                of inputs should be saved once it is created.
 
             output_archive_uri (string): the URI to where the gzip output
-            archive of output should be saved once it is created.
+                archive of output should be saved once it is created.
 
         Returns:
             Nothing.
@@ -248,10 +248,7 @@ def snapshot_folder(workspace_uri, logfile_uri):
         workspace_uri (string): A URI to the workspace to analyze
 
         logfile_uri (string): A URI to the logfile to which md5sums and paths
-        will be recorded.
-
-        workspace_varname (string): The string variable name that should be
-        used when setting the ws_uri variable initially.
+            will be recorded.
 
     Returns:
         Nothing.

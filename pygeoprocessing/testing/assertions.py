@@ -24,7 +24,19 @@ def assert_equal(value_a, value_b, msg=None):
     Assert that values a and b are equal.  If msg is not provided, a
     standard message will be used.
 
-    Raises AssertionError if the values are not equal.
+    Parameters:
+        value_a (anything): The first value to test.
+        value_b (anything): The second value to test.
+        msg=None (string or None): A message to report to the user if
+            `value_a` and `value_b` are not equal.  If None, a standard
+            message will be used.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: if the values are not equal.
+
     """
     if msg is None:
         msg = '%s != %s' % (value_a, value_b)
@@ -35,11 +47,22 @@ def assert_equal(value_a, value_b, msg=None):
 def assert_almost_equal(value_a, value_b, places=7, msg=None):
     """
     Assert that values a and b are equal out to `places` places.
-
     If msg is not provided, a standard one will be used.
 
-    Raises AssertionError if the values are not equal out to the desired
-    precision.
+    Parameters:
+        value_a (int or float): The first value to test.
+        value_b (int or float): The second value to test.
+        places=7 (int): The number of places to which the values shoud be
+            tested.
+        msg=None (string or None): The assertion message to use if value_a
+            and value_b are not found to be equal to `places` places.
+
+    Returns:
+        None.
+
+    Raises:
+        AssertionError: Raised when the values are not equal out to the \
+        desired precision.
     """
     if value_a == value_b:
         # Shortcut!
@@ -289,7 +312,7 @@ def assert_md5(uri, regression_hash):
 
     Args:
         uri (string): a string URI to the file to be tested.
-        regression_hash (string) a string md5sum to be tested against.
+        regression_hash (string): a string md5sum to be tested against.
 
     Raises:
         AssertionError: Raised when the MD5sum of  the file at `uri` \
@@ -485,12 +508,12 @@ def assert_files(file_1_uri, file_2_uri):
     file can be done.  If the extension is not recognized, the MD5sums of
     the two files are compared instead.
 
-    Known extensions: ``.json``, ``.tif``, ``.shp``, ``.csv``, ``.txt.``,
-    ``.html``
+    Known extensions: ``json``, ``tif``, ``shp``, ``csv``, ``txt``,
+    ``html``
 
     Args:
         file_1_uri (string): a string URI to a file on disk.
-        file_2_uru (string): a string URI to a file on disk.
+        file_2_uri (string): a string URI to a file on disk.
 
     Raises:
         AssertionError: Raised when one of the input files does not exist,\
@@ -539,12 +562,12 @@ def assert_snapshot(folder, snapshot_file):
     snapshot file are ignored.
 
     Parameters:
-        folder (string) the path to the folder to recurse through and check
+        folder (string): the path to the folder to recurse through and check
             md5sums for.
-        snapshot_file (string) the path to the snapshot file to use.
+        snapshot_file (string): the path to the snapshot file to use.
 
     Raises:
-        AssertionError when a nonmatching md5sum is found.
+        AssertionError: when a nonmatching md5sum is found.
     """
 
     snapshot = open(snapshot_file)
