@@ -2,14 +2,6 @@
 data, constants for assisting with the creation of data, and some
 sample spatial reference data.
 
-.. data:: GDAL_DRIVERS
-
-    A list of supported GDAL drivers on this installation.
-
-.. data:: OGR_DRIVERS
-
-    A list of support OGR drivers on this installation.
-
 .. data:: SRS_COLOMBIA
 
     An instance of the ReferenceData namedtuple for the Colombia projection.
