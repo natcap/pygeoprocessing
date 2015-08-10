@@ -10,6 +10,7 @@ Contents:
    installation
    examples
    api
+   testing
    history
 
 Indices and Tables
