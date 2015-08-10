@@ -20,6 +20,15 @@ API Reference
     packages/routing.rst
     packages/fileio.rst
 
+================================
+Testing with Geospatial Datasets
+================================
+
+.. toctree::
+    :maxdepth: 1
+
+    testing.rst
+
 ========================
 Other Useful Information
 ========================
