@@ -4,6 +4,7 @@ Release History
 0.3.0 (XXX)
 -----------
 
+* Fixed an issue when "None" was passed in on new raster creation that would attempt to directly set that value as the nodata value in the raster.
 * A new command-line entry point (`pygeo-snapshot`) can be used to quickly take an md5sum snapshot of the state of a directory.  A related assertion, `pygeoprocessing.testing.assert_snapshot` will test a folder on disk against a snapshot file.
 * Added basic filetype-specific assertions for many geospatial filetypes, and tests for these assertions.  These assertions are exposed in `pygeoprocessing.testing`.
 * Pygeoprocessing package tests can be run by invoking `python setup.py nosetests`.  A subset of tests may also be run from an installed pygeoprocessing distribution by calling `pygeoprocessing.test()`.
