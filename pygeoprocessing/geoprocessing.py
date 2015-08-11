@@ -2372,6 +2372,7 @@ def vectorize_datasets(
                      float(n_row_blocks * n_col_blocks) * 100.0))
                 last_time = current_time
 
+            #This is true at least once since last_* initialized with None
             if (last_row_block_width != row_block_width or
                     last_col_block_width != col_block_width):
                 dataset_blocks = [
@@ -3119,6 +3120,10 @@ def convolve_2d_uri(signal_uri, kernel_uri, output_uri, ignore_nodata=True):
                     output_band.WriteArray(
                         output_array, xoff=left_index_raster,
                         yoff=top_index_raster)
+    output_band.FlushCache()
+    output_band = None
+    gdal.Dataset.__swig_destroy__(output_ds)
+    output_ds = None
 
     signal_band = None
     gdal.Dataset.__swig_destroy__(signal_ds)
