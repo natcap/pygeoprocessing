@@ -23,6 +23,10 @@ DATA_ARCHIVES = os.path.join('data', 'regression_archives')
 INPUT_ARCHIVES = os.path.join(DATA_ARCHIVES, 'input')
 OUTPUT_ARCHIVES = os.path.join(DATA_ARCHIVES, 'output')
 
+# ArcInfo Binary Grid files documented here:
+# http://support.esri.com/en/knowledgebase/techarticles/detail/30616
+# ESRI Shapefile documented here:
+# https://www.esri.com/library/whitepapers/pdfs/shapefile.pdf
 COMPLEX_FILES = {
     'ArcInfo Binary Grid': ['dblbnd.adf', 'hdr.adf', 'log', 'metadata.xml',
                             'prj.adf', 'sta.adf', 'vat.adf', 'w001001.adf',
