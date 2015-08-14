@@ -70,7 +70,7 @@ def assert_rasters_equal(a_uri, b_uri):
         b_uri (string): a URI to a GDAL dataset
 
     Returns:
-        Nothing.
+        None
 
     Raises:
         IOError: Raised when one of the input files is not found on disk.
@@ -165,7 +165,7 @@ def assert_vectors_equal(a_uri, b_uri):
         one another.
 
     Returns
-        Nothing.
+        None
     """
 
     for uri in [a_uri, b_uri]:
@@ -260,7 +260,7 @@ def assert_csv_equal(a_uri, b_uri, tolerance=TOLERANCE):
         different.
 
     Returns:
-        Nothing.
+        None
     """
 
     a = open(a_uri, 'rb')
@@ -309,11 +309,11 @@ def assert_md5(uri, regression_hash):
         regression_hash (string): a string md5sum to be tested against.
 
     Raises:
-        AssertionError: Raised when the MD5sum of  the file at `uri` \
+        AssertionError: Raised when the MD5sum of  the file at `uri`
         differs from the provided regression md5sum hash.
 
     Returns:
-        Nothing.
+        None
     """
 
     assert utils.get_hash(uri) == regression_hash, "MD5 Hashes differ."
@@ -335,7 +335,7 @@ def assert_matrixes(matrix_a, matrix_b, decimal=TOLERANCE):
         different.
 
     Returns:
-        Nothing.
+        None
     """
 
     numpy.testing.assert_array_almost_equal(matrix_a, matrix_b, decimal)
@@ -358,7 +358,7 @@ def assert_archives(archive_1_uri, archive_2_uri):
         different.
 
     Returns:
-        Nothing.
+        None
 
         """
 
@@ -397,7 +397,7 @@ def assert_workspace(archive_1_folder, archive_2_folder,
         different contents.
 
     Returns:
-        Nothing.
+        None
     """
 
     # uncompress the two archives
@@ -456,7 +456,7 @@ def assert_json(json_1_uri, json_2_uri):
         AssertionError: Raised when the two JSON objects differ.
 
     Returns:
-        Nothing.
+        None
     """
 
     dict_1 = json.loads(open(json_1_uri).read())
@@ -480,7 +480,7 @@ def assert_text_equal(text_1_uri, text_2_uri):
         AssertionError: Raised when a line differs in the two files.
 
     Returns:
-        Nothing.
+        None
     """
 
     def lines(f):
@@ -514,7 +514,7 @@ def assert_files(file_1_uri, file_2_uri):
         are found to differ.
 
     Returns:
-        Nothing.
+        None
     """
 
     for uri in [file_1_uri, file_2_uri]:
