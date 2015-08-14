@@ -437,7 +437,7 @@ def assert_workspace(archive_1_folder, archive_2_folder,
             file_1_uri = os.path.join(archive_1_folder, file_1)
             file_2_uri = os.path.join(archive_2_folder, file_2)
             LOGGER.debug('Checking %s, %s', file_1, file_2)
-            assert_files(file_1_uri, file_2_uri)
+            assert_files_not_equal(file_1_uri, file_2_uri)
 
 
 def assert_json(json_1_uri, json_2_uri):
@@ -492,7 +492,7 @@ def assert_text_equal(text_1_uri, text_2_uri):
                                       index, text_1_uri, a_line, b_line)
 
 
-def assert_files(file_1_uri, file_2_uri):
+def assert_files_not_equal(file_1_uri, file_2_uri):
     """Assert two files are equal.
 
     If the extension of the provided file is recognized, the relevant
