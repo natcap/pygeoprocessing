@@ -484,7 +484,7 @@ def assert_text_equal(text_1_uri, text_2_uri):
 
     def lines(f):
         """Return a list of lines in the opened file."""
-        return [line for line in open(f)]
+        return [line for line in open(f, 'rb')]
     for index, (a_line, b_line) in enumerate(zip(lines(text_1_uri),
                                                  lines(text_2_uri))):
         assert a_line == b_line, ('Line %s in %s does not match regression '
