@@ -107,22 +107,28 @@ def assert_rasters_equal(a_uri, b_uri):
     assert bool(a_sr.IsSame(b_sr)) is True, 'Projections differ'
 
     for band_number in range(1, a_dataset.RasterCount + 1):
-        band_a = a_dataset.GetRasterBand(band_number)
-        band_b = b_dataset.GetRasterBand(band_number)
-
-        a_array = band_a.ReadAsArray(0, 0, band_a.XSize, band_a.YSize)
-        b_array = band_b.ReadAsArray(0, 0, band_b.XSize, band_b.YSize)
-
-        try:
-            numpy.testing.assert_array_almost_equal(a_array, b_array)
-        except AssertionError:
-            for row_index in xrange(band_a.YSize):
-                for pixel_a, pixel_b in zip(a_array[row_index],
-                                            b_array[row_index]):
-                    assert_almost_equal(
-                        pixel_a, pixel_b,
-                        msg='%s != %s ... Failed at row %s' %
-                            (pixel_a, pixel_b, row_index))
+        for (a_data, a_block), (b_data, b_block) in zip(
+                iterblocks(a_uri, band_number),
+                iterblocks(b_uri, band_number)):
+            try:
+                numpy.testing.assert_block_almost_equal(a_block, b_block,
+                                                        verbose=True)
+            except AssertionError:
+                iterator = numpy.nditer([a_block, b_block],
+                                        flags=['multi_index'],
+                                        ops=['readonly'])
+                while not iterator.finished:
+                    col = a_data['xoff'] + iterator.multi_index[0]
+                    row = a_data['yoff'] + iterator.multi_index[1]
+                    pixel_a = a_block[iterator.multi_index]
+                    pixel_b = b_block[iterator.multi_index]
+                    assert pixel_a == pixel_b, (
+                        '{a_val} != {b_val} at col {col}, row {row}').format(
+                            a_val=pixel_a,
+                            b_val=pixel_b,
+                            col=col,
+                            row=row
+                        )
 
 
 def assert_vectors_equal(aUri, bUri):
