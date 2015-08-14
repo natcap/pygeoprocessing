@@ -17,9 +17,10 @@ from . import utils
 from . import data_storage
 
 LOGGER = logging.getLogger('natcap.testing.assertions')
+TOLERANCE = 7
 
 
-def assert_almost_equal(value_a, value_b, places=7, msg=None):
+def assert_almost_equal(value_a, value_b, places=TOLERANCE, msg=None):
     """
     Assert that values a and b are equal out to `places` places.
     If msg is not provided, a standard one will be used.
@@ -27,8 +28,8 @@ def assert_almost_equal(value_a, value_b, places=7, msg=None):
     Parameters:
         value_a (int or float): The first value to test.
         value_b (int or float): The second value to test.
-        places=7 (int): The number of places to which the values shoud be
-            tested.
+        places=TOLERANCE (int): The number of places to which the values
+            should be tested.
         msg=None (string or None): The assertion message to use if value_a
             and value_b are not found to be equal to `places` places.
 
@@ -62,8 +63,8 @@ def assert_rasters_equal(a_uri, b_uri):
 
         + The number of layers in the raster
 
-        + Each pixel value, out to a precision of 7 decimal places if the\
-        pixel value is a float.
+        + Each pixel value, out to a precision of TOLERANCE decimal places if
+            the pixel value is a float.
 
 
     Args:
@@ -220,7 +221,7 @@ def assert_vectors_equal(aUri, bUri):
 
 def assert_csv_equal(aUri, bUri):
     """Tests if csv files a and b are 'almost equal' to each other on a per
-    cell basis.  Numeric cells are asserted to be equal out to 7 decimal
+    cell basis.  Numeric cells are asserted to be equal out to TOLERANCE decimal
     places.  Other cell types are asserted to be equal.
 
     Args:
@@ -292,7 +293,7 @@ def assert_md5(uri, regression_hash):
     assert utils.get_hash(uri) == regression_hash, "MD5 Hashes differ."
 
 
-def assert_matrixes(matrix_a, matrix_b, decimal=6):
+def assert_matrixes(matrix_a, matrix_b, decimal=TOLERANCE):
     """Tests if the input numpy matrices are equal up to `decimal` places.
 
     This is a convenience function that wraps up required functionality in
