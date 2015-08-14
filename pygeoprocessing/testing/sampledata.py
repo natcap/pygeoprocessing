@@ -53,13 +53,13 @@ GDAL_DRIVERS = sorted([gdal.GetDriver(i).GetDescription()
 OGR_DRIVERS = sorted([ogr.GetDriver(i).GetName()
                       for i in range(ogr.GetDriverCount())])
 
-# Higher index in list represents higher precision
+# Higher index in list represents more information is stored by the datatype
 DTYPES = [
     (numpy.byte, gdal.GDT_Byte),
-    (numpy.int16, gdal.GDT_Int16),
-    (numpy.int32, gdal.GDT_Int32),
     (numpy.uint16, gdal.GDT_UInt16),
     (numpy.uint32, gdal.GDT_UInt32),
+    (numpy.int16, gdal.GDT_Int16),
+    (numpy.int32, gdal.GDT_Int32),
     (numpy.float32, gdal.GDT_Float32),
     (numpy.float64, gdal.GDT_Float64),
 ]
@@ -76,49 +76,31 @@ for _attrname in dir(gdal):
         _dtype_value = getattr(gdal, _attrname)
         GDAL_DTYPE_LABELS[_dtype_value] = _attrname
 
+def projection_wkt(epsg_id):
+    """
+    Import a projection from an EPSG code.
+
+    Parameters:
+        proj_id(int): If an int, it's an EPSG code
+
+    Returns:
+        A WKT projection string.
+    """
+    reference = osr.SpatialReference()
+    result = reference.ImportFromEPSG(epsg_id)
+    if result != 0:
+        raise RuntimeError('EPSG code %s not recognixed' % epsg_id)
+
+    return reference.ExportToWkt()
+
+
 SRS_COLOMBIA = ReferenceData(
-    projection="""PROJCS["MAGNA-SIRGAS / Colombia Bogota zone",
-    GEOGCS["MAGNA-SIRGAS",
-        DATUM["Marco_Geocentrico_Nacional_de_Referencia",
-        SPHEROID["GRS 1980",6378137,298.2572221010002,
-            AUTHORITY["EPSG","7019"]],
-        TOWGS84[0,0,0,0,0,0,0],
-        AUTHORITY["EPSG","6686"]],
-        PRIMEM["Greenwich",0],
-        UNIT["degree",0.0174532925199433],
-        AUTHORITY["EPSG","4686"]],
-    PROJECTION["Transverse_Mercator"],
-    PARAMETER["latitude_of_origin",4.596200416666666],
-    PARAMETER["central_meridian",-74.07750791666666],
-    PARAMETER["scale_factor",1],
-    PARAMETER["false_easting",1000000],
-    PARAMETER["false_northing",1000000],
-    UNIT["metre",1,
-        AUTHORITY["EPSG","9001"]],
-    AUTHORITY["EPSG","3116"]]""",
+    projection=projection_wkt(3116),
     origin=(444720, 3751320),
     pixel_size=lambda x: (x, -1. * x)
 )
 SRS_WILLAMETTE = ReferenceData(
-    projection="""PROJCS["UTM Zone 10, Northern Hemisphere",
-        GEOGCS["NAD83",
-            DATUM["North_American_Datum_1983",
-                SPHEROID["GRS 1980",6378137,298.257222101,
-                    AUTHORITY["EPSG","7019"]],
-                TOWGS84[0,0,0,0,0,0,0],
-                AUTHORITY["EPSG","6269"]],
-            PRIMEM["Greenwich",0,
-                AUTHORITY["EPSG","8901"]],
-            UNIT["degree",0.0174532925199433,
-                AUTHORITY["EPSG","9108"]],
-            AUTHORITY["EPSG","4269"]],
-        PROJECTION["Transverse_Mercator"],
-        PARAMETER["latitude_of_origin",0],
-        PARAMETER["central_meridian",-123],
-        PARAMETER["scale_factor",0.9996],
-        PARAMETER["false_easting",500000],
-        PARAMETER["false_northing",0],
-        UNIT["METERS",1]]""",
+    projection=projection_wkt(3157),
     origin=(443723.127327877911739, 4956546.905980412848294),
     pixel_size=lambda x: (x, -1. * x)
 )
@@ -148,7 +130,7 @@ for keyname, typename in [('int64', 'OFTInteger64'),
         pass
 
 
-def dtype_precision(dtype):
+def dtype_index(dtype):
     """
     Return the relative precision index of the datatype provided.
 
@@ -178,7 +160,9 @@ def make_geotransform(x_len, y_len, origin):
 
     Parameters:
         x_len (int or float): The length of a pixel along the x axis.
+            Generally, this will be a positive value.
         y_len (int of float): The length of a pixel along the y axis.
+            Generally (in North-up rasters), this will be a negative value.
         origin (tuple of ints or floats): The origin of the raster, a
             2-element tuple.
 
@@ -207,7 +191,7 @@ def cleanup(uri):
         os.remove(uri)
 
 
-def raster(band_matrix, origin, projection_wkt, nodata, pixel_size,
+def create_raster_on_disk(band_matrix, origin, projection_wkt, nodata, pixel_size,
            datatype='auto', format='GTiff', dataset_opts=None, filename=None):
     """
     Create a GDAL raster on disk.
@@ -241,19 +225,14 @@ def raster(band_matrix, origin, projection_wkt, nodata, pixel_size,
 
     Notes:
         * Writes a raster created with the given options.
-        * File management is up to the user.  This raster will not be deleted
-          from the disk.  If you desire this behavior, use
-          ``pygeoprocessing.temporary_filename()`` to generate a filename to
-          provide to the `filename` parameter.  Filenames created with this
-          method will be deleted at interpreter exit.
+        * File management is up to the user.
 
     Returns:
         The string path to the new raster created on disk.
     """
     if filename is None:
-        temp, out_uri = tempfile.mkstemp()
+        temp, out_uri = tempfile.mkstemp(suffix='.tif')
         os.close(temp)
-        out_uri += '.tif'
     else:
         out_uri = filename
 
@@ -264,7 +243,7 @@ def raster(band_matrix, origin, projection_wkt, nodata, pixel_size,
 
     # Warn the user if loss of precision is likely when converting from numpy
     # datatype to a gdal datatype.
-    if dtype_precision(numpy_dtype) > dtype_precision(datatype):
+    if dtype_index(numpy_dtype) > dtype_index(datatype):
         gdal_dtype_label = GDAL_DTYPE_LABELS[datatype]
         numpy_dtype_label = numpy_dtype.__name__
         message = ('Pixels have a datatype of %s, which is greater than the '
@@ -297,17 +276,17 @@ def raster(band_matrix, origin, projection_wkt, nodata, pixel_size,
 
     band = new_raster.GetRasterBand(1)
     band.SetNoDataValue(nodata)
-    band.WriteArray(band_matrix, 0, 0)
+    band.WriteArray(band_matrix)
 
     band = None
     new_raster = None
     return out_uri
 
 
-def vector(
+def create_vector_on_disk(
         geometries, projection, fields=None, attributes=None,
         vector_format='GeoJSON', filename=None):
-    """Create an OGR vector on disk.
+    """Create an OGR-compatible vector on disk in the target format.
 
     Parameters:
         geometries (list): a list of Shapely objects.
@@ -331,11 +310,7 @@ def vector(
 
     Notes:
         * Writes a vector created with the given options.
-        * File management is up to the user.  This vector will not be deleted
-          from the disk of its own accord.  If you desire this behavior, use
-          ``pygeoprocessing.temporary_filename()`` to generate a filename to
-          provide to the `filename` parameter.  Filenames created with this
-          method will be deleted at interpreter exit.
+        * File management is up to the user.
 
     Returns:
         A string filepath to the location of the vector on disk."""
@@ -400,7 +375,7 @@ def vector(
     return vector_uri
 
 
-def visualize(file_list):
+def open_files_in_gis_browser(file_list):
     """
     Open the specified geospatial files with the provided application or
     visualization method (qgis is the only supported method at the moment).

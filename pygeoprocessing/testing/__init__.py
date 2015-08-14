@@ -50,11 +50,11 @@ from assertions import assert_almost_equal, \
     assert_folder_snapshot_equal
 from utils import get_hash, save_workspace, regression, \
     build_regression_archives, snapshot_folder, iterblocks
-from sampledata import raster, vector
+from sampledata import create_raster_on_disk, create_vector_on_disk
 
 __all__ = [
-    'raster',
-    'vector',
+    'create_raster_on_disk',
+    'create_vector_on_disk',
     'get_hash',
     'save_workspace',
     'regression',

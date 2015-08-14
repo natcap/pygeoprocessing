@@ -25,7 +25,7 @@ class TestRasterFunctions(unittest.TestCase):
         pixel_matrix = numpy.ones((5, 5), numpy.int16)
         reference = sampledata.SRS_COLOMBIA
         for nodata in [5, 10, -5, 9999]:
-            pygeoprocessing.testing.raster(
+            pygeoprocessing.testing.create_raster_on_disk(
                 pixel_matrix, reference.origin, reference.projection, nodata,
                 reference.pixel_size(30), filename=self.raster_filename)
 
@@ -38,7 +38,7 @@ class TestRasterFunctions(unittest.TestCase):
         pixel_matrix = numpy.ones((5, 5), numpy.int16)
         reference = sampledata.SRS_COLOMBIA
         nodata = -1
-        pygeoprocessing.testing.raster(
+        pygeoprocessing.testing.create_raster_on_disk(
             pixel_matrix, reference.origin, reference.projection, nodata,
             reference.pixel_size(30), filename=self.raster_filename)
 
@@ -57,7 +57,7 @@ class TestRasterFunctions(unittest.TestCase):
         pixel_matrix = numpy.ones((1000, 1000))
         nodata = 0
         reference = sampledata.SRS_COLOMBIA
-        pygeoprocessing.testing.raster(
+        pygeoprocessing.testing.create_raster_on_disk(
             pixel_matrix, reference.origin, reference.projection, nodata,
             reference.pixel_size(30), filename=self.raster_filename)
 
@@ -87,7 +87,7 @@ class TestRoutingFunctions(unittest.TestCase):
         for row_index in range(pixel_matrix.shape[0]):
             pixel_matrix[row_index, :] = row_index
 
-        pygeoprocessing.testing.raster(
+        pygeoprocessing.testing.create_raster_on_disk(
             pixel_matrix, reference.origin, reference.projection, nodata,
             reference.pixel_size(30), filename=self.dem_filename)
 
