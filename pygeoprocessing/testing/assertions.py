@@ -518,7 +518,7 @@ def assert_file_contents_equal(file_1_uri, file_2_uri):
 
     for uri in [file_1_uri, file_2_uri]:
         if not os.path.exists(uri):
-            raise IOError('File not found %s' % uri_)
+            raise IOError('File not found %s' % uri)
 
     # assert the extensions are the same
     file_1_ext = os.path.splitext(file_1_uri)[1]
@@ -527,7 +527,7 @@ def assert_file_contents_equal(file_1_uri, file_2_uri):
                                                                     file_2_ext)
 
     assert_funcs = {
-        '.json': assert_json,
+        '.json': assert_json_equal,
         '.tif': assert_rasters_equal,
         '.shp': assert_vectors_equal,
         '.csv': assert_csv_equal,
@@ -546,7 +546,7 @@ def assert_file_contents_equal(file_1_uri, file_2_uri):
             file_1_uri, file_2_uri)
 
 
-def assert_snapshot(folder, snapshot_file):
+def assert_folder_snapshot_equal(folder, snapshot_file):
     """
     Assert all files in a directory according to the snapshot file recorded
     by `natcap.testing.utils.snapshot_folder()`.  Any files not in the
