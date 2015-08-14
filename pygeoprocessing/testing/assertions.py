@@ -143,6 +143,8 @@ def assert_vectors_equal(a_uri, b_uri):
 
         + Number of features in each layer
 
+        + Geometry type of the layer
+
         + Feature geometry type
 
         + Number of fields in each feature
@@ -227,7 +229,11 @@ def assert_vectors_equal(a_uri, b_uri):
             geom = feat.GetGeometryRef()
             geom_regression = feat_regression.GetGeometryRef()
 
-            assert geom.Equals(geom_regression) is True
+            feature_fid = feat.GetFID()
+            reg_feature_fid = feat_regression.GetFID()
+            assert bool(geom.Equals(geom_regression)) is True, (
+                'Geometries are not equal in feature %s, '
+                'regression feature %s') % (feature_id, reg_feature_id)
 
             feat = None
             feat_regression = None
