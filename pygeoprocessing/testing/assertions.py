@@ -10,6 +10,7 @@ import glob
 
 from osgeo import gdal
 from osgeo import ogr
+from osgeo import osr
 import numpy
 import pygeoprocessing
 
@@ -96,6 +97,14 @@ def assert_rasters_equal(a_uri, b_uri):
     assert a_dataset.RasterCount == b_dataset.RasterCount, (
         "different number of rasters a=%s, b=%s" %
         ((a_dataset.RasterCount, b_dataset.RasterCount)))
+
+    a_sr = osr.SpatialReference()
+    a_sr.ImportFromWkt(a_dataset.GetProjection())
+
+    b_sr = osr.SpatialReference()
+    b_sr.ImportFromWkt(b_dataset.GetProjection())
+
+    assert bool(a_sr.IsSame(b_sr)) is True, 'Projections differ'
 
     for band_number in range(1, a_dataset.RasterCount + 1):
         band_a = a_dataset.GetRasterBand(band_number)
