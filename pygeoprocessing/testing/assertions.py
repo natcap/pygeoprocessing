@@ -292,7 +292,7 @@ def assert_csv_equal(a_uri, b_uri, tolerance=TOLERANCE):
                         'b=%s' % (index, col_index, a_element, b_element))
 
 
-def assert_md5(uri, regression_hash):
+def assert_md5_equal(uri, regression_hash):
     """Assert the MD5sum of a file against a regression MD5sum.
 
     This method is a convenience method that uses
@@ -437,10 +437,10 @@ def assert_workspace(archive_1_folder, archive_2_folder,
             file_1_uri = os.path.join(archive_1_folder, file_1)
             file_2_uri = os.path.join(archive_2_folder, file_2)
             LOGGER.debug('Checking %s, %s', file_1, file_2)
-            assert_files_not_equal(file_1_uri, file_2_uri)
+            assert_file_contents_equal(file_1_uri, file_2_uri)
 
 
-def assert_json(json_1_uri, json_2_uri):
+def assert_json_equal(json_1_uri, json_2_uri):
     """Assert two JSON files against each other.
 
     The two JSON files provided will be opened, read, and their
@@ -492,7 +492,7 @@ def assert_text_equal(text_1_uri, text_2_uri):
                                       index, text_1_uri, a_line, b_line)
 
 
-def assert_files_not_equal(file_1_uri, file_2_uri):
+def assert_file_contents_equal(file_1_uri, file_2_uri):
     """Assert two files are equal.
 
     If the extension of the provided file is recognized, the relevant
