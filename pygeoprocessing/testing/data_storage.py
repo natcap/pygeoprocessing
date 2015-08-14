@@ -77,7 +77,7 @@ def make_random_dir(workspace, seed_string, prefix, make_dir=True):
     return raster_dir
 
 
-def get_multi_part_gdal(filepath, workspace):
+def _get_multi_part_gdal(filepath, workspace):
     """Collect all GDAL files into a new folder inside of the temp_workspace
     (a closure from the collect_parameters function).
 
@@ -138,7 +138,7 @@ class NotAVector(Exception):
     pass
 
 
-def get_multi_part_ogr(filepath, workspace):
+def _get_multi_part_ogr(filepath, workspace):
     """
     Collect multi-part vectors into a single folder within the workspace.
 
@@ -213,7 +213,7 @@ def collect_parameters(parameters, archive_uri):
     # For tracking existing files so we don't copy things twice
     files_found = {}
 
-    def get_multi_part(filepath):
+    def _get_multi_part(filepath):
         """
         Attempt to open a file at `filepath`, first as a gdal dataset, then
         as an OGR vector.  If the file can be opened by either library, bundle
@@ -236,7 +236,7 @@ def collect_parameters(parameters, archive_uri):
             # file is a raster
             raster_obj = None
             LOGGER.debug('%s is a raster', filepath)
-            return get_multi_part_gdal(filepath, temp_workspace)
+            return _get_multi_part_gdal(filepath, temp_workspace)
 
         vector_obj = ogr.Open(filepath)
         if vector_obj is not None:
@@ -246,16 +246,14 @@ def collect_parameters(parameters, archive_uri):
                 # file is a shapefile
                 vector_obj = None
                 try:
-                    return get_multi_part_ogr(filepath, temp_workspace)
+                    return _get_multi_part_ogr(filepath, temp_workspace)
                 except NotAVector:
                     # For some reason, the file actually turned out to not be a
                     # vector, so we just want to return from this function.
                     LOGGER.debug(('Thought %s was a shapefile, but I was '
                                   'wrong.'), filepath)
-                    pass
-        return None
 
-    def get_if_file(parameter):
+    def _get_if_file(parameter):
         """
         If the input parameter exists on disk as a file or folder, collect
         the appropriate contents and return the path to the new folder.
@@ -272,7 +270,7 @@ def collect_parameters(parameters, archive_uri):
         # initialize the return_path
         return_path = None
         try:
-            multi_part_folder = get_multi_part(parameter)
+            multi_part_folder = _get_multi_part(parameter)
             if multi_part_folder is not None:
                 LOGGER.debug('%s is a multi-part file', parameter)
                 return_path = multi_part_folder
@@ -333,8 +331,8 @@ def collect_parameters(parameters, archive_uri):
                          ' Be sure to check your archived data'), key)
 
     types = {
-        str: get_if_file,
-        unicode: get_if_file,
+        str: _get_if_file,
+        unicode: _get_if_file,
     }
     new_args = format_dictionary(parameters, types)
 
