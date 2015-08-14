@@ -50,6 +50,23 @@ class TestRasterFunctions(unittest.TestCase):
         pygeoprocessing.testing.assert_rasters_equal(self.raster_filename,
                                                      out_filename)
 
+    def test_memblock_generator(self):
+        """
+        Verify that a raster iterator works and we can sum the correct value.
+        """
+        pixel_matrix = numpy.ones((1000, 1000))
+        nodata = 0
+        reference = sampledata.SRS_COLOMBIA
+        pygeoprocessing.testing.raster(
+            pixel_matrix, reference.origin, reference.projection, nodata,
+            reference.pixel_size(30), filename=self.raster_filename)
+
+        sum = 0
+        for block_data, memblock in pygeoprocessing.testing.iterblocks(self.raster_filename):
+            sum += memblock.sum()
+
+        self.assertEqual(sum, 1000000)
+
 
 class TestRoutingFunctions(unittest.TestCase):
     def setUp(self):

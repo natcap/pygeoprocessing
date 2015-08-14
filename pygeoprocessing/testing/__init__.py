@@ -48,7 +48,7 @@ from assertions import assert_almost_equal, \
     assert_md5, assert_matrixes, assert_archives, assert_workspace, \
     assert_json, assert_text_equal, assert_files, assert_snapshot
 from utils import get_hash, save_workspace, regression, \
-    build_regression_archives, snapshot_folder
+    build_regression_archives, snapshot_folder, iterblocks
 from sampledata import raster, vector
 
 __all__ = [
@@ -71,4 +71,5 @@ __all__ = [
     'assert_text_equal',
     'assert_files',
     'assert_snapshot',
+    'iterblocks',
 ]

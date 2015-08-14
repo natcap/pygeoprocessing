@@ -108,10 +108,10 @@ def assert_rasters_equal(a_uri, b_uri):
 
     for band_number in range(1, a_dataset.RasterCount + 1):
         for (a_data, a_block), (b_data, b_block) in zip(
-                iterblocks(a_uri, band_number),
-                iterblocks(b_uri, band_number)):
+                pygeoprocessing.testing.iterblocks(a_uri, band_number),
+                pygeoprocessing.testing.iterblocks(b_uri, band_number)):
             try:
-                numpy.testing.assert_block_almost_equal(a_block, b_block,
+                numpy.testing.assert_array_almost_equal(a_block, b_block,
                                                         verbose=True)
             except AssertionError:
                 iterator = numpy.nditer([a_block, b_block],
