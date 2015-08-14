@@ -133,7 +133,7 @@ def assert_rasters_equal(a_uri, b_uri):
                     iterator.iternext()
 
 
-def assert_vectors_equal(aUri, bUri):
+def assert_vectors_equal(a_uri, b_uri):
     """
     Tests if vector datasources are equal to each other.
 
@@ -151,9 +151,11 @@ def assert_vectors_equal(aUri, bUri):
 
         + Field values for each feature
 
+        + Projection
+
     Args:
-        aUri (string): a URI to an OGR vector
-        bUri (string): a URI to an OGR vector
+        a_uri (string): a URI to an OGR vector
+        b_uri (string): a URI to an OGR vector
 
     Raises:
         IOError: Raised if one of the input files is not found on disk.
@@ -164,12 +166,12 @@ def assert_vectors_equal(aUri, bUri):
         Nothing.
     """
 
-    for uri in [aUri, bUri]:
+    for uri in [a_uri, b_uri]:
         if not os.path.exists(uri):
             raise IOError('File "%s" not found on disk' % uri)
 
-    shape = ogr.Open(aUri)
-    shape_regression = ogr.Open(bUri)
+    shape = ogr.Open(a_uri)
+    shape_regression = ogr.Open(b_uri)
 
     # Check that the shapefiles have the same number of layers
     layer_count = shape.GetLayerCount()
@@ -189,6 +191,10 @@ def assert_vectors_equal(aUri, bUri):
 
         assert layer.GetGeomType() == layer_regression.GetGeomType(), (
             'The layers do not have the same geometry type')
+
+        a_sr = layer.GetSpatialRef()
+        b_sr = layer_regression.GetSpatialRef()
+        assert bool(a_sr.IsSame(b_sr)) is True, 'Projections differ'
 
         # Get the first features of the layers and loop through all the
         # features
