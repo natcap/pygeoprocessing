@@ -244,25 +244,27 @@ def assert_vectors_equal(a_uri, b_uri):
     shape_regression = None
 
 
-def assert_csv_equal(aUri, bUri):
+def assert_csv_equal(a_uri, b_uri, tolerance=TOLERANCE):
     """Tests if csv files a and b are 'almost equal' to each other on a per
     cell basis.  Numeric cells are asserted to be equal out to TOLERANCE decimal
     places.  Other cell types are asserted to be equal.
 
     Args:
-        aUri (string): a URI to a csv file
-        bUri (string): a URI to a csv file
+        a_uri (string): a URI to a csv file
+        b_uri (string): a URI to a csv file
+        tolerance=TOLERANCE (int): The number of places out to which to test
+            floating-point cell values.
 
     Raises:
-        AssertionError: Raised when the two CSV files are found to be\
+        AssertionError: Raised when the two CSV files are found to be
         different.
 
     Returns:
         Nothing.
     """
 
-    a = open(aUri)
-    b = open(bUri)
+    a = open(a_uri, 'rb')
+    b = open(b_uri, 'rb')
 
     reader_a = csv.reader(a)
     reader_b = csv.reader(b)
@@ -277,8 +279,7 @@ def assert_csv_equal(aUri, bUri):
                 try:
                     a_element = float(a_element)
                     b_element = float(b_element)
-                    assert_almost_equal(
-                        a_element, b_element,
+                    assert_almost_equal(a_element, b_element, places=tolerance,
                         msg=('Values are significantly different at row %s'
                              'col %s: a=%s b=%s' % (index, col_index,
                                                     a_element,
