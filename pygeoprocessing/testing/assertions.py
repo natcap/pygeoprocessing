@@ -63,6 +63,7 @@ def assert_rasters_equal(a_uri, b_uri):
         + Each pixel value, out to a precision of TOLERANCE decimal places if
             the pixel value is a float.
 
+        + Projection
 
     Args:
         a_uri (string): a URI to a GDAL dataset
@@ -116,7 +117,7 @@ def assert_rasters_equal(a_uri, b_uri):
             except AssertionError:
                 iterator = numpy.nditer([a_block, b_block],
                                         flags=['multi_index'],
-                                        ops=['readonly'])
+                                        op_flags=['readonly'])
                 while not iterator.finished:
                     col = a_data['xoff'] + iterator.multi_index[0]
                     row = a_data['yoff'] + iterator.multi_index[1]
@@ -129,6 +130,7 @@ def assert_rasters_equal(a_uri, b_uri):
                             col=col,
                             row=row
                         )
+                    iterator.iternext()
 
 
 def assert_vectors_equal(aUri, bUri):
