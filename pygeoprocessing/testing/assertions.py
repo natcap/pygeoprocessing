@@ -37,13 +37,9 @@ def assert_almost_equal(value_a, value_b, places=TOLERANCE, msg=None):
         None.
 
     Raises:
-        AssertionError: Raised when the values are not equal out to the \
+        AssertionError: Raised when the values are not equal out to the
         desired precision.
     """
-    if value_a == value_b:
-        # Shortcut!
-        return
-
     if round(abs(value_b - value_a), places) == 0:
         return
 
