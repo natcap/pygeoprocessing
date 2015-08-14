@@ -75,7 +75,7 @@ def assert_rasters_equal(a_uri, b_uri):
     Raises:
         IOError: Raised when one of the input files is not found on disk.
 
-        AssertionError: Raised when the two rasters are found to be not\
+        AssertionError: Raised when the two rasters are found to be not
         equal to each other.
 
     """
@@ -161,7 +161,7 @@ def assert_vectors_equal(a_uri, b_uri):
 
     Raises:
         IOError: Raised if one of the input files is not found on disk.
-        AssertionError: Raised if the vectors are not found to be equal to\
+        AssertionError: Raised if the vectors are not found to be equal to
         one another.
 
     Returns
@@ -331,7 +331,7 @@ def assert_matrixes(matrix_a, matrix_b, decimal=TOLERANCE):
         decimal (int): an integer of the desired precision.
 
     Raises:
-        AssertionError: Raised when the two matrices are determined to be\
+        AssertionError: Raised when the two matrices are determined to be
         different.
 
     Returns:
@@ -354,7 +354,7 @@ def assert_archives(archive_1_uri, archive_2_uri):
         archive_2_uri (string): a URI to a .tar.gz workspace archive
 
     Raises:
-        AssertionError: Raised when the two workspaces are found to be\
+        AssertionError: Raised when the two workspaces are found to be
         different.
 
     Returns:
@@ -392,7 +392,7 @@ def assert_workspace(archive_1_folder, archive_2_folder,
             ignore
 
     Raises:
-        AssertionError: Raised when the two folders are found to have\
+        AssertionError: Raised when the two folders are found to have
         different contents.
 
     Returns:
@@ -470,9 +470,9 @@ def assert_text_equal(text_1_uri, text_2_uri):
     This comparison is done line-by-line.
 
     Args:
-        text_1_uri (string): a python string uri to a text file. \
+        text_1_uri (string): a python string uri to a text file.
             Considered the file to be tested.
-        text_2_uri (string): a python string uri to a text file. \
+        text_2_uri (string): a python string uri to a text file.
             Considered the regression file.
 
     Raises:
@@ -508,8 +508,8 @@ def assert_file_contents_equal(file_1_uri, file_2_uri):
         file_2_uri (string): a string URI to a file on disk.
 
     Raises:
-        AssertionError: Raised when one of the input files does not exist,\
-        when the extensions of the input files differ, or if the two files\
+        AssertionError: Raised when one of the input files does not exist,
+        when the extensions of the input files differ, or if the two files
         are found to differ.
 
     Returns:
