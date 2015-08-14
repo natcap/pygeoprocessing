@@ -391,7 +391,7 @@ def format_dictionary(input_dict, types_lookup={}):
 
         Returns a formatted dictionary."""
 
-    def format_dict(parameter):
+    def _format_dict(parameter):
         new_dict = {}
         for key, value in parameter.iteritems():
             try:
@@ -410,13 +410,13 @@ def format_dictionary(input_dict, types_lookup={}):
         return new_list
 
     types = {
-        dict: format_dict,
+        dict: _format_dict,
         list: format_list,
     }
 
     types.update(types_lookup)
 
-    return format_dict(input_dict)
+    return _format_dict(input_dict)
 
 
 def extract_parameters_archive(workspace_dir, archive_uri, input_folder=None):
