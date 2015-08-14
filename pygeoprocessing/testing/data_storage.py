@@ -60,15 +60,15 @@ def make_random_dir(workspace, seed_string, prefix, make_dir=True):
         make_dir=True (boolean): Whether to make the new folder we are naming.
 
     Returns:
-        The path to the new folder.  The name of the folder willbe of the
+        The path to the new folder.  The name of the folder will be of the
         pattern: <prefix><random chars>.  Example: raster_1G3GES
     """
-    LOGGER.debug('Random dir seed: %s', seed_string)
+    LOGGER.debug('Random directory seed: %s', seed_string)
     random.seed(seed_string)
     new_dirname = ''.join(random.choice(string.ascii_uppercase + string.digits)
                           for x in range(6))
     new_dirname = prefix + new_dirname
-    LOGGER.debug('New dirname: %s', new_dirname)
+    LOGGER.debug('New directory name: %s', new_dirname)
     raster_dir = os.path.join(workspace, new_dirname)
 
     if make_dir:
@@ -79,7 +79,7 @@ def make_random_dir(workspace, seed_string, prefix, make_dir=True):
 
 def get_multi_part_gdal(filepath, workspace):
     """Collect all GDAL files into a new folder inside of the temp_workspace
-    (a closure from the collect_parameters funciton).
+    (a closure from the collect_parameters function).
 
     This function uses gdal's internal knowledge of the files it contains to
     determine which files are to be included.
@@ -228,7 +228,7 @@ def collect_parameters(parameters, archive_uri):
             A string filepath to the new folder in the `temp_workspace` that
             now contains a copy of all files in the multi-part dataset.
         """
-        # If the user provides a mutli-part file, wrap it into a folder and
+        # If the user provides a multi-part file, wrap it into a folder and
         # grab that instead of the individual file.
 
         raster_obj = gdal.Open(filepath)
