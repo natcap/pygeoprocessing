@@ -45,12 +45,6 @@ def archive_uri(name=None):
     return(os.path.join(INPUT_ARCHIVES, name))
 
 
-def is_multi_file(filename):
-    """Check if the filename given is a file with multiple parts to it, such as
-        an ESRI shapefile or an ArcInfo Binary Grid."""
-    pass
-
-
 def make_random_dir(workspace, seed_string, prefix, make_dir=True):
     """
     Make a directory in `workspace` where the name is a combination of
