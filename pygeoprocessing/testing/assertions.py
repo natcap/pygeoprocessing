@@ -19,31 +19,6 @@ from . import data_storage
 LOGGER = logging.getLogger('natcap.testing.assertions')
 
 
-def assert_equal(value_a, value_b, msg=None):
-    """
-    Assert that values a and b are equal.  If msg is not provided, a
-    standard message will be used.
-
-    Parameters:
-        value_a (anything): The first value to test.
-        value_b (anything): The second value to test.
-        msg=None (string or None): A message to report to the user if
-            `value_a` and `value_b` are not equal.  If None, a standard
-            message will be used.
-
-    Returns:
-        None.
-
-    Raises:
-        AssertionError: if the values are not equal.
-
-    """
-    if msg is None:
-        msg = '%s != %s' % (value_a, value_b)
-
-    assert value_a == value_b, msg
-
-
 def assert_almost_equal(value_a, value_b, places=7, msg=None):
     """
     Assert that values a and b are equal out to `places` places.
@@ -115,15 +90,15 @@ def assert_rasters_equal(a_uri, b_uri):
     a_dataset = gdal.Open(a_uri)
     b_dataset = gdal.Open(b_uri)
 
-    assert_equal(a_dataset.RasterXSize, b_dataset.RasterXSize,
-                 "x dimensions are different a=%s, second=%s" %
-                 (a_dataset.RasterXSize, b_dataset.RasterXSize))
-    assert_equal(a_dataset.RasterYSize, b_dataset.RasterYSize,
-                 "y dimensions are different a=%s, second=%s" %
-                 (a_dataset.RasterYSize, b_dataset.RasterYSize))
-    assert_equal(a_dataset.RasterCount, b_dataset.RasterCount,
-                 "different number of rasters a=%s, b=%s" %
-                 ((a_dataset.RasterCount, b_dataset.RasterCount)))
+    assert a_dataset.RasterXSize == b_dataset.RasterXSize, (
+        "x dimensions are different a=%s, second=%s" %
+        (a_dataset.RasterXSize, b_dataset.RasterXSize))
+    assert a_dataset.RasterYSize == b_dataset.RasterYSize, (
+        "y dimensions are different a=%s, second=%s" %
+        (a_dataset.RasterYSize, b_dataset.RasterYSize))
+    assert a_dataset.RasterCount == b_dataset.RasterCount, (
+        "different number of rasters a=%s, b=%s" %
+        ((a_dataset.RasterCount, b_dataset.RasterCount)))
 
     for band_number in range(1, a_dataset.RasterCount + 1):
         band_a = a_dataset.GetRasterBand(band_number)
@@ -185,8 +160,8 @@ def assert_vectors_equal(aUri, bUri):
     # Check that the shapefiles have the same number of layers
     layer_count = shape.GetLayerCount()
     layer_count_regression = shape_regression.GetLayerCount()
-    assert_equal(layer_count, layer_count_regression,
-                 'The shapes DO NOT have the same number of layers')
+    assert layer_count == layer_count_regression, (
+        'The shapes DO NOT have the same number of layers')
 
     for layer_num in range(layer_count):
         # Get the current layer
@@ -195,11 +170,11 @@ def assert_vectors_equal(aUri, bUri):
         # Check that each layer has the same number of features
         feat_count = layer.GetFeatureCount()
         feat_count_regression = layer_regression.GetFeatureCount()
-        assert_equal(feat_count, feat_count_regression,
-                     'The layers DO NOT have the same number of features')
+        assert feat_count == feat_count_regression, (
+            'The layers DO NOT have the same number of features')
 
-        assert_equal(layer.GetGeomType(), layer_regression.GetGeomType(),
-                     'The layers do not have the same geometry type')
+        assert layer.GetGeomType() == layer_regression.GetGeomType(), (
+            'The layers do not have the same geometry type')
 
         # Get the first features of the layers and loop through all the
         # features
@@ -211,34 +186,28 @@ def assert_vectors_equal(aUri, bUri):
             layer_def_regression = layer_regression.GetLayerDefn()
             field_count = layer_def.GetFieldCount()
             field_count_regression = layer_def_regression.GetFieldCount()
-            assert_equal(field_count, field_count_regression,
-                         'The shapes DO NOT have the same number of fields')
+            assert field_count == field_count_regression, (
+                'The shapes DO NOT have the same number of fields')
 
             for fld_index in range(field_count):
                 # Check that the features have the same field values
                 field = feat.GetField(fld_index)
                 field_regression = feat_regression.GetField(fld_index)
-                assert_equal(field, field_regression,
-                             'The field values DO NOT match')
+                assert field == field_regression, ('The field values DO NOT '
+                                                   'match')
                 # Check that the features have the same field name
                 field_ref = feat.GetFieldDefnRef(fld_index)
                 field_ref_regression = \
                     feat_regression.GetFieldDefnRef(fld_index)
                 field_name = field_ref.GetNameRef()
                 field_name_regression = field_ref_regression.GetNameRef()
-                assert_equal(field_name, field_name_regression,
-                             'The fields DO NOT have the same name')
+                assert field_name == field_name_regression, (
+                    'The fields DO NOT have the same name')
             # Check that the features have the same geometry
             geom = feat.GetGeometryRef()
             geom_regression = feat_regression.GetGeometryRef()
 
             assert geom.Equals(geom_regression) is True
-
-            if layer.GetGeomType() != ogr.wkbPoint:
-                # Check that the features have the same area,
-                # but only if the shapefile's geometry is not a point, since
-                # points don't have area to check.
-                assert_equal(geom.Area(), geom_regression.Area())
 
             feat = None
             feat_regression = None
@@ -274,9 +243,8 @@ def assert_csv_equal(aUri, bUri):
 
     for index, (a_row, b_row) in enumerate(zip(reader_a, reader_b)):
         try:
-            assert_equal(a_row, b_row,
-                         'Rows differ at row %s: a=%s b=%s' % (index, a_row,
-                                                               b_row))
+            assert a_row == b_row, ('Rows differ at row'
+                                    '%s: a=%s b=%s' % (index, a_row, b_row))
         except AssertionError:
             for col_index, (a_element, b_element) in enumerate(zip(a_row,
                                                                    b_row)):
@@ -292,10 +260,9 @@ def assert_csv_equal(aUri, bUri):
                 except ValueError:
                     # we know for sure they arenot floats, so compare as
                     # non-floats.
-                    assert_equal(
-                        a_element, b_element,
-                        msg=('Elements differ at row %s col%s: a=%s b=%s' %
-                             (index, col_index, a_element, b_element)))
+                    assert a_element == b_element, (
+                        'Elements differ at row %s col%s: a=%s '
+                        'b=%s' % (index, col_index, a_element, b_element))
 
 
 def assert_md5(uri, regression_hash):
@@ -305,7 +272,7 @@ def assert_md5(uri, regression_hash):
     ``natcap.invest.testing.get_hash()`` to determine the MD5sum of the
     file located at `uri`.  It is functionally equivalent to calling::
 
-        assert_equal(get_hash(uri), '<some md5sum>')
+        assert get_hash(uri) == '<some md5sum>'
 
     Regression MD5sums can be calculated for you by using
     ``natcap.invest.testing.get_hash()`` or a system-level md5sum program.
@@ -322,7 +289,7 @@ def assert_md5(uri, regression_hash):
         Nothing.
     """
 
-    assert_equal(utils.get_hash(uri), regression_hash, "MD5 Hashes differ.")
+    assert utils.get_hash(uri) == regression_hash, "MD5 Hashes differ."
 
 
 def assert_matrixes(matrix_a, matrix_b, decimal=6):
@@ -468,7 +435,7 @@ def assert_json(json_1_uri, json_2_uri):
     dict_1 = json.loads(open(json_1_uri).read())
     dict_2 = json.loads(open(json_2_uri).read())
 
-    assert_equal(dict_1, dict_2)
+    assert dict_1 == dict_2, 'JSON objects differ: %s\n%s' % (dict_1, dict_2)
 
 
 def assert_text_equal(text_1_uri, text_2_uri):
@@ -494,10 +461,9 @@ def assert_text_equal(text_1_uri, text_2_uri):
         return [line for line in open(f)]
     for index, (a_line, b_line) in enumerate(zip(lines(text_1_uri),
                                                  lines(text_2_uri))):
-        assert_equal(a_line, b_line,
-                     ('Line %s in %s does not match regression file. Output'
-                      ' "%s" Regression "%s"') % (index, text_1_uri, a_line,
-                                                  b_line))
+        assert a_line == b_line, ('Line %s in %s does not match regression '
+                                  'file. Output  "%s" Regression "%s"') % (
+                                      index, text_1_uri, a_line, b_line)
 
 
 def assert_files(file_1_uri, file_2_uri):
@@ -525,14 +491,13 @@ def assert_files(file_1_uri, file_2_uri):
     """
 
     for uri in [file_1_uri, file_2_uri]:
-        assert_equal(os.path.exists(uri), True,
-                     'File %s does not exist' % uri)
+        assert os.path.exists(uri) is True, 'File not found: %s' % uri
 
     # assert the extensions are the same
     file_1_ext = os.path.splitext(file_1_uri)[1]
     file_2_ext = os.path.splitext(file_2_uri)[1]
-    assert_equal(file_1_ext, file_2_ext, 'Extensions differ: %s, %s' %
-                 (file_1_ext, file_2_ext))
+    assert file_1_ext == file_2_ext, 'Extensions differ: %s, %s' % (file_1_ext,
+                                                                    file_2_ext)
 
     assert_funcs = {
         '.json': assert_json,
@@ -550,9 +515,8 @@ def assert_files(file_1_uri, file_2_uri):
         # the MD5s.
         file_1_md5 = utils.get_hash(file_1_uri)
         file_2_md5 = utils.get_hash(file_2_uri)
-        assert_equal(file_1_md5, file_2_md5,
-                     'Files %s and %s differ (MD5sum)' % (file_1_uri,
-                                                          file_2_uri))
+        assert file_1_md5 == file_2_md5, 'Files %s and %s differ (MD5sum)' % (
+            file_1_uri, file_2_uri)
 
 
 def assert_snapshot(folder, snapshot_file):
