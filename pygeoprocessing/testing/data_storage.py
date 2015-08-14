@@ -225,8 +225,13 @@ def collect_parameters(parameters, archive_uri):
             disk.
 
         Returns:
-            A string filepath to the new folder in the `temp_workspace` that
-            now contains a copy of all files in the multi-part dataset.
+            Either a string or None.
+
+            If a string is returned, it's the path to a newly created folder
+            within `temp_workspace` (from the closure) that contains a copy of
+            all files in the multi-part dataset.
+
+            If None is returned, the filepath was not a multi-part file.
         """
         # If the user provides a multi-part file, wrap it into a folder and
         # grab that instead of the individual file.
@@ -243,15 +248,18 @@ def collect_parameters(parameters, archive_uri):
             # Need to check the driver name to be sure that this isn't a CSV.
             driver = vector_obj.GetDriver()
             if driver.name != 'CSV':
-                # file is a shapefile
+                # file is a vector
                 vector_obj = None
                 try:
                     return _get_multi_part_ogr(filepath, temp_workspace)
                 except NotAVector:
                     # For some reason, the file actually turned out to not be a
                     # vector, so we just want to return from this function.
-                    LOGGER.debug(('Thought %s was a shapefile, but I was '
+                    LOGGER.debug(('Thought %s was a vector, but I was '
                                   'wrong.'), filepath)
+
+        # If the file is neither a raster nor a vector, return None.
+        return None
 
     def _get_if_file(parameter):
         """
@@ -259,6 +267,7 @@ def collect_parameters(parameters, archive_uri):
         the appropriate contents and return the path to the new folder.
         """
         try:
+            # files_found is a dictionary from the outer scope
             uri = files_found[os.path.abspath(parameter)]
             LOGGER.debug('Found %s from a previous parameter', uri)
             return uri
