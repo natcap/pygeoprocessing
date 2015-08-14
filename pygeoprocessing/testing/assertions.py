@@ -517,7 +517,8 @@ def assert_file_contents_equal(file_1_uri, file_2_uri):
     """
 
     for uri in [file_1_uri, file_2_uri]:
-        assert os.path.exists(uri) is True, 'File not found: %s' % uri
+        if not os.path.exists(uri):
+            raise IOError('File not found %s' % uri_)
 
     # assert the extensions are the same
     file_1_ext = os.path.splitext(file_1_uri)[1]
