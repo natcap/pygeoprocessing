@@ -80,30 +80,29 @@ def class_has_ftest(test_file_uri, test_class_name, test_func_name):
 
 def add_ftest_to_class(file_uri, test_class_name, test_func_name,
                        in_archive_uri, out_archive_uri, module):
-    """Add a test function to an existing test file.  The test added is a
+    """
+    Add a test function to an existing test file.  The test added is a
     regression test using the pygeoprocessing.testing.regression archive
     decorator.
 
-        file_uri - URI to the test file to modify.
-        test_class_name - string. The test class name to modify.  If the test
+    Parameters:
+        file_uri (string): URI to the test file to modify.
+        test_class_name (string): The test class name to modify.  If the test
             class already exists, the test function will be added to the test
             class. If not, the new class will be created.
-        test_func_name - string.  The name of the test function to write.  If a
+        test_func_name (string):  The name of the test function to write.  If a
             test function by this name already exists in the target class, the
             function will not be written.
-        in_archive_uri - URI to the input archive.
-        out_archive_uri - URI to the output archive.
-        module - string module, whose execute function will be run in the test
-            (e.g. 'pygeoprocessing.pollination.pollination')
+        in_archive_uri (string): URI to the input archive.
+        out_archive_uri (string): URI to the output archive.
+        module (string): string module, whose execute function will be run in the test
+            (e.g. 'natcap.invest.pollination.pollination')
 
     WARNING: The input test file is overwritten with the new test file.
 
-    Returns nothing."""
-
-    test_file = codecs.open(file_uri, 'r', encoding='utf-8')
-
-    temp_file_uri = pygeoprocessing.geoprocessing.temporary_filename()
-    new_file = codecs.open(temp_file_uri, 'w+', encoding='utf-8')
+    Returns:
+        None
+    """
 
     cls_exists = file_has_class(file_uri, test_class_name)
     test_exists = class_has_ftest(file_uri, test_class_name, test_func_name)
@@ -113,13 +112,27 @@ def add_ftest_to_class(file_uri, test_class_name, test_func_name,
                (test_class_name, test_func_name))
         return
 
-    def _import():
-        return 'import pygeoprocessing.testing\n'
-
-    def _test_class(test_class):
-        return 'class %s(unittest.TestCase):\n' % test_class
+    import_ = 'import pygeoprocessing.testing\n'
+    class_ = 'class {classname}(unittest.TestCase):\n'.format(
+        classname=test_class_name)
 
     def _archive_reg_test(test_name, module, in_archive, out_archive, cur_dir):
+        """
+        Format a regression archive string.
+
+        Parameters:
+            test_name (string): the name of the new test.
+            module (string): the name of the module that contains the execute
+                function we are calling in the test.
+            in_archive (string): the path to the archive of inputs.
+            out_archive (string): the path to the archive of outputs.
+            cur_dir (string): the CWD.  Paths to the archives are made relative
+                to this folder.
+
+        Returns:
+            A formatted string that contains the decorated test case to be
+            written.
+        """
         in_archive = os.path.relpath(in_archive, cur_dir)
         out_archive = os.path.relpath(out_archive, cur_dir)
         if platform.system() == 'Windows':
@@ -134,13 +147,16 @@ def add_ftest_to_class(file_uri, test_class_name, test_func_name,
                '\n').format(in_arch=in_archive, out_arch=out_archive,
                             test_name=test_name, module=module)
 
+    test_file = codecs.open(file_uri, 'r', encoding='utf-8')
+    temp_file_uri = pygeoprocessing.geoprocessing.temporary_filename()
+    new_file = codecs.open(temp_file_uri, 'w+', encoding='utf-8')
     if cls_exists is False:
         for line in test_file:
             new_file.write(line.rstrip() + '\n')
 
         new_file.write('\n')
-        new_file.write(_import())
-        new_file.write(_test_class(test_class_name))
+        new_file.write(import_)
+        new_file.write(class_)
         new_file.write(_archive_reg_test(test_func_name, module,
                        in_archive_uri, out_archive_uri,
                        os.path.dirname(file_uri)))
@@ -149,7 +165,7 @@ def add_ftest_to_class(file_uri, test_class_name, test_func_name,
         for line in test_file:
             if ((line.startswith('import') is False or line.startswith('from'))
                     and not import_written):
-                new_file.write(_import())
+                new_file.write(import_)
                 import_written = True
 
             new_file.write(line.rstrip() + '\n')
@@ -158,8 +174,8 @@ def add_ftest_to_class(file_uri, test_class_name, test_func_name,
                                in_archive_uri, out_archive_uri,
                                os.path.dirname(file_uri)))
 
-    test_file = None
-    new_file = None
+    test_file.close()
+    new_file.close()
 
     # delete the old file
     os.remove(file_uri)
