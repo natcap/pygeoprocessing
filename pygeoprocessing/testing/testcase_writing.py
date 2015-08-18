@@ -19,7 +19,10 @@ def file_has_class(test_file_uri, test_class_name):
         True if the class is found, False otherwise."""
 
     try:
-        module = imp.load_source('model', test_file_uri)
+        # Use the basename (without the extension) of the test file as the
+        # module_name. 'foo/bar.py' becomes 'foo'
+        module_name = os.path.basename(os.path.splitext(test_file_uri)[0])
+        module = imp.load_source(module_name, test_file_uri)
     except ImportError:
         # We couldn't import everything necessary (such as with
         # invest_test_core), so we need to loop line by line to check and see
