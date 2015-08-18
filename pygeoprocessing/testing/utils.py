@@ -111,35 +111,36 @@ def hash_file(filepath):
 
 
 def save_workspace(new_workspace):
-    """Decorator to save a workspace to a new location.
+    """
+    Decorator to save a workspace to a new location.
 
-        If `new_workspace` already exists on disk, it will be recursively
-        removed.
+    If `new_workspace` already exists on disk, it will be recursively
+    removed.
 
-        Example usage with a test case::
+    Example usage with a test case::
 
-            import pygeoprocessing.testing
+        import pygeoprocessing.testing
 
-            @pygeoprocessing.testing.save_workspace('/path/to/workspace')
-            def test_workspaces(self):
-                model.execute(self.args)
+        @pygeoprocessing.testing.save_workspace('/path/to/workspace')
+        def test_workspaces(self):
+            model.execute(self.args)
 
-        Note:
-            + Target workspace folder must be saved to ``self.workspace_dir``
-                This decorator is only designed to work with test functions
-                from subclasses of ``unittest.TestCase`` such as
-                ``pygeoprocessing.testing.GISTest``.
+    Note:
+        + Target workspace folder must be saved to ``self.workspace_dir``
+            This decorator is only designed to work with test functions
+            from subclasses of ``unittest.TestCase`` such as
+            ``pygeoprocessing.testing.GISTest``.
 
-            + If ``new_workspace`` exists, it will be removed.
-                So be careful where you save things.
+        + If ``new_workspace`` exists, it will be removed.
+            So be careful where you save things.
 
-        Args:
-            new_workspace (string): a URI to the where the workspace should be
-                copied.
+    Args:
+        new_workspace (string): a URI to the where the workspace should be
+            copied.
 
-        Returns:
-            A composed test case function which will execute and then save your
-            workspace to the specified location."""
+    Returns:
+        A composed test case function which will execute and then save your
+        workspace to the specified location."""
 
     # item is the function being decorated
     def test_inner_func(item):
@@ -166,26 +167,27 @@ def save_workspace(new_workspace):
 
 
 def regression(input_archive, workspace_archive):
-    """Decorator to unzip input data, run the regression test and compare the
-        outputs against the outputs on file.
+    """
+    Decorator to unzip input data, run the regression test and compare the
+    outputs against the outputs on file.
 
-        Example usage with a test case::
+    Example usage with a test case::
 
-            import pygeoprocessing.testing
+        import pygeoprocessing.testing
 
-            @pygeoprocessing.testing.regression('/data/input.tar.gz',
-                                                '/data/output.tar.gz')
-            def test_workspaces(self):
-                model.execute(self.args)
+        @pygeoprocessing.testing.regression('/data/input.tar.gz',
+                                            '/data/output.tar.gz')
+        def test_workspaces(self):
+            model.execute(self.args)
 
-        Args:
-            input_archive (string): The path to a .tar.gz archive with the
-                input data.
-            workspace_archive (string): The path to a .tar.gz archive with the
-                workspace to assert.
+    Args:
+        input_archive (string): The path to a .tar.gz archive with the
+            input data.
+        workspace_archive (string): The path to a .tar.gz archive with the
+            workspace to assert.
 
-        Returns:
-            Composed function with regression testing.
+    Returns:
+        Composed function with regression testing.
     """
 
     # item is the function being decorated
@@ -211,47 +213,48 @@ def regression(input_archive, workspace_archive):
 
 
 def build_regression_archives(file_uri, input_archive_uri, output_archive_uri):
-    """Build regression archives for a target model run.
+    """
+    Build regression archives for a target model run.
 
-        With a properly formatted JSON configuration file at `file_uri`, all
-        input files and parameters are collected and compressed into a single
-        gzip.  Then, the target model is executed and the output workspace is
-        zipped up into another gzip.  These could then be used for regression
-        testing, such as with the ``pygeoprocessing.testing.regression``
-        decorator.
+    With a properly formatted JSON configuration file at `file_uri`, all
+    input files and parameters are collected and compressed into a single
+    gzip.  Then, the target model is executed and the output workspace is
+    zipped up into another gzip.  These could then be used for regression
+    testing, such as with the ``pygeoprocessing.testing.regression``
+    decorator.
 
-        Example configuration file contents (serialized to JSON)::
+    Example configuration file contents (serialized to JSON)::
 
-            {
-                    "model": "pygeoprocessing.pollination.pollination",
-                    "arguments": {
-                        # the full set of model arguments here
-                    }
-            }
+        {
+                "model": "pygeoprocessing.pollination.pollination",
+                "arguments": {
+                    # the full set of model arguments here
+                }
+        }
 
-        Example function usage::
+    Example function usage::
 
-            import pygeoprocessing.testing
+        import pygeoprocessing.testing
 
-            file_uri = "/path/to/config.json"
-            input_archive_uri = "/path/to/archived_inputs.tar.gz"
-            output_archive_uri = "/path/to/archived_outputs.tar.gz"
-            pygeoprocessing.testing.build_regression_archives(file_uri,
-                input_archive_uri, output_archive_uri)
+        file_uri = "/path/to/config.json"
+        input_archive_uri = "/path/to/archived_inputs.tar.gz"
+        output_archive_uri = "/path/to/archived_outputs.tar.gz"
+        pygeoprocessing.testing.build_regression_archives(file_uri,
+            input_archive_uri, output_archive_uri)
 
-        Args:
-            file_uri (string): a URI to a json file on disk containing the
-                above configuration options.
+    Args:
+        file_uri (string): a URI to a json file on disk containing the
+            above configuration options.
 
-            input_archive_uri (string): the URI to where the gzip archive
-                of inputs should be saved once it is created.
+        input_archive_uri (string): the URI to where the gzip archive
+            of inputs should be saved once it is created.
 
-            output_archive_uri (string): the URI to where the gzip output
-                archive of output should be saved once it is created.
+        output_archive_uri (string): the URI to where the gzip output
+            archive of output should be saved once it is created.
 
-        Returns:
-            Nothing.
-        """
+    Returns:
+        Nothing.
+    """
     saved_data = json.loads(open(file_uri).read())
 
     arguments = saved_data['arguments']
