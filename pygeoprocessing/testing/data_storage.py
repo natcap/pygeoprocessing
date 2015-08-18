@@ -112,7 +112,7 @@ def _get_multi_part_gdal(filepath, workspace):
         # Regardless of whether the raster is passed in as a folder or a
         # single file, use its md5sum as a seed to the new raster's folder
         # name.
-        seed = pygeoprocessing.testing.hash_file_list(file_list)
+        seed = pygeoprocessing.testing.digest_file_list(file_list)
         # Casting to an int affords better compatibility between *nix and
         # Windows.
         seed = int(seed, 16)
@@ -158,7 +158,7 @@ def _get_multi_part_ogr(filepath, workspace):
     shapefile = ogr.Open(filepath)
     driver = shapefile.GetDriver()
 
-    seed = pygeoprocessing.testing.hash_file_list([filepath])
+    seed = pygeoprocessing.testing.digest_file_list([filepath])
     # Casting the md5sum seed to an int affords better
     # cross-platform.compatibility between *nix and Windows.
     seed = int(seed, 16)

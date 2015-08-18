@@ -48,16 +48,16 @@ from assertions import assert_almost_equal, \
     assert_md5_equal, assert_matrixes, assert_archives, assert_workspace, \
     assert_json_equal, assert_text_equal, assert_file_contents_equal,\
     assert_checksums_equal
-from utils import hash_file, hash_file_list, hash_folder, save_workspace, \
+from utils import digest_file, digest_file_list, digest_folder, save_workspace, \
     regression, build_regression_archives, checksum_folder, iterblocks
 from sampledata import create_raster_on_disk, create_vector_on_disk
 
 __all__ = [
     'create_raster_on_disk',
     'create_vector_on_disk',
-    'hash_file',
-    'hash_file_list',
-    'hash_folder',
+    'digest_file',
+    'digest_file_list',
+    'digest_folder',
     'save_workspace',
     'regression',
     'build_regression_archives',

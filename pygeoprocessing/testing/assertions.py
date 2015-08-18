@@ -296,13 +296,13 @@ def assert_md5_equal(uri, regression_hash):
     """Assert the MD5sum of a file against a regression MD5sum.
 
     This method is a convenience method that uses
-    ``natcap.invest.testing.hash_file()`` to determine the MD5sum of the
+    ``natcap.invest.testing.digest_file()`` to determine the MD5sum of the
     file located at `uri`.  It is functionally equivalent to calling::
 
-        assert hash_file(uri) == '<some md5sum>'
+        assert digest_file(uri) == '<some md5sum>'
 
     Regression MD5sums can be calculated for you by using
-    ``natcap.invest.testing.hash_file()`` or a system-level md5sum program.
+    ``natcap.invest.testing.digest_file()`` or a system-level md5sum program.
 
     Args:
         uri (string): a string URI to the file to be tested.
@@ -316,7 +316,7 @@ def assert_md5_equal(uri, regression_hash):
         None
     """
 
-    assert utils.hash_file(uri) == regression_hash, "MD5 Hashes differ."
+    assert utils.digest_file(uri) == regression_hash, "MD5 Hashes differ."
 
 
 def assert_matrixes(matrix_a, matrix_b, decimal=TOLERANCE):
@@ -540,8 +540,8 @@ def assert_file_contents_equal(file_1_uri, file_2_uri):
     except KeyError:
         # When we're given an extension we don't have a function for, assert
         # the MD5s.
-        file_1_md5 = utils.hash_file(file_1_uri)
-        file_2_md5 = utils.hash_file(file_2_uri)
+        file_1_md5 = utils.digest_file(file_1_uri)
+        file_2_md5 = utils.digest_file(file_2_uri)
         assert file_1_md5 == file_2_md5, 'Files %s and %s differ (MD5sum)' % (
             file_1_uri, file_2_uri)
 
@@ -601,7 +601,7 @@ def assert_checksums_equal(checksum_file, base_folder=None):
     for filepath, expected_md5sum in files.iteritems():
         full_filepath = os.path.join(base_folder, filepath)
         try:
-            current_md5sum = utils.hash_file(full_filepath)
+            current_md5sum = utils.digest_file(full_filepath)
         except IOError:
             # When the file we're looking for doesn't exist
             # Keep around for reporting missing files later.

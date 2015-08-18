@@ -17,7 +17,7 @@ from . import data_storage
 
 LOGGER = logging.getLogger('natcap.testing.utils')
 
-def hash_file_list(filepath_list, ifdir='skip'):
+def digest_file_list(filepath_list, ifdir='skip'):
     """
     Create a single MD5sum from all the files in `filepath_list`.
 
@@ -26,7 +26,7 @@ def hash_file_list(filepath_list, ifdir='skip'):
     before generating an MD5sum. If a given file is in this list multiple
     times, it will be double-counted.
 
-    Warning:
+    Note:
         When passed a list with a single file in it, this function will produce
         a different MD5sum than if you were to simply take the md5sum of that
         single file.  This is because this function produces an MD5sum of
@@ -49,19 +49,19 @@ def hash_file_list(filepath_list, ifdir='skip'):
     summary_md5 = hashlib.md5()
     for filepath in sorted(filepath_list):
         if os.path.isdir(filepath):
-            # We only want to pass files down to the hash_file function
+            # We only want to pass files down to the digest_file function
             message = 'Skipping md5sum for directory %s' % filepath
             if ifdir == 'skip':
                 LOGGER.warn(message)
                 continue
             else:  # ifdir == 'raise'
                 raise IOError(message)
-        summary_md5.update(hash_file(filepath))
+        summary_md5.update(digest_file(filepath))
 
     return summary_md5.hexdigest()
 
 
-def hash_folder(folder):
+def digest_folder(folder):
     """
     Create a single MD5sum from all of the files in a folder.  This
     recurses through `folder` and will take the MD5sum of all files found
@@ -70,7 +70,7 @@ def hash_folder(folder):
     Parameters:
         folder (string): A string path to a folder on disk.
 
-    Warning:
+    Note:
         When there is a single file within this folder, the return value
         of this function will be different than if you were to take the MD5sum
         of just that one file.  This is because we are taking an MD5sum of MD5sums.
@@ -84,10 +84,10 @@ def hash_folder(folder):
         for name in files:
             file_list.append(os.path.join(path, name))
 
-    return hash_file_list(file_list)
+    return digest_file_list(file_list)
 
 
-def hash_file(filepath):
+def digest_file(filepath):
     """
     Get the MD5sum for a single file on disk.  Files are read in
     a memory-efficient fashion.
@@ -297,7 +297,7 @@ def checksum_folder(workspace_uri, logfile_uri, style='GNU'):
 
     This second section will identify the files we're snapshotting and the
     md5sums of these files, separated by '::' and some whitspace on each line.
-    MD5sums are determined by calling `natcap.testing.utils.hash_file()`.
+    MD5sums are determined by calling `natcap.testing.utils.digest_file()`.
 
     Args:
         workspace_uri (string): A URI to the workspace to analyze
@@ -345,7 +345,7 @@ def checksum_folder(workspace_uri, logfile_uri, style='GNU'):
             if os.path.splitext(filepath)[-1] in ignore_exts:
                 continue
 
-            md5sum = hash_file(filepath)
+            md5sum = digest_file(filepath)
             relative_filepath = filepath.replace(workspace_uri + os.sep, '')
 
             # Convert to unix path separators for all cases.
