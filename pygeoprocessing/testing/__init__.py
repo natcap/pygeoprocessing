@@ -48,14 +48,16 @@ from assertions import assert_almost_equal, \
     assert_md5_equal, assert_matrixes, assert_archives, assert_workspace, \
     assert_json_equal, assert_text_equal, assert_file_contents_equal,\
     assert_folder_snapshot_equal
-from utils import get_hash, save_workspace, regression, \
-    build_regression_archives, snapshot_folder, iterblocks
+from utils import hash_file, hash_file_list, hash_folder, save_workspace, \
+    regression, build_regression_archives, snapshot_folder, iterblocks
 from sampledata import create_raster_on_disk, create_vector_on_disk
 
 __all__ = [
     'create_raster_on_disk',
     'create_vector_on_disk',
-    'get_hash',
+    'hash_file',
+    'hash_file_list',
+    'hash_folder',
     'save_workspace',
     'regression',
     'build_regression_archives',

@@ -27,7 +27,7 @@ BASE_DATA = os.path.join(SVN_LOCAL_DIR, 'base_data')
 REGRESSION_INPUT = os.path.join(SVN_LOCAL_DIR, 'testing_regression')
 
 class DataStorageUtilsTest(unittest.TestCase):
-    def test_get_hash(self):
+    def test_hash_file(self):
         # make a file in tempdir
         file_handle, new_file = tempfile.mkstemp()
         os.close(file_handle)
@@ -35,12 +35,12 @@ class DataStorageUtilsTest(unittest.TestCase):
         open_file.write('foobarbaz')
         open_file.close()
 
-        first_md5sum = utils.get_hash(new_file)
+        first_md5sum = utils.hash_file_list([new_file])
 
         # move it to a different filename
         moved_file = new_file + '.txt'
         shutil.move(new_file, moved_file)
-        second_md5sum = utils.get_hash(moved_file)
+        second_md5sum = utils.hash_file_list([moved_file])
 
         # verify md5sum stays the same across all cases.
         self.assertEqual(first_md5sum, second_md5sum)
@@ -49,7 +49,7 @@ class DataStorageUtilsTest(unittest.TestCase):
         dirname = tempfile.mkdtemp()
         shutil.move(moved_file, os.path.join(dirname,
                                              os.path.basename(moved_file)))
-        dir_md5sum = utils.get_hash(dirname)
+        dir_md5sum = utils.hash_folder(dirname)
         self.assertEqual(first_md5sum, dir_md5sum)
         shutil.rmtree(dirname)
 
@@ -473,7 +473,7 @@ class GISTestTester(unittest.TestCase):
     def test_md5_same(self):
         """Check that the MD5 is equal."""
         test_file = os.path.join(SAMPLE_VECTORS, 'harv_samp_cur.shp')
-        md5_sum = testing.get_hash(test_file)
+        md5_sum = testing.hash_file(test_file)
         testing.assert_md5_equal(test_file, md5_sum)
 
     @scm.skipIfDataMissing(SVN_LOCAL_DIR)

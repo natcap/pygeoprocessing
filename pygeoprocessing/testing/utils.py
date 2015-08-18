@@ -17,46 +17,97 @@ from . import data_storage
 
 LOGGER = logging.getLogger('natcap.testing.utils')
 
+def hash_file_list(filepath_list, ifdir='skip'):
+    """
+    Create a single MD5sum from all the files in `filepath_list`.
 
-def get_hash(filepath):
-    """Get the MD5 hash for a single file or folder.  If a folder, all files
-        in the folder will be combined into a single md5sum.  Files are read in
-        a memory-efficient fashion.
+    This is done by creating an MD5sum from the string MD5sums calculated
+    from each individual file in the list. The filepath_list will be sorted
+    before generating an MD5sum. If a given file is in this list multiple
+    times, it will be double-counted.
 
-        Args:
-            filepath (string): a string path to the file or folder to be tested
-                or a list of files to be analyzed.
+    Warning:
+        When passed a list with a single file in it, this function will produce
+        a different MD5sum than if you were to simply take the md5sum of that
+        single file.  This is because this function produces an MD5sum of
+        MD5sums.
 
-        Returns:
-            An md5sum of the input file"""
+    Parameters:
+        filepath_list (list of strings): A list of files to analyze.
+        ifdir (string): Either 'skip' or 'raise'.  Indicates what to do
+            if a directory is encountered in this list.  If 'skip', the
+            directory skipped will be logged.  If 'raise', IOError will
+            be raised with the directory name.
 
-    if isinstance(filepath, list):
-        # User provided list of files, ensure they are files and not folders.
-        file_list = []
-        for filepath in filepath:
-            if not os.path.isdir(filepath):
-                file_list.append(filepath)
-    elif os.path.isdir(filepath):
-        # User provided a folder, so recurse through all the files.
-        file_list = []
-        for path, subdirs, files in os.walk(filepath):
-            for name in files:
-                file_list.append(os.path.join(path, name))
-    else:
-        # User only provided a single file.
-        file_list = [filepath]
+    Returns:
+        A string MD5sum generated for all of the files in the list.
+
+    Raises:
+        IOError: When a file in `filepath_list` is a directory and
+            `ifdir == skip` or a file could not be found.
+    """
+    summary_md5 = hashlib.md5()
+    for filepath in sorted(filepath_list):
+        if os.path.isdir(filepath):
+            # We only want to pass files down to the hash_file function
+            message = 'Skipping md5sum for directory %s' % filepath
+            if ifdir == 'skip':
+                LOGGER.warn(message)
+                continue
+            else:  # ifdir == 'raise'
+                raise IOError(message)
+        summary_md5.update(hash_file(filepath))
+
+    return summary_md5.hexdigest()
+
+
+def hash_folder(folder):
+    """
+    Create a single MD5sum from all of the files in a folder.  This
+    recurses through `folder` and will take the MD5sum of all files found
+    within.
+
+    Parameters:
+        folder (string): A string path to a folder on disk.
+
+    Warning:
+        When there is a single file within this folder, the return value
+        of this function will be different than if you were to take the MD5sum
+        of just that one file.  This is because we are taking an MD5sum of MD5sums.
+
+    Returns:
+        A string MD5sum generated from all of the files contained in
+            this folder.
+    """
+    file_list = []
+    for path, subpath, files in os.walk(folder):
+        for name in files:
+            file_list.append(os.path.join(path, name))
+
+    return hash_file_list(file_list)
+
+
+def hash_file(filepath):
+    """
+    Get the MD5sum for a single file on disk.  Files are read in
+    a memory-efficient fashion.
+
+    Args:
+        filepath (string): a string path to the file or folder to be tested
+            or a list of files to be analyzed.
+
+    Returns:
+        An md5sum of the input file
+    """
 
     block_size = 2**20
-    all_md5 = hashlib.md5()
-    for filename in sorted(file_list):
-        file_handler = open(filename, 'rb')
-        file_md5 = hashlib.md5()
-        for chunk in iter(lambda: file_handler.read(block_size), ''):
-            file_md5.update(chunk)
-        all_md5.update(file_md5.hexdigest())
-        file_handler.close()
+    file_handler = open(filepath, 'rb')
+    file_md5 = hashlib.md5()
+    for chunk in iter(lambda: file_handler.read(block_size), ''):
+        file_md5.update(chunk)
+    file_handler.close()
 
-    return all_md5.hexdigest()
+    return file_md5.hexdigest()
 
 
 def save_workspace(new_workspace):
@@ -243,7 +294,7 @@ def snapshot_folder(workspace_uri, logfile_uri):
 
     This second section will identify the files we're snapshotting and the
     md5sums of these files, separated by '::' and some whitspace on each line.
-    MD5sums are determined by calling `natcap.testing.utils.get_hash()`.
+    MD5sums are determined by calling `natcap.testing.utils.hash_file()`.
 
     Args:
         workspace_uri (string): A URI to the workspace to analyze
@@ -279,7 +330,7 @@ def snapshot_folder(workspace_uri, logfile_uri):
             if os.path.splitext(filepath)[-1] in ignore_exts:
                 continue
 
-            md5sum = get_hash(filepath)
+            md5sum = hash_file(filepath)
             relative_filepath = filepath.replace(workspace_uri + os.sep, '')
 
             # Convert to unix path separators for all cases.
