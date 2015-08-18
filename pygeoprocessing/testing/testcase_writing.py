@@ -12,10 +12,12 @@ def file_has_class(test_file_uri, test_class_name):
     """
     Check that a python test file contains a class.
 
-    test_file_uri - a URI to a python file containing test classes.
-    test_class_name - a string, the class name we're looking for.
+    Parameters:
+        test_file_uri (string): a URI to a python file containing test classes.
+        test_class_name (string): a string, the class name we're looking for.
 
-    Returns True if the class is found, False otherwise."""
+    Returns:
+        True if the class is found, False otherwise."""
 
     try:
         module = imp.load_source('model', test_file_uri)
