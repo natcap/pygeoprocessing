@@ -34,42 +34,47 @@ def file_has_class(test_file_uri, test_class_name):
 
 
 def class_has_ftest(test_file_uri, test_class_name, test_func_name):
-    """Check that a python test file contains the given class and function.
+    """
+    Check that a python test file contains the given class and function.
+    This assumes that the test file is implemented using unittest.TestCase.
 
-        test_file_uri - a URI to a python file containing test classes.
-        test_class_name - a string, the class name we're looking for.
-        test_func_name - a string, the test function name we're looking for.
-            This function should be located within the target test class.
+    Parameters:
+        test_file_uri (string): a URI to a python file containing test classes.
+        test_class_name (string): a string, the class name we're looking for.
+        test_func_name (string): a string, the test function name we're looking
+            for. This function should be located within the target test class.
 
-        Returns True if the function is found within the class, False
+    Returns:
+        True if the function is found within the class, False
         otherwise."""
-    test_file = codecs.open(test_file_uri, mode='r', encoding='utf-8')
+
     try:
         module = imp.load_source('model', test_file_uri)
+        print 'imported'
         cls_attr = getattr(module, test_class_name)
-        func_attr = getattr(cls_attr, test_func_name)
-        return True
-    except AttributeError:
-        # Everything imported properly, but we didn't find the test class and
-        # test function we wanted.
-        return False
-    except ImportError:
-        # We couldn't import everything necessary (such as with
+        print 'cls'
+        return (hasattr(module, test_class_name) and
+                hasattr(cls_attr, test_func_name))
+    except (ImportError, AttributeError):
+        # AttributeError when everythig imported, but we could not find the
+        # test class and test function.  ALso happens with nested classes.
+        # ImportError when we couldn't import everything necessary (such as with
         # invest_test_core), so we need to loop line by line to check and see
         # if the class has the test required.
         in_class = False
-        for line in test_file:
-            if line.startswith('class %s(' % test_class_name):
-                in_class = True
-            elif in_class:
-                if line.startswith('class '):
-                    # We went through the whole class and didn't find the
-                    # function.
-                    return False
-                elif line.lstrip().startswith('def %s(self):' %
-                                              test_func_name):
-                    # We found the function within this class!
-                    return True
+        with codecs.open(test_file_uri, mode='r', encoding='utf-8') as testfile:
+            for line in testfile:
+                if line.strip().startswith('class %s(' % test_class_name):
+                    in_class = True
+                elif in_class:
+                    if line.startswith('class '):
+                        # We went through the whole class and didn't find the
+                        # function.
+                        return False
+                    elif line.lstrip().startswith('def %s(self):' %
+                                                test_func_name):
+                        # We found the function within this class!
+                        return True
         return False
 
 

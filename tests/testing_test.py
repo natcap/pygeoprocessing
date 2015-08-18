@@ -10,6 +10,7 @@ from pygeoprocessing.testing import data_storage
 from pygeoprocessing.testing import testcase_writing
 from pygeoprocessing.testing import utils
 import pygeoprocessing as raster_utils
+import pygeoprocessing
 
 SVN_LOCAL_DIR = scm.load_config(os.path.join(os.path.dirname(__file__),
                                              'svn_config.json'))['local']
@@ -65,6 +66,24 @@ class TestWritingTest(unittest.TestCase):
         test_file = os.path.join(WRITING_ARCHIVES, 'simple_test.py.txt')
         cls_exists = testcase_writing.file_has_class(test_file, 'BadClass')
         self.assertEqual(cls_exists, False)
+
+    def test_file_has_nested_class(self):
+        nested_class_string = """
+# coding=utf-8
+import unittest
+class Foo(unittest.TestCase):
+    class Bar(unittest.TestCase):
+        def test_func(self):
+            pass
+"""
+        temp_filepath = pygeoprocessing.temporary_filename()
+        temp_file = open(temp_filepath, 'wb')
+        temp_file.write(nested_class_string)
+        temp_file.close()
+
+        has_func = testcase_writing.class_has_ftest(temp_filepath, 'Bar',
+                                                    'test_func')
+        self.assertTrue(has_func)
 
     @scm.skipIfDataMissing(SVN_LOCAL_DIR)
     def test_add_test_to_class(self):
