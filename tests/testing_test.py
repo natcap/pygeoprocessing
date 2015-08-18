@@ -619,8 +619,8 @@ class GISTestTester(unittest.TestCase):
     def test_snapshot(self):
         """Check that a new snapshot of a folder asserts properly."""
         snapshot_file = os.path.join(TEST_OUT, 'snapshot.snap')
-        utils.snapshot_folder(REGRESSION_INPUT, snapshot_file)
+        utils.checksum_folder(REGRESSION_INPUT, snapshot_file)
 
-        testing.assert_folder_snapshot_equal(REGRESSION_INPUT, snapshot_file)
-        self.assertRaises(AssertionError, testing.assert_folder_snapshot_equal,
-                          POLLINATION_DATA, snapshot_file)
+        testing.assert_checksums_equal(snapshot_file, REGRESSION_INPUT)
+        self.assertRaises(AssertionError, testing.assert_checksums_equal,
+                          snapshot_file, POLLINATION_DATA)

@@ -546,43 +546,65 @@ def assert_file_contents_equal(file_1_uri, file_2_uri):
             file_1_uri, file_2_uri)
 
 
-def assert_folder_snapshot_equal(folder, snapshot_file):
+def assert_checksums_equal(checksum_file, base_folder=None):
     """
-    Assert all files in a directory according to the snapshot file recorded
-    by `natcap.testing.utils.snapshot_folder()`.  Any files not in the
-    snapshot file are ignored.
+    Assert all files in the `checksum_file` have the same checksum.
+
+    Checksum files could be created by
+    `pygeoprocessing.testing.utils.checksum_folder()`, but this function
+    may also assert the output of GNU `md5sum` or BSD `md5`.  Either format
+    (GNU or BSD) may be provided as input to this assertion function.
+    Any files not included in `checksum_file` are ignored.
 
     Parameters:
-        folder (string): the path to the folder to recurse through and check
-            md5sums for.
-        snapshot_file (string): the path to the snapshot file to use.
+        checksum_file (string): the path to the snapshot file to use.
+        base_folder=None (string or None): the folder to refer to as the base
+            path for files in the `checksum_file`.  If `None`, the current
+            working directory will be used.
 
     Raises:
         AssertionError: when a nonmatching md5sum is found.
     """
 
-    snapshot = open(snapshot_file)
+    if base_folder is None:
+        base_folder = os.getcwd()
+
+    snapshot = open(checksum_file)
     env_params = {}
     for line in snapshot:
-        # a blank line signals the end of the env section
-        if line.strip() == '':
+        # environment parameters are recorded as comments.
+        if line.startswith('#'):
+            name, value = line.split('=')
+            name = name.replace('#', '').strip()
+            env_params[name.strip()] = value.strip()
+        else:
             break
-        name, value = line.split('=')
-        env_params[name.strip()] = value.strip()
 
     files = {}
     for line in snapshot:
-        filename, md5sum = line.split('::')
-        files[filename.strip()] = md5sum.strip()
+        split_line = line.strip().split(' ')
+        if line[0] == 'MD5':
+            # we're reading a BSD-style checksum file (formatted like this):
+            # MD5 (filename) = md5sum
+            md5sum = split_line[3]
+            filename = split_line[1].replace(')', '').replace('(', '')
+        else:
+            # We're reading a GNU-style checksum file (formatted like this):
+            # md5sum  filename
+            md5sum = split_line[0]
+            filename = split_line[2]
+
+        files[filename] = md5sum
 
     missing_files = []
     nonmatching_files = []
     for filepath, expected_md5sum in files.iteritems():
-        full_filepath = os.path.join(folder, filepath)
+        full_filepath = os.path.join(base_folder, filepath)
         try:
             current_md5sum = utils.hash_file(full_filepath)
         except IOError:
             # When the file we're looking for doesn't exist
+            # Keep around for reporting missing files later.
             missing_files.append(full_filepath)
             continue
 
@@ -595,7 +617,7 @@ def assert_folder_snapshot_equal(folder, snapshot_file):
                 'All files recorded in the snapshot are missing.  Are you '
                 'testing against the right folder?  Testing {test_dir}. '
                 'Snapshot taken from {snap_dir}.').format(
-                    test_dir=folder, snap_dir=env_params['orig_workspace']))
+                    test_dir=base_folder, snap_dir=env_params['orig_workspace']))
         raise AssertionError(
             ('{num_missing} files out of {num_files} are '
              'missing.').format(num_missing=len(missing_files),
