@@ -9,31 +9,26 @@ import pygeoprocessing.geoprocessing
 
 
 def file_has_class(test_file_uri, test_class_name):
-    """Check that a python test file contains a class.
+    """
+    Check that a python test file contains a class.
 
-        test_file_uri - a URI to a python file containing test classes.
-        test_class_name - a string, the class name we're looking for.
+    test_file_uri - a URI to a python file containing test classes.
+    test_class_name - a string, the class name we're looking for.
 
-        Returns True if the class is found, False otherwise."""
+    Returns True if the class is found, False otherwise."""
 
-    test_file = codecs.open(test_file_uri, mode='r', encoding='utf-8')
     try:
         module = imp.load_source('model', test_file_uri)
-        cls_attr = getattr(module, test_class_name)
-        return True
-    except AttributeError:
-        # Everything imported properly, but we didn't find the test class and
-        # test function we wanted.
-        return False
     except ImportError:
         # We couldn't import everything necessary (such as with
         # invest_test_core), so we need to loop line by line to check and see
         # if the class has the test required.
-        for line in test_file:
-            if line.startswith('class %s(' % test_class_name):
-                test_file.close()
-                return True
+        with codecs.open(test_file_uri, mode='r', encoding='utf-8') as testfile:
+            for line in testfile:
+                if line.startswith('class %s(' % test_class_name):
+                    return True
         return False
+    return hasattr(module, test_class_name)
 
 
 def class_has_ftest(test_file_uri, test_class_name, test_func_name):
