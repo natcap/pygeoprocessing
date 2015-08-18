@@ -146,11 +146,6 @@ setup(
     cmdclass=CMDCLASS,
     license=LICENSE,
     zip_safe=False,
-    entry_points={
-        'console_scripts': [
-            'pygeo-snapshot = pygeoprocessing.cli:snapshot_cli',
-        ]
-    },
     keywords='pygeoprocessing',
     classifiers=[
         'Intended Audience :: Developers',
