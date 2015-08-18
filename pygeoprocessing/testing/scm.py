@@ -2,11 +2,10 @@ import os
 import json
 import functools
 import subprocess
-import tempfile
 from unittest import SkipTest
 
 
-def skipIfDataMissing(repo_path):
+def skip_if_data_missing(repo_path):
     """
     Decorator for unittest.TestCase test functions.  Raises SkipTest if the
     pygeoprocessing data repository has not been cloned.
