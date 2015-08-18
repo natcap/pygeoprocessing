@@ -7,6 +7,23 @@ import pygeoprocessing.testing
 import pygeoprocessing.geoprocessing
 
 
+def _module_name(filepath):
+    """
+    Extract a module name from the given filepath.
+
+    Parameters:
+        filepath (string): The path to a file on disk.
+
+    Returns:
+        A string module name that is a sanitized version of the file's
+        basename.
+    """
+
+    filename = os.path.basename(filepath)
+    base = os.path.splitext(filename)[0]
+    return base.replace('.', '_')
+
+
 def file_has_class(test_file_uri, test_class_name):
     """
     Check that a python test file contains a class.
@@ -19,9 +36,7 @@ def file_has_class(test_file_uri, test_class_name):
         True if the class is found, False otherwise."""
 
     try:
-        # Use the basename (without the extension) of the test file as the
-        # module_name. 'foo/bar.py' becomes 'foo'
-        module_name = os.path.basename(os.path.splitext(test_file_uri)[0])
+        module_name = _module_name(test_file_uri)
         module = imp.load_source(module_name, test_file_uri)
     except ImportError:
         # We couldn't import everything necessary (such as with
@@ -51,10 +66,9 @@ def class_has_ftest(test_file_uri, test_class_name, test_func_name):
         otherwise."""
 
     try:
-        module = imp.load_source('model', test_file_uri)
-        print 'imported'
+        module_name = _module_name(test_file_uri)
+        module = imp.load_source(module_name, test_file_uri)
         cls_attr = getattr(module, test_class_name)
-        print 'cls'
         return (hasattr(module, test_class_name) and
                 hasattr(cls_attr, test_func_name))
     except (ImportError, AttributeError):
