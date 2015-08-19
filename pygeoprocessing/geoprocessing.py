@@ -1365,6 +1365,7 @@ def reproject_datasource(original_datasource, output_wkt, output_uri):
     Returns:
         output_datasource: the reprojected shapefile.
     """
+
     # if this file already exists, then remove it
     if os.path.isfile(output_uri):
         os.remove(output_uri)
@@ -1408,11 +1409,18 @@ def reproject_datasource(original_datasource, output_wkt, output_uri):
         coord_trans = osr.CoordinateTransformation(original_sr, output_sr)
 
         # Copy all of the features in original_layer to the new shapefile
+        error_count = 0
         for original_feature in original_layer:
             geom = original_feature.GetGeometryRef()
 
             # Transform the geometry into format desired for the new projection
-            geom.Transform(coord_trans)
+            error_code = geom.Transform(coord_trans)
+            if error_code != 0: # error
+                # this could be caused by an out of range transformation
+                # whatever the case, don't put the transformed poly into the
+                #output set
+                error_count += 1
+                continue
 
             # Copy original_datasource's feature and set as new shapes feature
             output_feature = ogr.Feature(
@@ -1430,7 +1438,11 @@ def reproject_datasource(original_datasource, output_wkt, output_uri):
             output_feature = None
 
             original_feature = None
-
+        if error_count > 0:
+            LOGGER.warn(
+                '%d features out of %d were unable to be transformed and are'
+                ' not in the output dataset at %s', error_count,
+                original_layer.GetFeatureCount(), output_uri)
         original_layer = None
 
     return output_datasource
