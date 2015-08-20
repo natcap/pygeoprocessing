@@ -226,10 +226,10 @@ def build_regression_archives(file_uri, input_archive_uri, output_archive_uri):
     Example configuration file contents (serialized to JSON)::
 
         {
-                "model": "pygeoprocessing.pollination.pollination",
-                "arguments": {
-                    # the full set of model arguments here
-                }
+            "model": "pygeoprocessing.pollination.pollination",
+            "arguments": {
+                # the full set of model arguments here
+            }
         }
 
     Example function usage::
