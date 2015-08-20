@@ -1418,7 +1418,7 @@ def reproject_datasource(original_datasource, output_wkt, output_uri):
             if error_code != 0: # error
                 # this could be caused by an out of range transformation
                 # whatever the case, don't put the transformed poly into the
-                #output set
+                # output set
                 error_count += 1
                 continue
 
