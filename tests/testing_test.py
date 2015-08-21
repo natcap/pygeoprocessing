@@ -80,7 +80,7 @@ class DataStorageTest(unittest.TestCase):
         regression_archive_uri = os.path.join(REGRESSION_ARCHIVES,
             'collect_parameters_simple.tar.gz')
 
-        testing.assert_archives(archive_uri, regression_archive_uri)
+        testing.assert_archives_equal(archive_uri, regression_archive_uri)
 
     @scm.skip_if_data_missing(SVN_LOCAL_DIR)
     def test_collect_parameters_nested_dict(self):
@@ -103,7 +103,7 @@ class DataStorageTest(unittest.TestCase):
         regression_archive_uri = os.path.join(REGRESSION_ARCHIVES,
             'simple_nested_dict.tar.gz')
 
-        testing.assert_archives(archive_uri, regression_archive_uri)
+        testing.assert_archives_equal(archive_uri, regression_archive_uri)
 
     @scm.skip_if_data_missing(SVN_LOCAL_DIR)
     def test_archive_geotiff(self):
@@ -116,7 +116,7 @@ class DataStorageTest(unittest.TestCase):
 
         regression_archive_uri = os.path.join(REGRESSION_ARCHIVES,
             'raster_geotiff.tar.gz')
-        testing.assert_archives(archive_uri, regression_archive_uri)
+        testing.assert_archives_equal(archive_uri, regression_archive_uri)
 
 
     @scm.skip_if_data_missing(SVN_LOCAL_DIR)
@@ -131,7 +131,7 @@ class DataStorageTest(unittest.TestCase):
         archive_uri += '.tar.gz'
         regression_archive_uri = os.path.join(REGRESSION_ARCHIVES,
             'arc_raster_nice.tar.gz')
-        testing.assert_archives(archive_uri, regression_archive_uri)
+        testing.assert_archives_equal(archive_uri, regression_archive_uri)
 
     @scm.skip_if_data_missing(SVN_LOCAL_DIR)
     def test_archive_arc_raster_messy(self):
@@ -146,7 +146,7 @@ class DataStorageTest(unittest.TestCase):
         archive_uri += '.tar.gz'
         regression_archive_uri = os.path.join(REGRESSION_ARCHIVES,
             'arc_raster_messy.tar.gz')
-        testing.assert_archives(archive_uri, regression_archive_uri)
+        testing.assert_archives_equal(archive_uri, regression_archive_uri)
 
     @scm.skip_if_data_missing(SVN_LOCAL_DIR)
     def test_archive_esri_shapefile(self):
@@ -160,7 +160,7 @@ class DataStorageTest(unittest.TestCase):
         archive_uri += '.tar.gz'
         regression_archive_uri = os.path.join(REGRESSION_ARCHIVES,
             'vector_collected.tar.gz')
-        testing.assert_archives(archive_uri, regression_archive_uri)
+        testing.assert_archives_equal(archive_uri, regression_archive_uri)
 
     @scm.skip_if_data_missing(SVN_LOCAL_DIR)
     def test_archive_pollination_input(self):
@@ -184,7 +184,7 @@ class DataStorageTest(unittest.TestCase):
         archive_uri += '.tar.gz'
         regression_archive_uri = os.path.join(REGRESSION_ARCHIVES,
             'pollination_input.tar.gz')
-        testing.assert_archives(archive_uri, regression_archive_uri)
+        testing.assert_archives_equal(archive_uri, regression_archive_uri)
 
     @scm.skip_if_data_missing(SVN_LOCAL_DIR)
     def test_extract_archive(self):
@@ -288,7 +288,7 @@ class DataStorageTest(unittest.TestCase):
         archive_uri += '.tar.gz'
         reg_archive_uri = os.path.join(REGRESSION_ARCHIVES,
             'dbf_archive.tar.gz')
-        testing.assert_archives(archive_uri, reg_archive_uri)
+        testing.assert_archives_equal(archive_uri, reg_archive_uri)
 
 
 class GISTestTester(unittest.TestCase):
@@ -413,7 +413,7 @@ class GISTestTester(unittest.TestCase):
         """Check that two archives are equal"""
         archive_file = os.path.join(REGRESSION_ARCHIVES,
             'arc_raster_nice.tar.gz')
-        testing.assert_archives(archive_file, archive_file)
+        testing.assert_archives_equal(archive_file, archive_file)
 
     @scm.skip_if_data_missing(SVN_LOCAL_DIR)
     def test_archive_assertion_fails(self):
@@ -422,7 +422,7 @@ class GISTestTester(unittest.TestCase):
             'arc_raster_nice.tar.gz')
         different_archive = os.path.join(REGRESSION_ARCHIVES,
             'arc_raster_messy.tar.gz')
-        self.assertRaises(AssertionError, testing.assert_archives, archive_file,
+        self.assertRaises(AssertionError, testing.assert_archives_equal, archive_file,
             different_archive)
 
     @scm.skip_if_data_missing(SVN_LOCAL_DIR)

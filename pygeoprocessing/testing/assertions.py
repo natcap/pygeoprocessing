@@ -341,7 +341,7 @@ def assert_matrixes(matrix_a, matrix_b, decimal=TOLERANCE):
     numpy.testing.assert_array_almost_equal(matrix_a, matrix_b, decimal)
 
 
-def assert_archives(archive_1_uri, archive_2_uri):
+def assert_archives_equal(archive_1_uri, archive_2_uri):
     """
     Compare the contents of two archived workspaces against each other.
 
