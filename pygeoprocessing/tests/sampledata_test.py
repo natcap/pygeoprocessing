@@ -19,7 +19,7 @@ class RasterTest(unittest.TestCase):
         reference = sampledata.SRS_COLOMBIA
         filename = pygeoprocessing.temporary_filename()
 
-        sampledata.create_raster_on_disk(pixels, reference.origin,
+        sampledata.create_raster_on_disk([pixels], reference.origin,
                                          reference.projection,
                                          nodata, reference.pixel_size(30),
                                          datatype=gdal.GDT_Byte, format='GTiff',
@@ -44,7 +44,7 @@ class RasterTest(unittest.TestCase):
     def test_bad_driver(self):
         reference = sampledata.SRS_COLOMBIA
         self.assertRaises(RuntimeError, sampledata.create_raster_on_disk,
-                          numpy.ones((4, 4)),
+                          [numpy.ones((4, 4))],
                           reference.origin, reference.projection, 0,
                           reference.pixel_size(30), format='foo')
 
@@ -54,7 +54,7 @@ class RasterTest(unittest.TestCase):
         reference = sampledata.SRS_COLOMBIA
         filename = pygeoprocessing.temporary_filename()
 
-        sampledata.create_raster_on_disk(pixels, reference.origin,
+        sampledata.create_raster_on_disk([pixels], reference.origin,
                                          reference.projection,
                                          nodata, reference.pixel_size(30),
                                          datatype='auto',
@@ -66,6 +66,39 @@ class RasterTest(unittest.TestCase):
 
         # numpy.uint16 should translate to gdal.GDT_UInt16
         self.assertEqual(band_dtype, gdal.GDT_UInt16)
+
+    def test_invalid_raster_bands(self):
+        pixels = numpy.ones((4, 4), numpy.uint16)
+        nodata = 0
+        reference = sampledata.SRS_WILLAMETTE
+        filename = pygeoprocessing.temporary_filename()
+
+        self.assertRaises(TypeError, pixels, reference.origin,
+                          reference.projection, nodata,
+                          reference.pixel_size(30), datatype='auto',
+                          filename=filename)
+
+    def test_multi_bands(self):
+        pixels = [
+            numpy.ones((5, 5)),
+            numpy.zeros((5, 5)),
+            numpy.multiply(numpy.ones((5, 5)), 3),
+        ]
+        nodata = 0
+        reference = sampledata.SRS_WILLAMETTE
+        filename = pygeoprocessing.temporary_filename()
+
+        sampledata.create_raster_on_disk(pixels, reference.origin,
+                                         reference.projection, nodata,
+                                         reference.pixel_size(30),
+                                         datatype='auto', filename=filename)
+
+        # check that the three bands have been written properly.
+        dataset = gdal.Open(filename)
+        for band_num, input_matrix in zip(range(1, 4), pixels):
+            band = dataset.GetRasterBand(band_num)
+            written_matrix = band.ReadAsArray()
+            numpy.testing.assert_almost_equal(input_matrix, written_matrix)
 
 
 class VectorTest(unittest.TestCase):

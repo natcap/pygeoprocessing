@@ -26,7 +26,7 @@ class TestRasterFunctions(unittest.TestCase):
         reference = sampledata.SRS_COLOMBIA
         for nodata in [5, 10, -5, 9999]:
             pygeoprocessing.testing.create_raster_on_disk(
-                pixel_matrix, reference.origin, reference.projection, nodata,
+                [pixel_matrix], reference.origin, reference.projection, nodata,
                 reference.pixel_size(30), filename=self.raster_filename)
 
             raster_nodata = pygeoprocessing.get_nodata_from_uri(
@@ -39,7 +39,7 @@ class TestRasterFunctions(unittest.TestCase):
         reference = sampledata.SRS_COLOMBIA
         nodata = -1
         pygeoprocessing.testing.create_raster_on_disk(
-            pixel_matrix, reference.origin, reference.projection, nodata,
+            [pixel_matrix], reference.origin, reference.projection, nodata,
             reference.pixel_size(30), filename=self.raster_filename)
 
         out_filename = pygeoprocessing.temporary_filename()
@@ -58,7 +58,7 @@ class TestRasterFunctions(unittest.TestCase):
         nodata = 0
         reference = sampledata.SRS_COLOMBIA
         pygeoprocessing.testing.create_raster_on_disk(
-            pixel_matrix, reference.origin, reference.projection, nodata,
+            [pixel_matrix], reference.origin, reference.projection, nodata,
             reference.pixel_size(30), filename=self.raster_filename)
 
         sum = 0
@@ -88,7 +88,7 @@ class TestRoutingFunctions(unittest.TestCase):
             pixel_matrix[row_index, :] = row_index
 
         pygeoprocessing.testing.create_raster_on_disk(
-            pixel_matrix, reference.origin, reference.projection, nodata,
+            [pixel_matrix], reference.origin, reference.projection, nodata,
             reference.pixel_size(30), filename=self.dem_filename)
 
         pygeoprocessing.routing.flow_direction_d_inf(

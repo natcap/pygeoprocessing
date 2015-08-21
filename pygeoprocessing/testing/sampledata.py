@@ -191,14 +191,17 @@ def cleanup(uri):
         os.remove(uri)
 
 
-def create_raster_on_disk(band_matrix, origin, projection_wkt, nodata, pixel_size,
-           datatype='auto', format='GTiff', dataset_opts=None, filename=None):
+def create_raster_on_disk(band_matrices, origin, projection_wkt, nodata,
+                          pixel_size, datatype='auto', format='GTiff',
+                          dataset_opts=None, filename=None):
     """
     Create a GDAL raster on disk.
 
     Parameters:
-        band_matrix (numpy.ndarray): a numpy matrix representing pixel
-            values.
+        band_matrices (list of numpy.ndarray): a list of numpy matrix
+            representing pixel values, one array per band to be created
+            in the output raster. The index of the matrix will be the
+            index of the corresponding band that is created.
         origin (tuple of numbers): A 2-element tuple representing the origin
             of the pixel values in the raster.  This must be a tuple of
             numbers.
@@ -236,6 +239,18 @@ def create_raster_on_disk(band_matrix, origin, projection_wkt, nodata, pixel_siz
     else:
         out_uri = filename
 
+    if isinstance(band_matrices, list) is False:
+        raise TypeError('Band matrix list must be a list, "%s" found' %
+                        type(band_matrices).__name__)
+
+    band_dtypes = set([band_matrix.dtype.type for band_matrix in band_matrices])
+    if len(band_dtypes) > 1:
+        raise TypeError('Not all band matrices are of the same type!')
+
+    band_sizes = set([band_matrix.shape for band_matrix in band_matrices])
+    if len(band_sizes) > 1:
+        raise TypeError('Band matrices have different sizes')
+
     # Derive reasonable gdal dtype from numpy matrix dtype if needed
     numpy_dtype = band_matrix.dtype.type
     if datatype == 'auto':
@@ -253,7 +268,7 @@ def create_raster_on_disk(band_matrix, origin, projection_wkt, nodata, pixel_siz
         warnings.warn(message)
 
     # Create a raster given the shape of the pixels given the input driver
-    n_rows, n_cols = band_matrix.shape
+    n_rows, n_cols = band_matrices[0].shape
     driver = gdal.GetDriverByName(format)
     if driver is None:
         raise RuntimeError(
@@ -263,8 +278,8 @@ def create_raster_on_disk(band_matrix, origin, projection_wkt, nodata, pixel_siz
     if dataset_opts is None:
         dataset_opts = []
 
-    new_raster = driver.Create(out_uri, n_cols, n_rows, 1, datatype,
-                               options=dataset_opts)
+    new_raster = driver.Create(out_uri, n_cols, n_rows, len(band_matrices),
+                               datatype, options=dataset_opts)
 
     # create some projection information based on the GDAL tutorial at
     # http://www.gdal.org/gdal_tutorial.html
@@ -274,11 +289,13 @@ def create_raster_on_disk(band_matrix, origin, projection_wkt, nodata, pixel_siz
     geotransform = make_geotransform(pixel_size[0], pixel_size[1], origin)
     new_raster.SetGeoTransform(geotransform)
 
-    band = new_raster.GetRasterBand(1)
-    band.SetNoDataValue(nodata)
-    band.WriteArray(band_matrix)
+    for band_index, band_matrix in enumerate(band_matrices, 1):
+        band = new_raster.GetRasterBand(band_index)
+        band.SetNoDataValue(nodata)
+        band.WriteArray(band_matrix)
+        band.FlushCache()
+        band = None
 
-    band = None
     new_raster = None
     return out_uri
 
