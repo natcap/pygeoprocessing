@@ -209,8 +209,8 @@ def checksum_folder(workspace_uri, logfile_uri, style='GNU'):
     """
 
     format_styles = {
-        'GNU': "{md5}  {filepath}",
-        'BSD': "MD5 ({filepath}) = {md5}",
+        'GNU': "{md5}  {filepath}\n",
+        'BSD': "MD5 ({filepath}) = {md5}\n",
     }
     try:
         md5sum_string = format_styles[style]
@@ -218,21 +218,14 @@ def checksum_folder(workspace_uri, logfile_uri, style='GNU'):
         raise IOError('Invalid style: %s.  Valid styles: %s' % (
             style, format_styles.keys()))
 
-
     logfile = open(logfile_uri, 'w')
-    def _write(line):
-        """
-        Write a line to the logfile with a trailing newline character.
-        """
-        logfile.write(line + '\n')
-
-    _write('# orig_workspace = %s' % os.path.abspath(workspace_uri))
-    _write('# OS = %s' % platform.system())
-    _write('# plat_string = %s' % platform.platform())
-    _write('# GDAL = %s' % gdal.__version__)
-    _write('# numpy = %s' % numpy.__version__)
-    _write('# pygeoprocessing = %s' % pygeoprocessing.__version__)
-    _write('# checksum_style = %s' % style)
+    logfile.write('# orig_workspace = %s\n' % os.path.abspath(workspace_uri))
+    logfile.write('# OS = %s\n' % platform.system())
+    logfile.write('# plat_string = %s\n' % platform.platform())
+    logfile.write('# GDAL = %s\n' % gdal.__version__)
+    logfile.write('# numpy = %s\n' % numpy.__version__)
+    logfile.write('# pygeoprocessing = %s\n' % pygeoprocessing.__version__)
+    logfile.write('# checksum_style = %s\n' % style)
 
     ignore_exts = ['.shx']
     for dirpath, _, filenames in os.walk(workspace_uri):
@@ -250,7 +243,7 @@ def checksum_folder(workspace_uri, logfile_uri, style='GNU'):
             if platform.system() == 'Windows':
                 relative_filepath = relative_filepath.replace(os.sep, '/')
 
-            _write(md5sum_string.format(md5=md5sum,
+            logfile.write(md5sum_string.format(md5=md5sum,
                                         filepath=relative_filepath))
 
 
