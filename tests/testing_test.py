@@ -50,6 +50,16 @@ class DataStorageUtilsTest(unittest.TestCase):
                                              os.path.basename(moved_file)))
         dir_md5sum = utils.digest_folder(dirname)
         self.assertEqual(first_md5sum, dir_md5sum)
+
+        file_handle, new_file_2 = tempfile.mkstemp()
+        os.close(file_handle)
+        with open(new_file_2, 'w') as new_file:
+            new_file.write('hello world!')
+
+        new_file_md5sum = utils.digest_file_list([new_file_2])
+        self.assertNotEqual(new_file_md5sum, first_md5sum)
+
+        os.remove(new_file_2)
         shutil.rmtree(dirname)
 
 
