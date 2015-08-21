@@ -100,6 +100,21 @@ class RasterTest(unittest.TestCase):
             written_matrix = band.ReadAsArray()
             numpy.testing.assert_almost_equal(input_matrix, written_matrix)
 
+    def test_mismatched_bands(self):
+        """When band sizes are mismatched, TypeError should be raised"""
+        pixels = [
+            numpy.ones((5, 5)),
+            numpy.ones((4, 4)),
+            numpy.ones((7, 7))
+        ]
+        nodata = 0
+        reference = sampledata.SRS_WILLAMETTE
+        filename = pygeoprocessing.temporary_filename()
+        self.assertRaises(TypeError, sampledata.create_raster_on_disk, pixels,
+                         reference.origin, reference.projection, nodata,
+                         reference.pixel_size(30), datatype='auto',
+                         filename=filename)
+
 
 class VectorTest(unittest.TestCase):
     def test_init(self):
