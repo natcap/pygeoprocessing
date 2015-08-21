@@ -184,7 +184,7 @@ def build_regression_archives(file_uri, input_archive_uri, output_archive_uri):
                         logger=LOGGER)
 
 
-def checksum_folder(workspace_uri, logfile_uri, style='GNU'):
+def checksum_folder(workspace_uri, logfile_uri, style='GNU', ignore_exts=None):
     """Recurse through the workspace_uri and for every file in the workspace,
     record the filepath and md5sum to the logfile.  Additional environment
     metadata will also be recorded to help debug down the road.
@@ -201,8 +201,12 @@ def checksum_folder(workspace_uri, logfile_uri, style='GNU'):
         workspace_uri (string): A URI to the workspace to analyze
         logfile_uri (string): A URI to the logfile to which md5sums and paths
             will be recorded.
-        stle='GNU' (string): Either 'GNU' or 'BSD'.  Corresponds to the style
+        style='GNU' (string): Either 'GNU' or 'BSD'.  Corresponds to the style
             of the output file.
+        ignore_exts=None (list/set of strings or None): Extensions of files to
+            ignore when checksumming.  If None, all files will be included.
+            If a list or set of extension strings, any file with that extension
+            will be skipped.
 
     Returns:
         Nothing.
@@ -227,7 +231,9 @@ def checksum_folder(workspace_uri, logfile_uri, style='GNU'):
     logfile.write('# pygeoprocessing = %s\n' % pygeoprocessing.__version__)
     logfile.write('# checksum_style = %s\n' % style)
 
-    ignore_exts = ['.shx']
+    if ignore_exts is None:
+        ignore_exts = []
+
     for dirpath, _, filenames in os.walk(workspace_uri):
         for filename in filenames:
             filepath = os.path.join(dirpath, filename)
