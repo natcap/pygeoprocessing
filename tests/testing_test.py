@@ -7,7 +7,6 @@ import glob
 from pygeoprocessing.testing import scm
 import pygeoprocessing.testing as testing
 from pygeoprocessing.testing import data_storage
-from pygeoprocessing.testing import testcase_writing
 from pygeoprocessing.testing import utils
 import pygeoprocessing as raster_utils
 import pygeoprocessing
@@ -53,91 +52,6 @@ class DataStorageUtilsTest(unittest.TestCase):
         self.assertEqual(first_md5sum, dir_md5sum)
         shutil.rmtree(dirname)
 
-
-class TestWritingTest(unittest.TestCase):
-    @scm.skip_if_data_missing(SVN_LOCAL_DIR)
-    def test_file_has_class_pass(self):
-        test_file = os.path.join(WRITING_ARCHIVES, 'simple_test.py.txt')
-        cls_exists = testcase_writing.file_has_class(test_file, 'ExampleClass')
-        self.assertEqual(cls_exists, True)
-
-    @scm.skip_if_data_missing(SVN_LOCAL_DIR)
-    def test_file_has_class_fail(self):
-        test_file = os.path.join(WRITING_ARCHIVES, 'simple_test.py.txt')
-        cls_exists = testcase_writing.file_has_class(test_file, 'BadClass')
-        self.assertEqual(cls_exists, False)
-
-    def test_file_has_nested_class(self):
-        nested_class_string = """
-# coding=utf-8
-import unittest
-class Foo(unittest.TestCase):
-    class Bar(unittest.TestCase):
-        def test_func(self):
-            pass
-"""
-        temp_filepath = pygeoprocessing.temporary_filename()
-        temp_file = open(temp_filepath, 'wb')
-        temp_file.write(nested_class_string)
-        temp_file.close()
-
-        has_func = testcase_writing.class_has_ftest(temp_filepath, 'Bar',
-                                                    'test_func')
-        self.assertTrue(has_func)
-
-    @scm.skip_if_data_missing(SVN_LOCAL_DIR)
-    def test_add_test_to_class(self):
-        test_file = os.path.join(WRITING_ARCHIVES, 'simple_test.py.txt')
-        new_file = os.path.join(TEST_OUT, 'simple_test_new.py.txt')
-        shutil.copyfile(test_file, new_file)
-
-        test_class_name = 'ExampleClass'
-        test_func_name = 'test_new_func'
-        in_archive_uri = 'input_archive.tar.gz'
-        out_archive_uri = 'output_archive.tar.gz'
-        module = 'natcap.invest.sample_model.script'
-        testcase_writing.add_ftest_to_class(new_file, test_class_name,
-            test_func_name, in_archive_uri, out_archive_uri, module)
-
-        regression_file = os.path.join(WRITING_ARCHIVES,
-            'completed_regression_test.py.txt')
-        testing.assert_file_contents_equal(new_file, regression_file)
-
-    @scm.skip_if_data_missing(SVN_LOCAL_DIR)
-    def test_add_test_to_new_class(self):
-        test_file = os.path.join(WRITING_ARCHIVES, 'simple_test.py.txt')
-        new_file = os.path.join(TEST_OUT, 'simple_test_new.py.txt')
-        shutil.copyfile(test_file, new_file)
-
-        test_class_name = 'ExampleNewClass'
-        test_func_name = 'test_new_func'
-        in_archive_uri = 'input_archive.tar.gz'
-        out_archive_uri = 'output_archive.tar.gz'
-        module = 'natcap.invest.sample_model.script'
-        testcase_writing.add_ftest_to_class(new_file, test_class_name,
-            test_func_name, in_archive_uri, out_archive_uri, module)
-
-        regression_file = os.path.join(WRITING_ARCHIVES,
-            'regression_new_class.py.txt')
-        testing.assert_file_contents_equal(new_file, regression_file)
-
-    @scm.skip_if_data_missing(SVN_LOCAL_DIR)
-    def test_add_test_to_class_importerror(self):
-        test_file = os.path.join(WRITING_ARCHIVES, 'test_importerror.py.txt')
-        new_file = os.path.join(TEST_OUT, 'test_importerror_new.py.txt')
-        shutil.copyfile(test_file, new_file)
-
-        test_class_name = 'ExampleClass'
-        test_func_name = 'test_new_func'
-        in_archive_uri = 'input_archive.tar.gz'
-        out_archive_uri = 'output_archive.tar.gz'
-        module = 'natcap.invest.sample_model.script'
-        testcase_writing.add_ftest_to_class(new_file, test_class_name,
-            test_func_name, in_archive_uri, out_archive_uri, module)
-
-        regression_file = os.path.join(WRITING_ARCHIVES,
-            'test_importerror_complete.py.txt')
-        testing.assert_file_contents_equal(new_file, regression_file)
 
 class DataStorageTest(unittest.TestCase):
     @scm.skip_if_data_missing(SVN_LOCAL_DIR)
