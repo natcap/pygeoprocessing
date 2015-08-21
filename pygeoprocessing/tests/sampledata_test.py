@@ -5,7 +5,7 @@ from osgeo import gdal
 from osgeo import ogr
 from osgeo import osr
 import numpy
-from shapely.geometry import Polygon, Point
+from shapely.geometry import Polygon
 
 import pygeoprocessing
 import pygeoprocessing.testing
@@ -19,10 +19,11 @@ class RasterTest(unittest.TestCase):
         reference = sampledata.SRS_COLOMBIA
         filename = pygeoprocessing.temporary_filename()
 
-        sampledata.create_raster_on_disk(pixels, reference.origin, reference.projection,
-                          nodata, reference.pixel_size(30),
-                          datatype=gdal.GDT_Byte, format='GTiff',
-                          filename=filename)
+        sampledata.create_raster_on_disk(pixels, reference.origin,
+                                         reference.projection,
+                                         nodata, reference.pixel_size(30),
+                                         datatype=gdal.GDT_Byte, format='GTiff',
+                                         filename=filename)
 
         self.assertTrue(os.path.exists(filename))
 
@@ -42,7 +43,8 @@ class RasterTest(unittest.TestCase):
 
     def test_bad_driver(self):
         reference = sampledata.SRS_COLOMBIA
-        self.assertRaises(RuntimeError, sampledata.create_raster_on_disk, numpy.ones((4, 4)),
+        self.assertRaises(RuntimeError, sampledata.create_raster_on_disk,
+                          numpy.ones((4, 4)),
                           reference.origin, reference.projection, 0,
                           reference.pixel_size(30), format='foo')
 
@@ -52,9 +54,11 @@ class RasterTest(unittest.TestCase):
         reference = sampledata.SRS_COLOMBIA
         filename = pygeoprocessing.temporary_filename()
 
-        sampledata.create_raster_on_disk(pixels, reference.origin, reference.projection,
-                          nodata, reference.pixel_size(30), datatype='auto',
-                          filename=filename)
+        sampledata.create_raster_on_disk(pixels, reference.origin,
+                                         reference.projection,
+                                         nodata, reference.pixel_size(30),
+                                         datatype='auto',
+                                         filename=filename)
 
         dataset = gdal.Open(filename)
         band = dataset.GetRasterBand(1)
@@ -71,7 +75,8 @@ class VectorTest(unittest.TestCase):
         ]
         reference = sampledata.SRS_COLOMBIA
 
-        filename = sampledata.create_vector_on_disk(polygons, reference.projection)
+        filename = sampledata.create_vector_on_disk(polygons,
+                                                    reference.projection)
 
         vector = ogr.Open(filename)
         layer = vector.GetLayer()
@@ -86,15 +91,15 @@ class VectorTest(unittest.TestCase):
         reference = sampledata.SRS_COLOMBIA
         fields = {'foo': 'int'}
         attrs = []
-        self.assertRaises(AssertionError, sampledata.create_vector_on_disk, polygons,
-                          reference.projection, fields, attrs)
+        self.assertRaises(AssertionError, sampledata.create_vector_on_disk,
+                          polygons, reference.projection, fields, attrs)
 
     def test_wrong_field_type(self):
         polygons = []
         reference = sampledata.SRS_WILLAMETTE
         fields = {'foo': 'bar'}
-        self.assertRaises(AssertionError, sampledata.create_vector_on_disk, polygons,
-                          reference.projection, fields)
+        self.assertRaises(AssertionError, sampledata.create_vector_on_disk,
+                          polygons, reference.projection, fields)
 
     def test_wrong_driver(self):
         self.assertRaises(AssertionError, sampledata.create_vector_on_disk, [],
