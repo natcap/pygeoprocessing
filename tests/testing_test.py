@@ -27,6 +27,7 @@ REGRESSION_INPUT = os.path.join(SVN_LOCAL_DIR, 'testing_regression')
 
 class DataStorageUtilsTest(unittest.TestCase):
     def test_digest_file(self):
+        """Test for digesting and comparing files and folders"""
         # make a file in tempdir
         file_handle, new_file = tempfile.mkstemp()
         os.close(file_handle)
@@ -107,6 +108,7 @@ class DataStorageTest(unittest.TestCase):
 
     @scm.skip_if_data_missing(SVN_LOCAL_DIR)
     def test_archive_geotiff(self):
+        """Archive a simple geotiff."""
         params = {
             'raster': os.path.join(TEST_INPUT, 'landuse_cur_200m.tif')
         }
@@ -121,6 +123,14 @@ class DataStorageTest(unittest.TestCase):
 
     @scm.skip_if_data_missing(SVN_LOCAL_DIR)
     def test_archive_arc_raster_nice(self):
+        """
+        Test that messy arc raster organization collection will work.
+
+        Arc/Info Binary Grid (AIG) rasters are usually stored in nice, neat
+        directories, where all of the files in that directory belong to that
+        raster.  Verify that when a raster is organized nicely like this,
+        archiving works as expected.
+        """
         params = {
             'raster': os.path.join(SAMPLE_RASTERS, 'lulc_samp_cur')
         }
@@ -135,6 +145,17 @@ class DataStorageTest(unittest.TestCase):
 
     @scm.skip_if_data_missing(SVN_LOCAL_DIR)
     def test_archive_arc_raster_messy(self):
+        """
+        Test that messy arc raster organization collection will work.
+
+        Arc/Info Binary Grid (AIG) rasters are usually stored in nice, neat
+        directories, where all of the files in that directory belong to that
+        raster.  This test verifies that when there is an extra file in that
+        directory, the correct files are collected.
+
+        Unfortunately, GDAL collects all the files in that folder, so anything
+        in that folder is considered part of an AIG raster.
+        """
         params = {
             'raster': os.path.join(TEST_INPUT, 'messy_raster_organization',
                 'hdr.adf')
@@ -164,6 +185,7 @@ class DataStorageTest(unittest.TestCase):
 
     @scm.skip_if_data_missing(SVN_LOCAL_DIR)
     def test_archive_pollination_input(self):
+        """Archive all the inputs for an example InVEST model (pollination)"""
         params = {
             u'ag_classes': '67 68 71 72 73 74 75 76 78 79 80 81 82 83 84 85 88 90 91 92',
             u'do_valuation': True,
@@ -188,6 +210,7 @@ class DataStorageTest(unittest.TestCase):
 
     @scm.skip_if_data_missing(SVN_LOCAL_DIR)
     def test_extract_archive(self):
+        """Verify an archive extracts as expected."""
         workspace = raster_utils.temporary_folder()
         archive_uri = os.path.join(REGRESSION_ARCHIVES,
             'pollination_input.tar.gz')
@@ -218,6 +241,7 @@ class DataStorageTest(unittest.TestCase):
 
     @scm.skip_if_data_missing(SVN_LOCAL_DIR)
     def test_extract_archive_nested_args(self):
+        """Test that a complicated args dictionary archives properly"""
         input_parameters = {
             'a': 1,
             'b': 2,
@@ -279,6 +303,13 @@ class DataStorageTest(unittest.TestCase):
 
     @scm.skip_if_data_missing(SVN_LOCAL_DIR)
     def test_archive_dbf(self):
+        """
+        Test that a DBF archives correctly
+
+        This requires its own test because OGR happily will open a DBF file.
+        We do not, however, want to treat it like a vector, we want to treat
+        it like a regular file.
+        """
         input_parameters = {
             'dbf_file': os.path.join(TEST_INPUT, 'carbon_pools_samp.dbf'),
         }
