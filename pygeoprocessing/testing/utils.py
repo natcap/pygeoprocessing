@@ -269,7 +269,7 @@ def iterblocks(raster_uri, band=1):
 
     Parameters:
         raster_uri (string): The string filepath to the raster to iterate over.
-        band=1 (int): The band number to operate on.  Defaults to 0 if not
+        band=1 (int): The band number to operate on.  Defaults to 1 if not
             provided.
 
     Returns:
