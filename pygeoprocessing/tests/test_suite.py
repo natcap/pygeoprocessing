@@ -62,7 +62,7 @@ class TestRasterFunctions(unittest.TestCase):
             reference.pixel_size(30), filename=self.raster_filename)
 
         sum = 0
-        for block_data, memblock in pygeoprocessing.testing.iterblocks(self.raster_filename):
+        for block_data, memblock in pygeoprocessing.iterblocks(self.raster_filename):
             sum += memblock.sum()
 
         self.assertEqual(sum, 1000000)

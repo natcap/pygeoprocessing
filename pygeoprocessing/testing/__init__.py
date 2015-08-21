@@ -49,7 +49,7 @@ from assertions import assert_almost_equal, \
     assert_json_equal, assert_text_equal, assert_file_contents_equal,\
     assert_checksums_equal
 from utils import digest_file, digest_file_list, digest_folder, \
-    build_regression_archives, checksum_folder, iterblocks
+    build_regression_archives, checksum_folder
 from sampledata import create_raster_on_disk, create_vector_on_disk
 
 __all__ = [
@@ -72,5 +72,4 @@ __all__ = [
     'assert_text_equal',
     'assert_file_contents_equal',
     'assert_checksums_equal',
-    'iterblocks',
 ]

@@ -3181,3 +3181,68 @@ def tile_dataset_uri(in_uri, out_uri, blocksize):
         dataset_to_bound_index=None, aoi_uri=None,
         assert_datasets_projected=False, process_pool=None, vectorize_op=False,
         datasets_are_pre_aligned=False, dataset_options=dataset_options)
+
+
+def iterblocks(raster_uri, band=1):
+    """
+    Return a generator to interate across all the memory blocks in the input
+    raster.  Generated values are numpy arrays, read block by block.
+
+    This is especially useful when a single value needs to be derived from the
+    pixel values in a raster, such as the sum total of all pixel values, or
+    a sequence of unique raster values.  In such cases, `vectorize_datasets`
+    is overkill, since it writes out a raster.
+
+    As a generator, this can be combined multiple times with zip() to iterate
+    'simultaneously' over multiple rasters, though the user should be careful
+    to do so only with prealigned rasters.
+
+    Parameters:
+        raster_uri (string): The string filepath to the raster to iterate over.
+        band=1 (int): The band number to operate on.  Defaults to 1 if not
+            provided.
+
+    Returns:
+        On each iteration, a tuple containing a dict of block data and a numpy
+        array is returned.  The dict of block data has these attributes:
+
+            data['xoff'] - The X offset of the upper-left-hand corner of the
+                block.
+            data['yoff'] - The Y offset of the upper-left-hand corner of the
+                block.
+            data['win_xsize'] - The width of the block.
+            data['win_ysize'] - The height of the block.
+    """
+    dataset = gdal.Open(raster_uri)
+    ds_band = dataset.GetRasterBand(band)
+
+    block = ds_band.GetBlockSize()
+    cols_per_block = block[0]
+    rows_per_block = block[1]
+
+    n_cols = dataset.RasterXSize
+    n_rows = dataset.RasterYSize
+
+    n_col_blocks = int(math.ceil(n_cols / float(cols_per_block)))
+    n_row_blocks = int(math.ceil(n_rows / float(rows_per_block)))
+
+    for row_block_index in xrange(n_row_blocks):
+        row_offset = row_block_index * rows_per_block
+        row_block_width = n_rows - row_offset
+        if row_block_width > rows_per_block:
+            row_block_width = rows_per_block
+
+        for col_block_index in xrange(n_col_blocks):
+            col_offset = col_block_index * cols_per_block
+            col_block_width = n_cols - col_offset
+            if col_block_width > cols_per_block:
+                col_block_width = cols_per_block
+
+            offset_dict = {
+                'xoff': col_offset,
+                'yoff': row_offset,
+                'win_xsize': col_block_width,
+                'win_ysize': row_block_width,
+            }
+            yield (offset_dict, ds_band.ReadAsArray(**offset_dict))
+
