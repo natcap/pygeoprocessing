@@ -81,6 +81,45 @@ class TestRasterFunctions(unittest.TestCase):
         for data_dict, band_1, band_2 in pygeoprocessing.iterblocks(self.raster_filename):
             numpy.testing.assert_almost_equal(band_1, band_2)
 
+    def test_default_blocksizes(self):
+        """
+        Verify that block size is set properly when default is used.
+        """
+        pixel_matrix = numpy.ones((1000, 1000))
+        nodata = 0
+        reference = sampledata.SRS_COLOMBIA
+        pygeoprocessing.testing.create_raster_on_disk(
+            [pixel_matrix], reference.origin, reference.projection, nodata,
+            reference.pixel_size(30), dataset_opts=['TILED=YES'],
+            filename=self.raster_filename)
+
+        ds = gdal.Open(self.raster_filename)
+        band = ds.GetRasterBand(1)
+        block_size = band.GetBlockSize()
+
+        # default block size is 256x256
+        self.assertEqual(block_size, [256, 256])
+
+    def test_custom_blocksizes(self):
+        """
+        Verify that block size is set properly.
+        """
+        pixel_matrix = numpy.ones((1000, 1000))
+        nodata = 0
+        reference = sampledata.SRS_COLOMBIA
+        pygeoprocessing.testing.create_raster_on_disk(
+            [pixel_matrix], reference.origin, reference.projection, nodata,
+            reference.pixel_size(30), dataset_opts=['TILED=YES',
+                                                    'BLOCKXSIZE=128',
+                                                    'BLOCKYSIZE=256'],
+            filename=self.raster_filename)
+
+        ds = gdal.Open(self.raster_filename)
+        band = ds.GetRasterBand(1)
+        block_size = band.GetBlockSize()
+
+        self.assertEqual(block_size, [128, 256])
+
 
 class TestRoutingFunctions(unittest.TestCase):
     def setUp(self):
