@@ -120,6 +120,30 @@ class TestRasterFunctions(unittest.TestCase):
 
         self.assertEqual(block_size, [128, 256])
 
+    def test_custom_blocksizes_multiband(self):
+        """
+        Verify that block size is set properly.
+        """
+        pixel_matrix = numpy.ones((1000, 1000))
+        nodata = 0
+        reference = sampledata.SRS_COLOMBIA
+        pygeoprocessing.testing.create_raster_on_disk(
+            [pixel_matrix, pixel_matrix], reference.origin, reference.projection, nodata,
+            reference.pixel_size(30), dataset_opts=['TILED=YES',
+                                                    'BLOCKXSIZE=128',
+                                                    'BLOCKYSIZE=256'],
+            filename=self.raster_filename)
+
+        ds = gdal.Open(self.raster_filename)
+        for band_index in [1, 2]:
+            band = ds.GetRasterBand(band_index)
+
+            # Not sure why the BlockSize is a band attribute, as it's set
+            # at the dataset level.
+            block_size = band.GetBlockSize()
+
+            self.assertEqual(block_size, [128, 256])
+
 
 class TestRoutingFunctions(unittest.TestCase):
     def setUp(self):
