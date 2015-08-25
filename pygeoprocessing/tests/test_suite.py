@@ -20,6 +20,18 @@ class TestProjectionFunctions(unittest.TestCase):
     def test_projection_wkt_import_from_epsg_invalid(self):
         self.assertRaises(RuntimeError, sampledata.projection_wkt, -1)
 
+
+class TestDataComplexity(unittest.TestCase):
+    def test_gdal_dtype_index(self):
+        self.assertEqual(sampledata.dtype_index(gdal.GDT_Byte), 0)
+
+    def test_numpy_dtype_index(self):
+        self.assertEqual(sampledata.dtype_index(numpy.int32), 4)
+
+    def test_invalid_dtype(self):
+        self.assertRaises(RuntimeError, sampledata.dtype_index, 'foobar')
+
+
 class TestRasterFunctions(unittest.TestCase):
     def setUp(self):
         self.raster_filename = pygeoprocessing.temporary_filename()

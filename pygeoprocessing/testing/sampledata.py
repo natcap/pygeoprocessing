@@ -132,13 +132,13 @@ for keyname, typename in [('int64', 'OFTInteger64'),
 
 def dtype_index(dtype):
     """
-    Return the relative precision index of the datatype provided.
+    Return the relative data complexity index of the datatype provided.
 
     Parameters:
         dtype (numpy.dtype or int GDAL datatype): The dtype to check.
 
     Returns:
-        The precision index relative to the other numpy/gdal type pairs.
+        The data complexity index relative to the other numpy/gdal type pairs.
     """
 
     if isinstance(dtype, type):
@@ -150,7 +150,7 @@ def dtype_index(dtype):
     else:
         raise RuntimeError(('Datatype %s not recognized.  Must be a numpy or '
                             'gdal datatype') % dtype)
-    return map(lambda x: x[dtype_tuple_index], DTYPES).index(dtype)
+    return [x[dtype_tuple_index] for x in DTYPES].index(dtype)
 
 
 def make_geotransform(x_len, y_len, origin):
