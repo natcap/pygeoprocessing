@@ -67,6 +67,20 @@ class TestRasterFunctions(unittest.TestCase):
 
         self.assertEqual(sum, 1000000)
 
+    def test_iterblocks_multiband(self):
+        """
+        Verify that iterblocks() works when we operate on a raster with multiple bands.
+        """
+        pixel_matrix = numpy.ones((1000, 1000))
+        nodata = 0
+        reference = sampledata.SRS_COLOMBIA
+        pygeoprocessing.testing.create_raster_on_disk(
+            [pixel_matrix, pixel_matrix], reference.origin, reference.projection, nodata,
+            reference.pixel_size(30), filename=self.raster_filename)
+
+        for data_dict, band_1, band_2 in pygeoprocessing.iterblocks(self.raster_filename):
+            numpy.testing.assert_almost_equal(band_1, band_2)
+
 
 class TestRoutingFunctions(unittest.TestCase):
     def setUp(self):
