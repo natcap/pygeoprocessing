@@ -345,6 +345,10 @@ def distance_transform_edt(input_mask_uri, output_distance_uri):
         dt[b_array == input_nodata] = output_nodata
         output_band.WriteArray(dt, xoff=0, yoff=local_row_index)
 
+    output_band.FlushCache()
+    output_band = None
+    gdal.Dataset.__swig_destroy__(output_dataset)
+    output_dataset = None
     input_mask_band = None
     gdal.Dataset.__swig_destroy__(input_mask_ds)
     input_mask_ds = None

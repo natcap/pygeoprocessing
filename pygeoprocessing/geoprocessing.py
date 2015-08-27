@@ -1366,6 +1366,7 @@ def reproject_datasource(original_datasource, output_wkt, output_uri):
     Returns:
         output_datasource: the reprojected shapefile.
     """
+
     # if this file already exists, then remove it
     if os.path.isfile(output_uri):
         os.remove(output_uri)
@@ -1409,11 +1410,18 @@ def reproject_datasource(original_datasource, output_wkt, output_uri):
         coord_trans = osr.CoordinateTransformation(original_sr, output_sr)
 
         # Copy all of the features in original_layer to the new shapefile
+        error_count = 0
         for original_feature in original_layer:
             geom = original_feature.GetGeometryRef()
 
             # Transform the geometry into format desired for the new projection
-            geom.Transform(coord_trans)
+            error_code = geom.Transform(coord_trans)
+            if error_code != 0: # error
+                # this could be caused by an out of range transformation
+                # whatever the case, don't put the transformed poly into the
+                # output set
+                error_count += 1
+                continue
 
             # Copy original_datasource's feature and set as new shapes feature
             output_feature = ogr.Feature(
@@ -1431,7 +1439,11 @@ def reproject_datasource(original_datasource, output_wkt, output_uri):
             output_feature = None
 
             original_feature = None
-
+        if error_count > 0:
+            LOGGER.warn(
+                '%d features out of %d were unable to be transformed and are'
+                ' not in the output dataset at %s', error_count,
+                original_layer.GetFeatureCount(), output_uri)
         original_layer = None
 
     return output_datasource
@@ -2373,6 +2385,7 @@ def vectorize_datasets(
                      float(n_row_blocks * n_col_blocks) * 100.0))
                 last_time = current_time
 
+            #This is true at least once since last_* initialized with None
             if (last_row_block_width != row_block_width or
                     last_col_block_width != col_block_width):
                 dataset_blocks = [
@@ -3120,6 +3133,10 @@ def convolve_2d_uri(signal_uri, kernel_uri, output_uri, ignore_nodata=True):
                     output_band.WriteArray(
                         output_array, xoff=left_index_raster,
                         yoff=top_index_raster)
+    output_band.FlushCache()
+    output_band = None
+    gdal.Dataset.__swig_destroy__(output_ds)
+    output_ds = None
 
     signal_band = None
     gdal.Dataset.__swig_destroy__(signal_ds)

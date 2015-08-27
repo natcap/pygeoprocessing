@@ -5,6 +5,8 @@ Release History
 -----------
 
 * Added functions to construct raster and vectors on disk from reasonable datatypes (numpy matrices for rasters, lists of Shapely geometries for vectors).
+* Fixed an issue where reproject_datasource_uri would add geometry that couldn't be projected directly into the output datasource.  Function now only adds geometries that transformed without error and reports if any features failed to transform.
+* Added file flushing and dataset swig deletion in reproject_datasource_uri to handle a race condition that might have been occuring.
 * Fixed an issue when "None" was passed in on new raster creation that would attempt to directly set that value as the nodata value in the raster.
 * Added basic filetype-specific assertions for many geospatial filetypes, and tests for these assertions.  These assertions are exposed in `pygeoprocessing.testing`.
 * Pygeoprocessing package tests can be run by invoking `python setup.py nosetests`.  A subset of tests may also be run from an installed pygeoprocessing distribution by calling `pygeoprocessing.test()`.
