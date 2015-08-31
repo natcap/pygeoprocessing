@@ -22,13 +22,31 @@ class TestProjectionFunctions(unittest.TestCase):
 
 
 class TestDataComplexity(unittest.TestCase):
+    """
+    A test class for pygeoprocessing.testing.sampledata's data complexity
+    checking.  This is used for checking that the user's sample raster matrices
+    have a datatype that coincides with an acceptable GDAL datatype so that
+    data is not lost when writing a numpy matrix to a GDAL raster.
+
+    For checking this, pygeoprocessing.testing.sampledata.DTYPES is a list of
+    tuples associating numpy datatypes with their corresponding GDAL datatypes.
+    The relative index of the list indicates their relative complexity.
+    A higher index indicates greater complexity (Float64 is the highest).
+    Lower indices indicate lesser complexity (Byte is the lowest).
+
+    The index of a GDAL or numpy datatype is most conveniently fetched with
+    pygeoprocessing.testing.sampledata.dtype_index().
+    """
     def test_gdal_dtype_index(self):
+        """Verify that the GDAL byte is at index 0 in DTYPES"""
         self.assertEqual(sampledata.dtype_index(gdal.GDT_Byte), 0)
 
     def test_numpy_dtype_index(self):
+        """Verify that numpy's int32 is at index 4 in DTYPES"""
         self.assertEqual(sampledata.dtype_index(numpy.int32), 4)
 
     def test_invalid_dtype(self):
+        """Verify that an invalid datatype raises a RuntimeError"""
         self.assertRaises(RuntimeError, sampledata.dtype_index, 'foobar')
 
 

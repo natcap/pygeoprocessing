@@ -54,6 +54,7 @@ OGR_DRIVERS = sorted([ogr.GetDriver(i).GetName()
                       for i in range(ogr.GetDriverCount())])
 
 # Higher index in list represents more information is stored by the datatype
+# Helpful for debug messages, used when creating sample rasters.
 DTYPES = [
     (numpy.byte, gdal.GDT_Byte),
     (numpy.uint16, gdal.GDT_UInt16),
