@@ -73,6 +73,8 @@ class RasterTest(unittest.TestCase):
         reference = sampledata.SRS_WILLAMETTE
         filename = pygeoprocessing.temporary_filename()
 
+        # Error raised when `pixels` is not a list.  List of 2D matrices
+        # expected.
         self.assertRaises(TypeError, pixels, reference.origin,
                           reference.projection, nodata,
                           reference.pixel_size(30), datatype='auto',

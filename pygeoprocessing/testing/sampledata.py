@@ -199,7 +199,7 @@ def create_raster_on_disk(band_matrices, origin, projection_wkt, nodata,
     Create a GDAL raster on disk.
 
     Parameters:
-        band_matrices (list of numpy.ndarray): a list of numpy matrix
+        band_matrices (list of numpy.ndarray): a list of 2D numpy matrices
             representing pixel values, one array per band to be created
             in the output raster. The index of the matrix will be the
             index of the corresponding band that is created.
