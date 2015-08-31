@@ -222,8 +222,8 @@ def create_raster_on_disk(band_matrices, origin, projection_wkt, nodata,
             the underlying GDAL driver for creating this raster.  Possible
             options are usually format dependent.  If None, no options will
             be passed to the driver.  For a GTiff, the most common set of
-            options will usually be ['TILED=YES'].  GTiff block sizes usually
-            default to 256 along an edge.
+            options will usually be ['TILED=YES'].  GTiff block sizes
+            default to 256 along an edge if not otherwise specified.
         filename=None (string): If provided, the new raster should be created
             at this filepath.  If None, a new temporary file will be created
             within your tempfile directory (within `tempfile.gettempdir()`)
