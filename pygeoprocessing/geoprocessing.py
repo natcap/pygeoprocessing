@@ -3200,7 +3200,7 @@ def tile_dataset_uri(in_uri, out_uri, blocksize):
         datasets_are_pre_aligned=False, dataset_options=dataset_options)
 
 
-def iterblocks(raster_uri, bands=None):
+def iterblocks(raster_uri, band_list=None):
     """
     Return a generator to interate across all the memory blocks in the input
     raster.  Generated values are numpy arrays, read block by block.
@@ -3216,13 +3216,18 @@ def iterblocks(raster_uri, bands=None):
 
     Parameters:
         raster_uri (string): The string filepath to the raster to iterate over.
-        bands=None (list of ints or None): A list of the bands for which the matrices
-            should be returned.The band number to operate on.  Defaults to None,
-            which will return all bands.
+        band_list=None (list of ints or None): A list of the bands for which
+            the matrices should be returned. The band number to operate on.
+            Defaults to None, which will return all bands.  Bands may be
+            specified in any order, and band indices may be specified multiple
+            times.  The blocks returned on each iteration will be in the order
+            specified in this list.
 
     Returns:
-        On each iteration, a tuple containing a dict of block data and a numpy
-        array is returned.  The dict of block data has these attributes:
+        On each iteration, a tuple containing a dict of block data and `n`
+        2-dimensional numpy arrays are returned, where `n` is the number of
+        bands requested via `band_list`. The dict of block data has these
+        attributes:
 
             data['xoff'] - The X offset of the upper-left-hand corner of the
                 block.
@@ -3233,10 +3238,10 @@ def iterblocks(raster_uri, bands=None):
     """
     dataset = gdal.Open(raster_uri)
 
-    if bands is None:
-        bands = range(1, dataset.RasterCount + 1)
+    if band_list is None:
+        band_list = range(1, dataset.RasterCount + 1)
 
-    ds_bands = [dataset.GetRasterBand(index) for index in bands]
+    ds_bands = [dataset.GetRasterBand(index) for index in band_list]
 
     block = ds_bands[0].GetBlockSize()
     cols_per_block = block[0]
@@ -3266,9 +3271,5 @@ def iterblocks(raster_uri, bands=None):
                 'win_xsize': col_block_width,
                 'win_ysize': row_block_width,
             }
-            #band_generator = [ds_band.ReadAsArray(**offset_dict) for ds_band in ds_bands]
-            output_tuple = (offset_dict,)
-            for ds_band in ds_bands:
-                matrix = ds_band.ReadAsArray(**offset_dict)
-                output_tuple += (matrix,)
-            yield output_tuple
+            yield (offset_dict, ) + tuple(ds_band.ReadAsArray(**offset_dict)
+                                          for ds_band in ds_bands)

@@ -113,11 +113,13 @@ class TestRasterFunctions(unittest.TestCase):
         nodata = 0
         reference = sampledata.SRS_COLOMBIA
         pygeoprocessing.testing.create_raster_on_disk(
-            [pixel_matrix, pixel_matrix], reference.origin, reference.projection, nodata,
+            [pixel_matrix, pixel_matrix], reference.origin,
+            reference.projection, nodata,
             reference.pixel_size(30), filename=self.raster_filename)
 
-        for data_dict, band_1, band_2 in pygeoprocessing.iterblocks(self.raster_filename):
-            numpy.testing.assert_almost_equal(band_1, band_2)
+        for data_dict, band_1_block, band_2_block in \
+                pygeoprocessing.iterblocks(self.raster_filename):
+            numpy.testing.assert_almost_equal(band_1_block, band_2_block)
 
     def test_default_blocksizes_tiled(self):
         """
