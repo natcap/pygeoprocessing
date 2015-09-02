@@ -97,7 +97,8 @@ class TestRasterFunctions(unittest.TestCase):
         reference = sampledata.SRS_COLOMBIA
         pygeoprocessing.testing.create_raster_on_disk(
             [pixel_matrix], reference.origin, reference.projection, nodata,
-            reference.pixel_size(30), filename=self.raster_filename)
+            reference.pixel_size(30), filename=self.raster_filename,
+            dataset_opts=['TILED=YES'])
 
         sum = 0
         for block_data, memblock in pygeoprocessing.iterblocks(self.raster_filename):
@@ -115,7 +116,8 @@ class TestRasterFunctions(unittest.TestCase):
         pygeoprocessing.testing.create_raster_on_disk(
             [pixel_matrix, pixel_matrix], reference.origin,
             reference.projection, nodata,
-            reference.pixel_size(30), filename=self.raster_filename)
+            reference.pixel_size(30), filename=self.raster_filename,
+            dataset_opts=['TILED=YES'])
 
         for data_dict, band_1_block, band_2_block in \
                 pygeoprocessing.iterblocks(self.raster_filename):
