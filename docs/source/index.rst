@@ -20,6 +20,17 @@ API Reference
     packages/routing.rst
     packages/fileio.rst
 
+=======
+Testing
+=======
+
+.. toctree::
+    :maxdepth: 1
+
+    testing.rst
+    sampledata.rst
+
+
 ========================
 Other Useful Information
 ========================
@@ -28,6 +39,7 @@ Other Useful Information
    :maxdepth: 1
 
    examples
+   package-testing
    history
 
 ==================

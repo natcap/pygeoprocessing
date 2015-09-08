@@ -4,9 +4,12 @@ Release History
 0.3.0 (XXX)
 -----------
 
+* Added functions to construct raster and vectors on disk from reasonable datatypes (numpy matrices for rasters, lists of Shapely geometries for vectors).
 * Fixed an issue where reproject_datasource_uri would add geometry that couldn't be projected directly into the output datasource.  Function now only adds geometries that transformed without error and reports if any features failed to transform.
-* Added additional file flushing and dataset swig deletion in reproject_datasource_uri to handle a race condition that might have been occuring.
+* Added file flushing and dataset swig deletion in reproject_datasource_uri to handle a race condition that might have been occuring.
 * Fixed an issue when "None" was passed in on new raster creation that would attempt to directly set that value as the nodata value in the raster.
+* Added basic filetype-specific assertions for many geospatial filetypes, and tests for these assertions.  These assertions are exposed in `pygeoprocessing.testing`.
+* Pygeoprocessing package tests can be run by invoking `python setup.py nosetests`.  A subset of tests may also be run from an installed pygeoprocessing distribution by calling `pygeoprocessing.test()`.
 * Fixed an issue with reclassify dataset that would occur when small rasters whose first memory block would extend beyond the size of the raster thus passing in "0" values in the out of bounds area. Reclassify dataset identified these as valid pixels, even though vectorize_datsets would mask them out later.  Now vectorize_datasets only passes memory blocks that contain valid pixel data to its kernel op.
 * Added support for very small AOIs that result in rasters less than a pixel wide.  Additionally an `all_touched` flag was added to allow the ALL_TOUCHED=TRUE option to be passed to RasterizeLayer in the AOI mask calculation.
 * Added watershed delination routine to pygeoprocessing.routing.delineate_watershed.  Operates on a DEM and point shapefile, optionally snaps outlet points to nearest stream as defined by a thresholded flow accumulation raster and copies the oulet point fields into the constructed watershed shapefile.
