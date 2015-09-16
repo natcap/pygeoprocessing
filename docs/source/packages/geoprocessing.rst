@@ -1,5 +1,5 @@
-Geoprocessing
-=============
+Geoprocessing Module
+====================
 
 .. automodule:: pygeoprocessing.geoprocessing
     :members:

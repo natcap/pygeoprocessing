@@ -1,8 +1,8 @@
-Routing Module
-==============
+Routing Package
+===============
 
-Routing
--------
+Routing Module
+--------------
 
 .. automodule:: pygeoprocessing.routing.routing
     :members:
