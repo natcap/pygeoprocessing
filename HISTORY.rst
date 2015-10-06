@@ -4,6 +4,7 @@ Release History
 0.3.0 (XXX)
 -----------
 
+* Fixed a defect in pygeoprocessing.routing.calculate_transport where the nodata types were cast as int even though the base type of the routing rasters were floats.  In extreme cases this could cause a crash on a type that could not be converted to an int, like an `inf`, and in subtle cases this would result in nodata values in the raster being ignored during routing.
 * Added functions to construct raster and vectors on disk from reasonable datatypes (numpy matrices for rasters, lists of Shapely geometries for vectors).
 * Fixed an issue where reproject_datasource_uri would add geometry that couldn't be projected directly into the output datasource.  Function now only adds geometries that transformed without error and reports if any features failed to transform.
 * Added file flushing and dataset swig deletion in reproject_datasource_uri to handle a race condition that might have been occuring.
