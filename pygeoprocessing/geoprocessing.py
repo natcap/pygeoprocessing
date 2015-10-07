@@ -162,7 +162,7 @@ def calculate_raster_stats_uri(dataset_uri):
 
     for band_number in range(dataset.RasterCount):
         band = dataset.GetRasterBand(band_number + 1)
-        band.ComputeStatistics(0)
+        band.ComputeStatistics(False)
 
     # Close and clean up dataset
     band = None
