@@ -61,6 +61,7 @@ DTYPES = [
     (numpy.uint32, gdal.GDT_UInt32),
     (numpy.int16, gdal.GDT_Int16),
     (numpy.int32, gdal.GDT_Int32),
+    (numpy.int64, gdal.GDT_Int32),  # GDAL doesn't have an int64.
     (numpy.float32, gdal.GDT_Float32),
     (numpy.float64, gdal.GDT_Float64),
 ]
@@ -208,7 +209,8 @@ def create_raster_on_disk(band_matrices, origin, projection_wkt, nodata,
             numbers.
         projection_wkt (string): A string WKT represntation of the projection
             to use in the output raster.
-        nodata (int or float): The nodata value for the raster.
+        nodata (int or float): The nodata value for the raster.  If `nodata`
+            is None, a nodata value will not be set.
         pixel_size (tuple of numbers): A 2-element tuple representing the
             size of all pixels in the raster arranged in the order (x, y).
             Either or both of these values could be negative.
@@ -294,7 +296,8 @@ def create_raster_on_disk(band_matrices, origin, projection_wkt, nodata,
 
     for band_index, band_matrix in enumerate(band_matrices, 1):
         band = new_raster.GetRasterBand(band_index)
-        band.SetNoDataValue(nodata)
+        if nodata is not None:
+            band.SetNoDataValue(nodata)
         band.WriteArray(band_matrix)
         band.FlushCache()
         band = None
