@@ -50,7 +50,7 @@ def assert_almost_equal(value_a, value_b, places=TOLERANCE, msg=None):
     raise AssertionError(msg)
 
 
-def assert_rasters_equal(a_uri, b_uri):
+def assert_rasters_equal(a_uri, b_uri, places=TOLERANCE):
     """Tests if datasets a and b are 'almost equal' to each other on a per
     pixel basis
 
@@ -68,6 +68,7 @@ def assert_rasters_equal(a_uri, b_uri):
     Args:
         a_uri (string): a URI to a GDAL dataset
         b_uri (string): a URI to a GDAL dataset
+        places=TOLERANCE (int): The number of places to assert equality out to.
 
     Returns:
         None
@@ -119,7 +120,8 @@ def assert_rasters_equal(a_uri, b_uri):
                 pygeoprocessing.iterblocks(b_uri, [band_number])):
             try:
                 numpy.testing.assert_array_almost_equal(a_block, b_block,
-                                                        verbose=True)
+                                                        verbose=True,
+                                                        decimal=places)
             except AssertionError:
                 iterator = numpy.nditer([a_block, b_block],
                                         flags=['multi_index'],
@@ -129,14 +131,10 @@ def assert_rasters_equal(a_uri, b_uri):
                     row = a_data['yoff'] + iterator.multi_index[1]
                     pixel_a = a_block[iterator.multi_index]
                     pixel_b = b_block[iterator.multi_index]
-                    if pixel_a != pixel_b:
-                        raise AssertionError(
-                            '{a_val} != {b_val} at col {col}, row {row}'.format(
-                                a_val=pixel_a,
-                                b_val=pixel_b,
-                                col=col,
-                                row=row
-                            ))
+                    assert_almost_equal(
+                        pixel_a, pixel_b, places,
+                        '{a_val} != {b_val} at col {col}, row {row}'.format(
+                            a_val=pixel_a, b_val=pixel_b, col=col, row=row))
                     iterator.iternext()
 
 

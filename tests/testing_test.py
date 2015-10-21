@@ -4,10 +4,14 @@ import os
 import shutil
 import glob
 
+import numpy
+from osgeo import gdal
+
 from pygeoprocessing.testing import scm
 import pygeoprocessing.testing as testing
 from pygeoprocessing.testing import data_storage
 from pygeoprocessing.testing import utils
+from pygeoprocessing.testing import sampledata
 import pygeoprocessing as raster_utils
 import pygeoprocessing
 
@@ -579,3 +583,39 @@ class GISTestTester(unittest.TestCase):
         testing.assert_checksums_equal(snapshot_file, REGRESSION_INPUT)
         self.assertRaises(AssertionError, testing.assert_checksums_equal,
                           snapshot_file, POLLINATION_DATA)
+
+    def test_raster_equality_to_places(self):
+        """Verify assert_rasters_equal can assert out to n places."""
+        reference = sampledata.SRS_COLOMBIA
+        filename_a = pygeoprocessing.temporary_filename()
+        sampledata.create_raster_on_disk(
+            [numpy.array([[0.1234567]])], reference.origin,
+            reference.projection, -1, reference.pixel_size(30),
+            datatype=gdal.GDT_Float32, format='GTiff', filename=filename_a)
+
+        filename_b = pygeoprocessing.temporary_filename()
+        sampledata.create_raster_on_disk(
+            [numpy.array([[0.123]])], reference.origin,
+            reference.projection, -1, reference.pixel_size(30),
+            datatype=gdal.GDT_Float32, format='GTiff', filename=filename_b)
+
+        pygeoprocessing.testing.assert_rasters_equal(filename_a, filename_b, places=3)
+
+    def test_raster_inequality_to_places(self):
+        """Verify assert_rasters_equal fails if inequal past n places."""
+        reference = sampledata.SRS_COLOMBIA
+        filename_a = pygeoprocessing.temporary_filename()
+        sampledata.create_raster_on_disk(
+            [numpy.array([[0.1234567]])], reference.origin,
+            reference.projection, -1, reference.pixel_size(30),
+            datatype=gdal.GDT_Float32, format='GTiff', filename=filename_a)
+
+        filename_b = pygeoprocessing.temporary_filename()
+        sampledata.create_raster_on_disk(
+            [numpy.array([[0.123]])], reference.origin,
+            reference.projection, -1, reference.pixel_size(30),
+            datatype=gdal.GDT_Float32, format='GTiff', filename=filename_b)
+
+        self.assertRaises(
+            AssertionError, pygeoprocessing.testing.assert_rasters_equal,
+            filename_a, filename_b, places=5)
