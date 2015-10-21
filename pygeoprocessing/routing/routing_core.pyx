@@ -275,15 +275,15 @@ cdef calculate_transport(
 
     outflow_weights_dataset = gdal.Open(outflow_weights_uri)
     outflow_weights_band = outflow_weights_dataset.GetRasterBand(1)
-    cdef int outflow_weights_nodata = pygeoprocessing.get_nodata_from_uri(
+    cdef float outflow_weights_nodata = pygeoprocessing.get_nodata_from_uri(
         outflow_weights_uri)
     source_dataset = gdal.Open(source_uri)
     source_band = source_dataset.GetRasterBand(1)
-    cdef int source_nodata = pygeoprocessing.get_nodata_from_uri(
+    cdef float source_nodata = pygeoprocessing.get_nodata_from_uri(
         source_uri)
     absorption_rate_dataset = gdal.Open(absorption_rate_uri)
     absorption_rate_band = absorption_rate_dataset.GetRasterBand(1)
-    cdef int absorption_rate_nodata = pygeoprocessing.get_nodata_from_uri(
+    cdef float absorption_rate_nodata = pygeoprocessing.get_nodata_from_uri(
         absorption_rate_uri)
 
     #Create output arrays for loss and flux
