@@ -117,6 +117,19 @@ class RasterTest(unittest.TestCase):
                          reference.pixel_size(30), datatype='auto',
                          filename=filename)
 
+    def test_raster_nodata_notset(self):
+        """When nodata=None, a nodata value should not be set."""
+        pixels = [numpy.array([[0]])]
+        nodata = None
+        reference = sampledata.SRS_WILLAMETTE
+        filename = pygeoprocessing.temporary_filename()
+        sampledata.create_raster_on_disk(
+            pixels, reference.origin, reference.projection, nodata,
+            reference.pixel_size(30), datatype='auto', filename=filename)
+
+        set_nodata_value = pygeoprocessing.get_nodata_from_uri(filename)
+        self.assertEqual(set_nodata_value, None)
+
 
 class VectorTest(unittest.TestCase):
     def test_init(self):
