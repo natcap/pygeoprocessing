@@ -18,10 +18,10 @@ from . import utils
 from . import data_storage
 
 LOGGER = logging.getLogger('pygeoprocessing.testing.assertions')
-TOLERANCE = 7
+TOLERANCE = 0.000001
 
 
-def assert_almost_equal(value_a, value_b, places=TOLERANCE, msg=None):
+def assert_almost_equal(value_a, value_b, tolerance=TOLERANCE, msg=None):
     """
     Assert that values a and b are equal out to `places` places.
     If msg is not provided, a standard one will be used.
@@ -29,8 +29,9 @@ def assert_almost_equal(value_a, value_b, places=TOLERANCE, msg=None):
     Parameters:
         value_a (int or float): The first value to test.
         value_b (int or float): The second value to test.
-        places=TOLERANCE (int): The number of places to which the values
-            should be tested.
+        tolerance=TOLERANCE (int or float): The numerical tolerance.  If
+            the values being asserted are any more different than this value,
+            AssertionError will be raised.
         msg=None (string or None): The assertion message to use if value_a
             and value_b are not found to be equal to `places` places.
 
@@ -39,18 +40,16 @@ def assert_almost_equal(value_a, value_b, places=TOLERANCE, msg=None):
 
     Raises:
         AssertionError: Raised when the values are not equal out to the
-        desired precision.
+        desired tolerance.
     """
-    if round(abs(value_b - value_a), places) == 0:
-        return
-
-    if msg is None:
-        msg = "{a} != {b} within {pl} places".format(
-            a=value_a, b=value_b, pl=places)
-    raise AssertionError(msg)
+    if abs(value_b - value_a) > tolerance:
+        if msg is None:
+            msg = "{a} != {b} within {tol}".format(
+                a=value_a, b=value_b, tol=tolerance)
+        raise AssertionError(msg)
 
 
-def assert_rasters_equal(a_uri, b_uri, places=TOLERANCE):
+def assert_rasters_equal(a_uri, b_uri, tolerance=TOLERANCE):
     """Tests if datasets a and b are 'almost equal' to each other on a per
     pixel basis
 
@@ -68,7 +67,9 @@ def assert_rasters_equal(a_uri, b_uri, places=TOLERANCE):
     Args:
         a_uri (string): a URI to a GDAL dataset
         b_uri (string): a URI to a GDAL dataset
-        places=TOLERANCE (int): The number of places to assert equality out to.
+        tolerance=TOLERANCE (int or float): the absolute tolerance to which
+            values should be asserted.  This is a numerical tolerance,
+            not the number of places to which a value should be rounded.
 
     Returns:
         None
@@ -118,11 +119,8 @@ def assert_rasters_equal(a_uri, b_uri, places=TOLERANCE):
         for (a_data, a_block), (b_data, b_block) in zip(
                 pygeoprocessing.iterblocks(a_uri, [band_number]),
                 pygeoprocessing.iterblocks(b_uri, [band_number])):
-            try:
-                numpy.testing.assert_array_almost_equal(a_block, b_block,
-                                                        verbose=True,
-                                                        decimal=places)
-            except AssertionError:
+            if numpy.any(numpy.absolute(
+                    numpy.subtract(a_block, b_block)) > tolerance):
                 iterator = numpy.nditer([a_block, b_block],
                                         flags=['multi_index'],
                                         op_flags=['readonly'])
@@ -132,7 +130,7 @@ def assert_rasters_equal(a_uri, b_uri, places=TOLERANCE):
                     pixel_a = a_block[iterator.multi_index]
                     pixel_b = b_block[iterator.multi_index]
                     assert_almost_equal(
-                        pixel_a, pixel_b, places,
+                        pixel_a, pixel_b, tolerance,
                         '{a_val} != {b_val} at col {col}, row {row}'.format(
                             a_val=pixel_a, b_val=pixel_b, col=col, row=row))
                     iterator.iternext()
@@ -265,8 +263,7 @@ def assert_csv_equal(a_uri, b_uri, tolerance=TOLERANCE):
     Args:
         a_uri (string): a URI to a csv file
         b_uri (string): a URI to a csv file
-        tolerance=TOLERANCE (int): The number of places out to which to test
-            floating-point cell values.
+        tolerance=TOLERANCE (int or float): The numerical tolerance allowed.
 
     Raises:
         AssertionError: Raised when the two CSV files are found to be
@@ -293,7 +290,7 @@ def assert_csv_equal(a_uri, b_uri, tolerance=TOLERANCE):
                 try:
                     a_element = float(a_element)
                     b_element = float(b_element)
-                    assert_almost_equal(a_element, b_element, places=tolerance,
+                    assert_almost_equal(a_element, b_element, tolerance=tolerance,
                         msg=('Values are significantly different at row %s'
                              'col %s: a=%s b=%s' % (index, col_index,
                                                     a_element,
