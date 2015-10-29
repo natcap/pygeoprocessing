@@ -1,3 +1,4 @@
+# coding=utf-8
 """
 Assertions for geospatial testing.
 """
@@ -18,10 +19,33 @@ from . import utils
 from . import data_storage
 
 LOGGER = logging.getLogger('pygeoprocessing.testing.assertions')
-TOLERANCE = 0.000001
+TOLERANCE = 1e-09
 
+def isclose(a, b, rel_tol=TOLERANCE, abs_tol=0.0):
+    """Assert that values are equal to the given tolerance.
 
-def assert_almost_equal(value_a, value_b, tolerance=TOLERANCE, msg=None):
+    Adapted from the python 3.5 standard library based on the
+    specification found in PEP485.
+
+    Parameters:
+        a (int or float): The first value to test
+        b (int or float): The second value to test
+        rel_tol (int or float): is the relative tolerance - it is the
+            maximum allowed difference between a and b, relative to the
+            larger absolute value of a or b. For example, to set a
+            tolerance of 5%, pass `rel_tol=0.05`. The default tolerance
+            is 1e-09, which assures that the two values are the same
+            within about 9 decimal digits. rel_tol must be greater than
+            zero.
+        abs_tol (float): is the minimum absolute tolerance – useful for
+            comparisons near zero. abs_tol must be at least zero.
+
+    Returns:
+        A boolean.
+    """
+    return abs(a-b) <= max(rel_tol * max(abs(a), abs(b)), abs_tol)
+
+def assert_close(value_a, value_b, tolerance=TOLERANCE, msg=None):
     """
     Assert that values a and b are equal out to `places` places.
     If msg is not provided, a standard one will be used.
@@ -42,7 +66,7 @@ def assert_almost_equal(value_a, value_b, tolerance=TOLERANCE, msg=None):
         AssertionError: Raised when the values are not equal out to the
         desired tolerance.
     """
-    if abs(value_b - value_a) > tolerance:
+    if not isclose(value_a, value_b, tolerance):
         if msg is None:
             msg = "{a} != {b} within {tol}".format(
                 a=value_a, b=value_b, tol=tolerance)
@@ -129,7 +153,7 @@ def assert_rasters_equal(a_uri, b_uri, tolerance=TOLERANCE):
                     row = a_data['yoff'] + iterator.multi_index[1]
                     pixel_a = a_block[iterator.multi_index]
                     pixel_b = b_block[iterator.multi_index]
-                    assert_almost_equal(
+                    assert_close(
                         pixel_a, pixel_b, tolerance,
                         '{a_val} != {b_val} at col {col}, row {row}'.format(
                             a_val=pixel_a, b_val=pixel_b, col=col, row=row))
@@ -290,7 +314,7 @@ def assert_csv_equal(a_uri, b_uri, tolerance=TOLERANCE):
                 try:
                     a_element = float(a_element)
                     b_element = float(b_element)
-                    assert_almost_equal(a_element, b_element, tolerance=tolerance,
+                    assert_close(a_element, b_element, tolerance=tolerance,
                         msg=('Values are significantly different at row %s'
                              'col %s: a=%s b=%s' % (index, col_index,
                                                     a_element,
