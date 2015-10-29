@@ -599,7 +599,7 @@ class GISTestTester(unittest.TestCase):
             reference.projection, -1, reference.pixel_size(30),
             datatype=gdal.GDT_Float32, format='GTiff', filename=filename_b)
 
-        pygeoprocessing.testing.assert_rasters_equal(filename_a, filename_b, places=3)
+        pygeoprocessing.testing.assert_rasters_equal(filename_a, filename_b, tolerance=0.002)
 
     def test_raster_inequality_to_places(self):
         """Verify assert_rasters_equal fails if inequal past n places."""
@@ -618,4 +618,4 @@ class GISTestTester(unittest.TestCase):
 
         self.assertRaises(
             AssertionError, pygeoprocessing.testing.assert_rasters_equal,
-            filename_a, filename_b, places=5)
+            filename_a, filename_b, tolerance=0.00005)
