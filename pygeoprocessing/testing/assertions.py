@@ -19,6 +19,7 @@ from . import data_storage
 LOGGER = logging.getLogger('pygeoprocessing.testing.assertions')
 TOLERANCE = 1e-09
 
+
 def isclose(a, b, rel_tol=TOLERANCE, abs_tol=0.0):
     """Assert that values are equal to the given tolerance.
 
@@ -42,6 +43,7 @@ def isclose(a, b, rel_tol=TOLERANCE, abs_tol=0.0):
         A boolean.
     """
     return abs(a-b) <= max(rel_tol * max(abs(a), abs(b)), abs_tol)
+
 
 def assert_close(value_a, value_b, tolerance=TOLERANCE, msg=None):
     """
@@ -237,7 +239,8 @@ def assert_vectors_equal(a_uri, b_uri):
                 field_name = field_ref.GetNameRef()
                 field_name_regression = field_ref_regression.GetNameRef()
                 if field_name != field_name_regression:
-                    raise AssertionError('The fields DO NOT have the same name')
+                    raise AssertionError('The fields DO NOT have the same '
+                                         'name')
 
             # Check that the features have the same geometry
             geom = feat.GetGeometryRef()
@@ -247,8 +250,8 @@ def assert_vectors_equal(a_uri, b_uri):
                 feature_fid = feat.GetFID()
                 reg_feature_fid = feat_regression.GetFID()
                 raise AssertionError(
-                'Geometries are not equal in feature %s, '
-                'regression feature %s') % (feature_fid, reg_feature_fid)
+                    'Geometries are not equal in feature %s, '
+                    'regression feature %s') % (feature_fid, reg_feature_fid)
 
             feat = None
             feat_regression = None
@@ -263,8 +266,8 @@ def assert_csv_equal(a_uri, b_uri, tolerance=TOLERANCE):
     """Assert the equality of CSV files at a_uri and b_uri.
 
     Tests if csv files a and b are 'almost equal' to each other on a per
-    cell basis.  Numeric cells are asserted to be equal out to TOLERANCE decimal
-    places.  Other cell types are asserted to be equal.
+    cell basis.  Numeric cells are asserted to be equal within the given
+    tolerance.  Other cell types are asserted to be equal.
 
     Args:
         a_uri (string): a URI to a csv file
@@ -295,7 +298,8 @@ def assert_csv_equal(a_uri, b_uri, tolerance=TOLERANCE):
                 try:
                     a_element = float(a_element)
                     b_element = float(b_element)
-                    assert_close(a_element, b_element, tolerance=tolerance,
+                    assert_close(
+                        a_element, b_element, tolerance=tolerance,
                         msg=('Values are significantly different at row %s'
                              'col %s: a=%s b=%s' % (index, col_index,
                                                     a_element,
@@ -337,7 +341,8 @@ def assert_md5_equal(uri, regression_hash):
         raise AssertionError('MD5 hashes differ')
 
 
-def assert_matrixes(matrix_a, matrix_b, tolerance=TOLERANCE, starting_index=None):
+def assert_matrixes(matrix_a, matrix_b, tolerance=TOLERANCE,
+                    starting_index=None):
     """Test that the input numpy matrices are equal, given a tolerance.
 
     This is a numpy implementation of the relative tolerance portion of
@@ -359,8 +364,8 @@ def assert_matrixes(matrix_a, matrix_b, tolerance=TOLERANCE, starting_index=None
     Returns:
         None
     """
-    if numpy.any(numpy.absolute(numpy.subtract(matrix_a, matrix_b))
-                 > tolerance):
+    if numpy.any(numpy.absolute(numpy.subtract(matrix_a,
+                                               matrix_b)) > tolerance):
         iterator = numpy.nditer([matrix_a, matrix_b],
                                 flags=['multi_index'],
                                 op_flags=['readonly'])
@@ -651,7 +656,8 @@ def assert_checksums_equal(checksum_file, base_folder=None):
                 'All files recorded in the snapshot are missing.  Are you '
                 'testing against the right folder?  Testing {test_dir}. '
                 'Snapshot taken from {snap_dir}.').format(
-                    test_dir=base_folder, snap_dir=env_params['orig_workspace']))
+                    test_dir=base_folder,
+                    snap_dir=env_params['orig_workspace']))
         raise AssertionError(
             ('{num_missing} files out of {num_files} are '
              'missing.').format(num_missing=len(missing_files),
