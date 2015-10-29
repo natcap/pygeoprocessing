@@ -47,8 +47,7 @@ def isclose(a, b, rel_tol=TOLERANCE, abs_tol=0.0):
 
 def assert_close(value_a, value_b, tolerance=TOLERANCE, msg=None):
     """
-    Assert that values a and b are equal out to `places` places.
-    If msg is not provided, a standard one will be used.
+    Assert equality to an absolute tolerance.
 
     Parameters:
         value_a (int or float): The first value to test.
