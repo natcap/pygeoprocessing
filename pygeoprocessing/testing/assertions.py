@@ -138,21 +138,8 @@ def assert_rasters_equal(a_uri, b_uri, tolerance=TOLERANCE):
         for (a_data, a_block), (b_data, b_block) in zip(
                 pygeoprocessing.iterblocks(a_uri, [band_number]),
                 pygeoprocessing.iterblocks(b_uri, [band_number])):
-            if numpy.any(numpy.absolute(
-                    numpy.subtract(a_block, b_block)) > tolerance):
-                iterator = numpy.nditer([a_block, b_block],
-                                        flags=['multi_index'],
-                                        op_flags=['readonly'])
-                while not iterator.finished:
-                    col = a_data['xoff'] + iterator.multi_index[0]
-                    row = a_data['yoff'] + iterator.multi_index[1]
-                    pixel_a = a_block[iterator.multi_index]
-                    pixel_b = b_block[iterator.multi_index]
-                    assert_close(
-                        pixel_a, pixel_b, tolerance,
-                        '{a_val} != {b_val} at col {col}, row {row}'.format(
-                            a_val=pixel_a, b_val=pixel_b, col=col, row=row))
-                    iterator.iternext()
+            assert_matrixes(a_block, b_block, tolerance,
+                            (a_data['yoff'], a_data['xoff']))
 
 
 def assert_vectors_equal(a_uri, b_uri):
@@ -350,16 +337,20 @@ def assert_md5_equal(uri, regression_hash):
         raise AssertionError('MD5 hashes differ')
 
 
-def assert_matrixes(matrix_a, matrix_b, decimal=7):
-    """Test that the input numpy matrices are equal up to `decimal` places.
+def assert_matrixes(matrix_a, matrix_b, tolerance=TOLERANCE, starting_index=None):
+    """Test that the input numpy matrices are equal, given a tolerance.
 
-    This is a convenience function that wraps up required functionality in
-    ``numpy.testing``.
+    This is a numpy implementation of the relative tolerance portion of
+    `isclose()`.  Arrays will be asserted per-pixel.
 
     Args:
         matrix_a (numpy.ndarray): a numpy matrix
         matrix_b (numpy.ndarray): a numpy matrix
-        decimal (int): an integer of the desired precision.
+        tolerance (float): The allowed tolerance.
+        starting_index (tuple of ints):  If not None, a tuple of ints
+            indicating the starting index of the matrices within some
+            larger context (like a raster).  Used for formatting
+            assertions.  Tuple must be (row_index, col_index).
 
     Raises:
         AssertionError: Raised when the two matrices are determined to be
@@ -368,7 +359,26 @@ def assert_matrixes(matrix_a, matrix_b, decimal=7):
     Returns:
         None
     """
-    numpy.testing.assert_array_almost_equal(matrix_a, matrix_b, decimal)
+    if numpy.any(numpy.absolute(numpy.subtract(matrix_a, matrix_b))
+                 > tolerance):
+        iterator = numpy.nditer([matrix_a, matrix_b],
+                                flags=['multi_index'],
+                                op_flags=['readonly'])
+        while not iterator.finished:
+            col = iterator.multi_index[0]
+            row = iterator.multi_index[1]
+
+            if starting_index is not None:
+                row += starting_index[0]
+                col += starting_index[1]
+
+            pixel_a = matrix_a[iterator.multi_index]
+            pixel_b = matrix_b[iterator.multi_index]
+            assert_close(
+                pixel_a, pixel_b, tolerance,
+                '{a_val} != {b_val} at col {col}, row {row}'.format(
+                    a_val=pixel_a, b_val=pixel_b, col=col, row=row))
+            iterator.iternext()
 
 
 def assert_archives_equal(archive_1_uri, archive_2_uri):
