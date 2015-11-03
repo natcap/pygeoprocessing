@@ -584,8 +584,8 @@ class GISTestTester(unittest.TestCase):
         self.assertRaises(AssertionError, testing.assert_checksums_equal,
                           snapshot_file, POLLINATION_DATA)
 
-    def test_raster_equality_to_places(self):
-        """Verify assert_rasters_equal can assert out to n places."""
+    def test_raster_equality_to_tolerance(self):
+        """Verify assert_rasters_equal asserts out to the given tolerance."""
         reference = sampledata.SRS_COLOMBIA
         filename_a = pygeoprocessing.temporary_filename()
         sampledata.create_raster_on_disk(
@@ -601,8 +601,8 @@ class GISTestTester(unittest.TestCase):
 
         pygeoprocessing.testing.assert_rasters_equal(filename_a, filename_b, tolerance=0.002)
 
-    def test_raster_inequality_to_places(self):
-        """Verify assert_rasters_equal fails if inequal past n places."""
+    def test_raster_inequality_to_tolerance(self):
+        """Verify assert_rasters_equal fails if inequal past a tolerance."""
         reference = sampledata.SRS_COLOMBIA
         filename_a = pygeoprocessing.temporary_filename()
         sampledata.create_raster_on_disk(
