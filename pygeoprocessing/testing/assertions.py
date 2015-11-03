@@ -56,7 +56,7 @@ def assert_close(value_a, value_b, tolerance=TOLERANCE, msg=None):
             the values being asserted are any more different than this value,
             AssertionError will be raised.
         msg=None (string or None): The assertion message to use if value_a
-            and value_b are not found to be equal to `places` places.
+            and value_b are not found to be equal out to the target tolerance.
 
     Returns:
         None.
@@ -81,8 +81,8 @@ def assert_rasters_equal(a_uri, b_uri, tolerance=TOLERANCE):
 
         + The number of layers in the raster
 
-        + Each pixel value, out to a precision of TOLERANCE decimal places if
-            the pixel value is a float.
+        + Each pixel value, such that the absolute difference between the
+            pixels is less than `tolerance`.
 
         + Projection
 
