@@ -599,6 +599,9 @@ class GISTestTester(unittest.TestCase):
             reference.projection, -1, reference.pixel_size(30),
             datatype=gdal.GDT_Float32, format='GTiff', filename=filename_b)
 
+        # 0.005 is greater than the difference between the pixel values in
+        # these two matrices.  We're only testing that we can use a
+        # user-defined tolerance here.
         pygeoprocessing.testing.assert_rasters_equal(filename_a, filename_b, tolerance=0.005)
 
     def test_raster_inequality_to_tolerance(self):
@@ -616,6 +619,8 @@ class GISTestTester(unittest.TestCase):
             reference.projection, -1, reference.pixel_size(30),
             datatype=gdal.GDT_Float32, format='GTiff', filename=filename_b)
 
+        # 0.005 is smaller than the difference between the pixel values in
+        # these two matrices, so the relative tolerance check should fail.
         self.assertRaises(
             AssertionError, pygeoprocessing.testing.assert_rasters_equal,
             filename_a, filename_b, tolerance=0.00005)
