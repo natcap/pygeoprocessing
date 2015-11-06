@@ -16,8 +16,13 @@ import pygeoprocessing
 from . import utils
 from . import data_storage
 
-LOGGER = logging.getLogger('pygeoprocessing.testing.assertions')
+
+# TOLERANCE is based on the machine epsilon for single-precision floating-point
+# decimal numbers.  See https://en.wikipedia.org/wiki/Machine_epsilon for more
+# information on machine epsilons.  This is the default allowable relative
+# error due to rounding for our assertions.
 TOLERANCE = 1e-09
+LOGGER = logging.getLogger('pygeoprocessing.testing.assertions')
 
 
 def isclose(a, b, rel_tol=TOLERANCE, abs_tol=0.0):
