@@ -1,6 +1,5 @@
-"""
-Assertions for geospatial testing.
-"""
+# coding=utf-8
+"""Assertions for geospatial testing."""
 
 import os
 import csv
@@ -17,42 +16,69 @@ import pygeoprocessing
 from . import utils
 from . import data_storage
 
+
+# TOLERANCE is based on the machine epsilon for single-precision floating-point
+# decimal numbers.  See https://en.wikipedia.org/wiki/Machine_epsilon for more
+# information on machine epsilons.  This is the default allowable relative
+# error due to rounding for our assertions.
+TOLERANCE = 1e-09
 LOGGER = logging.getLogger('pygeoprocessing.testing.assertions')
-TOLERANCE = 7
 
 
-def assert_almost_equal(value_a, value_b, places=TOLERANCE, msg=None):
+def isclose(a, b, rel_tol=TOLERANCE, abs_tol=0.0):
+    """Assert that values are equal to the given tolerance.
+
+    Adapted from the python 3.5 standard library based on the
+    specification found in PEP485.
+
+    Parameters:
+        a (int or float): The first value to test
+        b (int or float): The second value to test
+        rel_tol (int or float): is the relative tolerance - it is the
+            maximum allowed difference between a and b, relative to the
+            larger absolute value of a or b. For example, to set a
+            tolerance of 5%, pass `rel_tol=0.05`. The default tolerance
+            is 1e-09, which assures that the two values are the same
+            within about 9 decimal digits. rel_tol must be greater than
+            zero.
+        abs_tol (float): is the minimum absolute tolerance - useful for
+            comparisons near zero. abs_tol must be at least zero.
+
+    Returns:
+        A boolean.
     """
-    Assert that values a and b are equal out to `places` places.
-    If msg is not provided, a standard one will be used.
+    return abs(a-b) <= max(rel_tol * max(abs(a), abs(b)), abs_tol)
+
+
+def assert_close(value_a, value_b, tolerance=TOLERANCE, msg=None):
+    """
+    Assert equality to an absolute tolerance.
 
     Parameters:
         value_a (int or float): The first value to test.
         value_b (int or float): The second value to test.
-        places=TOLERANCE (int): The number of places to which the values
-            should be tested.
+        tolerance=TOLERANCE (int or float): The numerical tolerance.  If
+            the values being asserted are any more different than this value,
+            AssertionError will be raised.
         msg=None (string or None): The assertion message to use if value_a
-            and value_b are not found to be equal to `places` places.
+            and value_b are not found to be equal out to the target tolerance.
 
     Returns:
         None.
 
     Raises:
         AssertionError: Raised when the values are not equal out to the
-        desired precision.
+        desired tolerance.
     """
-    if round(abs(value_b - value_a), places) == 0:
-        return
-
-    if msg is None:
-        msg = "{a} != {b} within {pl} places".format(
-            a=value_a, b=value_b, pl=places)
-    raise AssertionError(msg)
+    if not isclose(value_a, value_b, tolerance):
+        if msg is None:
+            msg = "{a} != {b} within {tol}".format(
+                a=value_a, b=value_b, tol=tolerance)
+        raise AssertionError(msg)
 
 
-def assert_rasters_equal(a_uri, b_uri):
-    """Tests if datasets a and b are 'almost equal' to each other on a per
-    pixel basis
+def assert_rasters_equal(a_uri, b_uri, tolerance=TOLERANCE):
+    """Assert te equality of rasters a and b out to the given tolerance.
 
     This assertion method asserts the equality of these raster
     characteristics:
@@ -60,14 +86,17 @@ def assert_rasters_equal(a_uri, b_uri):
 
         + The number of layers in the raster
 
-        + Each pixel value, out to a precision of TOLERANCE decimal places if
-            the pixel value is a float.
+        + Each pixel value, such that the absolute difference between the
+            pixels is less than `tolerance`.
 
         + Projection
 
     Args:
         a_uri (string): a URI to a GDAL dataset
         b_uri (string): a URI to a GDAL dataset
+        tolerance=TOLERANCE (int or float): the absolute tolerance to which
+            values should be asserted.  This is a numerical tolerance,
+            not the number of places to which a value should be rounded.
 
     Returns:
         None
@@ -79,7 +108,6 @@ def assert_rasters_equal(a_uri, b_uri):
         equal to each other.
 
     """
-
     LOGGER.debug('Asserting datasets A: %s, B: %s', a_uri, b_uri)
 
     for uri in [a_uri, b_uri]:
@@ -118,31 +146,29 @@ def assert_rasters_equal(a_uri, b_uri):
                 pygeoprocessing.iterblocks(a_uri, [band_number]),
                 pygeoprocessing.iterblocks(b_uri, [band_number])):
             try:
-                numpy.testing.assert_array_almost_equal(a_block, b_block,
-                                                        verbose=True)
+                numpy.testing.assert_allclose(a_block, b_block,
+                                              rtol=tolerance)
             except AssertionError:
                 iterator = numpy.nditer([a_block, b_block],
                                         flags=['multi_index'],
                                         op_flags=['readonly'])
                 while not iterator.finished:
-                    col = a_data['xoff'] + iterator.multi_index[0]
-                    row = a_data['yoff'] + iterator.multi_index[1]
+                    col = iterator.multi_index[0]
+                    row = iterator.multi_index[1]
+
                     pixel_a = a_block[iterator.multi_index]
                     pixel_b = b_block[iterator.multi_index]
-                    if pixel_a != pixel_b:
-                        raise AssertionError(
-                            '{a_val} != {b_val} at col {col}, row {row}'.format(
-                                a_val=pixel_a,
-                                b_val=pixel_b,
-                                col=col,
-                                row=row
-                            ))
+                    assert_close(
+                        pixel_a, pixel_b, tolerance,
+                        ('{a_val} != {b_val} at col {col}, '
+                         'row {row} within {tol}').format(
+                            a_val=pixel_a, b_val=pixel_b, col=col,
+                             row=row, tol=tolerance))
                     iterator.iternext()
 
 
 def assert_vectors_equal(a_uri, b_uri):
-    """
-    Tests if vector datasources are equal to each other.
+    """Assert that the vectors at a_uri and b_uri are equal to each other.
 
     This assertion method asserts the equality of these vector
     characteristics:
@@ -174,7 +200,6 @@ def assert_vectors_equal(a_uri, b_uri):
     Returns
         None
     """
-
     for uri in [a_uri, b_uri]:
         if not os.path.exists(uri):
             raise IOError('File "%s" not found on disk' % uri)
@@ -237,7 +262,8 @@ def assert_vectors_equal(a_uri, b_uri):
                 field_name = field_ref.GetNameRef()
                 field_name_regression = field_ref_regression.GetNameRef()
                 if field_name != field_name_regression:
-                    raise AssertionError('The fields DO NOT have the same name')
+                    raise AssertionError('The fields DO NOT have the same '
+                                         'name')
 
             # Check that the features have the same geometry
             geom = feat.GetGeometryRef()
@@ -247,8 +273,8 @@ def assert_vectors_equal(a_uri, b_uri):
                 feature_fid = feat.GetFID()
                 reg_feature_fid = feat_regression.GetFID()
                 raise AssertionError(
-                'Geometries are not equal in feature %s, '
-                'regression feature %s') % (feature_fid, reg_feature_fid)
+                    'Geometries are not equal in feature %s, '
+                    'regression feature %s') % (feature_fid, reg_feature_fid)
 
             feat = None
             feat_regression = None
@@ -260,15 +286,16 @@ def assert_vectors_equal(a_uri, b_uri):
 
 
 def assert_csv_equal(a_uri, b_uri, tolerance=TOLERANCE):
-    """Tests if csv files a and b are 'almost equal' to each other on a per
-    cell basis.  Numeric cells are asserted to be equal out to TOLERANCE decimal
-    places.  Other cell types are asserted to be equal.
+    """Assert the equality of CSV files at a_uri and b_uri.
+
+    Tests if csv files a and b are 'almost equal' to each other on a per
+    cell basis.  Numeric cells are asserted to be equal within the given
+    tolerance.  Other cell types are asserted to be equal.
 
     Args:
         a_uri (string): a URI to a csv file
         b_uri (string): a URI to a csv file
-        tolerance=TOLERANCE (int): The number of places out to which to test
-            floating-point cell values.
+        tolerance=TOLERANCE (int or float): The numerical tolerance allowed.
 
     Raises:
         AssertionError: Raised when the two CSV files are found to be
@@ -277,7 +304,6 @@ def assert_csv_equal(a_uri, b_uri, tolerance=TOLERANCE):
     Returns:
         None
     """
-
     a = open(a_uri, 'rb')
     b = open(b_uri, 'rb')
 
@@ -295,7 +321,8 @@ def assert_csv_equal(a_uri, b_uri, tolerance=TOLERANCE):
                 try:
                     a_element = float(a_element)
                     b_element = float(b_element)
-                    assert_almost_equal(a_element, b_element, places=tolerance,
+                    assert_close(
+                        a_element, b_element, tolerance=tolerance,
                         msg=('Values are significantly different at row %s'
                              'col %s: a=%s b=%s' % (index, col_index,
                                                     a_element,
@@ -333,36 +360,12 @@ def assert_md5_equal(uri, regression_hash):
     Returns:
         None
     """
-
     if utils.digest_file(uri) != regression_hash:
         raise AssertionError('MD5 hashes differ')
 
 
-def assert_matrixes(matrix_a, matrix_b, decimal=TOLERANCE):
-    """Tests if the input numpy matrices are equal up to `decimal` places.
-
-    This is a convenience function that wraps up required functionality in
-    ``numpy.testing``.
-
-    Args:
-        matrix_a (numpy.ndarray): a numpy matrix
-        matrix_b (numpy.ndarray): a numpy matrix
-        decimal (int): an integer of the desired precision.
-
-    Raises:
-        AssertionError: Raised when the two matrices are determined to be
-        different.
-
-    Returns:
-        None
-    """
-
-    numpy.testing.assert_array_almost_equal(matrix_a, matrix_b, decimal)
-
-
 def assert_archives_equal(archive_1_uri, archive_2_uri):
-    """
-    Compare the contents of two archived workspaces against each other.
+    """Compare the contents of two archived workspaces against each other.
 
     Takes two archived workspaces, each generated from
     ``build_regression_archives()``, unzips them and
@@ -379,7 +382,6 @@ def assert_archives_equal(archive_1_uri, archive_2_uri):
     Returns:
         None
     """
-
     archive_1_folder = pygeoprocessing.geoprocessing.temporary_folder()
     data_storage.extract_archive(archive_1_folder, archive_1_uri)
 
@@ -391,8 +393,7 @@ def assert_archives_equal(archive_1_uri, archive_2_uri):
 
 def assert_workspace(archive_1_folder, archive_2_folder,
                      glob_exclude=''):
-    """
-    Check the contents of two folders against each other.
+    """Check the contents of two folders against each other.
 
     This method iterates through the contents of each workspace folder and
     verifies that all files exist in both folders.  If this passes, then
@@ -417,9 +418,7 @@ def assert_workspace(archive_1_folder, archive_2_folder,
     Returns:
         None
     """
-
     # uncompress the two archives
-
     archive_1_files = []
     archive_2_files = []
     for files_list, workspace in [
@@ -476,7 +475,6 @@ def assert_json_equal(json_1_uri, json_2_uri):
     Returns:
         None
     """
-
     dict_1 = json.loads(open(json_1_uri).read())
     dict_2 = json.loads(open(json_2_uri).read())
 
@@ -485,7 +483,7 @@ def assert_json_equal(json_1_uri, json_2_uri):
 
 
 def assert_text_equal(text_1_uri, text_2_uri):
-    """Assert that two text files are equal
+    """Assert that two text files are equal.
 
     This comparison is done line-by-line.
 
@@ -501,7 +499,6 @@ def assert_text_equal(text_1_uri, text_2_uri):
     Returns:
         None
     """
-
     def lines(f):
         """Return a list of lines in the opened file."""
         return [line for line in open(f, 'rb')]
@@ -536,7 +533,6 @@ def assert_file_contents_equal(file_1_uri, file_2_uri):
     Returns:
         None
     """
-
     for uri in [file_1_uri, file_2_uri]:
         if not os.path.exists(uri):
             raise IOError('File not found %s' % uri)
@@ -570,8 +566,7 @@ def assert_file_contents_equal(file_1_uri, file_2_uri):
 
 
 def assert_checksums_equal(checksum_file, base_folder=None):
-    """
-    Assert all files in the `checksum_file` have the same checksum.
+    """Assert all files in the `checksum_file` have the same checksum.
 
     Checksum files could be created by
     `pygeoprocessing.testing.utils.checksum_folder()`, but this function
@@ -588,7 +583,6 @@ def assert_checksums_equal(checksum_file, base_folder=None):
     Raises:
         AssertionError: when a nonmatching md5sum is found.
     """
-
     if base_folder is None:
         base_folder = os.getcwd()
 
@@ -640,7 +634,8 @@ def assert_checksums_equal(checksum_file, base_folder=None):
                 'All files recorded in the snapshot are missing.  Are you '
                 'testing against the right folder?  Testing {test_dir}. '
                 'Snapshot taken from {snap_dir}.').format(
-                    test_dir=base_folder, snap_dir=env_params['orig_workspace']))
+                    test_dir=base_folder,
+                    snap_dir=env_params['orig_workspace']))
         raise AssertionError(
             ('{num_missing} files out of {num_files} are '
              'missing.').format(num_missing=len(missing_files),
