@@ -4,10 +4,14 @@ import os
 import shutil
 import glob
 
+import numpy
+from osgeo import gdal
+
 from pygeoprocessing.testing import scm
 import pygeoprocessing.testing as testing
 from pygeoprocessing.testing import data_storage
 from pygeoprocessing.testing import utils
+from pygeoprocessing.testing import sampledata
 import pygeoprocessing as raster_utils
 import pygeoprocessing
 
@@ -579,3 +583,44 @@ class GISTestTester(unittest.TestCase):
         testing.assert_checksums_equal(snapshot_file, REGRESSION_INPUT)
         self.assertRaises(AssertionError, testing.assert_checksums_equal,
                           snapshot_file, POLLINATION_DATA)
+
+    def test_raster_equality_to_tolerance(self):
+        """Verify assert_rasters_equal asserts out to the given tolerance."""
+        reference = sampledata.SRS_COLOMBIA
+        filename_a = pygeoprocessing.temporary_filename()
+        sampledata.create_raster_on_disk(
+            [numpy.array([[0.1234567]])], reference.origin,
+            reference.projection, -1, reference.pixel_size(30),
+            datatype=gdal.GDT_Float32, format='GTiff', filename=filename_a)
+
+        filename_b = pygeoprocessing.temporary_filename()
+        sampledata.create_raster_on_disk(
+            [numpy.array([[0.123]])], reference.origin,
+            reference.projection, -1, reference.pixel_size(30),
+            datatype=gdal.GDT_Float32, format='GTiff', filename=filename_b)
+
+        # 0.005 is greater than the difference between the pixel values in
+        # these two matrices.  We're only testing that we can use a
+        # user-defined tolerance here.
+        pygeoprocessing.testing.assert_rasters_equal(filename_a, filename_b, tolerance=0.005)
+
+    def test_raster_inequality_to_tolerance(self):
+        """Verify assert_rasters_equal fails if inequal past a tolerance."""
+        reference = sampledata.SRS_COLOMBIA
+        filename_a = pygeoprocessing.temporary_filename()
+        sampledata.create_raster_on_disk(
+            [numpy.array([[0.1234567]])], reference.origin,
+            reference.projection, -1, reference.pixel_size(30),
+            datatype=gdal.GDT_Float32, format='GTiff', filename=filename_a)
+
+        filename_b = pygeoprocessing.temporary_filename()
+        sampledata.create_raster_on_disk(
+            [numpy.array([[0.123]])], reference.origin,
+            reference.projection, -1, reference.pixel_size(30),
+            datatype=gdal.GDT_Float32, format='GTiff', filename=filename_b)
+
+        # 0.005 is smaller than the difference between the pixel values in
+        # these two matrices, so the relative tolerance check should fail.
+        self.assertRaises(
+            AssertionError, pygeoprocessing.testing.assert_rasters_equal,
+            filename_a, filename_b, tolerance=0.00005)
