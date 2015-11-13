@@ -2505,7 +2505,10 @@ def get_lookup_from_csv(csv_table_uri, key_field):
         return string
 
     with open(csv_table_uri, 'rU') as csv_file:
-        csv_reader = csv.reader(csv_file)
+        # attempt to detect excel style csvs
+        dialect = csv.Sniffer().sniff(csv_file.read(1024), delimiters=";,")
+        csv_file.seek(0)
+        csv_reader = csv.reader(csv_file, dialect=dialect)
         header_row = map(lambda s: u(s), csv_reader.next())
         key_index = header_row.index(key_field)
         # This makes a dictionary that maps the headers to the indexes they
