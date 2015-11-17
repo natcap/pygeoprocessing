@@ -82,7 +82,7 @@ def _cython_calculate_slope(dem_dataset_uri, slope_uri):
         returns nothing"""
 
     #Read the DEM directly into an array
-    cdef float a,b,c,d,e,f,g,h,i,dem_nodata
+    cdef float a,b,c,d,e,f,g,h,i,dem_nodata,z
     cdef int row_index, col_index, n_rows, n_cols
 
     dem_dataset = gdal.Open(dem_dataset_uri)
@@ -110,35 +110,92 @@ def _cython_calculate_slope(dem_dataset_uri, slope_uri):
     cdef numpy.ndarray[numpy.float_t, ndim=2] dzdx = numpy.empty((1, n_cols))
     cdef numpy.ndarray[numpy.float_t, ndim=2] dzdy = numpy.empty((1, n_cols))
 
-    for row_index in xrange(1, n_rows - 1):
+    for row_index in xrange(n_rows):
         #Loop through the dataset 3 rows at a time
-        dem_array = dem_band.ReadAsArray(0, row_index - 1, n_cols, 3, buf_obj=dem_array)
+        start_row_index = row_index - 1
+        n_rows_to_read = 3
+        # see if we need to loose a row on the top
+        if start_row_index < 0:
+            n_rows_to_read -= 1
+            start_row_index = 0
+        # see if we need to lose a row on the bottom
+        if start_row_index + 2 >= n_rows:
+            # -= 1 allows us to handle single row DEMs
+            n_rows_to_read -= 1
+
+        dem_array = dem_band.ReadAsArray(0, start_row_index, n_cols, n_rows_to_read, buf_obj=dem_array)
         slope_array[0, :] = slope_nodata
         dzdx[:] = slope_nodata
         dzdy[:] = slope_nodata
-        for col_index in xrange(1, n_cols - 1):
+        for col_index in xrange(n_cols):
             # abc
             # def
             # ghi
 
-            a = dem_array[0, col_index - 1]
-            if a == dem_nodata: continue
-            b = dem_array[0, col_index]
-            if b == dem_nodata: continue
-            c = dem_array[0, col_index + 1]
-            if c == dem_nodata: continue
-            d = dem_array[1, col_index - 1]
-            if d == dem_nodata: continue
+            # e will be the value of any out of bound or nodata pixels
             e = dem_array[1, col_index]
-            if e == dem_nodata: continue
-            f = dem_array[1, col_index + 1]
-            if f == dem_nodata: continue
-            g = dem_array[2, col_index - 1]
-            if g == dem_nodata: continue
-            h = dem_array[2, col_index]
-            if h == dem_nodata: continue
-            i = dem_array[2, col_index + 1]
-            if i == dem_nodata: continue
+            if e == dem_nodata:
+                continue
+
+            if row_index > 0:  # top bounds check
+                if col_index > 0:  # left bounds check
+                    a = dem_array[0, col_index - 1]
+                    if a == dem_nodata:
+                        a = e
+                else:
+                    a = e
+
+                b = dem_array[0, col_index]
+                if b == dem_nodata:
+                    b = e
+
+                if col_index < n_cols - 1:  # right bounds check
+                    c = dem_array[0, col_index + 1]
+                if c == dem_nodata:
+                    c = e
+            else:
+                # entire top row is out of bounds
+                a = e
+                b = e
+                c = e
+
+            if col_index > 0:  # left bounds check
+                d = dem_array[1, col_index - 1]
+                if d == dem_nodata:
+                    d = e
+            else:
+                d = e
+
+            if col_index < n_cols - 1:  # right bounds check
+                f = dem_array[1, col_index + 1]
+                if f == dem_nodata:
+                    f = e
+            else:
+                f = e
+
+            if row_index < n_rows - 1:  # bottom bounds check
+                if col_index > 0:  # left bounds check
+                    g = dem_array[2, col_index - 1]
+                    if g == dem_nodata:
+                        g = e
+                else:
+                    g = e
+
+                h = dem_array[2, col_index]
+                if h == dem_nodata:
+                    h = e
+
+                if col_index < n_cols - 1:  # right bounds check
+                    i = dem_array[2, col_index + 1]
+                    if i == dem_nodata:
+                        i = e
+                else:
+                    i = e
+            else:
+                # entire bottom row is out of bounds
+                g = e
+                h = e
+                i = e
 
             dzdx[0, col_index] = ((c+2*f+i) - (a+2*d+g)) / (cell_size_times_8)
             dzdy[0, col_index] = ((g+2*h+i) - (a+2*b+c)) / (cell_size_times_8)
