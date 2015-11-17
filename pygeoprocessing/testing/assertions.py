@@ -212,7 +212,8 @@ def assert_vectors_equal(a_uri, b_uri):
     layer_count_regression = shape_regression.GetLayerCount()
     if layer_count != layer_count_regression:
         raise AssertionError(
-            'The shapes DO NOT have the same number of layers')
+            'Number of vector layers do not match: %s != %s' % (
+                layer_count, layer_count_regression))
 
     for layer_num in range(layer_count):
         # Get the current layer
@@ -223,7 +224,8 @@ def assert_vectors_equal(a_uri, b_uri):
         feat_count_regression = layer_regression.GetFeatureCount()
         if feat_count != feat_count_regression:
             raise AssertionError(
-                'The layers DO NOT have the same number of features')
+                ('The layers DO NOT have the same number of features'
+                 '%s != %s' % (feat_count, feat_count_regression)))
 
         if layer.GetGeomType() != layer_regression.GetGeomType():
             raise AssertionError(
@@ -245,15 +247,19 @@ def assert_vectors_equal(a_uri, b_uri):
             field_count = layer_def.GetFieldCount()
             field_count_regression = layer_def_regression.GetFieldCount()
             if field_count != field_count_regression:
-                raise AssertionError(
-                    'The shapes DO NOT have the same number of fields')
+                raise AssertionError((
+                    'The shapes DO NOT have the same number of fields'
+                    ' %s != %s') % (field_count, field_count_regression)
+                    )
 
             for fld_index in range(field_count):
                 # Check that the features have the same field values
                 field = feat.GetField(fld_index)
                 field_regression = feat_regression.GetField(fld_index)
                 if field != field_regression:
-                    raise AssertionError('The field values DO NOT match')
+                    raise AssertionError(
+                        'Field values %s != %s at index %s' % (
+                            field, field_regression, fld_index))
 
                 # Check that the features have the same field name
                 field_ref = feat.GetFieldDefnRef(fld_index)
@@ -262,8 +268,8 @@ def assert_vectors_equal(a_uri, b_uri):
                 field_name = field_ref.GetNameRef()
                 field_name_regression = field_ref_regression.GetNameRef()
                 if field_name != field_name_regression:
-                    raise AssertionError('The fields DO NOT have the same '
-                                         'name')
+                    raise AssertionError('Field names %s != %s at index %s' % (
+                        field_name, field_name_regression, fld_index))
 
             # Check that the features have the same geometry
             geom = feat.GetGeometryRef()
