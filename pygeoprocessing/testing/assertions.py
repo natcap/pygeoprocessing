@@ -6,6 +6,7 @@ import csv
 import logging
 import json
 import glob
+import itertools
 
 from osgeo import gdal
 from osgeo import ogr
@@ -302,7 +303,7 @@ def assert_vectors_equal(a_uri, b_uri):
                 if field_name != field_name_regression:
                     raise AssertionError(
                         'Field names %s != %s at index %s in layer %s' % (
-                        field_name, field_name_regression, fld_index))
+                            field_name, field_name_regression, fld_index))
 
             # Check that the features have the same geometry
             geom = feat.GetGeometryRef()
@@ -400,8 +401,10 @@ def assert_md5_equal(uri, regression_hash):
     Returns:
         None
     """
-    if utils.digest_file(uri) != regression_hash:
-        raise AssertionError('MD5 hashes differ')
+    digested_file = utils.digest_file(uri)
+    if digested_file != regression_hash:
+        raise AssertionError('MD5 hashes differ: %s != %s' % (digested_file,
+                                                              regression_hash))
 
 
 def assert_archives_equal(archive_1_uri, archive_2_uri):
@@ -539,15 +542,19 @@ def assert_text_equal(text_1_uri, text_2_uri):
     Returns:
         None
     """
-    def lines(f):
-        """Return a list of lines in the opened file."""
-        return [line for line in open(f, 'rb')]
-    for index, (a_line, b_line) in enumerate(zip(lines(text_1_uri),
-                                                 lines(text_2_uri))):
+    def lines(filepath):
+        """Return a generator of lines in the opened file."""
+        with open(filepath, 'rb') as opened_file:
+            for line in opened_file:
+                yield line
+
+    for index, (a_line, b_line) in enumerate(itertools.izip(
+            lines(text_1_uri), lines(text_2_uri))):
         if a_line != b_line:
             raise AssertionError('Line %s in %s does not match regression '
-                                 'file. Output  "%s" Regression "%s"' % (
-                                     index, text_1_uri, a_line, b_line))
+                                 'file %s. Output  "%s" Regression "%s"' % (
+                                     index, text_1_uri, text_2_uri, a_line,
+                                     b_line))
 
 
 def assert_file_contents_equal(file_1_uri, file_2_uri):
@@ -581,8 +588,8 @@ def assert_file_contents_equal(file_1_uri, file_2_uri):
     file_1_ext = os.path.splitext(file_1_uri)[1]
     file_2_ext = os.path.splitext(file_2_uri)[1]
     if file_1_ext != file_2_ext:
-        raise AssertionError('Extensions differ: %s, %s' % (file_1_ext,
-                                                            file_2_ext))
+        raise AssertionError('Extensions differ: %s != %s' % (file_1_ext,
+                                                              file_2_ext))
 
     assert_funcs = {
         '.json': assert_json_equal,
