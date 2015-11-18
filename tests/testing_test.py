@@ -334,12 +334,12 @@ class GISTestTester(unittest.TestCase):
         # check that IOError is raised if a file is not found.
         raster_on_disk = os.path.join(TEST_INPUT, 'landuse_cur_200m.tif')
         self.assertRaises(IOError, testing.assert_rasters_equal, 'file_not_on_disk',
-            'other_file_not_on_disk')
+            'other_file_not_on_disk', tolerance=1e-9)
         self.assertRaises(IOError, testing.assert_rasters_equal, 'file_not_on_disk',
-            raster_on_disk)
+            raster_on_disk, tolerance=1e-9)
         self.assertRaises(IOError, testing.assert_rasters_equal,
-            raster_on_disk, 'file_not_on_disk')
-        testing.assert_rasters_equal(raster_on_disk, raster_on_disk)
+            raster_on_disk, 'file_not_on_disk', tolerance=1e-9)
+        testing.assert_rasters_equal(raster_on_disk, raster_on_disk, tolerance=1e-9)
 
     @scm.skip_if_data_missing(SVN_LOCAL_DIR)
     def test_raster_assertion_files_equal(self):
@@ -349,7 +349,7 @@ class GISTestTester(unittest.TestCase):
 
         source_file = os.path.join(TEST_INPUT, 'landuse_cur_200m.tif')
         shutil.copyfile(source_file, new_raster)
-        testing.assert_rasters_equal(source_file, new_raster)
+        testing.assert_rasters_equal(source_file, new_raster, tolerance=1e-9)
 
     @scm.skip_if_data_missing(SVN_LOCAL_DIR)
     def test_raster_assertion_different_dims(self):
@@ -357,7 +357,7 @@ class GISTestTester(unittest.TestCase):
         source_raster = os.path.join(TEST_INPUT, 'landuse_cur_200m.tif')
         different_raster = os.path.join(SAMPLE_RASTERS, 'lulc_samp_cur')
         self.assertRaises(AssertionError, testing.assert_rasters_equal,
-            source_raster, different_raster)
+            source_raster, different_raster, tolerance=1e-9)
 
     @scm.skip_if_data_missing(SVN_LOCAL_DIR)
     def test_raster_assertion_different_values(self):
@@ -365,19 +365,20 @@ class GISTestTester(unittest.TestCase):
         lulc_cur_raster = os.path.join(TEST_INPUT, 'landuse_cur_200m.tif')
         lulc_fut_raster = os.path.join(TEST_INPUT, 'landuse_fut_200m.tif')
         self.assertRaises(AssertionError, testing.assert_rasters_equal,
-            lulc_cur_raster, lulc_fut_raster)
+            lulc_cur_raster, lulc_fut_raster, tolerance=1e-9)
 
     @scm.skip_if_data_missing(SVN_LOCAL_DIR)
     def test_vector_assertion_fileio(self):
         """Verify correct behavior for assertVectorsEqual"""
         vector_on_disk = os.path.join(TEST_INPUT, 'farms.dbf')
         self.assertRaises(IOError, testing.assert_rasters_equal, 'file_not_on_disk',
-            'other_file_not_on_disk')
+            'other_file_not_on_disk', tolerance=1e-9)
         self.assertRaises(IOError, testing.assert_rasters_equal, 'file_not_on_disk',
-            vector_on_disk)
+            vector_on_disk, tolerance=1e-9)
         self.assertRaises(IOError, testing.assert_rasters_equal,
-            vector_on_disk, 'file_not_on_disk')
-        testing.assert_vectors_equal(vector_on_disk, vector_on_disk)
+            vector_on_disk, 'file_not_on_disk', tolerance=1e-9)
+        testing.assert_vectors_equal(vector_on_disk, vector_on_disk,
+                                     field_tolerance=1e-9)
 
     @scm.skip_if_data_missing(SVN_LOCAL_DIR)
     def test_vector_assertion_files_equal(self):
@@ -390,7 +391,8 @@ class GISTestTester(unittest.TestCase):
 
         sample_shape = os.path.join(TEST_INPUT, 'farms.shp')
         copied_shape = os.path.join(temp_folder, 'farms.shp')
-        testing.assert_vectors_equal(sample_shape, copied_shape)
+        testing.assert_vectors_equal(sample_shape, copied_shape,
+                                     field_tolerance=1e-9)
 
     @scm.skip_if_data_missing(SVN_LOCAL_DIR)
     def test_vectors_different_attributes(self):
@@ -399,7 +401,7 @@ class GISTestTester(unittest.TestCase):
         different_file = os.path.join(REGRESSION_ARCHIVES, 'farms.shp')
 
         self.assertRaises(AssertionError, testing.assert_vectors_equal, base_file,
-            different_file)
+            different_file, field_tolerance=1e-9)
 
     @scm.skip_if_data_missing(SVN_LOCAL_DIR)
     def test_vectors_very_different(self):
@@ -407,7 +409,7 @@ class GISTestTester(unittest.TestCase):
         base_file = os.path.join(TEST_INPUT, 'farms.shp')
         different_file = os.path.join(SAMPLE_VECTORS, 'harv_samp_cur.shp')
         self.assertRaises(AssertionError, testing.assert_vectors_equal, base_file,
-            different_file)
+            different_file, field_tolerance=1e-9)
 
     @scm.skip_if_data_missing(SVN_LOCAL_DIR)
     def test_csv_assertion_fileio(self):
@@ -415,10 +417,13 @@ class GISTestTester(unittest.TestCase):
         bad_file_2 = 'bbbbb'
         good_file = os.path.join(TEST_INPUT, 'Guild.csv')
 
-        self.assertRaises(IOError, testing.assert_csv_equal, bad_file_1, bad_file_2)
-        self.assertRaises(IOError, testing.assert_csv_equal, bad_file_1, good_file)
-        self.assertRaises(IOError, testing.assert_csv_equal, good_file, bad_file_2)
-        testing.assert_csv_equal(good_file, good_file)
+        self.assertRaises(IOError, testing.assert_csv_equal, bad_file_1,
+                          bad_file_2, tolerance=1e-9)
+        self.assertRaises(IOError, testing.assert_csv_equal, bad_file_1,
+                          good_file, tolerance=1e-9)
+        self.assertRaises(IOError, testing.assert_csv_equal, good_file,
+                          bad_file_2, tolerance=1e-9)
+        testing.assert_csv_equal(good_file, good_file, tolerance=1e-9)
 
     @scm.skip_if_data_missing(SVN_LOCAL_DIR)
     def test_csv_assertion_fails(self):
@@ -426,7 +431,7 @@ class GISTestTester(unittest.TestCase):
         different_file = os.path.join(TEST_INPUT, 'LU.csv')
 
         self.assertRaises(AssertionError, testing.assert_csv_equal, sample_file,
-            different_file)
+            different_file, tolerance=1e-9)
 
     @scm.skip_if_data_missing(SVN_LOCAL_DIR)
     def test_md5_same(self):
