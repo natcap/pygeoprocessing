@@ -609,16 +609,24 @@ def assert_file_contents_equal(file_1_uri, file_2_uri):
                                                               file_2_ext))
 
     assert_funcs = {
-        '.json': assert_json_equal,
-        '.tif': assert_rasters_equal,
-        '.shp': assert_vectors_equal,
-        '.csv': assert_csv_equal,
-        '.txt': assert_text_equal,
-        '.html': assert_text_equal,
+        '.json': (assert_json_equal, None),
+        '.tif': (assert_rasters_equal, 'tolerance'),
+        '.shp': (assert_vectors_equal, 'field_tolerance'),
+        '.csv': (assert_csv_equal, 'tolerance'),
+        '.txt': (assert_text_equal, None),
+        '.html': (assert_text_equal, None),
     }
 
     try:
-        assert_funcs[file_1_ext](file_1_uri, file_2_uri)
+        assertion_func, tolerance_fieldname = assert_funcs[file_1_ext]
+        kwargs = {}
+        if tolerance_fieldname:
+            # Assume a default tolerance here so we can provide it to users.
+            # Eventually might want a better way to assert this, or a better
+            # way for the user to define this.
+            kwargs[tolerance_fieldname] = 1e-9
+
+        assertion_func(file_1_uri, file_2_uri, **kwargs)
     except KeyError:
         # When we're given an extension we don't have a function for, assert
         # the MD5s.
