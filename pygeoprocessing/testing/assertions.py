@@ -51,14 +51,14 @@ def isclose(a, b, rel_tol=TOLERANCE, abs_tol=0.0):
     return abs(a-b) <= max(rel_tol * max(abs(a), abs(b)), abs_tol)
 
 
-def assert_close(value_a, value_b, tolerance=TOLERANCE, msg=None):
+def assert_close(value_a, value_b, tolerance, msg=None):
     """
     Assert equality to an absolute tolerance.
 
     Parameters:
         value_a (int or float): The first value to test.
         value_b (int or float): The second value to test.
-        tolerance=TOLERANCE (int or float): The numerical tolerance.  If
+        tolerance (int or float): The numerical tolerance.  If
             the values being asserted are any more different than this value,
             AssertionError will be raised.
         msg=None (string or None): The assertion message to use if value_a
@@ -78,7 +78,7 @@ def assert_close(value_a, value_b, tolerance=TOLERANCE, msg=None):
         raise AssertionError(msg)
 
 
-def assert_rasters_equal(a_uri, b_uri, tolerance=TOLERANCE):
+def assert_rasters_equal(a_uri, b_uri, tolerance):
     """Assert te equality of rasters a and b out to the given tolerance.
 
     This assertion method asserts the equality of these raster
@@ -95,7 +95,7 @@ def assert_rasters_equal(a_uri, b_uri, tolerance=TOLERANCE):
     Args:
         a_uri (string): a URI to a GDAL dataset
         b_uri (string): a URI to a GDAL dataset
-        tolerance=TOLERANCE (int or float): the absolute tolerance to which
+        tolerance (int or float): the relative tolerance to which
             values should be asserted.  This is a numerical tolerance,
             not the number of places to which a value should be rounded.
 
@@ -326,7 +326,7 @@ def assert_vectors_equal(a_uri, b_uri):
     shape_regression = None
 
 
-def assert_csv_equal(a_uri, b_uri, tolerance=TOLERANCE):
+def assert_csv_equal(a_uri, b_uri, tolerance):
     """Assert the equality of CSV files at a_uri and b_uri.
 
     Tests if csv files a and b are 'almost equal' to each other on a per
@@ -336,7 +336,7 @@ def assert_csv_equal(a_uri, b_uri, tolerance=TOLERANCE):
     Args:
         a_uri (string): a URI to a csv file
         b_uri (string): a URI to a csv file
-        tolerance=TOLERANCE (int or float): The numerical tolerance allowed.
+        tolerance (int or float): The relative numerical tolerance allowed.
 
     Raises:
         AssertionError: Raised when the two CSV files are found to be
