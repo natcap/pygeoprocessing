@@ -179,7 +179,7 @@ def assert_rasters_equal(a_uri, b_uri, tolerance):
                     iterator.iternext()
 
 
-def assert_vectors_equal(a_uri, b_uri):
+def assert_vectors_equal(a_uri, b_uri, field_tolerance):
     """Assert that the vectors at a_uri and b_uri are equal to each other.
 
     This assertion method asserts the equality of these vector
@@ -203,6 +203,8 @@ def assert_vectors_equal(a_uri, b_uri):
     Args:
         a_uri (string): a URI to an OGR vector
         b_uri (string): a URI to an OGR vector
+        field_tolerance (string): The relative numerical tolerance to which
+            field values should be asserted.
 
     Raises:
         IOError: Raised if one of the input files is not found on disk.
@@ -289,10 +291,15 @@ def assert_vectors_equal(a_uri, b_uri):
                 # Check that the features have the same field values
                 field = feat.GetField(fld_index)
                 field_regression = feat_regression.GetField(fld_index)
-                if field != field_regression:
-                    raise AssertionError(
-                        'Field values %s != %s at index %s in layer %s' % (
-                            field, field_regression, fld_index, layer_num))
+                message = (
+                    'Field values %s != %s at index %s in layer %s' % (
+                        field, field_regression, fld_index, layer_num))
+                try:
+                    assert_close(field, field_regression, field_tolerance,
+                                 message)
+                except ValueError:
+                    if field != field_regression:
+                        raise AssertionError(message)
 
                 # Check that the features have the same field name
                 field_ref = feat.GetFieldDefnRef(fld_index)
