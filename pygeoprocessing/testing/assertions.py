@@ -238,14 +238,35 @@ def assert_vectors_equal(a_uri, b_uri):
                 ('The layers DO NOT have the same number of features'
                  '%s != %s' % (feat_count, feat_count_regression)))
 
-        if layer.GetGeomType() != layer_regression.GetGeomType():
+        layer_geom = layer.GetGeomType()
+        layer_reg_geom = layer_regression.GetGeomType()
+        if layer_geom != layer_reg_geom:
+
+            def _readable_geometry_type(geom_type):
+                """Determine the geometry type from the OGR wkb int.
+
+                Parameters:
+                    geom_type: The result of ogr.Layer.GetGeomType()
+
+                Returns:
+                    A string representation of the feature type.
+                """
+                for attr_name in dir(ogr):
+                    if (attr_name.startswith('wkb') and
+                            getattr(ogr, attr_name) == geom_type):
+                        return attr_name.replace('wkb', '')
+
+            layer_geom_string = _readable_geometry_type(layer_geom)
+            layer_reg_geom_string = _readable_geometry_type(layer_reg_geom)
             raise AssertionError(
-                'The layers do not have the same geometry type')
+                'Layers #%s have different geometry types: %s != %s' % (
+                    layer_num, layer_geom_string, layer_reg_geom_string))
 
         a_sr = layer.GetSpatialRef()
         b_sr = layer_regression.GetSpatialRef()
         if bool(a_sr.IsSame(b_sr)) is False:
-            raise AssertionError('Projections differ')
+            raise AssertionError('Projections differ in layer %s: %s != %s' % (
+                layer_num, a_sr.ExportToPrettyWkt(), b_sr.ExportToPrettyWkt()))
 
         # Get the first features of the layers and loop through all the
         # features
@@ -259,9 +280,9 @@ def assert_vectors_equal(a_uri, b_uri):
             field_count_regression = layer_def_regression.GetFieldCount()
             if field_count != field_count_regression:
                 raise AssertionError((
-                    'The shapes DO NOT have the same number of fields'
-                    ' %s != %s') % (field_count, field_count_regression)
-                    )
+                    'The features DO NOT have the same number of fields in '
+                    'layer %s: %s != %s') % (layer_num, field_count,
+                                             field_count_regression))
 
             for fld_index in range(field_count):
                 # Check that the features have the same field values
@@ -269,8 +290,8 @@ def assert_vectors_equal(a_uri, b_uri):
                 field_regression = feat_regression.GetField(fld_index)
                 if field != field_regression:
                     raise AssertionError(
-                        'Field values %s != %s at index %s' % (
-                            field, field_regression, fld_index))
+                        'Field values %s != %s at index %s in layer %s' % (
+                            field, field_regression, fld_index, layer_num))
 
                 # Check that the features have the same field name
                 field_ref = feat.GetFieldDefnRef(fld_index)
@@ -279,7 +300,8 @@ def assert_vectors_equal(a_uri, b_uri):
                 field_name = field_ref.GetNameRef()
                 field_name_regression = field_ref_regression.GetNameRef()
                 if field_name != field_name_regression:
-                    raise AssertionError('Field names %s != %s at index %s' % (
+                    raise AssertionError(
+                        'Field names %s != %s at index %s in layer %s' % (
                         field_name, field_name_regression, fld_index))
 
             # Check that the features have the same geometry
@@ -291,7 +313,8 @@ def assert_vectors_equal(a_uri, b_uri):
                 reg_feature_fid = feat_regression.GetFID()
                 raise AssertionError(
                     'Geometries are not equal in feature %s, '
-                    'regression feature %s') % (feature_fid, reg_feature_fid)
+                    'regression feature %s in layer %s') % (
+                        feature_fid, reg_feature_fid, layer_num)
 
             feat = None
             feat_regression = None
