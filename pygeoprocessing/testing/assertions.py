@@ -291,15 +291,25 @@ def assert_vectors_equal(a_uri, b_uri, field_tolerance):
                 # Check that the features have the same field values
                 field = feat.GetField(fld_index)
                 field_regression = feat_regression.GetField(fld_index)
-                message = (
-                    'Field values %s != %s at index %s in layer %s' % (
-                        field, field_regression, fld_index, layer_num))
+
                 try:
-                    assert_close(field, field_regression, field_tolerance,
-                                 message)
-                except ValueError:
-                    if field != field_regression:
-                        raise AssertionError(message)
+                    try:
+                        float_field = float(field)
+                        float_field_regression = float(field_regression)
+                        assert_close(float_field, float_field_regression,
+                                     field_tolerance)
+                    except (ValueError, TypeError):
+                        # ValueError happens when strings can't cast to float
+                        # TypeError when casting non-string or non-number.
+                        if field != field_regression:
+                            raise AssertionError
+                except AssertionError:
+                    # If we found an AssertionError, raise a more helpful
+                    # assertion error mesage here that includes vector
+                    # information.
+                    raise AssertionError(
+                        'Field values %s != %s at index %s in layer %s' % (
+                            field, field_regression, fld_index, layer_num))
 
                 # Check that the features have the same field name
                 field_ref = feat.GetFieldDefnRef(fld_index)
