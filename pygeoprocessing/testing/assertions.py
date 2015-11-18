@@ -203,8 +203,8 @@ def assert_vectors_equal(a_uri, b_uri, field_tolerance):
     Args:
         a_uri (string): a URI to an OGR vector
         b_uri (string): a URI to an OGR vector
-        field_tolerance (string): The relative numerical tolerance to which
-            field values should be asserted.
+        field_tolerance (int or float): The relative numerical tolerance to
+            which field values should be asserted.
 
     Raises:
         IOError: Raised if one of the input files is not found on disk.
