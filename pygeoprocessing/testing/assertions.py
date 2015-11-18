@@ -119,12 +119,12 @@ def assert_rasters_equal(a_uri, b_uri, tolerance=TOLERANCE):
 
     if a_dataset.RasterXSize != b_dataset.RasterXSize:
         raise AssertionError(
-            "x dimensions are different a=%s, second=%s" %
+            "x dimensions are different a=%s, b=%s" %
             (a_dataset.RasterXSize, b_dataset.RasterXSize))
 
     if a_dataset.RasterYSize != b_dataset.RasterYSize:
         raise AssertionError(
-            "y dimensions are different a=%s, second=%s" %
+            "y dimensions are different a=%s, b=%s" %
             (a_dataset.RasterYSize, b_dataset.RasterYSize))
 
     if a_dataset.RasterCount != b_dataset.RasterCount:
@@ -139,9 +139,20 @@ def assert_rasters_equal(a_uri, b_uri, tolerance=TOLERANCE):
     b_sr.ImportFromWkt(b_dataset.GetProjection())
 
     if bool(a_sr.IsSame(b_sr)) is False:
-        raise AssertionError('Projections differ')
+        raise AssertionError('Projections differ: %s != %s' % (
+            a_sr.ExportToPrettyWkt(), b_sr.ExportToPrettyWkt()))
 
     for band_number in range(1, a_dataset.RasterCount + 1):
+        a_band = a_dataset.GetRasterBand(band_number)
+        b_band = b_dataset.GetRasterBand(band_number)
+
+        a_blocksize = a_band.GetBlockSize()
+        b_blocksize = b_band.GetBlockSize()
+        if a_blocksize != b_blocksize:
+            raise AssertionError(
+                'Block sizes differ for band %s: %s != %s' % (
+                    band_number, a_blocksize, b_blocksize))
+
         for (a_data, a_block), (b_data, b_block) in zip(
                 pygeoprocessing.iterblocks(a_uri, [band_number]),
                 pygeoprocessing.iterblocks(b_uri, [band_number])):
