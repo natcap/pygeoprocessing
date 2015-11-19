@@ -4,7 +4,7 @@ Release History
 0.3.0 (XXX)
 -----------
 
-* Expose cython routing functions so they may be imported from C modules.
+* Exposed cython routing functions so they may be imported from C modules.
 * get_lookup_from_csv attempts to determine the dialect of the CSV instead of assuming comma delimited.
 * Added relative numerical tolerance parameters to the PyGeoprocessing raster and csv tests with in the same API style as `numpy.testing.allclose`.
 * Fixed an incomparability with GDAL 1.11.3 bindings that expects a boolean type in `band.ComputeStatistics`.  Before this fix PyGeoprocessing would crash with a TypeError on many operations.
