@@ -9,7 +9,6 @@ from osgeo import gdal
 
 from pygeoprocessing.testing import scm
 import pygeoprocessing.testing as testing
-from pygeoprocessing.testing import data_storage
 from pygeoprocessing.testing import utils
 from pygeoprocessing.testing import sampledata
 import pygeoprocessing as raster_utils
@@ -68,264 +67,6 @@ class DataStorageUtilsTest(unittest.TestCase):
         shutil.rmtree(dirname)
 
 
-class DataStorageTest(unittest.TestCase):
-    @scm.skip_if_data_missing(SVN_LOCAL_DIR)
-    def test_collect_parameters_simple(self):
-        params = {
-            'a': 1,
-            'b': 2,
-            'c': os.path.join(TEST_INPUT, 'LU.csv'),
-        }
-
-        archive_uri = os.path.join(TEST_OUT, 'archive')
-
-        data_storage.collect_parameters(params, archive_uri)
-        archive_uri = archive_uri + '.tar.gz'
-
-        regression_archive_uri = os.path.join(REGRESSION_ARCHIVES,
-            'collect_parameters_simple.tar.gz')
-
-        testing.assert_archives_equal(archive_uri, regression_archive_uri)
-
-    @scm.skip_if_data_missing(SVN_LOCAL_DIR)
-    def test_collect_parameters_nested_dict(self):
-        params = {
-            'a': 1,
-            'b': 2,
-            'd': {
-                'one': 1,
-                'two': 2,
-                'three': os.path.join(TEST_INPUT, 'Guild.csv')
-            },
-            'c': os.path.join(TEST_INPUT, 'LU.csv'),
-        }
-
-        archive_uri = os.path.join(TEST_OUT, 'archive_nested_dict')
-
-        data_storage.collect_parameters(params, archive_uri)
-        archive_uri = archive_uri + '.tar.gz'
-
-        regression_archive_uri = os.path.join(REGRESSION_ARCHIVES,
-            'simple_nested_dict.tar.gz')
-
-        testing.assert_archives_equal(archive_uri, regression_archive_uri)
-
-    @scm.skip_if_data_missing(SVN_LOCAL_DIR)
-    def test_archive_geotiff(self):
-        """Archive a simple geotiff."""
-        params = {
-            'raster': os.path.join(TEST_INPUT, 'landuse_cur_200m.tif')
-        }
-        archive_uri = os.path.join(TEST_OUT, 'raster_geotiff')
-        data_storage.collect_parameters(params, archive_uri)
-        archive_uri += '.tar.gz'
-
-        regression_archive_uri = os.path.join(REGRESSION_ARCHIVES,
-            'raster_geotiff.tar.gz')
-        testing.assert_archives_equal(archive_uri, regression_archive_uri)
-
-
-    @scm.skip_if_data_missing(SVN_LOCAL_DIR)
-    def test_archive_arc_raster_nice(self):
-        """
-        Test that messy arc raster organization collection will work.
-
-        Arc/Info Binary Grid (AIG) rasters are usually stored in nice, neat
-        directories, where all of the files in that directory belong to that
-        raster.  Verify that when a raster is organized nicely like this,
-        archiving works as expected.
-        """
-        params = {
-            'raster': os.path.join(SAMPLE_RASTERS, 'lulc_samp_cur')
-        }
-
-        archive_uri = os.path.join(TEST_OUT, 'raster_nice')
-        data_storage.collect_parameters(params, archive_uri)
-
-        archive_uri += '.tar.gz'
-        regression_archive_uri = os.path.join(REGRESSION_ARCHIVES,
-            'arc_raster_nice.tar.gz')
-        testing.assert_archives_equal(archive_uri, regression_archive_uri)
-
-    @scm.skip_if_data_missing(SVN_LOCAL_DIR)
-    def test_archive_arc_raster_messy(self):
-        """
-        Test that messy arc raster organization collection will work.
-
-        Arc/Info Binary Grid (AIG) rasters are usually stored in nice, neat
-        directories, where all of the files in that directory belong to that
-        raster.  This test verifies that when there is an extra file in that
-        directory, the correct files are collected.
-
-        Unfortunately, GDAL collects all the files in that folder, so anything
-        in that folder is considered part of an AIG raster.
-        """
-        params = {
-            'raster': os.path.join(TEST_INPUT, 'messy_raster_organization',
-                'hdr.adf')
-        }
-
-        archive_uri = os.path.join(TEST_OUT, 'raster_messy')
-        data_storage.collect_parameters(params, archive_uri)
-
-        archive_uri += '.tar.gz'
-        regression_archive_uri = os.path.join(REGRESSION_ARCHIVES,
-            'arc_raster_messy.tar.gz')
-        testing.assert_archives_equal(archive_uri, regression_archive_uri)
-
-    @scm.skip_if_data_missing(SVN_LOCAL_DIR)
-    def test_archive_esri_shapefile(self):
-        params = {
-            'vector': os.path.join(SAMPLE_VECTORS, 'harv_samp_cur.shp')
-        }
-
-        archive_uri = os.path.join(TEST_OUT, 'vector_collected')
-        data_storage.collect_parameters(params, archive_uri)
-
-        archive_uri += '.tar.gz'
-        regression_archive_uri = os.path.join(REGRESSION_ARCHIVES,
-            'vector_collected.tar.gz')
-        testing.assert_archives_equal(archive_uri, regression_archive_uri)
-
-    @scm.skip_if_data_missing(SVN_LOCAL_DIR)
-    def test_archive_pollination_input(self):
-        """Archive all the inputs for an example InVEST model (pollination)"""
-        params = {
-            u'ag_classes': '67 68 71 72 73 74 75 76 78 79 80 81 82 83 84 85 88 90 91 92',
-            u'do_valuation': True,
-            u'farms_shapefile': os.path.join(TEST_INPUT, 'farms.shp'),
-            u'guilds_uri': os.path.join(TEST_INPUT, 'Guild.csv'),
-            u'half_saturation': 0.125,
-            u'landuse_attributes_uri': os.path.join(TEST_INPUT, 'LU.csv'),
-            u'landuse_cur_uri': os.path.join(SAMPLE_RASTERS, 'lulc_samp_cur', 'hdr.adf'),
-            u'landuse_fut_uri': os.path.join(SAMPLE_RASTERS, 'lulc_samp_fut', 'hdr.adf'),
-            u'results_suffix': 'suff',
-            u'wild_pollination_proportion': 1.0,
-            u'workspace_dir': os.path.join(TEST_OUT, 'pollination_workspace'),
-        }
-
-        archive_uri = os.path.join(TEST_OUT, 'pollination_input')
-        data_storage.collect_parameters(params, archive_uri)
-
-        archive_uri += '.tar.gz'
-        regression_archive_uri = os.path.join(REGRESSION_ARCHIVES,
-            'pollination_input.tar.gz')
-        testing.assert_archives_equal(archive_uri, regression_archive_uri)
-
-    @scm.skip_if_data_missing(SVN_LOCAL_DIR)
-    def test_extract_archive(self):
-        """Verify an archive extracts as expected."""
-        workspace = raster_utils.temporary_folder()
-        archive_uri = os.path.join(REGRESSION_ARCHIVES,
-            'pollination_input.tar.gz')
-        input_folder = raster_utils.temporary_folder()
-        parameters = data_storage.extract_parameters_archive(workspace,
-            archive_uri, input_folder)
-
-        self.maxDiff = None
-        regression_params = {
-            u'ag_classes': u'67 68 71 72 73 74 75 76 78 79 80 81 82 83 84 85 88 90 91 92',
-            u'do_valuation': True,
-            u'farms_shapefile': os.path.join(input_folder, u'vector_NY3T16'),
-            u'guilds_uri': os.path.join(input_folder, u'Guild.csv'),
-            u'half_saturation': 0.125,
-            u'landuse_attributes_uri': os.path.join(input_folder, u'LU.csv'),
-            u'landuse_cur_uri': os.path.join(input_folder, u'raster_SST0AO'),
-            u'landuse_fut_uri': os.path.join(input_folder, u'raster_NFQKOB'),
-            u'results_suffix': u'suff',
-            u'wild_pollination_proportion': 1.0,
-            u'workspace_dir': workspace,
-        }
-
-        self.assertEqual(parameters, regression_params)
-
-        for key in ['farms_shapefile', 'guilds_uri', 'landuse_attributes_uri',
-            'landuse_cur_uri', 'landuse_fut_uri']:
-            self.assertEqual(True, os.path.exists(parameters[key]))
-
-    @scm.skip_if_data_missing(SVN_LOCAL_DIR)
-    def test_extract_archive_nested_args(self):
-        """Test that a complicated args dictionary archives properly"""
-        input_parameters = {
-            'a': 1,
-            'b': 2,
-            'd': {
-                'one': 1,
-                'two': 2,
-                'three': os.path.join(TEST_INPUT, 'Guild.csv')
-            },
-            'c': os.path.join(SAMPLE_VECTORS, 'harv_samp_cur.shp'),
-            'raster_list': [
-                os.path.join(SAMPLE_RASTERS, 'lulc_samp_fut'),
-                {
-                    'lulc_samp_cur': os.path.join(SAMPLE_RASTERS, 'lulc_samp_cur'),
-                    'do_biophysical': True,
-                }
-            ],
-            'c_again': os.path.join(SAMPLE_VECTORS, 'harv_samp_cur.shp'),
-        }
-        archive_uri = os.path.join(TEST_OUT, 'nested_args')
-        data_storage.collect_parameters(input_parameters, archive_uri)
-        archive_uri += '.tar.gz'
-        self.maxDiff=None
-
-        workspace = raster_utils.temporary_folder()
-        input_folder = raster_utils.temporary_folder()
-        regression_parameters = {
-            u'a': 1,
-            u'b': 2,
-            u'd': {
-                u'one': 1,
-                u'two': 2,
-                u'three': os.path.join(input_folder, u'Guild.csv')
-            },
-            u'c': os.path.join(input_folder, u'vector_W4DTZB'),
-            u'raster_list': [
-                os.path.join(input_folder, u'raster_NFQKOB'),
-                {
-                    u'lulc_samp_cur': os.path.join(input_folder, u'raster_SST0AO'),
-                    u'do_biophysical': True,
-                }
-            ],
-            u'c_again': os.path.join(input_folder, u'vector_W4DTZB'),
-            u'workspace_dir': workspace,
-        }
-        parameters = data_storage.extract_parameters_archive(workspace,
-            archive_uri, input_folder)
-        self.assertEqual(parameters, regression_parameters)
-
-        files_to_check = [
-            regression_parameters['d']['three'],
-            regression_parameters['c'],
-            regression_parameters['raster_list'][0],
-            regression_parameters['raster_list'][1]['lulc_samp_cur'],
-            regression_parameters['c_again'],
-        ]
-
-        for file_uri in files_to_check:
-            self.assertEqual(True, os.path.exists(file_uri))
-
-    @scm.skip_if_data_missing(SVN_LOCAL_DIR)
-    def test_archive_dbf(self):
-        """
-        Test that a DBF archives correctly
-
-        This requires its own test because OGR happily will open a DBF file.
-        We do not, however, want to treat it like a vector, we want to treat
-        it like a regular file.
-        """
-        input_parameters = {
-            'dbf_file': os.path.join(TEST_INPUT, 'carbon_pools_samp.dbf'),
-        }
-        archive_uri = os.path.join(TEST_OUT, 'dbf_archive')
-        data_storage.collect_parameters(input_parameters, archive_uri)
-
-        archive_uri += '.tar.gz'
-        reg_archive_uri = os.path.join(REGRESSION_ARCHIVES,
-            'dbf_archive.tar.gz')
-        testing.assert_archives_equal(archive_uri, reg_archive_uri)
-
-
 class GISTestTester(unittest.TestCase):
     @scm.skip_if_data_missing(SVN_LOCAL_DIR)
     def test_raster_assertion_fileio(self):
@@ -334,12 +75,12 @@ class GISTestTester(unittest.TestCase):
         # check that IOError is raised if a file is not found.
         raster_on_disk = os.path.join(TEST_INPUT, 'landuse_cur_200m.tif')
         self.assertRaises(IOError, testing.assert_rasters_equal, 'file_not_on_disk',
-            'other_file_not_on_disk')
+            'other_file_not_on_disk', tolerance=1e-9)
         self.assertRaises(IOError, testing.assert_rasters_equal, 'file_not_on_disk',
-            raster_on_disk)
+            raster_on_disk, tolerance=1e-9)
         self.assertRaises(IOError, testing.assert_rasters_equal,
-            raster_on_disk, 'file_not_on_disk')
-        testing.assert_rasters_equal(raster_on_disk, raster_on_disk)
+            raster_on_disk, 'file_not_on_disk', tolerance=1e-9)
+        testing.assert_rasters_equal(raster_on_disk, raster_on_disk, tolerance=1e-9)
 
     @scm.skip_if_data_missing(SVN_LOCAL_DIR)
     def test_raster_assertion_files_equal(self):
@@ -349,7 +90,7 @@ class GISTestTester(unittest.TestCase):
 
         source_file = os.path.join(TEST_INPUT, 'landuse_cur_200m.tif')
         shutil.copyfile(source_file, new_raster)
-        testing.assert_rasters_equal(source_file, new_raster)
+        testing.assert_rasters_equal(source_file, new_raster, tolerance=1e-9)
 
     @scm.skip_if_data_missing(SVN_LOCAL_DIR)
     def test_raster_assertion_different_dims(self):
@@ -357,7 +98,7 @@ class GISTestTester(unittest.TestCase):
         source_raster = os.path.join(TEST_INPUT, 'landuse_cur_200m.tif')
         different_raster = os.path.join(SAMPLE_RASTERS, 'lulc_samp_cur')
         self.assertRaises(AssertionError, testing.assert_rasters_equal,
-            source_raster, different_raster)
+            source_raster, different_raster, tolerance=1e-9)
 
     @scm.skip_if_data_missing(SVN_LOCAL_DIR)
     def test_raster_assertion_different_values(self):
@@ -365,19 +106,20 @@ class GISTestTester(unittest.TestCase):
         lulc_cur_raster = os.path.join(TEST_INPUT, 'landuse_cur_200m.tif')
         lulc_fut_raster = os.path.join(TEST_INPUT, 'landuse_fut_200m.tif')
         self.assertRaises(AssertionError, testing.assert_rasters_equal,
-            lulc_cur_raster, lulc_fut_raster)
+            lulc_cur_raster, lulc_fut_raster, tolerance=1e-9)
 
     @scm.skip_if_data_missing(SVN_LOCAL_DIR)
     def test_vector_assertion_fileio(self):
         """Verify correct behavior for assertVectorsEqual"""
         vector_on_disk = os.path.join(TEST_INPUT, 'farms.dbf')
         self.assertRaises(IOError, testing.assert_rasters_equal, 'file_not_on_disk',
-            'other_file_not_on_disk')
+            'other_file_not_on_disk', tolerance=1e-9)
         self.assertRaises(IOError, testing.assert_rasters_equal, 'file_not_on_disk',
-            vector_on_disk)
+            vector_on_disk, tolerance=1e-9)
         self.assertRaises(IOError, testing.assert_rasters_equal,
-            vector_on_disk, 'file_not_on_disk')
-        testing.assert_vectors_equal(vector_on_disk, vector_on_disk)
+            vector_on_disk, 'file_not_on_disk', tolerance=1e-9)
+        testing.assert_vectors_equal(vector_on_disk, vector_on_disk,
+                                     field_tolerance=1e-9)
 
     @scm.skip_if_data_missing(SVN_LOCAL_DIR)
     def test_vector_assertion_files_equal(self):
@@ -390,7 +132,8 @@ class GISTestTester(unittest.TestCase):
 
         sample_shape = os.path.join(TEST_INPUT, 'farms.shp')
         copied_shape = os.path.join(temp_folder, 'farms.shp')
-        testing.assert_vectors_equal(sample_shape, copied_shape)
+        testing.assert_vectors_equal(sample_shape, copied_shape,
+                                     field_tolerance=1e-9)
 
     @scm.skip_if_data_missing(SVN_LOCAL_DIR)
     def test_vectors_different_attributes(self):
@@ -399,7 +142,7 @@ class GISTestTester(unittest.TestCase):
         different_file = os.path.join(REGRESSION_ARCHIVES, 'farms.shp')
 
         self.assertRaises(AssertionError, testing.assert_vectors_equal, base_file,
-            different_file)
+            different_file, field_tolerance=1e-9)
 
     @scm.skip_if_data_missing(SVN_LOCAL_DIR)
     def test_vectors_very_different(self):
@@ -407,7 +150,7 @@ class GISTestTester(unittest.TestCase):
         base_file = os.path.join(TEST_INPUT, 'farms.shp')
         different_file = os.path.join(SAMPLE_VECTORS, 'harv_samp_cur.shp')
         self.assertRaises(AssertionError, testing.assert_vectors_equal, base_file,
-            different_file)
+            different_file, field_tolerance=1e-9)
 
     @scm.skip_if_data_missing(SVN_LOCAL_DIR)
     def test_csv_assertion_fileio(self):
@@ -415,10 +158,13 @@ class GISTestTester(unittest.TestCase):
         bad_file_2 = 'bbbbb'
         good_file = os.path.join(TEST_INPUT, 'Guild.csv')
 
-        self.assertRaises(IOError, testing.assert_csv_equal, bad_file_1, bad_file_2)
-        self.assertRaises(IOError, testing.assert_csv_equal, bad_file_1, good_file)
-        self.assertRaises(IOError, testing.assert_csv_equal, good_file, bad_file_2)
-        testing.assert_csv_equal(good_file, good_file)
+        self.assertRaises(IOError, testing.assert_csv_equal, bad_file_1,
+                          bad_file_2, tolerance=1e-9)
+        self.assertRaises(IOError, testing.assert_csv_equal, bad_file_1,
+                          good_file, tolerance=1e-9)
+        self.assertRaises(IOError, testing.assert_csv_equal, good_file,
+                          bad_file_2, tolerance=1e-9)
+        testing.assert_csv_equal(good_file, good_file, tolerance=1e-9)
 
     @scm.skip_if_data_missing(SVN_LOCAL_DIR)
     def test_csv_assertion_fails(self):
@@ -426,7 +172,7 @@ class GISTestTester(unittest.TestCase):
         different_file = os.path.join(TEST_INPUT, 'LU.csv')
 
         self.assertRaises(AssertionError, testing.assert_csv_equal, sample_file,
-            different_file)
+            different_file, tolerance=1e-9)
 
     @scm.skip_if_data_missing(SVN_LOCAL_DIR)
     def test_md5_same(self):
@@ -442,35 +188,6 @@ class GISTestTester(unittest.TestCase):
         md5_sum = 'bad md5sum!'
 
         self.assertRaises(AssertionError, testing.assert_md5_equal, test_file, md5_sum)
-
-    @scm.skip_if_data_missing(SVN_LOCAL_DIR)
-    def test_archive_assertion(self):
-        """Check that two archives are equal"""
-        archive_file = os.path.join(REGRESSION_ARCHIVES,
-            'arc_raster_nice.tar.gz')
-        testing.assert_archives_equal(archive_file, archive_file)
-
-    @scm.skip_if_data_missing(SVN_LOCAL_DIR)
-    def test_archive_assertion_fails(self):
-        """Check that assertion fails when two archives are different"""
-        archive_file = os.path.join(REGRESSION_ARCHIVES,
-            'arc_raster_nice.tar.gz')
-        different_archive = os.path.join(REGRESSION_ARCHIVES,
-            'arc_raster_messy.tar.gz')
-        self.assertRaises(AssertionError, testing.assert_archives_equal, archive_file,
-            different_archive)
-
-    @scm.skip_if_data_missing(SVN_LOCAL_DIR)
-    def test_workspaces_passes(self):
-        """Check that asserting equal workspaces passes"""
-        workspace_uri = os.path.join(REGRESSION_ARCHIVES, '..')
-        testing.assert_workspace(workspace_uri, workspace_uri)
-
-    @scm.skip_if_data_missing(SVN_LOCAL_DIR)
-    def test_workspaces_differ(self):
-        """Check that asserting equal workspaces fails."""
-        self.assertRaises(AssertionError, testing.assert_workspace,
-            POLLINATION_DATA, REGRESSION_ARCHIVES)
 
     @scm.skip_if_data_missing(SVN_LOCAL_DIR)
     def test_workspaces_ignore(self):
@@ -498,54 +215,6 @@ class GISTestTester(unittest.TestCase):
             json_path_new)
 
     @scm.skip_if_data_missing(SVN_LOCAL_DIR)
-    def test_assert_file_contents_equal_ext_diff(self):
-        uri_1 = os.path.join(TESTING_REGRESSION, 'sample_json.json')
-        uri_2 = os.path.join(REGRESSION_ARCHIVES, 'arc_raster_nice.tar.gz')
-        self.assertRaises(AssertionError, testing.assert_file_contents_equal, uri_1, uri_2)
-
-    @scm.skip_if_data_missing(SVN_LOCAL_DIR)
-    def test_assert_file_contents_equal_dne(self):
-        uri_1 = os.path.join('invest-data/test/data', 'file_not_exists.txt')
-        uri_2 = os.path.join(REGRESSION_ARCHIVES, 'arc_raster_nice.tar.gz')
-        self.assertRaises(IOError, testing.assert_file_contents_equal, uri_1, uri_2)
-
-    @scm.skip_if_data_missing(SVN_LOCAL_DIR)
-    def test_assert_file_contents_equal_json_same(self):
-        json_path = os.path.join(TESTING_REGRESSION, 'sample_json.json')
-        testing.assert_file_contents_equal(json_path, json_path)
-
-    @scm.skip_if_data_missing(SVN_LOCAL_DIR)
-    def test_assert_file_contents_equal_json_different(self):
-        """Check that asserting different json objects fails"""
-        json_path = os.path.join(TESTING_REGRESSION, 'sample_json.json')
-        json_path_new = os.path.join(TESTING_REGRESSION, 'sample_json_2.json')
-        self.assertRaises(AssertionError, testing.assert_file_contents_equal, json_path,
-            json_path_new)
-
-    @scm.skip_if_data_missing(SVN_LOCAL_DIR)
-    def test_assert_file_contents_equal_gdal_same(self):
-        source_file = os.path.join(TEST_INPUT, 'landuse_cur_200m.tif')
-        testing.assert_file_contents_equal(source_file, source_file)
-
-    @scm.skip_if_data_missing(SVN_LOCAL_DIR)
-    def test_assert_file_contents_equal_gdal_different(self):
-        source_raster = os.path.join(TEST_INPUT, 'landuse_cur_200m.tif')
-        different_raster = os.path.join(SAMPLE_RASTERS, 'lulc_samp_cur')
-        self.assertRaises(AssertionError, testing.assert_file_contents_equal,
-            source_raster, different_raster)
-
-    @scm.skip_if_data_missing(SVN_LOCAL_DIR)
-    def test_assert_file_contents_equal_ogr_same(self):
-        sample_shape = os.path.join(TEST_INPUT, 'farms.shp')
-        testing.assert_file_contents_equal(sample_shape, sample_shape)
-
-    @scm.skip_if_data_missing(SVN_LOCAL_DIR)
-    def test_assert_file_contents_equal_ogr_different(self):
-        base_file = os.path.join(TEST_INPUT, 'farms.shp')
-        different_file = os.path.join(REGRESSION_ARCHIVES, 'farms.shp')
-        self.assertRaises(AssertionError, testing.assert_file_contents_equal, base_file,
-            different_file)
-
     @scm.skip_if_data_missing(SVN_LOCAL_DIR)
     def test_assert_text_same(self):
         """Check that asserting two identical text files passes"""
@@ -558,20 +227,6 @@ class GISTestTester(unittest.TestCase):
         sample_file = os.path.join(REGRESSION_INPUT, 'sample_text_file.txt')
         regression_file = os.path.join(REGRESSION_INPUT, 'sample_json.json')
         self.assertRaises(AssertionError, testing.assert_text_equal, sample_file,
-            regression_file)
-
-    @scm.skip_if_data_missing(SVN_LOCAL_DIR)
-    def test_assert_file_contents_equal_text_same(self):
-        """Check that asserting two identical text files passes"""
-        sample_file = os.path.join(REGRESSION_INPUT, 'sample_text_file.txt')
-        testing.assert_file_contents_equal(sample_file, sample_file)
-
-    @scm.skip_if_data_missing(SVN_LOCAL_DIR)
-    def test_assert_file_contents_equal_text_different(self):
-        """Check that asserting two different text files fails."""
-        sample_file = os.path.join(REGRESSION_INPUT, 'sample_text_file.txt')
-        regression_file = os.path.join(REGRESSION_INPUT, 'sample_json.json')
-        self.assertRaises(AssertionError, testing.assert_file_contents_equal, sample_file,
             regression_file)
 
     @scm.skip_if_data_missing(SVN_LOCAL_DIR)

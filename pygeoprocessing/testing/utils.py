@@ -1,19 +1,13 @@
 
 import hashlib
-import functools
-import shutil
 import logging
 import os
 import platform
-import importlib
-import json
-import math
 
 import numpy
 from osgeo import gdal
 import pygeoprocessing
 
-from . import data_storage
 
 LOGGER = logging.getLogger('natcap.testing.utils')
 
@@ -108,80 +102,6 @@ def digest_file(filepath):
     file_handler.close()
 
     return file_md5.hexdigest()
-
-
-def build_regression_archives(file_uri, input_archive_uri, output_archive_uri):
-    """
-    Build regression archives for a target model run.
-
-    With a properly formatted JSON configuration file at `file_uri`, all
-    input files and parameters are collected and compressed into a single
-    gzip.  Then, the target model is executed and the output workspace is
-    zipped up into another gzip.  These could then be used for regression
-    testing, such as with the ``pygeoprocessing.testing.regression``
-    decorator.
-
-    Example configuration file contents (serialized to JSON)::
-
-        {
-            "model": "pygeoprocessing.pollination.pollination",
-            "arguments": {
-                # the full set of model arguments here
-            }
-        }
-
-    Example function usage::
-
-        import pygeoprocessing.testing
-
-        file_uri = "/path/to/config.json"
-        input_archive_uri = "/path/to/archived_inputs.tar.gz"
-        output_archive_uri = "/path/to/archived_outputs.tar.gz"
-        pygeoprocessing.testing.build_regression_archives(file_uri,
-            input_archive_uri, output_archive_uri)
-
-    Args:
-        file_uri (string): a URI to a json file on disk containing the
-            above configuration options.
-
-        input_archive_uri (string): the URI to where the gzip archive
-            of inputs should be saved once it is created.
-
-        output_archive_uri (string): the URI to where the gzip output
-            archive of output should be saved once it is created.
-
-    Returns:
-        Nothing.
-    """
-    saved_data = json.loads(open(file_uri).read())
-
-    arguments = saved_data['arguments']
-    model_id = saved_data['model']
-
-    model = importlib.import_module(model_id)
-
-    # guarantee that we're running this in a new workspace
-    arguments['workspace_dir'] = pygeoprocessing.temporary_folder()
-    workspace = arguments['workspace_dir']
-
-    # collect the parameters into a single folder
-    input_archive = input_archive_uri
-    if input_archive[-7:] == '.tar.gz':
-        input_archive = input_archive[:-7]
-    data_storage.collect_parameters(arguments, input_archive)
-    input_archive += '.tar.gz'
-
-    model_args = data_storage.extract_parameters_archive(workspace,
-                                                         input_archive)
-
-    model.execute(model_args)
-
-    archive_uri = output_archive_uri
-    if archive_uri[-7:] == '.tar.gz':
-        archive_uri = archive_uri[:-7]
-    LOGGER.debug('Archiving the output workspace')
-    shutil.make_archive(archive_uri, 'gztar', root_dir=workspace,
-                        logger=LOGGER)
 
 
 def checksum_folder(workspace_uri, logfile_uri, style='GNU', ignore_exts=None):
