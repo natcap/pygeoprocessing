@@ -5,7 +5,6 @@ import os
 import csv
 import logging
 import json
-import glob
 import itertools
 
 from osgeo import gdal
@@ -15,7 +14,6 @@ import numpy
 import pygeoprocessing
 
 from . import utils
-from . import data_storage
 
 
 # TOLERANCE is based on the machine epsilon for single-precision floating-point
@@ -424,100 +422,6 @@ def assert_md5_equal(uri, regression_hash):
                                                               regression_hash))
 
 
-def assert_archives_equal(archive_1_uri, archive_2_uri):
-    """Compare the contents of two archived workspaces against each other.
-
-    Takes two archived workspaces, each generated from
-    ``build_regression_archives()``, unzips them and
-    compares the resulting workspaces against each other.
-
-    Args:
-        archive_1_uri (string): a URI to a .tar.gz workspace archive
-        archive_2_uri (string): a URI to a .tar.gz workspace archive
-
-    Raises:
-        AssertionError: Raised when the two workspaces are found to be
-        different.
-
-    Returns:
-        None
-    """
-    archive_1_folder = pygeoprocessing.geoprocessing.temporary_folder()
-    data_storage.extract_archive(archive_1_folder, archive_1_uri)
-
-    archive_2_folder = pygeoprocessing.geoprocessing.temporary_folder()
-    data_storage.extract_archive(archive_2_folder, archive_2_uri)
-
-    assert_workspace(archive_1_folder, archive_2_folder)
-
-
-def assert_workspace(archive_1_folder, archive_2_folder,
-                     glob_exclude=''):
-    """Check the contents of two folders against each other.
-
-    This method iterates through the contents of each workspace folder and
-    verifies that all files exist in both folders.  If this passes, then
-    each file is compared against each other using
-    ``GISTest.assertFiles()``.
-
-    If one of these workspaces includes files that are known to be
-    different between model runs (such as logs, or other files that include
-    timestamps), you may wish to specify a glob pattern matching those
-    filenames and passing it to `glob_exclude`.
-
-    Args:
-        archive_1_folder (string): a uri to a folder on disk
-        archive_2_folder (string): a uri to a folder on disk
-        glob_exclude (string): a string in glob format representing files to
-            ignore
-
-    Raises:
-        AssertionError: Raised when the two folders are found to have
-        different contents.
-
-    Returns:
-        None
-    """
-    # uncompress the two archives
-    archive_1_files = []
-    archive_2_files = []
-    for files_list, workspace in [
-            (archive_1_files, archive_1_folder),
-            (archive_2_files, archive_2_folder)]:
-        for root, dirs, files in os.walk(workspace):
-            root = root.replace(workspace + os.sep, '')
-            ignored_files = glob.glob(glob_exclude)
-            for filename in files:
-                if filename not in ignored_files:
-                    full_path = os.path.join(root, filename)
-                    files_list.append(full_path)
-
-    archive_1_files = sorted(archive_1_files)
-    archive_2_files = sorted(archive_2_files)
-
-    archive_1_size = len(archive_1_files)
-    archive_2_size = len(archive_2_files)
-    if archive_1_size != archive_2_size:
-        # find out which archive had more files.
-        archive_1_files = [x.replace(archive_1_folder, '')
-                           for x in archive_1_files]
-        archive_2_files = [x.replace(archive_2_folder, '')
-                           for x in archive_2_files]
-        missing_from_archive_1 = list(set(archive_2_files) -
-                                      set(archive_1_files))
-        missing_from_archive_2 = list(set(archive_1_files) -
-                                      set(archive_2_files))
-        raise AssertionError('Elements missing from A:%s, from B:%s' %
-                             (missing_from_archive_1, missing_from_archive_2))
-    else:
-        # archives have the same number of files that we care about
-        for file_1, file_2 in zip(archive_1_files, archive_2_files):
-            file_1_uri = os.path.join(archive_1_folder, file_1)
-            file_2_uri = os.path.join(archive_2_folder, file_2)
-            LOGGER.debug('Checking %s, %s', file_1, file_2)
-            assert_file_contents_equal(file_1_uri, file_2_uri)
-
-
 def assert_json_equal(json_1_uri, json_2_uri):
     """Assert two JSON files against each other.
 
@@ -572,69 +476,6 @@ def assert_text_equal(text_1_uri, text_2_uri):
                                  'file %s. Output  "%s" Regression "%s"' % (
                                      index, text_1_uri, text_2_uri, a_line,
                                      b_line))
-
-
-def assert_file_contents_equal(file_1_uri, file_2_uri):
-    """Assert two files are equal.
-
-    If the extension of the provided file is recognized, the relevant
-    filetype-specific function is called and a more detailed check of the
-    file can be done.  If the extension is not recognized, the MD5sums of
-    the two files are compared instead.
-
-    Known extensions: ``json``, ``tif``, ``shp``, ``csv``, ``txt``,
-    ``html``
-
-    Args:
-        file_1_uri (string): a string URI to a file on disk.
-        file_2_uri (string): a string URI to a file on disk.
-
-    Raises:
-        AssertionError: Raised when one of the input files does not exist,
-        when the extensions of the input files differ, or if the two files
-        are found to differ.
-
-    Returns:
-        None
-    """
-    for uri in [file_1_uri, file_2_uri]:
-        if not os.path.exists(uri):
-            raise IOError('File not found %s' % uri)
-
-    # assert the extensions are the same
-    file_1_ext = os.path.splitext(file_1_uri)[1]
-    file_2_ext = os.path.splitext(file_2_uri)[1]
-    if file_1_ext != file_2_ext:
-        raise AssertionError('Extensions differ: %s != %s' % (file_1_ext,
-                                                              file_2_ext))
-
-    assert_funcs = {
-        '.json': (assert_json_equal, None),
-        '.tif': (assert_rasters_equal, 'tolerance'),
-        '.shp': (assert_vectors_equal, 'field_tolerance'),
-        '.csv': (assert_csv_equal, 'tolerance'),
-        '.txt': (assert_text_equal, None),
-        '.html': (assert_text_equal, None),
-    }
-
-    try:
-        assertion_func, tolerance_fieldname = assert_funcs[file_1_ext]
-        kwargs = {}
-        if tolerance_fieldname:
-            # Assume a default tolerance here so we can provide it to users.
-            # Eventually might want a better way to assert this, or a better
-            # way for the user to define this.
-            kwargs[tolerance_fieldname] = 1e-9
-
-        assertion_func(file_1_uri, file_2_uri, **kwargs)
-    except KeyError:
-        # When we're given an extension we don't have a function for, assert
-        # the MD5s.
-        file_1_md5 = utils.digest_file(file_1_uri)
-        file_2_md5 = utils.digest_file(file_2_uri)
-        if file_1_md5 != file_2_md5:
-            raise AssertionError('Files %s and %s differ (MD5sum)' % (
-                file_1_uri, file_2_uri))
 
 
 def assert_checksums_equal(checksum_file, base_folder=None):
