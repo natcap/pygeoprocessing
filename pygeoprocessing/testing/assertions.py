@@ -325,7 +325,8 @@ def assert_vectors_equal(a_uri, b_uri, field_tolerance):
                     if field_name != field_name_regression:
                         raise AssertionError(
                             'Field names %s != %s at index %s in layer %s' % (
-                                field_name, field_name_regression, fld_index))
+                                field_name, field_name_regression, fld_index,
+                                layer_num))
 
                 # Check that the features have the same geometry
                 geom = feat.GetGeometryRef()
