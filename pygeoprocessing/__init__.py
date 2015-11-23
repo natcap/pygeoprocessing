@@ -4,12 +4,9 @@
 import natcap.versioner
 __version__ = natcap.versioner.get_version('pygeoprocessing')
 
-import os
-import unittest
 import logging
 import types
 
-import pygeoprocessing.geoprocessing as geoprocessing
 from geoprocessing import *
 
 # Expose test()
