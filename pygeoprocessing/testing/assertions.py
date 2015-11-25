@@ -11,8 +11,8 @@ from osgeo import gdal
 from osgeo import ogr
 from osgeo import osr
 import numpy
-import pygeoprocessing
 
+from .. import geoprocessing
 from . import utils
 
 
@@ -116,65 +116,71 @@ def assert_rasters_equal(a_uri, b_uri, tolerance):
     a_dataset = gdal.Open(a_uri)
     b_dataset = gdal.Open(b_uri)
 
-    if a_dataset.RasterXSize != b_dataset.RasterXSize:
-        raise AssertionError(
-            "x dimensions are different a=%s, b=%s" %
-            (a_dataset.RasterXSize, b_dataset.RasterXSize))
-
-    if a_dataset.RasterYSize != b_dataset.RasterYSize:
-        raise AssertionError(
-            "y dimensions are different a=%s, b=%s" %
-            (a_dataset.RasterYSize, b_dataset.RasterYSize))
-
-    if a_dataset.RasterCount != b_dataset.RasterCount:
-        raise AssertionError(
-            "different number of rasters a=%s, b=%s" %
-            ((a_dataset.RasterCount, b_dataset.RasterCount)))
-
-    a_sr = osr.SpatialReference()
-    a_sr.ImportFromWkt(a_dataset.GetProjection())
-
-    b_sr = osr.SpatialReference()
-    b_sr.ImportFromWkt(b_dataset.GetProjection())
-
-    if bool(a_sr.IsSame(b_sr)) is False:
-        raise AssertionError('Projections differ: %s != %s' % (
-            a_sr.ExportToPrettyWkt(), b_sr.ExportToPrettyWkt()))
-
-    for band_number in range(1, a_dataset.RasterCount + 1):
-        a_band = a_dataset.GetRasterBand(band_number)
-        b_band = b_dataset.GetRasterBand(band_number)
-
-        a_blocksize = a_band.GetBlockSize()
-        b_blocksize = b_band.GetBlockSize()
-        if a_blocksize != b_blocksize:
+    try:
+        if a_dataset.RasterXSize != b_dataset.RasterXSize:
             raise AssertionError(
-                'Block sizes differ for band %s: %s != %s' % (
-                    band_number, a_blocksize, b_blocksize))
+                "x dimensions are different a=%s, b=%s" %
+                (a_dataset.RasterXSize, b_dataset.RasterXSize))
 
-        for (a_data, a_block), (b_data, b_block) in zip(
-                pygeoprocessing.iterblocks(a_uri, [band_number]),
-                pygeoprocessing.iterblocks(b_uri, [band_number])):
-            try:
-                numpy.testing.assert_allclose(a_block, b_block,
-                                              rtol=tolerance)
-            except AssertionError:
-                iterator = numpy.nditer([a_block, b_block],
-                                        flags=['multi_index'],
-                                        op_flags=['readonly'])
-                while not iterator.finished:
-                    col = iterator.multi_index[0]
-                    row = iterator.multi_index[1]
+        if a_dataset.RasterYSize != b_dataset.RasterYSize:
+            raise AssertionError(
+                "y dimensions are different a=%s, b=%s" %
+                (a_dataset.RasterYSize, b_dataset.RasterYSize))
 
-                    pixel_a = a_block[iterator.multi_index]
-                    pixel_b = b_block[iterator.multi_index]
-                    assert_close(
-                        pixel_a, pixel_b, tolerance,
-                        ('{a_val} != {b_val} at col {col}, '
-                         'row {row} within {tol}').format(
-                            a_val=pixel_a, b_val=pixel_b, col=col,
-                             row=row, tol=tolerance))
-                    iterator.iternext()
+        if a_dataset.RasterCount != b_dataset.RasterCount:
+            raise AssertionError(
+                "different number of rasters a=%s, b=%s" %
+                ((a_dataset.RasterCount, b_dataset.RasterCount)))
+
+        a_sr = osr.SpatialReference()
+        a_sr.ImportFromWkt(a_dataset.GetProjection())
+
+        b_sr = osr.SpatialReference()
+        b_sr.ImportFromWkt(b_dataset.GetProjection())
+
+        if bool(a_sr.IsSame(b_sr)) is False:
+            raise AssertionError('Projections differ: %s != %s' % (
+                a_sr.ExportToPrettyWkt(), b_sr.ExportToPrettyWkt()))
+
+        for band_number in range(1, a_dataset.RasterCount + 1):
+            a_band = a_dataset.GetRasterBand(band_number)
+            b_band = b_dataset.GetRasterBand(band_number)
+
+            a_blocksize = a_band.GetBlockSize()
+            b_blocksize = b_band.GetBlockSize()
+            if a_blocksize != b_blocksize:
+                raise AssertionError(
+                    'Block sizes differ for band %s: %s != %s' % (
+                        band_number, a_blocksize, b_blocksize))
+
+            for (a_data, a_block), (b_data, b_block) in zip(
+                    geoprocessing.iterblocks(a_uri, [band_number]),
+                    geoprocessing.iterblocks(b_uri, [band_number])):
+                try:
+                    numpy.testing.assert_allclose(a_block, b_block,
+                                                rtol=tolerance)
+                except AssertionError:
+                    iterator = numpy.nditer([a_block, b_block],
+                                            flags=['multi_index'],
+                                            op_flags=['readonly'])
+                    while not iterator.finished:
+                        col = iterator.multi_index[0]
+                        row = iterator.multi_index[1]
+
+                        pixel_a = a_block[iterator.multi_index]
+                        pixel_b = b_block[iterator.multi_index]
+                        assert_close(
+                            pixel_a, pixel_b, tolerance,
+                            ('{a_val} != {b_val} at col {col}, '
+                            'row {row} within {tol}').format(
+                                a_val=pixel_a, b_val=pixel_b, col=col,
+                                row=row, tol=tolerance))
+                        iterator.iternext()
+    finally:
+        gdal.Dataset.__swig_destroy__(a_dataset)
+        gdal.Dataset.__swig_destroy__(b_dataset)
+        a_dataset = None
+        b_dataset = None
 
 
 def assert_vectors_equal(a_uri, b_uri, field_tolerance):
@@ -219,126 +225,130 @@ def assert_vectors_equal(a_uri, b_uri, field_tolerance):
     shape = ogr.Open(a_uri)
     shape_regression = ogr.Open(b_uri)
 
-    # Check that the shapefiles have the same number of layers
-    layer_count = shape.GetLayerCount()
-    layer_count_regression = shape_regression.GetLayerCount()
-    if layer_count != layer_count_regression:
-        raise AssertionError(
-            'Number of vector layers do not match: %s != %s' % (
-                layer_count, layer_count_regression))
-
-    for layer_num in range(layer_count):
-        # Get the current layer
-        layer = shape.GetLayer(layer_num)
-        layer_regression = shape_regression.GetLayer(layer_num)
-        # Check that each layer has the same number of features
-        feat_count = layer.GetFeatureCount()
-        feat_count_regression = layer_regression.GetFeatureCount()
-        if feat_count != feat_count_regression:
+    try:
+        # Check that the shapefiles have the same number of layers
+        layer_count = shape.GetLayerCount()
+        layer_count_regression = shape_regression.GetLayerCount()
+        if layer_count != layer_count_regression:
             raise AssertionError(
-                ('The layers DO NOT have the same number of features'
-                 '%s != %s' % (feat_count, feat_count_regression)))
+                'Number of vector layers do not match: %s != %s' % (
+                    layer_count, layer_count_regression))
 
-        layer_geom = layer.GetGeomType()
-        layer_reg_geom = layer_regression.GetGeomType()
-        if layer_geom != layer_reg_geom:
-
-            def _readable_geometry_type(geom_type):
-                """Determine the geometry type from the OGR wkb int.
-
-                Parameters:
-                    geom_type: The result of ogr.Layer.GetGeomType()
-
-                Returns:
-                    A string representation of the feature type.
-                """
-                for attr_name in dir(ogr):
-                    if (attr_name.startswith('wkb') and
-                            getattr(ogr, attr_name) == geom_type):
-                        return attr_name.replace('wkb', '')
-
-            layer_geom_string = _readable_geometry_type(layer_geom)
-            layer_reg_geom_string = _readable_geometry_type(layer_reg_geom)
-            raise AssertionError(
-                'Layers #%s have different geometry types: %s != %s' % (
-                    layer_num, layer_geom_string, layer_reg_geom_string))
-
-        a_sr = layer.GetSpatialRef()
-        b_sr = layer_regression.GetSpatialRef()
-        if bool(a_sr.IsSame(b_sr)) is False:
-            raise AssertionError('Projections differ in layer %s: %s != %s' % (
-                layer_num, a_sr.ExportToPrettyWkt(), b_sr.ExportToPrettyWkt()))
-
-        # Get the first features of the layers and loop through all the
-        # features
-        feat = layer.GetNextFeature()
-        feat_regression = layer_regression.GetNextFeature()
-        while feat is not None:
-            # Check that the field counts for the features are the same
-            layer_def = layer.GetLayerDefn()
-            layer_def_regression = layer_regression.GetLayerDefn()
-            field_count = layer_def.GetFieldCount()
-            field_count_regression = layer_def_regression.GetFieldCount()
-            if field_count != field_count_regression:
-                raise AssertionError((
-                    'The features DO NOT have the same number of fields in '
-                    'layer %s: %s != %s') % (layer_num, field_count,
-                                             field_count_regression))
-
-            for fld_index in range(field_count):
-                # Check that the features have the same field values
-                field = feat.GetField(fld_index)
-                field_regression = feat_regression.GetField(fld_index)
-
-                try:
-                    try:
-                        float_field = float(field)
-                        float_field_regression = float(field_regression)
-                        assert_close(float_field, float_field_regression,
-                                     field_tolerance)
-                    except (ValueError, TypeError):
-                        # ValueError happens when strings can't cast to float
-                        # TypeError when casting non-string or non-number.
-                        if field != field_regression:
-                            raise AssertionError
-                except AssertionError:
-                    # If we found an AssertionError, raise a more helpful
-                    # assertion error mesage here that includes vector
-                    # information.
-                    raise AssertionError(
-                        'Field values %s != %s at index %s in layer %s' % (
-                            field, field_regression, fld_index, layer_num))
-
-                # Check that the features have the same field name
-                field_ref = feat.GetFieldDefnRef(fld_index)
-                field_ref_regression = \
-                    feat_regression.GetFieldDefnRef(fld_index)
-                field_name = field_ref.GetNameRef()
-                field_name_regression = field_ref_regression.GetNameRef()
-                if field_name != field_name_regression:
-                    raise AssertionError(
-                        'Field names %s != %s at index %s in layer %s' % (
-                            field_name, field_name_regression, fld_index))
-
-            # Check that the features have the same geometry
-            geom = feat.GetGeometryRef()
-            geom_regression = feat_regression.GetGeometryRef()
-
-            if bool(geom.Equals(geom_regression)) is False:
-                feature_fid = feat.GetFID()
-                reg_feature_fid = feat_regression.GetFID()
+        for layer_num in range(layer_count):
+            # Get the current layer
+            layer = shape.GetLayer(layer_num)
+            layer_regression = shape_regression.GetLayer(layer_num)
+            # Check that each layer has the same number of features
+            feat_count = layer.GetFeatureCount()
+            feat_count_regression = layer_regression.GetFeatureCount()
+            if feat_count != feat_count_regression:
                 raise AssertionError(
-                    'Geometries are not equal in feature %s, '
-                    'regression feature %s in layer %s') % (
-                        feature_fid, reg_feature_fid, layer_num)
+                    ('The layers DO NOT have the same number of features'
+                    '%s != %s' % (feat_count, feat_count_regression)))
 
-            feat = None
-            feat_regression = None
+            layer_geom = layer.GetGeomType()
+            layer_reg_geom = layer_regression.GetGeomType()
+            if layer_geom != layer_reg_geom:
+
+                def _readable_geometry_type(geom_type):
+                    """Determine the geometry type from the OGR wkb int.
+
+                    Parameters:
+                        geom_type: The result of ogr.Layer.GetGeomType()
+
+                    Returns:
+                        A string representation of the feature type.
+                    """
+                    for attr_name in dir(ogr):
+                        if (attr_name.startswith('wkb') and
+                                getattr(ogr, attr_name) == geom_type):
+                            return attr_name.replace('wkb', '')
+
+                layer_geom_string = _readable_geometry_type(layer_geom)
+                layer_reg_geom_string = _readable_geometry_type(layer_reg_geom)
+                raise AssertionError(
+                    'Layers #%s have different geometry types: %s != %s' % (
+                        layer_num, layer_geom_string, layer_reg_geom_string))
+
+            a_sr = layer.GetSpatialRef()
+            b_sr = layer_regression.GetSpatialRef()
+            if bool(a_sr.IsSame(b_sr)) is False:
+                raise AssertionError('Projections differ in layer %s: %s != %s' % (
+                    layer_num, a_sr.ExportToPrettyWkt(), b_sr.ExportToPrettyWkt()))
+
+            # Get the first features of the layers and loop through all the
+            # features
             feat = layer.GetNextFeature()
             feat_regression = layer_regression.GetNextFeature()
+            while feat is not None:
+                # Check that the field counts for the features are the same
+                layer_def = layer.GetLayerDefn()
+                layer_def_regression = layer_regression.GetLayerDefn()
+                field_count = layer_def.GetFieldCount()
+                field_count_regression = layer_def_regression.GetFieldCount()
+                if field_count != field_count_regression:
+                    raise AssertionError((
+                        'The features DO NOT have the same number of fields in '
+                        'layer %s: %s != %s') % (layer_num, field_count,
+                                                field_count_regression))
 
-    shape = None
-    shape_regression = None
+                for fld_index in range(field_count):
+                    # Check that the features have the same field values
+                    field = feat.GetField(fld_index)
+                    field_regression = feat_regression.GetField(fld_index)
+
+                    try:
+                        try:
+                            float_field = float(field)
+                            float_field_regression = float(field_regression)
+                            assert_close(float_field, float_field_regression,
+                                        field_tolerance)
+                        except (ValueError, TypeError):
+                            # ValueError happens when strings can't cast to float
+                            # TypeError when casting non-string or non-number.
+                            if field != field_regression:
+                                raise AssertionError
+                    except AssertionError:
+                        # If we found an AssertionError, raise a more helpful
+                        # assertion error mesage here that includes vector
+                        # information.
+                        raise AssertionError(
+                            'Field values %s != %s at index %s in layer %s' % (
+                                field, field_regression, fld_index, layer_num))
+
+                    # Check that the features have the same field name
+                    field_ref = feat.GetFieldDefnRef(fld_index)
+                    field_ref_regression = \
+                        feat_regression.GetFieldDefnRef(fld_index)
+                    field_name = field_ref.GetNameRef()
+                    field_name_regression = field_ref_regression.GetNameRef()
+                    if field_name != field_name_regression:
+                        raise AssertionError(
+                            'Field names %s != %s at index %s in layer %s' % (
+                                field_name, field_name_regression, fld_index,
+                                layer_num))
+
+                # Check that the features have the same geometry
+                geom = feat.GetGeometryRef()
+                geom_regression = feat_regression.GetGeometryRef()
+
+                if bool(geom.Equals(geom_regression)) is False:
+                    feature_fid = feat.GetFID()
+                    reg_feature_fid = feat_regression.GetFID()
+                    raise AssertionError(
+                        'Geometries are not equal in feature %s, '
+                        'regression feature %s in layer %s') % (
+                            feature_fid, reg_feature_fid, layer_num)
+
+                feat = None
+                feat_regression = None
+                feat = layer.GetNextFeature()
+                feat_regression = layer_regression.GetNextFeature()
+    finally:
+        ogr.DataSource.__swig_destroy__(shape)
+        ogr.DataSource.__swig_destroy__(shape_regression)
+        shape = None
+        shape_regression = None
 
 
 def assert_csv_equal(a_uri, b_uri, tolerance):

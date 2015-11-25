@@ -83,6 +83,62 @@ class GISTestTester(unittest.TestCase):
         testing.assert_rasters_equal(raster_on_disk, raster_on_disk, tolerance=1e-9)
 
     @scm.skip_if_data_missing(SVN_LOCAL_DIR)
+    def test_raster_assertion_failed_cleanup(self):
+        """If a raster assertion fails, we should still be able to remove the file."""
+        # create a raster on disk that we intend to remove.
+        tempdir = tempfile.mkdtemp()
+        lulc_current_base = os.path.join(TEST_INPUT, 'landuse_cur_200m.tif')
+        lulc_copied = os.path.join(tempdir, 'landuse_copied.tif')
+        lulc_future = os.path.join(TEST_INPUT, 'landuse_fut_200m.tif')
+
+        pygeoprocessing.geoprocessing.tile_dataset_uri(lulc_current_base, lulc_copied, 256)
+        try:
+            self.assertRaises(
+                AssertionError, pygeoprocessing.testing.assert_rasters_equal,
+                lulc_copied, lulc_future, tolerance=1e-9)
+            shutil.rmtree(tempdir)
+        except OSError as file_not_removed_error:
+            # This should technically be a WindowsError, which is a subclass of
+            # OSError.  If we can't remove the copied raster because the test
+            # has it open, then this test fails (and the raster will sit there
+            # since we won't be able to remove it until after python quits).
+            raise AssertionError(('Raster objects not cleaned up properly: '
+                '%s') % file_not_removed_error)
+        except AssertionError as test_failure_error:
+            # If assertRaises raises an assertionError, then something really
+            # did go wrong!  Clean up the workspace and raise the exception.
+            shutil.rmtree(tempdir)
+            raise test_failure_error
+
+    @scm.skip_if_data_missing(SVN_LOCAL_DIR)
+    def test_vector_assertion_failed_cleanup(self):
+        """If a vector assertion fails, we should still be able to remove the file."""
+        # create a vector on disk that we intend to remove.
+        tempdir = tempfile.mkdtemp()
+        sample_vector_base = os.path.join(SAMPLE_VECTORS, 'harv_samp_cur.shp')
+        sample_vector_copy = os.path.join(tempdir, 'sample_vector.shp')
+        comparison_vector = os.path.join(SAMPLE_VECTORS, 'harv_samp_fut.shp')
+
+        pygeoprocessing.copy_datasource_uri(sample_vector_base, sample_vector_copy)
+        try:
+            self.assertRaises(
+                AssertionError, pygeoprocessing.testing.assert_vectors_equal,
+                sample_vector_copy, comparison_vector, field_tolerance=1e-9)
+            shutil.rmtree(tempdir)
+        except OSError as file_not_removed_error:
+            # This should technically be a WindowsError, which is a subclass of
+            # OSError.  If we can't remove the copied vector because the test
+            # has it open, then this test fails (and the vector will sit there
+            # since we won't be able to remove it until after python quits).
+            raise AssertionError(('Vector objects not cleaned up properly: '
+                '%s') % file_not_removed_error)
+        except AssertionError as test_failure_error:
+            # If assertRaises raises an assertionError, then something really
+            # did go wrong!  Clean up the workspace and raise the exception.
+            shutil.rmtree(tempdir)
+            raise test_failure_error
+
+    @scm.skip_if_data_missing(SVN_LOCAL_DIR)
     def test_raster_assertion_files_equal(self):
         """Verify when rasters are, in fact, equal."""
         temp_folder = raster_utils.temporary_folder()
