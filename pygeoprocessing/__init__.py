@@ -10,7 +10,7 @@ import types
 from geoprocessing import *
 
 # Expose test()
-from pygeoprocessing.tests import test
+from .tests import test
 
 __all__ = []
 for attrname in dir(geoprocessing):
