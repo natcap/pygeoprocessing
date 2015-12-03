@@ -34,7 +34,8 @@ import os
 from osgeo import gdal
 import numpy
 
-import pygeoprocessing.routing.routing_core
+from .. import geoprocessing
+import routing_core
 
 logging.basicConfig(format='%(asctime)s %(name)-18s %(levelname)-8s \
     %(message)s', level=logging.DEBUG, datefmt='%m/%d/%Y %H:%M:%S ')
@@ -84,7 +85,7 @@ def route_flux(
             None
         """
 
-    pygeoprocessing.routing.routing_core.route_flux(
+    routing_core.route_flux(
         in_flow_direction, in_dem, in_source_uri, in_absorption_rate_uri,
         loss_uri, flux_uri, absorption_mode, aoi_uri=aoi_uri,
         stream_uri=stream_uri, include_source=include_source)
@@ -111,16 +112,16 @@ def flow_accumulation(
     """
 
     LOGGER.debug('starting flow accumulation')
-    constant_flux_source_uri = pygeoprocessing.temporary_filename(
+    constant_flux_source_uri = geoprocessing.temporary_filename(
         suffix='.tif')
-    zero_absorption_source_uri = pygeoprocessing.temporary_filename(
+    zero_absorption_source_uri = geoprocessing.temporary_filename(
         suffix='.tif')
-    loss_uri = pygeoprocessing.temporary_filename(
+    loss_uri = geoprocessing.temporary_filename(
         suffix='.tif')
 
-    pygeoprocessing.make_constant_raster_from_base_uri(
+    geoprocessing.make_constant_raster_from_base_uri(
         dem_uri, 1.0, constant_flux_source_uri)
-    pygeoprocessing.make_constant_raster_from_base_uri(
+    geoprocessing.make_constant_raster_from_base_uri(
         dem_uri, 0.0, zero_absorption_source_uri)
 
     route_flux(
@@ -150,7 +151,7 @@ def stream_threshold(flow_accumulation_uri, flow_threshold, stream_uri):
     Return:
         None
     """
-    flow_nodata = pygeoprocessing.get_nodata_from_uri(flow_accumulation_uri)
+    flow_nodata = geoprocessing.get_nodata_from_uri(flow_accumulation_uri)
     stream_nodata = 255
     # sometimes flow threshold comes in as a string from a model, cast to float
     flow_threshold = float(flow_threshold)
@@ -162,9 +163,9 @@ def stream_threshold(flow_accumulation_uri, flow_threshold, stream_uri):
         return numpy.where(
             flow_accumulation_value != flow_nodata, stream_mask, stream_nodata)
 
-    pygeoprocessing.vectorize_datasets(
+    geoprocessing.vectorize_datasets(
         [flow_accumulation_uri], classify_stream, stream_uri, gdal.GDT_Byte,
-        stream_nodata, pygeoprocessing.get_cell_size_from_uri(
+        stream_nodata, geoprocessing.get_cell_size_from_uri(
             flow_accumulation_uri),
         'intersection', vectorize_op=False, assert_datasets_projected=False)
 
@@ -195,13 +196,13 @@ def pixel_amount_exported(
         None
     """
     # Align all the input rasters since the cython core requires them to line up
-    out_pixel_size = pygeoprocessing.get_cell_size_from_uri(in_dem_uri)
-    dem_uri = pygeoprocessing.temporary_filename(suffix='.tif')
-    stream_uri = pygeoprocessing.temporary_filename(suffix='.tif')
-    retention_rate_uri = pygeoprocessing.temporary_filename(suffix='.tif')
-    source_uri = pygeoprocessing.temporary_filename(suffix='.tif')
-    flow_direction_uri = pygeoprocessing.temporary_filename(suffix='.tif')
-    pygeoprocessing.align_dataset_list(
+    out_pixel_size = geoprocessing.get_cell_size_from_uri(in_dem_uri)
+    dem_uri = geoprocessing.temporary_filename(suffix='.tif')
+    stream_uri = geoprocessing.temporary_filename(suffix='.tif')
+    retention_rate_uri = geoprocessing.temporary_filename(suffix='.tif')
+    source_uri = geoprocessing.temporary_filename(suffix='.tif')
+    flow_direction_uri = geoprocessing.temporary_filename(suffix='.tif')
+    geoprocessing.align_dataset_list(
         [in_flow_direction_uri, in_dem_uri, in_stream_uri,
          in_retention_rate_uri, in_source_uri],
         [flow_direction_uri, dem_uri, stream_uri, retention_rate_uri,
@@ -210,8 +211,8 @@ def pixel_amount_exported(
         out_pixel_size, "intersection", 0, aoi_uri=aoi_uri)
 
     # Calculate export rate
-    export_rate_uri = pygeoprocessing.temporary_filename(suffix='.tif')
-    nodata_retention = pygeoprocessing.get_nodata_from_uri(retention_rate_uri)
+    export_rate_uri = geoprocessing.temporary_filename(suffix='.tif')
+    nodata_retention = geoprocessing.get_nodata_from_uri(retention_rate_uri)
 
     def retention_to_export(retention):
         """Calculates 1.0-input unless it's nodata."""
@@ -219,31 +220,31 @@ def pixel_amount_exported(
             return nodata_retention
         return 1.0 - retention
 
-    pygeoprocessing.vectorize_datasets(
+    geoprocessing.vectorize_datasets(
         [retention_rate_uri], retention_to_export, export_rate_uri,
         gdal.GDT_Float32, nodata_retention, out_pixel_size, "intersection",
         dataset_to_align_index=0)
 
     # Calculate flow direction and weights
-    outflow_weights_uri = pygeoprocessing.temporary_filename(suffix='.tif')
-    outflow_direction_uri = pygeoprocessing.temporary_filename(suffix='.tif')
-    pygeoprocessing.routing.routing_core.calculate_flow_weights(
+    outflow_weights_uri = geoprocessing.temporary_filename(suffix='.tif')
+    outflow_direction_uri = geoprocessing.temporary_filename(suffix='.tif')
+    routing_core.calculate_flow_weights(
         flow_direction_uri, outflow_weights_uri, outflow_direction_uri)
 
     # Calculate the percent to sink
     if percent_to_stream_uri is not None:
         effect_uri = percent_to_stream_uri
     else:
-        effect_uri = pygeoprocessing.temporary_filename(suffix='.tif')
+        effect_uri = geoprocessing.temporary_filename(suffix='.tif')
 
-    pygeoprocessing.routing.routing_core.percent_to_sink(
+    routing_core.percent_to_sink(
         stream_uri, export_rate_uri, outflow_direction_uri,
         outflow_weights_uri, effect_uri)
 
     # Finally multiply the effect by the source
-    nodata_source = pygeoprocessing.get_nodata_from_uri(source_uri)
-    nodata_effect = pygeoprocessing.get_nodata_from_uri(effect_uri)
-    nodata_stream = pygeoprocessing.get_nodata_from_uri(stream_uri)
+    nodata_source = geoprocessing.get_nodata_from_uri(source_uri)
+    nodata_effect = geoprocessing.get_nodata_from_uri(effect_uri)
+    nodata_stream = geoprocessing.get_nodata_from_uri(stream_uri)
 
     def mult_nodata(source, effect, stream):
         """Does the multiply of source by effect if there's not a stream"""
@@ -252,7 +253,7 @@ def pixel_amount_exported(
             return nodata_source
         return source * effect * (1 - stream)
 
-    pygeoprocessing.vectorize_datasets(
+    geoprocessing.vectorize_datasets(
         [source_uri, effect_uri, stream_uri], mult_nodata, pixel_export_uri,
         gdal.GDT_Float32, nodata_source, out_pixel_size, "intersection",
         dataset_to_align_index=0)
@@ -282,7 +283,7 @@ def fill_pits(dem_uri, dem_out_uri):
     Return:
         None
     """
-    pygeoprocessing.routing.routing_core.fill_pits(dem_uri, dem_out_uri)
+    routing_core.fill_pits(dem_uri, dem_out_uri)
 
 
 def distance_to_stream(
@@ -301,7 +302,7 @@ def distance_to_stream(
     Returns:
         None
     """
-    pygeoprocessing.routing.routing_core.distance_to_stream(
+    routing_core.distance_to_stream(
         flow_direction_uri, stream_uri, distance_uri, factor_uri=factor_uri)
 
 
@@ -323,13 +324,13 @@ def flow_direction_d_inf(dem_uri, flow_direction_uri):
         None
     """
     # inital pass to define flow directions off the dem
-    pygeoprocessing.routing.routing_core.flow_direction_inf(
+    routing_core.flow_direction_inf(
         dem_uri, flow_direction_uri)
 
-    flat_mask_uri = pygeoprocessing.temporary_filename()
-    labels_uri = pygeoprocessing.temporary_filename()
+    flat_mask_uri = geoprocessing.temporary_filename()
+    labels_uri = geoprocessing.temporary_filename()
 
-    flats_exist = pygeoprocessing.routing.routing_core.resolve_flats(
+    flats_exist = routing_core.resolve_flats(
         dem_uri, flow_direction_uri, flat_mask_uri, labels_uri,
         drain_off_edge=False)
 
@@ -337,28 +338,26 @@ def flow_direction_d_inf(dem_uri, flow_direction_uri):
     # nodata that was not calculated on the first pass
     if flats_exist:
         LOGGER.debug('flats exist, calculating flow direction for them')
-        pygeoprocessing.routing.routing_core.\
-            flow_direction_inf_masked_flow_dirs(
+        routing_core.flow_direction_inf_masked_flow_dirs(
                 flat_mask_uri, labels_uri, flow_direction_uri)
         try:
             os.remove(flat_mask_uri)
             os.remove(labels_uri)
         except OSError:
             pass  # just a file lock
-        flat_mask_uri = pygeoprocessing.temporary_filename()
-        labels_uri = pygeoprocessing.temporary_filename()
+        flat_mask_uri = geoprocessing.temporary_filename()
+        labels_uri = geoprocessing.temporary_filename()
 
         # check to make sure there isn't a flat only region that should drain
         # off the edge of the raster
-        flats_exist = pygeoprocessing.routing.routing_core.resolve_flats(
+        flats_exist = routing_core.resolve_flats(
             dem_uri, flow_direction_uri, flat_mask_uri, labels_uri,
             drain_off_edge=True)
         if flats_exist:
             LOGGER.info(
                 'flats exist on second pass, must be flat areas that abut the '
                 'raster edge')
-            pygeoprocessing.routing.routing_core.\
-                flow_direction_inf_masked_flow_dirs(
+            routing_core.flow_direction_inf_masked_flow_dirs(
                     flat_mask_uri, labels_uri, flow_direction_uri)
 
     else:
@@ -401,25 +400,25 @@ def delineate_watershed(
     block_size = dem_band.GetBlockSize()
     if ((block_size[0] != 256 or block_size[1] != 256) and
             (dem_band.XSize >= 256 and dem_band.YSize >= 256)):
-        blocked_dem_uri = pygeoprocessing.temporary_filename()
-        pygeoprocessing.tile_dataset_uri(dem_uri, blocked_dem_uri, 256)
+        blocked_dem_uri = geoprocessing.temporary_filename()
+        geoprocessing.tile_dataset_uri(dem_uri, blocked_dem_uri, 256)
     else:
         blocked_dem_uri = dem_uri
 
-    flow_direction_uri = pygeoprocessing.temporary_filename()
+    flow_direction_uri = geoprocessing.temporary_filename()
     flow_direction_d_inf(blocked_dem_uri, flow_direction_uri)
 
-    outflow_weights_uri = pygeoprocessing.temporary_filename()
-    outflow_direction_uri = pygeoprocessing.temporary_filename()
-    pygeoprocessing.routing.routing_core.calculate_flow_weights(
+    outflow_weights_uri = geoprocessing.temporary_filename()
+    outflow_direction_uri = geoprocessing.temporary_filename()
+    routing_core.calculate_flow_weights(
         flow_direction_uri, outflow_weights_uri, outflow_direction_uri)
 
-    flow_accumulation_uri = pygeoprocessing.temporary_filename()
+    flow_accumulation_uri = geoprocessing.temporary_filename()
     flow_accumulation(
         flow_direction_uri, blocked_dem_uri, flow_accumulation_uri)
     stream_threshold(flow_accumulation_uri, flow_threshold, stream_out_uri)
 
-    pygeoprocessing.routing.routing_core.delineate_watershed(
+    routing_core.delineate_watershed(
         outflow_direction_uri, outflow_weights_uri,
         outlet_shapefile_uri, snap_distance, stream_out_uri,
         watershed_out_uri, snapped_outlet_points_uri)

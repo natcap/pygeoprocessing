@@ -4,7 +4,9 @@ Release History
 0.3.0 (XXX)
 -----------
 
-* get_lookup_from_csv attempts to determine the dialect of the CSV instead of assuming comma delimited.
+* Intra-package imports are now relative.  Addresses an import issue for users with multiple copies of pygeoprocessing installed across multiple Python installations.
+* Exposed cython routing functions so they may be imported from C modules.
+* `get_lookup_from_csv` attempts to determine the dialect of the CSV instead of assuming comma delimited.
 * Added relative numerical tolerance parameters to the PyGeoprocessing raster and csv tests with in the same API style as `numpy.testing.allclose`.
 * Fixed an incomparability with GDAL 1.11.3 bindings that expects a boolean type in `band.ComputeStatistics`.  Before this fix PyGeoprocessing would crash with a TypeError on many operations.
 * Fixed a defect in pygeoprocessing.routing.calculate_transport where the nodata types were cast as int even though the base type of the routing rasters were floats.  In extreme cases this could cause a crash on a type that could not be converted to an int, like an `inf`, and in subtle cases this would result in nodata values in the raster being ignored during routing.

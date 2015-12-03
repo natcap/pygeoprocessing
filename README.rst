@@ -32,3 +32,22 @@ Dependencies include
 * scipy>=0.13.3
 * shapely>=1.3.3
 * gdal>=1.10.1
+
+Installing PyGeoprocessing
+==========================
+
+.. code-block:: console
+
+    $ pip install pygeoprocessing
+
+
+If you `import pygeoprocessing` and see a `ValueError: numpy.dtype has the 
+wrong size, try recompiling`, this is the result of a version compatibility
+issue with the numpy ABI in the precompiled pygeoprocessing binaries.
+The solution is to recompile pygeoprocessing on your computer:
+
+.. code-block:: console
+
+    $ pip uninstall -y pygeoprocessing
+    $ pip install pygeoprocessing --no-deps --no-binary :all:
+
