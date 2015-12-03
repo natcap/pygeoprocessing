@@ -29,8 +29,8 @@ import shapely.ops
 from shapely import speedups
 import shapely.prepared
 
-import pygeoprocessing.geoprocessing_core
-from pygeoprocessing import fileio
+import geoprocessing_core
+import fileio
 
 logging.basicConfig(format='%(asctime)s %(name)-18s %(levelname)-8s \
     %(message)s', level=logging.DEBUG, datefmt='%m/%d/%Y %H:%M:%S ')
@@ -333,7 +333,7 @@ def new_raster_from_base_uri(
     Returns:
         nothing
     """
-    pygeoprocessing.geoprocessing_core.new_raster_from_base_uri(
+    geoprocessing_core.new_raster_from_base_uri(
         base_uri, output_uri, gdal_format, nodata, datatype,
         fill_value=fill_value, n_rows=n_rows, n_cols=n_rows,
         dataset_options=dataset_options)
@@ -372,7 +372,7 @@ def new_raster_from_base(
     Returns:
         dataset: a new GDAL raster dataset.
     """
-    return pygeoprocessing.geoprocessing_core.new_raster_from_base(
+    return geoprocessing_core.new_raster_from_base(
         base, output_uri, gdal_format, nodata, datatype, fill_value,
         n_rows, n_cols, dataset_options)
 
@@ -1078,7 +1078,7 @@ def calculate_slope(
     slope_nodata = -9999.0
     new_raster_from_base_uri(
         dem_small_uri, slope_uri, 'GTiff', slope_nodata, gdal.GDT_Float32)
-    pygeoprocessing.geoprocessing_core._cython_calculate_slope(
+    geoprocessing_core._cython_calculate_slope(
         dem_small_uri, slope_uri)
     calculate_raster_stats_uri(slope_uri)
 
@@ -2965,7 +2965,7 @@ def distance_transform_edt(
             'TILED=YES', 'BLOCKXSIZE=%d' % blocksize,
             'BLOCKYSIZE=%d' % blocksize])
 
-    pygeoprocessing.geoprocessing_core.distance_transform_edt(
+    geoprocessing_core.distance_transform_edt(
         mask_as_byte_uri, output_distance_uri)
     try:
         os.remove(mask_as_byte_uri)

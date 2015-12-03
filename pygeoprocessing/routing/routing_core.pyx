@@ -27,7 +27,7 @@ cdef extern from "time.h" nogil:
     ctypedef int time_t
     time_t time(time_t*)
 
-import pygeoprocessing
+from .. import geoprocessing
 
 logging.basicConfig(format='%(asctime)s %(name)-18s %(levelname)-8s \
     %(message)s', lnevel=logging.DEBUG, datefmt='%m/%d/%Y %H:%M:%S ')
@@ -261,29 +261,29 @@ cdef calculate_transport(
     cdef numpy.ndarray[numpy.npy_int8, ndim=2] cache_dirty = numpy.zeros(
         (N_BLOCK_ROWS, N_BLOCK_COLS), dtype=numpy.int8)
 
-    cdef int outflow_direction_nodata = pygeoprocessing.get_nodata_from_uri(
+    cdef int outflow_direction_nodata = geoprocessing.get_nodata_from_uri(
         outflow_direction_uri)
 
     outflow_weights_dataset = gdal.Open(outflow_weights_uri)
     outflow_weights_band = outflow_weights_dataset.GetRasterBand(1)
-    cdef float outflow_weights_nodata = pygeoprocessing.get_nodata_from_uri(
+    cdef float outflow_weights_nodata = geoprocessing.get_nodata_from_uri(
         outflow_weights_uri)
     source_dataset = gdal.Open(source_uri)
     source_band = source_dataset.GetRasterBand(1)
-    cdef float source_nodata = pygeoprocessing.get_nodata_from_uri(
+    cdef float source_nodata = geoprocessing.get_nodata_from_uri(
         source_uri)
     absorption_rate_dataset = gdal.Open(absorption_rate_uri)
     absorption_rate_band = absorption_rate_dataset.GetRasterBand(1)
-    cdef float absorption_rate_nodata = pygeoprocessing.get_nodata_from_uri(
+    cdef float absorption_rate_nodata = geoprocessing.get_nodata_from_uri(
         absorption_rate_uri)
 
     #Create output arrays for loss and flux
     transport_nodata = -1.0
-    loss_dataset = pygeoprocessing.new_raster_from_base(
+    loss_dataset = geoprocessing.new_raster_from_base(
         outflow_direction_dataset, loss_uri, 'GTiff', transport_nodata,
         gdal.GDT_Float32)
     loss_band = loss_dataset.GetRasterBand(1)
-    flux_dataset = pygeoprocessing.new_raster_from_base(
+    flux_dataset = geoprocessing.new_raster_from_base(
         outflow_direction_dataset, flux_uri, 'GTiff', transport_nodata,
         gdal.GDT_Float32)
     flux_band = flux_dataset.GetRasterBand(1)
@@ -297,7 +297,7 @@ cdef calculate_transport(
     if stream_uri != None:
         stream_dataset = gdal.Open(stream_uri)
         stream_band = stream_dataset.GetRasterBand(1)
-        stream_nodata = pygeoprocessing.get_nodata_from_uri(stream_uri)
+        stream_nodata = geoprocessing.get_nodata_from_uri(stream_uri)
         band_list.append(stream_band)
         block_list.append(stream_block)
         update_list.append(False)
@@ -493,7 +493,7 @@ def calculate_flow_weights(
     n_cols, n_rows = flow_direction_band.XSize, flow_direction_band.YSize
 
     cdef int outflow_direction_nodata = 9
-    outflow_direction_dataset = pygeoprocessing.new_raster_from_base(
+    outflow_direction_dataset = geoprocessing.new_raster_from_base(
         flow_direction_dataset, outflow_direction_uri, 'GTiff',
         outflow_direction_nodata, gdal.GDT_Byte, fill_value=outflow_direction_nodata)
     outflow_direction_band = outflow_direction_dataset.GetRasterBand(1)
@@ -501,7 +501,7 @@ def calculate_flow_weights(
         numpy.empty((N_BLOCK_ROWS, N_BLOCK_COLS, block_row_size, block_col_size), dtype=numpy.int8))
 
     cdef double outflow_weights_nodata = -1.0
-    outflow_weights_dataset = pygeoprocessing.new_raster_from_base(
+    outflow_weights_dataset = geoprocessing.new_raster_from_base(
         flow_direction_dataset, outflow_weights_uri, 'GTiff',
         outflow_weights_nodata, gdal.GDT_Float32, fill_value=outflow_weights_nodata)
     outflow_weights_band = outflow_weights_dataset.GetRasterBand(1)
@@ -623,7 +623,7 @@ def fill_pits(dem_uri, dem_out_uri):
 
     #copy the dem to a different dataset so we know the type
     dem_band = dem_ds.GetRasterBand(1)
-    raw_nodata_value = pygeoprocessing.get_nodata_from_uri(dem_uri)
+    raw_nodata_value = geoprocessing.get_nodata_from_uri(dem_uri)
 
     cdef double nodata_value
     if raw_nodata_value is not None:
@@ -631,7 +631,7 @@ def fill_pits(dem_uri, dem_out_uri):
     else:
         LOGGER.warn("Nodata value not set, defaulting to -9999.9")
         nodata_value = -9999.9
-    pygeoprocessing.new_raster_from_base_uri(
+    geoprocessing.new_raster_from_base_uri(
         dem_uri, dem_out_uri, 'GTiff', nodata_value, gdal.GDT_Float32,
         INF)
     dem_out_ds = gdal.Open(dem_out_uri, gdal.GA_Update)
@@ -701,7 +701,7 @@ def flow_direction_inf(dem_uri, flow_direction_uri):
     cdef double e_0, e_1, e_2, s_1, s_2, d_1, d_2, flow_direction, slope, \
         flow_direction_max_slope, slope_max, nodata_flow
 
-    cdef double dem_nodata = pygeoprocessing.get_nodata_from_uri(dem_uri)
+    cdef double dem_nodata = geoprocessing.get_nodata_from_uri(dem_uri)
     #if it is not set, set it to a traditional nodata value
     if dem_nodata == None:
         dem_nodata = -9999
@@ -743,14 +743,14 @@ def flow_direction_inf(dem_uri, flow_direction_uri):
     cdef int *row_offsets = [0, -1, -1, -1,  0,  1, 1, 1]
     cdef int *col_offsets = [1,  1,  0, -1, -1, -1, 0, 1]
 
-    n_rows, n_cols = pygeoprocessing.get_row_col_from_uri(dem_uri)
-    d_1 = pygeoprocessing.get_cell_size_from_uri(dem_uri)
+    n_rows, n_cols = geoprocessing.get_row_col_from_uri(dem_uri)
+    d_1 = geoprocessing.get_cell_size_from_uri(dem_uri)
     d_2 = d_1
     cdef double max_r = numpy.pi / 4.0
 
     #Create a flow carray and respective dataset
     cdef float flow_nodata = -9999
-    pygeoprocessing.new_raster_from_base_uri(
+    geoprocessing.new_raster_from_base_uri(
         dem_uri, flow_direction_uri, 'GTiff', flow_nodata,
         gdal.GDT_Float32, fill_value=flow_nodata)
 
@@ -902,7 +902,7 @@ def flow_direction_inf(dem_uri, flow_direction_uri):
     flow_band = None
     gdal.Dataset.__swig_destroy__(flow_direction_dataset)
     flow_direction_dataset = None
-    pygeoprocessing.calculate_raster_stats_uri(flow_direction_uri)
+    geoprocessing.calculate_raster_stats_uri(flow_direction_uri)
 
 
 @cython.boundscheck(False)
@@ -931,14 +931,14 @@ def distance_to_stream(
             nothing"""
 
     cdef float distance_nodata = -9999
-    pygeoprocessing.new_raster_from_base_uri(
+    geoprocessing.new_raster_from_base_uri(
         flow_direction_uri, distance_uri, 'GTiff', distance_nodata,
         gdal.GDT_Float32, fill_value=distance_nodata)
 
     cdef float processed_cell_nodata = 127
     processed_cell_uri = (
         os.path.join(os.path.dirname(flow_direction_uri), 'processed_cell.tif'))
-    pygeoprocessing.new_raster_from_base_uri(
+    geoprocessing.new_raster_from_base_uri(
         distance_uri, processed_cell_uri, 'GTiff', processed_cell_nodata,
         gdal.GDT_Byte, fill_value=0)
 
@@ -950,7 +950,7 @@ def distance_to_stream(
     cdef int *inflow_offsets = [4, 5, 6, 7, 0, 1, 2, 3]
 
     cdef int n_rows, n_cols
-    n_rows, n_cols = pygeoprocessing.get_row_col_from_uri(
+    n_rows, n_cols = geoprocessing.get_row_col_from_uri(
         flow_direction_uri)
     cdef int INF = n_rows + n_cols
 
@@ -958,24 +958,24 @@ def distance_to_stream(
 
     stream_ds = gdal.Open(stream_uri)
     stream_band = stream_ds.GetRasterBand(1)
-    cdef float stream_nodata = pygeoprocessing.get_nodata_from_uri(
+    cdef float stream_nodata = geoprocessing.get_nodata_from_uri(
         stream_uri)
-    cdef float cell_size = pygeoprocessing.get_cell_size_from_uri(stream_uri)
+    cdef float cell_size = geoprocessing.get_cell_size_from_uri(stream_uri)
 
     distance_ds = gdal.Open(distance_uri, gdal.GA_Update)
     distance_band = distance_ds.GetRasterBand(1)
 
-    outflow_weights_uri = pygeoprocessing.temporary_filename()
-    outflow_direction_uri = pygeoprocessing.temporary_filename()
+    outflow_weights_uri = geoprocessing.temporary_filename()
+    outflow_direction_uri = geoprocessing.temporary_filename()
     calculate_flow_weights(
         flow_direction_uri, outflow_weights_uri, outflow_direction_uri)
     outflow_weights_ds = gdal.Open(outflow_weights_uri)
     outflow_weights_band = outflow_weights_ds.GetRasterBand(1)
-    cdef float outflow_weights_nodata = pygeoprocessing.get_nodata_from_uri(
+    cdef float outflow_weights_nodata = geoprocessing.get_nodata_from_uri(
         outflow_weights_uri)
     outflow_direction_ds = gdal.Open(outflow_direction_uri)
     outflow_direction_band = outflow_direction_ds.GetRasterBand(1)
-    cdef int outflow_direction_nodata = pygeoprocessing.get_nodata_from_uri(
+    cdef int outflow_direction_nodata = geoprocessing.get_nodata_from_uri(
         outflow_direction_uri)
     cdef int block_col_size, block_row_size
     block_col_size, block_row_size = stream_band.GetBlockSize()
@@ -1314,19 +1314,19 @@ def percent_to_sink(
 
     sink_pixels_dataset = gdal.Open(sink_pixels_uri)
     sink_pixels_band = sink_pixels_dataset.GetRasterBand(1)
-    cdef int sink_pixels_nodata = pygeoprocessing.get_nodata_from_uri(
+    cdef int sink_pixels_nodata = geoprocessing.get_nodata_from_uri(
         sink_pixels_uri)
     export_rate_dataset = gdal.Open(export_rate_uri)
     export_rate_band = export_rate_dataset.GetRasterBand(1)
-    cdef double export_rate_nodata = pygeoprocessing.get_nodata_from_uri(
+    cdef double export_rate_nodata = geoprocessing.get_nodata_from_uri(
         export_rate_uri)
     outflow_direction_dataset = gdal.Open(outflow_direction_uri)
     outflow_direction_band = outflow_direction_dataset.GetRasterBand(1)
-    cdef int outflow_direction_nodata = pygeoprocessing.get_nodata_from_uri(
+    cdef int outflow_direction_nodata = geoprocessing.get_nodata_from_uri(
         outflow_direction_uri)
     outflow_weights_dataset = gdal.Open(outflow_weights_uri)
     outflow_weights_band = outflow_weights_dataset.GetRasterBand(1)
-    cdef float outflow_weights_nodata = pygeoprocessing.get_nodata_from_uri(
+    cdef float outflow_weights_nodata = geoprocessing.get_nodata_from_uri(
         outflow_weights_uri)
 
     cdef int block_col_size, block_row_size
@@ -1335,7 +1335,7 @@ def percent_to_sink(
     cdef int n_cols = sink_pixels_dataset.RasterXSize
 
     cdef double effect_nodata = -1.0
-    pygeoprocessing.new_raster_from_base_uri(
+    geoprocessing.new_raster_from_base_uri(
         sink_pixels_uri, effect_uri, 'GTiff', effect_nodata,
         gdal.GDT_Float32, fill_value=effect_nodata)
     effect_dataset = gdal.Open(effect_uri, gdal.GA_Update)
@@ -1545,9 +1545,9 @@ cdef flat_edges(
 
     cdef float cell_dem, cell_flow, neighbor_dem, neighbor_flow
 
-    cdef float dem_nodata = pygeoprocessing.get_nodata_from_uri(
+    cdef float dem_nodata = geoprocessing.get_nodata_from_uri(
         dem_uri)
-    cdef float flow_nodata = pygeoprocessing.get_nodata_from_uri(
+    cdef float flow_nodata = geoprocessing.get_nodata_from_uri(
         flow_direction_uri)
 
     cdef time_t last_time, current_time
@@ -1650,7 +1650,7 @@ cdef label_flats(dem_uri, deque[int] &low_edges, labels_uri):
     dem_band = dem_ds.GetRasterBand(1)
 
     cdef int labels_nodata = -1
-    labels_ds = pygeoprocessing.new_raster_from_base(
+    labels_ds = geoprocessing.new_raster_from_base(
         dem_ds, labels_uri, 'GTiff', labels_nodata,
         gdal.GDT_Int32)
     labels_band = labels_ds.GetRasterBand(1)
@@ -1696,7 +1696,7 @@ cdef label_flats(dem_uri, deque[int] &low_edges, labels_uri):
     cdef float cell_dem, neighbor_dem, neighbor_label
     cdef float cell_label, flat_cell_label
 
-    cdef float dem_nodata = pygeoprocessing.get_nodata_from_uri(
+    cdef float dem_nodata = geoprocessing.get_nodata_from_uri(
         dem_uri)
 
     cdef time_t last_time, current_time
@@ -1820,7 +1820,7 @@ cdef clean_high_edges(labels_uri, deque[int] &high_edges):
         N_BLOCK_ROWS, N_BLOCK_COLS, n_rows, n_cols, block_row_size,
         block_col_size, band_list, block_list, update_list, cache_dirty)
 
-    cdef int labels_nodata = pygeoprocessing.get_nodata_from_uri(
+    cdef int labels_nodata = geoprocessing.get_nodata_from_uri(
         labels_uri)
     cdef int flat_cell_label
 
@@ -1937,7 +1937,7 @@ cdef away_from_higher(
 
     cdef int flat_mask_nodata = -9999
     #fill up the flat mask with 0s so it can be used to route a dem later
-    pygeoprocessing.new_raster_from_base_uri(
+    geoprocessing.new_raster_from_base_uri(
         labels_uri, flat_mask_uri, 'GTiff', flat_mask_nodata,
         gdal.GDT_Int32, fill_value=0)
 
@@ -1984,10 +1984,10 @@ cdef away_from_higher(
     cdef int flat_index
     cdef int flat_row, flat_col
     cdef int flat_mask
-    cdef int labels_nodata = pygeoprocessing.get_nodata_from_uri(labels_uri)
+    cdef int labels_nodata = geoprocessing.get_nodata_from_uri(labels_uri)
     cdef int cell_label, neighbor_label
     cdef float neighbor_flow
-    cdef float flow_nodata = pygeoprocessing.get_nodata_from_uri(
+    cdef float flow_nodata = geoprocessing.get_nodata_from_uri(
         flow_direction_uri)
 
     cdef time_t last_time, current_time
@@ -2111,7 +2111,7 @@ cdef towards_lower(
     cdef int *neighbor_row_offset = [0, -1, -1, -1,  0,  1, 1, 1]
     cdef int *neighbor_col_offset = [1,  1,  0, -1, -1, -1, 0, 1]
 
-    flat_mask_nodata = pygeoprocessing.get_nodata_from_uri(flat_mask_uri)
+    flat_mask_nodata = geoprocessing.get_nodata_from_uri(flat_mask_uri)
 
     labels_ds = gdal.Open(labels_uri)
     labels_band = labels_ds.GetRasterBand(1)
@@ -2157,10 +2157,10 @@ cdef towards_lower(
     cdef int flat_index
     cdef int flat_row, flat_col
     cdef int flat_mask
-    cdef int labels_nodata = pygeoprocessing.get_nodata_from_uri(labels_uri)
+    cdef int labels_nodata = geoprocessing.get_nodata_from_uri(labels_uri)
     cdef int cell_label, neighbor_label
     cdef float neighbor_flow
-    cdef float flow_nodata = pygeoprocessing.get_nodata_from_uri(
+    cdef float flow_nodata = geoprocessing.get_nodata_from_uri(
         flow_direction_uri)
 
     #seed the queue with the low edges
@@ -2324,18 +2324,18 @@ def flow_direction_inf_masked_flow_dirs(
     cdef int *row_offsets = [0, -1, -1, -1,  0,  1, 1, 1]
     cdef int *col_offsets = [1,  1,  0, -1, -1, -1, 0, 1]
 
-    n_rows, n_cols = pygeoprocessing.get_row_col_from_uri(flat_mask_uri)
-    d_1 = pygeoprocessing.get_cell_size_from_uri(flat_mask_uri)
+    n_rows, n_cols = geoprocessing.get_row_col_from_uri(flat_mask_uri)
+    d_1 = geoprocessing.get_cell_size_from_uri(flat_mask_uri)
     d_2 = d_1
     cdef double max_r = numpy.pi / 4.0
 
 
-    cdef float flow_nodata = pygeoprocessing.get_nodata_from_uri(
+    cdef float flow_nodata = geoprocessing.get_nodata_from_uri(
         flow_direction_uri)
     flow_direction_dataset = gdal.Open(flow_direction_uri, gdal.GA_Update)
     flow_band = flow_direction_dataset.GetRasterBand(1)
 
-    cdef float label_nodata = pygeoprocessing.get_nodata_from_uri(labels_uri)
+    cdef float label_nodata = geoprocessing.get_nodata_from_uri(labels_uri)
     label_dataset = gdal.Open(labels_uri)
     label_band = label_dataset.GetRasterBand(1)
 
@@ -2510,7 +2510,7 @@ def flow_direction_inf_masked_flow_dirs(
     flow_band = None
     gdal.Dataset.__swig_destroy__(flow_direction_dataset)
     flow_direction_dataset = None
-    pygeoprocessing.calculate_raster_stats_uri(flow_direction_uri)
+    geoprocessing.calculate_raster_stats_uri(flow_direction_uri)
 
 
 @cython.boundscheck(False)
@@ -2536,7 +2536,7 @@ cdef find_outlets(dem_uri, flow_direction_uri, deque[int] &outlet_deque):
 
     flow_direction_ds = gdal.Open(flow_direction_uri)
     flow_direction_band = flow_direction_ds.GetRasterBand(1)
-    cdef float flow_nodata = pygeoprocessing.get_nodata_from_uri(
+    cdef float flow_nodata = geoprocessing.get_nodata_from_uri(
         flow_direction_uri)
 
     cdef int block_col_size, block_row_size
@@ -2561,7 +2561,7 @@ cdef find_outlets(dem_uri, flow_direction_uri, deque[int] &outlet_deque):
         N_BLOCK_ROWS, N_BLOCK_COLS, n_rows, n_cols, block_row_size,
         block_col_size, band_list, block_list, update_list, cache_dirty)
 
-    cdef float dem_nodata = pygeoprocessing.get_nodata_from_uri(dem_uri)
+    cdef float dem_nodata = geoprocessing.get_nodata_from_uri(dem_uri)
 
     cdef int cell_row_index, cell_col_index
     cdef int cell_row_block_index, cell_col_block_index
@@ -2689,20 +2689,20 @@ def route_flux(
 
         returns nothing"""
 
-    dem_uri = pygeoprocessing.temporary_filename(suffix='.tif')
-    flow_direction_uri = pygeoprocessing.temporary_filename(suffix='.tif')
-    source_uri = pygeoprocessing.temporary_filename(suffix='.tif')
-    absorption_rate_uri = pygeoprocessing.temporary_filename(suffix='.tif')
-    out_pixel_size = pygeoprocessing.get_cell_size_from_uri(in_flow_direction)
+    dem_uri = geoprocessing.temporary_filename(suffix='.tif')
+    flow_direction_uri = geoprocessing.temporary_filename(suffix='.tif')
+    source_uri = geoprocessing.temporary_filename(suffix='.tif')
+    absorption_rate_uri = geoprocessing.temporary_filename(suffix='.tif')
+    out_pixel_size = geoprocessing.get_cell_size_from_uri(in_flow_direction)
 
-    pygeoprocessing.align_dataset_list(
+    geoprocessing.align_dataset_list(
         [in_flow_direction, in_dem, in_source_uri, in_absorption_rate_uri],
         [flow_direction_uri, dem_uri, source_uri, absorption_rate_uri],
         ["nearest", "nearest", "nearest", "nearest"], out_pixel_size,
         "intersection", 0, aoi_uri=aoi_uri, assert_datasets_projected=False)
 
-    outflow_weights_uri = pygeoprocessing.temporary_filename(suffix='.tif')
-    outflow_direction_uri = pygeoprocessing.temporary_filename(suffix='.tif')
+    outflow_weights_uri = geoprocessing.temporary_filename(suffix='.tif')
+    outflow_direction_uri = geoprocessing.temporary_filename(suffix='.tif')
 
     cdef deque[int] outlet_cell_deque
 
@@ -2755,7 +2755,7 @@ def delineate_watershed(
     if os.path.isfile(watershed_out_uri):
         os.remove(watershed_out_uri)
 
-    pygeoprocessing.geoprocessing.create_directories(
+    geoprocessing.geoprocessing.create_directories(
         [os.path.dirname(watershed_out_uri)])
 
     projection_wkt = outflow_direction_dataset.GetProjection()
@@ -2809,18 +2809,18 @@ def delineate_watershed(
     cdef numpy.ndarray[numpy.npy_int8, ndim=2] cache_dirty = numpy.zeros(
         (N_BLOCK_ROWS, N_BLOCK_COLS), dtype=numpy.int8)
 
-    cdef int outflow_direction_nodata = pygeoprocessing.get_nodata_from_uri(
+    cdef int outflow_direction_nodata = geoprocessing.get_nodata_from_uri(
         outflow_direction_uri)
 
     outflow_weights_dataset = gdal.Open(outflow_weights_uri)
     outflow_weights_band = outflow_weights_dataset.GetRasterBand(1)
-    cdef int outflow_weights_nodata = pygeoprocessing.get_nodata_from_uri(
+    cdef int outflow_weights_nodata = geoprocessing.get_nodata_from_uri(
         outflow_weights_uri)
 
     #Create output arrays for loss and flux
     watershed_nodata = 255
-    watershed_mask_uri = pygeoprocessing.temporary_filename()
-    pygeoprocessing.new_raster_from_base_uri(
+    watershed_mask_uri = geoprocessing.temporary_filename()
+    geoprocessing.new_raster_from_base_uri(
         outflow_direction_uri, watershed_mask_uri, 'GTiff', watershed_nodata,
         gdal.GDT_Byte, fill_value=watershed_nodata)
     watershed_dataset = gdal.Open(watershed_mask_uri, gdal.GA_Update)

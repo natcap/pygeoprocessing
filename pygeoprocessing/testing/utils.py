@@ -6,7 +6,6 @@ import platform
 
 import numpy
 from osgeo import gdal
-import pygeoprocessing
 
 
 LOGGER = logging.getLogger('natcap.testing.utils')
@@ -142,6 +141,7 @@ def checksum_folder(workspace_uri, logfile_uri, style='GNU', ignore_exts=None):
         raise IOError('Invalid style: %s.  Valid styles: %s' % (
             style, format_styles.keys()))
 
+    import pygeoprocessing
     logfile = open(logfile_uri, 'w')
     logfile.write('# orig_workspace = %s\n' % os.path.abspath(workspace_uri))
     logfile.write('# OS = %s\n' % platform.system())
