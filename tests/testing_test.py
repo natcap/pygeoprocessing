@@ -112,8 +112,8 @@ class GISTestTester(unittest.TestCase):
 
     @scm.skip_if_data_missing(SVN_LOCAL_DIR)
     def test_vector_assertion_failed_cleanup(self):
-        """If a raster assertion fails, we should still be able to remove the file."""
-        # create a raster on disk that we intend to remove.
+        """If a vector assertion fails, we should still be able to remove the file."""
+        # create a vector on disk that we intend to remove.
         tempdir = tempfile.mkdtemp()
         sample_vector_base = os.path.join(SAMPLE_VECTORS, 'harv_samp_cur.shp')
         sample_vector_copy = os.path.join(tempdir, 'sample_vector.shp')
@@ -127,8 +127,8 @@ class GISTestTester(unittest.TestCase):
             shutil.rmtree(tempdir)
         except OSError as file_not_removed_error:
             # This should technically be a WindowsError, which is a subclass of
-            # OSError.  If we can't remove the copied raster because the test
-            # has it open, then this test fails (and the raster will sit there
+            # OSError.  If we can't remove the copied vector because the test
+            # has it open, then this test fails (and the vector will sit there
             # since we won't be able to remove it until after python quits).
             raise AssertionError(('Vector objects not cleaned up properly: '
                 '%s') % file_not_removed_error)

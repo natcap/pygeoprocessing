@@ -40,15 +40,6 @@ cdef int N_BLOCK_ROWS = 16
 cdef int N_BLOCK_COLS = 16
 
 cdef class BlockCache:
-    cdef numpy.int32_t[:,:] row_tag_cache
-    cdef numpy.int32_t[:,:] col_tag_cache
-    cdef numpy.int8_t[:,:] cache_dirty
-    cdef int n_block_rows
-    cdef int n_block_cols
-    cdef int block_col_size
-    cdef int block_row_size
-    cdef int n_rows
-    cdef int n_cols
     band_list = []
     block_list = []
     update_list = []
