@@ -2508,8 +2508,11 @@ def get_lookup_from_csv(csv_table_uri, key_field):
         # attempt to detect excel style csvs like the example here
         # https://docs.python.org/2/library/csv.html#csv.Sniffer
         # the 1024 is a large chunk of the file, presumably enough to
-        # either figure out the dialect or go home
-        dialect = csv.Sniffer().sniff(csv_file.read(1024), delimiters=";,")
+        # either figure out the dialect or go home.
+        # Sniffer expects whole lines, so we need to take extra care to return
+        # a string that consists of whole lines.
+        dialect = csv.Sniffer().sniff('\n'.join(csv_file.readlines(1024)),
+                                      delimiters=";,")
         csv_file.seek(0)
         csv_reader = csv.reader(csv_file, dialect=dialect)
         header_row = map(lambda s: u(s), csv_reader.next())
