@@ -2755,7 +2755,7 @@ def delineate_watershed(
     if os.path.isfile(watershed_out_uri):
         os.remove(watershed_out_uri)
 
-    geoprocessing.geoprocessing.create_directories(
+    geoprocessing.create_directories(
         [os.path.dirname(watershed_out_uri)])
 
     projection_wkt = outflow_direction_dataset.GetProjection()
