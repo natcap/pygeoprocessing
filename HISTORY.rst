@@ -4,6 +4,7 @@ Release History
 0.3.0 (XXX)
 -----------
 
+* Fixed a defect in ``pygeoprocessing.geoprocessing.get_lookup_from_csv`` where the dialect was unable to be detected when analyzing a CSV that was larger than 1K in size.  This fix enables the correct detection of comma or semicolon delimited CSV files, so long as the header row by itself is not larger than 1K.
 * Intra-package imports are now relative.  Addresses an import issue for users with multiple copies of pygeoprocessing installed across multiple Python installations.
 * Exposed cython routing functions so they may be imported from C modules.
 * `get_lookup_from_csv` attempts to determine the dialect of the CSV instead of assuming comma delimited.
