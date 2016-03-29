@@ -117,7 +117,7 @@ REQUIREMENTS = [
     'numpy',
     'scipy',
     'shapely',
-    'gdal',
+    'gdal<2.0',
     'natcap.versioner>=0.1.2',
     'nose>=1.0',
     ]
