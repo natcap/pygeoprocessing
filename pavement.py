@@ -6,6 +6,7 @@ import textwrap
 import sys
 
 import paver.easy
+import paver.virtual
 
 paver.easy.options(
     bdist_windows=paver.easy.Bunch(
@@ -35,7 +36,8 @@ def after_install(options, home_dir):
         bindir = 'Scripts'
     else:
         bindir = 'bin'
-    subprocess.check_output([home_dir, bindir, 'easy_install', 'numpy==1.6.1'])
+    subprocess.check_output([os,path.join(home_dir, bindir, 'easy_install'),
+                             'numpy==1.6.1'])
 """
 
     output = virtualenv.create_bootstrap_script(
