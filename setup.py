@@ -119,6 +119,7 @@ REQUIREMENTS = [
     'shapely',
     'gdal',
     'natcap.versioner>=0.1.2',
+    'nose>=1.0',
     ]
 
 setup(
