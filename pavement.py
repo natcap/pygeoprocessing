@@ -21,7 +21,7 @@ paver.easy.options(
 @paver.easy.cmdopts([
     ('upload', '', ('Upload the binaries to PyPI.  Requires a configured '
                     '.pypirc')),
-    ('envname', '', ('The environment to use for building the binaries')),
+    ('envname=', '', ('The environment to use for building the binaries')),
 ])
 def bdist_windows(options):
     """Build a Windows wheel of pygeoprocessing against an early numpy ABI."""
