@@ -36,7 +36,7 @@ def after_install(options, home_dir):
         bindir = 'Scripts'
     else:
         bindir = 'bin'
-    subprocess.check_output([os,path.join(home_dir, bindir, 'easy_install'),
+    subprocess.check_output([os.path.join(home_dir, bindir, 'easy_install'),
                              'numpy==1.6.1'])
 """
 
