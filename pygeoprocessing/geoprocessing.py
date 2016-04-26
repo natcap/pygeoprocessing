@@ -1606,7 +1606,6 @@ def reclassify_dataset_uri(
     def map_dataset_to_value(original_values):
         """Convert a block of original values to the lookup values."""
         if values_required:
-            LOGGER.debug(original_values)
             unique = numpy.unique(original_values)
             has_map = numpy.in1d(unique, keys)
             if not all(has_map):
