@@ -31,6 +31,7 @@ TEST_OUT = os.path.join(SVN_LOCAL_DIR, 'test_out')
 BASE_DATA = os.path.join(SVN_LOCAL_DIR, 'base_data')
 REGRESSION_INPUT = os.path.join(SVN_LOCAL_DIR, 'testing_regression')
 
+
 class DataStorageUtilsTest(unittest.TestCase):
     def test_digest_file(self):
         """Test for digesting and comparing files and folders"""
@@ -77,24 +78,28 @@ class GISTestTester(unittest.TestCase):
 
         # check that IOError is raised if a file is not found.
         raster_on_disk = os.path.join(TEST_INPUT, 'landuse_cur_200m.tif')
-        self.assertRaises(IOError, testing.assert_rasters_equal, 'file_not_on_disk',
-            'other_file_not_on_disk', tolerance=1e-9)
-        self.assertRaises(IOError, testing.assert_rasters_equal, 'file_not_on_disk',
-            raster_on_disk, tolerance=1e-9)
         self.assertRaises(IOError, testing.assert_rasters_equal,
-            raster_on_disk, 'file_not_on_disk', tolerance=1e-9)
-        testing.assert_rasters_equal(raster_on_disk, raster_on_disk, tolerance=1e-9)
+                          'file_not_on_disk', 'other_file_not_on_disk',
+                          tolerance=1e-9)
+        self.assertRaises(IOError, testing.assert_rasters_equal,
+                          'file_not_on_disk', raster_on_disk, tolerance=1e-9)
+        self.assertRaises(IOError, testing.assert_rasters_equal,
+                          raster_on_disk, 'file_not_on_disk',
+                          tolerance=1e-9)
+        testing.assert_rasters_equal(raster_on_disk, raster_on_disk,
+                                     tolerance=1e-9)
 
     @scm.skip_if_data_missing(SVN_LOCAL_DIR)
     def test_raster_assertion_failed_cleanup(self):
-        """If a raster assertion fails, we should still be able to remove the file."""
+        """If raster assertion fails, we should still be able to remove it."""
         # create a raster on disk that we intend to remove.
         tempdir = tempfile.mkdtemp()
         lulc_current_base = os.path.join(TEST_INPUT, 'landuse_cur_200m.tif')
         lulc_copied = os.path.join(tempdir, 'landuse_copied.tif')
         lulc_future = os.path.join(TEST_INPUT, 'landuse_fut_200m.tif')
 
-        pygeoprocessing.geoprocessing.tile_dataset_uri(lulc_current_base, lulc_copied, 256)
+        pygeoprocessing.geoprocessing.tile_dataset_uri(lulc_current_base,
+                                                       lulc_copied, 256)
         try:
             self.assertRaises(
                 AssertionError, pygeoprocessing.testing.assert_rasters_equal,
@@ -106,7 +111,7 @@ class GISTestTester(unittest.TestCase):
             # has it open, then this test fails (and the raster will sit there
             # since we won't be able to remove it until after python quits).
             raise AssertionError(('Raster objects not cleaned up properly: '
-                '%s') % file_not_removed_error)
+                                  '%s') % file_not_removed_error)
         except AssertionError as test_failure_error:
             # If assertRaises raises an assertionError, then something really
             # did go wrong!  Clean up the workspace and raise the exception.
@@ -115,14 +120,15 @@ class GISTestTester(unittest.TestCase):
 
     @scm.skip_if_data_missing(SVN_LOCAL_DIR)
     def test_vector_assertion_failed_cleanup(self):
-        """If a vector assertion fails, we should still be able to remove the file."""
+        """If vector assertion fails, we should still be able to remove it."""
         # create a vector on disk that we intend to remove.
         tempdir = tempfile.mkdtemp()
         sample_vector_base = os.path.join(SAMPLE_VECTORS, 'harv_samp_cur.shp')
         sample_vector_copy = os.path.join(tempdir, 'sample_vector.shp')
         comparison_vector = os.path.join(SAMPLE_VECTORS, 'harv_samp_fut.shp')
 
-        pygeoprocessing.copy_datasource_uri(sample_vector_base, sample_vector_copy)
+        pygeoprocessing.copy_datasource_uri(sample_vector_base,
+                                            sample_vector_copy)
         try:
             self.assertRaises(
                 AssertionError, pygeoprocessing.testing.assert_vectors_equal,
@@ -134,7 +140,7 @@ class GISTestTester(unittest.TestCase):
             # has it open, then this test fails (and the vector will sit there
             # since we won't be able to remove it until after python quits).
             raise AssertionError(('Vector objects not cleaned up properly: '
-                '%s') % file_not_removed_error)
+                                  '%s') % file_not_removed_error)
         except AssertionError as test_failure_error:
             # If assertRaises raises an assertionError, then something really
             # did go wrong!  Clean up the workspace and raise the exception.
@@ -157,7 +163,7 @@ class GISTestTester(unittest.TestCase):
         source_raster = os.path.join(TEST_INPUT, 'landuse_cur_200m.tif')
         different_raster = os.path.join(SAMPLE_RASTERS, 'lulc_samp_cur')
         self.assertRaises(AssertionError, testing.assert_rasters_equal,
-            source_raster, different_raster, tolerance=1e-9)
+                          source_raster, different_raster, tolerance=1e-9)
 
     @scm.skip_if_data_missing(SVN_LOCAL_DIR)
     def test_raster_assertion_different_values(self):
@@ -165,18 +171,19 @@ class GISTestTester(unittest.TestCase):
         lulc_cur_raster = os.path.join(TEST_INPUT, 'landuse_cur_200m.tif')
         lulc_fut_raster = os.path.join(TEST_INPUT, 'landuse_fut_200m.tif')
         self.assertRaises(AssertionError, testing.assert_rasters_equal,
-            lulc_cur_raster, lulc_fut_raster, tolerance=1e-9)
+                          lulc_cur_raster, lulc_fut_raster, tolerance=1e-9)
 
     @scm.skip_if_data_missing(SVN_LOCAL_DIR)
     def test_vector_assertion_fileio(self):
         """Verify correct behavior for assertVectorsEqual"""
         vector_on_disk = os.path.join(TEST_INPUT, 'farms.dbf')
-        self.assertRaises(IOError, testing.assert_rasters_equal, 'file_not_on_disk',
-            'other_file_not_on_disk', tolerance=1e-9)
-        self.assertRaises(IOError, testing.assert_rasters_equal, 'file_not_on_disk',
-            vector_on_disk, tolerance=1e-9)
         self.assertRaises(IOError, testing.assert_rasters_equal,
-            vector_on_disk, 'file_not_on_disk', tolerance=1e-9)
+                          'file_not_on_disk', 'other_file_not_on_disk',
+                          tolerance=1e-9)
+        self.assertRaises(IOError, testing.assert_rasters_equal,
+                          'file_not_on_disk', vector_on_disk, tolerance=1e-9)
+        self.assertRaises(IOError, testing.assert_rasters_equal,
+                          vector_on_disk, 'file_not_on_disk', tolerance=1e-9)
         testing.assert_vectors_equal(vector_on_disk, vector_on_disk,
                                      field_tolerance=1e-9)
 
@@ -200,16 +207,16 @@ class GISTestTester(unittest.TestCase):
         base_file = os.path.join(TEST_INPUT, 'farms.shp')
         different_file = os.path.join(REGRESSION_ARCHIVES, 'farms.shp')
 
-        self.assertRaises(AssertionError, testing.assert_vectors_equal, base_file,
-            different_file, field_tolerance=1e-9)
+        self.assertRaises(AssertionError, testing.assert_vectors_equal,
+                          base_file, different_file, field_tolerance=1e-9)
 
     @scm.skip_if_data_missing(SVN_LOCAL_DIR)
     def test_vectors_very_different(self):
         """Verify when two vectors are very, very different."""
         base_file = os.path.join(TEST_INPUT, 'farms.shp')
         different_file = os.path.join(SAMPLE_VECTORS, 'harv_samp_cur.shp')
-        self.assertRaises(AssertionError, testing.assert_vectors_equal, base_file,
-            different_file, field_tolerance=1e-9)
+        self.assertRaises(AssertionError, testing.assert_vectors_equal,
+                          base_file, different_file, field_tolerance=1e-9)
 
     @scm.skip_if_data_missing(SVN_LOCAL_DIR)
     def test_csv_assertion_fileio(self):
@@ -230,8 +237,8 @@ class GISTestTester(unittest.TestCase):
         sample_file = os.path.join(TEST_INPUT, 'Guild.csv')
         different_file = os.path.join(TEST_INPUT, 'LU.csv')
 
-        self.assertRaises(AssertionError, testing.assert_csv_equal, sample_file,
-            different_file, tolerance=1e-9)
+        self.assertRaises(AssertionError, testing.assert_csv_equal,
+                          sample_file, different_file, tolerance=1e-9)
 
     @scm.skip_if_data_missing(SVN_LOCAL_DIR)
     def test_md5_same(self):
@@ -246,7 +253,8 @@ class GISTestTester(unittest.TestCase):
         test_file = os.path.join(SAMPLE_VECTORS, 'harv_samp_cur.shp')
         md5_sum = 'bad md5sum!'
 
-        self.assertRaises(AssertionError, testing.assert_md5_equal, test_file, md5_sum)
+        self.assertRaises(AssertionError, testing.assert_md5_equal, test_file,
+                          md5_sum)
 
     @scm.skip_if_data_missing(SVN_LOCAL_DIR)
     def test_workspaces_ignore(self):
@@ -271,7 +279,7 @@ class GISTestTester(unittest.TestCase):
         json_path = os.path.join(TESTING_REGRESSION, 'sample_json.json')
         json_path_new = os.path.join(TESTING_REGRESSION, 'sample_json_2.json')
         self.assertRaises(AssertionError, testing.assert_json_equal, json_path,
-            json_path_new)
+                          json_path_new)
 
     @scm.skip_if_data_missing(SVN_LOCAL_DIR)
     @scm.skip_if_data_missing(SVN_LOCAL_DIR)
@@ -285,8 +293,8 @@ class GISTestTester(unittest.TestCase):
         """Check that asserting two different text files fails."""
         sample_file = os.path.join(REGRESSION_INPUT, 'sample_text_file.txt')
         regression_file = os.path.join(REGRESSION_INPUT, 'sample_json.json')
-        self.assertRaises(AssertionError, testing.assert_text_equal, sample_file,
-            regression_file)
+        self.assertRaises(AssertionError, testing.assert_text_equal,
+                          sample_file, regression_file)
 
     @scm.skip_if_data_missing(SVN_LOCAL_DIR)
     def test_snapshot(self):
@@ -316,7 +324,8 @@ class GISTestTester(unittest.TestCase):
         # 0.005 is greater than the difference between the pixel values in
         # these two matrices.  We're only testing that we can use a
         # user-defined tolerance here.
-        pygeoprocessing.testing.assert_rasters_equal(filename_a, filename_b, tolerance=0.005)
+        pygeoprocessing.testing.assert_rasters_equal(filename_a, filename_b,
+                                                     tolerance=0.005)
 
     def test_raster_inequality_to_tolerance(self):
         """Verify assert_rasters_equal fails if inequal past a tolerance."""
@@ -457,7 +466,7 @@ class VectorEquality(unittest.TestCase):
         filename_b = os.path.join(self.workspace, 'bar')
         sampledata.create_vector_on_disk(
             [LineString([(0, 0), (1, 1)])], reference.projection,
-                filename=filename_b)
+            filename=filename_b)
 
         with self.assertRaises(AssertionError):
             assert_vectors_equal(filename_a, filename_b, 0.1)
@@ -541,9 +550,16 @@ class DigestEquality(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.workspace)
 
-
     @staticmethod
     def create_sample_folder(dirname):
+        """Create a sample file/directory structure at `dirname`.
+
+        Parameters:
+            dirname (string): the path to a directory where simple
+                files/folders should be created.
+
+        Returns:
+            None"""
         filename_a = os.path.join(dirname, '_a')
         filename_b = os.path.join(dirname, '_b')
         filename_c = os.path.join(dirname, '_c', '_d')
@@ -585,5 +601,3 @@ class DigestEquality(unittest.TestCase):
         utils.checksum_folder(sample_folder, checksum_file, style='BSD')
 
         assert_checksums_equal(checksum_file, base_folder=sample_folder)
-
-
