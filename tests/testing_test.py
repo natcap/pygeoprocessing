@@ -342,3 +342,22 @@ class GISTestTester(unittest.TestCase):
 
         with self.assertRaises(AssertionError):
             assert_close(1, 2, 0.0001)
+
+    def test_raster_different_y_dimension(self):
+        """Verify assert_rasters_equal fails when y dimensions differ"""
+        reference = sampledata.SRS_COLOMBIA
+        filename_a = pygeoprocessing.temporary_filename()
+        sampledata.create_raster_on_disk(
+            [numpy.array([[0.1], [0.1]])], reference.origin,
+            reference.projection, -1, reference.pixel_size(30),
+            datatype=gdal.GDT_Float32, format='GTiff', filename=filename_a)
+
+        filename_b = pygeoprocessing.temporary_filename()
+        sampledata.create_raster_on_disk(
+            [numpy.array([[0.1]])], reference.origin,
+            reference.projection, -1, reference.pixel_size(30),
+            datatype=gdal.GDT_Float32, format='GTiff', filename=filename_b)
+
+        with self.assertRaises(AssertionError):
+            pygeoprocessing.testing.assert_rasters_equal(
+                filename_a, filename_b, tolerance=0.00005)
