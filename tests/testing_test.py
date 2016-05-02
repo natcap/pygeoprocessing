@@ -480,3 +480,21 @@ class VectorEquality(unittest.TestCase):
 
         with self.assertRaises(AssertionError):
             assert_vectors_equal(filename_a, filename_b, 0.1)
+
+    def test_different_nonnumeric_field_values(self):
+        """Assert that nonnumeric field values can be checked correctly."""
+        from pygeoprocessing.testing import assert_vectors_equal
+        reference = sampledata.SRS_WILLAMETTE
+        filename_a = os.path.join(self.workspace, 'foo')
+        sampledata.create_vector_on_disk(
+            [Point(0, 0)], reference.projection, fields={'a': 'string'},
+            attributes=[{'a': 'aaa'}], filename=filename_a)
+
+        filename_b = os.path.join(self.workspace, 'bar')
+        sampledata.create_vector_on_disk(
+            [Point(0, 0)], reference.projection, fields={'a': 'string'},
+            attributes=[{'a': 'bbb'}], filename=filename_b)
+
+        with self.assertRaises(AssertionError):
+            assert_vectors_equal(filename_a, filename_b, 0.1)
+
