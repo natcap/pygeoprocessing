@@ -498,3 +498,18 @@ class VectorEquality(unittest.TestCase):
         with self.assertRaises(AssertionError):
             assert_vectors_equal(filename_a, filename_b, 0.1)
 
+    def test_different_geometries(self):
+        """Assert we can test geometric values of the same type."""
+        from pygeoprocessing.testing import assert_vectors_equal
+        reference = sampledata.SRS_WILLAMETTE
+        filename_a = os.path.join(self.workspace, 'foo')
+        sampledata.create_vector_on_disk(
+            [Point(0, 1)], reference.projection, filename=filename_a)
+
+        filename_b = os.path.join(self.workspace, 'bar')
+        sampledata.create_vector_on_disk(
+            [Point(0, 0)], reference.projection, filename=filename_b)
+
+        with self.assertRaises(AssertionError):
+            assert_vectors_equal(filename_a, filename_b, 0.1)
+
