@@ -410,7 +410,7 @@ class VectorEquality(unittest.TestCase):
         shutil.rmtree(self.workspace)
 
     @staticmethod
-    def sample_vector():
+    def sample_vector(filepath):
         from shapely import Polygon
 
     def test_file_not_found(self):
@@ -421,6 +421,29 @@ class VectorEquality(unittest.TestCase):
 
         with self.assertRaises(IOError):
             assert_vectors_equal(nonexistent_file_a, nonexistent_file_b, 0.1)
+
+    def test_mismatched_layer_counts(self):
+        """Mismatched layer counts should raise assertionerror."""
+        from pygeoprocessing.testing import assert_vectors_equal
+        from osgeo import ogr
+        # creating manually, since create_vector_on_disk can't create vectors
+        # with multiple layers at the moment.
+        # Using GeoJSON for readability and multi-layer support.
+        driver = ogr.GetDriverByName('KML')
+
+        filepath_a = os.path.join(self.workspace, 'foo.kml')
+        out_vector_a = driver.CreateDataSource(filepath_a)
+        out_vector_a.CreateLayer('a')
+        out_vector_a.CreateLayer('b')
+        out_vector_a = None
+
+        filepath_b = os.path.join(self.workspace, 'bar.kml')
+        out_vector_b = driver.CreateDataSource(filepath_b)
+        out_vector_b.CreateLayer('a')
+        out_vector_b = None
+
+        with self.assertRaises(AssertionError):
+            assert_vectors_equal(filepath_a, filepath_b, 0.1)
 
 
 
