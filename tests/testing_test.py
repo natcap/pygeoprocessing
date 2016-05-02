@@ -411,10 +411,6 @@ class VectorEquality(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.workspace)
 
-    @staticmethod
-    def sample_vector(filepath):
-        from shapely import Polygon
-
     def test_file_not_found(self):
         """IOError should be raised when a vector does not exist."""
         from pygeoprocessing.testing import assert_vectors_equal
@@ -512,4 +508,28 @@ class VectorEquality(unittest.TestCase):
 
         with self.assertRaises(AssertionError):
             assert_vectors_equal(filename_a, filename_b, 0.1)
+
+
+class CSVEquality(unittest.TestCase):
+    def setUp(self):
+        self.workspace = tempfile.mkdtemp()
+
+    def tearDown(self):
+        shutil.rmtree(self.workspace)
+
+    def test_numeric_value_equality(self):
+        """Test that numeric equality testing fails when expected."""
+        from pygeoprocessing.testing import assert_csv_equal
+
+        filename_a = os.path.join(self.workspace, 'foo.csv')
+        filename_b = os.path.join(self.workspace, 'bar.csv')
+
+        for filename, value in [(filename_a, 0.1),
+                                (filename_b, 0.2)]:
+            with open(filename, 'w') as csv_file:
+                csv_file.write('a\n%s\n' % value)
+
+        with self.assertRaises(AssertionError):
+            assert_csv_equal(filename_a, filename_b, 0.001)
+
 
