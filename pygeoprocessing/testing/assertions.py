@@ -523,7 +523,7 @@ def assert_checksums_equal(checksum_file, base_folder=None):
     files = {}
     for line in snapshot:
         split_line = line.strip().split(' ')
-        if line[0] == 'MD5':
+        if split_line[0] == 'MD5':
             # we're reading a BSD-style checksum file (formatted like this):
             # MD5 (filename) = md5sum
             md5sum = split_line[3]

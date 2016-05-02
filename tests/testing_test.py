@@ -3,6 +3,7 @@ import tempfile
 import os
 import shutil
 import glob
+import hashlib
 
 import numpy
 from osgeo import gdal
@@ -531,5 +532,58 @@ class CSVEquality(unittest.TestCase):
 
         with self.assertRaises(AssertionError):
             assert_csv_equal(filename_a, filename_b, 0.001)
+
+
+class DigestEquality(unittest.TestCase):
+    def setUp(self):
+        self.workspace = tempfile.mkdtemp()
+
+    def tearDown(self):
+        shutil.rmtree(self.workspace)
+
+
+    @staticmethod
+    def create_sample_folder(dirname):
+        filename_a = os.path.join(dirname, '_a')
+        filename_b = os.path.join(dirname, '_b')
+        filename_c = os.path.join(dirname, '_c', '_d')
+
+        for filename in [filename_a, filename_b, filename_c]:
+            dirname = os.path.dirname(filename)
+            if not os.path.exists(dirname):
+                os.makedirs(dirname)
+
+            # Just write the name of the file to the file.
+            with open(filename, 'w') as open_file:
+                open_file.write(os.path.basename(filename))
+
+    def test_checksum_assertion_in_cwd(self):
+        """Verify testing from CWD if none is provided."""
+        from pygeoprocessing.testing import assert_checksums_equal
+
+        sample_folder = tempfile.mkdtemp(dir=self.workspace)
+        DigestEquality.create_sample_folder(sample_folder)
+
+        checksum_file = os.path.join(self.workspace, 'checksum.md5')
+        utils.checksum_folder(sample_folder, checksum_file)
+
+        try:
+            cwd = os.getcwd()
+            os.chdir(sample_folder)
+            assert_checksums_equal(checksum_file)
+        finally:
+            os.chdir(cwd)
+
+    def test_bsd_checksum_file(self):
+        """Verify a BSD-style checksum file."""
+        from pygeoprocessing.testing import assert_checksums_equal
+
+        sample_folder = tempfile.mkdtemp(dir=self.workspace)
+        DigestEquality.create_sample_folder(sample_folder)
+
+        checksum_file = os.path.join(self.workspace, 'checksum.md5')
+        utils.checksum_folder(sample_folder, checksum_file, style='BSD')
+
+        assert_checksums_equal(checksum_file, base_folder=sample_folder)
 
 
