@@ -6,6 +6,8 @@ import glob
 
 import numpy
 from osgeo import gdal
+from osgeo import ogr
+from shapely.geometry import Point, LineString
 
 from pygeoprocessing.testing import scm
 import pygeoprocessing.testing as testing
@@ -425,7 +427,7 @@ class VectorEquality(unittest.TestCase):
     def test_mismatched_layer_counts(self):
         """Mismatched layer counts should raise assertionerror."""
         from pygeoprocessing.testing import assert_vectors_equal
-        from osgeo import ogr
+
         # creating manually, since create_vector_on_disk can't create vectors
         # with multiple layers at the moment.
         # Using KML for readability and multi-layer support.
@@ -448,8 +450,6 @@ class VectorEquality(unittest.TestCase):
     def test_mismatched_geometry_type(self):
         """Assert mismatched geometry types."""
         from pygeoprocessing.testing import assert_vectors_equal
-        from pygeoprocessing.testing import sampledata
-        from shapely.geometry import Point, LineString
         # creating manually, since create_vector_on_disk can't create vectors
         # with multiple layers at the moment.
         reference = sampledata.SRS_WILLAMETTE
@@ -465,6 +465,18 @@ class VectorEquality(unittest.TestCase):
         with self.assertRaises(AssertionError):
             assert_vectors_equal(filename_a, filename_b, 0.1)
 
+    def test_mismatched_projections(self):
+        """Raise assertionerror when projections differ."""
+        from pygeoprocessing.testing import assert_vectors_equal
+        reference = sampledata.SRS_WILLAMETTE
+        filename_a = os.path.join(self.workspace, 'foo')
+        sampledata.create_vector_on_disk(
+            [Point(0, 0)], reference.projection, filename=filename_a)
 
+        reference = sampledata.SRS_COLOMBIA
+        filename_b = os.path.join(self.workspace, 'bar')
+        sampledata.create_vector_on_disk(
+            [Point(0, 0)], reference.projection, filename=filename_b)
 
-
+        with self.assertRaises(AssertionError):
+            assert_vectors_equal(filename_a, filename_b, 0.1)
