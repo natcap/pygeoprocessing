@@ -400,3 +400,28 @@ class GISTestTester(unittest.TestCase):
         with self.assertRaises(AssertionError):
             pygeoprocessing.testing.assert_rasters_equal(
                 filename_a, filename_b, tolerance=0.00005)
+
+
+class VectorEquality(unittest.TestCase):
+    def setUp(self):
+        self.workspace = tempfile.mkdtemp()
+
+    def tearDown(self):
+        shutil.rmtree(self.workspace)
+
+    @staticmethod
+    def sample_vector():
+        from shapely import Polygon
+
+    def test_file_not_found(self):
+        """IOError should be raised when a vector does not exist."""
+        from pygeoprocessing.testing import assert_vectors_equal
+        nonexistent_file_a = os.path.join(self.workspace, 'foo')
+        nonexistent_file_b = os.path.join(self.workspace, 'bar')
+
+        with self.assertRaises(IOError):
+            assert_vectors_equal(nonexistent_file_a, nonexistent_file_b, 0.1)
+
+
+
+
