@@ -296,16 +296,6 @@ class GISTestTester(unittest.TestCase):
         self.assertRaises(AssertionError, testing.assert_text_equal,
                           sample_file, regression_file)
 
-    @scm.skip_if_data_missing(SVN_LOCAL_DIR)
-    def test_snapshot(self):
-        """Check that a new snapshot of a folder asserts properly."""
-        snapshot_file = os.path.join(TEST_OUT, 'snapshot.snap')
-        utils.checksum_folder(REGRESSION_INPUT, snapshot_file)
-
-        testing.assert_checksums_equal(snapshot_file, REGRESSION_INPUT)
-        self.assertRaises(AssertionError, testing.assert_checksums_equal,
-                          snapshot_file, POLLINATION_DATA)
-
     def test_raster_equality_to_tolerance(self):
         """Verify assert_rasters_equal asserts out to the given tolerance."""
         reference = sampledata.SRS_COLOMBIA
@@ -599,5 +589,17 @@ class DigestEquality(unittest.TestCase):
 
         checksum_file = os.path.join(self.workspace, 'checksum.md5')
         utils.checksum_folder(sample_folder, checksum_file, style='BSD')
+
+        assert_checksums_equal(checksum_file, base_folder=sample_folder)
+
+    def test_gnu_checksum_file(self):
+        """Verify a GNU-style checksum file."""
+        from pygeoprocessing.testing import assert_checksums_equal
+
+        sample_folder = tempfile.mkdtemp(dir=self.workspace)
+        DigestEquality.create_sample_folder(sample_folder)
+
+        checksum_file = os.path.join(self.workspace, 'checksum.md5')
+        utils.checksum_folder(sample_folder, checksum_file, style='GNU')
 
         assert_checksums_equal(checksum_file, base_folder=sample_folder)
