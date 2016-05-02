@@ -381,4 +381,22 @@ class GISTestTester(unittest.TestCase):
             pygeoprocessing.testing.assert_rasters_equal(
                 filename_a, filename_b, tolerance=0.00005)
 
+    def test_raster_different_projections(self):
+        """Verify assert_rasters_equal catches differing projections."""
+        reference = sampledata.SRS_COLOMBIA
+        filename_a = pygeoprocessing.temporary_filename()
+        sampledata.create_raster_on_disk(
+            [numpy.array([[0.1]])], reference.origin,
+            reference.projection, -1, reference.pixel_size(30),
+            datatype=gdal.GDT_Float32, format='GTiff', filename=filename_a)
 
+        reference = sampledata.SRS_WILLAMETTE
+        filename_b = pygeoprocessing.temporary_filename()
+        sampledata.create_raster_on_disk(
+            [numpy.array([[0.1]])], reference.origin,
+            reference.projection, -1, reference.pixel_size(30),
+            datatype=gdal.GDT_Float32, format='GTiff', filename=filename_b)
+
+        with self.assertRaises(AssertionError):
+            pygeoprocessing.testing.assert_rasters_equal(
+                filename_a, filename_b, tolerance=0.00005)
