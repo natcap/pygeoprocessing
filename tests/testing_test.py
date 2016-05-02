@@ -335,3 +335,10 @@ class GISTestTester(unittest.TestCase):
         self.assertRaises(
             AssertionError, pygeoprocessing.testing.assert_rasters_equal,
             filename_a, filename_b, tolerance=0.00005)
+
+    def test_assert_close_no_message(self):
+        """Verify assert_close provides a default message."""
+        from pygeoprocessing.testing import assert_close
+
+        with self.assertRaises(AssertionError):
+            assert_close(1, 2, 0.0001)
