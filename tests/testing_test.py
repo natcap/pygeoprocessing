@@ -9,6 +9,7 @@ import numpy
 from osgeo import gdal
 from osgeo import ogr
 from shapely.geometry import Point, LineString
+import mock
 
 from pygeoprocessing.testing import scm
 import pygeoprocessing.testing as testing
@@ -686,3 +687,20 @@ class DigestEquality(unittest.TestCase):
             ignore_exts=['.ignore'])
 
         self.assertTrue('.ignore' not in open(checksum_file).read())
+
+    def test_windows_pathsep_replacement(self):
+        """Verify that windows-style path separation works as expected."""
+        from pygeoprocessing.testing import checksum_folder
+
+        sample_folder = tempfile.mkdtemp(dir=self.workspace)
+        DigestEquality.create_sample_folder(sample_folder)
+        checksum_file = os.path.join(self.workspace, 'checksum.md5')
+
+        # Simulate being on Windows.
+        # On *NIX systems, this shouldn't affect the output files at all, since
+        # we're replacing os.sep ('/' on *NIX) with '/'.
+        with mock.patch('sys.platform', lambda: 'Windows'):
+            checksum_folder(sample_folder, checksum_file, style='GNU')
+            last_line = open(checksum_file).read().split('\n')[-2]
+            self.assertEqual(last_line,
+                             '6bc947566bb3f50d712efb0de07bfb19  _c/_d')
