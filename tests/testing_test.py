@@ -535,10 +535,21 @@ class CSVEquality(unittest.TestCase):
 
 
 class DigestEquality(unittest.TestCase):
+
+    """Test fixture for testing MD5 digest functionality."""
+
     def setUp(self):
+        """Pre-test setUp function.
+
+        Overridden from unittest.TestCase.setUp()
+        """
         self.workspace = tempfile.mkdtemp()
 
     def tearDown(self):
+        """Post-test teardown function.
+
+        Overridden from unittest.TestCase.tearDown()
+        """
         shutil.rmtree(self.workspace)
 
     @staticmethod
@@ -550,7 +561,8 @@ class DigestEquality(unittest.TestCase):
                 files/folders should be created.
 
         Returns:
-            None"""
+            None
+        """
         filename_a = os.path.join(dirname, '_a')
         filename_b = os.path.join(dirname, '_b')
         filename_c = os.path.join(dirname, '_c', '_d')
