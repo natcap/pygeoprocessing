@@ -670,5 +670,19 @@ class DigestEquality(unittest.TestCase):
                 continue
             self.assertEqual(expected_line, found_line)
 
+    def test_digest_creation_skip_extensions(self):
+        """Test the ignore_exts parameter for checksum file creation."""
+        from pygeoprocessing.testing import checksum_folder
 
+        sample_folder = tempfile.mkdtemp(dir=self.workspace)
+        DigestEquality.create_sample_folder(sample_folder)
 
+        # create a new file with the .ignore extension within the sample
+        # folder.  This file should not appear in the checksum file at all.
+        open(os.path.join(sample_folder, 'foo.ignore'), 'w').write('foo')
+
+        checksum_file = os.path.join(self.workspace, 'checksum.md5')
+        checksum_folder(sample_folder, checksum_file, style='GNU',
+            ignore_exts=['.ignore'])
+
+        self.assertTrue('.ignore' not in open(checksum_file).read())
