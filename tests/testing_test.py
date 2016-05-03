@@ -603,3 +603,72 @@ class DigestEquality(unittest.TestCase):
         utils.checksum_folder(sample_folder, checksum_file, style='GNU')
 
         assert_checksums_equal(checksum_file, base_folder=sample_folder)
+
+    def test_digest_creation_bad_type(self):
+        """Verify an exception is raised when a bad digest type is given."""
+        from pygeoprocessing.testing import checksum_folder
+
+        with self.assertRaises(IOError):
+            checksum_folder("doesn't matter", "doesn't matter", 'bad type!')
+
+    def test_digest_creation_gnu(self):
+        """Verify the correct creation of a GNU-style file."""
+        from pygeoprocessing.testing import checksum_folder
+
+        sample_folder = tempfile.mkdtemp(dir=self.workspace)
+        DigestEquality.create_sample_folder(sample_folder)
+
+        checksum_file = os.path.join(self.workspace, 'checksum.md5')
+        checksum_folder(sample_folder, checksum_file, style='GNU')
+
+        expected_checksum_lines = [
+            '# orig_workspace = /tmp/tmpcQNvKj/tmpW_AShy',
+            '# OS = Linux',
+            '# plat_string = Linux-3.2.0-4-amd64-x86_64-with-debian-jessie-sid',
+            '# GDAL = 1.10.1',
+            '# numpy = 1.10.4',
+            '# pygeoprocessing = 0.3.0a15.post24+n314e47b1d4e9',
+            '# checksum_style = GNU',
+            '5c855e094bdf284e55e9d16627ddd64b  _a',
+            'c716fb29298ad96a3b31757ec9755763  _b',
+            '6bc947566bb3f50d712efb0de07bfb19  _c/_d']
+
+        checksum_file_lines = open(checksum_file).read().split('\n')
+        for expected_line, found_line in zip(expected_checksum_lines,
+                                             checksum_file_lines):
+            if expected_line.startswith('# ') and found_line.startswith('# '):
+                continue
+            self.assertEqual(expected_line, found_line)
+
+    def test_digest_creation_bsd(self):
+        """Verify the correct creation of a BSD-style file."""
+        from pygeoprocessing.testing import checksum_folder
+
+        sample_folder = tempfile.mkdtemp(dir=self.workspace)
+        DigestEquality.create_sample_folder(sample_folder)
+
+        checksum_file = os.path.join(self.workspace, 'checksum.md5')
+        checksum_folder(sample_folder, checksum_file, style='BSD')
+
+        expected_checksum_lines = [
+            '# orig_workspace = /tmp/tmpcQNvKj/tmpW_AShy',
+            '# OS = Linux',
+            '# plat_string = Linux-3.2.0-4-amd64-x86_64-with-debian-jessie-sid',
+            '# GDAL = 1.10.1',
+            '# numpy = 1.10.4',
+            '# pygeoprocessing = 0.3.0a15.post24+n314e47b1d4e9',
+            '# checksum_style = BSD',
+            'MD5 (_a) = 5c855e094bdf284e55e9d16627ddd64b',
+            'MD5 (_b) = c716fb29298ad96a3b31757ec9755763',
+            'MD5 (_c/_d) = 6bc947566bb3f50d712efb0de07bfb19']
+
+        checksum_file_lines = open(checksum_file).read().split('\n')
+
+        for expected_line, found_line in zip(expected_checksum_lines,
+                                             checksum_file_lines):
+            if expected_line.startswith('# ') and found_line.startswith('# '):
+                continue
+            self.assertEqual(expected_line, found_line)
+
+
+
