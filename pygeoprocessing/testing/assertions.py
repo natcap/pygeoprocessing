@@ -511,6 +511,7 @@ def assert_checksums_equal(checksum_file, base_folder=None):
 
     snapshot = open(checksum_file)
     env_params = {}
+    files = {}
     for line in snapshot:
         # environment parameters are recorded as comments.
         if line.startswith('#'):
@@ -518,23 +519,19 @@ def assert_checksums_equal(checksum_file, base_folder=None):
             name = name.replace('#', '').strip()
             env_params[name.strip()] = value.strip()
         else:
-            break
+            split_line = line.strip().split(' ')
+            if split_line[0] == 'MD5':
+                # we're reading a BSD-style checksum file (formatted like this):
+                # MD5 (filename) = md5sum
+                md5sum = split_line[3]
+                filename = split_line[1].replace(')', '').replace('(', '')
+            else:
+                # We're reading a GNU-style checksum file (formatted like this):
+                # md5sum  filename
+                md5sum = split_line[0]
+                filename = split_line[2]
 
-    files = {}
-    for line in snapshot:
-        split_line = line.strip().split(' ')
-        if split_line[0] == 'MD5':
-            # we're reading a BSD-style checksum file (formatted like this):
-            # MD5 (filename) = md5sum
-            md5sum = split_line[3]
-            filename = split_line[1].replace(')', '').replace('(', '')
-        else:
-            # We're reading a GNU-style checksum file (formatted like this):
-            # md5sum  filename
-            md5sum = split_line[0]
-            filename = split_line[2]
-
-        files[filename] = md5sum
+            files[filename] = md5sum
 
     missing_files = []
     nonmatching_files = []

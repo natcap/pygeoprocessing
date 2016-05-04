@@ -774,3 +774,35 @@ class DigestEquality(unittest.TestCase):
 
         file_digest = digest_file(files[0])
         self.assertEqual('5c855e094bdf284e55e9d16627ddd64b', file_digest)
+
+    def test_checksum_a_missing_file(self):
+        """Test for when a checksummed file is missing."""
+        from pygeoprocessing.testing import assert_checksums_equal
+        from pygeoprocessing.testing import checksum_folder
+
+        # Create the sample files, checksum the folder, then remove one of the
+        # files.
+        sample_folder = tempfile.mkdtemp(dir=self.workspace)
+        files = DigestEquality.create_sample_folder(sample_folder)
+        checksum_file = os.path.join(self.workspace, 'checksum.md5')
+        checksum_folder(sample_folder, checksum_file, style='GNU')
+        os.remove(files[0])
+
+        with self.assertRaises(AssertionError):
+            assert_checksums_equal(checksum_file, sample_folder)
+
+    def test_checksum_a_modified_file(self):
+        """Test for when a checksummed file has been modified."""
+        from pygeoprocessing.testing import assert_checksums_equal
+        from pygeoprocessing.testing import checksum_folder
+
+        # Create the sample files, checksum the folder, then remove one of the
+        # files.
+        sample_folder = tempfile.mkdtemp(dir=self.workspace)
+        files = DigestEquality.create_sample_folder(sample_folder)
+        checksum_file = os.path.join(self.workspace, 'checksum.md5')
+        checksum_folder(sample_folder, checksum_file, style='GNU')
+        open(files[0], 'a').write('foo!')
+
+        with self.assertRaises(AssertionError):
+            assert_checksums_equal(checksum_file, sample_folder)
