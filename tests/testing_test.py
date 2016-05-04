@@ -700,8 +700,44 @@ class RasterTests(unittest.TestCase):
         """
         shutil.rmtree(self.workspace)
 
+    @staticmethod
+    def create_raster(*args, **kwargs):
+        """Create a raster.
+
+        This method is a functional equivalent to ``functools.partial`` if it
+        were to be used on ``pygeoprocessing.testing.create_raster_on_disk``.
+
+        Assumed default values are:
+
+            * ``band_matrices``: a 1x1 matrix of zeros.
+            * ``origin``: ``SRS_COLOMBIA.origin``.
+            * ``projection_wkt``: ``SRS_COLOMBIA.projection``.
+            * ``nodata``: ``-1``
+            * ``pixel_size``: ``SRS_COLOMBIA.pixel_size(30)``.
+
+        Parameters:
+            Any of these parameters (and any parameters accepted by
+            ``create_raster_on_disk`` may be overridden by the caller.
+
+        Returns:
+            The string path to the new raster.
+        """
+        from pygeoprocessing.testing.sampledata import create_raster_on_disk,\
+                SRS_COLOMBIA as reference
+        default_kwargs = {
+            'band_matrices': [numpy.zeros((1, 1))],
+            'origin': reference.origin,
+            'projection_wkt': reference.projection,
+            'nodata': -1,
+            'pixel_size': reference.pixel_size(30),
+        }
+        default_kwargs.update(kwargs)
+        return create_raster_on_disk(*args, **default_kwargs)
+
     def test_rasters_missing(self):
+        """Test that we can catch a filepath to a missing file."""
         from pygeoprocessing.testing import assert_rasters_equal
+
         missing_raster = os.path.join(self.workspace, 'missing.tif')
         with self.assertRaises(IOError):
             assert_rasters_equal(missing_raster, missing_raster, tolerance=1e-9)
@@ -709,20 +745,13 @@ class RasterTests(unittest.TestCase):
     def test_raster_equality_to_tolerance(self):
         """Verify assert_rasters_equal asserts out to the given tolerance."""
         from pygeoprocessing.testing import assert_rasters_equal
-        from pygeoprocessing.testing.sampledata import SRS_COLOMBIA,\
-            create_raster_on_disk
-        reference = SRS_COLOMBIA
-        filename_a = os.path.join(self.workspace, 'a.tif')
-        create_raster_on_disk(
-            [numpy.array([[0.1234567]])], reference.origin,
-            reference.projection, -1, reference.pixel_size(30),
-            datatype=gdal.GDT_Float32, format='GTiff', filename=filename_a)
 
+        filename_a = os.path.join(self.workspace, 'a.tif')
         filename_b = os.path.join(self.workspace, 'b.tif')
-        create_raster_on_disk(
-            [numpy.array([[0.123]])], reference.origin,
-            reference.projection, -1, reference.pixel_size(30),
-            datatype=gdal.GDT_Float32, format='GTiff', filename=filename_b)
+        RasterTests.create_raster(filename=filename_a,
+            band_matrices=[numpy.array([[0.1234567]])])
+        RasterTests.create_raster(filename=filename_b,
+            band_matrices=[numpy.array([[0.123]])])
 
         # 0.005 is greater than the difference between the pixel values in
         # these two matrices.  We're only testing that we can use a
@@ -732,80 +761,59 @@ class RasterTests(unittest.TestCase):
 
     def test_raster_inequality_to_tolerance(self):
         """Verify assert_rasters_equal fails if inequal past a tolerance."""
-        reference = sampledata.SRS_COLOMBIA
-        filename_a = pygeoprocessing.temporary_filename()
-        sampledata.create_raster_on_disk(
-            [numpy.array([[0.1234567]])], reference.origin,
-            reference.projection, -1, reference.pixel_size(30),
-            datatype=gdal.GDT_Float32, format='GTiff', filename=filename_a)
+        from pygeoprocessing.testing import assert_rasters_equal
 
-        filename_b = pygeoprocessing.temporary_filename()
-        sampledata.create_raster_on_disk(
-            [numpy.array([[0.123]])], reference.origin,
-            reference.projection, -1, reference.pixel_size(30),
-            datatype=gdal.GDT_Float32, format='GTiff', filename=filename_b)
+        filename_a = os.path.join(self.workspace, 'a.tif')
+        filename_b = os.path.join(self.workspace, 'b.tif')
+        RasterTests.create_raster(filename=filename_a,
+            band_matrices=[numpy.array([[0.1234567]])])
+
+        RasterTests.create_raster(filename=filename_b,
+            band_matrices=[numpy.array([[0.123]])])
 
         # 0.005 is smaller than the difference between the pixel values in
         # these two matrices, so the relative tolerance check should fail.
-        self.assertRaises(
-            AssertionError, pygeoprocessing.testing.assert_rasters_equal,
-            filename_a, filename_b, tolerance=0.00005)
+        with self.assertRaises(AssertionError):
+            assert_rasters_equal(filename_a, filename_b, tolerance=0.00005)
 
     def test_raster_different_x_dimension(self):
         """Verify assert_rasters_equal fails when x dimensions differ"""
-        reference = sampledata.SRS_COLOMBIA
-        filename_a = pygeoprocessing.temporary_filename()
-        sampledata.create_raster_on_disk(
-            [numpy.array([[0.1, 0.1]])], reference.origin,
-            reference.projection, -1, reference.pixel_size(30),
-            datatype=gdal.GDT_Float32, format='GTiff', filename=filename_a)
+        from pygeoprocessing.testing import assert_rasters_equal
 
-        filename_b = pygeoprocessing.temporary_filename()
-        sampledata.create_raster_on_disk(
-            [numpy.array([[0.1]])], reference.origin,
-            reference.projection, -1, reference.pixel_size(30),
-            datatype=gdal.GDT_Float32, format='GTiff', filename=filename_b)
+        filename_a = os.path.join(self.workspace, 'a.tif')
+        filename_b = os.path.join(self.workspace, 'b.tif')
+        RasterTests.create_raster(filename=filename_a,
+            band_matrices=[numpy.array([[0.1, 0.1]])])
+        RasterTests.create_raster(filename=filename_b,
+            band_matrices=[numpy.array([[0.1]])])
 
         with self.assertRaises(AssertionError):
-            pygeoprocessing.testing.assert_rasters_equal(
-                filename_a, filename_b, tolerance=0.00005)
+            assert_rasters_equal(filename_a, filename_b, tolerance=0.00005)
 
     def test_raster_different_y_dimension(self):
         """Verify assert_rasters_equal fails when y dimensions differ"""
-        reference = sampledata.SRS_COLOMBIA
-        filename_a = os.path.join(self.workspace, 'a.tif')
-        sampledata.create_raster_on_disk(
-            [numpy.array([[0.1], [0.1]])], reference.origin,
-            reference.projection, -1, reference.pixel_size(30),
-            datatype=gdal.GDT_Float32, format='GTiff', filename=filename_a)
+        from pygeoprocessing.testing import assert_rasters_equal
 
+        filename_a = os.path.join(self.workspace, 'a.tif')
         filename_b = os.path.join(self.workspace, 'b.tif')
-        sampledata.create_raster_on_disk(
-            [numpy.array([[0.1]])], reference.origin,
-            reference.projection, -1, reference.pixel_size(30),
-            datatype=gdal.GDT_Float32, format='GTiff', filename=filename_b)
+        RasterTests.create_raster(filename=filename_a,
+            band_matrices=[numpy.array([[0.1]])])
+        RasterTests.create_raster(filename=filename_b,
+            band_matrices=[numpy.array([[0.1], [0.1]])])
 
         with self.assertRaises(AssertionError):
-            pygeoprocessing.testing.assert_rasters_equal(
-                filename_a, filename_b, tolerance=0.00005)
+            assert_rasters_equal(filename_a, filename_b, tolerance=0.00005)
 
     def test_raster_different_block_sizes(self):
         """Test that we can detect rasters with differing block sizes."""
         from pygeoprocessing.testing import assert_rasters_equal
-        from pygeoprocessing.testing.sampledata import create_raster_on_disk,\
-            SRS_WILLAMETTE as reference
-
-        create_raster = functools.partial(create_raster_on_disk,
-            [numpy.array([[0.1]])], reference.origin,
-            reference.projection, -1, reference.pixel_size(30),
-            datatype=gdal.GDT_Float32, format='GTiff')
 
         filename_a = os.path.join(self.workspace, 'a.tif')
-        create_raster(filename=filename_a, dataset_opts=['TILED=YES',
+        filename_b = os.path.join(self.workspace, 'b.tif')
+        RasterTests.create_raster(filename=filename_a, dataset_opts=['TILED=YES',
                                                          'BLOCKXSIZE=128',
                                                          'BLOCKYSIZE=128'])
-        filename_b = os.path.join(self.workspace, 'b.tif')
-        create_raster(filename=filename_b)
+        RasterTests.create_raster(filename=filename_b)
 
         with self.assertRaises(AssertionError):
             assert_rasters_equal(filename_a, filename_b, 1e-9)
@@ -813,22 +821,15 @@ class RasterTests(unittest.TestCase):
     def test_rasters_different(self):
         """Test that rasters with different values fail."""
         from pygeoprocessing.testing import assert_rasters_equal
-        from pygeoprocessing.testing.sampledata import create_raster_on_disk,\
-                SRS_WILLAMETTE as reference
-
-        create_raster = functools.partial(create_raster_on_disk,
-            origin=reference.origin,
-            projection_wkt=reference.projection, nodata=-1,
-            pixel_size=reference.pixel_size(30),
-            datatype=gdal.GDT_Float32, format='GTiff',
-            dataset_opts=['TILED=YES'])
 
         # band matrices need to have 2 pixels in order to reach the eng of the
         # iteration loop within assert_rasters_equal.
         filename_a = os.path.join(self.workspace, 'a.tif')
-        create_raster(filename=filename_a, band_matrices=[numpy.array([[0, 0]])])
         filename_b = os.path.join(self.workspace, 'b.tif')
-        create_raster(filename=filename_b, band_matrices=[numpy.array([[0, 1]])])
+        RasterTests.create_raster(filename=filename_a,
+            band_matrices=[numpy.array([[0, 0]])])
+        RasterTests.create_raster(filename=filename_b,
+            band_matrices=[numpy.array([[0, 1]])])
 
         with self.assertRaises(AssertionError):
             assert_rasters_equal(filename_a, filename_b, 1e-9)
@@ -836,18 +837,14 @@ class RasterTests(unittest.TestCase):
 
     def test_raster_different_count(self):
         """Verify assert_rasters_equal catches different layer counts."""
-        reference = sampledata.SRS_COLOMBIA
-        filename_a = pygeoprocessing.temporary_filename()
-        sampledata.create_raster_on_disk(
-            [numpy.array([[0.1]])], reference.origin,
-            reference.projection, -1, reference.pixel_size(30),
-            datatype=gdal.GDT_Float32, format='GTiff', filename=filename_a)
+        from pygeoprocessing.testing import assert_rasters_equal
 
-        filename_b = pygeoprocessing.temporary_filename()
-        sampledata.create_raster_on_disk(
-            [numpy.array([[0.1]]), numpy.array([[0.1]])], reference.origin,
-            reference.projection, -1, reference.pixel_size(30),
-            datatype=gdal.GDT_Float32, format='GTiff', filename=filename_b)
+        filename_a = os.path.join(self.workspace, 'a.tif')
+        filename_b = os.path.join(self.workspace, 'b.tif')
+        RasterTests.create_raster(filename=filename_a,
+            band_matrices=[numpy.array([[0.1]])])
+        RasterTests.create_raster(filename=filename_b,
+            band_matrices=[numpy.array([[0.1]]), numpy.array([[0.1]])])
 
         with self.assertRaises(AssertionError):
             pygeoprocessing.testing.assert_rasters_equal(
@@ -855,19 +852,15 @@ class RasterTests(unittest.TestCase):
 
     def test_raster_different_projections(self):
         """Verify assert_rasters_equal catches differing projections."""
-        reference = sampledata.SRS_COLOMBIA
-        filename_a = pygeoprocessing.temporary_filename()
-        sampledata.create_raster_on_disk(
-            [numpy.array([[0.1]])], reference.origin,
-            reference.projection, -1, reference.pixel_size(30),
-            datatype=gdal.GDT_Float32, format='GTiff', filename=filename_a)
+        from pygeoprocessing.testing.sampledata import SRS_COLOMBIA,\
+            SRS_WILLAMETTE
 
-        reference = sampledata.SRS_WILLAMETTE
-        filename_b = pygeoprocessing.temporary_filename()
-        sampledata.create_raster_on_disk(
-            [numpy.array([[0.1]])], reference.origin,
-            reference.projection, -1, reference.pixel_size(30),
-            datatype=gdal.GDT_Float32, format='GTiff', filename=filename_b)
+        filename_a = os.path.join(self.workspace, 'a.tif')
+        filename_b = os.path.join(self.workspace, 'b.tif')
+        RasterTests.create_raster(projection_wkt=SRS_COLOMBIA.projection,
+                                  filename=filename_a)
+        RasterTests.create_raster(projection_wkt=SRS_WILLAMETTE.projection,
+                                  filename=filename_b)
 
         with self.assertRaises(AssertionError):
             pygeoprocessing.testing.assert_rasters_equal(
