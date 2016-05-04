@@ -5,6 +5,7 @@ import shutil
 import glob
 import hashlib
 import platform
+import subprocess
 
 import numpy
 from osgeo import gdal
@@ -651,7 +652,7 @@ class DigestEquality(unittest.TestCase):
         expected_checksum_lines = [
             '# orig_workspace = /tmp/tmpcQNvKj/tmpW_AShy',
             '# OS = Linux',
-            '# plat_string = Linux-3.2.0-4-amd64-x86_64-with-debian-jessie-sid',
+            '# plat_string = Linux-3.2.0-4-amd64-x86_64-with-debian-jessie',
             '# GDAL = 1.10.1',
             '# numpy = 1.10.4',
             '# pygeoprocessing = 0.3.0a15.post24+n314e47b1d4e9',
@@ -680,7 +681,7 @@ class DigestEquality(unittest.TestCase):
         expected_checksum_lines = [
             '# orig_workspace = /tmp/tmpcQNvKj/tmpW_AShy',
             '# OS = Linux',
-            '# plat_string = Linux-3.2.0-4-amd64-x86_64-with-debian-jessie-sid',
+            '# plat_string = Linux-3.2.0-4-amd64-x86_64-with-debian-jessie',
             '# GDAL = 1.10.1',
             '# numpy = 1.10.4',
             '# pygeoprocessing = 0.3.0a15.post24+n314e47b1d4e9',
@@ -710,7 +711,7 @@ class DigestEquality(unittest.TestCase):
 
         checksum_file = os.path.join(self.workspace, 'checksum.md5')
         checksum_folder(sample_folder, checksum_file, style='GNU',
-            ignore_exts=['.ignore'])
+                        ignore_exts=['.ignore'])
 
         self.assertTrue('.ignore' not in open(checksum_file).read())
 
@@ -806,3 +807,85 @@ class DigestEquality(unittest.TestCase):
 
         with self.assertRaises(AssertionError):
             assert_checksums_equal(checksum_file, sample_folder)
+
+
+class SCMTest(unittest.TestCase):
+
+    """Test fixture for testing SCM-related functionality."""
+
+    def setUp(self):
+        """Pre-test setUp function.
+
+        Overridden from unittest.TestCase.setUp()
+        """
+        self.workspace = tempfile.mkdtemp()
+
+    def tearDown(self):
+        """Post-test teardown function.
+
+        Overridden from unittest.TestCase.tearDown()
+        """
+        shutil.rmtree(self.workspace)
+
+    def test_skip_decorator_missing_dir(self):
+        """Test that SkipTest is raised when a data dir is missing."""
+        from pygeoprocessing.testing.scm import skip_if_data_missing
+        nonexistent_dir = os.path.join(self.workspace, 'foo')
+
+        with self.assertRaises(unittest.SkipTest):
+            # sample_function needs a parameter to simulate the passing of self
+            # within the context of a unittest.TestCase class.
+            @skip_if_data_missing(nonexistent_dir)
+            def sample_function(a):
+                pass
+
+            # True doesn't mean anything here, it's just to simulate the
+            # passing of self to object methods, as discussed above.
+            sample_function(True)
+
+    def test_skip_decorator_noskip(self):
+        """Verify decorated 'test' function passes when data dir exists."""
+        from pygeoprocessing.testing.scm import skip_if_data_missing
+
+        # sample_function needs a parameter to simulate the passing of self
+        # within the context of a unittest.TestCase class.
+        @skip_if_data_missing(self.workspace)
+        def sample_function(a):
+            pass
+
+        # True doesn't mean anything here, it's just to simulate the
+        # passing of self to object methods, as discussed above.
+        sample_function(True)
+
+    def test_checkout_svn(self):
+        """Verify that SVN checkout is called with the correct parameters."""
+        from pygeoprocessing.testing.scm import checkout_svn
+        nonexistent_folder = os.path.join(self.workspace, 'dir_not_found')
+        remote_path = 'svn://foo'
+
+        with mock.patch('subprocess.call'):
+            checkout_svn(nonexistent_folder, remote_path)
+            self.assertTrue(subprocess.call.called)
+            self.assertEqual(subprocess.call.call_args[0][0],
+                             ['svn', 'checkout', remote_path,
+                              nonexistent_folder, '-r', 'HEAD'])
+
+    def test_update_svn(self):
+        """Verify that SVN update is called with the correct parameters."""
+        from pygeoprocessing.testing.scm import checkout_svn
+
+        with mock.patch('subprocess.call'):
+            checkout_svn(self.workspace, 'svn://foo')
+            self.assertTrue(subprocess.call.called)
+            self.assertEqual(subprocess.call.call_args[0][0],
+                             ['svn', 'update', '-r', 'HEAD'])
+
+    def test_update_svn_to_rev(self):
+        """Verify SVN update -r <rev> is called with the correct params."""
+        from pygeoprocessing.testing.scm import checkout_svn
+
+        with mock.patch('subprocess.call'):
+            checkout_svn(self.workspace, 'svn://foo', rev='25')
+            self.assertTrue(subprocess.call.called)
+            self.assertEqual(subprocess.call.call_args[0][0],
+                             ['svn', 'update', '-r', '25'])
