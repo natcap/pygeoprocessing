@@ -704,4 +704,22 @@ class DigestEquality(unittest.TestCase):
         with self.assertRaises(IOError):
             digest_file_list(filepaths, ifdir='raise')
 
+    def test_digest_folder(self):
+        """Verify directory digesting works as expected."""
+        from pygeoprocessing.testing import digest_folder
 
+        # Get the list of files that are being digested and add a folder to it
+        DigestEquality.create_sample_folder(self.workspace)
+
+        dir_hexdigest = digest_folder(self.workspace)
+        self.assertEqual('7b13e71a17fee2a14e179726281e85cc', dir_hexdigest)
+
+    def test_digest_file(self):
+        """Verify that we can digest a single file."""
+        from pygeoprocessing.testing import digest_file
+
+        # Get the list of files that are being digested and add a folder to it
+        files = DigestEquality.create_sample_folder(self.workspace)
+
+        file_digest = digest_file(files[0])
+        self.assertEqual('5c855e094bdf284e55e9d16627ddd64b', file_digest)
