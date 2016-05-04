@@ -760,6 +760,42 @@ class SCMTest(unittest.TestCase):
             self.assertEqual(subprocess.call.call_args[0][0],
                              ['svn', 'update', '-r', '25'])
 
+    def test_load_config_relpath(self):
+        """Verify we can load the correct local, relative path."""
+        from pygeoprocessing.testing.scm import load_config
+
+        json_filepath = os.path.join(self.workspace, 'svn_config.json')
+        config = {
+            'local': 'foo',
+            'remote': 'svn://bar',
+            'rev': 1
+        }
+        json.dump(config, open(json_filepath, 'w'))
+
+        returned_config = load_config(json_filepath)
+        expected_config = {
+            'local': os.path.join(self.workspace, 'foo'),
+            'remote': 'svn://bar',
+            'rev': 1
+        }
+        self.assertEqual(returned_config, expected_config)
+
+    def test_load_config_abspath(self):
+        """Verify we can load the correct local, absolute path."""
+        from pygeoprocessing.testing.scm import load_config
+
+        json_filepath = os.path.join(self.workspace, 'svn_config.json')
+        config = {
+            'local': os.path.join(self.workspace, 'foo'),
+            'remote': 'svn://bar',
+            'rev': 1
+        }
+        json.dump(config, open(json_filepath, 'w'))
+
+        returned_config = load_config(json_filepath)
+        self.assertEqual(returned_config, config)
+
+
 
 class RasterTests(unittest.TestCase):
 
