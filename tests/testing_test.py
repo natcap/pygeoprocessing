@@ -1,43 +1,22 @@
+"""Tests for ``pygeoprocessing.testing`` functionality."""
 import unittest
 import tempfile
 import os
 import shutil
-import glob
-import hashlib
 import platform
 import subprocess
 import functools
 import json
 
 import numpy
-from osgeo import gdal
 from osgeo import ogr
 from shapely.geometry import Point, LineString
 import mock
 
-from pygeoprocessing.testing import scm
-import pygeoprocessing.testing as testing
-from pygeoprocessing.testing import sampledata
-import pygeoprocessing as raster_utils
-import pygeoprocessing
-
-SVN_LOCAL_DIR = scm.load_config(os.path.join(os.path.dirname(__file__),
-                                             'svn_config.json'))['local']
-POLLINATION_DATA = os.path.join(SVN_LOCAL_DIR, 'pollination', 'samp_input')
-SAMPLE_RASTERS = os.path.join(SVN_LOCAL_DIR, 'sample_rasters')
-SAMPLE_VECTORS = os.path.join(SVN_LOCAL_DIR, 'sample_vectors')
-TESTING_REGRESSION = os.path.join(SVN_LOCAL_DIR, 'testing_regression')
-CARBON_DATA = os.path.join(SVN_LOCAL_DIR, 'carbon', 'input')
-REGRESSION_ARCHIVES = os.path.join(SVN_LOCAL_DIR, 'data_storage', 'regression')
-WRITING_ARCHIVES = os.path.join(SVN_LOCAL_DIR, 'test_writing')
-TEST_INPUT = os.path.join(SVN_LOCAL_DIR, 'data_storage', 'test_input')
-TEST_OUT = os.path.join(SVN_LOCAL_DIR, 'test_out')
-BASE_DATA = os.path.join(SVN_LOCAL_DIR, 'base_data')
-REGRESSION_INPUT = os.path.join(SVN_LOCAL_DIR, 'testing_regression')
-
 
 class JSONTests(unittest.TestCase):
-    """Test fixture for asserting generic text files."""
+
+    """Test fixture for asserting JSON-formatted text files."""
 
     def setUp(self):
         """Pre-test setUp function.
@@ -77,6 +56,7 @@ class JSONTests(unittest.TestCase):
 
 
 class TextTests(unittest.TestCase):
+
     """Test fixture for asserting generic text files."""
 
     def setUp(self):
@@ -115,12 +95,35 @@ class TextTests(unittest.TestCase):
             assert_text_equal(file_path_a, file_path_b)
 
 
-class VectorEquality(unittest.TestCase):
+class VectorTests(unittest.TestCase):
+
+    """Test fixture for asserting OGR vectors."""
+
     def setUp(self):
+        """Pre-test setUp function.
+
+        Overridden from unittest.TestCase.setUp()
+        """
         self.workspace = tempfile.mkdtemp()
 
     def tearDown(self):
+        """Post-test teardown function.
+
+        Overridden from unittest.TestCase.tearDown()
+        """
         shutil.rmtree(self.workspace)
+
+    @staticmethod
+    def create_vector(*args, **kwargs):
+        from pygeoprocessing.testing import create_vector_on_disk
+        from pygeoprocessing.testing.sampledata import SRS_WILLAMETTE
+        defaults = {
+            'geometries': [Point(0, 0)],
+            'projection': SRS_WILLAMETTE.projection,
+        }
+        defaults.update(kwargs)
+        return create_vector_on_disk(*args, **defaults)
+
 
     def test_file_not_found(self):
         """IOError should be raised when a vector does not exist."""
@@ -135,11 +138,16 @@ class VectorEquality(unittest.TestCase):
         """Verify that two primitive vectors assert to be equal."""
         from pygeoprocessing.testing import assert_vectors_equal
         from pygeoprocessing.testing.sampledata import SRS_COLOMBIA
+        from pygeoprocessing.testing.sampledata import create_vector_on_disk
 
-        create_vector = functools.partial(sampledata.create_vector_on_disk,
-            [LineString([(0, 0), (1, 1)])], SRS_COLOMBIA.projection,
-            fields={'a': 'real', 'b': 'real'}, attributes=[{'a': 0.12, 'b':
-                0.1}])
+        #TODO: does this not work for a single field?
+
+        create_vector = functools.partial(
+            VectorTests.create_vector,
+            geometries=[LineString([(0, 0), (1, 1)])],
+            projection=SRS_COLOMBIA.projection,
+            fields={'a': 'real', 'b': 'real'},
+            attributes=[{'a': 0.12, 'b': 0.1}])
 
         filename_a = os.path.join(self.workspace, 'foo')
         filename_b = os.path.join(self.workspace, 'bar')
@@ -174,17 +182,13 @@ class VectorEquality(unittest.TestCase):
     def test_mismatched_geometry_type(self):
         """Assert mismatched geometry types."""
         from pygeoprocessing.testing import assert_vectors_equal
-        # creating manually, since create_vector_on_disk can't create vectors
-        # with multiple layers at the moment.
-        reference = sampledata.SRS_WILLAMETTE
-        filename_a = os.path.join(self.workspace, 'foo')
-        sampledata.create_vector_on_disk(
-            [Point(0, 0)], reference.projection, filename=filename_a)
 
+        filename_a = os.path.join(self.workspace, 'foo')
         filename_b = os.path.join(self.workspace, 'bar')
-        sampledata.create_vector_on_disk(
-            [LineString([(0, 0), (1, 1)])], reference.projection,
-            filename=filename_b)
+
+        VectorTests.create_vector(filename=filename_a)
+        VectorTests.create_vector(filename=filename_b,
+            geometries=[LineString([(0, 0), (0, 1)])])
 
         with self.assertRaises(AssertionError):
             assert_vectors_equal(filename_a, filename_b, 0.1)
@@ -192,15 +196,14 @@ class VectorEquality(unittest.TestCase):
     def test_mismatched_geometry_counts(self):
         """Assert mismatched geometry counts."""
         from pygeoprocessing.testing import assert_vectors_equal
-        reference = sampledata.SRS_WILLAMETTE
-        filename_a = os.path.join(self.workspace, 'foo')
-        sampledata.create_vector_on_disk(
-            [Point(0, 0), Point(0, 1)], reference.projection, filename=filename_a)
 
+        filename_a = os.path.join(self.workspace, 'foo')
         filename_b = os.path.join(self.workspace, 'bar')
-        sampledata.create_vector_on_disk(
-            [Point(0, 0)], reference.projection,
-            filename=filename_b)
+
+        VectorTests.create_vector(filename=filename_a,
+                                  geometries=[Point(0, 0), Point(0, 1)])
+        VectorTests.create_vector(filename=filename_b,
+                                  geometries=[Point(0, 0)])
 
         with self.assertRaises(AssertionError):
             assert_vectors_equal(filename_a, filename_b, 0.1)
@@ -208,15 +211,17 @@ class VectorEquality(unittest.TestCase):
     def test_mismatched_projections(self):
         """Raise assertionerror when projections differ."""
         from pygeoprocessing.testing import assert_vectors_equal
-        reference = sampledata.SRS_WILLAMETTE
-        filename_a = os.path.join(self.workspace, 'foo')
-        sampledata.create_vector_on_disk(
-            [Point(0, 0)], reference.projection, filename=filename_a)
+        from pygeoprocessing.testing.sampledata import SRS_WILLAMETTE,\
+            SRS_COLOMBIA
 
-        reference = sampledata.SRS_COLOMBIA
+        filename_a = os.path.join(self.workspace, 'foo')
         filename_b = os.path.join(self.workspace, 'bar')
-        sampledata.create_vector_on_disk(
-            [Point(0, 0)], reference.projection, filename=filename_b)
+        VectorTests.create_vector(
+            filename=filename_a,
+            projection=SRS_WILLAMETTE.projection)
+        VectorTests.create_vector(
+            filename=filename_b,
+            projection=SRS_COLOMBIA.projection)
 
         with self.assertRaises(AssertionError):
             assert_vectors_equal(filename_a, filename_b, 0.1)
@@ -224,16 +229,15 @@ class VectorEquality(unittest.TestCase):
     def test_different_nonnumeric_field_values(self):
         """Assert that nonnumeric field values can be checked correctly."""
         from pygeoprocessing.testing import assert_vectors_equal
-        reference = sampledata.SRS_WILLAMETTE
-        filename_a = os.path.join(self.workspace, 'foo')
-        sampledata.create_vector_on_disk(
-            [Point(0, 0)], reference.projection, fields={'a': 'string'},
-            attributes=[{'a': 'aaa'}], filename=filename_a)
 
+        create_vector = functools.partial(
+            VectorTests.create_vector, fields={'a': 'string'})
+
+        filename_a = os.path.join(self.workspace, 'foo')
         filename_b = os.path.join(self.workspace, 'bar')
-        sampledata.create_vector_on_disk(
-            [Point(0, 0)], reference.projection, fields={'a': 'string'},
-            attributes=[{'a': 'bbb'}], filename=filename_b)
+
+        create_vector(filename=filename_a, attributes=[{'a': 'aaa'}])
+        create_vector(filename=filename_b, attributes=[{'a': 'bbb'}])
 
         with self.assertRaises(AssertionError):
             assert_vectors_equal(filename_a, filename_b, 0.1)
@@ -241,14 +245,13 @@ class VectorEquality(unittest.TestCase):
     def test_different_geometries(self):
         """Assert we can test geometric values of the same type."""
         from pygeoprocessing.testing import assert_vectors_equal
-        reference = sampledata.SRS_WILLAMETTE
         filename_a = os.path.join(self.workspace, 'foo')
-        sampledata.create_vector_on_disk(
-            [Point(0, 1)], reference.projection, filename=filename_a)
-
         filename_b = os.path.join(self.workspace, 'bar')
-        sampledata.create_vector_on_disk(
-            [Point(0, 0)], reference.projection, filename=filename_b)
+
+        VectorTests.create_vector(
+            geometries=[Point(0, 1)], filename=filename_a)
+        VectorTests.create_vector(
+            geometries=[Point(0, 0)], filename=filename_b)
 
         with self.assertRaises(AssertionError):
             assert_vectors_equal(filename_a, filename_b, 0.1)
@@ -256,16 +259,17 @@ class VectorEquality(unittest.TestCase):
     def test_field_mismatch(self):
         """Assert we can catch when fieldnames don't match."""
         from pygeoprocessing.testing import assert_vectors_equal
-        reference = sampledata.SRS_WILLAMETTE
-        filename_a = os.path.join(self.workspace, 'foo')
-        sampledata.create_vector_on_disk(
-                [Point(0, 1)], fields={'a': 'string'}, attributes=[{'a':
-                'foo'}], projection=reference.projection, filename=filename_a)
 
+        filename_a = os.path.join(self.workspace, 'foo')
         filename_b = os.path.join(self.workspace, 'bar')
-        sampledata.create_vector_on_disk(
-                [Point(0, 1)], fields={'b': 'string'}, attributes=[{'b':
-                'foo'}], projection=reference.projection, filename=filename_b)
+
+        create_vector = functools.partial(
+            VectorTests.create_vector, geometries=[Point(0, 1)])
+
+        create_vector(filename=filename_a,
+                      fields={'a': 'string'}, attributes=[{'a': 'foo'}])
+        create_vector(filename=filename_b,
+                      fields={'b': 'string'}, attributes=[{'b': 'foo'}])
 
         with self.assertRaises(AssertionError):
             assert_vectors_equal(filename_a, filename_b, 0.1)
@@ -273,17 +277,16 @@ class VectorEquality(unittest.TestCase):
     def test_field_count_mismatch(self):
         """Assert we can catch when field counts don't match."""
         from pygeoprocessing.testing import assert_vectors_equal
-        reference = sampledata.SRS_WILLAMETTE
-        filename_a = os.path.join(self.workspace, 'foo')
-        sampledata.create_vector_on_disk(
-                [Point(0, 1)], fields={'a': 'string', 'b': 'string'},
-                attributes=[{'a': 'foo', 'b': 'foo'}],
-                projection=reference.projection, filename=filename_a)
 
+        filename_a = os.path.join(self.workspace, 'foo')
         filename_b = os.path.join(self.workspace, 'bar')
-        sampledata.create_vector_on_disk(
-                [Point(0, 1)], fields={'b': 'string'}, attributes=[{'b':
-                'foo'}], projection=reference.projection, filename=filename_b)
+
+        VectorTests.create_vector(
+            fields={'a': 'string', 'b': 'string'},
+            attributes=[{'a': 'foo', 'b': 'foo'}], filename=filename_a)
+        VectorTests.create_vector(
+            fields={'b': 'string'},
+            attributes=[{'b': 'foo'}], filename=filename_b)
 
         with self.assertRaises(AssertionError):
             assert_vectors_equal(filename_a, filename_b, 0.1)
@@ -703,7 +706,7 @@ class SCMTest(unittest.TestCase):
             # sample_function needs a parameter to simulate the passing of self
             # within the context of a unittest.TestCase class.
             @skip_if_data_missing(nonexistent_dir)
-            def sample_function(a):
+            def sample_function(a=None):
                 pass
 
             # True doesn't mean anything here, it's just to simulate the
@@ -717,7 +720,7 @@ class SCMTest(unittest.TestCase):
         # sample_function needs a parameter to simulate the passing of self
         # within the context of a unittest.TestCase class.
         @skip_if_data_missing(self.workspace)
-        def sample_function(a):
+        def sample_function(a=None):
             pass
 
         # True doesn't mean anything here, it's just to simulate the
@@ -757,7 +760,9 @@ class SCMTest(unittest.TestCase):
             self.assertEqual(subprocess.call.call_args[0][0],
                              ['svn', 'update', '-r', '25'])
 
+
 class RasterTests(unittest.TestCase):
+
     """Test fixture for asserting GDAL rasters."""
 
     def setUp(self):
@@ -797,7 +802,7 @@ class RasterTests(unittest.TestCase):
             The string path to the new raster.
         """
         from pygeoprocessing.testing.sampledata import create_raster_on_disk,\
-                SRS_COLOMBIA as reference
+            SRS_COLOMBIA as reference
         default_kwargs = {
             'band_matrices': [numpy.zeros((1, 1))],
             'origin': reference.origin,
@@ -814,7 +819,7 @@ class RasterTests(unittest.TestCase):
 
         missing_raster = os.path.join(self.workspace, 'missing.tif')
         with self.assertRaises(IOError):
-            assert_rasters_equal(missing_raster, missing_raster, tolerance=1e-9)
+            assert_rasters_equal(missing_raster, missing_raster, 1e-9)
 
     def test_raster_equality_to_tolerance(self):
         """Verify assert_rasters_equal asserts out to the given tolerance."""
@@ -822,16 +827,17 @@ class RasterTests(unittest.TestCase):
 
         filename_a = os.path.join(self.workspace, 'a.tif')
         filename_b = os.path.join(self.workspace, 'b.tif')
-        RasterTests.create_raster(filename=filename_a,
+        RasterTests.create_raster(
+            filename=filename_a,
             band_matrices=[numpy.array([[0.1234567]])])
-        RasterTests.create_raster(filename=filename_b,
+        RasterTests.create_raster(
+            filename=filename_b,
             band_matrices=[numpy.array([[0.123]])])
 
         # 0.005 is greater than the difference between the pixel values in
         # these two matrices.  We're only testing that we can use a
         # user-defined tolerance here.
-        pygeoprocessing.testing.assert_rasters_equal(filename_a, filename_b,
-                                                     tolerance=0.005)
+        assert_rasters_equal(filename_a, filename_b, tolerance=0.005)
 
     def test_raster_inequality_to_tolerance(self):
         """Verify assert_rasters_equal fails if inequal past a tolerance."""
@@ -839,10 +845,12 @@ class RasterTests(unittest.TestCase):
 
         filename_a = os.path.join(self.workspace, 'a.tif')
         filename_b = os.path.join(self.workspace, 'b.tif')
-        RasterTests.create_raster(filename=filename_a,
+        RasterTests.create_raster(
+            filename=filename_a,
             band_matrices=[numpy.array([[0.1234567]])])
 
-        RasterTests.create_raster(filename=filename_b,
+        RasterTests.create_raster(
+            filename=filename_b,
             band_matrices=[numpy.array([[0.123]])])
 
         # 0.005 is smaller than the difference between the pixel values in
@@ -851,28 +859,32 @@ class RasterTests(unittest.TestCase):
             assert_rasters_equal(filename_a, filename_b, tolerance=0.00005)
 
     def test_raster_different_x_dimension(self):
-        """Verify assert_rasters_equal fails when x dimensions differ"""
+        """Verify assert_rasters_equal fails when x dimensions differ."""
         from pygeoprocessing.testing import assert_rasters_equal
 
         filename_a = os.path.join(self.workspace, 'a.tif')
         filename_b = os.path.join(self.workspace, 'b.tif')
-        RasterTests.create_raster(filename=filename_a,
+        RasterTests.create_raster(
+            filename=filename_a,
             band_matrices=[numpy.array([[0.1, 0.1]])])
-        RasterTests.create_raster(filename=filename_b,
+        RasterTests.create_raster(
+            filename=filename_b,
             band_matrices=[numpy.array([[0.1]])])
 
         with self.assertRaises(AssertionError):
             assert_rasters_equal(filename_a, filename_b, tolerance=0.00005)
 
     def test_raster_different_y_dimension(self):
-        """Verify assert_rasters_equal fails when y dimensions differ"""
+        """Verify assert_rasters_equal fails when y dimensions differ."""
         from pygeoprocessing.testing import assert_rasters_equal
 
         filename_a = os.path.join(self.workspace, 'a.tif')
         filename_b = os.path.join(self.workspace, 'b.tif')
-        RasterTests.create_raster(filename=filename_a,
+        RasterTests.create_raster(
+            filename=filename_a,
             band_matrices=[numpy.array([[0.1]])])
-        RasterTests.create_raster(filename=filename_b,
+        RasterTests.create_raster(
+            filename=filename_b,
             band_matrices=[numpy.array([[0.1], [0.1]])])
 
         with self.assertRaises(AssertionError):
@@ -884,9 +896,9 @@ class RasterTests(unittest.TestCase):
 
         filename_a = os.path.join(self.workspace, 'a.tif')
         filename_b = os.path.join(self.workspace, 'b.tif')
-        RasterTests.create_raster(filename=filename_a, dataset_opts=['TILED=YES',
-                                                         'BLOCKXSIZE=128',
-                                                         'BLOCKYSIZE=128'])
+        RasterTests.create_raster(
+            filename=filename_a,
+            dataset_opts=['TILED=YES', 'BLOCKXSIZE=128', 'BLOCKYSIZE=128'])
         RasterTests.create_raster(filename=filename_b)
 
         with self.assertRaises(AssertionError):
@@ -900,14 +912,15 @@ class RasterTests(unittest.TestCase):
         # iteration loop within assert_rasters_equal.
         filename_a = os.path.join(self.workspace, 'a.tif')
         filename_b = os.path.join(self.workspace, 'b.tif')
-        RasterTests.create_raster(filename=filename_a,
+        RasterTests.create_raster(
+            filename=filename_a,
             band_matrices=[numpy.array([[0, 0]])])
-        RasterTests.create_raster(filename=filename_b,
+        RasterTests.create_raster(
+            filename=filename_b,
             band_matrices=[numpy.array([[0, 1]])])
 
         with self.assertRaises(AssertionError):
             assert_rasters_equal(filename_a, filename_b, 1e-9)
-
 
     def test_raster_different_count(self):
         """Verify assert_rasters_equal catches different layer counts."""
@@ -915,17 +928,19 @@ class RasterTests(unittest.TestCase):
 
         filename_a = os.path.join(self.workspace, 'a.tif')
         filename_b = os.path.join(self.workspace, 'b.tif')
-        RasterTests.create_raster(filename=filename_a,
+        RasterTests.create_raster(
+            filename=filename_a,
             band_matrices=[numpy.array([[0.1]])])
-        RasterTests.create_raster(filename=filename_b,
+        RasterTests.create_raster(
+            filename=filename_b,
             band_matrices=[numpy.array([[0.1]]), numpy.array([[0.1]])])
 
         with self.assertRaises(AssertionError):
-            pygeoprocessing.testing.assert_rasters_equal(
-                filename_a, filename_b, tolerance=0.00005)
+            assert_rasters_equal(filename_a, filename_b, tolerance=0.00005)
 
     def test_raster_different_projections(self):
         """Verify assert_rasters_equal catches differing projections."""
+        from pygeoprocessing.testing import assert_rasters_equal
         from pygeoprocessing.testing.sampledata import SRS_COLOMBIA,\
             SRS_WILLAMETTE
 
@@ -937,18 +952,16 @@ class RasterTests(unittest.TestCase):
                                   filename=filename_b)
 
         with self.assertRaises(AssertionError):
-            pygeoprocessing.testing.assert_rasters_equal(
-                filename_a, filename_b, tolerance=0.00005)
+            assert_rasters_equal(filename_a, filename_b, tolerance=0.00005)
 
 
 class AssertCloseTest(unittest.TestCase):
+
+    """Test fixture for isclose and related assertions."""
+
     def test_assert_close_no_message(self):
         """Verify assert_close provides a default message."""
         from pygeoprocessing.testing import assert_close
 
         with self.assertRaises(AssertionError):
             assert_close(1, 2, 0.0001)
-
-
-
-
