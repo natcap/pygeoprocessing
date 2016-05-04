@@ -1596,13 +1596,15 @@ def reclassify_dataset_uri(
 
     nodata = get_nodata_from_uri(dataset_uri)
     value_map_copy = value_map.copy()
-    if nodata not in value_map_copy:
+    # possible that nodata value is not defined, so test for None first
+    # otherwise if nodata not predefined, remap it into the dictionary
+    if nodata is not None and nodata not in value_map_copy:
         value_map_copy[nodata] = out_nodata
     keys = sorted(numpy.array(value_map_copy.keys()))
     values = numpy.array([value_map_copy[x] for x in keys])
 
     def map_dataset_to_value(original_values):
-        """Convert a block of original values to the lookup values"""
+        """Convert a block of original values to the lookup values."""
         if values_required:
             unique = numpy.unique(original_values)
             has_map = numpy.in1d(unique, keys)
