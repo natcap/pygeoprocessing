@@ -7,6 +7,7 @@ import hashlib
 import platform
 import subprocess
 import functools
+import json
 
 import numpy
 from osgeo import gdal
@@ -35,92 +36,83 @@ BASE_DATA = os.path.join(SVN_LOCAL_DIR, 'base_data')
 REGRESSION_INPUT = os.path.join(SVN_LOCAL_DIR, 'testing_regression')
 
 
-class GISTestTester(unittest.TestCase):
+class JSONTests(unittest.TestCase):
+    """Test fixture for asserting generic text files."""
 
-    @scm.skip_if_data_missing(SVN_LOCAL_DIR)
-    def test_vector_assertion_fileio(self):
-        """Verify correct behavior for assertVectorsEqual"""
-        vector_on_disk = os.path.join(TEST_INPUT, 'farms.dbf')
-        self.assertRaises(IOError, testing.assert_rasters_equal,
-                          'file_not_on_disk', 'other_file_not_on_disk',
-                          tolerance=1e-9)
-        self.assertRaises(IOError, testing.assert_rasters_equal,
-                          'file_not_on_disk', vector_on_disk, tolerance=1e-9)
-        self.assertRaises(IOError, testing.assert_rasters_equal,
-                          vector_on_disk, 'file_not_on_disk', tolerance=1e-9)
-        testing.assert_vectors_equal(vector_on_disk, vector_on_disk,
-                                     field_tolerance=1e-9)
+    def setUp(self):
+        """Pre-test setUp function.
 
-    @scm.skip_if_data_missing(SVN_LOCAL_DIR)
-    def test_vector_assertion_files_equal(self):
-        """Verify when vectors are equal."""
-        temp_folder = raster_utils.temporary_folder()
-        for vector_file in glob.glob(os.path.join(TEST_INPUT, 'farms.*')):
-            base_name = os.path.basename(vector_file)
-            new_file = os.path.join(temp_folder, base_name)
-            shutil.copyfile(vector_file, new_file)
+        Overridden from unittest.TestCase.setUp()
+        """
+        self.workspace = tempfile.mkdtemp()
 
-        sample_shape = os.path.join(TEST_INPUT, 'farms.shp')
-        copied_shape = os.path.join(temp_folder, 'farms.shp')
-        testing.assert_vectors_equal(sample_shape, copied_shape,
-                                     field_tolerance=1e-9)
+    def tearDown(self):
+        """Post-test teardown function.
 
-    @scm.skip_if_data_missing(SVN_LOCAL_DIR)
-    def test_vectors_different_attributes(self):
-        """Verify when two vectors have different attributes"""
-        base_file = os.path.join(TEST_INPUT, 'farms.shp')
-        different_file = os.path.join(REGRESSION_ARCHIVES, 'farms.shp')
+        Overridden from unittest.TestCase.tearDown()
+        """
+        shutil.rmtree(self.workspace)
 
-        self.assertRaises(AssertionError, testing.assert_vectors_equal,
-                          base_file, different_file, field_tolerance=1e-9)
+    def test_json_files_same(self):
+        """Verify that we can test when two JSON files are the same."""
+        from pygeoprocessing.testing import assert_json_equal
 
-    @scm.skip_if_data_missing(SVN_LOCAL_DIR)
-    def test_vectors_very_different(self):
-        """Verify when two vectors are very, very different."""
-        base_file = os.path.join(TEST_INPUT, 'farms.shp')
-        different_file = os.path.join(SAMPLE_VECTORS, 'harv_samp_cur.shp')
-        self.assertRaises(AssertionError, testing.assert_vectors_equal,
-                          base_file, different_file, field_tolerance=1e-9)
+        file_path_a = os.path.join(self.workspace, 'a.json')
+        json.dump(dict((a, a) for a in xrange(15)), open(file_path_a, 'w'))
 
-    @scm.skip_if_data_missing(SVN_LOCAL_DIR)
-    def test_workspaces_ignore(self):
-        """Check that ignoring certain files works as expected."""
-        new_folder = os.path.join(raster_utils.temporary_folder(), 'foo')
-        shutil.copytree(TEST_INPUT, new_folder)
+        assert_json_equal(file_path_a, file_path_a)
 
-        # make a file in TEST_INPUT by opening a writeable file there.
-        copied_filepath = os.path.join(TEST_INPUT, 'test_file.txt')
-        fp = open(copied_filepath, 'w')
-        fp.close()
+    def test_json_files_differ(self):
+        """Verify that we can test when two JSON files differ."""
+        from pygeoprocessing.testing import assert_json_equal
 
-    @scm.skip_if_data_missing(SVN_LOCAL_DIR)
-    def test_json_same(self):
-        """Check that asserting equal json objects passes."""
-        json_path = os.path.join(TESTING_REGRESSION, 'sample_json.json')
-        testing.assert_json_equal(json_path, json_path)
+        file_path_a = os.path.join(self.workspace, 'a.json')
+        file_path_b = os.path.join(self.workspace, 'b.json')
 
-    @scm.skip_if_data_missing(SVN_LOCAL_DIR)
-    def test_json_different(self):
-        """Check that asserting different json objects fails"""
-        json_path = os.path.join(TESTING_REGRESSION, 'sample_json.json')
-        json_path_new = os.path.join(TESTING_REGRESSION, 'sample_json_2.json')
-        self.assertRaises(AssertionError, testing.assert_json_equal, json_path,
-                          json_path_new)
+        json.dump(dict((a, a) for a in xrange(15)), open(file_path_a, 'w'))
+        json.dump(dict((a, a) for a in xrange(20)), open(file_path_b, 'w'))
 
-    @scm.skip_if_data_missing(SVN_LOCAL_DIR)
-    @scm.skip_if_data_missing(SVN_LOCAL_DIR)
-    def test_assert_text_same(self):
-        """Check that asserting two identical text files passes"""
-        sample_file = os.path.join(REGRESSION_INPUT, 'sample_text_file.txt')
-        testing.assert_text_equal(sample_file, sample_file)
+        with self.assertRaises(AssertionError):
+            assert_json_equal(file_path_a, file_path_b)
 
-    @scm.skip_if_data_missing(SVN_LOCAL_DIR)
-    def test_assert_text_different(self):
-        """Check that asserting two different text files fails."""
-        sample_file = os.path.join(REGRESSION_INPUT, 'sample_text_file.txt')
-        regression_file = os.path.join(REGRESSION_INPUT, 'sample_json.json')
-        self.assertRaises(AssertionError, testing.assert_text_equal,
-                          sample_file, regression_file)
+
+class TextTests(unittest.TestCase):
+    """Test fixture for asserting generic text files."""
+
+    def setUp(self):
+        """Pre-test setUp function.
+
+        Overridden from unittest.TestCase.setUp()
+        """
+        self.workspace = tempfile.mkdtemp()
+
+    def tearDown(self):
+        """Post-test teardown function.
+
+        Overridden from unittest.TestCase.tearDown()
+        """
+        shutil.rmtree(self.workspace)
+
+    def test_text_files_same(self):
+        """Verify we can assert two text files are the same."""
+        from pygeoprocessing.testing import assert_text_equal
+
+        file_path_a = os.path.join(self.workspace, 'a.txt')
+        open(file_path_a, 'w').write('foo')
+        assert_text_equal(file_path_a, file_path_a)
+
+    def test_text_files_different(self):
+        """Verify we can assert when two text files differ."""
+        from pygeoprocessing.testing import assert_text_equal
+
+        file_path_a = os.path.join(self.workspace, 'a.txt')
+        open(file_path_a, 'w').write('foo')
+
+        file_path_b = os.path.join(self.workspace, 'b.txt')
+        open(file_path_b, 'w').write('bar')
+
+        with self.assertRaises(AssertionError):
+            assert_text_equal(file_path_a, file_path_b)
 
 
 class VectorEquality(unittest.TestCase):
@@ -138,6 +130,23 @@ class VectorEquality(unittest.TestCase):
 
         with self.assertRaises(IOError):
             assert_vectors_equal(nonexistent_file_a, nonexistent_file_b, 0.1)
+
+    def test_vectors_equal(self):
+        """Verify that two primitive vectors assert to be equal."""
+        from pygeoprocessing.testing import assert_vectors_equal
+        from pygeoprocessing.testing.sampledata import SRS_COLOMBIA
+
+        create_vector = functools.partial(sampledata.create_vector_on_disk,
+            [LineString([(0, 0), (1, 1)])], SRS_COLOMBIA.projection,
+            fields={'a': 'real', 'b': 'real'}, attributes=[{'a': 0.12, 'b':
+                0.1}])
+
+        filename_a = os.path.join(self.workspace, 'foo')
+        filename_b = os.path.join(self.workspace, 'bar')
+        create_vector(filename=filename_a)
+        create_vector(filename=filename_b)
+
+        assert_vectors_equal(filename_a, filename_b, 1e-9)
 
     def test_mismatched_layer_counts(self):
         """Mismatched layer counts should raise assertionerror."""
@@ -175,6 +184,22 @@ class VectorEquality(unittest.TestCase):
         filename_b = os.path.join(self.workspace, 'bar')
         sampledata.create_vector_on_disk(
             [LineString([(0, 0), (1, 1)])], reference.projection,
+            filename=filename_b)
+
+        with self.assertRaises(AssertionError):
+            assert_vectors_equal(filename_a, filename_b, 0.1)
+
+    def test_mismatched_geometry_counts(self):
+        """Assert mismatched geometry counts."""
+        from pygeoprocessing.testing import assert_vectors_equal
+        reference = sampledata.SRS_WILLAMETTE
+        filename_a = os.path.join(self.workspace, 'foo')
+        sampledata.create_vector_on_disk(
+            [Point(0, 0), Point(0, 1)], reference.projection, filename=filename_a)
+
+        filename_b = os.path.join(self.workspace, 'bar')
+        sampledata.create_vector_on_disk(
+            [Point(0, 0)], reference.projection,
             filename=filename_b)
 
         with self.assertRaises(AssertionError):
@@ -236,6 +261,24 @@ class VectorEquality(unittest.TestCase):
         sampledata.create_vector_on_disk(
                 [Point(0, 1)], fields={'a': 'string'}, attributes=[{'a':
                 'foo'}], projection=reference.projection, filename=filename_a)
+
+        filename_b = os.path.join(self.workspace, 'bar')
+        sampledata.create_vector_on_disk(
+                [Point(0, 1)], fields={'b': 'string'}, attributes=[{'b':
+                'foo'}], projection=reference.projection, filename=filename_b)
+
+        with self.assertRaises(AssertionError):
+            assert_vectors_equal(filename_a, filename_b, 0.1)
+
+    def test_field_count_mismatch(self):
+        """Assert we can catch when field counts don't match."""
+        from pygeoprocessing.testing import assert_vectors_equal
+        reference = sampledata.SRS_WILLAMETTE
+        filename_a = os.path.join(self.workspace, 'foo')
+        sampledata.create_vector_on_disk(
+                [Point(0, 1)], fields={'a': 'string', 'b': 'string'},
+                attributes=[{'a': 'foo', 'b': 'foo'}],
+                projection=reference.projection, filename=filename_a)
 
         filename_b = os.path.join(self.workspace, 'bar')
         sampledata.create_vector_on_disk(
