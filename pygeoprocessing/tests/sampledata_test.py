@@ -2,6 +2,7 @@ import unittest
 import os
 import subprocess
 import shutil
+import tempfile
 
 from osgeo import gdal
 from osgeo import ogr
@@ -12,21 +13,36 @@ import mock
 
 import pygeoprocessing
 import pygeoprocessing.testing
-from pygeoprocessing.testing import sampledata
 
 
 class RasterTest(unittest.TestCase):
+    def setUp(self):
+        """Pre-test setUp function.
+
+        Overridden from unittest.TestCase.setUp()
+        """
+        self.workspace = tempfile.mkdtemp()
+
+    def tearDown(self):
+        """Post-test teardown function.
+
+        Overridden from unittest.TestCase.tearDown()
+        """
+        shutil.rmtree(self.workspace)
+
     def test_init(self):
+        from pygeoprocessing.testing import create_raster_on_disk
+        from pygeoprocessing.testing.sampledata import SRS_COLOMBIA
         pixels = numpy.ones((4, 4), numpy.byte)
         nodata = 0
-        reference = sampledata.SRS_COLOMBIA
-        filename = pygeoprocessing.temporary_filename()
+        reference = SRS_COLOMBIA
+        filename = os.path.join(self.workspace, 'foo.tif')
 
-        sampledata.create_raster_on_disk([pixels], reference.origin,
-                                         reference.projection,
-                                         nodata, reference.pixel_size(30),
-                                         datatype=gdal.GDT_Byte, format='GTiff',
-                                         filename=filename)
+        create_raster_on_disk([pixels], reference.origin,
+                              reference.projection,
+                              nodata, reference.pixel_size(30),
+                              datatype=gdal.GDT_Byte, format='GTiff',
+                              filename=filename)
 
         self.assertTrue(os.path.exists(filename))
 
@@ -45,23 +61,28 @@ class RasterTest(unittest.TestCase):
         self.assertTrue(dataset_sr.IsSame(source_sr))
 
     def test_bad_driver(self):
-        reference = sampledata.SRS_COLOMBIA
-        self.assertRaises(RuntimeError, sampledata.create_raster_on_disk,
-                          [numpy.ones((4, 4))],
-                          reference.origin, reference.projection, 0,
-                          reference.pixel_size(30), format='foo')
+        from pygeoprocessing.testing import create_raster_on_disk
+        from pygeoprocessing.testing.sampledata import SRS_COLOMBIA
+        reference = SRS_COLOMBIA
+
+        with self.assertRaises(RuntimeError):
+            create_raster_on_disk([numpy.ones((4, 4))],
+                reference.origin, reference.projection, 0,
+                reference.pixel_size(30), format='foo')
 
     def test_raster_autodtype(self):
+        from pygeoprocessing.testing import create_raster_on_disk
+        from pygeoprocessing.testing.sampledata import SRS_COLOMBIA
         pixels = numpy.ones((4, 4), numpy.uint16)
         nodata = 0
-        reference = sampledata.SRS_COLOMBIA
+        reference = SRS_COLOMBIA
         filename = pygeoprocessing.temporary_filename()
 
-        sampledata.create_raster_on_disk([pixels], reference.origin,
-                                         reference.projection,
-                                         nodata, reference.pixel_size(30),
-                                         datatype='auto',
-                                         filename=filename)
+        create_raster_on_disk([pixels], reference.origin,
+                              reference.projection,
+                              nodata, reference.pixel_size(30),
+                              datatype='auto',
+                              filename=filename)
 
         dataset = gdal.Open(filename)
         band = dataset.GetRasterBand(1)
@@ -71,32 +92,37 @@ class RasterTest(unittest.TestCase):
         self.assertEqual(band_dtype, gdal.GDT_UInt16)
 
     def test_invalid_raster_bands(self):
+        from pygeoprocessing.testing import create_raster_on_disk
+        from pygeoprocessing.testing.sampledata import SRS_WILLAMETTE
         pixels = numpy.ones((4, 4), numpy.uint16)
         nodata = 0
-        reference = sampledata.SRS_WILLAMETTE
+        reference = SRS_WILLAMETTE
         filename = pygeoprocessing.temporary_filename()
 
         # Error raised when `pixels` is not a list.  List of 2D matrices
         # expected.
-        self.assertRaises(TypeError, pixels, reference.origin,
-                          reference.projection, nodata,
-                          reference.pixel_size(30), datatype='auto',
-                          filename=filename)
+        with self.assertRaises(TypeError):
+            create_raster_on_disk(pixels, reference.origin,
+                 reference.projection, nodata,
+                 reference.pixel_size(30), datatype='auto',
+                 filename=filename)
 
     def test_multi_bands(self):
+        from pygeoprocessing.testing import create_raster_on_disk
+        from pygeoprocessing.testing.sampledata import SRS_WILLAMETTE
         pixels = [
             numpy.ones((5, 5)),
             numpy.zeros((5, 5)),
             numpy.multiply(numpy.ones((5, 5)), 3),
         ]
         nodata = 0
-        reference = sampledata.SRS_WILLAMETTE
+        reference = SRS_WILLAMETTE
         filename = pygeoprocessing.temporary_filename()
 
-        sampledata.create_raster_on_disk(pixels, reference.origin,
-                                         reference.projection, nodata,
-                                         reference.pixel_size(30),
-                                         datatype='auto', filename=filename)
+        create_raster_on_disk(pixels, reference.origin,
+                              reference.projection, nodata,
+                              reference.pixel_size(30),
+                              datatype='auto', filename=filename)
 
         # check that the three bands have been written properly.
         dataset = gdal.Open(filename)
@@ -107,26 +133,31 @@ class RasterTest(unittest.TestCase):
 
     def test_mismatched_bands(self):
         """When band sizes are mismatched, TypeError should be raised"""
+        from pygeoprocessing.testing import create_raster_on_disk
+        from pygeoprocessing.testing.sampledata import SRS_WILLAMETTE
         pixels = [
             numpy.ones((5, 5)),
             numpy.ones((4, 4)),
             numpy.ones((7, 7))
         ]
         nodata = 0
-        reference = sampledata.SRS_WILLAMETTE
+        reference = SRS_WILLAMETTE
         filename = pygeoprocessing.temporary_filename()
-        self.assertRaises(TypeError, sampledata.create_raster_on_disk, pixels,
-                         reference.origin, reference.projection, nodata,
-                         reference.pixel_size(30), datatype='auto',
-                         filename=filename)
+        with self.assertRaises(TypeError):
+            create_raster_on_disk(
+                pixels, reference.origin, reference.projection, nodata,
+                reference.pixel_size(30), datatype='auto',
+                filename=filename)
 
     def test_raster_nodata_notset(self):
         """When nodata=None, a nodata value should not be set."""
+        from pygeoprocessing.testing import create_raster_on_disk
+        from pygeoprocessing.testing.sampledata import SRS_WILLAMETTE
         pixels = [numpy.array([[0]])]
         nodata = None
-        reference = sampledata.SRS_WILLAMETTE
+        reference = SRS_WILLAMETTE
         filename = pygeoprocessing.temporary_filename()
-        sampledata.create_raster_on_disk(
+        create_raster_on_disk(
             pixels, reference.origin, reference.projection, nodata,
             reference.pixel_size(30), datatype='auto', filename=filename)
 
@@ -135,37 +166,42 @@ class RasterTest(unittest.TestCase):
 
     def test_raster_bad_matrix_iterable_input(self):
         """Verify TypeError raised when band_matrices not a list."""
+        from pygeoprocessing.testing import create_raster_on_disk
+        from pygeoprocessing.testing.sampledata import SRS_WILLAMETTE
         pixels = set([1])
         nodata = None
-        reference = sampledata.SRS_WILLAMETTE
+        reference = SRS_WILLAMETTE
         filename = pygeoprocessing.temporary_filename()
         with self.assertRaises(TypeError):
-            sampledata.create_raster_on_disk(
+            create_raster_on_disk(
                 pixels, reference.origin, reference.projection, nodata,
                 reference.pixel_size(30), datatype='auto', filename=filename)
 
     def test_raster_multiple_dtypes(self):
         """Verify TypeError raised when matrix band dtypes are mismatched."""
+        from pygeoprocessing.testing import create_raster_on_disk
+        from pygeoprocessing.testing.sampledata import SRS_WILLAMETTE
         pixels = [numpy.array([[0]], dtype=numpy.int),
                   numpy.array([[0]], dtype=numpy.float)]
         nodata = None
-        reference = sampledata.SRS_WILLAMETTE
+        reference = SRS_WILLAMETTE
         filename = pygeoprocessing.temporary_filename()
         with self.assertRaises(TypeError):
-            sampledata.create_raster_on_disk(
+            create_raster_on_disk(
                 pixels, reference.origin, reference.projection, nodata,
                 reference.pixel_size(30), datatype='auto', filename=filename)
 
 
 class VectorTest(unittest.TestCase):
     def test_init(self):
+        from pygeoprocessing.testing import create_vector_on_disk
+        from pygeoprocessing.testing.sampledata import SRS_COLOMBIA
         polygons = [
             Polygon([(0, 0), (1, 0), (0.5, 1), (0, 0)]),
         ]
-        reference = sampledata.SRS_COLOMBIA
+        reference = SRS_COLOMBIA
 
-        filename = sampledata.create_vector_on_disk(polygons,
-                                                    reference.projection)
+        filename = create_vector_on_disk(polygons, reference.projection)
 
         vector = ogr.Open(filename)
         layer = vector.GetLayer()
@@ -174,26 +210,33 @@ class VectorTest(unittest.TestCase):
         self.assertEqual(features, 1)
 
     def test_mismatched_geoms_attrs(self):
+        from pygeoprocessing.testing import create_vector_on_disk
+        from pygeoprocessing.testing.sampledata import SRS_COLOMBIA
         polygons = [
             Polygon([(0, 0), (1, 0), (0.5, 1), (0, 0)]),
         ]
-        reference = sampledata.SRS_COLOMBIA
+        reference = SRS_COLOMBIA
         fields = {'foo': 'int'}
         attrs = []
-        self.assertRaises(AssertionError, sampledata.create_vector_on_disk,
-                          polygons, reference.projection, fields, attrs)
+        with self.assertRaises(AssertionError):
+            create_vector_on_disk(polygons, reference.projection, fields,
+                                  attrs)
 
     def test_wrong_field_type(self):
+        from pygeoprocessing.testing import create_vector_on_disk
+        from pygeoprocessing.testing.sampledata import SRS_WILLAMETTE
         polygons = []
-        reference = sampledata.SRS_WILLAMETTE
+        reference = SRS_WILLAMETTE
         fields = {'foo': 'bar'}
-        self.assertRaises(AssertionError, sampledata.create_vector_on_disk,
-                          polygons, reference.projection, fields)
+        with self.assertRaises(AssertionError):
+            create_vector_on_disk(polygons, reference.projection, fields)
 
     def test_wrong_driver(self):
-        self.assertRaises(AssertionError, sampledata.create_vector_on_disk, [],
-                          sampledata.SRS_WILLAMETTE.projection,
-                          vector_format='foobar')
+        from pygeoprocessing.testing import create_vector_on_disk
+        from pygeoprocessing.testing.sampledata import SRS_WILLAMETTE
+        with self.assertRaises(AssertionError):
+            create_vector_on_disk([], SRS_WILLAMETTE.projection,
+                                  vector_format='foobar')
 
 class GISBrowserTest(unittest.TestCase):
 
