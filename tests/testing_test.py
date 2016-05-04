@@ -228,6 +228,23 @@ class VectorEquality(unittest.TestCase):
         with self.assertRaises(AssertionError):
             assert_vectors_equal(filename_a, filename_b, 0.1)
 
+    def test_field_mismatch(self):
+        """Assert we can catch when fieldnames don't match."""
+        from pygeoprocessing.testing import assert_vectors_equal
+        reference = sampledata.SRS_WILLAMETTE
+        filename_a = os.path.join(self.workspace, 'foo')
+        sampledata.create_vector_on_disk(
+                [Point(0, 1)], fields={'a': 'string'}, attributes=[{'a':
+                'foo'}], projection=reference.projection, filename=filename_a)
+
+        filename_b = os.path.join(self.workspace, 'bar')
+        sampledata.create_vector_on_disk(
+                [Point(0, 1)], fields={'b': 'string'}, attributes=[{'b':
+                'foo'}], projection=reference.projection, filename=filename_b)
+
+        with self.assertRaises(AssertionError):
+            assert_vectors_equal(filename_a, filename_b, 0.1)
+
 
 class CSVEquality(unittest.TestCase):
 
@@ -383,6 +400,20 @@ class DigestEquality(unittest.TestCase):
             assert_checksums_equal(checksum_file)
         finally:
             os.chdir(cwd)
+
+    def test_checksum_all_files_missing(self):
+        """Verify testing checksum from wrong directory fails."""
+        from pygeoprocessing.testing import assert_checksums_equal
+        from pygeoprocessing.testing import checksum_folder
+
+        sample_folder = tempfile.mkdtemp(dir=self.workspace)
+        DigestEquality.create_sample_folder(sample_folder)
+
+        checksum_file = os.path.join(self.workspace, 'checksum.md5')
+        checksum_folder(sample_folder, checksum_file)
+
+        with self.assertRaises(AssertionError):
+            assert_checksums_equal(checksum_file, self.workspace)
 
     def test_bsd_checksum_file(self):
         """Verify a BSD-style checksum file."""
