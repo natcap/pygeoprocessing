@@ -15,7 +15,7 @@ import pygeoprocessing
 import pygeoprocessing.testing
 
 
-class RasterTest(unittest.TestCase):
+class RasterCreationTest(unittest.TestCase):
     def setUp(self):
         """Pre-test setUp function.
 
@@ -192,7 +192,7 @@ class RasterTest(unittest.TestCase):
                 reference.pixel_size(30), datatype='auto', filename=filename)
 
 
-class VectorTest(unittest.TestCase):
+class VectorCreationTest(unittest.TestCase):
     def test_init(self):
         from pygeoprocessing.testing import create_vector_on_disk
         from pygeoprocessing.testing.sampledata import SRS_COLOMBIA
