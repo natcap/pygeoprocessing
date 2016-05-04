@@ -4,7 +4,7 @@ import os
 import shutil
 import glob
 import hashlib
-import sys
+import platform
 
 import numpy
 from osgeo import gdal
@@ -14,7 +14,6 @@ import mock
 
 from pygeoprocessing.testing import scm
 import pygeoprocessing.testing as testing
-from pygeoprocessing.testing import utils
 from pygeoprocessing.testing import sampledata
 import pygeoprocessing as raster_utils
 import pygeoprocessing
@@ -674,9 +673,9 @@ class DigestEquality(unittest.TestCase):
         # Simulate being on Windows.
         # On *NIX systems, this shouldn't affect the output files at all, since
         # we're replacing os.sep ('/' on *NIX) with '/'.
-        with mock.patch('sys.platform', lambda: 'Windows'):
+        with mock.patch('platform.system', lambda: 'Windows'):
             # Just to verify that sys.platform() is currently set to Windows.
-            self.assertEqual(sys.platform(), 'Windows')
+            self.assertEqual(platform.system(), 'Windows')
             checksum_folder(sample_folder, checksum_file, style='GNU')
             last_line = open(checksum_file).read().split('\n')[-2]
             self.assertEqual(last_line,
