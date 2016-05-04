@@ -4,6 +4,7 @@ import os
 import shutil
 import glob
 import hashlib
+import sys
 
 import numpy
 from osgeo import gdal
@@ -31,45 +32,6 @@ TEST_INPUT = os.path.join(SVN_LOCAL_DIR, 'data_storage', 'test_input')
 TEST_OUT = os.path.join(SVN_LOCAL_DIR, 'test_out')
 BASE_DATA = os.path.join(SVN_LOCAL_DIR, 'base_data')
 REGRESSION_INPUT = os.path.join(SVN_LOCAL_DIR, 'testing_regression')
-
-
-class DataStorageUtilsTest(unittest.TestCase):
-    def test_digest_file(self):
-        """Test for digesting and comparing files and folders"""
-        # make a file in tempdir
-        file_handle, new_file = tempfile.mkstemp()
-        os.close(file_handle)
-        open_file = open(new_file, 'w')
-        open_file.write('foobarbaz')
-        open_file.close()
-
-        first_md5sum = utils.digest_file_list([new_file])
-
-        # move it to a different filename
-        moved_file = new_file + '.txt'
-        shutil.move(new_file, moved_file)
-        second_md5sum = utils.digest_file_list([moved_file])
-
-        # verify md5sum stays the same across all cases.
-        self.assertEqual(first_md5sum, second_md5sum)
-
-        # move it to a new folder, verify md5sum
-        dirname = tempfile.mkdtemp()
-        shutil.move(moved_file, os.path.join(dirname,
-                                             os.path.basename(moved_file)))
-        dir_md5sum = utils.digest_folder(dirname)
-        self.assertEqual(first_md5sum, dir_md5sum)
-
-        file_handle, new_file_2 = tempfile.mkstemp()
-        os.close(file_handle)
-        with open(new_file_2, 'w') as new_file:
-            new_file.write('hello world!')
-
-        new_file_md5sum = utils.digest_file_list([new_file_2])
-        self.assertNotEqual(new_file_md5sum, first_md5sum)
-
-        os.remove(new_file_2)
-        shutil.rmtree(dirname)
 
 
 class GISTestTester(unittest.TestCase):
@@ -575,6 +537,7 @@ class DigestEquality(unittest.TestCase):
             # Just write the name of the file to the file.
             with open(filename, 'w') as open_file:
                 open_file.write(os.path.basename(filename))
+        return [filename_a, filename_b, filename_c]
 
     def test_checksum_assertion_in_cwd(self):
         """Verify testing from CWD if none is provided."""
@@ -712,7 +675,33 @@ class DigestEquality(unittest.TestCase):
         # On *NIX systems, this shouldn't affect the output files at all, since
         # we're replacing os.sep ('/' on *NIX) with '/'.
         with mock.patch('sys.platform', lambda: 'Windows'):
+            # Just to verify that sys.platform() is currently set to Windows.
+            self.assertEqual(sys.platform(), 'Windows')
             checksum_folder(sample_folder, checksum_file, style='GNU')
             last_line = open(checksum_file).read().split('\n')[-2]
             self.assertEqual(last_line,
                              '6bc947566bb3f50d712efb0de07bfb19  _c/_d')
+
+    def test_digest_file_list_skip_if_dir(self):
+        """Verify that file digesting skips directories as expected."""
+        from pygeoprocessing.testing import digest_file_list
+
+        # Get the list of files that are being digested and add a folder to it
+        filepaths = DigestEquality.create_sample_folder(self.workspace)
+        filepaths.append(self.workspace)
+
+        file_hexdigest = digest_file_list(filepaths, ifdir='skip')
+        self.assertEqual('7b13e71a17fee2a14e179726281e85cc', file_hexdigest)
+
+    def test_digest_file_list_raise_if_dir(self):
+        """Verify that file list digesting raises IOError when dir found."""
+        from pygeoprocessing.testing import digest_file_list
+
+        # Get the list of files that are being digested and add a folder to it
+        filepaths = DigestEquality.create_sample_folder(self.workspace)
+        filepaths.append(self.workspace)
+
+        with self.assertRaises(IOError):
+            digest_file_list(filepaths, ifdir='raise')
+
+
