@@ -1,3 +1,4 @@
+"""Tests for the creation of geospatial sample data."""
 import unittest
 import os
 import subprocess
@@ -16,6 +17,9 @@ import pygeoprocessing.testing
 
 
 class RasterCreationTest(unittest.TestCase):
+
+    """Tests for the creation of GDAL rasters."""
+
     def setUp(self):
         """Pre-test setUp function.
 
@@ -68,7 +72,8 @@ class RasterCreationTest(unittest.TestCase):
         reference = SRS_COLOMBIA
 
         with self.assertRaises(RuntimeError):
-            create_raster_on_disk([numpy.ones((4, 4))],
+            create_raster_on_disk(
+                [numpy.ones((4, 4))],
                 reference.origin, reference.projection, 0,
                 reference.pixel_size(30), format='foo')
 
@@ -106,10 +111,11 @@ class RasterCreationTest(unittest.TestCase):
         # Error raised when `pixels` is not a list.  List of 2D matrices
         # expected.
         with self.assertRaises(TypeError):
-            create_raster_on_disk(pixels, reference.origin,
-                 reference.projection, nodata,
-                 reference.pixel_size(30), datatype='auto',
-                 filename=filename)
+            create_raster_on_disk(
+                pixels, reference.origin,
+                reference.projection, nodata,
+                reference.pixel_size(30), datatype='auto',
+                filename=filename)
 
     def test_multi_bands(self):
         """Verify that we can create multi-band rasters."""
@@ -137,7 +143,7 @@ class RasterCreationTest(unittest.TestCase):
             numpy.testing.assert_almost_equal(input_matrix, written_matrix)
 
     def test_mismatched_bands(self):
-        """When band sizes are mismatched, TypeError should be raised"""
+        """When band sizes are mismatched, TypeError should be raised."""
         from pygeoprocessing.testing import create_raster_on_disk
         from pygeoprocessing.testing.sampledata import SRS_WILLAMETTE
         pixels = [
@@ -198,6 +204,9 @@ class RasterCreationTest(unittest.TestCase):
 
 
 class VectorCreationTest(unittest.TestCase):
+
+    """Tests for the creation of OGR vectors."""
+
     def setUp(self):
         """Pre-test setUp function.
 
@@ -275,7 +284,7 @@ class VectorCreationTest(unittest.TestCase):
             # Have the new vector be created in the workspace
             old_tempdir = tempfile.tempdir
             tempfile.tempdir = self.workspace
-            filename = create_vector_on_disk(polygons, SRS_COLOMBIA.projection)
+            create_vector_on_disk(polygons, SRS_COLOMBIA.projection)
         finally:
             tempfile.tempdir = old_tempdir
 
@@ -291,8 +300,8 @@ class VectorCreationTest(unittest.TestCase):
             # Have the new vector be created in the workspace
             old_tempdir = tempfile.tempdir
             tempfile.tempdir = self.workspace
-            filename = create_vector_on_disk(polygons, SRS_COLOMBIA.projection,
-                vector_format='ESRI Shapefile')
+            create_vector_on_disk(polygons, SRS_COLOMBIA.projection,
+                                  vector_format='ESRI Shapefile')
         finally:
             tempfile.tempdir = old_tempdir
 
