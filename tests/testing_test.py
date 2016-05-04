@@ -181,28 +181,6 @@ class GISTestTester(unittest.TestCase):
                           base_file, different_file, field_tolerance=1e-9)
 
     @scm.skip_if_data_missing(SVN_LOCAL_DIR)
-    def test_csv_assertion_fileio(self):
-        bad_file_1 = 'aaa'
-        bad_file_2 = 'bbbbb'
-        good_file = os.path.join(TEST_INPUT, 'Guild.csv')
-
-        self.assertRaises(IOError, testing.assert_csv_equal, bad_file_1,
-                          bad_file_2, tolerance=1e-9)
-        self.assertRaises(IOError, testing.assert_csv_equal, bad_file_1,
-                          good_file, tolerance=1e-9)
-        self.assertRaises(IOError, testing.assert_csv_equal, good_file,
-                          bad_file_2, tolerance=1e-9)
-        testing.assert_csv_equal(good_file, good_file, tolerance=1e-9)
-
-    @scm.skip_if_data_missing(SVN_LOCAL_DIR)
-    def test_csv_assertion_fails(self):
-        sample_file = os.path.join(TEST_INPUT, 'Guild.csv')
-        different_file = os.path.join(TEST_INPUT, 'LU.csv')
-
-        self.assertRaises(AssertionError, testing.assert_csv_equal,
-                          sample_file, different_file, tolerance=1e-9)
-
-    @scm.skip_if_data_missing(SVN_LOCAL_DIR)
     def test_md5_same(self):
         """Check that the MD5 is equal."""
         test_file = os.path.join(SAMPLE_VECTORS, 'harv_samp_cur.shp')
@@ -473,11 +451,57 @@ class VectorEquality(unittest.TestCase):
 
 
 class CSVEquality(unittest.TestCase):
+
+    """Test fixture for asserting CSV files."""
+
     def setUp(self):
+        """Pre-test setUp function.
+
+        Overridden from unittest.TestCase.setUp()
+        """
         self.workspace = tempfile.mkdtemp()
 
     def tearDown(self):
+        """Post-test teardown function.
+
+        Overridden from unittest.TestCase.tearDown()
+        """
         shutil.rmtree(self.workspace)
+
+    @staticmethod
+    def make_guild_csv(workspace):
+        """Make a guilds CSV at workspace/guild.csv.
+
+        Parameters:
+            workspace (string): The absolute path to the directory where the
+                new file should be stored.
+        Returns:
+            The absolute path to the new file.
+        """
+        filename = os.path.join(workspace, 'guild.csv')
+        open(filename, 'w').write(
+            '"SPECIES","NS_cavity","NS_ground","FS_spring","FS_summer",'
+            '"ALPHA","SPECIES_WEIGHT\n"'
+            '"Apis",1.0,1.0,0.5,0.5,500.0,1.0\n'
+            '"Bombus",1.0,0.0,0.4,0.6,1500.0,1.0')
+        return filename
+
+    @staticmethod
+    def make_landuse_csv(workspace):
+        """Make a landuse CSV at workspace/LU.csv.
+
+        Parameters:
+            workspace (string): The absolute path to the directory where the
+                new file should be stored.
+        Returns:
+            The absolute path to the new file.
+        """
+        filename = os.path.join(workspace, 'LU.csv')
+        open(filename, 'w').write(
+            '"LULC","DESCRIPTIO","LULC_GROUP","N_cavity"\n'
+            '1,"01_Residential 0-4 DU/ac","Built",0.3\n'
+            '2,"02_Residential 4-9 DU/ac","Built",0.3')
+        return filename
 
     def test_numeric_value_equality(self):
         """Test that numeric equality testing fails when expected."""
@@ -493,6 +517,31 @@ class CSVEquality(unittest.TestCase):
 
         with self.assertRaises(AssertionError):
             assert_csv_equal(filename_a, filename_b, 0.001)
+
+    def test_csv_not_found_bad_param_1(self):
+        """Test that IOError is raised when param 1 is not found."""
+        from pygeoprocessing.testing import assert_csv_equal
+        nonexistent_file_a = os.path.join(self.workspace, 'foo')
+        guilds = CSVEquality.make_guild_csv(self.workspace)
+        with self.assertRaises(IOError):
+            assert_csv_equal(nonexistent_file_a, guilds, 1)
+
+    def test_csv_not_found_bad_param_2(self):
+        """Test that IOError is raised when param 2 is not found."""
+        from pygeoprocessing.testing import assert_csv_equal
+        nonexistent_file_a = os.path.join(self.workspace, 'foo')
+        guilds = CSVEquality.make_guild_csv(self.workspace)
+        with self.assertRaises(IOError):
+            assert_csv_equal(guilds, nonexistent_file_a, 1)
+
+    def test_csv_unequal_when_comparing_different_types(self):
+        """Assert a failure when comparing differing non-float values."""
+        from pygeoprocessing.testing import assert_csv_equal
+        guilds = CSVEquality.make_guild_csv(self.workspace)
+        landuse = CSVEquality.make_landuse_csv(self.workspace)
+
+        with self.assertRaises(AssertionError):
+            assert_csv_equal(guilds, landuse, 1e-9)
 
 
 class DigestEquality(unittest.TestCase):
@@ -541,12 +590,13 @@ class DigestEquality(unittest.TestCase):
     def test_checksum_assertion_in_cwd(self):
         """Verify testing from CWD if none is provided."""
         from pygeoprocessing.testing import assert_checksums_equal
+        from pygeoprocessing.testing import checksum_folder
 
         sample_folder = tempfile.mkdtemp(dir=self.workspace)
         DigestEquality.create_sample_folder(sample_folder)
 
         checksum_file = os.path.join(self.workspace, 'checksum.md5')
-        utils.checksum_folder(sample_folder, checksum_file)
+        checksum_folder(sample_folder, checksum_file)
 
         try:
             cwd = os.getcwd()
@@ -558,24 +608,26 @@ class DigestEquality(unittest.TestCase):
     def test_bsd_checksum_file(self):
         """Verify a BSD-style checksum file."""
         from pygeoprocessing.testing import assert_checksums_equal
+        from pygeoprocessing.testing import checksum_folder
 
         sample_folder = tempfile.mkdtemp(dir=self.workspace)
         DigestEquality.create_sample_folder(sample_folder)
 
         checksum_file = os.path.join(self.workspace, 'checksum.md5')
-        utils.checksum_folder(sample_folder, checksum_file, style='BSD')
+        checksum_folder(sample_folder, checksum_file, style='BSD')
 
         assert_checksums_equal(checksum_file, base_folder=sample_folder)
 
     def test_gnu_checksum_file(self):
         """Verify a GNU-style checksum file."""
         from pygeoprocessing.testing import assert_checksums_equal
+        from pygeoprocessing.testing import checksum_folder
 
         sample_folder = tempfile.mkdtemp(dir=self.workspace)
         DigestEquality.create_sample_folder(sample_folder)
 
         checksum_file = os.path.join(self.workspace, 'checksum.md5')
-        utils.checksum_folder(sample_folder, checksum_file, style='GNU')
+        checksum_folder(sample_folder, checksum_file, style='GNU')
 
         assert_checksums_equal(checksum_file, base_folder=sample_folder)
 
