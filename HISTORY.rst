@@ -4,6 +4,7 @@ Release History
 0.3.0 (XXX)
 -----------
 
+* Fixed a defect in ``pygeoprocessing.testing.assert_checksums_equal`` preventing BSD-style checksum files from being analyzed correctly.
 * Fixed an issue in reclassify_dataset_uri that would cause an exception if the incoming raster didn't have a nodata value defined.
 * Fixed a defect in ``pygeoprocessing.geoprocessing.get_lookup_from_csv`` where the dialect was unable to be detected when analyzing a CSV that was larger than 1K in size.  This fix enables the correct detection of comma or semicolon delimited CSV files, so long as the header row by itself is not larger than 1K.
 * Intra-package imports are now relative.  Addresses an import issue for users with multiple copies of pygeoprocessing installed across multiple Python installations.
