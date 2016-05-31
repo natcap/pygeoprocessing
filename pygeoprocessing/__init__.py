@@ -9,9 +9,6 @@ import types
 
 from geoprocessing import *
 
-# Expose test()
-from .tests import test
-
 __all__ = []
 for attrname in dir(geoprocessing):
     if type(getattr(geoprocessing, attrname)) is types.FunctionType:

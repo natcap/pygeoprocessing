@@ -14,9 +14,6 @@ except ImportError:
     from distutils.command.build_ext import build_ext
     from distutils.extension import Extension
 
-import natcap.versioner
-import numpy
-
 try:
     from setuptools import setup
 
@@ -40,6 +37,7 @@ CMDCLASS = {}
 try:
     # Overrides the existing build_ext if we can use the cython version.
     from Cython.Distutils import build_ext
+    from Cython.Build import cythonize
     USE_CYTHON = True
 except ImportError:
     USE_CYTHON = False
@@ -84,13 +82,22 @@ class ExtraCompilerFlagsBuilder(build_ext):
     this is only for windows ports of GNU GCC compilers.
     """
     def build_extensions(self):
+        # Don't import numpy until here, so we can be sure distutils has
+        # already downloaded the numpy egg for use here.
+        import numpy
         compiler_type = self.compiler.compiler_type
-        if compiler_type in ['mingw32', 'cygwin']:
-            for ext in self.extensions:
+
+        for ext in self.extensions:
+            if compiler_type in ['mingw32', 'cygwin']:
                 ext.extra_link_args = [
                     '-static-libgcc',
                     '-static-libstdc++',
                 ]
+
+            try:
+                ext.include_dirs.append(numpy.get_include())
+            except AttributeError:
+                ext.include_dirs = [numpy.get_include()]
         build_ext.build_extensions(self)
 
 CMDCLASS['build_ext'] = ExtraCompilerFlagsBuilder
@@ -99,32 +106,34 @@ EXTENSION_LIST = ([
     Extension(
         "pygeoprocessing.geoprocessing_core",
         sources=['pygeoprocessing/geoprocessing_core.pyx'],
-        language="c++",
-        include_dirs=[numpy.get_include()]),
+        language="c++"),
     Extension(
         "pygeoprocessing.routing.routing_core",
         sources=[
             'pygeoprocessing/routing/routing_core.pyx',
             'pygeoprocessing/routing/routing_core.pxd'],
-        language="c++",
-        include_dirs=[numpy.get_include()])
+        language="c++")
     ])
 
 if not USE_CYTHON:
     EXTENSION_LIST = no_cythonize(EXTENSION_LIST)
+else:
+    EXTENSION_LIST = cythonize(EXTENSION_LIST)
 
+# List out requirements here that are required for the build.
+# Runtime requirements like GDAL and Shapely aren't required for
+# building pygeoprocessing, and carry hefty C library dependencies
+# that complicate installs on remote systems (like on ReadTheDocs.org)
 REQUIREMENTS = [
+    'natcap.versioner',
     'numpy',
-    'scipy',
-    'shapely',
-    'gdal',
-    'natcap.versioner>=0.1.2',
-    ]
+    'nose>=1.0',
+]
+
 
 setup(
     name='pygeoprocessing',
-    version=natcap.versioner.parse_version(),
-    natcap_version=os.path.join('pygeoprocessing', 'version.py'),
+    natcap_version='pygeoprocessing/version.py',
     description="Geoprocessing routines for GIS",
     long_description=readme + '\n\n' + history,
     maintainer='Rich Sharp',
@@ -132,17 +141,14 @@ setup(
     url='http://bitbucket.org/richpsharp/pygeoprocessing',
     packages=[
         'pygeoprocessing',
-        'pygeoprocessing.tests',
         'pygeoprocessing.routing',
         'pygeoprocessing.testing',
-        'pygeoprocessing.tests',
         'pygeoprocessing.dbfpy',
     ],
     package_dir={'pygeoprocessing': 'pygeoprocessing'},
     include_package_data=True,
     install_requires=REQUIREMENTS,
-    include_dirs=[numpy.get_include()],
-    setup_requires=['nose>=1.0'],
+    setup_requires=['cython'] + REQUIREMENTS,
     cmdclass=CMDCLASS,
     license=LICENSE,
     zip_safe=False,
