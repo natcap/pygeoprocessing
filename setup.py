@@ -125,7 +125,7 @@ else:
 # building pygeoprocessing, and carry hefty C library dependencies
 # that complicate installs on remote systems (like on ReadTheDocs.org)
 REQUIREMENTS = [
-    'natcap.versioner',
+    'natcap.versioner>=0.4.2',
     'numpy',
     'nose>=1.0',
 ]
