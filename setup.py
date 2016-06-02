@@ -125,6 +125,7 @@ else:
 # building pygeoprocessing, and carry hefty C library dependencies
 # that complicate installs on remote systems (like on ReadTheDocs.org)
 REQUIREMENTS = [
+    'cython',
     'natcap.versioner>=0.4.2',
     'numpy',
     'nose>=1.0',
@@ -148,7 +149,7 @@ setup(
     package_dir={'pygeoprocessing': 'pygeoprocessing'},
     include_package_data=True,
     install_requires=REQUIREMENTS,
-    setup_requires=['cython'] + REQUIREMENTS,
+    setup_requires=REQUIREMENTS,
     cmdclass=CMDCLASS,
     license=LICENSE,
     zip_safe=False,
