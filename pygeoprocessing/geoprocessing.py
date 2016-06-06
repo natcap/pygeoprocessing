@@ -3284,3 +3284,65 @@ def iterblocks(raster_uri, band_list=None):
             }
             yield (offset_dict, ) + tuple(ds_band.ReadAsArray(**offset_dict)
                                           for ds_band in ds_bands)
+
+
+def transform_bounding_box(
+        bounding_box, base_epsg, new_epsg, edge_samples=11):
+    """Transform input bounding box to output projection.
+
+    This transform accounts for the fact that the reprojected square bounding
+    box might be warped in the new coordinate system.  To account for this,
+    the function samples points along the original bounding box edges and
+    attempts to make the largest bounding box around any transformed point
+    on the edge whether corners or warped edges.
+
+    Parameters:
+        bounding_box (list): a list of 4 coordinates in `base_epsg` coordinate
+            system describing the bound in the order [xmin, ymin, xmax, ymax]
+        base_epsg (int): the EPSG code of the input coordinate system
+        new_epsg (int): the EPSG code of the desired output coordinate system
+        edge_samples (int): the number of interpolated points along each
+            bounding box edge to sample along. A value of 2 will sample just
+            the corners while a value of 3 will also sample the corners and
+            the midpoint.
+
+    Returns:
+        A list of the form [xmin, ymin, xmax, ymax] that describes the largest
+        fitting bounding box around the original warped bounding box in
+        `new_epsg` coordinate system.
+    """
+    base_ref = osr.SpatialReference()
+    base_ref.ImportFromEPSG(base_epsg)
+
+    new_ref = osr.SpatialReference()
+    new_ref.ImportFromEPSG(new_epsg)
+
+    transformer = osr.CoordinateTransformation(base_ref, new_ref)
+
+    p_0 = numpy.array((bounding_box[0], bounding_box[3]))
+    p_1 = numpy.array((bounding_box[0], bounding_box[1]))
+    p_2 = numpy.array((bounding_box[2], bounding_box[1]))
+    p_3 = numpy.array((bounding_box[2], bounding_box[3]))
+
+    def _transform_point(point):
+        trans_x, trans_y, _ = (transformer.TransformPoint(*point))
+        return (trans_x, trans_y)
+
+    # This list comprehension iterates over each edge of the bounding box,
+    # divides each edge into `edge_samples` number of points, then reduces
+    # that list to an appropriate `bounding_fn` given the edge.
+    # For example the left edge needs to be the minimum x coordinate so
+    # we generate `edge_samples` number of points between the upper left and
+    # lower left point, transform them all to the new coordinate system
+    # then get the minimum x coordinate "min(p[0] ...)" of the batch.
+    transformed_bounding_box = [
+        bounding_fn(
+            [_transform_point(
+                p_a * v + p_b * (1 - v)) for v in numpy.linspace(
+                    0, 1, edge_samples)])
+        for p_a, p_b, bounding_fn in [
+            (p_0, p_1, lambda p_list: min([p[0] for p in p_list])),
+            (p_1, p_2, lambda p_list: min([p[1] for p in p_list])),
+            (p_2, p_3, lambda p_list: max([p[0] for p in p_list])),
+            (p_3, p_0, lambda p_list: max([p[1] for p in p_list]))]]
+    return transformed_bounding_box

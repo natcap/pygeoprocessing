@@ -20,7 +20,7 @@ class PyGeoprocessingTest(unittest.TestCase):
         shutil.rmtree(self.workspace_dir)
 
     def test_map_dataset_to_value_nodata_undefined(self):
-        """Test map_dataset_to_value if raster is missing a nodata value."""
+        """PyGeoprocessing: test map_dataset_to_value missing nodata."""
         import pygeoprocessing
 
         n_rows, n_cols = 4, 4
@@ -51,7 +51,7 @@ class PyGeoprocessingTest(unittest.TestCase):
         self.assertEqual(out_array[0], 100.0)
 
     def test_map_dataset_to_value(self):
-        """Test map_dataset_to_value for general case."""
+        """PyGeoprocessing: test map_dataset_to_value for general case."""
         import pygeoprocessing
 
         n_rows, n_cols = 4, 4
@@ -78,3 +78,19 @@ class PyGeoprocessingTest(unittest.TestCase):
         out_array = numpy.unique(raster_out_band.ReadAsArray())
         self.assertTrue(len(out_array))
         self.assertEqual(out_array[0], 100.0)
+
+    def test_transform_bounding_box(self):
+        """PyGeoprocessing: test bounding box transform."""
+        import pygeoprocessing
+
+        vector_extent = [
+            440446.6938076447695494, 4800590.4052893081679940,
+            606196.6938076447695494, 5087540.4052893081679940]
+        expected_extents = [
+            -123.76825632966793, 43.350664712678984, -121.63016515055192,
+            45.941400531740214]
+        # test from UTM 10N to WGS84
+        actual_extents = pygeoprocessing.transform_bounding_box(
+            vector_extent, 26910, 4326, edge_samples=11)
+        numpy.testing.assert_array_almost_equal(
+            expected_extents, actual_extents)
