@@ -4,6 +4,7 @@ Release History
 0.3.0 (XXX)
 -----------
 
+* Adding `transform_bounding_box` to calculate the largest projected bounding box given the four corners on a local coordinate system.
 * Removing GDAL, Shapely from the hard requirements in setup.py.  This will allow pygeoprocessing to be built by package managers like pip without these two packages being installed.  GDAL and Shapely will still need to be installed for pygeoprocessing to run as expected.
 * Fixed a defect in ``pygeoprocessing.testing.assert_checksums_equal`` preventing BSD-style checksum files from being analyzed correctly.
 * Fixed an issue in reclassify_dataset_uri that would cause an exception if the incoming raster didn't have a nodata value defined.
