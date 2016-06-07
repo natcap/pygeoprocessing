@@ -5,6 +5,7 @@ import tempfile
 import shutil
 
 from osgeo import gdal
+from osgeo import osr
 import numpy
 
 
@@ -90,7 +91,13 @@ class PyGeoprocessingTest(unittest.TestCase):
             -123.76825632966793, 43.350664712678984, -121.63016515055192,
             45.941400531740214]
         # test from UTM 10N to WGS84
+        base_ref = osr.SpatialReference()
+        base_ref.ImportFromEPSG(26910)
+
+        new_ref = osr.SpatialReference()
+        new_ref.ImportFromEPSG(4326)
         actual_extents = pygeoprocessing.transform_bounding_box(
-            vector_extent, 26910, 4326, edge_samples=11)
+            vector_extent, base_ref.ExportToWkt(), new_ref.ExportToWkt(),
+            edge_samples=11)
         numpy.testing.assert_array_almost_equal(
             expected_extents, actual_extents)
