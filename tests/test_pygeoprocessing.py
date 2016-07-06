@@ -8,6 +8,11 @@ from osgeo import gdal
 from osgeo import osr
 import numpy
 
+from pygeoprocessing.testing import scm
+
+TEST_DATA = os.path.join(
+    os.path.dirname(__file__), '..', 'data', 'pygeoprocessing-test-data')
+
 
 class PyGeoprocessingTest(unittest.TestCase):
     """Class to test PyGeoprocessing's functions."""
@@ -101,3 +106,8 @@ class PyGeoprocessingTest(unittest.TestCase):
             edge_samples=11)
         numpy.testing.assert_array_almost_equal(
             expected_extents, actual_extents)
+
+    @scm.skip_if_data_missing(TEST_DATA)
+    def test_convolve_2d(self):
+        """PyGeoprocessing: test convolve 2D regression."""
+        pass
