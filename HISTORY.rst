@@ -4,6 +4,8 @@ Release History
 0.3.0 (XXX)
 -----------
 
+* Refactoring source side to migrate source files from [REPO]/pygeoprocessing to [REPO]/src/pygeoprocessing.
+* Adding a pavement script with routines to fetch SVN test data, build a virtual environment, and clean the environment in a Windows based operating system.
 * Adding `transform_bounding_box` to calculate the largest projected bounding box given the four corners on a local coordinate system.
 * Removing GDAL, Shapely from the hard requirements in setup.py.  This will allow pygeoprocessing to be built by package managers like pip without these two packages being installed.  GDAL and Shapely will still need to be installed for pygeoprocessing to run as expected.
 * Fixed a defect in ``pygeoprocessing.testing.assert_checksums_equal`` preventing BSD-style checksum files from being analyzed correctly.
