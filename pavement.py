@@ -1,62 +1,38 @@
-"""Automated build and development processes for PyGeoProcessing.
-
-Execute ``paver --help`` for more information about available tasks.
-"""
-import textwrap
-import sys
+"""PyGeoprocessing pavement script."""
+import subprocess
+import logging
+import glob
 
 import paver.easy
-import paver.virtual
+import paver.path
 
-paver.easy.options(
-    bdist_windows=paver.easy.Bunch(
-        bootstrap_file='bootstrap.py',
-        upload=False,
-        envname='release_env'
-    )
-)
+logging.basicConfig(
+    format='%(asctime)s %(name)-18s %(levelname)-8s %(message)s',
+    level=logging.DEBUG, datefmt='%m/%d/%Y %H:%M:%S ')
+LOGGER = logging.getLogger('pavement')
+logging.getLogger('pip').setLevel(logging.ERROR)
+
+_VIRTUAL_ENV_DIR = 'dev_env'
 
 
 @paver.easy.task
-@paver.easy.cmdopts([
-    ('upload', '', ('Upload the binaries to PyPI.  Requires a configured '
-                    '.pypirc')),
-    ('envname=', '', ('The environment to use for building the binaries')),
-])
-def bdist_windows(options):
-    """Build a Windows wheel of pygeoprocessing against an early numpy ABI."""
-    import virtualenv
-    # paver provides paver.virtual.bootstrap(), but this does not afford the
-    # degree of control that we want and need with installing needed packages.
-    # We therefore make our own bootstrapping function calls here.
-    install_string = """
-import os, subprocess, platform
-def after_install(options, home_dir):
-    if platform.system() == 'Windows':
-        bindir = 'Scripts'
-    else:
-        bindir = 'bin'
-    subprocess.check_output([os.path.join(home_dir, bindir, 'easy_install'),
-                             'numpy==1.6.1'])
-"""
+def dev():
+    """Build development environment."""
+    subprocess.call('virtualenv --system-site-packages %s' % _VIRTUAL_ENV_DIR)
+    subprocess.call(r'dev_env\Scripts\python setup.py install')
+    subprocess.call(
+        'dev_env\\Scripts\\python -c "import pygeoprocessing; '
+        'print \'***\\npygeoprocessing version: \' + '
+        'pygeoprocessing.__version__ + \'\\n***\'"')
+    print (
+        "Installed virtualenv launch with:\n.\\%s\\Scripts\\activate" %
+        _VIRTUAL_ENV_DIR)
 
-    output = virtualenv.create_bootstrap_script(
-        textwrap.dedent(install_string))
-    open(options.bdist_windows.bootstrap_file, 'w').write(output)
+@paver.easy.task
+def clean():
+    """Clean build environment."""
+    folders_to_rm = ['build', 'dist', 'tmp', 'bin', _VIRTUAL_ENV_DIR]
 
-    paver.easy.sh(('{python} {bootstrap} {envname} --system-site-packages '
-                   '--clear').format(
-                  python=sys.executable,
-                  envname=options.bdist_windows.envname,
-                  bootstrap=options.bdist_windows.bootstrap_file))
-
-    @paver.virtual.virtualenv(options.bdist_windows.envname)
-    def _build_files():
-        upload_string = ''
-        if options.bdist_windows.upload:
-            upload_string = 'upload'
-
-        paver.easy.sh('python setup.py sdist bdist_wheel {upload}'.format(
-            upload=upload_string))
-
-    _build_files()
+    for folder in folders_to_rm:
+        for globbed_dir in glob.glob(folder):
+            paver.path.path(globbed_dir).rmtree()
