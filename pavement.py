@@ -16,7 +16,7 @@ _VIRTUAL_ENV_DIR = 'dev_env'
 
 
 @paver.easy.task
-def dev():
+def test_env():
     """Build development environment."""
     subprocess.call('virtualenv --system-site-packages %s' % _VIRTUAL_ENV_DIR)
     subprocess.call(r'dev_env\Scripts\python setup.py install')
@@ -27,6 +27,7 @@ def dev():
     print (
         "Installed virtualenv launch with:\n.\\%s\\Scripts\\activate" %
         _VIRTUAL_ENV_DIR)
+
 
 @paver.easy.task
 def clean():
