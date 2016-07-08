@@ -8,6 +8,7 @@ from osgeo import gdal
 from osgeo import osr
 import numpy
 
+import pygeoprocessing.testing.assertions
 from pygeoprocessing.testing import scm
 
 TEST_DATA = os.path.join(
@@ -112,9 +113,9 @@ class PyGeoprocessingTest(unittest.TestCase):
         """PyGeoprocessing: test convolve 2D regression."""
         import pygeoprocessing
 
-        signal_path = os.path.join(self.workspace_path, 'signal.tif')
-        kernel_path = os.path.join(self.workspace_path, 'kernel.tif')
-        output_path = os.path.join(self.workspace_path, 'output.tif')
+        signal_path = os.path.join(self.workspace_dir, 'signal.tif')
+        kernel_path = os.path.join(self.workspace_dir, 'kernel.tif')
+        output_path = os.path.join(self.workspace_dir, 'output.tif')
         signal_array = numpy.ones([1000, 1000])
         kernel_array = numpy.ones([500, 500])
         PyGeoprocessingTest._create_raster_on_disk(
@@ -128,7 +129,8 @@ class PyGeoprocessingTest(unittest.TestCase):
         expected_output_path = os.path.join(
             TEST_DATA, 'convolution_2d_test_data', 'expected_output.tif')
 
-
+        pygeoprocessing.testing.assertions.assert_rasters_equal(
+            output_path, expected_output_path, 1e-6)
 
     @staticmethod
     def _create_raster_on_disk(file_path, data_array, nodata_value):
