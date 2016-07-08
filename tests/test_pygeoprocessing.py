@@ -110,4 +110,55 @@ class PyGeoprocessingTest(unittest.TestCase):
     @scm.skip_if_data_missing(TEST_DATA)
     def test_convolve_2d(self):
         """PyGeoprocessing: test convolve 2D regression."""
-        pass
+        import pygeoprocessing
+
+        signal_path = os.path.join(self.workspace_path, 'signal.tif')
+        kernel_path = os.path.join(self.workspace_path, 'kernel.tif')
+        output_path = os.path.join(self.workspace_path, 'output.tif')
+        signal_array = numpy.ones([1000, 1000])
+        kernel_array = numpy.ones([500, 500])
+        PyGeoprocessingTest._create_raster_on_disk(
+            signal_path, signal_array, -1)
+        PyGeoprocessingTest._create_raster_on_disk(
+            kernel_path, kernel_array, -1)
+
+        pygeoprocessing.convolve_2d_uri(
+            signal_path, kernel_path, output_path, ignore_nodata=True)
+
+        expected_output_path = os.path.join(
+            TEST_DATA, 'convolution_2d_test_data', 'expected_output.tif')
+
+
+
+    @staticmethod
+    def _create_raster_on_disk(file_path, data_array, nodata_value):
+        """Create a raster on disk with the provided data array.
+
+        Parameters:
+            file_path (string): path to created raster on disk
+            data_array (numpy.ndarray): two dimension array representing pixel
+                values of the raster.
+            nodata_value (float): desired nodata value of the output raster.
+
+        Returns:
+            None
+        """
+        # Create a raster given the shape of the pixels given the input driver
+        n_rows, n_cols = data_array.shape
+        driver = gdal.GetDriverByName('GTiff')
+        new_raster = driver.Create(
+            file_path, n_cols, n_rows, 1, gdal.GDT_Float32)
+
+        # create some projection information based on the GDAL tutorial at
+        # http://www.gdal.org/gdal_tutorial.html
+        srs = osr.SpatialReference()
+        srs.ImportFromEPSG(3157)  # UTM 10N
+        new_raster.SetProjection(srs.ExportToWkt())
+        pixel_size = 30
+        new_raster.SetGeoTransform([0, pixel_size, 0, 0, 0, -pixel_size])
+        band = new_raster.GetRasterBand(1)
+        band.SetNoDataValue(nodata_value)
+        band.WriteArray(data_array)
+        band.FlushCache()
+        band = None
+        new_raster = None
