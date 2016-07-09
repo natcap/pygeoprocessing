@@ -2979,19 +2979,20 @@ def distance_transform_edt(
         LOGGER.warn("couldn't remove file %s", mask_as_byte_uri)
 
 
-def convolve_2d_uri(signal_uri, kernel_uri, output_uri, ignore_nodata=True):
+def convolve_2d_uri(
+        signal_path, kernel_path, output_path, ignore_nodata=True):
     """Convolve 2D kernel over 2D signal.
 
-    Args:
-        signal_uri (string): a filepath to a gdal dataset that's the
+    Parameters:
+        signal_path (string): a filepath to a gdal dataset that's the
             souce input.
-        kernel_uri (string): a filepath to a gdal dataset that's the
+        kernel_path (string): a filepath to a gdal dataset that's the
             souce input.
-        output_uri (string): a filepath to the gdal dataset
+        output_path (string): a filepath to the gdal dataset
             that's the convolution output of signal and kernel
-            that is the same size and projection of signal_uri.
+            that is the same size and projection of signal_path.
         ignore_nodata (Boolean): If set to true, the nodata values in
-            signal_uri and kernel_uri are treated as 0 in the convolution,
+            signal_path and kernel_path are treated as 0 in the convolution,
             otherwise the raw nodata values are used.  Default True.
 
     Returns:
@@ -2999,31 +3000,31 @@ def convolve_2d_uri(signal_uri, kernel_uri, output_uri, ignore_nodata=True):
     """
     output_nodata = -9999
 
-    tmp_signal_uri = temporary_filename()
-    tile_dataset_uri(signal_uri, tmp_signal_uri, 256)
+    tmp_signal_path = temporary_filename()
+    tile_dataset_uri(signal_path, tmp_signal_path, 256)
 
-    tmp_kernel_uri = temporary_filename()
-    tile_dataset_uri(kernel_uri, tmp_kernel_uri, 256)
+    tmp_kernel_path = temporary_filename()
+    tile_dataset_uri(kernel_path, tmp_kernel_path, 256)
 
     new_raster_from_base_uri(
-        signal_uri, output_uri, 'GTiff', output_nodata, gdal.GDT_Float32,
+        signal_path, output_path, 'GTiff', output_nodata, gdal.GDT_Float32,
         fill_value=0)
 
-    signal_ds = gdal.Open(tmp_signal_uri)
+    signal_ds = gdal.Open(tmp_signal_path)
     signal_band = signal_ds.GetRasterBand(1)
     signal_block_col_size, signal_block_row_size = signal_band.GetBlockSize()
-    signal_nodata = get_nodata_from_uri(tmp_signal_uri)
+    signal_nodata = get_nodata_from_uri(tmp_signal_path)
 
-    kernel_ds = gdal.Open(tmp_kernel_uri)
+    kernel_ds = gdal.Open(tmp_kernel_path)
     kernel_band = kernel_ds.GetRasterBand(1)
     kernel_block_col_size, kernel_block_row_size = kernel_band.GetBlockSize()
     # make kernel block size a little larger if possible
     kernel_block_col_size *= 3
     kernel_block_row_size *= 3
 
-    kernel_nodata = get_nodata_from_uri(tmp_kernel_uri)
+    kernel_nodata = get_nodata_from_uri(tmp_kernel_path)
 
-    output_ds = gdal.Open(output_uri, gdal.GA_Update)
+    output_ds = gdal.Open(output_path, gdal.GA_Update)
     output_band = output_ds.GetRasterBand(1)
 
     n_rows_signal = signal_band.YSize
@@ -3153,7 +3154,7 @@ def convolve_2d_uri(signal_uri, kernel_uri, output_uri, ignore_nodata=True):
     signal_band = None
     gdal.Dataset.__swig_destroy__(signal_ds)
     signal_ds = None
-    os.remove(tmp_signal_uri)
+    os.remove(tmp_signal_path)
 
 
 def _smart_cast(value):

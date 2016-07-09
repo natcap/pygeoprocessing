@@ -109,6 +109,25 @@ class PyGeoprocessingTest(unittest.TestCase):
             expected_extents, actual_extents)
 
     @scm.skip_if_data_missing(TEST_DATA)
+    def test_convolve_2d_slow(self):
+        """PyGeoprocessing: test convolve 2D regression for time."""
+        import pygeoprocessing
+
+        signal_path = os.path.join(self.workspace_dir, 'signal.tif')
+        kernel_path = os.path.join(self.workspace_dir, 'kernel.tif')
+        output_path = os.path.join(self.workspace_dir, 'output.tif')
+        signal_array = numpy.ones([1500, 1500])
+        kernel_array = numpy.ones([1000, 1000])
+        PyGeoprocessingTest._create_raster_on_disk(
+            signal_path, signal_array, -1)
+        PyGeoprocessingTest._create_raster_on_disk(
+            kernel_path, kernel_array, -1)
+
+        pygeoprocessing.convolve_2d_uri(
+            signal_path, kernel_path, output_path, ignore_nodata=True)
+
+
+    @scm.skip_if_data_missing(TEST_DATA)
     def test_convolve_2d(self):
         """PyGeoprocessing: test convolve 2D regression."""
         import pygeoprocessing
