@@ -2981,19 +2981,19 @@ def distance_transform_edt(
         LOGGER.warn("couldn't remove file %s", mask_as_byte_uri)
 
 
-def convolve_2d_uri(signal_uri, kernel_uri, output_uri, ignore_nodata=True):
+def convolve_2d_uri(signal_path, kernel_path, output_path, ignore_nodata=True):
     """Convolve 2D kernel over 2D signal.
 
     Args:
-        signal_uri (string): a filepath to a gdal dataset that's the
+        signal_path (string): a filepath to a gdal dataset that's the
             souce input.
-        kernel_uri (string): a filepath to a gdal dataset that's the
+        kernel_path (string): a filepath to a gdal dataset that's the
             souce input.
-        output_uri (string): a filepath to the gdal dataset
+        output_path (string): a filepath to the gdal dataset
             that's the convolution output of signal and kernel
-            that is the same size and projection of signal_uri.
+            that is the same size and projection of signal_path.
         ignore_nodata (Boolean): If set to true, the nodata values in
-            signal_uri and kernel_uri are treated as 0 in the convolution,
+            signal_path and kernel_path are treated as 0 in the convolution,
             otherwise the raw nodata values are used.  Default True.
 
     Returns:
@@ -3002,22 +3002,22 @@ def convolve_2d_uri(signal_uri, kernel_uri, output_uri, ignore_nodata=True):
     output_nodata = numpy.finfo(numpy.float32).min
 
     new_raster_from_base_uri(
-        signal_uri, output_uri, 'GTiff', output_nodata, gdal.GDT_Float32,
+        signal_path, output_path, 'GTiff', output_nodata, gdal.GDT_Float32,
         fill_value=0)
 
-    signal_nodata = get_nodata_from_uri(signal_uri)
-    kernel_nodata = get_nodata_from_uri(kernel_uri)
-    n_rows_signal, n_cols_signal = get_row_col_from_uri(signal_uri)
-    n_rows_kernel, n_cols_kernel = get_row_col_from_uri(kernel_uri)
+    signal_nodata = get_nodata_from_uri(signal_path)
+    kernel_nodata = get_nodata_from_uri(kernel_path)
+    n_rows_signal, n_cols_signal = get_row_col_from_uri(signal_path)
+    n_rows_kernel, n_cols_kernel = get_row_col_from_uri(kernel_path)
 
-    signal_ds = gdal.Open(signal_uri)
+    signal_ds = gdal.Open(signal_path)
     signal_band = signal_ds.GetRasterBand(1)
-    output_ds = gdal.Open(output_uri, gdal.GA_Update)
+    output_ds = gdal.Open(output_path, gdal.GA_Update)
     output_band = output_ds.GetRasterBand(1)
 
     LOGGER.info('starting convolve')
     last_time = time.time()
-    for signal_data, signal_block in iterblocks(signal_uri):
+    for signal_data, signal_block in iterblocks(signal_path):
         current_time = time.time()
         if current_time - last_time > 5.0:
             LOGGER.info(
@@ -3029,7 +3029,7 @@ def convolve_2d_uri(signal_uri, kernel_uri, output_uri, ignore_nodata=True):
             signal_nodata_mask = signal_block == signal_nodata
             signal_block[signal_nodata_mask] = 0.0
 
-        for kernel_data, kernel_block in iterblocks(kernel_uri):
+        for kernel_data, kernel_block in iterblocks(kernel_path):
             left_index_raster = (
                 signal_data['xoff'] - n_cols_kernel / 2 + kernel_data['xoff'])
             right_index_raster = (
