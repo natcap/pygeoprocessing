@@ -2999,152 +2999,107 @@ def convolve_2d_uri(signal_uri, kernel_uri, output_uri, ignore_nodata=True):
     """
     output_nodata = -9999
 
-    tmp_signal_uri = temporary_filename()
-    tile_dataset_uri(signal_uri, tmp_signal_uri, 256)
+    tiled_signal_uri = temporary_filename()
+    tile_dataset_uri(signal_uri, tiled_signal_uri, 256)
 
-    tmp_kernel_uri = temporary_filename()
-    tile_dataset_uri(kernel_uri, tmp_kernel_uri, 256)
+    tiled_kernel_uri = temporary_filename()
+    tile_dataset_uri(kernel_uri, tiled_kernel_uri, 256)
 
     new_raster_from_base_uri(
         signal_uri, output_uri, 'GTiff', output_nodata, gdal.GDT_Float32,
         fill_value=0)
 
-    signal_ds = gdal.Open(tmp_signal_uri)
+    signal_nodata = get_nodata_from_uri(tiled_signal_uri)
+    kernel_nodata = get_nodata_from_uri(tiled_kernel_uri)
+    n_rows_signal, n_cols_signal = get_row_col_from_uri(tiled_signal_uri)
+    n_rows_kernel, n_cols_kernel = get_row_col_from_uri(tiled_kernel_uri)
+
+    signal_ds = gdal.Open(tiled_signal_uri)
     signal_band = signal_ds.GetRasterBand(1)
-    signal_block_col_size, signal_block_row_size = signal_band.GetBlockSize()
-    signal_nodata = get_nodata_from_uri(tmp_signal_uri)
-
-    kernel_ds = gdal.Open(tmp_kernel_uri)
-    kernel_band = kernel_ds.GetRasterBand(1)
-    kernel_block_col_size, kernel_block_row_size = kernel_band.GetBlockSize()
-    # make kernel block size a little larger if possible
-    kernel_block_col_size *= 3
-    kernel_block_row_size *= 3
-
-    kernel_nodata = get_nodata_from_uri(tmp_kernel_uri)
-
     output_ds = gdal.Open(output_uri, gdal.GA_Update)
     output_band = output_ds.GetRasterBand(1)
 
-    n_rows_signal = signal_band.YSize
-    n_cols_signal = signal_band.XSize
-
-    n_rows_kernel = kernel_band.YSize
-    n_cols_kernel = kernel_band.XSize
-
-    n_global_block_rows_signal = (
-        int(math.ceil(float(n_rows_signal) / signal_block_row_size)))
-    n_global_block_cols_signal = (
-        int(math.ceil(float(n_cols_signal) / signal_block_col_size)))
-
-    n_global_block_rows_kernel = (
-        int(math.ceil(float(n_rows_kernel) / kernel_block_row_size)))
-    n_global_block_cols_kernel = (
-        int(math.ceil(float(n_cols_kernel) / kernel_block_col_size)))
-
+    LOGGER.info('starting convolve')
     last_time = time.time()
-    for global_block_row in xrange(n_global_block_rows_signal):
+    for signal_data, signal_block in iterblocks(tiled_signal_uri):
         current_time = time.time()
         if current_time - last_time > 5.0:
             LOGGER.info(
-                "convolution %.1f%% complete", global_block_row /
-                float(n_global_block_rows_signal) * 100)
+                "convolution on (%d, %d)", signal_data['xoff'],
+                signal_data['yoff'])
             last_time = current_time
-        for global_block_col in xrange(n_global_block_cols_signal):
-            signal_xoff = global_block_col * signal_block_col_size
-            signal_yoff = global_block_row * signal_block_row_size
-            win_xsize = min(signal_block_col_size, n_cols_signal - signal_xoff)
-            win_ysize = min(signal_block_row_size, n_rows_signal - signal_yoff)
 
-            signal_block = signal_band.ReadAsArray(
-                xoff=signal_xoff, yoff=signal_yoff,
-                win_xsize=win_xsize, win_ysize=win_ysize)
+        if ignore_nodata:
+            signal_nodata_mask = signal_block == signal_nodata
+            signal_block[signal_nodata_mask] = 0.0
+
+        for kernel_data, kernel_block in iterblocks(tiled_kernel_uri):
+            left_index_raster = (
+                signal_data['xoff'] - n_cols_kernel / 2 + kernel_data['xoff'])
+            right_index_raster = (
+                signal_data['xoff'] - n_cols_kernel / 2 + kernel_data['xoff'] +
+                signal_data['win_xsize'] + kernel_data['win_xsize'] - 1)
+            top_index_raster = (
+                signal_data['yoff'] - n_rows_kernel / 2 + kernel_data['yoff'])
+            bottom_index_raster = (
+                signal_data['yoff'] - n_rows_kernel / 2 + kernel_data['yoff'] +
+                signal_data['win_ysize'] + kernel_data['win_ysize'] - 1)
+
+            # it's possible that the piece of the integrating kernel
+            # doesn't even affect the final result, we can just skip
+            if (right_index_raster < 0 or
+                    bottom_index_raster < 0 or
+                    left_index_raster > n_cols_signal or
+                    top_index_raster > n_rows_signal):
+                continue
 
             if ignore_nodata:
-                signal_nodata_mask = signal_block == signal_nodata
-                signal_block[signal_nodata_mask] = 0.0
+                kernel_nodata_mask = (kernel_block == kernel_nodata)
+                kernel_block[kernel_nodata_mask] = 0.0
 
-            for kernel_block_row_index in xrange(n_global_block_rows_kernel):
-                for kernel_block_col_index in xrange(
-                        n_global_block_cols_kernel):
-                    kernel_yoff = kernel_block_row_index*kernel_block_row_size
-                    kernel_xoff = kernel_block_col_index*kernel_block_col_size
+            result = scipy.signal.fftconvolve(
+                signal_block, kernel_block, 'full')
 
-                    kernel_win_ysize = min(
-                        kernel_block_row_size, n_rows_kernel - kernel_yoff)
-                    kernel_win_xsize = min(
-                        kernel_block_col_size, n_cols_kernel - kernel_xoff)
+            left_index_result = 0
+            right_index_result = result.shape[1]
+            top_index_result = 0
+            bottom_index_result = result.shape[0]
 
-                    left_index_raster = (
-                        signal_xoff - n_cols_kernel / 2 + kernel_xoff)
-                    right_index_raster = (
-                        signal_xoff - n_cols_kernel / 2 + kernel_xoff +
-                        win_xsize + kernel_win_xsize - 1)
-                    top_index_raster = (
-                        signal_yoff - n_rows_kernel / 2 + kernel_yoff)
-                    bottom_index_raster = (
-                        signal_yoff - n_rows_kernel / 2 + kernel_yoff +
-                        win_ysize + kernel_win_ysize - 1)
+            # we might abut the edge of the raster, clip if so
+            if left_index_raster < 0:
+                left_index_result = -left_index_raster
+                left_index_raster = 0
+            if top_index_raster < 0:
+                top_index_result = -top_index_raster
+                top_index_raster = 0
+            if right_index_raster > n_cols_signal:
+                right_index_result -= right_index_raster - n_cols_signal
+                right_index_raster = n_cols_signal
+            if bottom_index_raster > n_rows_signal:
+                bottom_index_result -= (
+                    bottom_index_raster - n_rows_signal)
+                bottom_index_raster = n_rows_signal
 
-                    # it's possible that the piece of the integrating kernel
-                    # doesn't even affect the final result, we can just skip
-                    if (right_index_raster < 0 or
-                            bottom_index_raster < 0 or
-                            left_index_raster > n_cols_signal or
-                            top_index_raster > n_rows_signal):
-                        continue
+            # Add result to current output to account for overlapping edges
+            current_output = output_band.ReadAsArray(
+                xoff=left_index_raster, yoff=top_index_raster,
+                win_xsize=right_index_raster-left_index_raster,
+                win_ysize=bottom_index_raster-top_index_raster)
 
-                    kernel_block = kernel_band.ReadAsArray(
-                        xoff=kernel_xoff, yoff=kernel_yoff,
-                        win_xsize=kernel_win_xsize, win_ysize=kernel_win_ysize)
+            potential_nodata_signal_array = signal_band.ReadAsArray(
+                xoff=left_index_raster, yoff=top_index_raster,
+                win_xsize=right_index_raster-left_index_raster,
+                win_ysize=bottom_index_raster-top_index_raster)
+            nodata_mask = potential_nodata_signal_array == signal_nodata
 
-                    if ignore_nodata:
-                        kernel_nodata_mask = (kernel_block == kernel_nodata)
-                        kernel_block[kernel_nodata_mask] = 0.0
+            output_array = result[
+                top_index_result:bottom_index_result,
+                left_index_result:right_index_result] + current_output
+            output_array[nodata_mask] = output_nodata
 
-                    result = scipy.signal.fftconvolve(
-                        signal_block, kernel_block, 'full')
-
-                    left_index_result = 0
-                    right_index_result = result.shape[1]
-                    top_index_result = 0
-                    bottom_index_result = result.shape[0]
-
-                    # we might abut the edge of the raster, clip if so
-                    if left_index_raster < 0:
-                        left_index_result = -left_index_raster
-                        left_index_raster = 0
-                    if top_index_raster < 0:
-                        top_index_result = -top_index_raster
-                        top_index_raster = 0
-
-                    if right_index_raster > n_cols_signal:
-                        right_index_result -= right_index_raster - n_cols_signal
-                        right_index_raster = n_cols_signal
-                    if bottom_index_raster > n_rows_signal:
-                        bottom_index_result -= (
-                            bottom_index_raster - n_rows_signal)
-                        bottom_index_raster = n_rows_signal
-
-                    current_output = output_band.ReadAsArray(
-                        xoff=left_index_raster, yoff=top_index_raster,
-                        win_xsize=right_index_raster-left_index_raster,
-                        win_ysize=bottom_index_raster-top_index_raster)
-
-                    potential_nodata_signal_array = signal_band.ReadAsArray(
-                        xoff=left_index_raster, yoff=top_index_raster,
-                        win_xsize=right_index_raster-left_index_raster,
-                        win_ysize=bottom_index_raster-top_index_raster)
-                    nodata_mask = potential_nodata_signal_array == signal_nodata
-
-                    output_array = result[
-                        top_index_result:bottom_index_result,
-                        left_index_result:right_index_result] + current_output
-                    output_array[nodata_mask] = output_nodata
-
-                    output_band.WriteArray(
-                        output_array, xoff=left_index_raster,
-                        yoff=top_index_raster)
+            output_band.WriteArray(
+                output_array, xoff=left_index_raster,
+                yoff=top_index_raster)
     output_band.FlushCache()
     output_band = None
     gdal.Dataset.__swig_destroy__(output_ds)
@@ -3153,7 +3108,8 @@ def convolve_2d_uri(signal_uri, kernel_uri, output_uri, ignore_nodata=True):
     signal_band = None
     gdal.Dataset.__swig_destroy__(signal_ds)
     signal_ds = None
-    os.remove(tmp_signal_uri)
+    os.remove(tiled_signal_uri)
+    os.remove(tiled_kernel_uri)
 
 
 def _smart_cast(value):
