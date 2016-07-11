@@ -1,5 +1,7 @@
 """A collection of GDAL dataset and raster utilities."""
 
+import threading
+import Queue
 import logging
 import os
 import tempfile
@@ -3168,34 +3170,45 @@ def tile_dataset_uri(in_uri, out_uri, blocksize):
         datasets_are_pre_aligned=False, dataset_options=dataset_options)
 
 
-def iterblocks(raster_uri, band_list=None):
-    """
-    Return a generator to interate across all the memory blocks in the input
-    raster.  Generated values are numpy arrays, read block by block.
+def iterblocks(
+        raster_uri, band_list=None, largest_block=2**18, astype=None,
+        offset_only=False):
+    """Iterate across all the memory blocks in the input raster.
+
+    Result is a generator of block location information and numpy arrays.
 
     This is especially useful when a single value needs to be derived from the
     pixel values in a raster, such as the sum total of all pixel values, or
-    a sequence of unique raster values.  In such cases, `vectorize_datasets`
+    a sequence of unique raster values.  In such cases, `raster_local_op`
     is overkill, since it writes out a raster.
 
-    As a generator, this can be combined multiple times with zip() to iterate
-    'simultaneously' over multiple rasters, though the user should be careful
-    to do so only with prealigned rasters.
+    As a generator, this can be combined multiple times with itertools.izip()
+    to iterate 'simultaneously' over multiple rasters, though the user should
+    be careful to do so only with prealigned rasters.
 
     Parameters:
         raster_uri (string): The string filepath to the raster to iterate over.
         band_list=None (list of ints or None): A list of the bands for which
             the matrices should be returned. The band number to operate on.
             Defaults to None, which will return all bands.  Bands may be
-            specified in any order, and band indices may be specified multiple
+            specified in any order, and band indexes may be specified multiple
             times.  The blocks returned on each iteration will be in the order
             specified in this list.
+        largest_block (int): Attempts to iterate over raster blocks with
+            this many elements.  Useful in cases where the blocksize is
+            relatively small, memory is available, and the function call
+            overhead dominates the iteration.  Defaults to 2**18.  A value of
+            0 will result in iteration per original blocksize of the raster.
+        offset_only (boolean): defaults to False, if True `iterblocks` only
+            returns offset dictionary and doesn't read any binary data from
+            the raster.  This can be useful when iterating over writing to
+            an output.
 
     Returns:
-        On each iteration, a tuple containing a dict of block data and `n`
-        2-dimensional numpy arrays are returned, where `n` is the number of
-        bands requested via `band_list`. The dict of block data has these
-        attributes:
+        If `offset_only` is false, on each iteration, a tuple containing a dict
+        of block data and `n` 2-dimensional numpy arrays are returned, where
+        `n` is the number of bands requested via `band_list`. The dict of
+        block data has these attributes:
 
             data['xoff'] - The X offset of the upper-left-hand corner of the
                 block.
@@ -3203,6 +3216,9 @@ def iterblocks(raster_uri, band_list=None):
                 block.
             data['win_xsize'] - The width of the block.
             data['win_ysize'] - The height of the block.
+
+        If `offset_only` is True, the function returns only the block data and
+            does not attempt to read binary data from the raster.
     """
     dataset = gdal.Open(raster_uri)
 
@@ -3218,29 +3234,84 @@ def iterblocks(raster_uri, band_list=None):
     n_cols = dataset.RasterXSize
     n_rows = dataset.RasterYSize
 
+    block_area = cols_per_block * rows_per_block
+    # try to make block wider
+    if largest_block / block_area > 0:
+        width_factor = largest_block / block_area
+        cols_per_block *= width_factor
+        if cols_per_block > n_cols:
+            cols_per_block = n_cols
+        block_area = cols_per_block * rows_per_block
+    # try to make block taller
+    if largest_block / block_area > 0:
+        height_factor = largest_block / block_area
+        rows_per_block *= height_factor
+        if rows_per_block > n_rows:
+            rows_per_block = n_rows
+
     n_col_blocks = int(math.ceil(n_cols / float(cols_per_block)))
     n_row_blocks = int(math.ceil(n_rows / float(rows_per_block)))
 
-    for row_block_index in xrange(n_row_blocks):
-        row_offset = row_block_index * rows_per_block
-        row_block_width = n_rows - row_offset
-        if row_block_width > rows_per_block:
-            row_block_width = rows_per_block
+    # Initialize to None so a block array is created on the first iteration
+    last_row_block_width = None
+    last_col_block_width = None
 
-        for col_block_index in xrange(n_col_blocks):
-            col_offset = col_block_index * cols_per_block
-            col_block_width = n_cols - col_offset
-            if col_block_width > cols_per_block:
-                col_block_width = cols_per_block
+    if astype is not None:
+        block_type_list = [astype] * len(ds_bands)
+    else:
+        block_type_list = [
+            _gdal_to_numpy_type(ds_band) for ds_band in ds_bands]
 
-            offset_dict = {
-                'xoff': col_offset,
-                'yoff': row_offset,
-                'win_xsize': col_block_width,
-                'win_ysize': row_block_width,
-            }
-            yield (offset_dict, ) + tuple(ds_band.ReadAsArray(**offset_dict)
-                                          for ds_band in ds_bands)
+    def _block_gen(queue):
+        """Load the next memory block via generator paradigm.
+
+        Parameters:
+            queue (Queue.Queue): thread safe queue to return offset_dict and
+                results
+
+        Returns:
+            None
+        """
+        for row_block_index in xrange(n_row_blocks):
+            row_offset = row_block_index * rows_per_block
+            row_block_width = n_rows - row_offset
+            if row_block_width > rows_per_block:
+                row_block_width = rows_per_block
+
+            for col_block_index in xrange(n_col_blocks):
+                col_offset = col_block_index * cols_per_block
+                col_block_width = n_cols - col_offset
+                if col_block_width > cols_per_block:
+                    col_block_width = cols_per_block
+
+                # resize the dataset block cache if necessary
+                if (last_row_block_width != row_block_width or
+                        last_col_block_width != col_block_width):
+                    dataset_blocks = [
+                        numpy.zeros(
+                            (row_block_width, col_block_width),
+                            dtype=block_type) for block_type in block_type_list]
+
+                offset_dict = {
+                    'xoff': col_offset,
+                    'yoff': row_offset,
+                    'win_xsize': col_block_width,
+                    'win_ysize': row_block_width,
+                }
+                result = offset_dict
+                if not offset_only:
+                    for ds_band, block in zip(ds_bands, dataset_blocks):
+                        ds_band.ReadAsArray(buf_obj=block, **offset_dict)
+                    result = (result,) + tuple(dataset_blocks)
+                queue.put(result)
+        queue.put('STOP')  # sentinel indicating end of iteration
+
+    # Make the queue only one element deep so it attempts to load the next
+    # block while waiting for the next .next() call.
+    block_queue = Queue.Queue(1)
+    threading.Thread(target=_block_gen, args=(block_queue,)).start()
+    for result in iter(block_queue.get, 'STOP'):
+        yield result
 
 
 def transform_bounding_box(
