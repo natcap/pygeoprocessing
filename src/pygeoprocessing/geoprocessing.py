@@ -3171,7 +3171,7 @@ def tile_dataset_uri(in_uri, out_uri, blocksize):
 
 
 def iterblocks(
-        raster_uri, band_list=None, largest_block=2**18, astype=None,
+        raster_uri, band_list=None, largest_block=2**20, astype=None,
         offset_only=False):
     """Iterate across all the memory blocks in the input raster.
 
@@ -3197,7 +3197,7 @@ def iterblocks(
         largest_block (int): Attempts to iterate over raster blocks with
             this many elements.  Useful in cases where the blocksize is
             relatively small, memory is available, and the function call
-            overhead dominates the iteration.  Defaults to 2**18.  A value of
+            overhead dominates the iteration.  Defaults to 2**20.  A value of
             0 will result in iteration per original blocksize of the raster.
         offset_only (boolean): defaults to False, if True `iterblocks` only
             returns offset dictionary and doesn't read any binary data from
