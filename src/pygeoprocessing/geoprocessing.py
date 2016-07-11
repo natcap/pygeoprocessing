@@ -2999,31 +2999,25 @@ def convolve_2d_uri(signal_uri, kernel_uri, output_uri, ignore_nodata=True):
     Returns:
         None
     """
-    output_nodata = -9999
-
-    tiled_signal_uri = temporary_filename()
-    tile_dataset_uri(signal_uri, tiled_signal_uri, 256)
-
-    tiled_kernel_uri = temporary_filename()
-    tile_dataset_uri(kernel_uri, tiled_kernel_uri, 256)
+    output_nodata = numpy.finfo(numpy.float32).min
 
     new_raster_from_base_uri(
         signal_uri, output_uri, 'GTiff', output_nodata, gdal.GDT_Float32,
         fill_value=0)
 
-    signal_nodata = get_nodata_from_uri(tiled_signal_uri)
-    kernel_nodata = get_nodata_from_uri(tiled_kernel_uri)
-    n_rows_signal, n_cols_signal = get_row_col_from_uri(tiled_signal_uri)
-    n_rows_kernel, n_cols_kernel = get_row_col_from_uri(tiled_kernel_uri)
+    signal_nodata = get_nodata_from_uri(signal_uri)
+    kernel_nodata = get_nodata_from_uri(kernel_uri)
+    n_rows_signal, n_cols_signal = get_row_col_from_uri(signal_uri)
+    n_rows_kernel, n_cols_kernel = get_row_col_from_uri(kernel_uri)
 
-    signal_ds = gdal.Open(tiled_signal_uri)
+    signal_ds = gdal.Open(signal_uri)
     signal_band = signal_ds.GetRasterBand(1)
     output_ds = gdal.Open(output_uri, gdal.GA_Update)
     output_band = output_ds.GetRasterBand(1)
 
     LOGGER.info('starting convolve')
     last_time = time.time()
-    for signal_data, signal_block in iterblocks(tiled_signal_uri):
+    for signal_data, signal_block in iterblocks(signal_uri):
         current_time = time.time()
         if current_time - last_time > 5.0:
             LOGGER.info(
@@ -3035,7 +3029,7 @@ def convolve_2d_uri(signal_uri, kernel_uri, output_uri, ignore_nodata=True):
             signal_nodata_mask = signal_block == signal_nodata
             signal_block[signal_nodata_mask] = 0.0
 
-        for kernel_data, kernel_block in iterblocks(tiled_kernel_uri):
+        for kernel_data, kernel_block in iterblocks(kernel_uri):
             left_index_raster = (
                 signal_data['xoff'] - n_cols_kernel / 2 + kernel_data['xoff'])
             right_index_raster = (
@@ -3103,15 +3097,6 @@ def convolve_2d_uri(signal_uri, kernel_uri, output_uri, ignore_nodata=True):
                 output_array, xoff=left_index_raster,
                 yoff=top_index_raster)
     output_band.FlushCache()
-    output_band = None
-    gdal.Dataset.__swig_destroy__(output_ds)
-    output_ds = None
-
-    signal_band = None
-    gdal.Dataset.__swig_destroy__(signal_ds)
-    signal_ds = None
-    os.remove(tiled_signal_uri)
-    os.remove(tiled_kernel_uri)
 
 
 def _smart_cast(value):
