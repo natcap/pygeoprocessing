@@ -124,7 +124,7 @@ class PyGeoprocessingTest(unittest.TestCase):
             kernel_path, kernel_array, -1)
 
         pygeoprocessing.convolve_2d_uri(
-            signal_path, kernel_path, output_path, ignore_nodata=True)
+            signal_path, kernel_path, output_path)
 
         expected_output_path = os.path.join(
             TEST_DATA, 'convolution_2d_test_data', 'expected_output.tif')

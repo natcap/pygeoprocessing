@@ -39,7 +39,7 @@ logging.basicConfig(
     level=logging.DEBUG, datefmt='%m/%d/%Y %H:%M:%S ')
 
 LOGGER = logging.getLogger('pygeoprocessing.geoprocessing')
-
+_LOGGING_PERIOD = 5.0  # min 5.0 seconds per update log message for the module
 
 
 class SpatialExtentOverlapException(Exception):
@@ -2981,26 +2981,27 @@ def distance_transform_edt(
         LOGGER.warn("couldn't remove file %s", mask_as_byte_uri)
 
 
-def convolve_2d_uri(signal_path, kernel_path, output_path, ignore_nodata=True):
+def convolve_2d_uri(signal_path, kernel_path, output_path):
     """Convolve 2D kernel over 2D signal.
 
-    Args:
+    Convolves the raster in `kernel_path` over `signal_path`.  Nodata values
+    are treated as 0.0 during the convolution and masked to nodata for
+    the output result where `signal_path` has nodata.
+
+    Parameters:
         signal_path (string): a filepath to a gdal dataset that's the
-            souce input.
+            source input.
         kernel_path (string): a filepath to a gdal dataset that's the
-            souce input.
+            source input.
         output_path (string): a filepath to the gdal dataset
             that's the convolution output of signal and kernel
-            that is the same size and projection of signal_path.
-        ignore_nodata (Boolean): If set to true, the nodata values in
-            signal_path and kernel_path are treated as 0 in the convolution,
-            otherwise the raw nodata values are used.  Default True.
+            that is the same size and projection of signal_path. Any nodata
+            pixels that align with `signal_path` will be set to nodata.
 
     Returns:
         None
     """
     output_nodata = numpy.finfo(numpy.float32).min
-
     new_raster_from_base_uri(
         signal_path, output_path, 'GTiff', output_nodata, gdal.GDT_Float32,
         fill_value=0)
@@ -3017,29 +3018,30 @@ def convolve_2d_uri(signal_path, kernel_path, output_path, ignore_nodata=True):
 
     LOGGER.info('starting convolve')
     last_time = time.time()
+    signal_data = {}
     for signal_data, signal_block in iterblocks(signal_path):
-        current_time = time.time()
-        if current_time - last_time > 5.0:
-            LOGGER.info(
-                "convolution on (%d, %d)", signal_data['xoff'],
-                signal_data['yoff'])
-            last_time = current_time
+        last_time = _invoke_timed_callback(
+            last_time, lambda: LOGGER.info(
+                "convolution operating on signal pixel (%d, %d)",
+                signal_data['xoff'], signal_data['yoff']),
+            _LOGGING_PERIOD)
 
-        if ignore_nodata:
-            signal_nodata_mask = signal_block == signal_nodata
-            signal_block[signal_nodata_mask] = 0.0
+        signal_nodata_mask = signal_block == signal_nodata
+        signal_block[signal_nodata_mask] = 0.0
 
         for kernel_data, kernel_block in iterblocks(kernel_path):
             left_index_raster = (
                 signal_data['xoff'] - n_cols_kernel / 2 + kernel_data['xoff'])
             right_index_raster = (
-                signal_data['xoff'] - n_cols_kernel / 2 + kernel_data['xoff'] +
-                signal_data['win_xsize'] + kernel_data['win_xsize'] - 1)
+                signal_data['xoff'] - n_cols_kernel / 2 +
+                kernel_data['xoff'] + signal_data['win_xsize'] +
+                kernel_data['win_xsize'] - 1)
             top_index_raster = (
                 signal_data['yoff'] - n_rows_kernel / 2 + kernel_data['yoff'])
             bottom_index_raster = (
-                signal_data['yoff'] - n_rows_kernel / 2 + kernel_data['yoff'] +
-                signal_data['win_ysize'] + kernel_data['win_ysize'] - 1)
+                signal_data['yoff'] - n_rows_kernel / 2 +
+                kernel_data['yoff'] + signal_data['win_ysize'] +
+                kernel_data['win_ysize'] - 1)
 
             # it's possible that the piece of the integrating kernel
             # doesn't even affect the final result, we can just skip
@@ -3049,9 +3051,8 @@ def convolve_2d_uri(signal_path, kernel_path, output_path, ignore_nodata=True):
                     top_index_raster > n_rows_signal):
                 continue
 
-            if ignore_nodata:
-                kernel_nodata_mask = (kernel_block == kernel_nodata)
-                kernel_block[kernel_nodata_mask] = 0.0
+            kernel_nodata_mask = (kernel_block == kernel_nodata)
+            kernel_block[kernel_nodata_mask] = 0.0
 
             result = scipy.signal.fftconvolve(
                 signal_block, kernel_block, 'full')
@@ -3077,25 +3078,30 @@ def convolve_2d_uri(signal_path, kernel_path, output_path, ignore_nodata=True):
                 bottom_index_raster = n_rows_signal
 
             # Add result to current output to account for overlapping edges
-            current_output = output_band.ReadAsArray(
-                xoff=left_index_raster, yoff=top_index_raster,
-                win_xsize=right_index_raster-left_index_raster,
-                win_ysize=bottom_index_raster-top_index_raster)
+            index_dict = {
+                'xoff': left_index_raster,
+                'yoff': top_index_raster,
+                'win_xsize': right_index_raster-left_index_raster,
+                'win_ysize': bottom_index_raster-top_index_raster
+            }
 
+            current_output = output_band.ReadAsArray(**index_dict)
             potential_nodata_signal_array = signal_band.ReadAsArray(
-                xoff=left_index_raster, yoff=top_index_raster,
-                win_xsize=right_index_raster-left_index_raster,
-                win_ysize=bottom_index_raster-top_index_raster)
-            nodata_mask = potential_nodata_signal_array == signal_nodata
+                **index_dict)
+            output_array = numpy.empty(
+                current_output.shape, dtype=numpy.float32)
 
-            output_array = result[
-                top_index_result:bottom_index_result,
-                left_index_result:right_index_result] + current_output
-            output_array[nodata_mask] = output_nodata
+            # read the signal block so we know where the nodata are
+            valid_mask = potential_nodata_signal_array != signal_nodata
+            output_array[:] = output_nodata
+            output_array[valid_mask] = (
+                (result[top_index_result:bottom_index_result,
+                        left_index_result:right_index_result])[valid_mask] +
+                current_output[valid_mask])
 
             output_band.WriteArray(
-                output_array, xoff=left_index_raster,
-                yoff=top_index_raster)
+                output_array, xoff=index_dict['xoff'],
+                yoff=index_dict['yoff'])
     output_band.FlushCache()
 
 
@@ -3365,3 +3371,28 @@ def transform_bounding_box(
             (p_2, p_3, lambda p_list: max([p[0] for p in p_list])),
             (p_3, p_0, lambda p_list: max([p[1] for p in p_list]))]]
     return transformed_bounding_box
+
+
+def _invoke_timed_callback(
+        reference_time, callback_lambda, callback_period):
+    """Invoke callback if a certain amount of time has passed.
+
+    This is a convenience function to standardize update callbacks from the
+    module.
+
+    Parameters:
+        reference_time (float): time to base `callback_period` length from.
+        callback_lambda (lambda): function to invoke if difference between
+            current time and `reference_time` has exceeded `callback_period`.
+        callback_period (float): time to pass until `callback_lambda` is
+            triggered.
+
+    Return:
+        `reference_time` if `callback_lambda` not invoked, otherwise the time
+        when `callback_lambda` was invoked.
+    """
+    current_time = time.time()
+    if current_time - reference_time > callback_period:
+        callback_lambda()
+        return current_time
+    return reference_time
