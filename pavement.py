@@ -1,4 +1,6 @@
 """PyGeoprocessing pavement script."""
+import sys
+import textwrap
 import warnings
 import json
 import os
