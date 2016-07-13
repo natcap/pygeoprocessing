@@ -182,11 +182,6 @@ setup(
         'Topic :: Scientific/Engineering :: GIS'
     ],
     ext_modules=EXTENSION_LIST,
-    entry_points={
-        'console_scripts': [
-            'invest = natcap.invest.iui.cli:main'
-        ],
-    },
     cmdclass=CMDCLASS,
     package_data={
         # 'name.of.package': ['list/of', 'files/and/globs.*']
