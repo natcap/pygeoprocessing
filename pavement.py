@@ -20,6 +20,14 @@ logging.getLogger('pip').setLevel(logging.ERROR)
 
 _VIRTUAL_ENV_DIR = 'dev_env'
 
+paver.easy.options(
+    bdist_windows=paver.easy.Bunch(
+        bootstrap_file='bootstrap.py',
+        upload=False,
+        envname='release_env'
+    )
+)
+
 
 class Repository(object):
     """Abstract class representing a version-controlled repository."""
@@ -323,11 +331,12 @@ def after_install(options, home_dir):
         textwrap.dedent(install_string))
     open(options.bdist_windows.bootstrap_file, 'w').write(output)
 
-    paver.easy.sh(('{python} {bootstrap} {envname} --system-site-packages '
-                   '--clear').format(
-                  python=sys.executable,
-                  envname=options.bdist_windows.envname,
-                  bootstrap=options.bdist_windows.bootstrap_file))
+    paver.easy.sh((
+        '{python} {bootstrap} {envname} '
+        '--system-site-packages --clear').format(
+            python=sys.executable,
+            envname=options.bdist_windows.envname,
+            bootstrap=options.bdist_windows.bootstrap_file))
 
     @paver.virtual.virtualenv(options.bdist_windows.envname)
     def _build_files():
