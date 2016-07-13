@@ -1,10 +1,7 @@
 # requirements.txt
 # --------------------
 # This file records the packages and requirements needed in order for
-# all models of natcap.invest to work as expected.
-#
-# Note that there may be some OS-specific requirements, so be sure to run
-# `paver check` to verify you have all the required packages.
+# pygeoprocessing to work as expected.
 
 osgeo>=1.11.2,<2.0
 natcap.versioner>=0.4.2
