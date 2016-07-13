@@ -6,7 +6,6 @@
 osgeo>=1.11.2,<2.0
 natcap.versioner>=0.4.2
 numpy>=1.11.0
-pyamg>=2.2.1
 scipy>=0.14.0
 shapely
 setuptools>=8.0
