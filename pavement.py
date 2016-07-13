@@ -11,6 +11,7 @@ import glob
 import paver.easy
 import paver.path
 import paver.svn
+import paver.virtual
 
 logging.basicConfig(
     format='%(asctime)s %(name)-18s %(levelname)-8s %(message)s',
