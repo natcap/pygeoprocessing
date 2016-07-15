@@ -9,6 +9,7 @@ from osgeo import osr
 import numpy
 
 import pygeoprocessing.testing.assertions
+import pygeoprocessing.testing.sampledata
 from pygeoprocessing.testing import scm
 
 TEST_DATA = os.path.join(
@@ -118,10 +119,17 @@ class PyGeoprocessingTest(unittest.TestCase):
         output_path = os.path.join(self.workspace_dir, 'output.tif')
         signal_array = numpy.ones([600, 600])
         kernel_array = numpy.ones([3000, 3000])
-        PyGeoprocessingTest._create_raster_on_disk(
-            signal_path, signal_array, -1)
-        PyGeoprocessingTest._create_raster_on_disk(
-            kernel_path, kernel_array, -1)
+
+        # the following rasters use an arbitrary coordinate system simply
+        # to get the rasters to create on disk to invoke `convolve_2d_uri`
+        # the numerical output is not otherwise affected
+        cs_wkt = pygeoprocessing.testing.sampledata.projection_wkt(3157)
+        pygeoprocessing.testing.sampledata.create_raster_on_disk(
+            [signal_array], (0, 0), cs_wkt, -1, (30, 30),
+            format='GTiff', filename=signal_path)
+        pygeoprocessing.testing.sampledata.create_raster_on_disk(
+            [kernel_array], (0, 0), cs_wkt, -1, (30, 30),
+            format='GTiff', filename=kernel_path)
 
         pygeoprocessing.convolve_2d_uri(
             signal_path, kernel_path, output_path)
@@ -131,36 +139,3 @@ class PyGeoprocessingTest(unittest.TestCase):
 
         pygeoprocessing.testing.assertions.assert_rasters_equal(
             output_path, expected_output_path, 1e-6)
-
-    @staticmethod
-    def _create_raster_on_disk(file_path, data_array, nodata_value):
-        """Create a raster on disk with the provided data array.
-
-        Parameters:
-            file_path (string): path to created raster on disk
-            data_array (numpy.ndarray): two dimension array representing pixel
-                values of the raster.
-            nodata_value (float): desired nodata value of the output raster.
-
-        Returns:
-            None
-        """
-        # Create a raster given the shape of the pixels given the input driver
-        n_rows, n_cols = data_array.shape
-        driver = gdal.GetDriverByName('GTiff')
-        new_raster = driver.Create(
-            file_path, n_cols, n_rows, 1, gdal.GDT_Float32)
-
-        # create some projection information based on the GDAL tutorial at
-        # http://www.gdal.org/gdal_tutorial.html
-        srs = osr.SpatialReference()
-        srs.ImportFromEPSG(3157)  # UTM 10N
-        new_raster.SetProjection(srs.ExportToWkt())
-        pixel_size = 30
-        new_raster.SetGeoTransform([0, pixel_size, 0, 0, 0, -pixel_size])
-        band = new_raster.GetRasterBand(1)
-        band.SetNoDataValue(nodata_value)
-        band.WriteArray(data_array)
-        band.FlushCache()
-        band = None
-        new_raster = None
