@@ -3190,6 +3190,10 @@ def iterblocks(
             relatively small, memory is available, and the function call
             overhead dominates the iteration.  Defaults to 2**20.  A value of
             0 will result in iteration per original blocksize of the raster.
+        astype (list of numpy types): If none, output blocks are in the native
+            type of the raster bands.  Otherwise this parameter is a list
+            of len(band_list) length that contains the desired output types
+            that iterblock generates for each band.
         offset_only (boolean): defaults to False, if True `iterblocks` only
             returns offset dictionary and doesn't read any binary data from
             the raster.  This can be useful when iterating over writing to
@@ -3281,7 +3285,8 @@ def iterblocks(
                     dataset_blocks = [
                         numpy.zeros(
                             (row_block_width, col_block_width),
-                            dtype=block_type) for block_type in block_type_list]
+                            dtype=block_type) for block_type in
+                        block_type_list]
 
                 offset_dict = {
                     'xoff': col_offset,
