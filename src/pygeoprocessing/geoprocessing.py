@@ -3384,8 +3384,8 @@ def _invoke_timed_callback(
         reference_time (float): time to base `callback_period` length from.
         callback_lambda (lambda): function to invoke if difference between
             current time and `reference_time` has exceeded `callback_period`.
-        callback_period (float): time to pass until `callback_lambda` is
-            triggered.
+        callback_period (float): time in seconds to pass until
+            `callback_lambda` is invoked.
 
     Return:
         `reference_time` if `callback_lambda` not invoked, otherwise the time
