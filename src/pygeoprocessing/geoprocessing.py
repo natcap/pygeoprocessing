@@ -1,5 +1,7 @@
 """A collection of GDAL dataset and raster utilities."""
 
+import threading
+import Queue
 import logging
 import os
 import tempfile
@@ -37,7 +39,7 @@ logging.basicConfig(
     level=logging.DEBUG, datefmt='%m/%d/%Y %H:%M:%S ')
 
 LOGGER = logging.getLogger('pygeoprocessing.geoprocessing')
-
+_LOGGING_PERIOD = 5.0  # min 5.0 seconds per update log message for the module
 
 
 class SpatialExtentOverlapException(Exception):
@@ -2979,181 +2981,128 @@ def distance_transform_edt(
         LOGGER.warn("couldn't remove file %s", mask_as_byte_uri)
 
 
-def convolve_2d_uri(signal_uri, kernel_uri, output_uri, ignore_nodata=True):
+def convolve_2d_uri(signal_path, kernel_path, output_path):
     """Convolve 2D kernel over 2D signal.
 
-    Args:
-        signal_uri (string): a filepath to a gdal dataset that's the
-            souce input.
-        kernel_uri (string): a filepath to a gdal dataset that's the
-            souce input.
-        output_uri (string): a filepath to the gdal dataset
+    Convolves the raster in `kernel_path` over `signal_path`.  Nodata values
+    are treated as 0.0 during the convolution and masked to nodata for
+    the output result where `signal_path` has nodata.
+
+    Parameters:
+        signal_path (string): a filepath to a gdal dataset that's the
+            source input.
+        kernel_path (string): a filepath to a gdal dataset that's the
+            source input.
+        output_path (string): a filepath to the gdal dataset
             that's the convolution output of signal and kernel
-            that is the same size and projection of signal_uri.
-        ignore_nodata (Boolean): If set to true, the nodata values in
-            signal_uri and kernel_uri are treated as 0 in the convolution,
-            otherwise the raw nodata values are used.  Default True.
+            that is the same size and projection of signal_path. Any nodata
+            pixels that align with `signal_path` will be set to nodata.
 
     Returns:
         None
     """
-    output_nodata = -9999
-
-    tmp_signal_uri = temporary_filename()
-    tile_dataset_uri(signal_uri, tmp_signal_uri, 256)
-
-    tmp_kernel_uri = temporary_filename()
-    tile_dataset_uri(kernel_uri, tmp_kernel_uri, 256)
-
+    output_nodata = numpy.finfo(numpy.float32).min
     new_raster_from_base_uri(
-        signal_uri, output_uri, 'GTiff', output_nodata, gdal.GDT_Float32,
+        signal_path, output_path, 'GTiff', output_nodata, gdal.GDT_Float32,
         fill_value=0)
 
-    signal_ds = gdal.Open(tmp_signal_uri)
+    signal_nodata = get_nodata_from_uri(signal_path)
+    kernel_nodata = get_nodata_from_uri(kernel_path)
+    n_rows_signal, n_cols_signal = get_row_col_from_uri(signal_path)
+    n_rows_kernel, n_cols_kernel = get_row_col_from_uri(kernel_path)
+
+    signal_ds = gdal.Open(signal_path)
     signal_band = signal_ds.GetRasterBand(1)
-    signal_block_col_size, signal_block_row_size = signal_band.GetBlockSize()
-    signal_nodata = get_nodata_from_uri(tmp_signal_uri)
-
-    kernel_ds = gdal.Open(tmp_kernel_uri)
-    kernel_band = kernel_ds.GetRasterBand(1)
-    kernel_block_col_size, kernel_block_row_size = kernel_band.GetBlockSize()
-    # make kernel block size a little larger if possible
-    kernel_block_col_size *= 3
-    kernel_block_row_size *= 3
-
-    kernel_nodata = get_nodata_from_uri(tmp_kernel_uri)
-
-    output_ds = gdal.Open(output_uri, gdal.GA_Update)
+    output_ds = gdal.Open(output_path, gdal.GA_Update)
     output_band = output_ds.GetRasterBand(1)
 
-    n_rows_signal = signal_band.YSize
-    n_cols_signal = signal_band.XSize
-
-    n_rows_kernel = kernel_band.YSize
-    n_cols_kernel = kernel_band.XSize
-
-    n_global_block_rows_signal = (
-        int(math.ceil(float(n_rows_signal) / signal_block_row_size)))
-    n_global_block_cols_signal = (
-        int(math.ceil(float(n_cols_signal) / signal_block_col_size)))
-
-    n_global_block_rows_kernel = (
-        int(math.ceil(float(n_rows_kernel) / kernel_block_row_size)))
-    n_global_block_cols_kernel = (
-        int(math.ceil(float(n_cols_kernel) / kernel_block_col_size)))
-
+    LOGGER.info('starting convolve')
     last_time = time.time()
-    for global_block_row in xrange(n_global_block_rows_signal):
-        current_time = time.time()
-        if current_time - last_time > 5.0:
-            LOGGER.info(
-                "convolution %.1f%% complete", global_block_row /
-                float(n_global_block_rows_signal) * 100)
-            last_time = current_time
-        for global_block_col in xrange(n_global_block_cols_signal):
-            signal_xoff = global_block_col * signal_block_col_size
-            signal_yoff = global_block_row * signal_block_row_size
-            win_xsize = min(signal_block_col_size, n_cols_signal - signal_xoff)
-            win_ysize = min(signal_block_row_size, n_rows_signal - signal_yoff)
+    signal_data = {}
+    for signal_data, signal_block in iterblocks(signal_path):
+        last_time = _invoke_timed_callback(
+            last_time, lambda: LOGGER.info(
+                "convolution operating on signal pixel (%d, %d)",
+                signal_data['xoff'], signal_data['yoff']),
+            _LOGGING_PERIOD)
 
-            signal_block = signal_band.ReadAsArray(
-                xoff=signal_xoff, yoff=signal_yoff,
-                win_xsize=win_xsize, win_ysize=win_ysize)
+        signal_nodata_mask = signal_block == signal_nodata
+        signal_block[signal_nodata_mask] = 0.0
 
-            if ignore_nodata:
-                signal_nodata_mask = signal_block == signal_nodata
-                signal_block[signal_nodata_mask] = 0.0
+        for kernel_data, kernel_block in iterblocks(kernel_path):
+            left_index_raster = (
+                signal_data['xoff'] - n_cols_kernel / 2 + kernel_data['xoff'])
+            right_index_raster = (
+                signal_data['xoff'] - n_cols_kernel / 2 +
+                kernel_data['xoff'] + signal_data['win_xsize'] +
+                kernel_data['win_xsize'] - 1)
+            top_index_raster = (
+                signal_data['yoff'] - n_rows_kernel / 2 + kernel_data['yoff'])
+            bottom_index_raster = (
+                signal_data['yoff'] - n_rows_kernel / 2 +
+                kernel_data['yoff'] + signal_data['win_ysize'] +
+                kernel_data['win_ysize'] - 1)
 
-            for kernel_block_row_index in xrange(n_global_block_rows_kernel):
-                for kernel_block_col_index in xrange(
-                        n_global_block_cols_kernel):
-                    kernel_yoff = kernel_block_row_index*kernel_block_row_size
-                    kernel_xoff = kernel_block_col_index*kernel_block_col_size
+            # it's possible that the piece of the integrating kernel
+            # doesn't even affect the final result, we can just skip
+            if (right_index_raster < 0 or
+                    bottom_index_raster < 0 or
+                    left_index_raster > n_cols_signal or
+                    top_index_raster > n_rows_signal):
+                continue
 
-                    kernel_win_ysize = min(
-                        kernel_block_row_size, n_rows_kernel - kernel_yoff)
-                    kernel_win_xsize = min(
-                        kernel_block_col_size, n_cols_kernel - kernel_xoff)
+            kernel_nodata_mask = (kernel_block == kernel_nodata)
+            kernel_block[kernel_nodata_mask] = 0.0
 
-                    left_index_raster = (
-                        signal_xoff - n_cols_kernel / 2 + kernel_xoff)
-                    right_index_raster = (
-                        signal_xoff - n_cols_kernel / 2 + kernel_xoff +
-                        win_xsize + kernel_win_xsize - 1)
-                    top_index_raster = (
-                        signal_yoff - n_rows_kernel / 2 + kernel_yoff)
-                    bottom_index_raster = (
-                        signal_yoff - n_rows_kernel / 2 + kernel_yoff +
-                        win_ysize + kernel_win_ysize - 1)
+            result = scipy.signal.fftconvolve(
+                signal_block, kernel_block, 'full')
 
-                    # it's possible that the piece of the integrating kernel
-                    # doesn't even affect the final result, we can just skip
-                    if (right_index_raster < 0 or
-                            bottom_index_raster < 0 or
-                            left_index_raster > n_cols_signal or
-                            top_index_raster > n_rows_signal):
-                        continue
+            left_index_result = 0
+            right_index_result = result.shape[1]
+            top_index_result = 0
+            bottom_index_result = result.shape[0]
 
-                    kernel_block = kernel_band.ReadAsArray(
-                        xoff=kernel_xoff, yoff=kernel_yoff,
-                        win_xsize=kernel_win_xsize, win_ysize=kernel_win_ysize)
+            # we might abut the edge of the raster, clip if so
+            if left_index_raster < 0:
+                left_index_result = -left_index_raster
+                left_index_raster = 0
+            if top_index_raster < 0:
+                top_index_result = -top_index_raster
+                top_index_raster = 0
+            if right_index_raster > n_cols_signal:
+                right_index_result -= right_index_raster - n_cols_signal
+                right_index_raster = n_cols_signal
+            if bottom_index_raster > n_rows_signal:
+                bottom_index_result -= (
+                    bottom_index_raster - n_rows_signal)
+                bottom_index_raster = n_rows_signal
 
-                    if ignore_nodata:
-                        kernel_nodata_mask = (kernel_block == kernel_nodata)
-                        kernel_block[kernel_nodata_mask] = 0.0
+            # Add result to current output to account for overlapping edges
+            index_dict = {
+                'xoff': left_index_raster,
+                'yoff': top_index_raster,
+                'win_xsize': right_index_raster-left_index_raster,
+                'win_ysize': bottom_index_raster-top_index_raster
+            }
 
-                    result = scipy.signal.fftconvolve(
-                        signal_block, kernel_block, 'full')
+            current_output = output_band.ReadAsArray(**index_dict)
+            potential_nodata_signal_array = signal_band.ReadAsArray(
+                **index_dict)
+            output_array = numpy.empty(
+                current_output.shape, dtype=numpy.float32)
 
-                    left_index_result = 0
-                    right_index_result = result.shape[1]
-                    top_index_result = 0
-                    bottom_index_result = result.shape[0]
+            # read the signal block so we know where the nodata are
+            valid_mask = potential_nodata_signal_array != signal_nodata
+            output_array[:] = output_nodata
+            output_array[valid_mask] = (
+                (result[top_index_result:bottom_index_result,
+                        left_index_result:right_index_result])[valid_mask] +
+                current_output[valid_mask])
 
-                    # we might abut the edge of the raster, clip if so
-                    if left_index_raster < 0:
-                        left_index_result = -left_index_raster
-                        left_index_raster = 0
-                    if top_index_raster < 0:
-                        top_index_result = -top_index_raster
-                        top_index_raster = 0
-
-                    if right_index_raster > n_cols_signal:
-                        right_index_result -= right_index_raster - n_cols_signal
-                        right_index_raster = n_cols_signal
-                    if bottom_index_raster > n_rows_signal:
-                        bottom_index_result -= (
-                            bottom_index_raster - n_rows_signal)
-                        bottom_index_raster = n_rows_signal
-
-                    current_output = output_band.ReadAsArray(
-                        xoff=left_index_raster, yoff=top_index_raster,
-                        win_xsize=right_index_raster-left_index_raster,
-                        win_ysize=bottom_index_raster-top_index_raster)
-
-                    potential_nodata_signal_array = signal_band.ReadAsArray(
-                        xoff=left_index_raster, yoff=top_index_raster,
-                        win_xsize=right_index_raster-left_index_raster,
-                        win_ysize=bottom_index_raster-top_index_raster)
-                    nodata_mask = potential_nodata_signal_array == signal_nodata
-
-                    output_array = result[
-                        top_index_result:bottom_index_result,
-                        left_index_result:right_index_result] + current_output
-                    output_array[nodata_mask] = output_nodata
-
-                    output_band.WriteArray(
-                        output_array, xoff=left_index_raster,
-                        yoff=top_index_raster)
+            output_band.WriteArray(
+                output_array, xoff=index_dict['xoff'],
+                yoff=index_dict['yoff'])
     output_band.FlushCache()
-    output_band = None
-    gdal.Dataset.__swig_destroy__(output_ds)
-    output_ds = None
-
-    signal_band = None
-    gdal.Dataset.__swig_destroy__(signal_ds)
-    signal_ds = None
-    os.remove(tmp_signal_uri)
 
 
 def _smart_cast(value):
@@ -3212,34 +3161,50 @@ def tile_dataset_uri(in_uri, out_uri, blocksize):
         datasets_are_pre_aligned=False, dataset_options=dataset_options)
 
 
-def iterblocks(raster_uri, band_list=None):
-    """
-    Return a generator to interate across all the memory blocks in the input
-    raster.  Generated values are numpy arrays, read block by block.
+def iterblocks(
+        raster_uri, band_list=None, largest_block=2**20, astype=None,
+        offset_only=False):
+    """Iterate across all the memory blocks in the input raster.
+
+    Result is a generator of block location information and numpy arrays.
 
     This is especially useful when a single value needs to be derived from the
     pixel values in a raster, such as the sum total of all pixel values, or
-    a sequence of unique raster values.  In such cases, `vectorize_datasets`
+    a sequence of unique raster values.  In such cases, `raster_local_op`
     is overkill, since it writes out a raster.
 
-    As a generator, this can be combined multiple times with zip() to iterate
-    'simultaneously' over multiple rasters, though the user should be careful
-    to do so only with prealigned rasters.
+    As a generator, this can be combined multiple times with itertools.izip()
+    to iterate 'simultaneously' over multiple rasters, though the user should
+    be careful to do so only with prealigned rasters.
 
     Parameters:
         raster_uri (string): The string filepath to the raster to iterate over.
         band_list=None (list of ints or None): A list of the bands for which
             the matrices should be returned. The band number to operate on.
             Defaults to None, which will return all bands.  Bands may be
-            specified in any order, and band indices may be specified multiple
+            specified in any order, and band indexes may be specified multiple
             times.  The blocks returned on each iteration will be in the order
             specified in this list.
+        largest_block (int): Attempts to iterate over raster blocks with
+            this many elements.  Useful in cases where the blocksize is
+            relatively small, memory is available, and the function call
+            overhead dominates the iteration.  Defaults to 2**20.  A value of
+            anything less than the original blocksize of the raster will
+            result in blocksizes equal to the original size.
+        astype (list of numpy types): If none, output blocks are in the native
+            type of the raster bands.  Otherwise this parameter is a list
+            of len(band_list) length that contains the desired output types
+            that iterblock generates for each band.
+        offset_only (boolean): defaults to False, if True `iterblocks` only
+            returns offset dictionary and doesn't read any binary data from
+            the raster.  This can be useful when iterating over writing to
+            an output.
 
     Returns:
-        On each iteration, a tuple containing a dict of block data and `n`
-        2-dimensional numpy arrays are returned, where `n` is the number of
-        bands requested via `band_list`. The dict of block data has these
-        attributes:
+        If `offset_only` is false, on each iteration, a tuple containing a dict
+        of block data and `n` 2-dimensional numpy arrays are returned, where
+        `n` is the number of bands requested via `band_list`. The dict of
+        block data has these attributes:
 
             data['xoff'] - The X offset of the upper-left-hand corner of the
                 block.
@@ -3247,6 +3212,9 @@ def iterblocks(raster_uri, band_list=None):
                 block.
             data['win_xsize'] - The width of the block.
             data['win_ysize'] - The height of the block.
+
+        If `offset_only` is True, the function returns only the block data and
+            does not attempt to read binary data from the raster.
     """
     dataset = gdal.Open(raster_uri)
 
@@ -3262,29 +3230,85 @@ def iterblocks(raster_uri, band_list=None):
     n_cols = dataset.RasterXSize
     n_rows = dataset.RasterYSize
 
+    block_area = cols_per_block * rows_per_block
+    # try to make block wider
+    if largest_block / block_area > 0:
+        width_factor = largest_block / block_area
+        cols_per_block *= width_factor
+        if cols_per_block > n_cols:
+            cols_per_block = n_cols
+        block_area = cols_per_block * rows_per_block
+    # try to make block taller
+    if largest_block / block_area > 0:
+        height_factor = largest_block / block_area
+        rows_per_block *= height_factor
+        if rows_per_block > n_rows:
+            rows_per_block = n_rows
+
     n_col_blocks = int(math.ceil(n_cols / float(cols_per_block)))
     n_row_blocks = int(math.ceil(n_rows / float(rows_per_block)))
 
-    for row_block_index in xrange(n_row_blocks):
-        row_offset = row_block_index * rows_per_block
-        row_block_width = n_rows - row_offset
-        if row_block_width > rows_per_block:
-            row_block_width = rows_per_block
+    # Initialize to None so a block array is created on the first iteration
+    last_row_block_width = None
+    last_col_block_width = None
 
-        for col_block_index in xrange(n_col_blocks):
-            col_offset = col_block_index * cols_per_block
-            col_block_width = n_cols - col_offset
-            if col_block_width > cols_per_block:
-                col_block_width = cols_per_block
+    if astype is not None:
+        block_type_list = [astype] * len(ds_bands)
+    else:
+        block_type_list = [
+            _gdal_to_numpy_type(ds_band) for ds_band in ds_bands]
 
-            offset_dict = {
-                'xoff': col_offset,
-                'yoff': row_offset,
-                'win_xsize': col_block_width,
-                'win_ysize': row_block_width,
-            }
-            yield (offset_dict, ) + tuple(ds_band.ReadAsArray(**offset_dict)
-                                          for ds_band in ds_bands)
+    def _block_gen(queue):
+        """Load the next memory block via generator paradigm.
+
+        Parameters:
+            queue (Queue.Queue): thread safe queue to return offset_dict and
+                results
+
+        Returns:
+            None
+        """
+        for row_block_index in xrange(n_row_blocks):
+            row_offset = row_block_index * rows_per_block
+            row_block_width = n_rows - row_offset
+            if row_block_width > rows_per_block:
+                row_block_width = rows_per_block
+
+            for col_block_index in xrange(n_col_blocks):
+                col_offset = col_block_index * cols_per_block
+                col_block_width = n_cols - col_offset
+                if col_block_width > cols_per_block:
+                    col_block_width = cols_per_block
+
+                # resize the dataset block cache if necessary
+                if (last_row_block_width != row_block_width or
+                        last_col_block_width != col_block_width):
+                    dataset_blocks = [
+                        numpy.zeros(
+                            (row_block_width, col_block_width),
+                            dtype=block_type) for block_type in
+                        block_type_list]
+
+                offset_dict = {
+                    'xoff': col_offset,
+                    'yoff': row_offset,
+                    'win_xsize': col_block_width,
+                    'win_ysize': row_block_width,
+                }
+                result = offset_dict
+                if not offset_only:
+                    for ds_band, block in zip(ds_bands, dataset_blocks):
+                        ds_band.ReadAsArray(buf_obj=block, **offset_dict)
+                    result = (result,) + tuple(dataset_blocks)
+                queue.put(result)
+        queue.put('STOP')  # sentinel indicating end of iteration
+
+    # Make the queue only one element deep so it attempts to load the next
+    # block while waiting for the next .next() call.
+    block_queue = Queue.Queue(1)
+    threading.Thread(target=_block_gen, args=(block_queue,)).start()
+    for result in iter(block_queue.get, 'STOP'):
+        yield result
 
 
 def transform_bounding_box(
@@ -3353,3 +3377,28 @@ def transform_bounding_box(
             (p_2, p_3, lambda p_list: max([p[0] for p in p_list])),
             (p_3, p_0, lambda p_list: max([p[1] for p in p_list]))]]
     return transformed_bounding_box
+
+
+def _invoke_timed_callback(
+        reference_time, callback_lambda, callback_period):
+    """Invoke callback if a certain amount of time has passed.
+
+    This is a convenience function to standardize update callbacks from the
+    module.
+
+    Parameters:
+        reference_time (float): time to base `callback_period` length from.
+        callback_lambda (lambda): function to invoke if difference between
+            current time and `reference_time` has exceeded `callback_period`.
+        callback_period (float): time in seconds to pass until
+            `callback_lambda` is invoked.
+
+    Return:
+        `reference_time` if `callback_lambda` not invoked, otherwise the time
+        when `callback_lambda` was invoked.
+    """
+    current_time = time.time()
+    if current_time - reference_time > callback_period:
+        callback_lambda()
+        return current_time
+    return reference_time
