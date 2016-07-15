@@ -3189,7 +3189,8 @@ def iterblocks(
             this many elements.  Useful in cases where the blocksize is
             relatively small, memory is available, and the function call
             overhead dominates the iteration.  Defaults to 2**20.  A value of
-            0 will result in iteration per original blocksize of the raster.
+            anything less than the original blocksize of the raster will
+            result in blocksizes equal to the original size.
         astype (list of numpy types): If none, output blocks are in the native
             type of the raster bands.  Otherwise this parameter is a list
             of len(band_list) length that contains the desired output types
