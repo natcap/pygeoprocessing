@@ -4,6 +4,11 @@ Release History
 0.3.0 (XXX)
 -----------
 
+* Added functionality to `pygeoprocessing.iterblocks` to iterate over largest memory aligned block that fits into the number of elements provided by the parameter.  With default parameters, this uses a ceiling around 16MB of memory per band.
+* Added functionality to `pygeoprocessing.iterblocks` to return only the offset dictionary.  This functionality would be used in cases where memory aligned writes are desired without first reading arrays from the band.
+* Refactored `pygeoprocessing.convolve_2d_uri` to use `iterblocks` to take advantage of large block sizes for FFT summing window method.
+* Refactoring source side to migrate source files from [REPO]/pygeoprocessing to [REPO]/src/pygeoprocessing.
+* Adding a pavement script with routines to fetch SVN test data, build a virtual environment, and clean the environment in a Windows based operating system.
 * Adding `transform_bounding_box` to calculate the largest projected bounding box given the four corners on a local coordinate system.
 * Removing GDAL, Shapely from the hard requirements in setup.py.  This will allow pygeoprocessing to be built by package managers like pip without these two packages being installed.  GDAL and Shapely will still need to be installed for pygeoprocessing to run as expected.
 * Fixed a defect in ``pygeoprocessing.testing.assert_checksums_equal`` preventing BSD-style checksum files from being analyzed correctly.

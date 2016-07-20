@@ -8,6 +8,13 @@ from osgeo import gdal
 from osgeo import osr
 import numpy
 
+import pygeoprocessing.testing.assertions
+import pygeoprocessing.testing.sampledata
+from pygeoprocessing.testing import scm
+
+TEST_DATA = os.path.join(
+    os.path.dirname(__file__), '..', 'data', 'pygeoprocessing-test-data')
+
 
 class PyGeoprocessingTest(unittest.TestCase):
     """Class to test PyGeoprocessing's functions."""
@@ -101,3 +108,34 @@ class PyGeoprocessingTest(unittest.TestCase):
             edge_samples=11)
         numpy.testing.assert_array_almost_equal(
             expected_extents, actual_extents)
+
+    @scm.skip_if_data_missing(TEST_DATA)
+    def test_convolve_2d(self):
+        """PyGeoprocessing: test convolve 2D regression."""
+        import pygeoprocessing
+
+        signal_path = os.path.join(self.workspace_dir, 'signal.tif')
+        kernel_path = os.path.join(self.workspace_dir, 'kernel.tif')
+        output_path = os.path.join(self.workspace_dir, 'output.tif')
+        signal_array = numpy.ones([600, 600])
+        kernel_array = numpy.ones([3000, 3000])
+
+        # the following rasters use an arbitrary coordinate system simply
+        # to get the rasters to create on disk to invoke `convolve_2d_uri`
+        # the numerical output is not otherwise affected
+        cs_wkt = pygeoprocessing.testing.sampledata.projection_wkt(3157)
+        pygeoprocessing.testing.sampledata.create_raster_on_disk(
+            [signal_array], (0, 0), cs_wkt, -1, (30, 30),
+            format='GTiff', filename=signal_path)
+        pygeoprocessing.testing.sampledata.create_raster_on_disk(
+            [kernel_array], (0, 0), cs_wkt, -1, (30, 30),
+            format='GTiff', filename=kernel_path)
+
+        pygeoprocessing.convolve_2d_uri(
+            signal_path, kernel_path, output_path)
+
+        expected_output_path = os.path.join(
+            TEST_DATA, 'convolution_2d_test_data', 'expected_output.tif')
+
+        pygeoprocessing.testing.assertions.assert_rasters_equal(
+            output_path, expected_output_path, 1e-6)
