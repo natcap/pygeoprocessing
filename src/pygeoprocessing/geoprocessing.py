@@ -26,11 +26,11 @@ import scipy.interpolate
 import scipy.sparse
 import scipy.signal
 import scipy.ndimage
+import scipy.signal.signaltools
 import shapely.wkt
 import shapely.ops
 from shapely import speedups
 import shapely.prepared
-
 import geoprocessing_core
 import fileio
 
@@ -3011,6 +3011,15 @@ def convolve_2d_uri(signal_path, kernel_path, output_path):
     n_rows_signal, n_cols_signal = get_row_col_from_uri(signal_path)
     n_rows_kernel, n_cols_kernel = get_row_col_from_uri(kernel_path)
 
+    # by experimentation i found having the smaller raster to be cached
+    # gives the best performance
+    if n_rows_signal * n_cols_signal < n_rows_kernel * n_cols_kernel:
+        s1_path = signal_path
+        s2_path = kernel_path
+    else:
+        s2_path = signal_path
+        s1_path = kernel_path
+
     signal_ds = gdal.Open(signal_path)
     signal_band = signal_ds.GetRasterBand(1)
     output_ds = gdal.Open(output_path, gdal.GA_Update)
@@ -3019,7 +3028,7 @@ def convolve_2d_uri(signal_path, kernel_path, output_path):
     LOGGER.info('starting convolve')
     last_time = time.time()
     signal_data = {}
-    for signal_data, signal_block in iterblocks(signal_path):
+    for signal_data, signal_block in iterblocks(s1_path):
         last_time = _invoke_timed_callback(
             last_time, lambda: LOGGER.info(
                 "convolution operating on signal pixel (%d, %d)",
@@ -3029,7 +3038,8 @@ def convolve_2d_uri(signal_path, kernel_path, output_path):
         signal_nodata_mask = signal_block == signal_nodata
         signal_block[signal_nodata_mask] = 0.0
 
-        for kernel_data, kernel_block in iterblocks(kernel_path):
+        last_shape = None
+        for kernel_data, kernel_block in iterblocks(s2_path):
             left_index_raster = (
                 signal_data['xoff'] - n_cols_kernel / 2 + kernel_data['xoff'])
             right_index_raster = (
@@ -3054,8 +3064,25 @@ def convolve_2d_uri(signal_path, kernel_path, output_path):
             kernel_nodata_mask = (kernel_block == kernel_nodata)
             kernel_block[kernel_nodata_mask] = 0.0
 
-            result = scipy.signal.fftconvolve(
-                signal_block, kernel_block, 'full')
+            # determine the output convolve shape
+            shape = (
+                numpy.array(signal_block.shape) +
+                numpy.array(kernel_block.shape) - 1)
+
+            # add zero padding so FFT is fast
+            fshape = [
+                scipy.signal.signaltools._next_regular(int(d)) for d in shape]
+            fslice = tuple([slice(0, int(sz)) for sz in shape])
+
+            # check to see if the previous kernel was calculated, reuse if so
+            if last_shape is None or (shape != last_shape).any():
+                cached_signal_fft = numpy.fft.rfftn(signal_block, fshape)
+                last_shape = shape
+
+            # classic FFT convolution
+            result = numpy.fft.irfftn(
+                numpy.fft.rfftn(kernel_block, fshape) * cached_signal_fft,
+                fshape)[fslice]
 
             left_index_result = 0
             right_index_result = result.shape[1]
