@@ -26,6 +26,7 @@ import scipy.interpolate
 import scipy.sparse
 import scipy.signal
 import scipy.ndimage
+import scipy.signal.signaltools
 import shapely.wkt
 import shapely.ops
 from shapely import speedups
@@ -2980,7 +2981,6 @@ def distance_transform_edt(
     except OSError:
         LOGGER.warn("couldn't remove file %s", mask_as_byte_uri)
 
-
 def convolve_2d_uri(signal_path, kernel_path, output_path):
     """Convolve 2D kernel over 2D signal.
 
@@ -3011,15 +3011,44 @@ def convolve_2d_uri(signal_path, kernel_path, output_path):
     n_rows_signal, n_cols_signal = get_row_col_from_uri(signal_path)
     n_rows_kernel, n_cols_kernel = get_row_col_from_uri(kernel_path)
 
+    # by experimentation i found having the smaller raster to be cached
+    # gives the best performance
+    if n_rows_signal * n_cols_signal < n_rows_kernel * n_cols_kernel:
+        s1_path = signal_path
+        s2_path = kernel_path
+    else:
+        s2_path = signal_path
+        s1_path = kernel_path
+
     signal_ds = gdal.Open(signal_path)
     signal_band = signal_ds.GetRasterBand(1)
     output_ds = gdal.Open(output_path, gdal.GA_Update)
     output_band = output_ds.GetRasterBand(1)
 
+    def _fft_cache(fshape, xoff, yoff, data_block):
+        """Helper function to remember the last computed fft.
+
+        Parameters:
+            fshape (numpy.ndarray): shape of fft
+            xoff,yoff (int): offsets of the data block
+            data_block (numpy.ndarray): the 2D array to calculate the FFT
+                on if not already calculated.
+
+        Returns:
+            fft transformed data_block of fshape size."""
+        cache_key = (fshape[0], fshape[1], xoff, yoff)
+        if cache_key != _fft_cache.key:
+            _fft_cache.cache = numpy.fft.rfftn(data_block, fshape)
+            _fft_cache.key = cache_key
+        return _fft_cache.cache
+
+    _fft_cache.cache = None
+    _fft_cache.key = None
+
     LOGGER.info('starting convolve')
     last_time = time.time()
     signal_data = {}
-    for signal_data, signal_block in iterblocks(signal_path):
+    for signal_data, signal_block in iterblocks(s1_path):
         last_time = _invoke_timed_callback(
             last_time, lambda: LOGGER.info(
                 "convolution operating on signal pixel (%d, %d)",
@@ -3029,7 +3058,7 @@ def convolve_2d_uri(signal_path, kernel_path, output_path):
         signal_nodata_mask = signal_block == signal_nodata
         signal_block[signal_nodata_mask] = 0.0
 
-        for kernel_data, kernel_block in iterblocks(kernel_path):
+        for kernel_data, kernel_block in iterblocks(s2_path):
             left_index_raster = (
                 signal_data['xoff'] - n_cols_kernel / 2 + kernel_data['xoff'])
             right_index_raster = (
@@ -3054,8 +3083,25 @@ def convolve_2d_uri(signal_path, kernel_path, output_path):
             kernel_nodata_mask = (kernel_block == kernel_nodata)
             kernel_block[kernel_nodata_mask] = 0.0
 
-            result = scipy.signal.fftconvolve(
-                signal_block, kernel_block, 'full')
+            # determine the output convolve shape
+            shape = (
+                numpy.array(signal_block.shape) +
+                numpy.array(kernel_block.shape) - 1)
+
+            # add zero padding so FFT is fast
+            fshape = [
+                scipy.signal.signaltools._next_regular(int(d)) for d in shape]
+
+            kernel_fft = numpy.fft.rfftn(kernel_block, fshape)
+            signal_fft = _fft_cache(
+                fshape, signal_data['xoff'], signal_data['yoff'],
+                signal_block)
+
+            # this variable determines the output slice that doesn't include
+            # the padded array region made for fast FFTs.
+            fslice = tuple([slice(0, int(sz)) for sz in shape])
+            # classic FFT convolution
+            result = numpy.fft.irfftn(signal_fft * kernel_fft, fshape)[fslice]
 
             left_index_result = 0
             right_index_result = result.shape[1]
