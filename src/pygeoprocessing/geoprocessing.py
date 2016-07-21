@@ -2981,7 +2981,6 @@ def distance_transform_edt(
     except OSError:
         LOGGER.warn("couldn't remove file %s", mask_as_byte_uri)
 
-
 def convolve_2d_uri(signal_path, kernel_path, output_path):
     """Convolve 2D kernel over 2D signal.
 
@@ -3026,6 +3025,26 @@ def convolve_2d_uri(signal_path, kernel_path, output_path):
     output_ds = gdal.Open(output_path, gdal.GA_Update)
     output_band = output_ds.GetRasterBand(1)
 
+    def _fft_cache(fshape, xoff, yoff, data_block):
+        """Helper function to remember the last computed fft.
+
+        Parameters:
+            fshape (numpy.ndarray): shape of fft
+            xoff,yoff (int): offsets of the data block
+            data_block (numpy.ndarray): the 2D array to calculate the FFT
+                on if not already calculated.
+
+        Returns:
+            fft transformed data_block of fshape size."""
+        cache_key = (fshape[0], fshape[1], xoff, yoff)
+        if cache_key != _fft_cache.key:
+            _fft_cache.cache = numpy.fft.rfftn(data_block, fshape)
+            _fft_cache.key = cache_key
+        return _fft_cache.cache
+
+    _fft_cache.cache = None
+    _fft_cache.key = None
+
     LOGGER.info('starting convolve')
     last_time = time.time()
     signal_data = {}
@@ -3039,7 +3058,6 @@ def convolve_2d_uri(signal_path, kernel_path, output_path):
         signal_nodata_mask = signal_block == signal_nodata
         signal_block[signal_nodata_mask] = 0.0
 
-        last_shape = None
         for kernel_data, kernel_block in iterblocks(s2_path):
             left_index_raster = (
                 signal_data['xoff'] - n_cols_kernel / 2 + kernel_data['xoff'])
@@ -3073,17 +3091,17 @@ def convolve_2d_uri(signal_path, kernel_path, output_path):
             # add zero padding so FFT is fast
             fshape = [
                 scipy.signal.signaltools._next_regular(int(d)) for d in shape]
+
+            kernel_fft = numpy.fft.rfftn(kernel_block, fshape)
+            signal_fft = _fft_cache(
+                fshape, signal_data['xoff'], signal_data['yoff'],
+                signal_block)
+
+            # this variable determines the output slice that doesn't include
+            # the padded array region made for fast FFTs.
             fslice = tuple([slice(0, int(sz)) for sz in shape])
-
-            # check to see if the previous kernel was calculated, reuse if so
-            if last_shape is None or (shape != last_shape).any():
-                cached_signal_fft = numpy.fft.rfftn(signal_block, fshape)
-                last_shape = shape
-
             # classic FFT convolution
-            result = numpy.fft.irfftn(
-                numpy.fft.rfftn(kernel_block, fshape) * cached_signal_fft,
-                fshape)[fslice]
+            result = numpy.fft.irfftn(signal_fft * kernel_fft, fshape)[fslice]
 
             left_index_result = 0
             right_index_result = result.shape[1]
