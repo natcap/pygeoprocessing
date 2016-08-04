@@ -4,6 +4,7 @@ Release History
 0.3.0 (XXX)
 -----------
 
+* Removed calls to ``logging.basicConfig`` throughout pygeoprocessing.  Client applications may need to adjust their logging if pygeoprocessing's log messages are desired.
 * Added a flag  to `aggregate_raster_values_uri` that can be used to indicate incoming polygons do not overlap, or the user does not care about overlap.  This can be used in cases where there is a computational or memory bottleneck in calculating the polygon disjoint sets that would ultimately be uncessary if it is known a priori that such a check is unnecessary.
 * Added functionality to `pygeoprocessing.iterblocks` to iterate over largest memory aligned block that fits into the number of elements provided by the parameter.  With default parameters, this uses a ceiling around 16MB of memory per band.
 * Added functionality to `pygeoprocessing.iterblocks` to return only the offset dictionary.  This functionality would be used in cases where memory aligned writes are desired without first reading arrays from the band.

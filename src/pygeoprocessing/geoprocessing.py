@@ -35,10 +35,6 @@ import shapely.prepared
 import geoprocessing_core
 import fileio
 
-logging.basicConfig(
-    format='%(asctime)s %(name)-18s %(levelname)-8s %(message)s',
-    level=logging.DEBUG, datefmt='%m/%d/%Y %H:%M:%S ')
-
 LOGGER = logging.getLogger('pygeoprocessing.geoprocessing')
 _LOGGING_PERIOD = 5.0  # min 5.0 seconds per update log message for the module
 

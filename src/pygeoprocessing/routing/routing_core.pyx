@@ -29,9 +29,6 @@ cdef extern from "time.h" nogil:
 
 from .. import geoprocessing
 
-logging.basicConfig(format='%(asctime)s %(name)-18s %(levelname)-8s \
-    %(message)s', lnevel=logging.DEBUG, datefmt='%m/%d/%Y %H:%M:%S ')
-
 LOGGER = logging.getLogger('pygeoprocessing.routing.routing_core')
 
 cdef double PI = 3.141592653589793238462643383279502884
