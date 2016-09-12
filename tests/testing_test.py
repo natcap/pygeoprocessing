@@ -855,7 +855,8 @@ class RasterTests(unittest.TestCase):
 
         missing_raster = os.path.join(self.workspace, 'missing.tif')
         with self.assertRaises(IOError):
-            assert_rasters_equal(missing_raster, missing_raster, 1e-9)
+            assert_rasters_equal(
+                missing_raster, missing_raster, rel_tol=1e-9, abs_tol=0.0)
 
     def test_raster_equality_to_tolerance(self):
         """Verify assert_rasters_equal asserts out to the given tolerance."""
@@ -873,7 +874,7 @@ class RasterTests(unittest.TestCase):
         # 0.005 is greater than the difference between the pixel values in
         # these two matrices.  We're only testing that we can use a
         # user-defined tolerance here.
-        assert_rasters_equal(filename_a, filename_b, tolerance=0.005)
+        assert_rasters_equal(filename_a, filename_b, rel_tol=0.005)
 
     def test_raster_inequality_to_tolerance(self):
         """Verify assert_rasters_equal fails if inequal past a tolerance."""
@@ -892,7 +893,7 @@ class RasterTests(unittest.TestCase):
         # 0.005 is smaller than the difference between the pixel values in
         # these two matrices, so the relative tolerance check should fail.
         with self.assertRaises(AssertionError):
-            assert_rasters_equal(filename_a, filename_b, tolerance=0.00005)
+            assert_rasters_equal(filename_a, filename_b, rel_tol=0.00005)
 
     def test_raster_different_x_dimension(self):
         """Verify assert_rasters_equal fails when x dimensions differ."""
@@ -908,7 +909,7 @@ class RasterTests(unittest.TestCase):
             band_matrices=[numpy.array([[0.1]])])
 
         with self.assertRaises(AssertionError):
-            assert_rasters_equal(filename_a, filename_b, tolerance=0.00005)
+            assert_rasters_equal(filename_a, filename_b, rel_tol=0.00005)
 
     def test_raster_different_y_dimension(self):
         """Verify assert_rasters_equal fails when y dimensions differ."""
@@ -924,7 +925,7 @@ class RasterTests(unittest.TestCase):
             band_matrices=[numpy.array([[0.1], [0.1]])])
 
         with self.assertRaises(AssertionError):
-            assert_rasters_equal(filename_a, filename_b, tolerance=0.00005)
+            assert_rasters_equal(filename_a, filename_b, rel_tol=0.00005)
 
     def test_raster_different_block_sizes(self):
         """Test that we can detect rasters with differing block sizes."""
@@ -972,7 +973,7 @@ class RasterTests(unittest.TestCase):
             band_matrices=[numpy.array([[0.1]]), numpy.array([[0.1]])])
 
         with self.assertRaises(AssertionError):
-            assert_rasters_equal(filename_a, filename_b, tolerance=0.00005)
+            assert_rasters_equal(filename_a, filename_b, rel_tol=0.00005)
 
     def test_raster_different_projections(self):
         """Verify assert_rasters_equal catches differing projections."""
@@ -988,7 +989,7 @@ class RasterTests(unittest.TestCase):
                                   filename=filename_b)
 
         with self.assertRaises(AssertionError):
-            assert_rasters_equal(filename_a, filename_b, tolerance=0.00005)
+            assert_rasters_equal(filename_a, filename_b, rel_tol=0.00005)
 
 
 class AssertCloseTest(unittest.TestCase):
