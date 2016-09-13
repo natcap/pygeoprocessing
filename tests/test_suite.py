@@ -85,8 +85,8 @@ class TestRasterFunctions(unittest.TestCase):
             [self.raster_filename], lambda x: x, out_filename, gdal.GDT_Int32,
             nodata, 30, 'intersection')
 
-        pygeoprocessing.testing.assert_rasters_equal(self.raster_filename,
-                                                     out_filename, tolerance=1e-9)
+        pygeoprocessing.testing.assert_rasters_equal(
+            self.raster_filename, out_filename, rel_tol=1e-9)
 
     def test_memblock_generator(self):
         """
