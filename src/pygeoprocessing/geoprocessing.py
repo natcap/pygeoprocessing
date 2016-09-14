@@ -3057,18 +3057,20 @@ def convolve_2d_uri(signal_path, kernel_path, output_path):
         fill_value=0)
 
     signal_nodata = get_nodata_from_uri(signal_path)
-    kernel_nodata = get_nodata_from_uri(kernel_path)
     n_rows_signal, n_cols_signal = get_row_col_from_uri(signal_path)
     n_rows_kernel, n_cols_kernel = get_row_col_from_uri(kernel_path)
 
     # by experimentation i found having the smaller raster to be cached
     # gives the best performance
     if n_rows_signal * n_cols_signal < n_rows_kernel * n_cols_kernel:
-        s1_path = signal_path
-        s2_path = kernel_path
+        s_path = signal_path
+        k_path = kernel_path
     else:
-        s2_path = signal_path
-        s1_path = kernel_path
+        k_path = signal_path
+        s_path = kernel_path
+
+    s_nodata = get_nodata_from_uri(s_path)
+    k_nodata = get_nodata_from_uri(k_path)
 
     signal_ds = gdal.Open(signal_path)
     signal_band = signal_ds.GetRasterBand(1)
@@ -3098,17 +3100,17 @@ def convolve_2d_uri(signal_path, kernel_path, output_path):
     LOGGER.info('starting convolve')
     last_time = time.time()
     signal_data = {}
-    for signal_data, signal_block in iterblocks(s1_path):
+    for signal_data, signal_block in iterblocks(s_path):
         last_time = _invoke_timed_callback(
             last_time, lambda: LOGGER.info(
                 "convolution operating on signal pixel (%d, %d)",
                 signal_data['xoff'], signal_data['yoff']),
             _LOGGING_PERIOD)
 
-        signal_nodata_mask = signal_block == signal_nodata
+        signal_nodata_mask = signal_block == s_nodata
         signal_block[signal_nodata_mask] = 0.0
 
-        for kernel_data, kernel_block in iterblocks(s2_path):
+        for kernel_data, kernel_block in iterblocks(k_path):
             left_index_raster = (
                 signal_data['xoff'] - n_cols_kernel / 2 + kernel_data['xoff'])
             right_index_raster = (
@@ -3130,7 +3132,7 @@ def convolve_2d_uri(signal_path, kernel_path, output_path):
                     top_index_raster > n_rows_signal):
                 continue
 
-            kernel_nodata_mask = (kernel_block == kernel_nodata)
+            kernel_nodata_mask = (kernel_block == k_nodata)
             kernel_block[kernel_nodata_mask] = 0.0
 
             # determine the output convolve shape
