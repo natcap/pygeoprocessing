@@ -3,7 +3,7 @@ Release History
 
 0.3.0 (XXX)
 -----------
-
+* Fixed an issue where in some cases different nodata values for 'signal' and 'kernel' would cause incorrect convolution results in `convolve_2d_uri`.
 * Added functionality to `pygeoprocessing.iterblocks` to iterate over largest memory aligned block that fits into the number of elements provided by the parameter.  With default parameters, this uses a ceiling around 16MB of memory per band.
 * Added functionality to `pygeoprocessing.iterblocks` to return only the offset dictionary.  This functionality would be used in cases where memory aligned writes are desired without first reading arrays from the band.
 * Refactored `pygeoprocessing.convolve_2d_uri` to use `iterblocks` to take advantage of large block sizes for FFT summing window method.
