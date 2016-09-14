@@ -3007,7 +3007,6 @@ def convolve_2d_uri(signal_path, kernel_path, output_path):
         fill_value=0)
 
     signal_nodata = get_nodata_from_uri(signal_path)
-    kernel_nodata = get_nodata_from_uri(kernel_path)
     n_rows_signal, n_cols_signal = get_row_col_from_uri(signal_path)
     n_rows_kernel, n_cols_kernel = get_row_col_from_uri(kernel_path)
 
