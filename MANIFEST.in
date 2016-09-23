@@ -4,3 +4,4 @@ include README.rst
 include setup.cfg
 include pygeoprocessing/routing/routing_core.pxd
 include pygeoprocessing/version.py
+include requirements.txt
