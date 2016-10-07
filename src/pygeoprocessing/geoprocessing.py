@@ -713,7 +713,6 @@ def vectorize_points(
 
 def aggregate_raster_values_uri(
         raster_uri, shapefile_uri, shapefile_field=None, ignore_nodata=True,
-        threshold_amount_lookup=None, ignore_value_list=[], process_pool=None,
         all_touched=False, polygons_might_overlap=True):
     """Collect all the raster values that lie within provided shapefile field or
         bounds depending on the value of operation.
@@ -733,12 +732,6 @@ def aggregate_raster_values_uri(
             otherwise all pixels in the AOI are used for calculation of the
             mean.  This does not affect hectare_mean which is calculated from
             the geometrical area of the feature.
-        threshold_amount_lookup (dict): a dictionary indexing the
-            shapefile_field's to threshold amounts to subtract from the
-            aggregate value.  The result will be clamped to zero.
-        ignore_value_list (list): a list of values to ignore when
-            calculating the stats
-        process_pool: a process pool for multiprocessing
         all_touched (boolean): if true will account for any pixel whose
             geometry passes through the pixel, not just the center point
         polygons_might_overlap (boolean): if True the function calculates
@@ -770,8 +763,7 @@ def aggregate_raster_values_uri(
         [raster_uri], lambda x: x, clipped_raster_uri, gdal.GDT_Float64,
         raster_nodata, out_pixel_size, "union",
         dataset_to_align_index=0, aoi_uri=shapefile_uri,
-        assert_datasets_projected=False, process_pool=process_pool,
-        vectorize_op=False)
+        assert_datasets_projected=False, vectorize_op=False)
     clipped_raster = gdal.Open(clipped_raster_uri)
 
     # This should be a value that's not in shapefile[shapefile_field]
@@ -940,7 +932,7 @@ def aggregate_raster_values_uri(
                 # Remove the nodata and ignore values for later processing
                 masked_values_nodata_removed = (
                     masked_values[~numpy.in1d(
-                        masked_values, [raster_nodata] + ignore_value_list).
+                        masked_values, [raster_nodata]).
                                   reshape(masked_values.shape)])
 
                 # Find the min and max which might not yet be calculated
@@ -976,14 +968,8 @@ def aggregate_raster_values_uri(
         # Don't want to calculate stats for the nodata
         current_iteration_attribute_ids.discard(mask_nodata)
         for attribute_id in current_iteration_attribute_ids:
-            if threshold_amount_lookup is not None:
-                adjusted_amount = max(
-                    aggregate_dict_values[attribute_id] -
-                    threshold_amount_lookup[attribute_id], 0.0)
-            else:
-                adjusted_amount = aggregate_dict_values[attribute_id]
-
-            result_tuple.total[attribute_id] = adjusted_amount
+            result_tuple.total[attribute_id] = (
+                aggregate_dict_values[attribute_id])
 
             # intitalize to 0
             result_tuple.pixel_mean[attribute_id] = 0.0
@@ -992,14 +978,15 @@ def aggregate_raster_values_uri(
             if aggregate_dict_counts[attribute_id] != 0.0:
                 n_pixels = aggregate_dict_counts[attribute_id]
                 result_tuple.pixel_mean[attribute_id] = (
-                    adjusted_amount / n_pixels)
+                    aggregate_dict_values[attribute_id] / n_pixels)
 
                 # To get the total area multiply n pixels by their area then
                 # divide by 10000 to get Ha.  Notice that's in the denominator
                 # so the * 10000 goes on the top
                 if feature_areas[attribute_id] != 0:
-                    result_tuple.hectare_mean[attribute_id] = (
-                        adjusted_amount / feature_areas[attribute_id] * 10000)
+                    result_tuple.hectare_mean[attribute_id] = 10000.0 * (
+                        aggregate_dict_values[attribute_id] /
+                        feature_areas[attribute_id])
 
         try:
             assert_datasets_in_same_projection([raster_uri])
