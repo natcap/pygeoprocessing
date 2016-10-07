@@ -154,7 +154,7 @@ class PyGeoprocessingTest(unittest.TestCase):
 
         result = pygeoprocessing.aggregate_raster_values_uri(
             base_raster_path, shapefile_path, shapefile_field='DN',
-            all_touched=False, polygons_might_overlap=True)
+            all_touched=False, polygons_might_overlap=False)
 
         aggregated_values_type = collections.namedtuple(
             'AggregatedValues',
@@ -167,6 +167,45 @@ class PyGeoprocessingTest(unittest.TestCase):
             n_pixels={1: 3.0, 2: 398425.0},
             pixel_min={1: 1.0, 2: 1.0},
             pixel_max={1: 1.0, 2: 1.0}
+        )
+
+        for metric in [
+                'total', 'pixel_mean', 'hectare_mean', 'n_pixels',
+                'pixel_min', 'pixel_max']:
+            _assert_deep_almost_equal(
+                self, getattr(expected_result, metric),
+                getattr(result, metric), places=6)
+
+    @scm.skip_if_data_missing(TEST_DATA)
+    def test_aggregate_raster_values_overlap(self):
+        """PyGeoprocessing: test aggregate raster values for overlap poly."""
+        import pygeoprocessing
+
+        base_raster_path = os.path.join(
+            TEST_DATA, 'aggregate_raster_values_data', 'base_raster.tif')
+
+        shapefile_path = os.path.join(
+            TEST_DATA, 'aggregate_raster_values_data',
+            'overlap_watershed.shp')
+
+        result = pygeoprocessing.aggregate_raster_values_uri(
+            base_raster_path, shapefile_path, shapefile_field='DN',
+            all_touched=False, polygons_might_overlap=True)
+
+        aggregated_values_type = collections.namedtuple(
+            'AggregatedValues',
+            'total pixel_mean hectare_mean n_pixels pixel_min pixel_max')
+
+        expected_result = aggregated_values_type(
+            total={1: 3.0, 2: 398425.0, 3: 5.0},
+            pixel_mean={1: 1.0, 2: 1.0, 3: 1.0},
+            hectare_mean={
+                1: 11.111111110950143,
+                2: 11.111111110937156,
+                3: 3.6282805923682009},
+            n_pixels={1: 3.0, 2: 398425.0, 3: 5.0},
+            pixel_min={1: 1.0, 2: 1.0, 3: 1.0},
+            pixel_max={1: 1.0, 2: 1.0, 3: 1.0}
         )
 
         for metric in [
