@@ -714,11 +714,12 @@ def vectorize_points(
 def aggregate_raster_values_uri(
         raster_uri, shapefile_uri, shapefile_field=None, ignore_nodata=True,
         all_touched=False, polygons_might_overlap=True):
-    """Collect all the raster values that lie within provided shapefile field or
-        bounds depending on the value of operation.
+    """Collect stats on pixel values which lie within shapefile polygons.
 
     Args:
-        raster_uri (string): a uri to a GDAL dataset
+        raster_uri (string): a uri to a raster.  In order for hectare
+            mean values to be accurate, this raster must be projected in
+            meter units.
         shapefile_uri (string): a uri to a OGR datasource that should overlap
             raster; raises an exception if not.
 
@@ -786,16 +787,18 @@ def aggregate_raster_values_uri(
     if shapefile_field is not None:
         # Make sure that the layer name refers to an integer
         layer_d = shapefile_layer.GetLayerDefn()
-        fd = layer_d.GetFieldDefn(layer_d.GetFieldIndex(shapefile_field))
-        if fd == -1 or fd is None:  # -1 returned when field does not exist.
+        field_index = layer_d.GetFieldIndex(shapefile_field)
+        if field_index == -1:  # -1 returned when field does not exist.
             # Raise exception if user provided a field that's not in vector
             raise AttributeError(
                 'Vector %s must have a field named %s' %
                 (shapefile_uri, shapefile_field))
-        if fd.GetTypeName() != 'Integer':
+
+        field_def = layer_d.GetFieldDefn(field_index)
+        if field_def.GetTypeName() != 'Integer':
             raise TypeError(
-                'Can only aggreggate by integer based fields, requested '
-                'field is of type  %s' % fd.GetTypeName())
+                'Can only aggregate by integer based fields, requested '
+                'field is of type  %s' % field_def.GetTypeName())
         # Adding the rasterize by attribute option
         rasterize_layer_args['options'].append(
             'ATTRIBUTE=%s' % shapefile_field)
@@ -807,10 +810,10 @@ def aggregate_raster_values_uri(
     # loop over the subset of feature layers and rasterize/aggregate each one
     aggregate_dict_values = {}
     aggregate_dict_counts = {}
-    AggregatedValues = collections.namedtuple(
-        'AggregatedValues',
+    aggregated_values_type = collections.namedtuple(
+        'aggregated_values_type',
         'total pixel_mean hectare_mean n_pixels pixel_min pixel_max')
-    result_tuple = AggregatedValues(
+    result_tuple = aggregated_values_type(
         total={},
         pixel_mean={},
         hectare_mean={},
@@ -987,15 +990,6 @@ def aggregate_raster_values_uri(
                     result_tuple.hectare_mean[attribute_id] = 10000.0 * (
                         aggregate_dict_values[attribute_id] /
                         feature_areas[attribute_id])
-
-        try:
-            assert_datasets_in_same_projection([raster_uri])
-        except DatasetUnprojected:
-            # doesn't make sense to calculate the hectare mean
-            LOGGER.warn(
-                'raster %s is not projected setting hectare_mean to {}',
-                raster_uri)
-            result_tuple.hectare_mean.clear()
 
     # Make sure the dataset is closed and cleaned up
     mask_band = None
