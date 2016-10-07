@@ -986,6 +986,10 @@ def aggregate_raster_values_uri(
 
             result_tuple.total[attribute_id] = adjusted_amount
 
+            # intitalize to 0
+            result_tuple.pixel_mean[attribute_id] = 0.0
+            result_tuple.hectare_mean[attribute_id] = 0.0
+
             if aggregate_dict_counts[attribute_id] != 0.0:
                 n_pixels = aggregate_dict_counts[attribute_id]
                 result_tuple.pixel_mean[attribute_id] = (
@@ -994,15 +998,9 @@ def aggregate_raster_values_uri(
                 # To get the total area multiply n pixels by their area then
                 # divide by 10000 to get Ha.  Notice that's in the denominator
                 # so the * 10000 goes on the top
-                if feature_areas[attribute_id] == 0:
-                    LOGGER.warn('feature_areas[%d]=0', attribute_id)
-                    result_tuple.hectare_mean[attribute_id] = 0.0
-                else:
+                if feature_areas[attribute_id] != 0:
                     result_tuple.hectare_mean[attribute_id] = (
                         adjusted_amount / feature_areas[attribute_id] * 10000)
-            else:
-                result_tuple.pixel_mean[attribute_id] = 0.0
-                result_tuple.hectare_mean[attribute_id] = 0.0
 
         try:
             assert_datasets_in_same_projection([raster_uri])
@@ -1025,16 +1023,19 @@ def aggregate_raster_values_uri(
     for filename in [mask_uri, clipped_raster_uri]:
         try:
             os.remove(filename)
-        except OSError:
-            LOGGER.warn("couldn't remove file %s", filename)
+        except OSError as error:
+            LOGGER.warn(
+                "couldn't remove file %s. Exception %s", filename, str(error))
 
     subset_layer = None
     ogr.DataSource.__swig_destroy__(subset_layer_datasouce)
     subset_layer_datasouce = None
     try:
         shutil.rmtree(layer_dir)
-    except OSError:
-        LOGGER.warn("couldn't remove directory %s", layer_dir)
+    except OSError as error:
+        LOGGER.warn(
+            "couldn't remove directory %s.  Exception %s", layer_dir,
+            str(error))
 
     return result_tuple
 
