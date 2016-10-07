@@ -699,7 +699,6 @@ def vectorize_points(
     grid_y, grid_x = numpy.mgrid[0:band.YSize, 0:band.XSize]
     grid_y = grid_y * gt[5] + bounding_box[1]
     grid_x = grid_x * gt[1] + bounding_box[0]
-
     nodata = band.GetNoDataValue()
 
     raster_out_array = scipy.interpolate.griddata(
