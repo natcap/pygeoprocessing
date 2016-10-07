@@ -254,6 +254,75 @@ class PyGeoprocessingTest(unittest.TestCase):
                 self, getattr(expected_result, metric),
                 getattr(result, metric), places=6)
 
+    @scm.skip_if_data_missing(TEST_DATA)
+    def test_aggregate_raster_values_missing_fid(self):
+        """PyGeoprocessing: test aggregate raster field id incorrect."""
+        import pygeoprocessing
+
+        base_raster_path = os.path.join(
+            TEST_DATA, 'aggregate_raster_values_data', 'base_raster.tif')
+
+        shapefile_path = os.path.join(
+            TEST_DATA, 'aggregate_raster_values_data',
+            'watershed.shp')
+
+        with self.assertRaises(AttributeError):
+            pygeoprocessing.aggregate_raster_values_uri(
+                base_raster_path, shapefile_path, shapefile_field='badname',
+                all_touched=True, polygons_might_overlap=True)
+
+    @scm.skip_if_data_missing(TEST_DATA)
+    def test_aggregate_raster_values_all_polys(self):
+        """PyGeoprocessing: test aggregate raster values as a lump."""
+        import pygeoprocessing
+
+        base_raster_path = os.path.join(
+            TEST_DATA, 'aggregate_raster_values_data', 'base_raster.tif')
+        shapefile_path = os.path.join(
+            TEST_DATA, 'aggregate_raster_values_data',
+            'watershed.shp')
+
+        result = pygeoprocessing.aggregate_raster_values_uri(
+            base_raster_path, shapefile_path)
+
+        aggregated_values_type = collections.namedtuple(
+            'AggregatedValues',
+            'total pixel_mean hectare_mean n_pixels pixel_min pixel_max')
+
+        expected_result = aggregated_values_type(
+            total={9999: 398428.0},
+            pixel_mean={9999: 1.0},
+            hectare_mean={9999: 11.111194773692587},
+            n_pixels={9999: 398428.0},
+            pixel_min={9999: 1.0},
+            pixel_max={9999: 1.0}
+        )
+
+        for metric in [
+                'total', 'pixel_mean', 'hectare_mean', 'n_pixels',
+                'pixel_min', 'pixel_max']:
+            _assert_deep_almost_equal(
+                self, getattr(expected_result, metric),
+                getattr(result, metric), places=6)
+
+    @scm.skip_if_data_missing(TEST_DATA)
+    def test_aggregate_raster_bad_fid_type(self):
+        """PyGeoprocessing: test aggregate raster bad fieldtype."""
+        import pygeoprocessing
+
+        base_raster_path = os.path.join(
+            TEST_DATA, 'aggregate_raster_values_data', 'base_raster.tif')
+
+        shapefile_path = os.path.join(
+            TEST_DATA, 'aggregate_raster_values_data',
+            'watershed.shp')
+
+        with self.assertRaises(TypeError):
+            pygeoprocessing.aggregate_raster_values_uri(
+                base_raster_path, shapefile_path,
+                shapefile_field='stringfiel', all_touched=True,
+                polygons_might_overlap=True)
+
 def _assert_deep_almost_equal(test_case, expected, actual, *args, **kwargs):
     """Assert that two complex structures have almost equal contents.
 
