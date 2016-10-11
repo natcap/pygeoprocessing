@@ -810,10 +810,10 @@ def aggregate_raster_values_uri(
     # loop over the subset of feature layers and rasterize/aggregate each one
     aggregate_dict_values = {}
     aggregate_dict_counts = {}
-    aggregated_values_type = collections.namedtuple(
-        'aggregated_values_type',
+    AggregatedValues = collections.namedtuple(
+        'AggregatedValues',
         'total pixel_mean hectare_mean n_pixels pixel_min pixel_max')
-    result_tuple = aggregated_values_type(
+    result_tuple = AggregatedValues(
         total={},
         pixel_mean={},
         hectare_mean={},
