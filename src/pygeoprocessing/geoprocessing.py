@@ -35,6 +35,10 @@ import shapely.prepared
 import geoprocessing_core
 import fileio
 
+AggregatedValues = collections.namedtuple(
+    'AggregatedValues',
+    'total pixel_mean hectare_mean n_pixels pixel_min pixel_max')
+
 LOGGER = logging.getLogger('pygeoprocessing.geoprocessing')
 _LOGGING_PERIOD = 5.0  # min 5.0 seconds per update log message for the module
 
@@ -810,9 +814,6 @@ def aggregate_raster_values_uri(
     # loop over the subset of feature layers and rasterize/aggregate each one
     aggregate_dict_values = {}
     aggregate_dict_counts = {}
-    AggregatedValues = collections.namedtuple(
-        'AggregatedValues',
-        'total pixel_mean hectare_mean n_pixels pixel_min pixel_max')
     result_tuple = AggregatedValues(
         total={},
         pixel_mean={},

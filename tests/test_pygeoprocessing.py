@@ -156,11 +156,7 @@ class PyGeoprocessingTest(unittest.TestCase):
             base_raster_path, shapefile_path, shapefile_field='DN',
             all_touched=False, polygons_might_overlap=False)
 
-        AggregatedValues = collections.namedtuple(
-            'AggregatedValues',
-            'total pixel_mean hectare_mean n_pixels pixel_min pixel_max')
-
-        expected_result = AggregatedValues(
+        expected_result = pygeoprocessing.AggregatedValues(
             total={1: 3.0, 2: 398425.0},
             pixel_mean={1: 1.0, 2: 1.0},
             hectare_mean={1: 11.111111110950143, 2: 11.111111110937156},
@@ -193,11 +189,7 @@ class PyGeoprocessingTest(unittest.TestCase):
             all_touched=False, polygons_might_overlap=True,
             ignore_nodata=False)
 
-        AggregatedValues = collections.namedtuple(
-            'AggregatedValues',
-            'total pixel_mean hectare_mean n_pixels pixel_min pixel_max')
-
-        expected_result = AggregatedValues(
+        expected_result = pygeoprocessing.AggregatedValues(
             total={1: 3.0, 2: 398425.0, 3: 5.0},
             pixel_mean={1: 1.0, 2: 1.0, 3: 0.41666666666666669},
             hectare_mean={
@@ -232,11 +224,7 @@ class PyGeoprocessingTest(unittest.TestCase):
             base_raster_path, shapefile_path, shapefile_field='DN',
             all_touched=False, polygons_might_overlap=True)
 
-        AggregatedValues = collections.namedtuple(
-            'AggregatedValues',
-            'total pixel_mean hectare_mean n_pixels pixel_min pixel_max')
-
-        expected_result = AggregatedValues(
+        expected_result = pygeoprocessing.AggregatedValues(
             total={1: 3.0, 2: 398425.0, 3: 5.0},
             pixel_mean={1: 1.0, 2: 1.0, 3: 1.0},
             hectare_mean={
@@ -271,11 +259,7 @@ class PyGeoprocessingTest(unittest.TestCase):
             base_raster_path, shapefile_path, shapefile_field='DN',
             all_touched=True, polygons_might_overlap=True)
 
-        AggregatedValues = collections.namedtuple(
-            'AggregatedValues',
-            'total pixel_mean hectare_mean n_pixels pixel_min pixel_max')
-
-        expected_result = AggregatedValues(
+        expected_result = pygeoprocessing.AggregatedValues(
             total={1: 3.0, 2: 398425.0, 3: 8.0},
             pixel_mean={1: 1.0, 2: 1.0, 3: 1.0},
             hectare_mean={
@@ -325,11 +309,7 @@ class PyGeoprocessingTest(unittest.TestCase):
         result = pygeoprocessing.aggregate_raster_values_uri(
             base_raster_path, shapefile_path)
 
-        AggregatedValues = collections.namedtuple(
-            'AggregatedValues',
-            'total pixel_mean hectare_mean n_pixels pixel_min pixel_max')
-
-        expected_result = AggregatedValues(
+        expected_result = pygeoprocessing.AggregatedValues(
             total={9999: 398428.0},
             pixel_mean={9999: 1.0},
             hectare_mean={9999: 11.111194773692587},
