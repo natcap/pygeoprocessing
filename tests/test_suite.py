@@ -210,32 +210,5 @@ class TestRasterFunctions(unittest.TestCase):
 
             self.assertEqual(block_size, [128, 256])
 
-
-class TestRoutingFunctions(unittest.TestCase):
-    def setUp(self):
-        self.dem_filename = pygeoprocessing.temporary_filename()
-        self.flow_direction_filename = pygeoprocessing.temporary_filename()
-
-    def tearDown(self):
-        os.remove(self.dem_filename)
-        os.remove(self.flow_direction_filename)
-
-    def test_simple_route(self):
-        """simple sanity dinf test"""
-
-        pixel_matrix = numpy.ones((5, 5), numpy.byte)
-        reference = sampledata.SRS_COLOMBIA
-        nodata = -9999
-
-        for row_index in range(pixel_matrix.shape[0]):
-            pixel_matrix[row_index, :] = row_index
-
-        pygeoprocessing.testing.create_raster_on_disk(
-            [pixel_matrix], reference.origin, reference.projection, nodata,
-            reference.pixel_size(30), filename=self.dem_filename)
-
-        pygeoprocessing.routing.flow_direction_d_inf(
-            self.dem_filename, self.flow_direction_filename)
-
 if __name__ == '__main__':
     unittest.main()
