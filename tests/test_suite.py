@@ -12,15 +12,6 @@ from pygeoprocessing.testing import sampledata
 import pygeoprocessing.routing
 
 
-class TestProjectionFunctions(unittest.TestCase):
-    def test_projection_wkt_import_from_epsg(self):
-        projection_wkt = sampledata.projection_wkt(4326)
-        self.assertNotEqual(projection_wkt, None)
-
-    def test_projection_wkt_import_from_epsg_invalid(self):
-        self.assertRaises(RuntimeError, sampledata.projection_wkt, -1)
-
-
 class TestDataComplexity(unittest.TestCase):
     """
     A test class for pygeoprocessing.testing.sampledata's data complexity
