@@ -2263,7 +2263,7 @@ def vectorize_datasets(
     Raises:
         ValueError: invalid input provided
     """
-    if isinstance(dataset_uri_list) != list:
+    if not isinstance(dataset_uri_list, list):
         raise ValueError(
             "dataset_uri_list was not passed in as a list, maybe a single "
             "file was passed in?  Here is its value: %s" %
