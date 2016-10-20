@@ -13,9 +13,9 @@ import pygeoprocessing.routing
 
 
 class TestDataComplexity(unittest.TestCase):
-    """
-    A test class for pygeoprocessing.testing.sampledata's data complexity
-    checking.  This is used for checking that the user's sample raster matrices
+    """A test class for pygeoprocessing.testing.sampledata's data complexity.
+
+    This is used for checking that the user's sample raster matrices
     have a datatype that coincides with an acceptable GDAL datatype so that
     data is not lost when writing a numpy matrix to a GDAL raster.
 
@@ -28,29 +28,33 @@ class TestDataComplexity(unittest.TestCase):
     The index of a GDAL or numpy datatype is most conveniently fetched with
     pygeoprocessing.testing.sampledata.dtype_index().
     """
+
     def test_gdal_dtype_index(self):
-        """Verify that the GDAL byte is at index 0 in DTYPES"""
+        """PGP.geoprocessing: Verify GDAL byte is at index 0 in DTYPES."""
         self.assertEqual(sampledata.dtype_index(gdal.GDT_Byte), 0)
 
     def test_numpy_dtype_index(self):
-        """Verify that numpy's int32 is at index 4 in DTYPES"""
+        """PGP.geoprocessing: Verify numpy's int32 is at index 4 in DTYPES."""
         self.assertEqual(sampledata.dtype_index(numpy.int32), 4)
 
     def test_invalid_dtype(self):
-        """Verify that an invalid datatype raises a RuntimeError"""
+        """PGP.geoprocessing: Verify invalid datatype raises RuntimeError."""
         self.assertRaises(RuntimeError, sampledata.dtype_index, 'foobar')
 
 
 class TestRasterFunctions(unittest.TestCase):
+    """Tests for raster based functionality."""
+
     def setUp(self):
+        """Predefine filename as something temporary."""
         self.raster_filename = pygeoprocessing.temporary_filename()
 
     def tearDown(self):
+        """Clean up temporary file made in setup."""
         os.remove(self.raster_filename)
 
     def test_get_nodata(self):
-        """Test nodata values get set and read"""
-
+        """PGP.geoprocessing: Test nodata values get set and read."""
         pixel_matrix = numpy.ones((5, 5), numpy.int16)
         reference = sampledata.SRS_COLOMBIA
         for nodata in [5, 10, -5, 9999]:
@@ -63,7 +67,7 @@ class TestRasterFunctions(unittest.TestCase):
             self.assertEqual(raster_nodata, nodata)
 
     def test_vectorize_datasets_identity(self):
-        """Verify lambda x:x is correct in vectorize_datasets"""
+        """PGP.geoprocessing: vectorize_datasets f(x)=x."""
         pixel_matrix = numpy.ones((5, 5), numpy.int16)
         reference = sampledata.SRS_COLOMBIA
         nodata = -1
@@ -79,10 +83,8 @@ class TestRasterFunctions(unittest.TestCase):
         pygeoprocessing.testing.assert_rasters_equal(
             self.raster_filename, out_filename, rel_tol=1e-9)
 
-    def test_memblock_generator(self):
-        """
-        Verify that a raster iterator works and we can sum the correct value.
-        """
+    def test_iterblocks(self):
+        """PGP.geoprocessing: Sum a 1000**2 raster using iterblocks."""
         pixel_matrix = numpy.ones((1000, 1000))
         nodata = 0
         reference = sampledata.SRS_COLOMBIA
@@ -91,33 +93,31 @@ class TestRasterFunctions(unittest.TestCase):
             reference.pixel_size(30), filename=self.raster_filename,
             dataset_opts=['TILED=YES'])
 
-        sum = 0
-        for block_data, memblock in pygeoprocessing.iterblocks(self.raster_filename):
-            sum += memblock.sum()
+        raster_sum = 0
+        for _, memblock in pygeoprocessing.iterblocks(
+                self.raster_filename):
+            raster_sum += memblock.sum()
 
-        self.assertEqual(sum, 1000000)
+        self.assertEqual(raster_sum, 1000000)
 
     def test_iterblocks_multiband(self):
-        """
-        Verify that iterblocks() works when we operate on a raster with multiple bands.
-        """
+        """PGP.geoprocessing: multiband iterblocks on identical blocks."""
         pixel_matrix = numpy.ones((1000, 1000))
         nodata = 0
         reference = sampledata.SRS_COLOMBIA
+        # double one value so we can ensure we're getting out different bands
         pygeoprocessing.testing.create_raster_on_disk(
-            [pixel_matrix, pixel_matrix], reference.origin,
+            [pixel_matrix, 2 * pixel_matrix], reference.origin,
             reference.projection, nodata,
             reference.pixel_size(30), filename=self.raster_filename,
             dataset_opts=['TILED=YES'])
 
-        for data_dict, band_1_block, band_2_block in \
+        for _, band_1_block, band_2_block in \
                 pygeoprocessing.iterblocks(self.raster_filename):
-            numpy.testing.assert_almost_equal(band_1_block, band_2_block)
+            numpy.testing.assert_almost_equal(band_1_block * 2, band_2_block)
 
     def test_default_blocksizes_tiled(self):
-        """
-        Verify that block size is set properly when default tilesize is used.
-        """
+        """PGP.geoprocessing: Verify block size is set on default tilesize."""
         pixel_matrix = numpy.ones((1000, 1000))
         nodata = 0
         reference = sampledata.SRS_COLOMBIA
@@ -126,8 +126,8 @@ class TestRasterFunctions(unittest.TestCase):
             reference.pixel_size(30), dataset_opts=['TILED=YES'],
             filename=self.raster_filename)
 
-        ds = gdal.Open(self.raster_filename)
-        band = ds.GetRasterBand(1)
+        raster = gdal.Open(self.raster_filename)
+        band = raster.GetRasterBand(1)
         block_size = band.GetBlockSize()
 
         # default geotiff block size is 256x256
@@ -137,9 +137,7 @@ class TestRasterFunctions(unittest.TestCase):
         self.assertTrue(block_size[0] == block_size[1])
 
     def test_default_blocksizes_striped(self):
-        """
-        Verify that block size is set properly when default stripe is used.
-        """
+        """PGP.geoprocessing: Verify block size is rows not tiled."""
         pixel_matrix = numpy.ones((1000, 1000))
         nodata = 0
         reference = sampledata.SRS_COLOMBIA
@@ -148,8 +146,8 @@ class TestRasterFunctions(unittest.TestCase):
             reference.pixel_size(30), dataset_opts=['TILED=NO'],
             filename=self.raster_filename)
 
-        ds = gdal.Open(self.raster_filename)
-        band = ds.GetRasterBand(1)
+        raster = gdal.Open(self.raster_filename)
+        band = raster.GetRasterBand(1)
         block_size = band.GetBlockSize()
 
         # If a raster is forced to be un-tiled (striped), the raster's blocks
@@ -158,47 +156,38 @@ class TestRasterFunctions(unittest.TestCase):
         self.assertEqual(block_size[1], 1)  # block is 1 pixel tall
 
     def test_custom_blocksizes(self):
-        """
-        Verify that block size is set properly.
-        """
+        """PGP.geoprocessing:  Verify that custom block size is set."""
         pixel_matrix = numpy.ones((1000, 1000))
         nodata = 0
         reference = sampledata.SRS_COLOMBIA
         pygeoprocessing.testing.create_raster_on_disk(
             [pixel_matrix], reference.origin, reference.projection, nodata,
-            reference.pixel_size(30), dataset_opts=['TILED=YES',
-                                                    'BLOCKXSIZE=128',
-                                                    'BLOCKYSIZE=256'],
+            reference.pixel_size(30), dataset_opts=[
+                'TILED=YES', 'BLOCKXSIZE=128', 'BLOCKYSIZE=256'],
             filename=self.raster_filename)
-
-        ds = gdal.Open(self.raster_filename)
-        band = ds.GetRasterBand(1)
+        raster = gdal.Open(self.raster_filename)
+        band = raster.GetRasterBand(1)
         block_size = band.GetBlockSize()
 
         self.assertEqual(block_size, [128, 256])
 
     def test_custom_blocksizes_multiband(self):
-        """
-        Verify that block size is set properly.
-        """
+        """PGP.geoprocessing:  Verify block sizes are set on multibands."""
         pixel_matrix = numpy.ones((1000, 1000))
         nodata = 0
         reference = sampledata.SRS_COLOMBIA
         pygeoprocessing.testing.create_raster_on_disk(
-            [pixel_matrix, pixel_matrix], reference.origin, reference.projection, nodata,
-            reference.pixel_size(30), dataset_opts=['TILED=YES',
-                                                    'BLOCKXSIZE=128',
-                                                    'BLOCKYSIZE=256'],
+            [pixel_matrix, pixel_matrix], reference.origin,
+            reference.projection, nodata, reference.pixel_size(30),
+            dataset_opts=['TILED=YES', 'BLOCKXSIZE=128', 'BLOCKYSIZE=256'],
             filename=self.raster_filename)
 
-        ds = gdal.Open(self.raster_filename)
+        raster = gdal.Open(self.raster_filename)
         for band_index in [1, 2]:
-            band = ds.GetRasterBand(band_index)
-
+            band = raster.GetRasterBand(band_index)
             # Not sure why the BlockSize is a band attribute, as it's set
             # at the dataset level.
             block_size = band.GetBlockSize()
-
             self.assertEqual(block_size, [128, 256])
 
 if __name__ == '__main__':
