@@ -6,6 +6,7 @@ import unittest
 import gdal
 import numpy
 
+from shapely.geometry import Polygon
 import pygeoprocessing
 import pygeoprocessing.testing
 from pygeoprocessing.testing import sampledata
@@ -48,10 +49,14 @@ class TestRasterFunctions(unittest.TestCase):
     def setUp(self):
         """Predefine filename as something temporary."""
         self.raster_filename = pygeoprocessing.temporary_filename()
+        self.aoi_filename = pygeoprocessing.temporary_filename()
+        os.remove(self.aoi_filename)
 
     def tearDown(self):
         """Clean up temporary file made in setup."""
         os.remove(self.raster_filename)
+        if os.path.exists(self.aoi_filename):
+            os.remove(self.aoi_filename)
 
     def test_get_nodata(self):
         """PGP.geoprocessing: Test nodata values get set and read."""
@@ -96,6 +101,40 @@ class TestRasterFunctions(unittest.TestCase):
         pygeoprocessing.vectorize_datasets(
             [self.raster_filename], lambda x: x, out_filename, gdal.GDT_Int32,
             nodata, 30, 'intersection')
+
+        pygeoprocessing.testing.assert_rasters_equal(
+            self.raster_filename, out_filename, rel_tol=1e-9)
+
+    def test_vect_datasets_identity_aoi(self):
+        """PGP.geoprocessing: vectorize_datasets f(x)=x with AOI."""
+        pixel_matrix = numpy.ones((5, 5), numpy.int16)
+        reference = sampledata.SRS_COLOMBIA
+        nodata = -1
+        pygeoprocessing.testing.create_raster_on_disk(
+            [pixel_matrix], reference.origin, reference.projection, nodata,
+            reference.pixel_size(30), filename=self.raster_filename)
+
+        polygons = [
+            Polygon([
+                (reference.origin[0] + reference.pixel_size(30)[0] * 0,
+                 reference.origin[1] + reference.pixel_size(30)[1] * 0),
+                (reference.origin[0] + reference.pixel_size(30)[0] * 5,
+                 reference.origin[1] + reference.pixel_size(30)[1] * 0),
+                (reference.origin[0] + reference.pixel_size(30)[0] * 5,
+                 reference.origin[1] + reference.pixel_size(30)[1] * 5),
+                (reference.origin[0] + reference.pixel_size(30)[0] * 0,
+                 reference.origin[1] + reference.pixel_size(30)[1] * 5),
+                (reference.origin[0] + reference.pixel_size(30)[0] * 0,
+                 reference.origin[1] + reference.pixel_size(30)[1] * 0),
+                ]),
+        ]
+        pygeoprocessing.testing.create_vector_on_disk(
+            polygons, reference.projection, filename=self.aoi_filename)
+
+        out_filename = pygeoprocessing.temporary_filename()
+        pygeoprocessing.vectorize_datasets(
+            [self.raster_filename], lambda x: x, out_filename, gdal.GDT_Int32,
+            nodata, 30, 'intersection', aoi_uri=self.aoi_filename)
 
         pygeoprocessing.testing.assert_rasters_equal(
             self.raster_filename, out_filename, rel_tol=1e-9)
