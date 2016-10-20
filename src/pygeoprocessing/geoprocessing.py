@@ -32,7 +32,7 @@ import shapely.ops
 from shapely import speedups
 import shapely.prepared
 
-import geoprocessing_core
+from pygeoprocessing import geoprocessing_core
 import fileio
 
 LOGGER = logging.getLogger('pygeoprocessing.geoprocessing')
