@@ -2254,8 +2254,8 @@ def vectorize_datasets(
         dataset_options: this is an argument list that will be
             passed to the GTiff driver.  Useful for blocksizes, compression,
             etc.
-        all_touched (boolean): if true the clip uses the option ALL_TOUCHED=TRUE
-            when calling RasterizeLayer for AOI masking.
+        all_touched (boolean): if true the clip uses the option
+            ALL_TOUCHED=TRUE when calling RasterizeLayer for AOI masking.
 
     Returns:
         None
@@ -2263,7 +2263,7 @@ def vectorize_datasets(
     Raises:
         ValueError: invalid input provided
     """
-    if type(dataset_uri_list) != list:
+    if isinstance(dataset_uri_list) != list:
         raise ValueError(
             "dataset_uri_list was not passed in as a list, maybe a single "
             "file was passed in?  Here is its value: %s" %
@@ -2446,8 +2446,8 @@ def vectorize_datasets(
                 os.remove(temp_dataset_uri)
             except OSError:
                 LOGGER.warn("couldn't delete file %s", temp_dataset_uri)
-    calculate_raster_stats_uri(dataset_out_uri)
-
+    calculate_raster_stats_uri(dataset_out_uri
+)
 
 def get_lookup_from_table(table_uri, key_field):
     """Read table file in as dictionary.
