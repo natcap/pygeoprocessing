@@ -16,9 +16,6 @@ from libc.math cimport ceil
 
 from osgeo import gdal
 
-logging.basicConfig(format='%(asctime)s %(name)-18s %(levelname)-8s \
-    %(message)s', level=logging.DEBUG, datefmt='%m/%d/%Y %H:%M:%S ')
-
 LOGGER = logging.getLogger('geoprocessing_cython')
 
 
@@ -82,7 +79,7 @@ def _cython_calculate_slope(dem_dataset_uri, slope_uri):
         returns nothing"""
 
     #Read the DEM directly into an array
-    cdef float a,b,c,d,e,f,g,h,i,dem_nodata
+    cdef float a,b,c,d,e,f,g,h,i,dem_nodata,z
     cdef int row_index, col_index, n_rows, n_cols
 
     dem_dataset = gdal.Open(dem_dataset_uri)
@@ -110,35 +107,92 @@ def _cython_calculate_slope(dem_dataset_uri, slope_uri):
     cdef numpy.ndarray[numpy.float_t, ndim=2] dzdx = numpy.empty((1, n_cols))
     cdef numpy.ndarray[numpy.float_t, ndim=2] dzdy = numpy.empty((1, n_cols))
 
-    for row_index in xrange(1, n_rows - 1):
+    for row_index in xrange(n_rows):
         #Loop through the dataset 3 rows at a time
-        dem_array = dem_band.ReadAsArray(0, row_index - 1, n_cols, 3, buf_obj=dem_array)
+        start_row_index = row_index - 1
+        n_rows_to_read = 3
+        # see if we need to loose a row on the top
+        if start_row_index < 0:
+            n_rows_to_read -= 1
+            start_row_index = 0
+        # see if we need to lose a row on the bottom
+        if start_row_index + 2 >= n_rows:
+            # -= 1 allows us to handle single row DEMs
+            n_rows_to_read -= 1
+
+        dem_array = dem_band.ReadAsArray(0, start_row_index, n_cols, n_rows_to_read, buf_obj=dem_array)
         slope_array[0, :] = slope_nodata
         dzdx[:] = slope_nodata
         dzdy[:] = slope_nodata
-        for col_index in xrange(1, n_cols - 1):
+        for col_index in xrange(n_cols):
             # abc
             # def
             # ghi
 
-            a = dem_array[0, col_index - 1]
-            if a == dem_nodata: continue
-            b = dem_array[0, col_index]
-            if b == dem_nodata: continue
-            c = dem_array[0, col_index + 1]
-            if c == dem_nodata: continue
-            d = dem_array[1, col_index - 1]
-            if d == dem_nodata: continue
+            # e will be the value of any out of bound or nodata pixels
             e = dem_array[1, col_index]
-            if e == dem_nodata: continue
-            f = dem_array[1, col_index + 1]
-            if f == dem_nodata: continue
-            g = dem_array[2, col_index - 1]
-            if g == dem_nodata: continue
-            h = dem_array[2, col_index]
-            if h == dem_nodata: continue
-            i = dem_array[2, col_index + 1]
-            if i == dem_nodata: continue
+            if e == dem_nodata:
+                continue
+
+            if row_index > 0:  # top bounds check
+                if col_index > 0:  # left bounds check
+                    a = dem_array[0, col_index - 1]
+                    if a == dem_nodata:
+                        a = e
+                else:
+                    a = e
+
+                b = dem_array[0, col_index]
+                if b == dem_nodata:
+                    b = e
+
+                if col_index < n_cols - 1:  # right bounds check
+                    c = dem_array[0, col_index + 1]
+                if c == dem_nodata:
+                    c = e
+            else:
+                # entire top row is out of bounds
+                a = e
+                b = e
+                c = e
+
+            if col_index > 0:  # left bounds check
+                d = dem_array[1, col_index - 1]
+                if d == dem_nodata:
+                    d = e
+            else:
+                d = e
+
+            if col_index < n_cols - 1:  # right bounds check
+                f = dem_array[1, col_index + 1]
+                if f == dem_nodata:
+                    f = e
+            else:
+                f = e
+
+            if row_index < n_rows - 1:  # bottom bounds check
+                if col_index > 0:  # left bounds check
+                    g = dem_array[2, col_index - 1]
+                    if g == dem_nodata:
+                        g = e
+                else:
+                    g = e
+
+                h = dem_array[2, col_index]
+                if h == dem_nodata:
+                    h = e
+
+                if col_index < n_cols - 1:  # right bounds check
+                    i = dem_array[2, col_index + 1]
+                    if i == dem_nodata:
+                        i = e
+                else:
+                    i = e
+            else:
+                # entire bottom row is out of bounds
+                g = e
+                h = e
+                i = e
 
             dzdx[0, col_index] = ((c+2*f+i) - (a+2*d+g)) / (cell_size_times_8)
             dzdy[0, col_index] = ((g+2*h+i) - (a+2*b+c)) / (cell_size_times_8)
@@ -345,6 +399,10 @@ def distance_transform_edt(input_mask_uri, output_distance_uri):
         dt[b_array == input_nodata] = output_nodata
         output_band.WriteArray(dt, xoff=0, yoff=local_row_index)
 
+    output_band.FlushCache()
+    output_band = None
+    gdal.Dataset.__swig_destroy__(output_dataset)
+    output_dataset = None
     input_mask_band = None
     gdal.Dataset.__swig_destroy__(input_mask_ds)
     input_mask_ds = None
@@ -446,126 +504,17 @@ def new_raster_from_base(
     new_raster.SetGeoTransform(geotransform)
     band = new_raster.GetRasterBand(1)
 
-    band.SetNoDataValue(nodata)
+    if nodata is not None:
+        band.SetNoDataValue(nodata)
+    else:
+        LOGGER.warn(
+            "None is passed in for the nodata value, failed to set any nodata "
+            "value for new raster.")
 
     if fill_value != None:
         band.Fill(fill_value)
-    else:
+    elif nodata is not None:
         band.Fill(nodata)
     band = None
 
     return new_raster
-
-
-cdef class BlockCache:
-    cdef numpy.int32_t[:,:] row_tag_cache
-    cdef numpy.int32_t[:,:] col_tag_cache
-    cdef numpy.int8_t[:,:] cache_dirty
-    cdef int n_block_rows
-    cdef int n_block_cols
-    cdef int block_col_size
-    cdef int block_row_size
-    cdef int n_rows
-    cdef int n_cols
-    band_list = []
-    block_list = []
-    update_list = []
-
-    def __cinit__(
-        self, int n_block_rows, int n_block_cols, int n_rows, int n_cols, int block_row_size, int block_col_size, band_list, block_list, update_list, numpy.int8_t[:,:] cache_dirty):
-        self.n_block_rows = n_block_rows
-        self.n_block_cols = n_block_cols
-        self.block_col_size = block_col_size
-        self.block_row_size = block_row_size
-        self.n_rows = n_rows
-        self.n_cols = n_cols
-        self.row_tag_cache = numpy.zeros((n_block_rows, n_block_cols), dtype=numpy.int32)
-        self.col_tag_cache = numpy.zeros((n_block_rows, n_block_cols), dtype=numpy.int32)
-        self.cache_dirty = cache_dirty
-        self.row_tag_cache[:] = -1
-        self.col_tag_cache[:] = -1
-        self.band_list[:] = band_list
-        self.block_list[:] = block_list
-        self.update_list[:] = update_list
-
-    @cython.boundscheck(False)
-    @cython.wraparound(False)
-    @cython.cdivision(True)
-    cdef void update_cache(self, int global_row, int global_col, int *row_index, int *col_index, int *row_block_offset, int *col_block_offset):
-        cdef int cache_row_size, cache_col_size
-        cdef int global_row_offset, global_col_offset
-        cdef int row_tag, col_tag
-
-        row_block_offset[0] = global_row % self.block_row_size
-        row_index[0] = (global_row // self.block_row_size) % self.n_block_rows
-        row_tag = (global_row // self.block_row_size) // self.n_block_rows
-
-        col_block_offset[0] = global_col % self.block_col_size
-        col_index[0] = (global_col // self.block_col_size) % self.n_block_cols
-        col_tag = (global_col // self.block_col_size) // self.n_block_cols
-
-        cdef int current_row_tag = self.row_tag_cache[row_index[0], col_index[0]]
-        cdef int current_col_tag = self.col_tag_cache[row_index[0], col_index[0]]
-
-        if current_row_tag != row_tag or current_col_tag != col_tag:
-            if self.cache_dirty[row_index[0], col_index[0]]:
-                global_col_offset = (current_col_tag * self.n_block_cols + col_index[0]) * self.block_col_size
-                cache_col_size = self.n_cols - global_col_offset
-                if cache_col_size > self.block_col_size:
-                    cache_col_size = self.block_col_size
-
-                global_row_offset = (current_row_tag * self.n_block_rows + row_index[0]) * self.block_row_size
-                cache_row_size = self.n_rows - global_row_offset
-                if cache_row_size > self.block_row_size:
-                    cache_row_size = self.block_row_size
-
-                for band, block, update in zip(self.band_list, self.block_list, self.update_list):
-                    if update:
-                        band.WriteArray(block[row_index[0], col_index[0], 0:cache_row_size, 0:cache_col_size],
-                            yoff=global_row_offset, xoff=global_col_offset)
-                self.cache_dirty[row_index[0], col_index[0]] = 0
-            self.row_tag_cache[row_index[0], col_index[0]] = row_tag
-            self.col_tag_cache[row_index[0], col_index[0]] = col_tag
-
-            global_col_offset = (col_tag * self.n_block_cols + col_index[0]) * self.block_col_size
-            global_row_offset = (row_tag * self.n_block_rows + row_index[0]) * self.block_row_size
-
-            cache_col_size = self.n_cols - global_col_offset
-            if cache_col_size > self.block_col_size:
-                cache_col_size = self.block_col_size
-            cache_row_size = self.n_rows - global_row_offset
-            if cache_row_size > self.block_row_size:
-                cache_row_size = self.block_row_size
-
-            for band, block in zip(self.band_list, self.block_list):
-                band.ReadAsArray(
-                    xoff=global_col_offset, yoff=global_row_offset,
-                    win_xsize=cache_col_size, win_ysize=cache_row_size,
-                    buf_obj=block[row_index[0], col_index[0], 0:cache_row_size, 0:cache_col_size])
-
-    cdef void flush_cache(self):
-        cdef int global_row_offset, global_col_offset
-        cdef int cache_row_size, cache_col_size
-        cdef int row_index, col_index
-        for row_index in xrange(self.n_block_rows):
-            for col_index in xrange(self.n_block_cols):
-                row_tag = self.row_tag_cache[row_index, col_index]
-                col_tag = self.col_tag_cache[row_index, col_index]
-
-                if self.cache_dirty[row_index, col_index]:
-                    global_col_offset = (col_tag * self.n_block_cols + col_index) * self.block_col_size
-                    cache_col_size = self.n_cols - global_col_offset
-                    if cache_col_size > self.block_col_size:
-                        cache_col_size = self.block_col_size
-
-                    global_row_offset = (row_tag * self.n_block_rows + row_index) * self.block_row_size
-                    cache_row_size = self.n_rows - global_row_offset
-                    if cache_row_size > self.block_row_size:
-                        cache_row_size = self.block_row_size
-
-                    for band, block, update in zip(self.band_list, self.block_list, self.update_list):
-                        if update:
-                            band.WriteArray(block[row_index, col_index, 0:cache_row_size, 0:cache_col_size],
-                                yoff=global_row_offset, xoff=global_col_offset)
-        for band in self.band_list:
-            band.FlushCache()
