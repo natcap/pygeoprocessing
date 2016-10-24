@@ -2342,10 +2342,8 @@ def vectorize_datasets(
         mask_band = mask_dataset.GetRasterBand(1)
         aoi_datasource = ogr.Open(aoi_uri)
         aoi_layer = aoi_datasource.GetLayer()
-        if all_touched:
-            option_list = ["ALL_TOUCHED=TRUE"]
-        else:
-            option_list = []
+        # account for possible ALL_TOUCHED flag
+        option_list = ["ALL_TOUCHED=%s" % str(all_touched).upper]
         gdal.RasterizeLayer(
             mask_dataset, [1], aoi_layer, burn_values=[1], options=option_list)
         aoi_layer = None
@@ -2374,13 +2372,12 @@ def vectorize_datasets(
             if col_block_width > cols_per_block:
                 col_block_width = cols_per_block
 
-            current_time = time.time()
-            if current_time - last_time > 5.0:
-                LOGGER.info(
+            last_time = _invoke_timed_callback(
+                last_time, lambda: LOGGER.info(
                     'raster stack calculation approx. %.2f%% complete',
                     ((row_block_index * n_col_blocks + col_block_index) /
-                     float(n_row_blocks * n_col_blocks) * 100.0))
-                last_time = current_time
+                     float(n_row_blocks * n_col_blocks) * 100.0)),
+                _LOGGING_PERIOD)
 
             #This is true at least once since last_* initialized with None
             if (last_row_block_width != row_block_width or
@@ -2446,8 +2443,7 @@ def vectorize_datasets(
                 os.remove(temp_dataset_uri)
             except OSError:
                 LOGGER.warn("couldn't delete file %s", temp_dataset_uri)
-    calculate_raster_stats_uri(dataset_out_uri
-)
+    calculate_raster_stats_uri(dataset_out_uri)
 
 def get_lookup_from_table(table_uri, key_field):
     """Read table file in as dictionary.
