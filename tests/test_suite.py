@@ -49,11 +49,11 @@ class TestRasterFunctions(unittest.TestCase):
     """Tests for raster based functionality."""
 
     def setUp(self):
-        """Predefine filename as something temporary."""
+        """Keep track of all the temporary files created."""
         self.temporary_filenames = set()
 
     def tearDown(self):
-        """Clean up temporary file made in setup."""
+        """Clean up temporary file made during test."""
         for filename in self.temporary_filenames:
             try:
                 os.remove(filename)
