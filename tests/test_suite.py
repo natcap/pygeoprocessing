@@ -2,6 +2,7 @@
 
 import os
 import unittest
+import mock
 
 import gdal
 import numpy
@@ -103,6 +104,43 @@ class TestRasterFunctions(unittest.TestCase):
             pygeoprocessing.vectorize_datasets(
                 [self.raster_filename], lambda x: x, self.raster_filename,
                 gdal.GDT_Int32, nodata, 30, 'intersection')
+
+    @mock.patch('os.remove')
+    def test_vec_datasets_oserror(self, os_remove_mock):
+        """PGP.geoprocessing: vec_datasets os.remove OSError handling."""
+        os_remove_mock.side_effect = OSError('Mock OSError')
+
+        pixel_matrix = numpy.ones((5, 5), numpy.int16)
+        reference = sampledata.SRS_COLOMBIA
+        nodata = -1
+        pygeoprocessing.testing.create_raster_on_disk(
+            [pixel_matrix], reference.origin, reference.projection, nodata,
+            reference.pixel_size(30), filename=self.raster_filename)
+
+        polygons = [
+            Polygon([
+                (reference.origin[0] + reference.pixel_size(30)[0] * 0,
+                 reference.origin[1] + reference.pixel_size(30)[1] * 0),
+                (reference.origin[0] + reference.pixel_size(30)[0] * 5,
+                 reference.origin[1] + reference.pixel_size(30)[1] * 0),
+                (reference.origin[0] + reference.pixel_size(30)[0] * 5,
+                 reference.origin[1] + reference.pixel_size(30)[1] * 5),
+                (reference.origin[0] + reference.pixel_size(30)[0] * 0,
+                 reference.origin[1] + reference.pixel_size(30)[1] * 5),
+                (reference.origin[0] + reference.pixel_size(30)[0] * 0,
+                 reference.origin[1] + reference.pixel_size(30)[1] * 0),
+                ]),
+        ]
+        pygeoprocessing.testing.create_vector_on_disk(
+            polygons, reference.projection, filename=self.aoi_filename)
+
+        out_filename = pygeoprocessing.temporary_filename()
+        pygeoprocessing.vectorize_datasets(
+            [self.raster_filename], lambda x: x, out_filename,
+            gdal.GDT_Int32, nodata, 30, 'intersection',
+            aoi_uri=self.aoi_filename)
+        pygeoprocessing.testing.assert_rasters_equal(
+            self.raster_filename, out_filename, rel_tol=1e-9)
 
     def test_vect_datasets_bad_bbs(self):
         """PGP.geoprocessing: vect..._datasets expected error on bad BBox."""

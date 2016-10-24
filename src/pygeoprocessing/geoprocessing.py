@@ -2131,7 +2131,10 @@ def align_dataset_list(
         mask_band = None
         gdal.Dataset.__swig_destroy__(mask_dataset)
         mask_dataset = None
-        os.remove(mask_uri)
+        try:
+            os.remove(mask_uri)
+        except OSError:
+            LOGGER.warn("Couldn't clean up temporary mask_uri: %s", mask_uri)
 
         # Close and clean up datasource
         aoi_layer = None
