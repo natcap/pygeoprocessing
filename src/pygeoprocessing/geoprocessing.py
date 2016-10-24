@@ -2321,17 +2321,6 @@ def vectorize_datasets(
         aligned_datasets[0], dataset_out_uri, 'GTiff', nodata_out,
         datatype_out, dataset_options=dataset_options)
     output_band = output_dataset.GetRasterBand(1)
-    block_size = output_band.GetBlockSize()
-    # makes sense to get the largest block size possible to reduce the number
-    # of expensive readasarray calls
-    for current_block_size in [band.GetBlockSize() for band in aligned_bands]:
-        if (current_block_size[0] * current_block_size[1] >
-                block_size[0] * block_size[1]):
-            block_size = current_block_size
-
-    cols_per_block, rows_per_block = block_size[0], block_size[1]
-    n_col_blocks = int(math.ceil(n_cols / float(cols_per_block)))
-    n_row_blocks = int(math.ceil(n_rows / float(rows_per_block)))
 
     # If there's an AOI, mask it out
     if aoi_uri is not None:
@@ -2357,64 +2346,41 @@ def vectorize_datasets(
             dataset_pixel_op, otypes=[_gdal_to_numpy_type(output_band)])
 
     last_time = time.time()
-
-    last_row_block_width = None
-    last_col_block_width = None
-    for row_block_index in xrange(n_row_blocks):
-        row_offset = row_block_index * rows_per_block
-        row_block_width = n_rows - row_offset
-        if row_block_width > rows_per_block:
-            row_block_width = rows_per_block
-
-        for col_block_index in xrange(n_col_blocks):
-            col_offset = col_block_index * cols_per_block
-            col_block_width = n_cols - col_offset
-            if col_block_width > cols_per_block:
-                col_block_width = cols_per_block
-
-            last_time = _invoke_timed_callback(
-                last_time, lambda: LOGGER.info(
-                    'raster stack calculation approx. %.2f%% complete',
-                    ((row_block_index * n_col_blocks + col_block_index) /
-                     float(n_row_blocks * n_col_blocks) * 100.0)),
-                _LOGGING_PERIOD)
-
-            #This is true at least once since last_* initialized with None
-            if (last_row_block_width != row_block_width or
-                    last_col_block_width != col_block_width):
-                dataset_blocks = [
-                    numpy.zeros(
-                        (row_block_width, col_block_width),
-                        dtype=_gdal_to_numpy_type(band)) for band in aligned_bands]
-
-                if aoi_uri != None:
-                    mask_array = numpy.zeros(
-                        (row_block_width, col_block_width), dtype=numpy.int8)
-
-                last_row_block_width = row_block_width
-                last_col_block_width = col_block_width
-
-            for dataset_index in xrange(len(aligned_bands)):
-                aligned_bands[dataset_index].ReadAsArray(
-                    xoff=col_offset, yoff=row_offset,
-                    win_xsize=col_block_width,
-                    win_ysize=row_block_width,
-                    buf_obj=dataset_blocks[dataset_index])
-
-            out_block = dataset_pixel_op(*dataset_blocks)
-
-            # Mask out the row if there is a mask
+    block_offset = None
+    dataset_blocks = None
+    last_blocksize = None
+    for block_offset in iterblocks(dataset_uri_list[0], offset_only=True):
+        last_time = _invoke_timed_callback(
+            last_time, lambda: LOGGER.info(
+                'raster stack calculation approx. %.2f%% complete',
+                100.0 * ((n_rows - block_offset['yoff']) *
+                         n_cols - block_offset['xoff']) / (n_rows * n_cols)),
+            _LOGGING_PERIOD)
+        blocksize = (block_offset['win_ysize'], block_offset['win_xsize'])
+        if last_blocksize != blocksize:
+            dataset_blocks = [numpy.zeros(
+                blocksize,
+                dtype=_gdal_to_numpy_type(band)) for band in aligned_bands]
             if aoi_uri is not None:
-                mask_band.ReadAsArray(
-                    xoff=col_offset, yoff=row_offset,
-                    win_xsize=col_block_width,
-                    win_ysize=row_block_width,
-                    buf_obj=mask_array)
-                out_block[mask_array == 0] = nodata_out
+                mask_array = numpy.zeros(blocksize, dtype=numpy.int8)
+            last_blocksize = blocksize
 
-            output_band.WriteArray(
-                out_block[0:row_block_width, 0:col_block_width],
-                xoff=col_offset, yoff=row_offset)
+        for dataset_index in xrange(len(aligned_bands)):
+            band_data = block_offset.copy()
+            band_data['buf_obj'] = dataset_blocks[dataset_index]
+            aligned_bands[dataset_index].ReadAsArray(**band_data)
+
+        out_block = dataset_pixel_op(*dataset_blocks)
+
+        # Mask out the row if there is a mask
+        if aoi_uri is not None:
+            mask_data = block_offset.copy()
+            mask_data['buf_obj'] = mask_array
+            mask_band.ReadAsArray(**mask_data)
+            out_block[mask_array == 0] = nodata_out
+
+        output_band.WriteArray(
+            out_block, xoff=block_offset['xoff'], yoff=block_offset['yoff'])
 
     # Making sure the band and dataset is flushed and not in memory before
     # adding stats
@@ -2431,7 +2397,10 @@ def vectorize_datasets(
         mask_band = None
         gdal.Dataset.__swig_destroy__(mask_dataset)
         mask_dataset = None
-        os.remove(mask_uri)
+        try:
+            os.remove(mask_uri)
+        except OSError:
+            LOGGER.warn("couldn't delete file %s", mask_uri)
     aligned_bands = None
     for dataset in aligned_datasets:
         gdal.Dataset.__swig_destroy__(dataset)
