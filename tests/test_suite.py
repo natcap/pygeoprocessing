@@ -6,6 +6,7 @@ import mock
 
 import gdal
 import numpy
+import logging
 
 from shapely.geometry import Polygon
 import pygeoprocessing
@@ -49,27 +50,31 @@ class TestRasterFunctions(unittest.TestCase):
 
     def setUp(self):
         """Predefine filename as something temporary."""
-        self.raster_filename = pygeoprocessing.temporary_filename()
-        self.aoi_filename = pygeoprocessing.temporary_filename()
-        os.remove(self.aoi_filename)
+        self.temporary_filenames = set()
 
     def tearDown(self):
         """Clean up temporary file made in setup."""
-        os.remove(self.raster_filename)
-        if os.path.exists(self.aoi_filename):
-            os.remove(self.aoi_filename)
+        for filename in self.temporary_filenames:
+            try:
+                os.remove(filename)
+            except OSError:
+                # might fail because the filename doesn't exist anmore, or
+                # some other reason, nothing we can do about it now...
+                pass
 
     def test_get_nodata(self):
         """PGP.geoprocessing: Test nodata values get set and read."""
         pixel_matrix = numpy.ones((5, 5), numpy.int16)
         reference = sampledata.SRS_COLOMBIA
+        raster_filename = pygeoprocessing.temporary_filename()
+        self.temporary_filenames.add(raster_filename)
         for nodata in [5, 10, -5, 9999]:
             pygeoprocessing.testing.create_raster_on_disk(
                 [pixel_matrix], reference.origin, reference.projection, nodata,
-                reference.pixel_size(30), filename=self.raster_filename)
+                reference.pixel_size(30), filename=raster_filename)
 
             raster_nodata = pygeoprocessing.get_nodata_from_uri(
-                self.raster_filename)
+                raster_filename)
             self.assertEqual(raster_nodata, nodata)
 
     def test_vect_datasets_bad_filelist(self):
@@ -77,16 +82,18 @@ class TestRasterFunctions(unittest.TestCase):
         pixel_matrix = numpy.ones((5, 5), numpy.int16)
         reference = sampledata.SRS_COLOMBIA
         nodata = -1
+        raster_filename = pygeoprocessing.temporary_filename()
+        self.temporary_filenames.add(raster_filename)
         pygeoprocessing.testing.create_raster_on_disk(
             [pixel_matrix], reference.origin, reference.projection, nodata,
-            reference.pixel_size(30), filename=self.raster_filename)
+            reference.pixel_size(30), filename=raster_filename)
 
         out_filename = pygeoprocessing.temporary_filename()
         with self.assertRaises(ValueError):
             # intentionally passing a filename rather than a list of files
             # to get an expected exception
             pygeoprocessing.vectorize_datasets(
-                self.raster_filename, lambda x: x, out_filename,
+                raster_filename, lambda x: x, out_filename,
                 gdal.GDT_Int32, nodata, 30, 'intersection')
 
     def test_vect_datasets_output_alias(self):
@@ -94,28 +101,29 @@ class TestRasterFunctions(unittest.TestCase):
         pixel_matrix = numpy.ones((5, 5), numpy.int16)
         reference = sampledata.SRS_COLOMBIA
         nodata = -1
+        raster_filename = pygeoprocessing.temporary_filename()
+        self.temporary_filenames.add(raster_filename)
         pygeoprocessing.testing.create_raster_on_disk(
             [pixel_matrix], reference.origin, reference.projection, nodata,
-            reference.pixel_size(30), filename=self.raster_filename)
+            reference.pixel_size(30), filename=raster_filename)
 
         with self.assertRaises(ValueError):
             # intentionally passing a filename rather than a list of files
             # to get an expected exception
             pygeoprocessing.vectorize_datasets(
-                [self.raster_filename], lambda x: x, self.raster_filename,
+                [raster_filename], lambda x: x, raster_filename,
                 gdal.GDT_Int32, nodata, 30, 'intersection')
 
-    @mock.patch('os.remove')
-    def test_vec_datasets_oserror(self, os_remove_mock):
+    def test_vec_datasets_oserror(self):
         """PGP.geoprocessing: vec_datasets os.remove OSError handling."""
-        os_remove_mock.side_effect = OSError('Mock OSError')
-
         pixel_matrix = numpy.ones((5, 5), numpy.int16)
         reference = sampledata.SRS_COLOMBIA
         nodata = -1
+        raster_filename = pygeoprocessing.temporary_filename()
+        self.temporary_filenames.add(raster_filename)
         pygeoprocessing.testing.create_raster_on_disk(
             [pixel_matrix], reference.origin, reference.projection, nodata,
-            reference.pixel_size(30), filename=self.raster_filename)
+            reference.pixel_size(30), filename=raster_filename)
 
         polygons = [
             Polygon([
@@ -131,32 +139,41 @@ class TestRasterFunctions(unittest.TestCase):
                  reference.origin[1] + reference.pixel_size(30)[1] * 0),
                 ]),
         ]
+        aoi_filename = pygeoprocessing.temporary_filename()
+        self.temporary_filenames.add(aoi_filename)
+        os.remove(aoi_filename)
         pygeoprocessing.testing.create_vector_on_disk(
-            polygons, reference.projection, filename=self.aoi_filename)
+            polygons, reference.projection, filename=aoi_filename)
 
         out_filename = pygeoprocessing.temporary_filename()
-        pygeoprocessing.vectorize_datasets(
-            [self.raster_filename], lambda x: x, out_filename,
-            gdal.GDT_Int32, nodata, 30, 'intersection',
-            aoi_uri=self.aoi_filename)
+        self.temporary_filenames.add(out_filename)
+        with mock.patch.object(
+                os, 'remove', return_value=None) as os_remove_mock:
+            os_remove_mock.side_effect = OSError('Mock OSError')
+            pygeoprocessing.vectorize_datasets(
+                [raster_filename], lambda x: x, out_filename,
+                gdal.GDT_Int32, nodata, 30, 'intersection',
+                aoi_uri=aoi_filename)
         pygeoprocessing.testing.assert_rasters_equal(
-            self.raster_filename, out_filename, rel_tol=1e-9)
+            raster_filename, out_filename, rel_tol=1e-9)
 
     def test_vect_datasets_bad_bbs(self):
         """PGP.geoprocessing: vect..._datasets expected error on bad BBox."""
         pixel_matrix = numpy.ones((5, 5), numpy.int16)
         reference = sampledata.SRS_COLOMBIA
         nodata = -1
+        raster_filename = pygeoprocessing.temporary_filename()
+        self.temporary_filenames.add(raster_filename)
         pygeoprocessing.testing.create_raster_on_disk(
             [pixel_matrix], reference.origin, reference.projection, nodata,
-            reference.pixel_size(30), filename=self.raster_filename)
+            reference.pixel_size(30), filename=raster_filename)
 
         out_filename = pygeoprocessing.temporary_filename()
         with self.assertRaises(ValueError):
             # intentionally passing a filename rather than a list of files
             # to get an expected exception
             pygeoprocessing.vectorize_datasets(
-                [self.raster_filename], lambda x: x, out_filename,
+                [raster_filename], lambda x: x, out_filename,
                 gdal.GDT_Int32, nodata, 30, 'bad_mode')
 
     def test_vect_datasets_identity(self):
@@ -164,26 +181,31 @@ class TestRasterFunctions(unittest.TestCase):
         pixel_matrix = numpy.ones((5, 5), numpy.int16)
         reference = sampledata.SRS_COLOMBIA
         nodata = -1
+        raster_filename = pygeoprocessing.temporary_filename()
+        self.temporary_filenames.add(raster_filename)
         pygeoprocessing.testing.create_raster_on_disk(
             [pixel_matrix], reference.origin, reference.projection, nodata,
-            reference.pixel_size(30), filename=self.raster_filename)
+            reference.pixel_size(30), filename=raster_filename)
 
         out_filename = pygeoprocessing.temporary_filename()
+        self.temporary_filenames.add(out_filename)
         pygeoprocessing.vectorize_datasets(
-            [self.raster_filename], lambda x: x, out_filename, gdal.GDT_Int32,
+            [raster_filename], lambda x: x, out_filename, gdal.GDT_Int32,
             nodata, 30, 'intersection')
 
         pygeoprocessing.testing.assert_rasters_equal(
-            self.raster_filename, out_filename, rel_tol=1e-9)
+            raster_filename, out_filename, rel_tol=1e-9)
 
     def test_vect_datasets_identity_aoi(self):
         """PGP.geoprocessing: vectorize_datasets f(x)=x with AOI."""
         pixel_matrix = numpy.ones((5, 5), numpy.int16)
         reference = sampledata.SRS_COLOMBIA
         nodata = -1
+        raster_filename = pygeoprocessing.temporary_filename()
+        self.temporary_filenames.add(raster_filename)
         pygeoprocessing.testing.create_raster_on_disk(
             [pixel_matrix], reference.origin, reference.projection, nodata,
-            reference.pixel_size(30), filename=self.raster_filename)
+            reference.pixel_size(30), filename=raster_filename)
 
         polygons = [
             Polygon([
@@ -199,30 +221,35 @@ class TestRasterFunctions(unittest.TestCase):
                  reference.origin[1] + reference.pixel_size(30)[1] * 0),
                 ]),
         ]
+        aoi_filename = pygeoprocessing.temporary_filename()
+        self.temporary_filenames.add(aoi_filename)
+        os.remove(aoi_filename)
         pygeoprocessing.testing.create_vector_on_disk(
-            polygons, reference.projection, filename=self.aoi_filename)
+            polygons, reference.projection, filename=aoi_filename)
 
         out_filename = pygeoprocessing.temporary_filename()
         pygeoprocessing.vectorize_datasets(
-            [self.raster_filename], lambda x: x, out_filename, gdal.GDT_Int32,
-            nodata, 30, 'intersection', aoi_uri=self.aoi_filename)
+            [raster_filename], lambda x: x, out_filename, gdal.GDT_Int32,
+            nodata, 30, 'intersection', aoi_uri=aoi_filename)
 
         pygeoprocessing.testing.assert_rasters_equal(
-            self.raster_filename, out_filename, rel_tol=1e-9)
+            raster_filename, out_filename, rel_tol=1e-9)
 
     def test_iterblocks(self):
         """PGP.geoprocessing: Sum a 1000**2 raster using iterblocks."""
         pixel_matrix = numpy.ones((1000, 1000))
         nodata = 0
         reference = sampledata.SRS_COLOMBIA
+        raster_filename = pygeoprocessing.temporary_filename()
+        self.temporary_filenames.add(raster_filename)
         pygeoprocessing.testing.create_raster_on_disk(
             [pixel_matrix], reference.origin, reference.projection, nodata,
-            reference.pixel_size(30), filename=self.raster_filename,
+            reference.pixel_size(30), filename=raster_filename,
             dataset_opts=['TILED=YES'])
 
         raster_sum = 0
         for _, memblock in pygeoprocessing.iterblocks(
-                self.raster_filename):
+                raster_filename):
             raster_sum += memblock.sum()
 
         self.assertEqual(raster_sum, 1000000)
@@ -233,14 +260,16 @@ class TestRasterFunctions(unittest.TestCase):
         nodata = 0
         reference = sampledata.SRS_COLOMBIA
         # double one value so we can ensure we're getting out different bands
+        raster_filename = pygeoprocessing.temporary_filename()
+        self.temporary_filenames.add(raster_filename)
         pygeoprocessing.testing.create_raster_on_disk(
             [pixel_matrix, 2 * pixel_matrix], reference.origin,
             reference.projection, nodata,
-            reference.pixel_size(30), filename=self.raster_filename,
+            reference.pixel_size(30), filename=raster_filename,
             dataset_opts=['TILED=YES'])
 
         for _, band_1_block, band_2_block in \
-                pygeoprocessing.iterblocks(self.raster_filename):
+                pygeoprocessing.iterblocks(raster_filename):
             numpy.testing.assert_almost_equal(band_1_block * 2, band_2_block)
 
     def test_default_blocksizes_tiled(self):
@@ -248,12 +277,14 @@ class TestRasterFunctions(unittest.TestCase):
         pixel_matrix = numpy.ones((1000, 1000))
         nodata = 0
         reference = sampledata.SRS_COLOMBIA
+        raster_filename = pygeoprocessing.temporary_filename()
+        self.temporary_filenames.add(raster_filename)
         pygeoprocessing.testing.create_raster_on_disk(
             [pixel_matrix], reference.origin, reference.projection, nodata,
             reference.pixel_size(30), dataset_opts=['TILED=YES'],
-            filename=self.raster_filename)
+            filename=raster_filename)
 
-        raster = gdal.Open(self.raster_filename)
+        raster = gdal.Open(raster_filename)
         band = raster.GetRasterBand(1)
         block_size = band.GetBlockSize()
 
@@ -268,12 +299,14 @@ class TestRasterFunctions(unittest.TestCase):
         pixel_matrix = numpy.ones((1000, 1000))
         nodata = 0
         reference = sampledata.SRS_COLOMBIA
+        raster_filename = pygeoprocessing.temporary_filename()
+        self.temporary_filenames.add(raster_filename)
         pygeoprocessing.testing.create_raster_on_disk(
             [pixel_matrix], reference.origin, reference.projection, nodata,
             reference.pixel_size(30), dataset_opts=['TILED=NO'],
-            filename=self.raster_filename)
+            filename=raster_filename)
 
-        raster = gdal.Open(self.raster_filename)
+        raster = gdal.Open(raster_filename)
         band = raster.GetRasterBand(1)
         block_size = band.GetBlockSize()
 
@@ -287,12 +320,14 @@ class TestRasterFunctions(unittest.TestCase):
         pixel_matrix = numpy.ones((1000, 1000))
         nodata = 0
         reference = sampledata.SRS_COLOMBIA
+        raster_filename = pygeoprocessing.temporary_filename()
+        self.temporary_filenames.add(raster_filename)
         pygeoprocessing.testing.create_raster_on_disk(
             [pixel_matrix], reference.origin, reference.projection, nodata,
             reference.pixel_size(30), dataset_opts=[
                 'TILED=YES', 'BLOCKXSIZE=128', 'BLOCKYSIZE=256'],
-            filename=self.raster_filename)
-        raster = gdal.Open(self.raster_filename)
+            filename=raster_filename)
+        raster = gdal.Open(raster_filename)
         band = raster.GetRasterBand(1)
         block_size = band.GetBlockSize()
 
@@ -303,13 +338,15 @@ class TestRasterFunctions(unittest.TestCase):
         pixel_matrix = numpy.ones((1000, 1000))
         nodata = 0
         reference = sampledata.SRS_COLOMBIA
+        raster_filename = pygeoprocessing.temporary_filename()
+        self.temporary_filenames.add(raster_filename)
         pygeoprocessing.testing.create_raster_on_disk(
             [pixel_matrix, pixel_matrix], reference.origin,
             reference.projection, nodata, reference.pixel_size(30),
             dataset_opts=['TILED=YES', 'BLOCKXSIZE=128', 'BLOCKYSIZE=256'],
-            filename=self.raster_filename)
+            filename=raster_filename)
 
-        raster = gdal.Open(self.raster_filename)
+        raster = gdal.Open(raster_filename)
         for band_index in [1, 2]:
             band = raster.GetRasterBand(band_index)
             # Not sure why the BlockSize is a band attribute, as it's set
