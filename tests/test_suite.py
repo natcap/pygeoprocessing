@@ -62,6 +62,41 @@ class TestRasterFunctions(unittest.TestCase):
                 # some other reason, nothing we can do about it now...
                 pass
 
+    def test_align_dataset_list_intersection(self):
+        """PGP.geoprocessing: double raster align dataset test intersect."""
+        pixel_matrix = numpy.ones((5, 5), numpy.int16)
+        reference = sampledata.SRS_COLOMBIA
+        nodata = -1
+        raster_a_filename = pygeoprocessing.temporary_filename()
+        self.temporary_filenames.add(raster_a_filename)
+        pygeoprocessing.testing.create_raster_on_disk(
+            [pixel_matrix], reference.origin, reference.projection, nodata,
+            reference.pixel_size(30), filename=raster_a_filename)
+        pixel_matrix = numpy.ones((15, 15), numpy.int16)
+        raster_b_filename = pygeoprocessing.temporary_filename()
+        self.temporary_filenames.add(raster_b_filename)
+        pygeoprocessing.testing.create_raster_on_disk(
+            [pixel_matrix], reference.origin, reference.projection, nodata,
+            reference.pixel_size(30), filename=raster_b_filename)
+
+        out_a_filename = pygeoprocessing.temporary_filename()
+        self.temporary_filenames.add(out_a_filename)
+        out_b_filename = pygeoprocessing.temporary_filename()
+        self.temporary_filenames.add(out_b_filename)
+
+        pygeoprocessing.align_dataset_list(
+            [raster_a_filename, raster_b_filename],
+            [out_a_filename, out_b_filename], ['nearest', 'nearest'],
+            30, 'intersection', 0,
+            dataset_to_bound_index=None, aoi_uri=None,
+            assert_datasets_projected=True, all_touched=False)
+
+        # both output rasters should the the same as input 'a'
+        pygeoprocessing.testing.assert_rasters_equal(
+            raster_a_filename, out_a_filename, rel_tol=1e-9)
+        pygeoprocessing.testing.assert_rasters_equal(
+            raster_a_filename, out_b_filename, rel_tol=1e-9)
+
     def test_get_nodata(self):
         """PGP.geoprocessing: Test nodata values get set and read."""
         pixel_matrix = numpy.ones((5, 5), numpy.int16)
