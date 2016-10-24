@@ -101,8 +101,25 @@ class TestRasterFunctions(unittest.TestCase):
             # intentionally passing a filename rather than a list of files
             # to get an expected exception
             pygeoprocessing.vectorize_datasets(
-                self.raster_filename, lambda x: x, self.raster_filename,
+                [self.raster_filename], lambda x: x, self.raster_filename,
                 gdal.GDT_Int32, nodata, 30, 'intersection')
+
+    def test_vect_datasets_bad_bbs(self):
+        """PGP.geoprocessing: vect..._datasets expected error on bad BBox."""
+        pixel_matrix = numpy.ones((5, 5), numpy.int16)
+        reference = sampledata.SRS_COLOMBIA
+        nodata = -1
+        pygeoprocessing.testing.create_raster_on_disk(
+            [pixel_matrix], reference.origin, reference.projection, nodata,
+            reference.pixel_size(30), filename=self.raster_filename)
+
+        out_filename = pygeoprocessing.temporary_filename()
+        with self.assertRaises(ValueError):
+            # intentionally passing a filename rather than a list of files
+            # to get an expected exception
+            pygeoprocessing.vectorize_datasets(
+                [self.raster_filename], lambda x: x, out_filename,
+                gdal.GDT_Int32, nodata, 30, 'bad_mode')
 
     def test_vect_datasets_identity(self):
         """PGP.geoprocessing: vectorize_datasets f(x)=x."""
