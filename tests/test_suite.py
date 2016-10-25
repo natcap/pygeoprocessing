@@ -1,12 +1,13 @@
 """Smoke test to make sure basic construction of the project is correct."""
 
+import tempfile
 import os
 import unittest
 import mock
+import shutil
 
 import gdal
 import numpy
-import logging
 
 from shapely.geometry import Polygon
 import pygeoprocessing
@@ -49,40 +50,30 @@ class TestRasterFunctions(unittest.TestCase):
     """Tests for raster based functionality."""
 
     def setUp(self):
-        """Keep track of all the temporary files created."""
-        self.temporary_filenames = set()
+        """Create a temporary workspace that's deleted later."""
+        self.workspace_dir = tempfile.mkdtemp()
 
     def tearDown(self):
-        """Clean up temporary file made during test."""
-        for filename in self.temporary_filenames:
-            try:
-                os.remove(filename)
-            except OSError:
-                # might fail because the filename doesn't exist anmore, or
-                # some other reason, nothing we can do about it now...
-                pass
+        """Clean up remaining files."""
+        shutil.rmtree(self.workspace_dir)
 
     def test_align_dataset_list_intersection(self):
         """PGP.geoprocessing: double raster align dataset test intersect."""
         pixel_matrix = numpy.ones((5, 5), numpy.int16)
         reference = sampledata.SRS_COLOMBIA
         nodata = -1
-        raster_a_filename = pygeoprocessing.temporary_filename()
-        self.temporary_filenames.add(raster_a_filename)
+        raster_a_filename = os.path.join(self.workspace_dir, 'a.tif')
         pygeoprocessing.testing.create_raster_on_disk(
             [pixel_matrix], reference.origin, reference.projection, nodata,
             reference.pixel_size(30), filename=raster_a_filename)
         pixel_matrix = numpy.ones((15, 15), numpy.int16)
-        raster_b_filename = pygeoprocessing.temporary_filename()
-        self.temporary_filenames.add(raster_b_filename)
+        raster_b_filename = os.path.join(self.workspace_dir, 'b.tif')
         pygeoprocessing.testing.create_raster_on_disk(
             [pixel_matrix], reference.origin, reference.projection, nodata,
             reference.pixel_size(30), filename=raster_b_filename)
 
-        out_a_filename = pygeoprocessing.temporary_filename()
-        self.temporary_filenames.add(out_a_filename)
-        out_b_filename = pygeoprocessing.temporary_filename()
-        self.temporary_filenames.add(out_b_filename)
+        out_a_filename = os.path.join(self.workspace_dir, 'a_out.tif')
+        out_b_filename = os.path.join(self.workspace_dir, 'b_out.tif')
 
         pygeoprocessing.align_dataset_list(
             [raster_a_filename, raster_b_filename],
@@ -101,8 +92,7 @@ class TestRasterFunctions(unittest.TestCase):
         """PGP.geoprocessing: Test nodata values get set and read."""
         pixel_matrix = numpy.ones((5, 5), numpy.int16)
         reference = sampledata.SRS_COLOMBIA
-        raster_filename = pygeoprocessing.temporary_filename()
-        self.temporary_filenames.add(raster_filename)
+        raster_filename = os.path.join(self.workspace_dir, 'raster.tif')
         for nodata in [5, 10, -5, 9999]:
             pygeoprocessing.testing.create_raster_on_disk(
                 [pixel_matrix], reference.origin, reference.projection, nodata,
@@ -117,8 +107,7 @@ class TestRasterFunctions(unittest.TestCase):
         pixel_matrix = numpy.ones((5, 5), numpy.int16)
         reference = sampledata.SRS_COLOMBIA
         nodata = -1
-        raster_filename = pygeoprocessing.temporary_filename()
-        self.temporary_filenames.add(raster_filename)
+        raster_filename = os.path.join(self.workspace_dir, 'raster.tif')
         pygeoprocessing.testing.create_raster_on_disk(
             [pixel_matrix], reference.origin, reference.projection, nodata,
             reference.pixel_size(30), filename=raster_filename)
@@ -136,8 +125,7 @@ class TestRasterFunctions(unittest.TestCase):
         pixel_matrix = numpy.ones((5, 5), numpy.int16)
         reference = sampledata.SRS_COLOMBIA
         nodata = -1
-        raster_filename = pygeoprocessing.temporary_filename()
-        self.temporary_filenames.add(raster_filename)
+        raster_filename = os.path.join(self.workspace_dir, 'raster.tif')
         pygeoprocessing.testing.create_raster_on_disk(
             [pixel_matrix], reference.origin, reference.projection, nodata,
             reference.pixel_size(30), filename=raster_filename)
@@ -154,8 +142,7 @@ class TestRasterFunctions(unittest.TestCase):
         pixel_matrix = numpy.ones((5, 5), numpy.int16)
         reference = sampledata.SRS_COLOMBIA
         nodata = -1
-        raster_filename = pygeoprocessing.temporary_filename()
-        self.temporary_filenames.add(raster_filename)
+        raster_filename = os.path.join(self.workspace_dir, 'raster.tif')
         pygeoprocessing.testing.create_raster_on_disk(
             [pixel_matrix], reference.origin, reference.projection, nodata,
             reference.pixel_size(30), filename=raster_filename)
@@ -174,14 +161,11 @@ class TestRasterFunctions(unittest.TestCase):
                  reference.origin[1] + reference.pixel_size(30)[1] * 0),
                 ]),
         ]
-        aoi_filename = pygeoprocessing.temporary_filename()
-        self.temporary_filenames.add(aoi_filename)
-        os.remove(aoi_filename)
+        aoi_filename = os.path.join(self.workspace_dir, 'aoi')
         pygeoprocessing.testing.create_vector_on_disk(
             polygons, reference.projection, filename=aoi_filename)
 
-        out_filename = pygeoprocessing.temporary_filename()
-        self.temporary_filenames.add(out_filename)
+        out_filename = os.path.join(self.workspace_dir, 'out.tif')
         with mock.patch.object(
                 os, 'remove', return_value=None) as os_remove_mock:
             os_remove_mock.side_effect = OSError('Mock OSError')
@@ -197,8 +181,7 @@ class TestRasterFunctions(unittest.TestCase):
         pixel_matrix = numpy.ones((5, 5), numpy.int16)
         reference = sampledata.SRS_COLOMBIA
         nodata = -1
-        raster_filename = pygeoprocessing.temporary_filename()
-        self.temporary_filenames.add(raster_filename)
+        raster_filename = os.path.join(self.workspace_dir, 'raster.tif')
         pygeoprocessing.testing.create_raster_on_disk(
             [pixel_matrix], reference.origin, reference.projection, nodata,
             reference.pixel_size(30), filename=raster_filename)
@@ -216,14 +199,12 @@ class TestRasterFunctions(unittest.TestCase):
         pixel_matrix = numpy.ones((5, 5), numpy.int16)
         reference = sampledata.SRS_COLOMBIA
         nodata = -1
-        raster_filename = pygeoprocessing.temporary_filename()
-        self.temporary_filenames.add(raster_filename)
+        raster_filename = os.path.join(self.workspace_dir, 'raster.tif')
         pygeoprocessing.testing.create_raster_on_disk(
             [pixel_matrix], reference.origin, reference.projection, nodata,
             reference.pixel_size(30), filename=raster_filename)
 
-        out_filename = pygeoprocessing.temporary_filename()
-        self.temporary_filenames.add(out_filename)
+        out_filename = os.path.join(self.workspace_dir, 'out.tif')
         pygeoprocessing.vectorize_datasets(
             [raster_filename], lambda x: x, out_filename, gdal.GDT_Int32,
             nodata, 30, 'intersection')
@@ -236,8 +217,7 @@ class TestRasterFunctions(unittest.TestCase):
         pixel_matrix = numpy.ones((5, 5), numpy.int16)
         reference = sampledata.SRS_COLOMBIA
         nodata = -1
-        raster_filename = pygeoprocessing.temporary_filename()
-        self.temporary_filenames.add(raster_filename)
+        raster_filename = os.path.join(self.workspace_dir, 'raster.tif')
         pygeoprocessing.testing.create_raster_on_disk(
             [pixel_matrix], reference.origin, reference.projection, nodata,
             reference.pixel_size(30), filename=raster_filename)
@@ -256,13 +236,11 @@ class TestRasterFunctions(unittest.TestCase):
                  reference.origin[1] + reference.pixel_size(30)[1] * 0),
                 ]),
         ]
-        aoi_filename = pygeoprocessing.temporary_filename()
-        self.temporary_filenames.add(aoi_filename)
-        os.remove(aoi_filename)
+        aoi_filename = os.path.join(self.workspace_dir, 'aoi')
         pygeoprocessing.testing.create_vector_on_disk(
             polygons, reference.projection, filename=aoi_filename)
 
-        out_filename = pygeoprocessing.temporary_filename()
+        out_filename = os.path.join(self.workspace_dir, 'out.tif')
         pygeoprocessing.vectorize_datasets(
             [raster_filename], lambda x: x, out_filename, gdal.GDT_Int32,
             nodata, 30, 'intersection', aoi_uri=aoi_filename)
@@ -275,8 +253,7 @@ class TestRasterFunctions(unittest.TestCase):
         pixel_matrix = numpy.ones((1000, 1000))
         nodata = 0
         reference = sampledata.SRS_COLOMBIA
-        raster_filename = pygeoprocessing.temporary_filename()
-        self.temporary_filenames.add(raster_filename)
+        raster_filename = os.path.join(self.workspace_dir, 'raster.tif')
         pygeoprocessing.testing.create_raster_on_disk(
             [pixel_matrix], reference.origin, reference.projection, nodata,
             reference.pixel_size(30), filename=raster_filename,
@@ -295,8 +272,7 @@ class TestRasterFunctions(unittest.TestCase):
         nodata = 0
         reference = sampledata.SRS_COLOMBIA
         # double one value so we can ensure we're getting out different bands
-        raster_filename = pygeoprocessing.temporary_filename()
-        self.temporary_filenames.add(raster_filename)
+        raster_filename = os.path.join(self.workspace_dir, 'raster.tif')
         pygeoprocessing.testing.create_raster_on_disk(
             [pixel_matrix, 2 * pixel_matrix], reference.origin,
             reference.projection, nodata,
@@ -312,8 +288,7 @@ class TestRasterFunctions(unittest.TestCase):
         pixel_matrix = numpy.ones((1000, 1000))
         nodata = 0
         reference = sampledata.SRS_COLOMBIA
-        raster_filename = pygeoprocessing.temporary_filename()
-        self.temporary_filenames.add(raster_filename)
+        raster_filename = os.path.join(self.workspace_dir, 'raster.tif')
         pygeoprocessing.testing.create_raster_on_disk(
             [pixel_matrix], reference.origin, reference.projection, nodata,
             reference.pixel_size(30), dataset_opts=['TILED=YES'],
@@ -334,8 +309,7 @@ class TestRasterFunctions(unittest.TestCase):
         pixel_matrix = numpy.ones((1000, 1000))
         nodata = 0
         reference = sampledata.SRS_COLOMBIA
-        raster_filename = pygeoprocessing.temporary_filename()
-        self.temporary_filenames.add(raster_filename)
+        raster_filename = os.path.join(self.workspace_dir, 'raster.tif')
         pygeoprocessing.testing.create_raster_on_disk(
             [pixel_matrix], reference.origin, reference.projection, nodata,
             reference.pixel_size(30), dataset_opts=['TILED=NO'],
@@ -355,8 +329,7 @@ class TestRasterFunctions(unittest.TestCase):
         pixel_matrix = numpy.ones((1000, 1000))
         nodata = 0
         reference = sampledata.SRS_COLOMBIA
-        raster_filename = pygeoprocessing.temporary_filename()
-        self.temporary_filenames.add(raster_filename)
+        raster_filename = os.path.join(self.workspace_dir, 'raster.tif')
         pygeoprocessing.testing.create_raster_on_disk(
             [pixel_matrix], reference.origin, reference.projection, nodata,
             reference.pixel_size(30), dataset_opts=[
@@ -373,8 +346,7 @@ class TestRasterFunctions(unittest.TestCase):
         pixel_matrix = numpy.ones((1000, 1000))
         nodata = 0
         reference = sampledata.SRS_COLOMBIA
-        raster_filename = pygeoprocessing.temporary_filename()
-        self.temporary_filenames.add(raster_filename)
+        raster_filename = os.path.join(self.workspace_dir, 'raster.tif')
         pygeoprocessing.testing.create_raster_on_disk(
             [pixel_matrix, pixel_matrix], reference.origin,
             reference.projection, nodata, reference.pixel_size(30),
