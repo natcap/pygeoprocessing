@@ -1997,27 +1997,28 @@ def align_dataset_list(
     list_lengths = [
         len(dataset_uri_list), len(dataset_out_uri_list),
         len(resample_method_list)]
-    if not reduce(lambda x, y: x if x == y else False, list_lengths):
-        raise Exception(
+    if len(set(list_lengths)) != 1:
+        raise ValueError(
             "dataset_uri_list, dataset_out_uri_list, and "
             "resample_method_list must be the same length "
             " current lengths are %s" % (str(list_lengths)))
 
     if assert_datasets_projected:
         assert_datasets_in_same_projection(dataset_uri_list)
+
     if mode not in ["union", "intersection", "dataset"]:
-        raise Exception("Unknown mode %s" % (str(mode)))
+        raise ValueError("Unknown mode %s" % (str(mode)))
 
     if dataset_to_align_index >= len(dataset_uri_list):
-        raise Exception(
+        raise ValueError(
             "Alignment index is out of bounds of the datasets index: %s"
             "n_elements %s" % (dataset_to_align_index, len(dataset_uri_list)))
     if mode == "dataset" and dataset_to_bound_index is None:
-        raise Exception(
+        raise ValueError(
             "Mode is 'dataset' but dataset_to_bound_index is not defined")
     if mode == "dataset" and (dataset_to_bound_index < 0 or
                               dataset_to_bound_index >= len(dataset_uri_list)):
-        raise Exception(
+        raise ValueError(
             "dataset_to_bound_index is out of bounds of the datasets index: %s"
             "n_elements %s" % (dataset_to_bound_index, len(dataset_uri_list)))
 
@@ -2046,7 +2047,8 @@ def align_dataset_list(
     else:
         bounding_box = reduce(
             functools.partial(merge_bounding_boxes, mode=mode),
-            [get_bounding_box(dataset_uri) for dataset_uri in dataset_uri_list])
+            [get_bounding_box(dataset_uri) for dataset_uri in
+             dataset_uri_list])
 
     if aoi_uri is not None:
         bounding_box = merge_bounding_boxes(
@@ -2054,8 +2056,8 @@ def align_dataset_list(
 
     if (bounding_box[0] >= bounding_box[2] or
             bounding_box[1] <= bounding_box[3]) and mode == "intersection":
-        raise Exception("The datasets' intersection is empty "
-                        "(i.e., not all the datasets touch each other).")
+        raise ValueError("The datasets' intersection is empty "
+                         "(i.e., not all the datasets touch each other).")
 
     if dataset_to_align_index >= 0:
         # bounding box needs alignment
@@ -2074,13 +2076,10 @@ def align_dataset_list(
     for original_dataset_uri, out_dataset_uri, resample_method, index in zip(
             dataset_uri_list, dataset_out_uri_list, resample_method_list,
             range(len(dataset_uri_list))):
-        current_time = time.time()
-        if current_time - last_time > 5.0:
-            last_time = current_time
-            LOGGER.info(
+        last_time = _invoke_timed_callback(
+            last_time, lambda: LOGGER.info(
                 "align_dataset_list aligning dataset %d of %d",
-                index, len(dataset_uri_list))
-
+                index, len(dataset_uri_list))), _LOGGING_PERIOD)
         resize_and_resample_dataset_uri(
             original_dataset_uri, bounding_box, out_pixel_size,
             out_dataset_uri, resample_method)
@@ -2102,10 +2101,7 @@ def align_dataset_list(
         mask_band = mask_dataset.GetRasterBand(1)
         aoi_datasource = ogr.Open(aoi_uri)
         aoi_layer = aoi_datasource.GetLayer()
-        if all_touched:
-            option_list = ["ALL_TOUCHED=TRUE"]
-        else:
-            option_list = []
+        option_list = ["ALL_TOUCHED=%s" % str(all_touched).upper()]
         gdal.RasterizeLayer(
             mask_dataset, [1], aoi_layer, burn_values=[1], options=option_list)
         mask_row = numpy.zeros((1, n_cols), dtype=numpy.int8)
