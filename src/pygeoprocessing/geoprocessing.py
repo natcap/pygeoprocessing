@@ -2327,7 +2327,7 @@ def vectorize_datasets(
     block_offset = None
     dataset_blocks = None
     last_blocksize = None
-    for block_offset in iterblocks(dataset_uri_list[0], offset_only=True):
+    for block_offset in iterblocks(dataset_out_uri_list[0], offset_only=True):
         last_time = _invoke_timed_callback(
             last_time, lambda: LOGGER.info(
                 'raster stack calculation approx. %.2f%% complete',

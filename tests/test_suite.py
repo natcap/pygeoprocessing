@@ -95,9 +95,11 @@ class TestPyGeoprocessing(unittest.TestCase):
 
     def test_agg_raster_values_with_id(self):
         """PGP.geoprocessing: aggregate raster values test with feature id."""
-        pixel_matrix = numpy.ones((5, 5), numpy.int16)
+        pixel_matrix = numpy.ones((1000, 1000), numpy.int16)
         reference = sampledata.SRS_COLOMBIA
         nodata = -1
+        pixel_matrix[0, 0] = nodata
+        pixel_matrix[-1, -1] = nodata
         raster_filename = os.path.join(self.workspace_dir, 'raster.tif')
         pygeoprocessing.testing.create_raster_on_disk(
             [pixel_matrix], reference.origin, reference.projection, nodata,
@@ -107,12 +109,12 @@ class TestPyGeoprocessing(unittest.TestCase):
             Polygon([
                 (reference.origin[0] + reference.pixel_size(30)[0] * 0,
                  reference.origin[1] + reference.pixel_size(30)[1] * 0),
-                (reference.origin[0] + reference.pixel_size(30)[0] * 5,
+                (reference.origin[0] + reference.pixel_size(30)[0] * 1000,
                  reference.origin[1] + reference.pixel_size(30)[1] * 0),
-                (reference.origin[0] + reference.pixel_size(30)[0] * 5,
-                 reference.origin[1] + reference.pixel_size(30)[1] * 5),
+                (reference.origin[0] + reference.pixel_size(30)[0] * 1000,
+                 reference.origin[1] + reference.pixel_size(30)[1] * 1000),
                 (reference.origin[0] + reference.pixel_size(30)[0] * 0,
-                 reference.origin[1] + reference.pixel_size(30)[1] * 5),
+                 reference.origin[1] + reference.pixel_size(30)[1] * 1000),
                 (reference.origin[0] + reference.pixel_size(30)[0] * 0,
                  reference.origin[1] + reference.pixel_size(30)[1] * 0),
                 ]),
@@ -128,7 +130,7 @@ class TestPyGeoprocessing(unittest.TestCase):
             ignore_nodata=True, all_touched=False,
             polygons_might_overlap=False)
 
-        self.assertAlmostEqual(result.total[1], 25)
+        self.assertAlmostEqual(result.total[1], 999998)
 
     def test_agg_raster_values_with_bad_id(self):
         """PGP.geoprocessing: aggregate raster values test with bad id."""
