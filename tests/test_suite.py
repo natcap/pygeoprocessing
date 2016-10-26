@@ -83,7 +83,8 @@ class TestPyGeoprocessing(unittest.TestCase):
         out_band = out_raster.GetRasterBand(1)
         out_array = out_band.ReadAsArray()
 
-        self.assertEqual(numpy.sum(out_array), 0.5 * (25 - 4) + 2.5 * 4)
+        self.assertEqual(
+            numpy.sum(out_array), 0.5 * 20 + 2.5 * 4 + out_nodata)
 
     def test_agg_raster_values_ignore_nodata(self):
         """PGP.geoprocessing: test for agg raster values ignore nodata."""

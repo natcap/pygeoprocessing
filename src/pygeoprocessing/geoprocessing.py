@@ -2271,11 +2271,11 @@ def vectorize_datasets(
             resample_method_list = ["nearest"] * len(dataset_uri_list)
         if dataset_to_align_index is None:
             dataset_to_align_index = -1
-        dataset_out_uri_list = [
+        aligned_dataset_path_list = [
             temporary_filename(suffix='.tif') for _ in dataset_uri_list]
         # Align and resample the datasets, then load datasets into a list
         align_dataset_list(
-            dataset_uri_list, dataset_out_uri_list, resample_method_list,
+            dataset_uri_list, aligned_dataset_path_list, resample_method_list,
             pixel_size_out, bounding_box_mode, dataset_to_align_index,
             dataset_to_bound_index=dataset_to_bound_index,
             aoi_uri=aoi_uri,
@@ -2283,12 +2283,14 @@ def vectorize_datasets(
             all_touched=all_touched)
         aligned_datasets = [
             gdal.Open(filename, gdal.GA_ReadOnly) for filename in
-            dataset_out_uri_list]
+            aligned_dataset_path_list]
+        base_raster_path = aligned_dataset_path_list[0]
     else:
         # otherwise the input datasets are already aligned
         aligned_datasets = [
             gdal.Open(filename, gdal.GA_ReadOnly) for filename in
             dataset_uri_list]
+        base_raster_path = dataset_uri_list[0]
 
     aligned_bands = [dataset.GetRasterBand(1) for dataset in aligned_datasets]
 
@@ -2327,7 +2329,7 @@ def vectorize_datasets(
     block_offset = None
     dataset_blocks = None
     last_blocksize = None
-    for block_offset in iterblocks(dataset_out_uri_list[0], offset_only=True):
+    for block_offset in iterblocks(base_raster_path, offset_only=True):
         last_time = _invoke_timed_callback(
             last_time, lambda: LOGGER.info(
                 'raster stack calculation approx. %.2f%% complete',
@@ -2385,7 +2387,7 @@ def vectorize_datasets(
     aligned_datasets = None
     if not datasets_are_pre_aligned:
         # if they weren't pre-aligned then we have temporary files to remove
-        for temp_dataset_uri in dataset_out_uri_list:
+        for temp_dataset_uri in aligned_dataset_path_list:
             try:
                 os.remove(temp_dataset_uri)
             except OSError:
