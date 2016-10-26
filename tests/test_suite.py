@@ -87,8 +87,7 @@ class TestPyGeoprocessing(unittest.TestCase):
 
         result = pygeoprocessing.aggregate_raster_values_uri(
             raster_filename, aoi_filename, shapefile_field=None,
-            ignore_nodata=True, threshold_amount_lookup=None,
-            ignore_value_list=[], process_pool=None, all_touched=False,
+            ignore_nodata=True, all_touched=False,
             polygons_might_overlap=True)
 
         # there are 25 pixels fully covered
@@ -126,11 +125,149 @@ class TestPyGeoprocessing(unittest.TestCase):
 
         result = pygeoprocessing.aggregate_raster_values_uri(
             raster_filename, aoi_filename, shapefile_field='id',
-            ignore_nodata=True, threshold_amount_lookup=None,
-            ignore_value_list=[], process_pool=None, all_touched=False,
-            polygons_might_overlap=True)
+            ignore_nodata=True, all_touched=False,
+            polygons_might_overlap=False)
 
         self.assertAlmostEqual(result.total[1], 25)
+
+    def test_agg_raster_values_with_bad_id(self):
+        """PGP.geoprocessing: aggregate raster values test with bad id."""
+        pixel_matrix = numpy.ones((5, 5), numpy.int16)
+        reference = sampledata.SRS_COLOMBIA
+        nodata = -1
+        raster_filename = os.path.join(self.workspace_dir, 'raster.tif')
+        pygeoprocessing.testing.create_raster_on_disk(
+            [pixel_matrix], reference.origin, reference.projection, nodata,
+            reference.pixel_size(30), filename=raster_filename)
+
+        polygons = [
+            Polygon([
+                (reference.origin[0] + reference.pixel_size(30)[0] * 0,
+                 reference.origin[1] + reference.pixel_size(30)[1] * 0),
+                (reference.origin[0] + reference.pixel_size(30)[0] * 5,
+                 reference.origin[1] + reference.pixel_size(30)[1] * 0),
+                (reference.origin[0] + reference.pixel_size(30)[0] * 5,
+                 reference.origin[1] + reference.pixel_size(30)[1] * 5),
+                (reference.origin[0] + reference.pixel_size(30)[0] * 0,
+                 reference.origin[1] + reference.pixel_size(30)[1] * 5),
+                (reference.origin[0] + reference.pixel_size(30)[0] * 0,
+                 reference.origin[1] + reference.pixel_size(30)[1] * 0),
+                ]),
+        ]
+        aoi_filename = os.path.join(self.workspace_dir, 'aoi.json')
+
+        pygeoprocessing.testing.create_vector_on_disk(
+            polygons, reference.projection, fields={'id': 'int'},
+            attributes=[{'id': 1}], filename=aoi_filename)
+
+        with self.assertRaises(AttributeError):
+            # bad_id is not defined as an id
+            pygeoprocessing.aggregate_raster_values_uri(
+                raster_filename, aoi_filename, shapefile_field='bad_id',
+                ignore_nodata=True, all_touched=False,
+                polygons_might_overlap=False)
+
+    def test_agg_raster_values_with_bad_id_type(self):
+        """PGP.geoprocessing: agg raster values test with bad id type."""
+        pixel_matrix = numpy.ones((5, 5), numpy.int16)
+        reference = sampledata.SRS_COLOMBIA
+        nodata = -1
+        raster_filename = os.path.join(self.workspace_dir, 'raster.tif')
+        pygeoprocessing.testing.create_raster_on_disk(
+            [pixel_matrix], reference.origin, reference.projection, nodata,
+            reference.pixel_size(30), filename=raster_filename)
+
+        polygons = [
+            Polygon([
+                (reference.origin[0] + reference.pixel_size(30)[0] * 0,
+                 reference.origin[1] + reference.pixel_size(30)[1] * 0),
+                (reference.origin[0] + reference.pixel_size(30)[0] * 5,
+                 reference.origin[1] + reference.pixel_size(30)[1] * 0),
+                (reference.origin[0] + reference.pixel_size(30)[0] * 5,
+                 reference.origin[1] + reference.pixel_size(30)[1] * 5),
+                (reference.origin[0] + reference.pixel_size(30)[0] * 0,
+                 reference.origin[1] + reference.pixel_size(30)[1] * 5),
+                (reference.origin[0] + reference.pixel_size(30)[0] * 0,
+                 reference.origin[1] + reference.pixel_size(30)[1] * 0),
+                ]),
+        ]
+        aoi_filename = os.path.join(self.workspace_dir, 'aoi.json')
+
+        pygeoprocessing.testing.create_vector_on_disk(
+            polygons, reference.projection, fields={'id': 'real'},
+            attributes=[{'id': 1.0}], filename=aoi_filename)
+
+        with self.assertRaises(TypeError):
+            # 'id' field is a string and that's not an int that can be
+            # rasterized
+            pygeoprocessing.aggregate_raster_values_uri(
+                raster_filename, aoi_filename, shapefile_field='id',
+                ignore_nodata=True, all_touched=False,
+                polygons_might_overlap=False)
+
+    def test_agg_raster_values_with_overlap(self):
+        """PGP.geoprocessing: test agg raster values w/ overlap features."""
+        pixel_matrix = numpy.ones((5, 5), numpy.int16)
+        reference = sampledata.SRS_COLOMBIA
+        nodata = -1
+        raster_filename = os.path.join(self.workspace_dir, 'raster.tif')
+        pygeoprocessing.testing.create_raster_on_disk(
+            [pixel_matrix], reference.origin, reference.projection, nodata,
+            reference.pixel_size(30), filename=raster_filename)
+
+        polygons = [
+            Polygon([
+                (reference.origin[0] + reference.pixel_size(30)[0] * 0,
+                 reference.origin[1] + reference.pixel_size(30)[1] * 0),
+                (reference.origin[0] + reference.pixel_size(30)[0] * 2,
+                 reference.origin[1] + reference.pixel_size(30)[1] * 0),
+                (reference.origin[0] + reference.pixel_size(30)[0] * 2,
+                 reference.origin[1] + reference.pixel_size(30)[1] * 5),
+                (reference.origin[0] + reference.pixel_size(30)[0] * 0,
+                 reference.origin[1] + reference.pixel_size(30)[1] * 5),
+                (reference.origin[0] + reference.pixel_size(30)[0] * 0,
+                 reference.origin[1] + reference.pixel_size(30)[1] * 0),
+                ]),
+            Polygon([
+                (reference.origin[0] + reference.pixel_size(30)[0] * 2,
+                 reference.origin[1] + reference.pixel_size(30)[1] * 0),
+                (reference.origin[0] + reference.pixel_size(30)[0] * 5,
+                 reference.origin[1] + reference.pixel_size(30)[1] * 0),
+                (reference.origin[0] + reference.pixel_size(30)[0] * 5,
+                 reference.origin[1] + reference.pixel_size(30)[1] * 5),
+                (reference.origin[0] + reference.pixel_size(30)[0] * 2,
+                 reference.origin[1] + reference.pixel_size(30)[1] * 5),
+                (reference.origin[0] + reference.pixel_size(30)[0] * 2,
+                 reference.origin[1] + reference.pixel_size(30)[1] * 0),
+                ]),
+            Polygon([
+                (reference.origin[0] + reference.pixel_size(30)[0] * 0,
+                 reference.origin[1] + reference.pixel_size(30)[1] * 0),
+                (reference.origin[0] + reference.pixel_size(30)[0] * 5,
+                 reference.origin[1] + reference.pixel_size(30)[1] * 0),
+                (reference.origin[0] + reference.pixel_size(30)[0] * 5,
+                 reference.origin[1] + reference.pixel_size(30)[1] * 5),
+                (reference.origin[0] + reference.pixel_size(30)[0] * 0,
+                 reference.origin[1] + reference.pixel_size(30)[1] * 5),
+                (reference.origin[0] + reference.pixel_size(30)[0] * 0,
+                 reference.origin[1] + reference.pixel_size(30)[1] * 0),
+                ]),
+        ]
+        aoi_filename = os.path.join(self.workspace_dir, 'overlap_aoi.json')
+
+        pygeoprocessing.testing.create_vector_on_disk(
+            polygons, reference.projection, fields={'id': 'int'},
+            attributes=[{'id': 1}, {'id': 2}, {'id': 3}],
+            filename=aoi_filename)
+
+        result = pygeoprocessing.aggregate_raster_values_uri(
+            raster_filename, aoi_filename, shapefile_field='id',
+            ignore_nodata=True, all_touched=False,
+            polygons_might_overlap=True)
+
+        self.assertAlmostEqual(result.total[1], 10)
+        self.assertAlmostEqual(result.total[2], 15)
+        self.assertAlmostEqual(result.total[3], 25)
 
     def test_align_dataset_list_different_arg_lengths(self):
         """PGP.geoprocessing: align dataset expect error on unequal lists."""

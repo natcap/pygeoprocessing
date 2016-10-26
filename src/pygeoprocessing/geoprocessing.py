@@ -799,7 +799,7 @@ def aggregate_raster_values_uri(
         if field_def.GetTypeName() != 'Integer':
             raise TypeError(
                 'Can only aggregate by integer based fields, requested '
-                'field is of type  %s' % fd.GetTypeName())
+                'field is of type  %s' % field_def.GetTypeName())
         # Adding the rasterize by attribute option
         rasterize_layer_args['options'].append(
             'ATTRIBUTE=%s' % shapefile_field)
