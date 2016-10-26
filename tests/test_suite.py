@@ -124,6 +124,7 @@ class TestPyGeoprocessing(unittest.TestCase):
 
         with mock.patch.object(
                 os, 'remove', return_value=None) as os_remove_mock:
+            os_remove_mock.side_effect = OSError('Mock OSError')
             result = pygeoprocessing.aggregate_raster_values_uri(
                 raster_filename, aoi_filename, shapefile_field=None,
                 ignore_nodata=True, all_touched=False,
