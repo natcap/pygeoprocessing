@@ -95,7 +95,7 @@ class TestPyGeoprocessing(unittest.TestCase):
 
     def test_agg_raster_values_with_id(self):
         """PGP.geoprocessing: aggregate raster values test with feature id."""
-        pixel_matrix = numpy.ones((1000, 1000), numpy.int16)
+        pixel_matrix = numpy.ones((10000, 10000), numpy.int16)
         reference = sampledata.SRS_COLOMBIA
         nodata = -1
         pixel_matrix[0, 0] = nodata
@@ -107,16 +107,16 @@ class TestPyGeoprocessing(unittest.TestCase):
 
         polygons = [
             Polygon([
-                (reference.origin[0] + reference.pixel_size(30)[0] * 0,
-                 reference.origin[1] + reference.pixel_size(30)[1] * 0),
-                (reference.origin[0] + reference.pixel_size(30)[0] * 1000,
-                 reference.origin[1] + reference.pixel_size(30)[1] * 0),
-                (reference.origin[0] + reference.pixel_size(30)[0] * 1000,
-                 reference.origin[1] + reference.pixel_size(30)[1] * 1000),
-                (reference.origin[0] + reference.pixel_size(30)[0] * 0,
-                 reference.origin[1] + reference.pixel_size(30)[1] * 1000),
-                (reference.origin[0] + reference.pixel_size(30)[0] * 0,
-                 reference.origin[1] + reference.pixel_size(30)[1] * 0),
+                (reference.origin[0] + reference.pixel_size(30)[0] * 250,
+                 reference.origin[1] + reference.pixel_size(30)[1] * 250),
+                (reference.origin[0] + reference.pixel_size(30)[0] * 750,
+                 reference.origin[1] + reference.pixel_size(30)[1] * 250),
+                (reference.origin[0] + reference.pixel_size(30)[0] * 750,
+                 reference.origin[1] + reference.pixel_size(30)[1] * 750),
+                (reference.origin[0] + reference.pixel_size(30)[0] * 250,
+                 reference.origin[1] + reference.pixel_size(30)[1] * 750),
+                (reference.origin[0] + reference.pixel_size(30)[0] * 250,
+                 reference.origin[1] + reference.pixel_size(30)[1] * 250),
                 ]),
         ]
         aoi_filename = os.path.join(self.workspace_dir, 'aoi.json')
@@ -130,7 +130,7 @@ class TestPyGeoprocessing(unittest.TestCase):
             ignore_nodata=True, all_touched=False,
             polygons_might_overlap=False)
 
-        self.assertAlmostEqual(result.total[1], 999998)
+        self.assertAlmostEqual(result.total[1], 250000)
 
     def test_agg_raster_values_with_bad_id(self):
         """PGP.geoprocessing: aggregate raster values test with bad id."""
