@@ -57,6 +57,34 @@ class TestPyGeoprocessing(unittest.TestCase):
         """Clean up remaining files."""
         shutil.rmtree(self.workspace_dir)
 
+    def test_reclassify_dataset(self):
+        """PGP.geoprocessing: test for agg raster values ignore nodata."""
+        pixel_matrix = numpy.ones((5, 5), numpy.int16)
+        pixel_matrix[2:4:, 2:4] = 2
+        reference = sampledata.SRS_COLOMBIA
+        nodata = -1
+        pixel_matrix[0, 0] = nodata
+        raster_filename = os.path.join(self.workspace_dir, 'raster.tif')
+        pygeoprocessing.testing.create_raster_on_disk(
+            [pixel_matrix], reference.origin, reference.projection, nodata,
+            reference.pixel_size(30), filename=raster_filename)
+
+        raster_out_uri = os.path.join(self.workspace_dir, 'reclassified.tif')
+        value_map = {1: 0.5, 2: 2.5}
+        out_datatype = gdal.GDT_Float32
+        out_nodata = -1.0
+
+        pygeoprocessing.reclassify_dataset_uri(
+            raster_filename, value_map, raster_out_uri, out_datatype,
+            out_nodata, exception_flag='values_required',
+            assert_dataset_projected=True)
+
+        out_raster = gdal.Open(raster_out_uri)
+        out_band = out_raster.GetRasterBand(1)
+        out_array = out_band.ReadAsArray()
+
+        self.assertEqual(numpy.sum(out_array), 0.5 * (25 - 4) + 2.5 * 4)
+
     def test_agg_raster_values_ignore_nodata(self):
         """PGP.geoprocessing: test for agg raster values ignore nodata."""
         pixel_matrix = numpy.ones((5, 5), numpy.int16)
