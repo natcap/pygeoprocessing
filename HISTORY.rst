@@ -1,11 +1,11 @@
 Release History
 ===============
 
-0.3.0 (XXX)
------------
+0.3.0 (10/21/2016)
+------------------
 * Added `rel_tol` and `abs_tol` parameters to `testing.assertions` to be consistent with PEP485 and deal with real world testing situations that required an absolute tolerance.
 * Removed calls to ``logging.basicConfig`` throughout pygeoprocessing.  Client applications may need to adjust their logging if pygeoprocessing's log messages are desired.
-* Added a flag  to `aggregate_raster_values_uri` that can be used to indicate incoming polygons do not overlap, or the user does not care about overlap.  This can be used in cases where there is a computational or memory bottleneck in calculating the polygon disjoint sets that would ultimately be uncessary if it is known a priori that such a check is unnecessary.
+* Added a flag  to `aggregate_raster_values_uri` that can be used to indicate incoming polygons do not overlap, or the user does not care about overlap.  This can be used in cases where there is a computational or memory bottleneck in calculating the polygon disjoint sets that would ultimately be unnecessary if it is known a priori that such a check is unnecessary.
 * Fixed an issue where in some cases different nodata values for 'signal' and 'kernel' would cause incorrect convolution results in `convolve_2d_uri`.
 * Added functionality to `pygeoprocessing.iterblocks` to iterate over largest memory aligned block that fits into the number of elements provided by the parameter.  With default parameters, this uses a ceiling around 16MB of memory per band.
 * Added functionality to `pygeoprocessing.iterblocks` to return only the offset dictionary.  This functionality would be used in cases where memory aligned writes are desired without first reading arrays from the band.
@@ -25,13 +25,13 @@ Release History
 * Fixed a defect in pygeoprocessing.routing.calculate_transport where the nodata types were cast as int even though the base type of the routing rasters were floats.  In extreme cases this could cause a crash on a type that could not be converted to an int, like an `inf`, and in subtle cases this would result in nodata values in the raster being ignored during routing.
 * Added functions to construct raster and vectors on disk from reasonable datatypes (numpy matrices for rasters, lists of Shapely geometries for vectors).
 * Fixed an issue where reproject_datasource_uri would add geometry that couldn't be projected directly into the output datasource.  Function now only adds geometries that transformed without error and reports if any features failed to transform.
-* Added file flushing and dataset swig deletion in reproject_datasource_uri to handle a race condition that might have been occuring.
+* Added file flushing and dataset swig deletion in reproject_datasource_uri to handle a race condition that might have been occurring.
 * Fixed an issue when "None" was passed in on new raster creation that would attempt to directly set that value as the nodata value in the raster.
 * Added basic filetype-specific assertions for many geospatial filetypes, and tests for these assertions.  These assertions are exposed in `pygeoprocessing.testing`.
 * Pygeoprocessing package tests can be run by invoking `python setup.py nosetests`.  A subset of tests may also be run from an installed pygeoprocessing distribution by calling `pygeoprocessing.test()`.
 * Fixed an issue with reclassify dataset that would occur when small rasters whose first memory block would extend beyond the size of the raster thus passing in "0" values in the out of bounds area. Reclassify dataset identified these as valid pixels, even though vectorize_datsets would mask them out later.  Now vectorize_datasets only passes memory blocks that contain valid pixel data to its kernel op.
 * Added support for very small AOIs that result in rasters less than a pixel wide.  Additionally an `all_touched` flag was added to allow the ALL_TOUCHED=TRUE option to be passed to RasterizeLayer in the AOI mask calculation.
-* Added watershed delination routine to pygeoprocessing.routing.delineate_watershed.  Operates on a DEM and point shapefile, optionally snaps outlet points to nearest stream as defined by a thresholded flow accumulation raster and copies the oulet point fields into the constructed watershed shapefile.
+* Added watershed delineation routine to pygeoprocessing.routing.delineate_watershed.  Operates on a DEM and point shapefile, optionally snaps outlet points to nearest stream as defined by a thresholded flow accumulation raster and copies the outlet point fields into the constructed watershed shapefile.
 * Fixing a memory leak in block caches that held on to dataset, band, and block references even after the object was destroyed.
 * Add an option to route_flux that lets the current pixel's source be included in the flux, or not.  Previous version would include on the source no matter what.
 * Now using natcap.versioner for versioning instead of local versioning logic.
@@ -39,7 +39,7 @@ Release History
 0.2.2 (2015-05-07)
 ------------------
 
-* Adding MinGW-specific compiler flags for statically linking pygeoprocessing binaries against libstdc++ and libgcc.  Fixes an issue on many user's computers when installing from a wheel on the Python Package Index without having two needed DLLs on the PATH, resuling in an ImportError on pygeoprocessing.geoprocessing_core.pyd.
+* Adding MinGW-specific compiler flags for statically linking pygeoprocessing binaries against libstdc++ and libgcc.  Fixes an issue on many user's computers when installing from a wheel on the Python Package Index without having two needed DLLs on the PATH, resulting in an ImportError on pygeoprocessing.geoprocessing_core.pyd.
 * Fixing an issue with versioning where 'dev' was displayed instead of the version recorded in pygeoprocessing/__init__.py.
 * Adding all pygeoprocessing.geoprocessing functions to pygeoprocessing.__all__, which allows those functions to appear when calling help(pygeoprocessing).
 * Adding routing_core.pxd to the manifest.  This fixes an issue where some users were unable to compiler pygeoprocessing from source.
@@ -71,13 +71,13 @@ Release History
 0.1.7 (2015-04-02)
 ------------------
 
-* Package logger objects are now identified by python heirarchical package paths (e.g. pygeoprocessing.routing)
+* Package logger objects are now identified by python hierarchical package paths (e.g. pygeoprocessing.routing)
 * Fixed an issue where rasters that had undefined nodata values caused striping in the reclassify_dataset_uri function.
 
 0.1.6 (2015-03-24)
 ------------------
 
-* Fixing LICENSE.TXT to .txt issue that keeps reoccuring.
+* Fixing LICENSE.TXT to .txt issue that keeps reoccurring.
 
 0.1.5 (2015-03-16)
 ------------------
