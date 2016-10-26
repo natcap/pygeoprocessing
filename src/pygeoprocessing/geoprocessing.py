@@ -786,11 +786,8 @@ def aggregate_raster_values_uri(
     shapefile = ogr.Open(shapefile_uri)
     shapefile_layer = shapefile.GetLayer()
     rasterize_layer_args = {
-        'options': [],
+        'options': ['ALL_TOUCHED=%s' % str(all_touched).upper()],
     }
-
-    if all_touched:
-        rasterize_layer_args['options'].append('ALL_TOUCHED=TRUE')
 
     if shapefile_field is not None:
         # Make sure that the layer name refers to an integer
@@ -803,7 +800,7 @@ def aggregate_raster_values_uri(
                 (shapefile_uri, shapefile_field))
         if fd.GetTypeName() != 'Integer':
             raise TypeError(
-                'Can only aggreggate by integer based fields, requested '
+                'Can only aggregate by integer based fields, requested '
                 'field is of type  %s' % fd.GetTypeName())
         # Adding the rasterize by attribute option
         rasterize_layer_args['options'].append(
@@ -2079,7 +2076,7 @@ def align_dataset_list(
         last_time = _invoke_timed_callback(
             last_time, lambda: LOGGER.info(
                 "align_dataset_list aligning dataset %d of %d",
-                index, len(dataset_uri_list))), _LOGGING_PERIOD)
+                index, len(dataset_uri_list)), _LOGGING_PERIOD)
         resize_and_resample_dataset_uri(
             original_dataset_uri, bounding_box, out_pixel_size,
             out_dataset_uri, resample_method)
