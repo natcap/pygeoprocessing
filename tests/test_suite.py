@@ -57,6 +57,81 @@ class TestPyGeoprocessing(unittest.TestCase):
         """Clean up remaining files."""
         shutil.rmtree(self.workspace_dir)
 
+    def test_agg_raster_values_ignore_nodata(self):
+        """PGP.geoprocessing: test for agg raster values ignore nodata."""
+        pixel_matrix = numpy.ones((5, 5), numpy.int16)
+        reference = sampledata.SRS_COLOMBIA
+        nodata = -1
+        pixel_matrix[0, 0] = nodata
+        raster_filename = os.path.join(self.workspace_dir, 'raster.tif')
+        pygeoprocessing.testing.create_raster_on_disk(
+            [pixel_matrix], reference.origin, reference.projection, nodata,
+            reference.pixel_size(30), filename=raster_filename)
+
+        polygons = [
+            Polygon([
+                (reference.origin[0] + reference.pixel_size(30)[0] * 0,
+                 reference.origin[1] + reference.pixel_size(30)[1] * 0),
+                (reference.origin[0] + reference.pixel_size(30)[0] * 5,
+                 reference.origin[1] + reference.pixel_size(30)[1] * 0),
+                (reference.origin[0] + reference.pixel_size(30)[0] * 5,
+                 reference.origin[1] + reference.pixel_size(30)[1] * 5),
+                (reference.origin[0] + reference.pixel_size(30)[0] * 0,
+                 reference.origin[1] + reference.pixel_size(30)[1] * 5),
+                (reference.origin[0] + reference.pixel_size(30)[0] * 0,
+                 reference.origin[1] + reference.pixel_size(30)[1] * 0),
+                ]),
+        ]
+        aoi_filename = os.path.join(self.workspace_dir, 'aoi')
+        pygeoprocessing.testing.create_vector_on_disk(
+            polygons, reference.projection, filename=aoi_filename)
+
+        result = pygeoprocessing.aggregate_raster_values_uri(
+            raster_filename, aoi_filename, shapefile_field=None,
+            ignore_nodata=False, all_touched=False,
+            polygons_might_overlap=True)
+
+        # there are 25 pixels fully covered
+        self.assertAlmostEqual(result.total[9999], 24)
+
+    def test_agg_raster_values_oserror(self):
+        """PGP.geoprocessing: test for agg raster values oserror on remove."""
+        pixel_matrix = numpy.ones((5, 5), numpy.int16)
+        reference = sampledata.SRS_COLOMBIA
+        nodata = -1
+        raster_filename = os.path.join(self.workspace_dir, 'raster.tif')
+        pygeoprocessing.testing.create_raster_on_disk(
+            [pixel_matrix], reference.origin, reference.projection, nodata,
+            reference.pixel_size(30), filename=raster_filename)
+
+        polygons = [
+            Polygon([
+                (reference.origin[0] + reference.pixel_size(30)[0] * 0,
+                 reference.origin[1] + reference.pixel_size(30)[1] * 0),
+                (reference.origin[0] + reference.pixel_size(30)[0] * 5,
+                 reference.origin[1] + reference.pixel_size(30)[1] * 0),
+                (reference.origin[0] + reference.pixel_size(30)[0] * 5,
+                 reference.origin[1] + reference.pixel_size(30)[1] * 5),
+                (reference.origin[0] + reference.pixel_size(30)[0] * 0,
+                 reference.origin[1] + reference.pixel_size(30)[1] * 5),
+                (reference.origin[0] + reference.pixel_size(30)[0] * 0,
+                 reference.origin[1] + reference.pixel_size(30)[1] * 0),
+                ]),
+        ]
+        aoi_filename = os.path.join(self.workspace_dir, 'aoi')
+        pygeoprocessing.testing.create_vector_on_disk(
+            polygons, reference.projection, filename=aoi_filename)
+
+        with mock.patch.object(
+                os, 'remove', return_value=None) as os_remove_mock:
+            result = pygeoprocessing.aggregate_raster_values_uri(
+                raster_filename, aoi_filename, shapefile_field=None,
+                ignore_nodata=True, all_touched=False,
+                polygons_might_overlap=True)
+
+            # there are 25 pixels fully covered
+            self.assertAlmostEqual(result.total[9999], 25)
+
     def test_agg_raster_values(self):
         """PGP.geoprocessing: basic unit test for aggregate raster values."""
         pixel_matrix = numpy.ones((5, 5), numpy.int16)
@@ -462,7 +537,6 @@ class TestPyGeoprocessing(unittest.TestCase):
                 30, 'intersection', 0,
                 dataset_to_bound_index=None, aoi_uri=None,
                 assert_datasets_projected=True, all_touched=False)
-
 
     def test_align_dataset_list_union(self):
         """PGP.geoprocessing: double raster align dataset test intersect."""
