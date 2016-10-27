@@ -59,7 +59,57 @@ class TestPyGeoprocessing(unittest.TestCase):
 
     def test_calculate_disjoint_polygon_set(self):
         """PGP.geoprocessing; test disjoing polygon set."""
-        pass
+        reference = sampledata.SRS_COLOMBIA
+
+        polygons = [
+            Polygon([
+                (reference.origin[0] + reference.pixel_size(30)[0] * 0,
+                 reference.origin[1] + reference.pixel_size(30)[1] * 0),
+                (reference.origin[0] + reference.pixel_size(30)[0] * 2,
+                 reference.origin[1] + reference.pixel_size(30)[1] * 0),
+                (reference.origin[0] + reference.pixel_size(30)[0] * 2,
+                 reference.origin[1] + reference.pixel_size(30)[1] * 5),
+                (reference.origin[0] + reference.pixel_size(30)[0] * 0,
+                 reference.origin[1] + reference.pixel_size(30)[1] * 5),
+                (reference.origin[0] + reference.pixel_size(30)[0] * 0,
+                 reference.origin[1] + reference.pixel_size(30)[1] * 0),
+                ]),
+            Polygon([
+                (reference.origin[0] + reference.pixel_size(30)[0] * 3,
+                 reference.origin[1] + reference.pixel_size(30)[1] * 0),
+                (reference.origin[0] + reference.pixel_size(30)[0] * 5,
+                 reference.origin[1] + reference.pixel_size(30)[1] * 0),
+                (reference.origin[0] + reference.pixel_size(30)[0] * 5,
+                 reference.origin[1] + reference.pixel_size(30)[1] * 5),
+                (reference.origin[0] + reference.pixel_size(30)[0] * 3,
+                 reference.origin[1] + reference.pixel_size(30)[1] * 5),
+                (reference.origin[0] + reference.pixel_size(30)[0] * 3,
+                 reference.origin[1] + reference.pixel_size(30)[1] * 0),
+                ]),
+            Polygon([
+                (reference.origin[0] + reference.pixel_size(30)[0] * 0,
+                 reference.origin[1] + reference.pixel_size(30)[1] * 0),
+                (reference.origin[0] + reference.pixel_size(30)[0] * 5,
+                 reference.origin[1] + reference.pixel_size(30)[1] * 0),
+                (reference.origin[0] + reference.pixel_size(30)[0] * 5,
+                 reference.origin[1] + reference.pixel_size(30)[1] * 5),
+                (reference.origin[0] + reference.pixel_size(30)[0] * 0,
+                 reference.origin[1] + reference.pixel_size(30)[1] * 5),
+                (reference.origin[0] + reference.pixel_size(30)[0] * 0,
+                 reference.origin[1] + reference.pixel_size(30)[1] * 0),
+                ]),
+        ]
+
+        aoi_path = os.path.join(self.workspace_dir, 'overlap_aoi.json')
+        pygeoprocessing.testing.create_vector_on_disk(
+            polygons, reference.projection, filename=aoi_path)
+
+        disjoint_set = pygeoprocessing.calculate_disjoint_polygon_set(
+            aoi_path)
+        print disjoint_set
+        self.assertEquals(len(disjoint_set), 2)
+        for pair in [set([0, 1]), set([2])]:
+            self.assertTrue(pair in disjoint_set)
 
     def test_rasterize_layer(self):
         """PGP.geoprocessing: test rasterize layer."""
