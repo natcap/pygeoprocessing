@@ -57,6 +57,51 @@ class TestPyGeoprocessing(unittest.TestCase):
         """Clean up remaining files."""
         shutil.rmtree(self.workspace_dir)
 
+    def test_calculate_disjoint_polygon_set(self):
+        """PGP.geoprocessing; test disjoing polygon set."""
+        pass
+
+    def test_rasterize_layer(self):
+        """PGP.geoprocessing: test rasterize layer."""
+        pixel_matrix = numpy.empty((5, 5), numpy.int16)
+        reference = sampledata.SRS_COLOMBIA
+        nodata = -1
+        pixel_matrix[:] = nodata
+        raster_path = os.path.join(self.workspace_dir, 'raster.tif')
+        pygeoprocessing.testing.create_raster_on_disk(
+            [pixel_matrix], reference.origin, reference.projection, nodata,
+            reference.pixel_size(30), filename=raster_path)
+
+        polygons = [
+            Polygon([
+                (reference.origin[0] + reference.pixel_size(30)[0] * 0,
+                 reference.origin[1] + reference.pixel_size(30)[1] * 0),
+                (reference.origin[0] + reference.pixel_size(30)[0] * 4,
+                 reference.origin[1] + reference.pixel_size(30)[1] * 0),
+                (reference.origin[0] + reference.pixel_size(30)[0] * 4,
+                 reference.origin[1] + reference.pixel_size(30)[1] * 4),
+                (reference.origin[0] + reference.pixel_size(30)[0] * 0,
+                 reference.origin[1] + reference.pixel_size(30)[1] * 4),
+                (reference.origin[0] + reference.pixel_size(30)[0] * 0,
+                 reference.origin[1] + reference.pixel_size(30)[1] * 0),
+                ]),
+        ]
+        aoi_path = os.path.join(self.workspace_dir, 'aoi')
+
+        pygeoprocessing.testing.create_vector_on_disk(
+            polygons, reference.projection, filename=aoi_path,
+            fields={'id': 'int'}, attributes=[{'id': 1}])
+
+        pygeoprocessing.rasterize_layer_uri(
+            raster_path, aoi_path, option_list=["ATTRIBUTE=ID"])
+
+        raster = gdal.Open(raster_path)
+        band = raster.GetRasterBand(1)
+        values = band.ReadAsArray()
+
+        # there polygon covers a 4x4 area
+        self.assertAlmostEqual(4**2, numpy.sum(values[values != nodata]))
+
     def test_reclassify_dataset(self):
         """PGP.geoprocessing: test for reclassify dataset."""
         pixel_matrix = numpy.ones((5, 5), numpy.int16)
