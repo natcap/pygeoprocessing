@@ -58,7 +58,7 @@ class TestPyGeoprocessing(unittest.TestCase):
         shutil.rmtree(self.workspace_dir)
 
     def test_reclassify_dataset(self):
-        """PGP.geoprocessing: test for agg raster values ignore nodata."""
+        """PGP.geoprocessing: test for reclassify dataset."""
         pixel_matrix = numpy.ones((5, 5), numpy.int16)
         pixel_matrix[2:4:, 2:4] = 2
         reference = sampledata.SRS_COLOMBIA
@@ -85,6 +85,53 @@ class TestPyGeoprocessing(unittest.TestCase):
 
         self.assertEqual(
             numpy.sum(out_array), 0.5 * 20 + 2.5 * 4 + out_nodata)
+
+    def test_reclassify_dataset_bad_mode(self):
+        """PGP.geoprocessing: test bad mode in reclassify dataset."""
+        pixel_matrix = numpy.ones((5, 5), numpy.int16)
+        pixel_matrix[2:4:, 2:4] = 2
+        reference = sampledata.SRS_COLOMBIA
+        nodata = -1
+        pixel_matrix[0, 0] = nodata
+        raster_filename = os.path.join(self.workspace_dir, 'raster.tif')
+        pygeoprocessing.testing.create_raster_on_disk(
+            [pixel_matrix], reference.origin, reference.projection, nodata,
+            reference.pixel_size(30), filename=raster_filename)
+
+        raster_out_uri = os.path.join(self.workspace_dir, 'reclassified.tif')
+        value_map = {1: 0.5, 2: 2.5}
+        out_datatype = gdal.GDT_Float32
+        out_nodata = -1.0
+
+        with self.assertRaises(ValueError):
+            pygeoprocessing.reclassify_dataset_uri(
+                raster_filename, value_map, raster_out_uri, out_datatype,
+                out_nodata, exception_flag='bad_mode',
+                assert_dataset_projected=True)
+
+    def test_reclassify_dataset_missing_code(self):
+        """PGP.geoprocessing: missing lookup code in reclassify dataset."""
+        pixel_matrix = numpy.ones((5, 5), numpy.int16)
+        pixel_matrix[2:4:, 2:4] = 2
+        reference = sampledata.SRS_COLOMBIA
+        nodata = -1
+        pixel_matrix[0, 0] = nodata
+        raster_filename = os.path.join(self.workspace_dir, 'raster.tif')
+        pygeoprocessing.testing.create_raster_on_disk(
+            [pixel_matrix], reference.origin, reference.projection, nodata,
+            reference.pixel_size(30), filename=raster_filename)
+
+        raster_out_uri = os.path.join(self.workspace_dir, 'reclassified.tif')
+        value_map = {1: 0.5}  # missing an entry for code 2
+        out_datatype = gdal.GDT_Float32
+        out_nodata = -1.0
+
+        with self.assertRaises(ValueError):
+            # there's a missing entry for code 2, should raise a ValueError
+            pygeoprocessing.reclassify_dataset_uri(
+                raster_filename, value_map, raster_out_uri, out_datatype,
+                out_nodata, exception_flag='values_required',
+                assert_dataset_projected=True)
 
     def test_agg_raster_values_ignore_nodata(self):
         """PGP.geoprocessing: test for agg raster values ignore nodata."""
