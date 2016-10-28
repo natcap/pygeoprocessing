@@ -57,6 +57,49 @@ class TestPyGeoprocessing(unittest.TestCase):
         """Clean up remaining files."""
         shutil.rmtree(self.workspace_dir)
 
+    def test_gdal_to_numpy_type_signedbyte(self):
+        """PGP.geoprocessing _gdal_numpy_type gives good byte value."""
+        from pygeoprocessing import geoprocessing
+        raster_matrix = numpy.empty((5, 5), numpy.int8)
+        reference = sampledata.SRS_COLOMBIA
+        nodata = -1
+        for row_index in xrange(raster_matrix.shape[1]):
+            raster_matrix[row_index, :] = row_index
+        raster_path = os.path.join(self.workspace_dir, 'raster.tif')
+        pygeoprocessing.testing.create_raster_on_disk(
+            [raster_matrix], reference.origin, reference.projection, nodata,
+            reference.pixel_size(1), filename=raster_path,
+            datatype=gdal.GDT_Byte)
+
+        raster = gdal.Open(raster_path)
+        band = raster.GetRasterBand(1)
+        raster = None
+        numpy_type = geoprocessing._gdal_to_numpy_type(band)
+        band = None
+        self.assertEqual(numpy_type, numpy.uint8)
+
+    def test_gdal_to_numpy_type_unsignedbyte(self):
+        """PGP.geoprocessing _gdal_numpy_type gives good ubyte value."""
+        from pygeoprocessing import geoprocessing
+        raster_matrix = numpy.empty((5, 5), numpy.int8)
+        reference = sampledata.SRS_COLOMBIA
+        nodata = -1
+        for row_index in xrange(raster_matrix.shape[1]):
+            raster_matrix[row_index, :] = row_index
+        raster_path = os.path.join(self.workspace_dir, 'raster.tif')
+        pygeoprocessing.testing.create_raster_on_disk(
+            [raster_matrix], reference.origin, reference.projection, nodata,
+            reference.pixel_size(1), filename=raster_path,
+            datatype=gdal.GDT_Byte)
+
+        raster = gdal.Open(raster_path, gdal.GA_Update)
+        band = raster.GetRasterBand(1)
+        raster = None
+        band.SetMetadataItem('IMAGE_STRUCTURE', 'PIXELTYPE', 'SIGNEDBYTE')
+        numpy_type = geoprocessing._gdal_to_numpy_type(band)
+        band = None
+        self.assertEqual(numpy_type, numpy.uint8)
+
     def test_gdal_to_numpy_type_complex(self):
         """PGP.geoprocessing _gdal_numpy_type ValueError on complex type."""
         from pygeoprocessing import geoprocessing
@@ -77,7 +120,6 @@ class TestPyGeoprocessing(unittest.TestCase):
         with self.assertRaises(ValueError):
             geoprocessing._gdal_to_numpy_type(band)
         band = None
-
 
     def test_calculate_slope(self):
         """PGP.geoprocessing: test slope calculation."""

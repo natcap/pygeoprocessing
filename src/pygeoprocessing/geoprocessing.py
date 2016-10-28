@@ -86,8 +86,6 @@ def _gdal_to_numpy_type(band):
         return numpy.int8
     return numpy.uint8
 
-
-
 def get_nodata_from_uri(dataset_uri):
     """Return nodata value from first band in gdal dataset cast as numpy datatype.
 
