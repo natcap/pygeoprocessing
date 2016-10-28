@@ -1019,7 +1019,7 @@ def aggregate_raster_values_uri(
 
 
 def calculate_slope(
-        dem_dataset_uri, slope_uri, aoi_uri=None, process_pool=None):
+        dem_dataset_uri, slope_uri):
     """Create slope raster from DEM raster.
 
     Follows the algorithm described here:
@@ -1029,34 +1029,14 @@ def calculate_slope(
         dem_dataset_uri (string): a URI to a  single band raster of z values.
         slope_uri (string): a path to the output slope uri in percent.
 
-    Keyword Args:
-        aoi_uri (string): a uri to an AOI input
-        process_pool: a process pool for multiprocessing
-
     Returns:
         None
     """
-    out_pixel_size = get_cell_size_from_uri(dem_dataset_uri)
-    dem_nodata = get_nodata_from_uri(dem_dataset_uri)
-
-    dem_small_uri = temporary_filename(suffix='.tif')
-    # cast the dem to a floating point one if it's not already
-    dem_float_nodata = float(dem_nodata)
-
-    vectorize_datasets(
-        [dem_dataset_uri], lambda x: x.astype(numpy.float32), dem_small_uri,
-        gdal.GDT_Float32, dem_float_nodata, out_pixel_size, "intersection",
-        dataset_to_align_index=0, aoi_uri=aoi_uri, process_pool=process_pool,
-        vectorize_op=False)
-
-    slope_nodata = -9999.0
+    slope_nodata = numpy.finfo(numpy.float32).min
     new_raster_from_base_uri(
-        dem_small_uri, slope_uri, 'GTiff', slope_nodata, gdal.GDT_Float32)
-    geoprocessing_core._cython_calculate_slope(
-        dem_small_uri, slope_uri)
+        dem_dataset_uri, slope_uri, 'GTiff', slope_nodata, gdal.GDT_Float32)
+    geoprocessing_core._cython_calculate_slope(dem_dataset_uri, slope_uri)
     calculate_raster_stats_uri(slope_uri)
-
-    os.remove(dem_small_uri)
 
 
 def clip_dataset_uri(
