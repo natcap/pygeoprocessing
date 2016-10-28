@@ -57,6 +57,28 @@ class TestPyGeoprocessing(unittest.TestCase):
         """Clean up remaining files."""
         shutil.rmtree(self.workspace_dir)
 
+    def test_convolve_2d_uri_flip_signal(self):
+        """PGP.geoprocessing: convolve 2D case when kernel > signal."""
+        signal_matrix = numpy.ones((1, 1), numpy.float32)
+        kernel_matrix = numpy.ones((5, 5), numpy.float32)
+        reference = sampledata.SRS_COLOMBIA
+        nodata = -1
+        signal_path = os.path.join(self.workspace_dir, 'signal.tif')
+        pygeoprocessing.testing.create_raster_on_disk(
+            [signal_matrix], reference.origin, reference.projection, nodata,
+            reference.pixel_size(30), filename=signal_path)
+        kernel_path = os.path.join(self.workspace_dir, 'kernel.tif')
+        pygeoprocessing.testing.create_raster_on_disk(
+            [kernel_matrix], reference.origin, reference.projection, nodata,
+            reference.pixel_size(30), filename=kernel_path)
+        output_path = os.path.join(self.workspace_dir, 'output.tif')
+        pygeoprocessing.convolve_2d_uri(
+            signal_path, kernel_path, output_path)
+        output_raster = gdal.Open(output_path)
+        output_band = output_raster.GetRasterBand(1)
+        output_array = output_band.ReadAsArray()
+        self.assertEquals(numpy.sum(output_array), 1)
+
     def test_convolve_2d_uri(self):
         """PGP.geoprocessing: test convolve 2D."""
         pixel_matrix = numpy.ones((5, 5), numpy.float32)
