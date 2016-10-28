@@ -56,20 +56,22 @@ class SpatialExtentOverlapException(Exception):
 def _gdal_to_numpy_type(band):
     """Calculate the equivalent numpy datatype from a GDAL raster band type.
 
-    Args:
-        band (gdal.Band): GDAL band
+    This function doesn't handle complex or unknown types.  If they are
+    passed in, this function will rase a ValueERror.
+
+    Parameters:
+        band (gdal.Band): GDAL Band
 
     Returns:
         numpy_datatype (numpy.dtype): equivalent of band.DataType
     """
-
     gdal_type_to_numpy_lookup = {
         gdal.GDT_Int16: numpy.int16,
         gdal.GDT_Int32: numpy.int32,
         gdal.GDT_UInt16: numpy.uint16,
         gdal.GDT_UInt32: numpy.uint32,
         gdal.GDT_Float32: numpy.float32,
-        gdal.GDT_Float64: numpy.float64
+        gdal.GDT_Float64: numpy.float64,
     }
 
     if band.DataType in gdal_type_to_numpy_lookup:
@@ -77,7 +79,7 @@ def _gdal_to_numpy_type(band):
 
     # only class not in the lookup is a Byte but double check.
     if band.DataType != gdal.GDT_Byte:
-        raise ValueError("Unknown DataType: %s" % str(band.DataType))
+        raise ValueError("Unsupported DataType: %s" % str(band.DataType))
 
     metadata = band.GetMetadata('IMAGE_STRUCTURE')
     if 'PIXELTYPE' in metadata and metadata['PIXELTYPE'] == 'SIGNEDBYTE':

@@ -64,6 +64,8 @@ DTYPES = [
     (numpy.int64, gdal.GDT_Int32),  # GDAL doesn't have an int64.
     (numpy.float32, gdal.GDT_Float32),
     (numpy.float64, gdal.GDT_Float64),
+    (numpy.cfloat, gdal.GDT_CFloat32),
+    (numpy.cfloat, gdal.GDT_CFloat64)
 ]
 
 # Mappings of numpy -> GDAL types and GDAL -> numpy types.
