@@ -57,6 +57,25 @@ class TestPyGeoprocessing(unittest.TestCase):
         """Clean up remaining files."""
         shutil.rmtree(self.workspace_dir)
 
+    def test_get_nodata_from_uri_undefined(self):
+        """PGP.geoprocessing: covers case when nodata is undefined."""
+        raster_matrix = numpy.empty((5, 5), numpy.int8)
+        reference = sampledata.SRS_COLOMBIA
+        nodata = None
+        for row_index in xrange(raster_matrix.shape[1]):
+            raster_matrix[row_index, :] = row_index
+        raster_path = os.path.join(self.workspace_dir, 'raster.tif')
+        pygeoprocessing.testing.create_raster_on_disk(
+            [raster_matrix], reference.origin, reference.projection, nodata,
+            reference.pixel_size(1), filename=raster_path,
+            datatype=gdal.GDT_Byte)
+
+        fetched_nodata_value = pygeoprocessing.get_nodata_from_uri(
+            raster_path)
+
+        self.assertEquals(fetched_nodata_value, nodata)
+
+
     def test_gdal_to_numpy_type_signedbyte(self):
         """PGP.geoprocessing _gdal_numpy_type gives good byte value."""
         from pygeoprocessing import geoprocessing
