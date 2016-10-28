@@ -57,6 +57,60 @@ class TestPyGeoprocessing(unittest.TestCase):
         """Clean up remaining files."""
         shutil.rmtree(self.workspace_dir)
 
+    def test_distance_transform_mocked_os_remove(self):
+        """PGP.geoprocessing: ensure OSError is tolerated."""
+        from scipy.ndimage import morphology
+        mask_matrix = numpy.ones((500, 500), numpy.float32)
+        mask_matrix[:] = 0.0
+        mask_matrix[mask_matrix.shape[0] / 2, mask_matrix.shape[1] / 2] = 1.0
+        reference = sampledata.SRS_COLOMBIA
+        nodata = -1
+        mask_path = os.path.join(self.workspace_dir, 'mask.tif')
+        pygeoprocessing.testing.create_raster_on_disk(
+            [mask_matrix], reference.origin, reference.projection, nodata,
+            reference.pixel_size(30), filename=mask_path)
+        output_path = os.path.join(self.workspace_dir, 'output.tif')
+        with mock.patch.object(
+                os, 'remove', return_value=None) as os_remove_mock:
+            os_remove_mock.side_effect = OSError('Mock OSError')
+            pygeoprocessing.distance_transform_edt(mask_path, output_path)
+        output_raster = gdal.Open(output_path)
+        output_band = output_raster.GetRasterBand(1)
+        output_array = output_band.ReadAsArray()
+        output_band = None
+        output_raster = None
+        inverse_mask = numpy.ones(mask_matrix.shape, numpy.float32)
+        inverse_mask[mask_matrix.shape[0] / 2, mask_matrix.shape[1] / 2] = 0.0
+
+        expected = morphology.distance_transform_edt(inverse_mask)
+        numpy.testing.assert_array_almost_equal(output_array, expected)
+
+
+    def test_distance_transform(self):
+        """PGP.geoprocessing: distance transform coverage test."""
+        from scipy.ndimage import morphology
+        mask_matrix = numpy.ones((500, 500), numpy.float32)
+        mask_matrix[:] = 0.0
+        mask_matrix[mask_matrix.shape[0] / 2, mask_matrix.shape[1] / 2] = 1.0
+        reference = sampledata.SRS_COLOMBIA
+        nodata = -1
+        mask_path = os.path.join(self.workspace_dir, 'mask.tif')
+        pygeoprocessing.testing.create_raster_on_disk(
+            [mask_matrix], reference.origin, reference.projection, nodata,
+            reference.pixel_size(30), filename=mask_path)
+        output_path = os.path.join(self.workspace_dir, 'output.tif')
+        pygeoprocessing.distance_transform_edt(mask_path, output_path)
+        output_raster = gdal.Open(output_path)
+        output_band = output_raster.GetRasterBand(1)
+        output_array = output_band.ReadAsArray()
+        output_band = None
+        output_raster = None
+        inverse_mask = numpy.ones(mask_matrix.shape, numpy.float32)
+        inverse_mask[mask_matrix.shape[0] / 2, mask_matrix.shape[1] / 2] = 0.0
+
+        expected = morphology.distance_transform_edt(inverse_mask)
+        numpy.testing.assert_array_almost_equal(output_array, expected)
+
     def test_convolve_2d_uri_flip_signal(self):
         """PGP.geoprocessing: convolve 2D case when kernel > signal."""
         signal_matrix = numpy.ones((1, 1), numpy.float32)
@@ -77,6 +131,8 @@ class TestPyGeoprocessing(unittest.TestCase):
         output_raster = gdal.Open(output_path)
         output_band = output_raster.GetRasterBand(1)
         output_array = output_band.ReadAsArray()
+        output_band = None
+        output_raster = None
         self.assertEquals(numpy.sum(output_array), 1)
 
     def test_convolve_2d_uri(self):
@@ -100,6 +156,8 @@ class TestPyGeoprocessing(unittest.TestCase):
         output_raster = gdal.Open(output_path)
         output_band = output_raster.GetRasterBand(1)
         output_array = output_band.ReadAsArray()
+        output_band = None
+        output_raster = None
         self.assertEquals(numpy.sum(output_array), 361)
 
     def test_calculate_disjoint_polygon_set(self):
@@ -192,6 +250,8 @@ class TestPyGeoprocessing(unittest.TestCase):
         raster = gdal.Open(raster_path)
         band = raster.GetRasterBand(1)
         values = band.ReadAsArray()
+        band = None
+        raster = None
 
         # there polygon covers a 4x4 area
         self.assertAlmostEqual(4**2, numpy.sum(values[values != nodata]))
@@ -1017,6 +1077,8 @@ class TestPyGeoprocessing(unittest.TestCase):
         raster = gdal.Open(raster_filename)
         band = raster.GetRasterBand(1)
         block_size = band.GetBlockSize()
+        band = None
+        raster = None
 
         # default geotiff block size is 256x256
         # Testing here that the block size is square, instead of a single
@@ -1038,6 +1100,8 @@ class TestPyGeoprocessing(unittest.TestCase):
         raster = gdal.Open(raster_filename)
         band = raster.GetRasterBand(1)
         block_size = band.GetBlockSize()
+        band = None
+        raster = None
 
         # If a raster is forced to be un-tiled (striped), the raster's blocks
         # will be accessed line-by-line.
@@ -1058,6 +1122,8 @@ class TestPyGeoprocessing(unittest.TestCase):
         raster = gdal.Open(raster_filename)
         band = raster.GetRasterBand(1)
         block_size = band.GetBlockSize()
+        band = None
+        raster = None
 
         self.assertEqual(block_size, [128, 256])
 
@@ -1073,12 +1139,14 @@ class TestPyGeoprocessing(unittest.TestCase):
             dataset_opts=['TILED=YES', 'BLOCKXSIZE=128', 'BLOCKYSIZE=256'],
             filename=raster_filename)
 
-        raster = gdal.Open(raster_filename)
         for band_index in [1, 2]:
+            raster = gdal.Open(raster_filename)
             band = raster.GetRasterBand(band_index)
             # Not sure why the BlockSize is a band attribute, as it's set
             # at the dataset level.
             block_size = band.GetBlockSize()
+            band = None
+            raster = None
             self.assertEqual(block_size, [128, 256])
 
 if __name__ == '__main__':
