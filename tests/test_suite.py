@@ -106,7 +106,6 @@ class TestPyGeoprocessing(unittest.TestCase):
 
         disjoint_set = pygeoprocessing.calculate_disjoint_polygon_set(
             aoi_path)
-        print disjoint_set
         self.assertEquals(len(disjoint_set), 2)
         for pair in [set([0, 1]), set([2])]:
             self.assertTrue(pair in disjoint_set)
@@ -919,6 +918,25 @@ class TestPyGeoprocessing(unittest.TestCase):
         raster_sum = 0
         for _, memblock in pygeoprocessing.iterblocks(
                 raster_filename):
+            raster_sum += memblock.sum()
+
+        self.assertEqual(raster_sum, 1000000)
+
+    def test_iterblocks_astype(self):
+        """PGP.geoprocessing: test iterblocks astype flag."""
+        pixel_matrix = numpy.empty((1000, 1000))
+        pixel_matrix[:] = 1.4
+        nodata = 0
+        reference = sampledata.SRS_COLOMBIA
+        raster_filename = os.path.join(self.workspace_dir, 'raster.tif')
+        pygeoprocessing.testing.create_raster_on_disk(
+            [pixel_matrix], reference.origin, reference.projection, nodata,
+            reference.pixel_size(30), filename=raster_filename,
+            dataset_opts=['TILED=YES'])
+
+        raster_sum = 0
+        for _, memblock in pygeoprocessing.iterblocks(
+                raster_filename, astype=numpy.int):
             raster_sum += memblock.sum()
 
         self.assertEqual(raster_sum, 1000000)
