@@ -3069,14 +3069,6 @@ def convolve_2d_uri(signal_path, kernel_path, output_path):
                 kernel_data['yoff'] + signal_data['win_ysize'] +
                 kernel_data['win_ysize'] - 1)
 
-            # it's possible that the piece of the integrating kernel
-            # doesn't even affect the final result, we can just skip
-            if (right_index_raster < 0 or
-                    bottom_index_raster < 0 or
-                    left_index_raster > n_cols_signal or
-                    top_index_raster > n_rows_signal):
-                continue
-
             kernel_nodata_mask = (kernel_block == k_nodata)
             kernel_block[kernel_nodata_mask] = 0.0
 
