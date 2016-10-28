@@ -71,7 +71,7 @@ class TestPyGeoprocessing(unittest.TestCase):
             [pixel_matrix], reference.origin, reference.projection, nodata,
             reference.pixel_size(30), filename=kernel_path)
 
-        output_path = os.path.join(self.workspace_dir, 'kernel.tif')
+        output_path = os.path.join(self.workspace_dir, 'output.tif')
         pygeoprocessing.convolve_2d_uri(
             signal_path, kernel_path, output_path)
 
