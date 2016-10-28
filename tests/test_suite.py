@@ -57,6 +57,31 @@ class TestPyGeoprocessing(unittest.TestCase):
         """Clean up remaining files."""
         shutil.rmtree(self.workspace_dir)
 
+    def test_calculate_slope(self):
+        """PGP.geoprocessing: test slope calculation."""
+        dem_matrix = numpy.empty((5, 5), numpy.int16)
+        reference = sampledata.SRS_COLOMBIA
+        nodata = -1
+        for row_index in xrange(dem_matrix.shape[1]):
+            dem_matrix[row_index, :] = row_index
+        dem_path = os.path.join(self.workspace_dir, 'dem.tif')
+        pygeoprocessing.testing.create_raster_on_disk(
+            [dem_matrix], reference.origin, reference.projection, nodata,
+            reference.pixel_size(1), filename=dem_path)
+        slope_path = os.path.join(self.workspace_dir, 'slope.tif')
+        pygeoprocessing.calculate_slope(dem_path, slope_path)
+
+        slope_raster = gdal.Open(slope_path)
+        slope_band = slope_raster.GetRasterBand(1)
+        slope_array = slope_band.ReadAsArray()
+        slope_band = None
+        slope_raster = None
+
+        # just check the inner pixels; outer are questionable corner cases
+        # that will be addressed in this issue: https://bitbucket.org/richpsharp/pygeoprocessing/issues/67/test-slope-calculation-against-saga-gis
+        numpy.testing.assert_array_almost_equal(
+            slope_array[1:-1, 1:-1], 100 * numpy.ones((3, 3)))
+
     def test_distance_transform_mocked_os_remove(self):
         """PGP.geoprocessing: ensure OSError is tolerated."""
         from scipy.ndimage import morphology
