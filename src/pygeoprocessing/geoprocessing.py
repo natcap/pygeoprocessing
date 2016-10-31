@@ -1101,7 +1101,6 @@ def clip_dataset_uri(
         assert_datasets_projected=assert_projections,
         process_pool=process_pool, vectorize_op=False, all_touched=all_touched)
 
-
 def get_raster_info(raster_path):
     """Get information about a GDAL raster dataset.
 
@@ -1138,6 +1137,14 @@ def get_raster_info(raster_path):
             1, raster_properties['n_bands']+1)]
     if len(raster_properties['nodata']) == 1:
         raster_properties['nodata'] = raster_properties['nodata'][0]
+
+    raster_properties['bounding_box'] = [
+        geo_transform[0], geo_transform[3],
+        (geo_transform[0] +
+         raster_properties['raster_size'][0] * geo_transform[1]),
+        (geo_transform[3] +
+         raster_properties['raster_size'][1] * geo_transform[5])]
+
     raster = None
     return raster_properties
 
@@ -1632,35 +1639,6 @@ def assert_datasets_in_same_projection(dataset_uri_list):
     return True
 
 
-def get_bounding_box(dataset_uri):
-    """Get bounding box where coordinates are in projected units.
-
-    Args:
-        dataset_uri (string): a uri to a GDAL dataset
-
-    Returns:
-        bounding_box (list):
-            [upper_left_x, upper_left_y, lower_right_x, lower_right_y] in
-            projected coordinates
-    """
-    dataset = gdal.Open(dataset_uri)
-
-    geotransform = dataset.GetGeoTransform()
-    n_cols = dataset.RasterXSize
-    n_rows = dataset.RasterYSize
-
-    bounding_box = [geotransform[0],
-                    geotransform[3],
-                    geotransform[0] + n_cols * geotransform[1],
-                    geotransform[3] + n_rows * geotransform[5]]
-
-    # Close and cleanup dataset
-    gdal.Dataset.__swig_destroy__(dataset)
-    dataset = None
-
-    return bounding_box
-
-
 def get_datasource_bounding_box(datasource_uri):
     """Get datasource bounding box where coordinates are in projected units.
 
@@ -1896,15 +1874,16 @@ def align_dataset_list(
         bb_out = [op(x, y) for op, x, y in zip(comparison_ops, bb1, bb2)]
         return bb_out
 
+    raster_info_list = [get_raster_info(path) for path in dataset_uri_list]
+
     # get the intersecting or unioned bounding box
     if mode == "dataset":
-        bounding_box = get_bounding_box(
-            dataset_uri_list[dataset_to_bound_index])
+        bounding_box = get_raster_info(
+            raster_info_list[dataset_to_bound_index]['bounding_box'])
     else:
         bounding_box = reduce(
             functools.partial(merge_bounding_boxes, mode=mode),
-            [get_bounding_box(dataset_uri) for dataset_uri in
-             dataset_uri_list])
+            [info['bounding_box'] for info in raster_info_list])
 
     if aoi_uri is not None:
         bounding_box = merge_bounding_boxes(
@@ -1917,10 +1896,10 @@ def align_dataset_list(
 
     if dataset_to_align_index >= 0:
         # bounding box needs alignment
-        align_bounding_box = get_bounding_box(
-            dataset_uri_list[dataset_to_align_index])
-        align_pixel_size = get_cell_size_from_uri(
-            dataset_uri_list[dataset_to_align_index])
+        align_bounding_box = (
+            raster_info_list[dataset_to_align_index]['bounding_box'])
+        align_pixel_size = (
+            raster_info_list[dataset_to_align_index]['mean_pixel_size'])
 
         for index in [0, 1]:
             n_pixels = int(
@@ -1959,7 +1938,8 @@ def align_dataset_list(
         aoi_layer = aoi_datasource.GetLayer()
         option_list = ["ALL_TOUCHED=%s" % str(all_touched).upper()]
         gdal.RasterizeLayer(
-            mask_dataset, [1], aoi_layer, burn_values=[1], options=option_list)
+            mask_dataset, [1], aoi_layer, burn_values=[1],
+            options=option_list)
         mask_row = numpy.zeros((1, n_cols), dtype=numpy.int8)
 
         out_dataset_list = [

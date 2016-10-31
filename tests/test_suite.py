@@ -62,7 +62,7 @@ class TestPyGeoprocessing(unittest.TestCase):
         pixel_matrix = numpy.ones((5, 10), numpy.int16)
         pixel_matrix[2:4:, 2:4] = 2
         reference = sampledata.SRS_COLOMBIA
-        nodata = -1
+        nodata = -1.0
         pixel_matrix[0, 0] = nodata
         raster_filename = os.path.join(self.workspace_dir, 'raster.tif')
         pygeoprocessing.testing.create_raster_on_disk(
@@ -72,11 +72,12 @@ class TestPyGeoprocessing(unittest.TestCase):
         raster_info = pygeoprocessing.get_raster_info(raster_filename)
 
         expected_results = {
-            'pixel_size': (30, -30),
+            'pixel_size': (30.0, -30.0),
             'mean_pixel_size': 30.0,
             'raster_size': (10, 5),
             'nodata': nodata,
             'n_bands': 1,
+            'bounding_box': [444720.0, 3751320.0, 445020.0, 3751170.0],
         }
 
         self.assertEqual(expected_results, raster_info)
