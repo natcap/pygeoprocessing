@@ -1128,27 +1128,27 @@ def get_raster_properties_uri(dataset_uri):
     return value
 
 
-def get_raster_properties(dataset):
-    """Get width, height, X size, and Y size of the dataset as dictionary.
+def get_raster_properties(raster_path):
+    """Get width, height, X size, and Y size of the raster_path as dictionary.
 
-    *This function can be expanded to return more properties if needed*
-
-    Args:
-       dataset (gdal.Dataset): a GDAL raster dataset to get the properties from
+    Parameters:
+       raster_path (String): a path to a GDAL raster
 
     Returns:
-        dataset_dict (dictionary): a dictionary with the properties stored
-            under relevant keys. The current list of things returned is:
-            width (w-e pixel resolution), height (n-s pixel resolution),
-            XSize, YSize
+        raster_dict (dictionary): a dictionary with the properties stored
+            under relevant keys.
+
+            'width' (w-e pixel resolution),
+            'height' (n-s pixel resolution),
+            'x_size', 'y_size'; raster dimensions
     """
-    dataset_dict = {}
-    geo_transform = dataset.GetGeoTransform()
-    dataset_dict['width'] = float(geo_transform[1])
-    dataset_dict['height'] = float(geo_transform[5])
-    dataset_dict['x_size'] = dataset.GetRasterBand(1).XSize
-    dataset_dict['y_size'] = dataset.GetRasterBand(1).YSize
-    return dataset_dict
+    raster_path_dict = {}
+    geo_transform = raster_path.GetGeoTransform()
+    raster_path_dict['width'] = float(geo_transform[1])
+    raster_path_dict['height'] = float(geo_transform[5])
+    raster_path_dict['x_size'] = raster_path.GetRasterBand(1).XSize
+    raster_path_dict['y_size'] = raster_path.GetRasterBand(1).YSize
+    return raster_path_dict
 
 
 def reproject_dataset_uri(
