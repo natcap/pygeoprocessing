@@ -1103,55 +1103,6 @@ def clip_dataset_uri(
         process_pool=process_pool, vectorize_op=False, all_touched=all_touched)
 
 
-def create_rat_uri(dataset_uri, attr_dict, column_name):
-    """Create a raster attribute table.
-
-    URI wrapper for create_rat.
-
-    Args:
-        dataset_uri (string): a GDAL raster dataset to create the RAT for (...)
-        attr_dict (dict): a dictionary with keys that point to a primitive type
-           {integer_id_1: value_1, ... integer_id_n: value_n}
-        column_name (string): a string for the column name that maps the values
-    """
-    dataset = gdal.Open(dataset_uri, gdal.GA_Update)
-    create_rat(dataset, attr_dict, column_name)
-
-    # Make sure the dataset is closed and cleaned up
-    gdal.Dataset.__swig_destroy__(dataset)
-    dataset = None
-
-
-def create_rat(dataset, attr_dict, column_name):
-    """Create a raster attribute table.
-
-    Args:
-        dataset: a GDAL raster dataset to create the RAT for (...)
-        attr_dict (dict): a dictionary with keys that point to a primitive type
-           {integer_id_1: value_1, ... integer_id_n: value_n}
-        column_name (string): a string for the column name that maps the values
-
-    Returns:
-        dataset (gdal.Dataset): a GDAL raster dataset with an updated RAT
-    """
-    band = dataset.GetRasterBand(1)
-    rat = gdal.RasterAttributeTable()
-    rat.SetRowCount(len(attr_dict))
-
-    # create columns
-    rat.CreateColumn('Value', gdal.GFT_Integer, gdal.GFU_MinMax)
-    rat.CreateColumn(column_name, gdal.GFT_String, gdal.GFU_Name)
-
-    row_count = 0
-    for key in sorted(attr_dict.keys()):
-        rat.SetValueAsInt(row_count, 0, int(key))
-        rat.SetValueAsString(row_count, 1, attr_dict[key])
-        row_count += 1
-
-    band.SetDefaultRAT(rat)
-    return dataset
-
-
 def get_raster_properties_uri(dataset_uri):
     """Get width, height, X size, and Y size of the dataset as dictionary.
 
