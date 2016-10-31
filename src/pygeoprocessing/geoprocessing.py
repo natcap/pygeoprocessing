@@ -1887,7 +1887,8 @@ def align_dataset_list(
 
     if aoi_uri is not None:
         bounding_box = merge_bounding_boxes(
-            bounding_box, get_datasource_bounding_box(aoi_uri), "intersection")
+            bounding_box, get_datasource_bounding_box(aoi_uri),
+            "intersection")
 
     if (bounding_box[0] >= bounding_box[2] or
             bounding_box[1] <= bounding_box[3]) and mode == "intersection":
