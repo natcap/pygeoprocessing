@@ -57,6 +57,28 @@ class TestPyGeoprocessing(unittest.TestCase):
         """Clean up remaining files."""
         shutil.rmtree(self.workspace_dir)
 
+    def get_raster_info(self):
+        """PGP.geoprocessing: test for raster property info."""
+        pixel_matrix = numpy.ones((5, 10), numpy.int16)
+        pixel_matrix[2:4:, 2:4] = 2
+        reference = sampledata.SRS_COLOMBIA
+        nodata = -1
+        pixel_matrix[0, 0] = nodata
+        raster_filename = os.path.join(self.workspace_dir, 'raster.tif')
+        pygeoprocessing.testing.create_raster_on_disk(
+            [pixel_matrix], reference.origin, reference.projection, nodata,
+            reference.pixel_size(30), filename=raster_filename)
+
+        raster_info = pygeoprocessing.get_raster_info(raster_filename)
+
+        expected_results = {
+            'pixel_size': (30, -30),
+            'mean_pixel_size': 30.0,
+            'raster_size': (10, 5)
+        }
+
+        self.assertEqual(expected_results, raster_info)
+
     def test_reclassify_dataset(self):
         """PGP.geoprocessing: test for agg raster values ignore nodata."""
         pixel_matrix = numpy.ones((5, 5), numpy.int16)

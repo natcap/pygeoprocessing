@@ -85,7 +85,6 @@ def _gdal_to_numpy_type(band):
     return numpy.uint8
 
 
-
 def get_nodata_from_uri(dataset_uri):
     """Return nodata value from first band in gdal dataset cast as numpy datatype.
 
@@ -1103,52 +1102,36 @@ def clip_dataset_uri(
         process_pool=process_pool, vectorize_op=False, all_touched=all_touched)
 
 
-def get_raster_properties_uri(dataset_uri):
-    """Get width, height, X size, and Y size of the dataset as dictionary.
-
-    Wrapper function for get_raster_properties() that passes in the dataset
-    URI instead of the datasets itself
-
-    Args:
-        dataset_uri (string): a URI to a GDAL raster dataset
-
-    Returns:
-        value (dictionary): a dictionary with the properties stored under
-            relevant keys. The current list of things returned is:
-            width (w-e pixel resolution), height (n-s pixel resolution),
-            XSize, YSize
-    """
-    dataset = gdal.Open(dataset_uri)
-    value = get_raster_properties(dataset)
-
-    # Make sure the dataset is closed and cleaned up
-    gdal.Dataset.__swig_destroy__(dataset)
-    dataset = None
-
-    return value
-
-
-def get_raster_properties(raster_path):
-    """Get width, height, X size, and Y size of the raster_path as dictionary.
+def get_raster_info(raster_path):
+    """Get information about a GDAL raster dataset.
 
     Parameters:
-       raster_path (String): a path to a GDAL raster
+       raster_path (String): a path to a GDAL raster.
 
     Returns:
-        raster_dict (dictionary): a dictionary with the properties stored
-            under relevant keys.
+        raster_properties (dictionary): a dictionary with the properties
+            stored under relevant keys.
 
-            'width' (w-e pixel resolution),
-            'height' (n-s pixel resolution),
-            'x_size', 'y_size'; raster dimensions
+            'pixel_size' (tuple): (pixel x-size, pixel y-size) from
+                geotransform.
+            'mean_pixel_size' (float): the average size of the absolute value
+                of each pixel size element.
+            'raster_size' (tuple):  number of raster pixels in (x, y)
+                direction.
     """
-    raster_path_dict = {}
-    geo_transform = raster_path.GetGeoTransform()
-    raster_path_dict['width'] = float(geo_transform[1])
-    raster_path_dict['height'] = float(geo_transform[5])
-    raster_path_dict['x_size'] = raster_path.GetRasterBand(1).XSize
-    raster_path_dict['y_size'] = raster_path.GetRasterBand(1).YSize
-    return raster_path_dict
+    raster_properties = {}
+    raster = gdal.Open(raster_path)
+    geo_transform = raster.GetGeoTransform()
+    band = raster.GetRasterBand(1)
+    raster_properties['pixel_size'] = (geo_transform[1], geo_transform[5])
+    raster_properties['mean_pixel_size'] = (
+        (abs(geo_transform[1]) + abs(geo_transform[5])) / 2.0)
+    raster_properties['raster_size'] = (
+        raster.GetRasterBand(1).XSize,
+        raster.GetRasterBand(1).YSize)
+    raster = None
+    band = None
+    return raster_properties
 
 
 def reproject_dataset_uri(
