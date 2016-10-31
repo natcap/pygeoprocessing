@@ -389,7 +389,6 @@ class TestPyGeoprocessing(unittest.TestCase):
         band = None
         raster = None
 
-        # there polygon covers a 4x4 area
         self.assertAlmostEqual(4**2, numpy.sum(values[values != nodata]))
 
     def test_reclassify_dataset(self):
