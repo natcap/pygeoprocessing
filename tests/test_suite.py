@@ -77,7 +77,10 @@ class TestPyGeoprocessing(unittest.TestCase):
             'raster_size': (10, 5),
             'nodata': nodata,
             'n_bands': 1,
-            'bounding_box': [444720.0, 3751320.0, 445020.0, 3751170.0],
+            'bounding_box': [
+                reference.origin[0], reference.origin[1],
+                reference.origin[0] + reference.pixel_size(30)[0] * 10,
+                reference.origin[1] + reference.pixel_size(30)[1] * 5],
         }
 
         self.assertEqual(expected_results, raster_info)

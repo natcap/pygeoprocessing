@@ -1878,7 +1878,7 @@ def align_dataset_list(
 
     # get the intersecting or unioned bounding box
     if mode == "dataset":
-        bounding_box = get_raster_info(
+        bounding_box = (
             raster_info_list[dataset_to_bound_index]['bounding_box'])
     else:
         bounding_box = reduce(
