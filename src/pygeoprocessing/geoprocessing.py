@@ -1118,19 +1118,27 @@ def get_raster_info(raster_path):
                 of each pixel size element.
             'raster_size' (tuple):  number of raster pixels in (x, y)
                 direction.
+            'nodata' (float or list): if number of bands is 1, then this value
+                is the nodata value of the single band, otherwise a list of
+                the nodata values in increasing band index
+            'n_bands' (int): number of bands in the raster.
     """
     raster_properties = {}
     raster = gdal.Open(raster_path)
     geo_transform = raster.GetGeoTransform()
-    band = raster.GetRasterBand(1)
     raster_properties['pixel_size'] = (geo_transform[1], geo_transform[5])
     raster_properties['mean_pixel_size'] = (
         (abs(geo_transform[1]) + abs(geo_transform[5])) / 2.0)
     raster_properties['raster_size'] = (
         raster.GetRasterBand(1).XSize,
         raster.GetRasterBand(1).YSize)
+    raster_properties['n_bands'] = raster.RasterCount
+    raster_properties['nodata'] = [
+        raster.GetRasterBand(index).GetNoDataValue() for index in xrange(
+            1, raster_properties['n_bands']+1)]
+    if len(raster_properties['nodata']) == 1:
+        raster_properties['nodata'] = raster_properties['nodata'][0]
     raster = None
-    band = None
     return raster_properties
 
 
