@@ -56,20 +56,22 @@ class SpatialExtentOverlapException(Exception):
 def _gdal_to_numpy_type(band):
     """Calculate the equivalent numpy datatype from a GDAL raster band type.
 
-    Args:
-        band (gdal.Band): GDAL band
+    This function doesn't handle complex or unknown types.  If they are
+    passed in, this function will rase a ValueERror.
+
+    Parameters:
+        band (gdal.Band): GDAL Band
 
     Returns:
         numpy_datatype (numpy.dtype): equivalent of band.DataType
     """
-
     gdal_type_to_numpy_lookup = {
         gdal.GDT_Int16: numpy.int16,
         gdal.GDT_Int32: numpy.int32,
         gdal.GDT_UInt16: numpy.uint16,
         gdal.GDT_UInt32: numpy.uint32,
         gdal.GDT_Float32: numpy.float32,
-        gdal.GDT_Float64: numpy.float64
+        gdal.GDT_Float64: numpy.float64,
     }
 
     if band.DataType in gdal_type_to_numpy_lookup:
@@ -77,13 +79,12 @@ def _gdal_to_numpy_type(band):
 
     # only class not in the lookup is a Byte but double check.
     if band.DataType != gdal.GDT_Byte:
-        raise ValueError("Unknown DataType: %s" % str(band.DataType))
+        raise ValueError("Unsupported DataType: %s" % str(band.DataType))
 
     metadata = band.GetMetadata('IMAGE_STRUCTURE')
     if 'PIXELTYPE' in metadata and metadata['PIXELTYPE'] == 'SIGNEDBYTE':
         return numpy.int8
     return numpy.uint8
-
 
 def get_nodata_from_uri(dataset_uri):
     """Return nodata value from first band in gdal dataset cast as numpy datatype.
@@ -107,26 +108,6 @@ def get_nodata_from_uri(dataset_uri):
     gdal.Dataset.__swig_destroy__(dataset)
     dataset = None
     return nodata
-
-
-def get_datatype_from_uri(dataset_uri):
-    """Return datatype for first band in gdal dataset.
-
-    Args:
-        dataset_uri (string): a uri to a gdal dataset
-
-    Returns:
-        datatype: datatype for dataset band 1"""
-    dataset = gdal.Open(dataset_uri)
-    band = dataset.GetRasterBand(1)
-    datatype = band.DataType
-
-    # Close and clean up dataset
-    band = None
-    gdal.Dataset.__swig_destroy__(dataset)
-    dataset = None
-
-    return datatype
 
 
 def get_row_col_from_uri(dataset_uri):
@@ -232,73 +213,6 @@ def get_cell_size_from_uri(dataset_uri):
     dataset = None
 
     return size_meters
-
-
-def pixel_size_based_on_coordinate_transform_uri(dataset_uri, *args, **kwargs):
-    """Get width and height of cell in meters.
-
-    A wrapper for pixel_size_based_on_coordinate_transform that takes a dataset
-    uri as an input and opens it before sending it along.
-
-    Args:
-        dataset_uri (string): a URI to a gdal dataset
-
-        All other parameters pass along
-
-    Returns:
-        result (tuple): (pixel_width_meters, pixel_height_meters)
-    """
-    dataset = gdal.Open(dataset_uri)
-    result = pixel_size_based_on_coordinate_transform(dataset, *args, **kwargs)
-
-    # Close and clean up dataset
-    gdal.Dataset.__swig_destroy__(dataset)
-    dataset = None
-
-    return result
-
-
-def pixel_size_based_on_coordinate_transform(dataset, coord_trans, point):
-    """Get width and height of cell in meters.
-
-    Calculates the pixel width and height in meters given a coordinate
-    transform and reference point on the dataset that's close to the
-    transform's projected coordinate sytem.  This is only necessary
-    if dataset is not already in a meter coordinate system, for example
-    dataset may be in lat/long (WGS84).
-
-    Args:
-        dataset (gdal.Dataset): a projected GDAL dataset in the form of
-            lat/long decimal degrees
-        coord_trans (osr.CoordinateTransformation): an OSR coordinate
-            transformation from dataset coordinate system to meters
-        point (tuple): a reference point close to the coordinate transform
-            coordinate system.  must be in the same coordinate system as
-            dataset.
-
-    Returns:
-        pixel_diff (tuple): a 2-tuple containing (pixel width in meters, pixel
-            height in meters)
-    """
-    # Get the first points (x, y) from geoTransform
-    geo_tran = dataset.GetGeoTransform()
-    pixel_size_x = geo_tran[1]
-    pixel_size_y = geo_tran[5]
-    top_left_x = point[0]
-    top_left_y = point[1]
-    # Create the second point by adding the pixel width/height
-    new_x = top_left_x + pixel_size_x
-    new_y = top_left_y + pixel_size_y
-    # Transform two points into meters
-    point_1 = coord_trans.TransformPoint(top_left_x, top_left_y)
-    point_2 = coord_trans.TransformPoint(new_x, new_y)
-    # Calculate the x/y difference between two points
-    # taking the absolue value because the direction doesn't matter for pixel
-    # size in the case of most coordinate systems where y increases up and x
-    # increases to the right (right handed coordinate system).
-    pixel_diff_x = abs(point_2[0] - point_1[0])
-    pixel_diff_y = abs(point_2[1] - point_1[1])
-    return (pixel_diff_x, pixel_diff_y)
 
 
 def new_raster_from_base_uri(
@@ -418,83 +332,6 @@ def new_raster(
         new_raster.GetRasterBand(i + 1).Fill(nodata)
 
     return new_raster
-
-
-def calculate_intersection_rectangle(dataset_list, aoi=None):
-    """Return bounding box of the intersection of all rasters in the list.
-
-    Args:
-        dataset_list (list): a list of GDAL datasets in the same projection and
-            coordinate system
-
-    Keyword Args:
-        aoi: an OGR polygon datasource which may optionally also restrict
-            the extents of the intersection rectangle based on its own
-            extents.
-
-    Returns:
-        bounding_box (list): a 4 element list that bounds the intersection of
-            all the rasters in dataset_list.  [left, top, right, bottom]
-
-    Raises:
-        SpatialExtentOverlapException: in cases where the dataset list and aoi
-            don't overlap.
-    """
-
-    def valid_bounding_box(bb):
-        """Check to make sure bounding box doesn't collapse on itself.
-
-        Args:
-            bb (list): a bounding box of the form [left, top, right, bottom]
-
-        Returns:
-            is_valid (boolean): True if bb is valid, false otherwise
-        """
-
-        return bb[0] <= bb[2] and bb[3] <= bb[1]
-
-    # Define the initial bounding box
-    gt = dataset_list[0].GetGeoTransform()
-    # order is left, top, right, bottom of rasterbounds
-    bounding_box = [
-        gt[0], gt[3], gt[0] + gt[1] * dataset_list[0].RasterXSize,
-        gt[3] + gt[5] * dataset_list[0].RasterYSize]
-
-    dataset_files = []
-    for dataset in dataset_list:
-        dataset_files.append(dataset.GetDescription())
-        # intersect the current bounding box with the one just read
-        gt = dataset.GetGeoTransform()
-        rec = [
-            gt[0], gt[3], gt[0] + gt[1] * dataset.RasterXSize,
-            gt[3] + gt[5] * dataset.RasterYSize]
-        # This intersects rec with the current bounding box
-        bounding_box = [
-            max(rec[0], bounding_box[0]),
-            min(rec[1], bounding_box[1]),
-            min(rec[2], bounding_box[2]),
-            max(rec[3], bounding_box[3])]
-
-        # Left can't be greater than right or bottom greater than top
-        if not valid_bounding_box(bounding_box):
-            raise SpatialExtentOverlapException(
-                "These rasters %s don't overlap with this one %s" %
-                (unicode(dataset_files[0:-1]), dataset_files[-1]))
-
-    if aoi != None:
-        aoi_layer = aoi.GetLayer(0)
-        aoi_extent = aoi_layer.GetExtent()
-        bounding_box = [
-            max(aoi_extent[0], bounding_box[0]),
-            min(aoi_extent[3], bounding_box[1]),
-            min(aoi_extent[1], bounding_box[2]),
-            max(aoi_extent[2], bounding_box[3])]
-        if not valid_bounding_box(bounding_box):
-            raise SpatialExtentOverlapException(
-                "The aoi layer %s doesn't overlap with %s" %
-                (aoi, unicode(dataset_files)))
-
-    return bounding_box
 
 
 def create_raster_from_vector_extents_uri(
@@ -1018,7 +855,7 @@ def aggregate_raster_values_uri(
 
 
 def calculate_slope(
-        dem_dataset_uri, slope_uri, aoi_uri=None, process_pool=None):
+        dem_dataset_uri, slope_uri):
     """Create slope raster from DEM raster.
 
     Follows the algorithm described here:
@@ -1028,34 +865,14 @@ def calculate_slope(
         dem_dataset_uri (string): a URI to a  single band raster of z values.
         slope_uri (string): a path to the output slope uri in percent.
 
-    Keyword Args:
-        aoi_uri (string): a uri to an AOI input
-        process_pool: a process pool for multiprocessing
-
     Returns:
         None
     """
-    out_pixel_size = get_cell_size_from_uri(dem_dataset_uri)
-    dem_nodata = get_nodata_from_uri(dem_dataset_uri)
-
-    dem_small_uri = temporary_filename(suffix='.tif')
-    # cast the dem to a floating point one if it's not already
-    dem_float_nodata = float(dem_nodata)
-
-    vectorize_datasets(
-        [dem_dataset_uri], lambda x: x.astype(numpy.float32), dem_small_uri,
-        gdal.GDT_Float32, dem_float_nodata, out_pixel_size, "intersection",
-        dataset_to_align_index=0, aoi_uri=aoi_uri, process_pool=process_pool,
-        vectorize_op=False)
-
-    slope_nodata = -9999.0
+    slope_nodata = numpy.finfo(numpy.float32).min
     new_raster_from_base_uri(
-        dem_small_uri, slope_uri, 'GTiff', slope_nodata, gdal.GDT_Float32)
-    geoprocessing_core._cython_calculate_slope(
-        dem_small_uri, slope_uri)
+        dem_dataset_uri, slope_uri, 'GTiff', slope_nodata, gdal.GDT_Float32)
+    geoprocessing_core._cython_calculate_slope(dem_dataset_uri, slope_uri)
     calculate_raster_stats_uri(slope_uri)
-
-    os.remove(dem_small_uri)
 
 
 def clip_dataset_uri(
@@ -1181,11 +998,12 @@ def reproject_dataset_uri(
         }
 
     # Get the nodata value and datatype from the original dataset
-    output_type = get_datatype_from_uri(original_dataset_uri)
     out_nodata = get_nodata_from_uri(original_dataset_uri)
 
     original_dataset = gdal.Open(original_dataset_uri)
-
+    original_band = original_dataset.GetRasterBand(1)
+    output_type = original_band.DataType
+    original_band = None
     original_wkt = original_dataset.GetProjection()
 
     # Create a virtual raster that is projected based on the output WKT. This
