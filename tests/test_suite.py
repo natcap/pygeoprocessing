@@ -76,6 +76,7 @@ class TestPyGeoprocessing(unittest.TestCase):
             'mean_pixel_size': 30.0,
             'raster_size': (10, 5),
             'nodata': nodata,
+            'n_bands': 1,
         }
 
         self.assertEqual(expected_results, raster_info)
