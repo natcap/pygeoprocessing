@@ -821,7 +821,7 @@ class TestPyGeoprocessing(unittest.TestCase):
         out_a_filename = os.path.join(self.workspace_dir, 'a_out.tif')
         out_b_filename = os.path.join(self.workspace_dir, 'b_out.tif')
         with self.assertRaises(ValueError):
-            # Too few intersection lists
+            # intentionally bad mode passed
             pygeoprocessing.align_dataset_list(
                 [raster_a_filename, raster_b_filename],
                 [out_a_filename, out_b_filename], ['nearest', 'nearest'],
