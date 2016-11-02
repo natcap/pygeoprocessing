@@ -1,6 +1,11 @@
 Release History
 ===============
 
+Unreleased Changes
+------------------
+* Fixing an issue with aggregate_raster_values that caused a crash if feature IDs were not in increasing order starting with 0.
+* Removed "create_rat/create_rat_uri" and migrated it to natcap.invest.wind_energy; the only InVEST model that uses that function.
+
 0.3.0 (10/21/2016)
 ------------------
 * Added `rel_tol` and `abs_tol` parameters to `testing.assertions` to be consistent with PEP485 and deal with real world testing situations that required an absolute tolerance.
