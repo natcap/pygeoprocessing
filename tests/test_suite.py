@@ -208,8 +208,11 @@ class TestPyGeoprocessing(unittest.TestCase):
         output_path = os.path.join(self.workspace_dir, 'output.tif')
         with mock.patch.object(
                 os, 'remove', return_value=None) as os_remove_mock:
-            os_remove_mock.side_effect = OSError('Mock OSError')
-            pygeoprocessing.distance_transform_edt(mask_path, output_path)
+            try:
+                os_remove_mock.side_effect = OSError('Mock OSError')
+                pygeoprocessing.distance_transform_edt(mask_path, output_path)
+            except OSError as error:
+                self.fail("Unexpected OSError was raised %s" % error)
         output_raster = gdal.Open(output_path)
         output_band = output_raster.GetRasterBand(1)
         output_array = output_band.ReadAsArray()
@@ -534,14 +537,16 @@ class TestPyGeoprocessing(unittest.TestCase):
 
         with mock.patch.object(
                 os, 'remove', return_value=None) as os_remove_mock:
-            os_remove_mock.side_effect = OSError('Mock OSError')
-            result = pygeoprocessing.aggregate_raster_values_uri(
-                raster_filename, aoi_filename, shapefile_field=None,
-                ignore_nodata=True, all_touched=False,
-                polygons_might_overlap=True)
-
-            # there are 25 pixels fully covered
-            self.assertAlmostEqual(result.total[9999], 25)
+            try:
+                os_remove_mock.side_effect = OSError('Mock OSError')
+                result = pygeoprocessing.aggregate_raster_values_uri(
+                    raster_filename, aoi_filename, shapefile_field=None,
+                    ignore_nodata=True, all_touched=False,
+                    polygons_might_overlap=True)
+                # there are 25 pixels fully covered
+                self.assertAlmostEqual(result.total[9999], 25)
+            except OSError as error:
+                self.fail("Unexpected OSError was raised %s" % error)
 
     def test_agg_raster_values(self):
         """PGP.geoprocessing: basic unit test for aggregate raster values."""
@@ -1064,11 +1069,15 @@ class TestPyGeoprocessing(unittest.TestCase):
         out_filename = os.path.join(self.workspace_dir, 'out.tif')
         with mock.patch.object(
                 os, 'remove', return_value=None) as os_remove_mock:
-            os_remove_mock.side_effect = OSError('Mock OSError')
-            pygeoprocessing.vectorize_datasets(
-                [raster_filename], lambda x: x, out_filename,
-                gdal.GDT_Int32, nodata, 30, 'intersection',
-                aoi_uri=aoi_filename)
+            try:
+                os_remove_mock.side_effect = OSError('Mock OSError')
+                pygeoprocessing.vectorize_datasets(
+                    [raster_filename], lambda x: x, out_filename,
+                    gdal.GDT_Int32, nodata, 30, 'intersection',
+                    aoi_uri=aoi_filename)
+            except OSError as error:
+                self.fail("Unexpected OSError was raised %s" % error)
+
         pygeoprocessing.testing.assert_rasters_equal(
             raster_filename, out_filename, rel_tol=1e-9)
 
