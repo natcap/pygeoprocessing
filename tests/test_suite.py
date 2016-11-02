@@ -946,7 +946,7 @@ class TestPyGeoprocessing(unittest.TestCase):
         out_b_filename = os.path.join(self.workspace_dir, 'b_out.tif')
 
         with self.assertRaises(ValueError):
-            # reference dataset 3 which doesn't exist
+            # raster a and b don't overlap
             pygeoprocessing.align_dataset_list(
                 [raster_a_filename, raster_b_filename],
                 [out_a_filename, out_b_filename], ['nearest', 'nearest'],
