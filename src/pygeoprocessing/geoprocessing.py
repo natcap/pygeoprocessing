@@ -913,9 +913,6 @@ def reproject_dataset_uri(
         "lanczos": gdal.GRA_Lanczos
         }
 
-    # Get the nodata value and datatype from the original dataset
-    out_nodata = get_nodata_from_uri(original_dataset_uri)
-
     original_dataset = gdal.Open(original_dataset_uri)
     original_band = original_dataset.GetRasterBand(1)
     output_type = original_band.DataType
@@ -947,7 +944,8 @@ def reproject_dataset_uri(
         options=['BIGTIFF=IF_SAFER'])
 
     # Set the nodata value for the output dataset
-    output_dataset.GetRasterBand(1).SetNoDataValue(float(out_nodata))
+    output_dataset.GetRasterBand(1).SetNoDataValue(
+        float(get_raster_info(raster_path)['nodata']))
 
     # Calculate the new geotransform
     output_geo = (ulx, pixel_spacing, geo_t[2], uly, geo_t[4], -pixel_spacing)
@@ -1060,7 +1058,7 @@ def reproject_datasource(original_datasource, output_wkt, output_uri):
 
         original_layer.ResetReading()
 
-        # Get the spatial reference of the original_layer to use in transforming
+        # Get the SR of the original_layer to use in transforming
         original_sr = original_layer.GetSpatialRef()
 
         # Create a coordinate transformation
@@ -1073,7 +1071,7 @@ def reproject_datasource(original_datasource, output_wkt, output_uri):
 
             # Transform the geometry into format desired for the new projection
             error_code = geom.Transform(coord_trans)
-            if error_code != 0: # error
+            if error_code != 0:  # error
                 # this could be caused by an out of range transformation
                 # whatever the case, don't put the transformed poly into the
                 # output set
@@ -1186,7 +1184,8 @@ def reclassify_dataset_uri(
         raise ValueError('unknown exception_flag %s', exception_flag)
     values_required = exception_flag == 'values_required'
 
-    nodata = get_nodata_from_uri(dataset_uri)
+    raster_info = get_raster_info(dataset_uri)
+    nodata = raster_info['nodata']
     value_map_copy = value_map.copy()
     # possible that nodata value is not defined, so test for None first
     # otherwise if nodata not predefined, remap it into the dictionary
@@ -1208,7 +1207,7 @@ def reclassify_dataset_uri(
         index = numpy.digitize(original_values.ravel(), keys, right=True)
         return values[index].reshape(original_values.shape)
 
-    out_pixel_size = get_cell_size_from_uri(dataset_uri)
+    out_pixel_size = raster_info['mean_pixel_size']
     vectorize_datasets(
         [dataset_uri], map_dataset_to_value,
         raster_out_uri, out_datatype, out_nodata, out_pixel_size,
@@ -1682,7 +1681,7 @@ def align_dataset_list(
         out_band_list = [
             dataset.GetRasterBand(1) for dataset in out_dataset_list]
         nodata_out_list = [
-            get_nodata_from_uri(uri) for uri in dataset_out_uri_list]
+            get_raster_info(path)['nodata'] for path in dataset_out_uri_list]
 
         for row_index in range(n_rows):
             mask_row = (mask_band.ReadAsArray(
@@ -2481,14 +2480,15 @@ def distance_transform_edt(
         None
     """
     mask_as_byte_uri = temporary_filename(suffix='.tif')
-    nodata_mask = get_nodata_from_uri(input_mask_uri)
-    out_pixel_size = get_cell_size_from_uri(input_mask_uri)
+    raster_info = get_raster_info(input_mask_uri)
+    nodata = raster_info['nodata']
+    out_pixel_size = raster_info['mean_pixel_size']
     nodata_out = 255
 
     def to_byte(input_vector):
-        """converts vector to 1, 0, or nodata value to fit in a byte raster"""
+        """Convert vector to 1, 0, or nodata value to fit in a byte raster."""
         return numpy.where(
-            input_vector == nodata_mask, nodata_out, input_vector != 0)
+            input_vector == nodata, nodata_out, input_vector != 0)
 
     # 64 seems like a reasonable blocksize
     blocksize = 64
@@ -2593,22 +2593,34 @@ def convolve_2d_uri(signal_path, kernel_path, output_path):
         signal_path, output_path, 'GTiff', output_nodata, gdal.GDT_Float32,
         fill_value=0)
 
-    signal_nodata = get_nodata_from_uri(signal_path)
-    n_rows_signal, n_cols_signal = get_row_col_from_uri(signal_path)
-    n_rows_kernel, n_cols_kernel = get_row_col_from_uri(kernel_path)
+    signal_raster_info = get_raster_info(signal_path)
+    kernel_raster_info = get_raster_info(kernel_path)
+    signal_raster_size = signal_raster_info['raster_size']
+    kernel_raster_size = kernel_raster_info['raster_size']
+
+    n_signal_pixels = signal_raster_size[0] * signal_raster_size[1]
+    n_kernel_pixels = kernel_raster_size[0] * kernel_raster_size[1]
 
     # by experimentation i found having the smaller raster to be cached
     # gives the best performance
-    if n_rows_signal * n_cols_signal < n_rows_kernel * n_cols_kernel:
+    if n_signal_pixels < n_kernel_pixels:
         s_path = signal_path
         k_path = kernel_path
+        n_cols_signal, n_rows_signal = signal_raster_info['raster_size']
+        n_cols_kernel, n_rows_kernel = kernel_raster_info['raster_size']
+        s_nodata = signal_raster_info['nodata']
+        k_nodata = kernel_raster_info['nodata']
     else:
         k_path = signal_path
         s_path = kernel_path
+        n_cols_signal, n_rows_signal = kernel_raster_info['raster_size']
+        n_cols_kernel, n_rows_kernel = signal_raster_info['raster_size']
+        k_nodata = signal_raster_info['nodata']
+        s_nodata = kernel_raster_info['nodata']
 
-    s_nodata = get_nodata_from_uri(s_path)
-    k_nodata = get_nodata_from_uri(k_path)
-
+    # we need the original signal raster info because we want the output to
+    # be clipped and NODATA masked to it
+    signal_nodata = signal_raster_info['nodata']
     signal_ds = gdal.Open(signal_path)
     signal_band = signal_ds.GetRasterBand(1)
     output_ds = gdal.Open(output_path, gdal.GA_Update)
@@ -2624,7 +2636,8 @@ def convolve_2d_uri(signal_path, kernel_path, output_path):
                 on if not already calculated.
 
         Returns:
-            fft transformed data_block of fshape size."""
+            fft transformed data_block of fshape size.
+        """
         cache_key = (fshape[0], fshape[1], xoff, yoff)
         if cache_key != _fft_cache.key:
             _fft_cache.cache = numpy.fft.rfftn(data_block, fshape)
