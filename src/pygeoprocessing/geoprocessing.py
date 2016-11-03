@@ -513,8 +513,9 @@ def aggregate_raster_values_uri(
         TypeError
         OSError
     """
-    raster_nodata = get_nodata_from_uri(raster_uri)
-    out_pixel_size = get_cell_size_from_uri(raster_uri)
+    raster_info = get_raster_info(raster_uri)
+    raster_nodata = raster_info['nodata']
+    out_pixel_size = raster_info['mean_pixel_size']
     clipped_raster_uri = temporary_filename(suffix='.tif')
     vectorize_datasets(
         [raster_uri], lambda x: x, clipped_raster_uri, gdal.GDT_Float64,
@@ -809,8 +810,8 @@ def clip_dataset_uri(
         assert_projections (boolean): a boolean value for whether the dataset
             needs to be projected
         process_pool: a process pool for multiprocessing
-        all_touched (boolean): if true the clip uses the option ALL_TOUCHED=TRUE
-            when calling RasterizeLayer for AOI masking.
+        all_touched (boolean): if true the clip uses the option
+            ALL_TOUCHED=TRUE when calling RasterizeLayer for AOI masking.
 
     Returns:
         None
@@ -827,12 +828,13 @@ def clip_dataset_uri(
     gdal.Dataset.__swig_destroy__(source_dataset)
     source_dataset = None
 
-    pixel_size = get_cell_size_from_uri(source_dataset_uri)
+    pixel_size = get_raster_info(source_dataset_uri)['mean_pixel_size']
     vectorize_datasets(
         [source_dataset_uri], lambda x: x, out_dataset_uri, datatype, nodata,
         pixel_size, 'intersection', aoi_uri=aoi_datasource_uri,
         assert_datasets_projected=assert_projections,
         process_pool=process_pool, vectorize_op=False, all_touched=all_touched)
+
 
 def get_raster_info(raster_path):
     """Get information about a GDAL raster dataset.
