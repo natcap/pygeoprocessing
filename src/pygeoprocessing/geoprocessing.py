@@ -2778,36 +2778,6 @@ def _smart_cast(value):
     LOGGER.warn("unknown encoding type encountered in _smart_cast: %s" % value)
     return value
 
-
-def tile_dataset_uri(in_uri, out_uri, blocksize):
-    """Resample gdal dataset into tiled raster with blocks of blocksize X
-        blocksize.
-
-    Args:
-        in_uri (string): dataset to base data from
-        out_uri (string): output dataset
-        blocksize (int): defines the side of the square for the raster, this
-            seems to have a lower limit of 16, but is untested
-
-    Returns:
-        None
-    """
-    dataset = gdal.Open(in_uri)
-    band = dataset.GetRasterBand(1)
-    datatype_out = band.DataType
-    nodata_out = get_nodata_from_uri(in_uri)
-    pixel_size_out = get_cell_size_from_uri(in_uri)
-    dataset_options = ['TILED=YES', 'BLOCKXSIZE=%d' % blocksize,
-                       'BLOCKYSIZE=%d' % blocksize, 'BIGTIFF=IF_SAFER']
-    vectorize_datasets(
-        [in_uri], lambda x: x, out_uri, datatype_out,
-        nodata_out, pixel_size_out, 'intersection',
-        resample_method_list=None, dataset_to_align_index=None,
-        dataset_to_bound_index=None, aoi_uri=None,
-        assert_datasets_projected=False, process_pool=None, vectorize_op=False,
-        datasets_are_pre_aligned=False, dataset_options=dataset_options)
-
-
 def iterblocks(
         raster_uri, band_list=None, largest_block=2**14, astype=None,
         offset_only=False):
