@@ -52,6 +52,14 @@ class SpatialExtentOverlapException(Exception):
     """
     pass
 
+_GDAL_TYPE_TO_NUMPY_LOOKUP = {
+    gdal.GDT_Int16: numpy.int16,
+    gdal.GDT_Int32: numpy.int32,
+    gdal.GDT_UInt16: numpy.uint16,
+    gdal.GDT_UInt32: numpy.uint32,
+    gdal.GDT_Float32: numpy.float32,
+    gdal.GDT_Float64: numpy.float64,
+}
 
 def _gdal_to_numpy_type(band):
     """Calculate the equivalent numpy datatype from a GDAL raster band type.
@@ -65,17 +73,8 @@ def _gdal_to_numpy_type(band):
     Returns:
         numpy_datatype (numpy.dtype): equivalent of band.DataType
     """
-    gdal_type_to_numpy_lookup = {
-        gdal.GDT_Int16: numpy.int16,
-        gdal.GDT_Int32: numpy.int32,
-        gdal.GDT_UInt16: numpy.uint16,
-        gdal.GDT_UInt32: numpy.uint32,
-        gdal.GDT_Float32: numpy.float32,
-        gdal.GDT_Float64: numpy.float64,
-    }
-
-    if band.DataType in gdal_type_to_numpy_lookup:
-        return gdal_type_to_numpy_lookup[band.DataType]
+    if band.DataType in _GDAL_TYPE_TO_NUMPY_LOOKUP:
+        return _GDAL_TYPE_TO_NUMPY_LOOKUP[band.DataType]
 
     # only class not in the lookup is a Byte but double check.
     if band.DataType != gdal.GDT_Byte:
@@ -2570,7 +2569,8 @@ def _next_regular(target):
     return match
 
 
-def convolve_2d_uri(signal_path, kernel_path, output_path):
+def convolve_2d_uri(
+        signal_path, kernel_path, output_path, output_type=gdal.GDT_Float64):
     """Convolve 2D kernel over 2D signal.
 
     Convolves the raster in `kernel_path` over `signal_path`.  Nodata values
@@ -2586,13 +2586,16 @@ def convolve_2d_uri(signal_path, kernel_path, output_path):
             that's the convolution output of signal and kernel
             that is the same size and projection of signal_path. Any nodata
             pixels that align with `signal_path` will be set to nodata.
+        output_type (GDAL type): a GDAL raster type to set the output
+            raster type to, as well as the type to calculate the convolution
+            in.  Defaults to GDT_Float64
 
     Returns:
         None
     """
     output_nodata = numpy.finfo(numpy.float32).min
     new_raster_from_base_uri(
-        signal_path, output_path, 'GTiff', output_nodata, gdal.GDT_Float32,
+        signal_path, output_path, 'GTiff', output_nodata, output_type,
         fill_value=0)
 
     signal_raster_info = get_raster_info(signal_path)
@@ -2652,7 +2655,8 @@ def convolve_2d_uri(signal_path, kernel_path, output_path):
     LOGGER.info('starting convolve')
     last_time = time.time()
     signal_data = {}
-    for signal_data, signal_block in iterblocks(s_path):
+    for signal_data, signal_block in iterblocks(
+            s_path, astype=_GDAL_TYPE_TO_NUMPY_LOOKUP[output_type]):
         last_time = _invoke_timed_callback(
             last_time, lambda: LOGGER.info(
                 "convolution operating on signal pixel (%d, %d)",
@@ -2662,7 +2666,8 @@ def convolve_2d_uri(signal_path, kernel_path, output_path):
         signal_nodata_mask = signal_block == s_nodata
         signal_block[signal_nodata_mask] = 0.0
 
-        for kernel_data, kernel_block in iterblocks(k_path):
+        for kernel_data, kernel_block in iterblocks(
+                k_path, astype=_GDAL_TYPE_TO_NUMPY_LOOKUP[output_type]):
             left_index_raster = (
                 signal_data['xoff'] - n_cols_kernel / 2 + kernel_data['xoff'])
             right_index_raster = (

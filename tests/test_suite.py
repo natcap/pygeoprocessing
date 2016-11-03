@@ -85,8 +85,8 @@ class TestPyGeoprocessing(unittest.TestCase):
 
         self.assertEqual(expected_results, raster_info)
 
-    def test_get_nodata_from_uri_undefined(self):
-        """PGP.geoprocessing: covers case when nodata is undefined."""
+    def test_raster_info_nodata_undefied(self):
+        """PGP.geoprocessing: covers info case when nodata is undefined."""
         raster_matrix = numpy.empty((5, 5), numpy.int8)
         reference = sampledata.SRS_COLOMBIA
         nodata = None
@@ -274,18 +274,19 @@ class TestPyGeoprocessing(unittest.TestCase):
         output_raster = None
         self.assertEquals(numpy.sum(output_array), 1)
 
-    def test_convolve_2d_uri(self):
-        """PGP.geoprocessing: test convolve 2D."""
-        pixel_matrix = numpy.ones((5, 5), numpy.float32)
+    def test_convolve_2d_simple_uri(self):
+        """PGP.geoprocessing: test convolve 2D with 5x5s."""
+        signal_array = numpy.ones([5, 5], numpy.float32)
+        kernel_array = numpy.ones([5, 5], numpy.float32)
         reference = sampledata.SRS_COLOMBIA
         nodata = -1
         signal_path = os.path.join(self.workspace_dir, 'signal.tif')
         pygeoprocessing.testing.create_raster_on_disk(
-            [pixel_matrix], reference.origin, reference.projection, nodata,
+            [signal_array], reference.origin, reference.projection, nodata,
             reference.pixel_size(30), filename=signal_path)
         kernel_path = os.path.join(self.workspace_dir, 'kernel.tif')
         pygeoprocessing.testing.create_raster_on_disk(
-            [pixel_matrix], reference.origin, reference.projection, nodata,
+            [kernel_array], reference.origin, reference.projection, nodata,
             reference.pixel_size(30), filename=kernel_path)
 
         output_path = os.path.join(self.workspace_dir, 'output.tif')
@@ -298,6 +299,35 @@ class TestPyGeoprocessing(unittest.TestCase):
         output_band = None
         output_raster = None
         self.assertEquals(numpy.sum(output_array), 361)
+
+    def test_convolve_2d_uri(self):
+        """PGP.geoprocessing: test convolve 2D with large array."""
+        signal_array = numpy.ones([225, 250], dtype=numpy.float32)
+        kernel_array = numpy.ones([1000, 1000], dtype=numpy.float32)
+
+        reference = sampledata.SRS_COLOMBIA
+        nodata = -1
+        signal_path = os.path.join(self.workspace_dir, 'signal.tif')
+        pygeoprocessing.testing.create_raster_on_disk(
+            [signal_array], reference.origin, reference.projection, nodata,
+            reference.pixel_size(30), filename=signal_path)
+        kernel_path = os.path.join(self.workspace_dir, 'kernel.tif')
+        pygeoprocessing.testing.create_raster_on_disk(
+            [kernel_array], reference.origin, reference.projection, nodata,
+            reference.pixel_size(30), filename=kernel_path)
+
+        output_path = os.path.join(self.workspace_dir, 'output.tif')
+        pygeoprocessing.convolve_2d_uri(
+            signal_path, kernel_path, output_path)
+
+        output_raster = gdal.Open(output_path)
+        output_band = output_raster.GetRasterBand(1)
+        output_array = output_band.ReadAsArray()
+        output_band = None
+        output_raster = None
+        self.assertAlmostEqual(
+            numpy.sum(output_array),
+            (signal_array.shape[0] * signal_array.shape[1])**2)
 
     def test_calculate_disjoint_polygon_set(self):
         """PGP.geoprocessing; test disjoing polygon set."""
