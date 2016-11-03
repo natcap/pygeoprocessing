@@ -98,8 +98,8 @@ class TestPyGeoprocessing(unittest.TestCase):
             reference.pixel_size(1), filename=raster_path,
             datatype=gdal.GDT_Byte)
 
-        fetched_nodata_value = pygeoprocessing.get_nodata_from_uri(
-            raster_path)
+        fetched_nodata_value = pygeoprocessing.get_raster_info(
+            raster_path)['nodata']
 
         self.assertEquals(fetched_nodata_value, nodata)
 
@@ -988,20 +988,6 @@ class TestPyGeoprocessing(unittest.TestCase):
             raster_b_filename, out_a_filename, rel_tol=1e-9)
         pygeoprocessing.testing.assert_rasters_equal(
             raster_b_filename, out_b_filename, rel_tol=1e-9)
-
-    def test_get_nodata(self):
-        """PGP.geoprocessing: Test nodata values get set and read."""
-        pixel_matrix = numpy.ones((5, 5), numpy.int16)
-        reference = sampledata.SRS_COLOMBIA
-        raster_filename = os.path.join(self.workspace_dir, 'raster.tif')
-        for nodata in [5, 10, -5, 9999]:
-            pygeoprocessing.testing.create_raster_on_disk(
-                [pixel_matrix], reference.origin, reference.projection, nodata,
-                reference.pixel_size(30), filename=raster_filename)
-
-            raster_nodata = pygeoprocessing.get_nodata_from_uri(
-                raster_filename)
-            self.assertEqual(raster_nodata, nodata)
 
     def test_vect_datasets_bad_filelist(self):
         """PGP.geoprocessing: vect..._datasets expected error for non-list."""
