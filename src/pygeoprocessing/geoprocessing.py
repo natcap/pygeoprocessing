@@ -86,51 +86,6 @@ def _gdal_to_numpy_type(band):
         return numpy.int8
     return numpy.uint8
 
-def get_nodata_from_uri(dataset_uri):
-    """Return nodata value from first band in gdal dataset cast as numpy datatype.
-
-    Args:
-        dataset_uri (string): a uri to a gdal dataset
-
-    Returns:
-        nodata: nodata value for dataset band 1
-    """
-    dataset = gdal.Open(dataset_uri)
-    band = dataset.GetRasterBand(1)
-    nodata = band.GetNoDataValue()
-    if nodata is not None:
-        nodata = _gdal_to_numpy_type(band)(nodata)
-    else:
-        LOGGER.warn(
-            "Warning the nodata value in %s is not set", dataset_uri)
-
-    band = None
-    gdal.Dataset.__swig_destroy__(dataset)
-    dataset = None
-    return nodata
-
-
-def get_row_col_from_uri(dataset_uri):
-    """Return number of rows and columns of given dataset uri as tuple.
-
-    Args:
-        dataset_uri (string): a uri to a gdal dataset
-
-    Returns:
-        rows_cols (tuple): 2-tuple (n_row, n_col) from dataset_uri
-    """
-    dataset = gdal.Open(dataset_uri)
-    n_rows = dataset.RasterYSize
-    n_cols = dataset.RasterXSize
-
-    # Close and clean up dataset
-    band = None
-    gdal.Dataset.__swig_destroy__(dataset)
-    dataset = None
-
-    return (n_rows, n_cols)
-
-
 def calculate_raster_stats_uri(dataset_uri):
     """Calculate min, max, stdev, and mean for all bands in dataset.
 
@@ -175,45 +130,6 @@ def get_statistics_from_uri(dataset_uri):
     dataset = None
 
     return statistics
-
-
-def get_cell_size_from_uri(dataset_uri):
-    """Get the cell size of a dataset in units of meters.
-
-    Raises an exception if the raster is not square since this'll break most of
-    the pygeoprocessing algorithms.
-
-    Args:
-        dataset_uri (string): uri to a gdal dataset
-
-    Returns:
-        size_meters: cell size of the dataset in meters
-    """
-
-    srs = osr.SpatialReference()
-    dataset = gdal.Open(dataset_uri)
-    if dataset is None:
-        raise IOError(
-            'File not found or not valid dataset type at: %s' % dataset_uri)
-    srs.SetProjection(dataset.GetProjection())
-    linear_units = srs.GetLinearUnits()
-    geotransform = dataset.GetGeoTransform()
-    # take absolute value since sometimes negative widths/heights
-    try:
-        numpy.testing.assert_approx_equal(
-            abs(geotransform[1]), abs(geotransform[5]))
-        size_meters = abs(geotransform[1]) * linear_units
-    except AssertionError as e:
-        LOGGER.warn(e)
-        size_meters = (
-            abs(geotransform[1]) + abs(geotransform[5])) / 2.0 * linear_units
-
-    # Close and clean up dataset
-    gdal.Dataset.__swig_destroy__(dataset)
-    dataset = None
-
-    return size_meters
-
 
 def new_raster_from_base_uri(
         base_uri, output_uri, gdal_format, nodata, datatype, fill_value=None,
