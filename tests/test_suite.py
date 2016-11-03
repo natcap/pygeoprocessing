@@ -616,7 +616,7 @@ class TestPyGeoprocessing(unittest.TestCase):
 
     def test_agg_raster_values_with_id(self):
         """PGP.geoprocessing: aggregate raster values test with feature id."""
-        pixel_matrix = numpy.ones((10000, 10000), numpy.int16)
+        pixel_matrix = numpy.ones((5000, 5000), numpy.int16)
         reference = sampledata.SRS_COLOMBIA
         nodata = -1
         pixel_matrix[0, 0] = nodata
