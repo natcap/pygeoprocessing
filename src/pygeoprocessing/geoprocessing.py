@@ -2118,21 +2118,6 @@ def extract_datasource_table_by_key(datasource_uri, key_field):
     return attribute_dictionary
 
 
-def get_geotransform_uri(dataset_uri):
-    """Get the geotransform from a gdal dataset.
-
-    Args:
-        dataset_uri (string): a URI for the dataset
-
-    Returns:
-        geotransform: a dataset geotransform list
-    """
-    dataset = gdal.Open(dataset_uri)
-    geotransform = dataset.GetGeoTransform()
-    gdal.Dataset.__swig_destroy__(dataset)
-    return geotransform
-
-
 def get_spatial_ref_uri(datasource_uri):
     """Get the spatial reference of an OGR datasource.
 
