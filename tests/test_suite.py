@@ -81,6 +81,9 @@ class TestPyGeoprocessing(unittest.TestCase):
                 reference.origin[0], reference.origin[1],
                 reference.origin[0] + reference.pixel_size(30)[0] * 10,
                 reference.origin[1] + reference.pixel_size(30)[1] * 5],
+            'geotransform': (
+                reference.origin[0], reference.pixel_size(30)[0], 0.0,
+                reference.origin[1], 0, reference.pixel_size(30)[1]),
         }
 
         self.assertEqual(expected_results, raster_info)

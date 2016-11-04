@@ -855,6 +855,9 @@ def get_raster_info(raster_path):
                 is the nodata value of the single band, otherwise a list of
                 the nodata values in increasing band index
             'n_bands' (int): number of bands in the raster.
+            'geotransform' (tuple): a 6-tuple representing the geotransform of
+                (x orign, x-increase, xy-increase,
+                 y origin, yx-increase, y-increase)
     """
     raster_properties = {}
     raster = gdal.Open(raster_path)
@@ -878,6 +881,8 @@ def get_raster_info(raster_path):
          raster_properties['raster_size'][0] * geo_transform[1]),
         (geo_transform[3] +
          raster_properties['raster_size'][1] * geo_transform[5])]
+
+    raster_properties['geotransform'] = geo_transform
 
     raster = None
     return raster_properties
