@@ -57,6 +57,60 @@ class TestPyGeoprocessing(unittest.TestCase):
         """Clean up remaining files."""
         shutil.rmtree(self.workspace_dir)
 
+    def test_copy_vector(self):
+        """PGP.geoprocessing: test copy_vector."""
+        reference = sampledata.SRS_COLOMBIA
+
+        polygons = [
+            Polygon([
+                (reference.origin[0] + reference.pixel_size(30)[0] * 0,
+                 reference.origin[1] + reference.pixel_size(30)[1] * 0),
+                (reference.origin[0] + reference.pixel_size(30)[0] * 2,
+                 reference.origin[1] + reference.pixel_size(30)[1] * 0),
+                (reference.origin[0] + reference.pixel_size(30)[0] * 2,
+                 reference.origin[1] + reference.pixel_size(30)[1] * 5),
+                (reference.origin[0] + reference.pixel_size(30)[0] * 0,
+                 reference.origin[1] + reference.pixel_size(30)[1] * 5),
+                (reference.origin[0] + reference.pixel_size(30)[0] * 0,
+                 reference.origin[1] + reference.pixel_size(30)[1] * 0),
+                ]),
+            Polygon([
+                (reference.origin[0] + reference.pixel_size(30)[0] * 3,
+                 reference.origin[1] + reference.pixel_size(30)[1] * 0),
+                (reference.origin[0] + reference.pixel_size(30)[0] * 5,
+                 reference.origin[1] + reference.pixel_size(30)[1] * 0),
+                (reference.origin[0] + reference.pixel_size(30)[0] * 5,
+                 reference.origin[1] + reference.pixel_size(30)[1] * 5),
+                (reference.origin[0] + reference.pixel_size(30)[0] * 3,
+                 reference.origin[1] + reference.pixel_size(30)[1] * 5),
+                (reference.origin[0] + reference.pixel_size(30)[0] * 3,
+                 reference.origin[1] + reference.pixel_size(30)[1] * 0),
+                ]),
+            Polygon([
+                (reference.origin[0] + reference.pixel_size(30)[0] * 0,
+                 reference.origin[1] + reference.pixel_size(30)[1] * 0),
+                (reference.origin[0] + reference.pixel_size(30)[0] * 5,
+                 reference.origin[1] + reference.pixel_size(30)[1] * 0),
+                (reference.origin[0] + reference.pixel_size(30)[0] * 5,
+                 reference.origin[1] + reference.pixel_size(30)[1] * 5),
+                (reference.origin[0] + reference.pixel_size(30)[0] * 0,
+                 reference.origin[1] + reference.pixel_size(30)[1] * 5),
+                (reference.origin[0] + reference.pixel_size(30)[0] * 0,
+                 reference.origin[1] + reference.pixel_size(30)[1] * 0),
+                ]),
+        ]
+
+        vector_path = os.path.join(self.workspace_dir, 'vector.shp')
+        pygeoprocessing.testing.create_vector_on_disk(
+            polygons, reference.projection, vector_format="ESRI Shapefile",
+            filename=vector_path)
+
+        vector_copy_path = os.path.join(
+            self.workspace_dir, 'vector_copy.shp')
+        pygeoprocessing.copy_vector(vector_path, vector_copy_path)
+        pygeoprocessing.testing.assert_vectors_equal(
+            vector_path, vector_copy_path, 1e-6)
+
     def test_get_raster_info(self):
         """PGP.geoprocessing: test for raster property info."""
         pixel_matrix = numpy.ones((5, 10), numpy.int16)

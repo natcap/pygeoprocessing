@@ -2118,24 +2118,24 @@ def extract_datasource_table_by_key(datasource_uri, key_field):
     return attribute_dictionary
 
 
-def copy_datasource_uri(shape_uri, copy_uri):
-    """Create a copy of an ogr shapefile.
+def copy_vector(base_vector_path, copy_vector_path):
+    """Create a copy of an ESRI Shapefile.
 
     Args:
-        shape_uri (string): a uri path to the ogr shapefile that is to be
+        base_vector_path (string): path to ESRI Shapefile that is to  be
             copied
-        copy_uri (string): a uri path for the destination of the copied
-            shapefile
+        copy_vector_path (string): output path for the copy of
+            `base_vector_path`
 
     Returns:
         None
     """
-    if os.path.isfile(copy_uri):
-        os.remove(copy_uri)
+    if os.path.isfile(copy_vector_path):
+        os.remove(copy_vector_path)
 
-    shape = ogr.Open(shape_uri)
+    shape = ogr.Open(base_vector_path)
     drv = ogr.GetDriverByName('ESRI Shapefile')
-    drv.CopyDataSource(shape, copy_uri)
+    drv.CopyDataSource(shape, copy_vector_path)
 
 
 def create_directories(directory_list):
