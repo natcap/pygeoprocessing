@@ -576,7 +576,7 @@ def aggregate_raster_values_uri(
     layer_dir = temporary_folder()
     subset_layer_datasouce = driver.CreateDataSource(
         os.path.join(layer_dir, 'subset_layer.shp'))
-    spat_ref = get_spatial_ref_uri(shapefile_uri)
+    spat_ref = shapefile_layer.GetSpatialRef()
     subset_layer = subset_layer_datasouce.CreateLayer(
         'subset_layer', spat_ref, ogr.wkbPolygon)
     defn = shapefile_layer.GetLayerDefn()
@@ -2116,21 +2116,6 @@ def extract_datasource_table_by_key(datasource_uri, key_field):
     layer = None
     datasource = None
     return attribute_dictionary
-
-
-def get_spatial_ref_uri(datasource_uri):
-    """Get the spatial reference of an OGR datasource.
-
-    Args:
-        datasource_uri (string): a URI to an ogr datasource
-
-    Returns:
-        spat_ref: a spatial reference
-    """
-    shape_datasource = ogr.Open(datasource_uri)
-    layer = shape_datasource.GetLayer()
-    spat_ref = layer.GetSpatialRef()
-    return spat_ref
 
 
 def copy_datasource_uri(shape_uri, copy_uri):
