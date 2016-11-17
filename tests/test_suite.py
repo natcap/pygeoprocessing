@@ -1,14 +1,15 @@
-"""Smoke test to make sure basic construction of the project is correct."""
+"""PyGeoprocessing suite."""
 
 import tempfile
 import os
 import unittest
-import mock
 import shutil
 
-import gdal
+import mock
+from osgeo import gdal
+from osgeo import ogr
+from osgeo import osr
 import numpy
-
 from shapely.geometry import Polygon
 import pygeoprocessing
 import pygeoprocessing.testing
@@ -56,6 +57,68 @@ class TestPyGeoprocessing(unittest.TestCase):
     def tearDown(self):
         """Clean up remaining files."""
         shutil.rmtree(self.workspace_dir)
+
+    def test_reproject_vector(self):
+        """PGP: test reproject vector w/ a feature outside of reference."""
+        reference = sampledata.SRS_COLOMBIA
+        polygons = [
+            Polygon([
+                (reference.origin[0] + reference.pixel_size(30)[0] * 0,
+                 reference.origin[1] + reference.pixel_size(30)[1] * 0),
+                (reference.origin[0] + reference.pixel_size(30)[0] * 2,
+                 reference.origin[1] + reference.pixel_size(30)[1] * 0),
+                (reference.origin[0] + reference.pixel_size(30)[0] * 2,
+                 reference.origin[1] + reference.pixel_size(30)[1] * 5),
+                (reference.origin[0] + reference.pixel_size(30)[0] * 0,
+                 reference.origin[1] + reference.pixel_size(30)[1] * 5),
+                (reference.origin[0] + reference.pixel_size(30)[0] * 0,
+                 reference.origin[1] + reference.pixel_size(30)[1] * 0),
+                ]),
+            Polygon([
+                (reference.origin[0] + reference.pixel_size(30)[0] * 3,
+                 reference.origin[1] + reference.pixel_size(30)[1] * 0),
+                (reference.origin[0] + reference.pixel_size(30)[0] * 5,
+                 reference.origin[1] + reference.pixel_size(30)[1] * 0),
+                (reference.origin[0] + reference.pixel_size(30)[0] * 5,
+                 reference.origin[1] + reference.pixel_size(30)[1] * 5),
+                (reference.origin[0] + reference.pixel_size(30)[0] * 3,
+                 reference.origin[1] + reference.pixel_size(30)[1] * 5),
+                (reference.origin[0] + reference.pixel_size(30)[0] * 3,
+                 reference.origin[1] + reference.pixel_size(30)[1] * 0),
+                ]),
+            Polygon([
+                (reference.origin[0] + reference.pixel_size(30)[0] * 0,
+                 reference.origin[1] + reference.pixel_size(30)[1] * 0),
+                (reference.origin[0] + reference.pixel_size(30)[0] * 5,
+                 reference.origin[1] + reference.pixel_size(30)[1] * 0),
+                (reference.origin[0] + reference.pixel_size(30)[0] * 5,
+                 reference.origin[1] + reference.pixel_size(30)[1] * 5),
+                (reference.origin[0] + reference.pixel_size(30)[0] * 0,
+                 reference.origin[1] + reference.pixel_size(30)[1] * 5),
+                (reference.origin[0] + reference.pixel_size(30)[0] * 0,
+                 reference.origin[1] + reference.pixel_size(30)[1] * 0),
+                ]),
+        ]
+
+        out_reference = osr.SpatialReference()
+        out_reference.ImportFromEPSG(32718)
+
+        base_vector_path = os.path.join(
+            self.workspace_dir, 'base_vector.shp')
+        pygeoprocessing.testing.create_vector_on_disk(
+            polygons, reference.projection, filename=base_vector_path,
+            vector_format='ESRI Shapefile')
+
+        output_path = os.path.join(
+            self.workspace_dir, 'projected_vector.shp')
+        pygeoprocessing.reproject_vector(
+            base_vector_path, out_reference.ExportToWkt(), output_path)
+
+        output_vector = ogr.Open(output_path)
+        output_layer = output_vector.GetLayer()
+        output_sr = output_layer.GetSpatialRef()
+        self.assertTrue(output_sr.IsSame(out_reference))
+        self.assertEqual(output_layer.GetFeatureCount(), len(polygons))
 
     def test_get_raster_info(self):
         """PGP.geoprocessing: test for raster property info."""
