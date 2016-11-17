@@ -1110,48 +1110,6 @@ def reproject_datasource(original_datasource, output_wkt, output_uri):
     return output_datasource
 
 
-def unique_raster_values_uri(dataset_uri):
-    """Get list of unique integer values within given dataset.
-
-    Args:
-        dataset_uri (string): a uri to a gdal dataset of some integer type
-
-    Returns:
-        value (list): a list of dataset's unique non-nodata values
-    """
-    dataset = gdal.Open(dataset_uri)
-    value = unique_raster_values(dataset)
-
-    # Close and clean up dataset
-    gdal.Dataset.__swig_destroy__(dataset)
-    dataset = None
-
-    return value
-
-
-def unique_raster_values(dataset):
-    """Get list of unique integer values within given dataset.
-
-    Args:
-        dataset: a gdal dataset of some integer type
-
-    Returns:
-        unique_list (list): a list of dataset's unique non-nodata values
-    """
-    band = dataset.GetRasterBand(1)
-    nodata = band.GetNoDataValue()
-    n_rows = band.YSize
-    unique_values = numpy.array([])
-    for row_index in xrange(n_rows):
-        array = band.ReadAsArray(0, row_index, band.XSize, 1)[0]
-        array = numpy.append(array, unique_values)
-        unique_values = numpy.unique(array)
-
-    unique_list = list(unique_values)
-    if nodata in unique_list:
-        unique_list.remove(nodata)
-    return unique_list
-
 def reclassify_dataset_uri(
         dataset_uri, value_map, raster_out_uri, out_datatype, out_nodata,
         exception_flag='values_required', assert_dataset_projected=True):
