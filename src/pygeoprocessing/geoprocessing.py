@@ -983,99 +983,74 @@ def reproject_dataset_uri(
 
     output_dataset.FlushCache()
 
-    #Make sure the dataset is closed and cleaned up
+    # Make sure the dataset is closed and cleaned up
     gdal.Dataset.__swig_destroy__(output_dataset)
     output_dataset = None
     calculate_raster_stats_uri(output_uri)
 
 
-def reproject_datasource_uri(original_dataset_uri, output_wkt, output_uri):
-    """Reproject OGR DataSource file.
+def reproject_vector(base_vector_path, output_wkt, output_path):
+    """Reproject OGR DataSource (vector).
 
-    URI wrapper for reproject_datasource that takes in the uri for the
-    datasource that is to be projected instead of the datasource itself.
-    This function directly calls reproject_datasource.
+    Transforms the features of the base vector to the desired output
+    projection in a new file.
 
-    Args:
-        original_dataset_uri (string): a uri to an ogr datasource
-        output_wkt: the desired projection as Well Known Text
+    Parameters:
+        base_vector_path (string): Path to the base shapefile to transform.
+        output_wkt (string): the desired output projection in Well Known Text
             (by layer.GetSpatialRef().ExportToWkt())
-        output_uri (string): the path to where the new shapefile should be
-            written to disk.
-
-    Return:
-        None
-    """
-    original_dataset = ogr.Open(original_dataset_uri)
-    _ = reproject_datasource(original_dataset, output_wkt, output_uri)
-
-
-def reproject_datasource(original_datasource, output_wkt, output_uri):
-    """Reproject OGR DataSource object.
-
-    Changes the projection of an ogr datasource by creating a new
-    shapefile based on the output_wkt passed in.  The new shapefile
-    then copies all the features and fields of the original_datasource
-    as its own.
-
-    Args:
-        original_datasource: an ogr datasource
-        output_wkt: the desired projection as Well Known Text
-            (by layer.GetSpatialRef().ExportToWkt())
-        output_uri (string): the filepath to the output shapefile
+        output_path (string): the filepath to the transformed shapefile
 
     Returns:
-        output_datasource: the reprojected shapefile.
+        None
     """
+    base_vector = ogr.Open(base_vector_path)
 
     # if this file already exists, then remove it
-    if os.path.isfile(output_uri):
-        os.remove(output_uri)
+    if os.path.isfile(output_path):
+        LOGGER.warn(
+            "reproject_vector: %s already exists, removing and overwriting",
+            output_path)
+        os.remove(output_path)
 
     output_sr = osr.SpatialReference()
     output_sr.ImportFromWkt(output_wkt)
 
     # create a new shapefile from the orginal_datasource
     output_driver = ogr.GetDriverByName('ESRI Shapefile')
-    output_datasource = output_driver.CreateDataSource(output_uri)
+    output_vector = output_driver.CreateDataSource(output_path)
 
     # loop through all the layers in the orginal_datasource
-    for original_layer in original_datasource:
+    for layer in base_vector:
+        layer_dfn = layer.GetLayerDefn()
 
-        # Get the original_layer definition which holds needed attribute values
-        original_layer_dfn = original_layer.GetLayerDefn()
-
-        # Create the new layer for output_datasource using same name and
-        # geometry type from original_datasource, but different projection
-        output_layer = output_datasource.CreateLayer(
-            original_layer_dfn.GetName(), output_sr,
-            original_layer_dfn.GetGeomType())
+        # Create new layer for output_vector using same name and
+        # geometry type from base vector but new projection
+        output_layer = output_vector.CreateLayer(
+            layer_dfn.GetName(), output_sr, layer_dfn.GetGeomType())
 
         # Get the number of fields in original_layer
-        original_field_count = original_layer_dfn.GetFieldCount()
+        original_field_count = layer_dfn.GetFieldCount()
 
-        # For every field, create a duplicate field and add it to the new
-        # shapefiles layer
-        for fld_index in range(original_field_count):
-            original_field = original_layer_dfn.GetFieldDefn(fld_index)
+        # For every field, create a duplicate field in the new layer
+        for fld_index in xrange(original_field_count):
+            original_field = layer_dfn.GetFieldDefn(fld_index)
             output_field = ogr.FieldDefn(
                 original_field.GetName(), original_field.GetType())
             output_layer.CreateField(output_field)
 
-        original_layer.ResetReading()
-
         # Get the SR of the original_layer to use in transforming
-        original_sr = original_layer.GetSpatialRef()
+        base_sr = layer.GetSpatialRef()
 
         # Create a coordinate transformation
-        coord_trans = osr.CoordinateTransformation(original_sr, output_sr)
+        coord_trans = osr.CoordinateTransformation(base_sr, output_sr)
 
-        # Copy all of the features in original_layer to the new shapefile
+        # Copy all of the features in layer to the new shapefile
         error_count = 0
-        for original_feature in original_layer:
-            geom = original_feature.GetGeometryRef()
+        for base_feature in layer:
+            geom = base_feature.GetGeometryRef()
 
-            # Transform the geometry into format desired for the new projection
+            # Transform geometry into format desired for the new projection
             error_code = geom.Transform(coord_trans)
             if error_code != 0:  # error
                 # this could be caused by an out of range transformation
@@ -1085,29 +1060,24 @@ def reproject_datasource(original_datasource, output_wkt, output_uri):
                 continue
 
             # Copy original_datasource's feature and set as new shapes feature
-            output_feature = ogr.Feature(
-                feature_def=output_layer.GetLayerDefn())
-            output_feature.SetFrom(original_feature)
+            output_feature = ogr.Feature(output_layer.GetLayerDefn())
             output_feature.SetGeometry(geom)
 
             # For all the fields in the feature set the field values from the
             # source field
-            for fld_index2 in range(output_feature.GetFieldCount()):
-                original_field_value = original_feature.GetField(fld_index2)
-                output_feature.SetField(fld_index2, original_field_value)
+            for fld_index in xrange(output_feature.GetFieldCount()):
+                output_feature.SetField(
+                    fld_index, base_feature.GetField(fld_index))
 
             output_layer.CreateFeature(output_feature)
             output_feature = None
-
-            original_feature = None
+            base_feature = None
         if error_count > 0:
             LOGGER.warn(
                 '%d features out of %d were unable to be transformed and are'
-                ' not in the output dataset at %s', error_count,
-                original_layer.GetFeatureCount(), output_uri)
-        original_layer = None
-
-    return output_datasource
+                ' not in the output vector at %s', error_count,
+                layer.GetFeatureCount(), output_path)
+        layer = None
 
 
 def reclassify_dataset_uri(
