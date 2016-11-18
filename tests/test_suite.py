@@ -177,8 +177,8 @@ class TestPyGeoprocessing(unittest.TestCase):
 
         raster = gdal.Open(raster_path)
         band = raster.GetRasterBand(1)
-        raster = None
         numpy_type = geoprocessing._gdal_to_numpy_type(band)
+        raster = None
         band = None
         self.assertEqual(numpy_type, numpy.uint8)
 
@@ -198,9 +198,9 @@ class TestPyGeoprocessing(unittest.TestCase):
 
         raster = gdal.Open(raster_path, gdal.GA_Update)
         band = raster.GetRasterBand(1)
-        raster = None
         band.SetMetadataItem('IMAGE_STRUCTURE', 'PIXELTYPE', 'SIGNEDBYTE')
         numpy_type = geoprocessing._gdal_to_numpy_type(band)
+        raster = None
         band = None
         self.assertEqual(numpy_type, numpy.uint8)
 
