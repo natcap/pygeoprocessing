@@ -147,6 +147,7 @@ class TestPyGeoprocessing(unittest.TestCase):
             'geotransform': (
                 reference.origin[0], reference.pixel_size(30)[0], 0.0,
                 reference.origin[1], 0, reference.pixel_size(30)[1]),
+            'datatype': gdal.GDT_Int16,
         }
 
         self.assertEqual(expected_results, raster_info)
