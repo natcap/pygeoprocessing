@@ -857,7 +857,9 @@ def get_raster_info(raster_path):
             'n_bands' (int): number of bands in the raster.
             'geotransform' (tuple): a 6-tuple representing the geotransform of
                 (x orign, x-increase, xy-increase,
-                 y origin, yx-increase, y-increase)
+                 y origin, yx-increase, y-increase),
+            'datatype' (int): An instance of an enumerated gdal.GDT_* int
+                that represents the datatype of the raster.
     """
     raster_properties = {}
     raster = gdal.Open(raster_path)
@@ -884,28 +886,32 @@ def get_raster_info(raster_path):
 
     raster_properties['geotransform'] = geo_transform
 
+    # datatype is the same for the whole raster, but is associated with band
+    raster_properties['datatype'] = raster.GetRasterBand(1).DataType
+
     raster = None
     return raster_properties
 
 
-def reproject_dataset_uri(
-        original_dataset_uri, pixel_spacing, output_wkt, resampling_method,
-        output_uri):
-    """Reproject and resample GDAL dataset.
+def reproject_and_warp_raster(
+        base_raster_path, target_pixel_size, target_sr_wkt, resampling_method,
+        target_path):
+    """Reproject and warp a raster.
 
-    A function to reproject and resample a GDAL dataset given an output
-    pixel size and output reference. Will use the datatype and nodata value
-    from the original dataset.
+    A function to reproject and resample a GDAL raster given an target
+    pixel size and target reference. Will use the datatype and nodata value
+    from the original raster.
 
-    Args:
-        original_dataset_uri (string): a URI to a gdal Dataset to written to
-            disk
-        pixel_spacing: output dataset pixel size in projected linear units
-        output_wkt: output project in Well Known Text
+    Parameters:
+        base_raster_path (string): path to a GDAL compatible raster.
+        target_pixel_size (tuple): desired target pixel x and y size in
+            target's spatial units.
+        target_sr_wkt (string): desired target projection in Well Known Text
+            format.
         resampling_method (string): a string representing the one of the
             following resampling methods:
-            "nearest|bilinear|cubic|cubic_spline|lanczos"
-        output_uri (string): location on disk to dump the reprojected dataset
+            "nearest|mode|bilinear|cubic|cubic_spline|lanczos"
+        target_path (string): location on disk to dump the reprojected raster
 
     Returns:
         None
@@ -916,166 +922,148 @@ def reproject_dataset_uri(
         "bilinear": gdal.GRA_Bilinear,
         "cubic": gdal.GRA_Cubic,
         "cubic_spline": gdal.GRA_CubicSpline,
-        "lanczos": gdal.GRA_Lanczos
+        "lanczos": gdal.GRA_Lanczos,
+        'mode': gdal.GRA_Mode,
         }
 
-    original_dataset = gdal.Open(original_dataset_uri)
-    original_band = original_dataset.GetRasterBand(1)
-    output_type = original_band.DataType
-    original_band = None
-    original_wkt = original_dataset.GetProjection()
+    base_raster_info = get_raster_info(base_raster_path)
+    base_raster = gdal.Open(base_raster_path)
+    base_band = base_raster.GetRasterBand(1)
+    target_type = base_band.DataType
+    base_band = None
+    base_sr_wkt = base_raster.GetProjection()
 
-    # Create a virtual raster that is projected based on the output WKT. This
+    # Create a virtual raster that is projected based on the target WKT. This
     # vrt does not save to disk and is used to get the proper projected
     # bounding box and size.
     vrt = gdal.AutoCreateWarpedVRT(
-        original_dataset, None, output_wkt, gdal.GRA_Bilinear)
+        base_raster, None, target_sr_wkt, gdal.GRA_Bilinear)
 
     geo_t = vrt.GetGeoTransform()
-    x_size = vrt.RasterXSize  # Raster xsize
-    y_size = vrt.RasterYSize  # Raster ysize
+    target_x_size = vrt.RasterXSize
+    target_y_size = vrt.RasterYSize
 
-    # Calculate the extents of the projected dataset. These values will be used
-    # to properly set the resampled size for the output dataset
+    # Calculate the extents of the reprojected raster. These values will be
+    # used to properly set the resampled size for the target raster
     (ulx, uly) = (geo_t[0], geo_t[3])
-    (lrx, lry) = (geo_t[0] + geo_t[1] * x_size, geo_t[3] + geo_t[5] * y_size)
+    (lrx, lry) = (
+        geo_t[0] + geo_t[1] * target_x_size,
+        geo_t[3] + geo_t[5] * target_y_size)
 
     gdal_driver = gdal.GetDriverByName('GTiff')
 
-    # Create the output dataset to receive the projected output, with the
+    # Create the target raster to receive the projected target, with the
     # proper resampled arrangement.
-    output_dataset = gdal_driver.Create(
-        output_uri, int((lrx - ulx)/pixel_spacing),
-        int((uly - lry)/pixel_spacing), 1, output_type,
-        options=['BIGTIFF=IF_SAFER'])
+    target_raster = gdal_driver.Create(
+        target_path, int((lrx - ulx) / target_pixel_size[0]),
+        int((uly - lry) / target_pixel_size[1]), base_raster_info['n_bands'],
+        base_raster_info['datatype'], options=['BIGTIFF=IF_SAFER'])
 
-    # Set the nodata value for the output dataset
-    output_dataset.GetRasterBand(1).SetNoDataValue(
-        float(get_raster_info(raster_path)['nodata']))
+    # Set the nodata value for the target raster
+    for index, nodata in enumerate(base_raster_info['nodata'])
+    target_raster.GetRasterBand(1).SetNoDataValue(
+        float(get_raster_info(base_raster_path)['nodata']))
 
     # Calculate the new geotransform
-    output_geo = (ulx, pixel_spacing, geo_t[2], uly, geo_t[4], -pixel_spacing)
+    target_geo = (
+        ulx, target_pixel_size[0], geo_t[2],
+        uly, geo_t[4], target_pixel_size[1])
 
     # Set the geotransform
-    output_dataset.SetGeoTransform(output_geo)
-    output_dataset.SetProjection(output_wkt)
+    target_raster.SetGeoTransform(target_geo)
+    target_raster.SetProjection(target_sr_wkt)
 
     # Perform the projection/resampling
-    def reproject_callback(df_complete, psz_message, p_progress_arg):
+    def reproject_cb(df_complete, psz_message, p_progress_arg):
         """The argument names come from the GDAL API for callbacks."""
         try:
             current_time = time.time()
-            if ((current_time - reproject_callback.last_time) > 5.0 or
-                    (df_complete == 1.0 and reproject_callback.total_time >= 5.0)):
+            if ((current_time - reproject_cb.last_time) > _LOGGING_PERIOD or
+                    (df_complete == 1.0 and reproject_cb.total_time >=
+                     _LOGGING_PERIOD)):
                 LOGGER.info(
                     "ReprojectImage %.1f%% complete %s, psz_message %s",
                     df_complete * 100, p_progress_arg[0], psz_message)
-                reproject_callback.last_time = current_time
-                reproject_callback.total_time += current_time
+                reproject_cb.last_time = current_time
+                reproject_cb.total_time += current_time
         except AttributeError:
-            reproject_callback.last_time = time.time()
-            reproject_callback.total_time = 0.0
+            reproject_cb.last_time = time.time()
+            reproject_cb.total_time = 0.0
 
     gdal.ReprojectImage(
-        original_dataset, output_dataset, original_wkt, output_wkt,
-        resample_dict[resampling_method], 0, 0, reproject_callback,
-        [output_uri])
+        base_raster, target_raster, base_sr_wkt, target_sr_wkt,
+        resample_dict[resampling_method], 0, 0, reproject_cb,
+        [target_path])
 
-    output_dataset.FlushCache()
+    target_raster.FlushCache()
 
-    #Make sure the dataset is closed and cleaned up
-    gdal.Dataset.__swig_destroy__(output_dataset)
-    output_dataset = None
-    calculate_raster_stats_uri(output_uri)
+    # Make sure the raster is closed and cleaned up
+    target_raster = None
+    calculate_raster_stats_uri(target_path)
 
 
-def reproject_datasource_uri(original_dataset_uri, output_wkt, output_uri):
-    """Reproject OGR DataSource file.
+def reproject_vector(base_vector_path, target_wkt, target_path):
+    """Reproject OGR DataSource (vector).
 
-    URI wrapper for reproject_datasource that takes in the uri for the
-    datasource that is to be projected instead of the datasource itself.
-    This function directly calls reproject_datasource.
+    Transforms the features of the base vector to the desired output
+    projection in a new file.
 
-    Args:
-        original_dataset_uri (string): a uri to an ogr datasource
-        output_wkt: the desired projection as Well Known Text
+    Parameters:
+        base_vector_path (string): Path to the base shapefile to transform.
+        target_wkt (string): the desired output projection in Well Known Text
             (by layer.GetSpatialRef().ExportToWkt())
-        output_uri (string): the path to where the new shapefile should be
-            written to disk.
-
-    Return:
-        None
-    """
-    original_dataset = ogr.Open(original_dataset_uri)
-    _ = reproject_datasource(original_dataset, output_wkt, output_uri)
-
-
-def reproject_datasource(original_datasource, output_wkt, output_uri):
-    """Reproject OGR DataSource object.
-
-    Changes the projection of an ogr datasource by creating a new
-    shapefile based on the output_wkt passed in.  The new shapefile
-    then copies all the features and fields of the original_datasource
-    as its own.
-
-    Args:
-        original_datasource: an ogr datasource
-        output_wkt: the desired projection as Well Known Text
-            (by layer.GetSpatialRef().ExportToWkt())
-        output_uri (string): the filepath to the output shapefile
+        target_path (string): the filepath to the transformed shapefile
 
     Returns:
-        output_datasource: the reprojected shapefile.
+        None
     """
+    base_vector = ogr.Open(base_vector_path)
 
     # if this file already exists, then remove it
-    if os.path.isfile(output_uri):
-        os.remove(output_uri)
+    if os.path.isfile(target_path):
+        LOGGER.warn(
+            "reproject_vector: %s already exists, removing and overwriting",
+            target_path)
+        os.remove(target_path)
 
-    output_sr = osr.SpatialReference()
-    output_sr.ImportFromWkt(output_wkt)
+    target_sr = osr.SpatialReference()
+    target_sr.ImportFromWkt(target_wkt)
 
     # create a new shapefile from the orginal_datasource
-    output_driver = ogr.GetDriverByName('ESRI Shapefile')
-    output_datasource = output_driver.CreateDataSource(output_uri)
+    target_driver = ogr.GetDriverByName('ESRI Shapefile')
+    target_vector = target_driver.CreateDataSource(target_path)
 
     # loop through all the layers in the orginal_datasource
-    for original_layer in original_datasource:
+    for layer in base_vector:
+        layer_dfn = layer.GetLayerDefn()
 
-        # Get the original_layer definition which holds needed attribute values
-        original_layer_dfn = original_layer.GetLayerDefn()
-
-        # Create the new layer for output_datasource using same name and
-        # geometry type from original_datasource, but different projection
-        output_layer = output_datasource.CreateLayer(
-            original_layer_dfn.GetName(), output_sr,
-            original_layer_dfn.GetGeomType())
+        # Create new layer for target_vector using same name and
+        # geometry type from base vector but new projection
+        target_layer = target_vector.CreateLayer(
+            layer_dfn.GetName(), target_sr, layer_dfn.GetGeomType())
 
         # Get the number of fields in original_layer
-        original_field_count = original_layer_dfn.GetFieldCount()
+        original_field_count = layer_dfn.GetFieldCount()
 
-        # For every field, create a duplicate field and add it to the new
-        # shapefiles layer
-        for fld_index in range(original_field_count):
-            original_field = original_layer_dfn.GetFieldDefn(fld_index)
-            output_field = ogr.FieldDefn(
+        # For every field, create a duplicate field in the new layer
+        for fld_index in xrange(original_field_count):
+            original_field = layer_dfn.GetFieldDefn(fld_index)
+            target_field = ogr.FieldDefn(
                 original_field.GetName(), original_field.GetType())
-            output_layer.CreateField(output_field)
-
-        original_layer.ResetReading()
+            target_layer.CreateField(target_field)
 
         # Get the SR of the original_layer to use in transforming
-        original_sr = original_layer.GetSpatialRef()
+        base_sr = layer.GetSpatialRef()
 
         # Create a coordinate transformation
-        coord_trans = osr.CoordinateTransformation(original_sr, output_sr)
+        coord_trans = osr.CoordinateTransformation(base_sr, target_sr)
 
-        # Copy all of the features in original_layer to the new shapefile
+        # Copy all of the features in layer to the new shapefile
         error_count = 0
-        for original_feature in original_layer:
-            geom = original_feature.GetGeometryRef()
+        for base_feature in layer:
+            geom = base_feature.GetGeometryRef()
 
-            # Transform the geometry into format desired for the new projection
+            # Transform geometry into format desired for the new projection
             error_code = geom.Transform(coord_trans)
             if error_code != 0:  # error
                 # this could be caused by an out of range transformation
@@ -1085,72 +1073,25 @@ def reproject_datasource(original_datasource, output_wkt, output_uri):
                 continue
 
             # Copy original_datasource's feature and set as new shapes feature
-            output_feature = ogr.Feature(
-                feature_def=output_layer.GetLayerDefn())
-            output_feature.SetFrom(original_feature)
-            output_feature.SetGeometry(geom)
+            target_feature = ogr.Feature(target_layer.GetLayerDefn())
+            target_feature.SetGeometry(geom)
 
             # For all the fields in the feature set the field values from the
             # source field
-            for fld_index2 in range(output_feature.GetFieldCount()):
-                original_field_value = original_feature.GetField(fld_index2)
-                output_feature.SetField(fld_index2, original_field_value)
+            for fld_index in xrange(target_feature.GetFieldCount()):
+                target_feature.SetField(
+                    fld_index, base_feature.GetField(fld_index))
 
-            output_layer.CreateFeature(output_feature)
-            output_feature = None
-
-            original_feature = None
+            target_layer.CreateFeature(target_feature)
+            target_feature = None
+            base_feature = None
         if error_count > 0:
             LOGGER.warn(
                 '%d features out of %d were unable to be transformed and are'
-                ' not in the output dataset at %s', error_count,
-                original_layer.GetFeatureCount(), output_uri)
-        original_layer = None
+                ' not in the output vector at %s', error_count,
+                layer.GetFeatureCount(), target_path)
+        layer = None
 
-    return output_datasource
-
-
-def unique_raster_values_uri(dataset_uri):
-    """Get list of unique integer values within given dataset.
-
-    Args:
-        dataset_uri (string): a uri to a gdal dataset of some integer type
-
-    Returns:
-        value (list): a list of dataset's unique non-nodata values
-    """
-    dataset = gdal.Open(dataset_uri)
-    value = unique_raster_values(dataset)
-
-    # Close and clean up dataset
-    gdal.Dataset.__swig_destroy__(dataset)
-    dataset = None
-
-    return value
-
-
-def unique_raster_values(dataset):
-    """Get list of unique integer values within given dataset.
-
-    Args:
-        dataset: a gdal dataset of some integer type
-
-    Returns:
-        unique_list (list): a list of dataset's unique non-nodata values
-    """
-    band = dataset.GetRasterBand(1)
-    nodata = band.GetNoDataValue()
-    n_rows = band.YSize
-    unique_values = numpy.array([])
-    for row_index in xrange(n_rows):
-        array = band.ReadAsArray(0, row_index, band.XSize, 1)[0]
-        array = numpy.append(array, unique_values)
-        unique_values = numpy.unique(array)
-
-    unique_list = list(unique_values)
-    if nodata in unique_list:
-        unique_list.remove(nodata)
-    return unique_list
 
 def reclassify_dataset_uri(
         dataset_uri, value_map, raster_out_uri, out_datatype, out_nodata,
