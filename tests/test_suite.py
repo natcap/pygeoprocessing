@@ -58,6 +58,35 @@ class TestPyGeoprocessing(unittest.TestCase):
         """Clean up remaining files."""
         shutil.rmtree(self.workspace_dir)
 
+    def test_reproject_raster(self):
+        """PGP: test reproject raster."""
+        reference = sampledata.SRS_COLOMBIA
+
+        pixel_matrix = numpy.ones((5, 10), numpy.int16)
+        pixel_matrix[2:4:, 2:4] = 2
+        reference = sampledata.SRS_COLOMBIA
+        nodata = -1.0
+        pixel_matrix[0, 0] = nodata
+        base_raster_path = os.path.join('.', 'base.tif')
+        pygeoprocessing.testing.create_raster_on_disk(
+            [pixel_matrix], reference.origin, reference.projection, nodata,
+            reference.pixel_size(30), filename=base_raster_path)
+
+        # UTM sone 18S
+        target_sr = osr.SpatialReference()
+        target_sr.ImportFromEPSG(32718)
+
+        target_raster_path = os.path.join('.', 'target.tif')
+
+        pygeoprocessing.reproject_and_warp_raster(
+            base_raster_path, reference.pixel_size(30),
+            target_sr.ExportToWkt(), 'bilinear', target_raster_path)
+
+        target_info = pygeoprocessing.get_raster_info(target_raster_path)
+        output_sr = osr.SpatialReference()
+        output_sr.ImportFromWkt(target_info['projection'])
+        self.assertTrue(target_sr.IsSame(output_sr))
+
     def test_copy_vector(self):
         """PGP.geoprocessing: test copy_vector."""
         reference = sampledata.SRS_COLOMBIA

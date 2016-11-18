@@ -52,6 +52,7 @@ class SpatialExtentOverlapException(Exception):
     """
     pass
 
+# map gdal types to numpy equivalent
 _GDAL_TYPE_TO_NUMPY_LOOKUP = {
     gdal.GDT_Int16: numpy.int16,
     gdal.GDT_Int32: numpy.int32,
@@ -60,6 +61,17 @@ _GDAL_TYPE_TO_NUMPY_LOOKUP = {
     gdal.GDT_Float32: numpy.float32,
     gdal.GDT_Float64: numpy.float64,
 }
+
+# A dictionary to map the resampling method input string to the gdal type
+_RESAMPLE_DICT = {
+    "nearest": gdal.GRA_NearestNeighbour,
+    "bilinear": gdal.GRA_Bilinear,
+    "cubic": gdal.GRA_Cubic,
+    "cubic_spline": gdal.GRA_CubicSpline,
+    "lanczos": gdal.GRA_Lanczos,
+    'mode': gdal.GRA_Mode,
+    }
+
 
 def _gdal_to_numpy_type(band):
     """Calculate the equivalent numpy datatype from a GDAL raster band type.
@@ -851,19 +863,22 @@ def get_raster_info(raster_path):
                 of each pixel size element.
             'raster_size' (tuple):  number of raster pixels in (x, y)
                 direction.
-            'nodata' (float or list): if number of bands is 1, then this value
-                is the nodata value of the single band, otherwise a list of
-                the nodata values in increasing band index
+            'nodata' (list): a list of the nodata values in the bands of the
+                raster in the same order as increasing band index.
             'n_bands' (int): number of bands in the raster.
             'geotransform' (tuple): a 6-tuple representing the geotransform of
                 (x orign, x-increase, xy-increase,
-                 y origin, yx-increase, y-increase),
+                 y origin, yx-increase, y-increase).
             'datatype' (int): An instance of an enumerated gdal.GDT_* int
                 that represents the datatype of the raster.
+            'projection' (string): projection of the raster in Well Known
+                Text.
     """
     raster_properties = {}
     raster = gdal.Open(raster_path)
+    raster_properties['projection'] = raster.GetProjection()
     geo_transform = raster.GetGeoTransform()
+    raster_properties['geotransform'] = geo_transform
     raster_properties['pixel_size'] = (geo_transform[1], geo_transform[5])
     raster_properties['mean_pixel_size'] = (
         (abs(geo_transform[1]) + abs(geo_transform[5])) / 2.0)
@@ -874,8 +889,6 @@ def get_raster_info(raster_path):
     raster_properties['nodata'] = [
         raster.GetRasterBand(index).GetNoDataValue() for index in xrange(
             1, raster_properties['n_bands']+1)]
-    if len(raster_properties['nodata']) == 1:
-        raster_properties['nodata'] = raster_properties['nodata'][0]
 
     raster_properties['bounding_box'] = [
         geo_transform[0], geo_transform[3],
@@ -884,11 +897,8 @@ def get_raster_info(raster_path):
         (geo_transform[3] +
          raster_properties['raster_size'][1] * geo_transform[5])]
 
-    raster_properties['geotransform'] = geo_transform
-
     # datatype is the same for the whole raster, but is associated with band
     raster_properties['datatype'] = raster.GetRasterBand(1).DataType
-
     raster = None
     return raster_properties
 
@@ -916,26 +926,10 @@ def reproject_and_warp_raster(
     Returns:
         None
     """
-    # A dictionary to map the resampling method input string to the gdal type
-    resample_dict = {
-        "nearest": gdal.GRA_NearestNeighbour,
-        "bilinear": gdal.GRA_Bilinear,
-        "cubic": gdal.GRA_Cubic,
-        "cubic_spline": gdal.GRA_CubicSpline,
-        "lanczos": gdal.GRA_Lanczos,
-        'mode': gdal.GRA_Mode,
-        }
-
-    base_raster_info = get_raster_info(base_raster_path)
-    base_raster = gdal.Open(base_raster_path)
-    base_band = base_raster.GetRasterBand(1)
-    target_type = base_band.DataType
-    base_band = None
-    base_sr_wkt = base_raster.GetProjection()
-
     # Create a virtual raster that is projected based on the target WKT. This
     # vrt does not save to disk and is used to get the proper projected
     # bounding box and size.
+    base_raster = gdal.Open(base_raster_path)
     vrt = gdal.AutoCreateWarpedVRT(
         base_raster, None, target_sr_wkt, gdal.GRA_Bilinear)
 
@@ -948,21 +942,21 @@ def reproject_and_warp_raster(
     (ulx, uly) = (geo_t[0], geo_t[3])
     (lrx, lry) = (
         geo_t[0] + geo_t[1] * target_x_size,
-        geo_t[3] + geo_t[5] * target_y_size)
+        geo_t[3] + geo_t[5] * -target_y_size)
 
     gdal_driver = gdal.GetDriverByName('GTiff')
 
     # Create the target raster to receive the projected target, with the
     # proper resampled arrangement.
+    base_raster_info = get_raster_info(base_raster_path)
     target_raster = gdal_driver.Create(
         target_path, int((lrx - ulx) / target_pixel_size[0]),
         int((uly - lry) / target_pixel_size[1]), base_raster_info['n_bands'],
         base_raster_info['datatype'], options=['BIGTIFF=IF_SAFER'])
 
     # Set the nodata value for the target raster
-    for index, nodata in enumerate(base_raster_info['nodata'])
-    target_raster.GetRasterBand(1).SetNoDataValue(
-        float(get_raster_info(base_raster_path)['nodata']))
+    for index, nodata in enumerate(base_raster_info['nodata']):
+        target_raster.GetRasterBand(index+1).SetNoDataValue(nodata)
 
     # Calculate the new geotransform
     target_geo = (
@@ -991,13 +985,10 @@ def reproject_and_warp_raster(
             reproject_cb.total_time = 0.0
 
     gdal.ReprojectImage(
-        base_raster, target_raster, base_sr_wkt, target_sr_wkt,
-        resample_dict[resampling_method], 0, 0, reproject_cb,
-        [target_path])
+        base_raster, target_raster, base_raster_info['projection'],
+        target_sr_wkt, _RESAMPLE_DICT[resampling_method], 0, 0,
+        reproject_cb, [target_path])
 
-    target_raster.FlushCache()
-
-    # Make sure the raster is closed and cleaned up
     target_raster = None
     calculate_raster_stats_uri(target_path)
 
