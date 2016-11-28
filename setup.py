@@ -167,7 +167,7 @@ setup(
     include_package_data=True,
     install_requires=BUILD_REQUIREMENTS,
     setup_requires=requirements('natcap.versioner'),
-    license=open('LICENSE.txt').read(),
+    license='BSD',
     zip_safe=False,
     keywords='gis pygeoprocessing',
     classifiers=[
@@ -179,7 +179,8 @@ setup(
         'Operating System :: Microsoft',
         'Operating System :: POSIX',
         'Programming Language :: Python :: 2 :: Only',
-        'Topic :: Scientific/Engineering :: GIS'
+        'Topic :: Scientific/Engineering :: GIS',
+        'License :: OSI Approved :: BSD License'
     ],
     ext_modules=EXTENSION_LIST,
     cmdclass=CMDCLASS,
