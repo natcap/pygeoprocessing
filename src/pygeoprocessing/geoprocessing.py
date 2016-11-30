@@ -1086,7 +1086,8 @@ def reproject_vector(base_vector_path, target_wkt, target_path):
 
 def reclassify_dataset_uri(
         dataset_uri, value_map, raster_out_uri, out_datatype, out_nodata,
-        exception_flag='values_required', assert_dataset_projected=True):
+        exception_flag='values_required', assert_dataset_projected=True,
+        band_index=0):
     """Reclassify values in a dataset.
 
     A function to reclassify values in dataset to any output type. By default
@@ -1102,6 +1103,8 @@ def reclassify_dataset_uri(
         out_datatype (gdal type): the type for the output dataset
         out_nodata (numerical type): the nodata value for the output raster.
             Must be the same type as out_datatype
+        band_index (int): Indicates which band in `dataset_uri` the
+            reclassification should operate on.  Defaults to 0.
 
     Keyword Args:
         exception_flag (string): either 'none' or 'values_required'.
@@ -1123,7 +1126,7 @@ def reclassify_dataset_uri(
     values_required = exception_flag == 'values_required'
 
     raster_info = get_raster_info(dataset_uri)
-    nodata = raster_info['nodata']
+    nodata = raster_info['nodata'][band_index]
     value_map_copy = value_map.copy()
     # possible that nodata value is not defined, so test for None first
     # otherwise if nodata not predefined, remap it into the dictionary

@@ -172,7 +172,8 @@ class RasterCreationTest(unittest.TestCase):
             pixels, reference.origin, reference.projection, nodata,
             reference.pixel_size(30), datatype='auto', filename=filename)
 
-        set_nodata_value = pygeoprocessing.get_raster_info(filename)['nodata']
+        set_nodata_value = (
+            pygeoprocessing.get_raster_info(filename)['nodata'][0])
         self.assertEqual(set_nodata_value, None)
 
     def test_raster_bad_matrix_iterable_input(self):

@@ -221,7 +221,7 @@ class TestPyGeoprocessing(unittest.TestCase):
             'pixel_size': (30.0, -30.0),
             'mean_pixel_size': 30.0,
             'raster_size': (10, 5),
-            'nodata': nodata,
+            'nodata': [nodata],
             'n_bands': 1,
             'bounding_box': [
                 reference.origin[0], reference.origin[1],
@@ -231,9 +231,15 @@ class TestPyGeoprocessing(unittest.TestCase):
                 reference.origin[0], reference.pixel_size(30)[0], 0.0,
                 reference.origin[1], 0, reference.pixel_size(30)[1]),
             'datatype': gdal.GDT_Int16,
+            'projection': osr.SpatialReference(reference.projection),
         }
 
-        self.assertEqual(expected_results, raster_info)
+        self.assertEqual(
+            set(expected_results.keys()), set(raster_info.keys()))
+
+        for key in expected_results:
+            self.assertEqual(expected_results[key], raster_info[key])
+
 
     def test_raster_info_nodata_undefied(self):
         """PGP.geoprocessing: covers info case when nodata is undefined."""
@@ -249,7 +255,7 @@ class TestPyGeoprocessing(unittest.TestCase):
             datatype=gdal.GDT_Byte)
 
         fetched_nodata_value = pygeoprocessing.get_raster_info(
-            raster_path)['nodata']
+            raster_path)['nodata'][0]
 
         self.assertEquals(fetched_nodata_value, nodata)
 
