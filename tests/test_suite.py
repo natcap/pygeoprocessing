@@ -217,6 +217,10 @@ class TestPyGeoprocessing(unittest.TestCase):
 
         raster_info = pygeoprocessing.get_raster_info(raster_filename)
 
+        # it's difficult to test equality of projection, so this is okay
+        self.assertTrue('projection' in raster_info)
+        del raster_info['projection']
+
         expected_results = {
             'pixel_size': (30.0, -30.0),
             'mean_pixel_size': 30.0,
@@ -231,14 +235,10 @@ class TestPyGeoprocessing(unittest.TestCase):
                 reference.origin[0], reference.pixel_size(30)[0], 0.0,
                 reference.origin[1], 0, reference.pixel_size(30)[1]),
             'datatype': gdal.GDT_Int16,
-            'projection': osr.SpatialReference(reference.projection),
         }
 
-        self.assertEqual(
-            set(expected_results.keys()), set(raster_info.keys()))
 
-        for key in expected_results:
-            self.assertEqual(expected_results[key], raster_info[key])
+        self.assertEqual(expected_results, raster_info)
 
 
     def test_raster_info_nodata_undefied(self):
