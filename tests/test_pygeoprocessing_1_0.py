@@ -28,8 +28,8 @@ class PyGeoprocessing10(unittest.TestCase):
         """Clean up remaining files."""
         shutil.rmtree(self.workspace_dir)
 
-    def test_raster_stack_calculator(self):
-        """PGP.geoprocessing: raster_stack_calculator identity test."""
+    def test_raster_calculator(self):
+        """PGP.geoprocessing: raster_calculator identity test."""
         pixel_matrix = numpy.ones((5, 5), numpy.int16)
         reference = sampledata.SRS_COLOMBIA
         nodata_target = -1
@@ -40,7 +40,7 @@ class PyGeoprocessing10(unittest.TestCase):
 
         target_path = os.path.join(
             self.workspace_dir, 'target.tif')
-        pygeoprocessing.raster_stack_calculator(
+        pygeoprocessing.raster_calculator(
             [(base_path, 1)], lambda x: x, target_path,
             gdal.GDT_Int32, nodata_target, dataset_options=None,
             calc_raster_stats=True)
@@ -58,7 +58,7 @@ class PyGeoprocessing10(unittest.TestCase):
 
         with self.assertRaises(ValueError):
             # intentionally passing target path as base path to raise error
-            pygeoprocessing.raster_stack_calculator(
+            pygeoprocessing.raster_calculator(
                 [(base_path, 1)], lambda x: x, base_path,
                 gdal.GDT_Int32, nodata_base, dataset_options=None,
                 calc_raster_stats=True)
@@ -83,7 +83,7 @@ class PyGeoprocessing10(unittest.TestCase):
         with self.assertRaises(ValueError):
             # intentionally passing a filename rather than a list of files
             # to get an expected exception
-            pygeoprocessing.raster_stack_calculator(
+            pygeoprocessing.raster_calculator(
                 [(base_path_a, 1), (base_path_b, 1)], lambda x: x,
                 target_path, gdal.GDT_Int32, nodata_base,
                 dataset_options=None, calc_raster_stats=True)

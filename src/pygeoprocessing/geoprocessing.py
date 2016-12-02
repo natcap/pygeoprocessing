@@ -73,7 +73,7 @@ _RESAMPLE_DICT = {
     }
 
 
-def raster_stack_calculator(
+def raster_calculator(
         base_raster_path_band_list, local_op, target_raster_path,
         datatype_target, nodata_target, dataset_options=None,
         calc_raster_stats=True):
