@@ -73,29 +73,160 @@ _RESAMPLE_DICT = {
     }
 
 
-def _gdal_to_numpy_type(band):
-    """Calculate the equivalent numpy datatype from a GDAL raster band type.
+def raster_stack_calculator(
+        base_raster_path_band_list, local_op, target_raster_path,
+        datatype_target, nodata_target, dataset_options=None,
+        calc_raster_stats=True):
+    """Apply local a raster operation on a stack of rasters.
 
-    This function doesn't handle complex or unknown types.  If they are
-    passed in, this function will rase a ValueERror.
+    This function applies a user defined function across a stack of
+    rasters' pixel stack. The rasters in `base_raster_path_band_list` must be
+    spatially aligned and have the same cell sizes.
 
     Parameters:
-        band (gdal.Band): GDAL Band
+        base_raster_path_band_list (list): a list of (str, int) tuples where
+            the strings are raster paths, and ints are band indexes.
+        local_op (function) a function that must take in as many arguments as
+            there are elements in `base_raster_path_band_list`.  The will be
+            in the same order as the rasters in arguments
+            can be treated as parallel memory blocks from the original
+            rasters though the function is a parallel
+            paradigm and does not express the spatial position of the pixels
+            in question at the time of the call.
+        target_raster_path (string): the path of the output raster.  The
+            projection, size, and cell size will be the same as the rasters
+            in `base_raster_path_band_list`.
+        datatype_target (gdal datatype; int): the desired GDAL output type of
+            the target raster.
+        nodata_target (numerical value): the desired nodata value of the
+            target raster.
+        dataset_options (list): this is an argument list that will be
+            passed to the GTiff driver.  Useful for blocksizes, compression,
+            etc.
+        calculate_raster_stats (boolean): If True, calculates and sets raster
+            statistics (min, max, mean, and stdev) for target raster.
 
     Returns:
-        numpy_datatype (numpy.dtype): equivalent of band.DataType
+        None
+
+    Raises:
+        ValueError: invalid input provided
     """
-    if band.DataType in _GDAL_TYPE_TO_NUMPY_LOOKUP:
-        return _GDAL_TYPE_TO_NUMPY_LOOKUP[band.DataType]
+    not_found_paths = []
+    for path, _ in base_raster_path_band_list:
+        if not os.path.exists(path):
+            not_found_paths.append(path)
 
-    # only class not in the lookup is a Byte but double check.
-    if band.DataType != gdal.GDT_Byte:
-        raise ValueError("Unsupported DataType: %s" % str(band.DataType))
+    if len(not_found_paths) != 0:
+        raise exceptions.ValueError(
+            "The following files were expected but do not exist on the "
+            "filesystem: " + str(not_found_paths))
 
-    metadata = band.GetMetadata('IMAGE_STRUCTURE')
-    if 'PIXELTYPE' in metadata and metadata['PIXELTYPE'] == 'SIGNEDBYTE':
-        return numpy.int8
-    return numpy.uint8
+    if target_raster_path in [x[0] for x in base_raster_path_band_list]:
+        raise ValueError(
+            "%s is used as a target path, but it is also in the base input "
+            "path list %s" % (
+                target_raster_path, str(base_raster_path_band_list)))
+
+    raster_info_list = [
+        get_raster_info(path_band[0])
+        for path_band in base_raster_path_band_list]
+    geospatial_info_set = set()
+    for raster_info in raster_info_list:
+        geospatial_info_set.add(
+            (raster_info['pixel_size'],
+             raster_info['raster_size'],
+             raster_info['geotransform'],
+             raster_info['projection']))
+    if len(geospatial_info_set) > 1:
+        raise ValueError(
+            "Input Rasters are not geospatially aligned.  For example the "
+            "following geospatial stats are not identical %s" % str(
+                geospatial_info_set))
+
+    base_raster_list = [
+        gdal.Open(path_band[0]) for path_band in base_raster_path_band_list]
+    base_band_list = [
+        raster.GetRasterBand(index) for raster, (_, index) in zip(
+            base_raster_list, base_raster_path_band_list)]
+
+    base_raster_info = get_raster_info(base_raster_path_band_list[0][0])
+
+    new_raster_from_base(
+        base_raster_path_band_list[0][0], target_raster_path, 'GTiff',
+        nodata_target, datatype_target, dataset_options=dataset_options)
+    target_raster = gdal.Open(target_raster_path, gdal.GA_Update)
+    target_band = target_raster.GetRasterBand(1)
+
+    n_cols, n_rows = base_raster_info['raster_size']
+    xoff = None
+    yoff = None
+    last_time = time.time()
+    raster_blocks = None
+    last_blocksize = None
+    target_min = None
+    target_max = None
+    target_sum = None
+    target_n = None
+    target_mean = None
+    target_stddev = None
+    for block_offset in iterblocks(
+            base_raster_path_band_list[0][0], offset_only=True):
+        xoff, yoff = block_offset['xoff'], block_offset['yoff']
+        last_time = _invoke_timed_callback(
+            last_time, lambda: LOGGER.info(
+                'raster stack calculation approx. %.2f%% complete',
+                100.0 * ((n_rows - yoff) * n_cols - xoff) /
+                (n_rows * n_cols)), _LOGGING_PERIOD)
+        blocksize = (block_offset['win_ysize'], block_offset['win_xsize'])
+
+        if last_blocksize != blocksize:
+            raster_blocks = [
+                numpy.zeros(blocksize, dtype=_gdal_to_numpy_type(band))
+                for band in base_band_list]
+            last_blocksize = blocksize
+
+        for dataset_index in xrange(len(base_band_list)):
+            band_data = block_offset.copy()
+            band_data['buf_obj'] = raster_blocks[dataset_index]
+            base_band_list[dataset_index].ReadAsArray(**band_data)
+
+        target_block = local_op(*raster_blocks)
+
+        target_band.WriteArray(
+            target_block, xoff=block_offset['xoff'],
+            yoff=block_offset['yoff'])
+
+        if calc_raster_stats:
+            valid_mask = target_block != nodata_target
+            valid_block = target_block[valid_mask]
+            target_min = numpy.min(valid_block, target_min)
+            target_max = numpy.max(valid_block, target_max)
+            target_sum = numpy.sum(valid_block, target_sum)
+            target_n = numpy.sum(valid_block.size, target_n)
+
+    # Making sure the band and dataset is flushed and not in memory before
+    # adding stats
+    target_band.FlushCache()
+
+    if calc_raster_stats and target_min is not None:
+        target_mean = target_sum / float(target_n)
+        stdev_sum = 0.0
+        for block_offset, target_block in iterblocks(target_raster_path):
+            valid_mask = target_block != nodata_target
+            valid_block = target_block[valid_mask]
+            stdev_sum += numpy.sum((valid_block - target_mean) ** 2)
+        target_stddev = (stdev_sum / float(target_n)) ** 0.5
+
+        target_band.SetStatistics(
+            float(target_min), float(target_max), float(target_mean),
+            float(target_stddev))
+
+    target_band = None
+    target_raster = None
+
+
+
 
 def calculate_raster_stats(dataset_path):
     """Calculate min, max, stdev, and mean for all bands in dataset.
@@ -1649,159 +1780,6 @@ def _assert_file_existance(dataset_uri_list):
         raise exceptions.IOError(error_message)
 
 
-def raster_stack_calculator(
-        base_raster_path_band_list, local_op, target_raster_path,
-        datatype_target, nodata_target, dataset_options=None,
-        calc_raster_stats=True):
-    """Apply local a raster operation on a stack of rasters.
-
-    This function applies a user defined function across a stack of
-    rasters' pixel stack. The rasters in `base_raster_path_band_list` must be
-    spatially aligned and have the same cell sizes.
-
-    Parameters:
-        base_raster_path_band_list (list): a list of (str, int) tuples where
-            the strings are raster paths, and ints are band indexes.
-        local_op (function) a function that must take in as many arguments as
-            there are elements in `base_raster_path_band_list`.  The will be
-            in the same order as the rasters in arguments
-            can be treated as parallel memory blocks from the original
-            rasters though the function is a parallel
-            paradigm and does not express the spatial position of the pixels
-            in question at the time of the call.
-        target_raster_path (string): the path of the output raster.  The
-            projection, size, and cell size will be the same as the rasters
-            in `base_raster_path_band_list`.
-        datatype_target (gdal datatype; int): the desired GDAL output type of
-            the target raster.
-        nodata_target (numerical value): the desired nodata value of the
-            target raster.
-        dataset_options (list): this is an argument list that will be
-            passed to the GTiff driver.  Useful for blocksizes, compression,
-            etc.
-        calculate_raster_stats (boolean): If True, calculates and sets raster
-            statistics (min, max, mean, and stdev) for target raster.
-
-    Returns:
-        None
-
-    Raises:
-        ValueError: invalid input provided
-    """
-    not_found_paths = []
-    for path, _ in base_raster_path_band_list:
-        if not os.path.exists(path):
-            not_found_paths.append(path)
-
-    if len(not_found_paths) != 0:
-        raise exceptions.ValueError(
-            "The following files were expected but do not exist on the "
-            "filesystem: " + str(not_found_paths))
-
-    if target_raster_path in [x[0] for x in base_raster_path_band_list]:
-        raise ValueError(
-            "%s is used as a target path, but it is also in the base input "
-            "path list %s" % (
-                target_raster_path, str(base_raster_path_band_list)))
-
-    raster_info_list = [
-        get_raster_info(path_band[0])
-        for path_band in base_raster_path_band_list]
-    geospatial_info_set = set()
-    for raster_info in raster_info_list:
-        geospatial_info_set.add(
-            (raster_info['pixel_size'],
-             raster_info['raster_size'],
-             raster_info['geotransform'],
-             raster_info['projection']))
-    if len(geospatial_info_set) > 1:
-        raise ValueError(
-            "Input Rasters are not geospatially aligned.  For example the "
-            "following geospatial stats are not identical %s" % str(
-                geospatial_info_set))
-
-    base_raster_list = [
-        gdal.Open(path_band[0]) for path_band in base_raster_path_band_list]
-    base_band_list = [
-        raster.GetRasterBand(index) for raster, (_, index) in zip(
-            base_raster_list, base_raster_path_band_list)]
-
-    base_raster_info = get_raster_info(base_raster_path_band_list[0][0])
-
-    new_raster_from_base(
-        base_raster_path_band_list[0][0], target_raster_path, 'GTiff',
-        nodata_target, datatype_target, dataset_options=dataset_options)
-    target_raster = gdal.Open(target_raster_path, gdal.GA_Update)
-    target_band = target_raster.GetRasterBand(1)
-
-    n_cols, n_rows = base_raster_info['raster_size']
-    xoff = None
-    yoff = None
-    last_time = time.time()
-    raster_blocks = None
-    last_blocksize = None
-    target_min = None
-    target_max = None
-    target_sum = None
-    target_n = None
-    target_mean = None
-    target_stddev = None
-    for block_offset in iterblocks(
-            base_raster_path_band_list[0][0], offset_only=True):
-        xoff, yoff = block_offset['xoff'], block_offset['yoff']
-        last_time = _invoke_timed_callback(
-            last_time, lambda: LOGGER.info(
-                'raster stack calculation approx. %.2f%% complete',
-                100.0 * ((n_rows - yoff) * n_cols - xoff) /
-                (n_rows * n_cols)), _LOGGING_PERIOD)
-        blocksize = (block_offset['win_ysize'], block_offset['win_xsize'])
-
-        if last_blocksize != blocksize:
-            raster_blocks = [
-                numpy.zeros(blocksize, dtype=_gdal_to_numpy_type(band))
-                for band in base_band_list]
-            last_blocksize = blocksize
-
-        for dataset_index in xrange(len(base_band_list)):
-            band_data = block_offset.copy()
-            band_data['buf_obj'] = raster_blocks[dataset_index]
-            base_band_list[dataset_index].ReadAsArray(**band_data)
-
-        target_block = local_op(*raster_blocks)
-
-        target_band.WriteArray(
-            target_block, xoff=block_offset['xoff'],
-            yoff=block_offset['yoff'])
-
-        if calc_raster_stats:
-            valid_mask = target_block != nodata_target
-            valid_block = target_block[valid_mask]
-            target_min = numpy.min(valid_block, target_min)
-            target_max = numpy.max(valid_block, target_max)
-            target_sum = numpy.sum(valid_block, target_sum)
-            target_n = numpy.sum(valid_block.size, target_n)
-
-    # Making sure the band and dataset is flushed and not in memory before
-    # adding stats
-    target_band.FlushCache()
-
-    if calc_raster_stats and target_min is not None:
-        target_mean = target_sum / float(target_n)
-        stdev_sum = 0.0
-        for block_offset, target_block in iterblocks(target_raster_path):
-            valid_mask = target_block != nodata_target
-            valid_block = target_block[valid_mask]
-            stdev_sum += numpy.sum((valid_block - target_mean) ** 2)
-        target_stddev = (stdev_sum / float(target_n)) ** 0.5
-
-        target_band.SetStatistics(
-            float(target_min), float(target_max), float(target_mean),
-            float(target_stddev))
-
-    target_band = None
-    target_raster = None
-
-
 def get_lookup_from_table(table_uri, key_field):
     """Read table file in as dictionary.
 
@@ -2812,3 +2790,27 @@ def _invoke_timed_callback(
         callback_lambda()
         return current_time
     return reference_time
+
+def _gdal_to_numpy_type(band):
+    """Calculate the equivalent numpy datatype from a GDAL raster band type.
+
+    This function doesn't handle complex or unknown types.  If they are
+    passed in, this function will rase a ValueERror.
+
+    Parameters:
+        band (gdal.Band): GDAL Band
+
+    Returns:
+        numpy_datatype (numpy.dtype): equivalent of band.DataType
+    """
+    if band.DataType in _GDAL_TYPE_TO_NUMPY_LOOKUP:
+        return _GDAL_TYPE_TO_NUMPY_LOOKUP[band.DataType]
+
+    # only class not in the lookup is a Byte but double check.
+    if band.DataType != gdal.GDT_Byte:
+        raise ValueError("Unsupported DataType: %s" % str(band.DataType))
+
+    metadata = band.GetMetadata('IMAGE_STRUCTURE')
+    if 'PIXELTYPE' in metadata and metadata['PIXELTYPE'] == 'SIGNEDBYTE':
+        return numpy.int8
+    return numpy.uint8
