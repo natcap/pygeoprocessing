@@ -42,16 +42,6 @@ AggregatedValues = collections.namedtuple(
 LOGGER = logging.getLogger('pygeoprocessing.geoprocessing')
 _LOGGING_PERIOD = 5.0  # min 5.0 seconds per update log message for the module
 
-
-class SpatialExtentOverlapException(Exception):
-    """An exeception class for cases when datasets or datasources don't overlap
-        in space.
-
-    Used to raise an exception if rasters, shapefiles, or both don't overlap
-        in regions that should.
-    """
-    pass
-
 # map gdal types to numpy equivalent
 _GDAL_TYPE_TO_NUMPY_LOOKUP = {
     gdal.GDT_Int16: numpy.int16,
@@ -224,6 +214,207 @@ def raster_calculator(
 
     target_band = None
     target_raster = None
+
+def align_raster_stack(
+        base_raster_path_list, base_vector_path_list,
+        target_raster_path_list, target_projection_wkt, resample_method_list,
+        target_pixel_size, bounding_box_mode, all_touched=False):
+    """Alter a list of rasters so that they align geospatially.
+
+    This function warps, and resizes base rasters such that the result is an
+    aligned stack of rasters that have the same projection, cell size, and
+    geotransform.  This can be achieved by clipping the rasters to
+    intersecting, unioning, or equivocating the bounding boxes of all the
+    raster and vector input.
+
+    Parameters:
+        dataset_uri_list (list): a list of input dataset uris
+        target_raster_path_list (list): a parallel dataset uri list whose
+            positions correspond to entries in dataset_uri_list
+        resample_method_list (list): a list of resampling methods for each
+            output uri in target_raster_path list.  Each element must be one of
+            "nearest|bilinear|cubic|cubic_spline|lanczos"
+        out_pixel_size: the output pixel size
+        mode (string): one of "union", "intersection", or "dataset" which
+            defines how the output output extents are defined as either the
+            union or intersection of the input datasets or to have the same
+            bounds as an existing raster.  If mode is "dataset" then
+            dataset_to_bound_index must be defined
+        dataset_to_align_index (int): an int that corresponds to the position
+            in one of the dataset_uri_lists that, if positive aligns the output
+            rasters to fix on the upper left hand corner of the output
+            datasets.  If negative, the bounding box aligns the intersection/
+            union without adjustment.
+        all_touched (boolean): if True and an AOI is passed, the
+            ALL_TOUCHED=TRUE option is passed to the RasterizeLayer function
+            when determining the mask of the AOI.
+
+    Keyword Args:
+        dataset_to_bound_index: if mode is "dataset" then this index is
+            used to indicate which dataset to define the output bounds of the
+            target_raster_path_list
+        aoi_path (string): a URI to an OGR datasource to be used for the
+            aoi.  Irrespective of the `mode` input, the aoi will be used
+            to intersect the final bounding box.
+
+    Returns:
+        None
+    """
+    last_time = time.time()
+
+    # make sure that the input lists are of the same length
+    list_lengths = [
+        len(dataset_uri_list), len(target_raster_path_list),
+        len(resample_method_list)]
+    if len(set(list_lengths)) != 1:
+        raise ValueError(
+            "dataset_uri_list, target_raster_path_list, and "
+            "resample_method_list must be the same length "
+            " current lengths are %s" % (str(list_lengths)))
+
+    if assert_datasets_projected:
+        assert_datasets_in_same_projection(dataset_uri_list)
+
+    if mode not in ["union", "intersection", "dataset"]:
+        raise ValueError("Unknown mode %s" % (str(mode)))
+
+    if dataset_to_align_index >= len(dataset_uri_list):
+        raise ValueError(
+            "Alignment index is out of bounds of the datasets index: %s"
+            "n_elements %s" % (dataset_to_align_index, len(dataset_uri_list)))
+    if mode == "dataset" and dataset_to_bound_index is None:
+        raise ValueError(
+            "Mode is 'dataset' but dataset_to_bound_index is not defined")
+    if mode == "dataset" and (dataset_to_bound_index < 0 or
+                              dataset_to_bound_index >= len(dataset_uri_list)):
+        raise ValueError(
+            "dataset_to_bound_index is out of bounds of the datasets index: %s"
+            "n_elements %s" % (dataset_to_bound_index, len(dataset_uri_list)))
+
+    def merge_bounding_boxes(bb1, bb2, mode):
+        """Helper function to merge two bounding boxes through union or
+            intersection"""
+        less_than_or_equal = lambda x, y: x if x <= y else y
+        greater_than = lambda x, y: x if x > y else y
+
+        if mode == "union":
+            comparison_ops = [
+                less_than_or_equal, greater_than, greater_than,
+                less_than_or_equal]
+        if mode == "intersection":
+            comparison_ops = [
+                greater_than, less_than_or_equal, less_than_or_equal,
+                greater_than]
+
+        bb_out = [op(x, y) for op, x, y in zip(comparison_ops, bb1, bb2)]
+        return bb_out
+
+    raster_info_list = [get_raster_info(path) for path in dataset_uri_list]
+
+    # get the intersecting or unioned bounding box
+    if mode == "dataset":
+        bounding_box = (
+            raster_info_list[dataset_to_bound_index]['bounding_box'])
+    else:
+        bounding_box = reduce(
+            functools.partial(merge_bounding_boxes, mode=mode),
+            [info['bounding_box'] for info in raster_info_list])
+
+    if aoi_path is not None:
+        bounding_box = merge_bounding_boxes(
+            bounding_box, get_datasource_bounding_box(aoi_path),
+            "intersection")
+
+    if (bounding_box[0] >= bounding_box[2] or
+            bounding_box[1] <= bounding_box[3]) and mode == "intersection":
+        raise ValueError("The datasets' intersection is empty "
+                         "(i.e., not all the datasets touch each other).")
+
+    if dataset_to_align_index >= 0:
+        # bounding box needs alignment
+        align_bounding_box = (
+            raster_info_list[dataset_to_align_index]['bounding_box'])
+        align_pixel_size = (
+            raster_info_list[dataset_to_align_index]['mean_pixel_size'])
+
+        for index in [0, 1]:
+            n_pixels = int(
+                (bounding_box[index] - align_bounding_box[index]) /
+                float(align_pixel_size))
+            bounding_box[index] = \
+                n_pixels * align_pixel_size + align_bounding_box[index]
+
+    for original_dataset_uri, out_dataset_uri, resample_method, index in zip(
+            dataset_uri_list, target_raster_path_list, resample_method_list,
+            range(len(dataset_uri_list))):
+        last_time = _invoke_timed_callback(
+            last_time, lambda: LOGGER.info(
+                "align_dataset_list aligning dataset %d of %d",
+                index, len(dataset_uri_list)), _LOGGING_PERIOD)
+        resize_and_resample_dataset_uri(
+            original_dataset_uri, bounding_box, out_pixel_size,
+            out_dataset_uri, resample_method)
+
+    # If there's an AOI, mask it out
+    if aoi_path is not None:
+        first_dataset = gdal.Open(target_raster_path_list[0])
+        n_rows = first_dataset.RasterYSize
+        n_cols = first_dataset.RasterXSize
+        gdal.Dataset.__swig_destroy__(first_dataset)
+        first_dataset = None
+
+        mask_uri = temporary_filename(suffix='.tif')
+        new_raster_from_base_uri(
+            target_raster_path_list[0], mask_uri, 'GTiff', 255, gdal.GDT_Byte,
+            fill_value=0)
+
+        mask_dataset = gdal.Open(mask_uri, gdal.GA_Update)
+        mask_band = mask_dataset.GetRasterBand(1)
+        aoi_datasource = ogr.Open(aoi_path)
+        aoi_layer = aoi_datasource.GetLayer()
+        option_list = ["ALL_TOUCHED=%s" % str(all_touched).upper()]
+        gdal.RasterizeLayer(
+            mask_dataset, [1], aoi_layer, burn_values=[1],
+            options=option_list)
+        mask_row = numpy.zeros((1, n_cols), dtype=numpy.int8)
+
+        out_dataset_list = [
+            gdal.Open(uri, gdal.GA_Update) for uri in target_raster_path_list]
+        out_band_list = [
+            dataset.GetRasterBand(1) for dataset in out_dataset_list]
+        nodata_out_list = [
+            get_raster_info(path)['nodata'] for path in target_raster_path_list]
+
+        for row_index in range(n_rows):
+            mask_row = (mask_band.ReadAsArray(
+                0, row_index, n_cols, 1) == 0)
+            for out_band, nodata_out in zip(out_band_list, nodata_out_list):
+                dataset_row = out_band.ReadAsArray(
+                    0, row_index, n_cols, 1)
+                out_band.WriteArray(
+                    numpy.where(mask_row, nodata_out, dataset_row),
+                    xoff=0, yoff=row_index)
+
+        # Remove the mask aoi if necessary
+        mask_band = None
+        gdal.Dataset.__swig_destroy__(mask_dataset)
+        mask_dataset = None
+        try:
+            os.remove(mask_uri)
+        except OSError:
+            LOGGER.warn("Couldn't clean up temporary mask_uri: %s", mask_uri)
+
+        # Close and clean up datasource
+        aoi_layer = None
+        ogr.DataSource.__swig_destroy__(aoi_datasource)
+        aoi_datasource = None
+
+        # Clean up datasets
+        out_band_list = None
+        for dataset in out_dataset_list:
+            dataset.FlushCache()
+            gdal.Dataset.__swig_destroy__(dataset)
+        out_dataset_list = None
 
 
 
@@ -1549,207 +1740,6 @@ def resize_and_resample_dataset_uri(
     gdal.Dataset.__swig_destroy__(output_dataset)
     output_dataset = None
     calculate_raster_stats_uri(output_uri)
-
-
-def align_dataset_list(
-        dataset_uri_list, target_raster_path_list, resample_method_list,
-        out_pixel_size, mode, dataset_to_align_index,
-        dataset_to_bound_index=None, aoi_path=None,
-        assert_datasets_projected=True, all_touched=False):
-    """Create a new list of datasets that are aligned based on a list of
-        inputted datasets.
-
-    Take a list of dataset uris and generates a new set that is completely
-    aligned with identical projections and pixel sizes.
-
-    Args:
-        dataset_uri_list (list): a list of input dataset uris
-        target_raster_path_list (list): a parallel dataset uri list whose
-            positions correspond to entries in dataset_uri_list
-        resample_method_list (list): a list of resampling methods for each
-            output uri in target_raster_path list.  Each element must be one of
-            "nearest|bilinear|cubic|cubic_spline|lanczos"
-        out_pixel_size: the output pixel size
-        mode (string): one of "union", "intersection", or "dataset" which
-            defines how the output output extents are defined as either the
-            union or intersection of the input datasets or to have the same
-            bounds as an existing raster.  If mode is "dataset" then
-            dataset_to_bound_index must be defined
-        dataset_to_align_index (int): an int that corresponds to the position
-            in one of the dataset_uri_lists that, if positive aligns the output
-            rasters to fix on the upper left hand corner of the output
-            datasets.  If negative, the bounding box aligns the intersection/
-            union without adjustment.
-        all_touched (boolean): if True and an AOI is passed, the
-            ALL_TOUCHED=TRUE option is passed to the RasterizeLayer function
-            when determining the mask of the AOI.
-
-    Keyword Args:
-        dataset_to_bound_index: if mode is "dataset" then this index is
-            used to indicate which dataset to define the output bounds of the
-            target_raster_path_list
-        aoi_path (string): a URI to an OGR datasource to be used for the
-            aoi.  Irrespective of the `mode` input, the aoi will be used
-            to intersect the final bounding box.
-
-    Returns:
-        None
-    """
-    last_time = time.time()
-
-    # make sure that the input lists are of the same length
-    list_lengths = [
-        len(dataset_uri_list), len(target_raster_path_list),
-        len(resample_method_list)]
-    if len(set(list_lengths)) != 1:
-        raise ValueError(
-            "dataset_uri_list, target_raster_path_list, and "
-            "resample_method_list must be the same length "
-            " current lengths are %s" % (str(list_lengths)))
-
-    if assert_datasets_projected:
-        assert_datasets_in_same_projection(dataset_uri_list)
-
-    if mode not in ["union", "intersection", "dataset"]:
-        raise ValueError("Unknown mode %s" % (str(mode)))
-
-    if dataset_to_align_index >= len(dataset_uri_list):
-        raise ValueError(
-            "Alignment index is out of bounds of the datasets index: %s"
-            "n_elements %s" % (dataset_to_align_index, len(dataset_uri_list)))
-    if mode == "dataset" and dataset_to_bound_index is None:
-        raise ValueError(
-            "Mode is 'dataset' but dataset_to_bound_index is not defined")
-    if mode == "dataset" and (dataset_to_bound_index < 0 or
-                              dataset_to_bound_index >= len(dataset_uri_list)):
-        raise ValueError(
-            "dataset_to_bound_index is out of bounds of the datasets index: %s"
-            "n_elements %s" % (dataset_to_bound_index, len(dataset_uri_list)))
-
-    def merge_bounding_boxes(bb1, bb2, mode):
-        """Helper function to merge two bounding boxes through union or
-            intersection"""
-        less_than_or_equal = lambda x, y: x if x <= y else y
-        greater_than = lambda x, y: x if x > y else y
-
-        if mode == "union":
-            comparison_ops = [
-                less_than_or_equal, greater_than, greater_than,
-                less_than_or_equal]
-        if mode == "intersection":
-            comparison_ops = [
-                greater_than, less_than_or_equal, less_than_or_equal,
-                greater_than]
-
-        bb_out = [op(x, y) for op, x, y in zip(comparison_ops, bb1, bb2)]
-        return bb_out
-
-    raster_info_list = [get_raster_info(path) for path in dataset_uri_list]
-
-    # get the intersecting or unioned bounding box
-    if mode == "dataset":
-        bounding_box = (
-            raster_info_list[dataset_to_bound_index]['bounding_box'])
-    else:
-        bounding_box = reduce(
-            functools.partial(merge_bounding_boxes, mode=mode),
-            [info['bounding_box'] for info in raster_info_list])
-
-    if aoi_path is not None:
-        bounding_box = merge_bounding_boxes(
-            bounding_box, get_datasource_bounding_box(aoi_path),
-            "intersection")
-
-    if (bounding_box[0] >= bounding_box[2] or
-            bounding_box[1] <= bounding_box[3]) and mode == "intersection":
-        raise ValueError("The datasets' intersection is empty "
-                         "(i.e., not all the datasets touch each other).")
-
-    if dataset_to_align_index >= 0:
-        # bounding box needs alignment
-        align_bounding_box = (
-            raster_info_list[dataset_to_align_index]['bounding_box'])
-        align_pixel_size = (
-            raster_info_list[dataset_to_align_index]['mean_pixel_size'])
-
-        for index in [0, 1]:
-            n_pixels = int(
-                (bounding_box[index] - align_bounding_box[index]) /
-                float(align_pixel_size))
-            bounding_box[index] = \
-                n_pixels * align_pixel_size + align_bounding_box[index]
-
-    for original_dataset_uri, out_dataset_uri, resample_method, index in zip(
-            dataset_uri_list, target_raster_path_list, resample_method_list,
-            range(len(dataset_uri_list))):
-        last_time = _invoke_timed_callback(
-            last_time, lambda: LOGGER.info(
-                "align_dataset_list aligning dataset %d of %d",
-                index, len(dataset_uri_list)), _LOGGING_PERIOD)
-        resize_and_resample_dataset_uri(
-            original_dataset_uri, bounding_box, out_pixel_size,
-            out_dataset_uri, resample_method)
-
-    # If there's an AOI, mask it out
-    if aoi_path is not None:
-        first_dataset = gdal.Open(target_raster_path_list[0])
-        n_rows = first_dataset.RasterYSize
-        n_cols = first_dataset.RasterXSize
-        gdal.Dataset.__swig_destroy__(first_dataset)
-        first_dataset = None
-
-        mask_uri = temporary_filename(suffix='.tif')
-        new_raster_from_base_uri(
-            target_raster_path_list[0], mask_uri, 'GTiff', 255, gdal.GDT_Byte,
-            fill_value=0)
-
-        mask_dataset = gdal.Open(mask_uri, gdal.GA_Update)
-        mask_band = mask_dataset.GetRasterBand(1)
-        aoi_datasource = ogr.Open(aoi_path)
-        aoi_layer = aoi_datasource.GetLayer()
-        option_list = ["ALL_TOUCHED=%s" % str(all_touched).upper()]
-        gdal.RasterizeLayer(
-            mask_dataset, [1], aoi_layer, burn_values=[1],
-            options=option_list)
-        mask_row = numpy.zeros((1, n_cols), dtype=numpy.int8)
-
-        out_dataset_list = [
-            gdal.Open(uri, gdal.GA_Update) for uri in target_raster_path_list]
-        out_band_list = [
-            dataset.GetRasterBand(1) for dataset in out_dataset_list]
-        nodata_out_list = [
-            get_raster_info(path)['nodata'] for path in target_raster_path_list]
-
-        for row_index in range(n_rows):
-            mask_row = (mask_band.ReadAsArray(
-                0, row_index, n_cols, 1) == 0)
-            for out_band, nodata_out in zip(out_band_list, nodata_out_list):
-                dataset_row = out_band.ReadAsArray(
-                    0, row_index, n_cols, 1)
-                out_band.WriteArray(
-                    numpy.where(mask_row, nodata_out, dataset_row),
-                    xoff=0, yoff=row_index)
-
-        # Remove the mask aoi if necessary
-        mask_band = None
-        gdal.Dataset.__swig_destroy__(mask_dataset)
-        mask_dataset = None
-        try:
-            os.remove(mask_uri)
-        except OSError:
-            LOGGER.warn("Couldn't clean up temporary mask_uri: %s", mask_uri)
-
-        # Close and clean up datasource
-        aoi_layer = None
-        ogr.DataSource.__swig_destroy__(aoi_datasource)
-        aoi_datasource = None
-
-        # Clean up datasets
-        out_band_list = None
-        for dataset in out_dataset_list:
-            dataset.FlushCache()
-            gdal.Dataset.__swig_destroy__(dataset)
-        out_dataset_list = None
 
 
 def _assert_file_existance(dataset_uri_list):
