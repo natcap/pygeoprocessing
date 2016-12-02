@@ -97,18 +97,18 @@ def _gdal_to_numpy_type(band):
         return numpy.int8
     return numpy.uint8
 
-def calculate_raster_stats_uri(dataset_uri):
+def calculate_raster_stats(dataset_path):
     """Calculate min, max, stdev, and mean for all bands in dataset.
 
     Args:
-        dataset_uri (string): a uri to a GDAL raster dataset that will be
+        dataset_path (string): a path to a GDAL raster dataset that will be
             modified by having its band statistics set
 
     Returns:
         None
     """
 
-    dataset = gdal.Open(dataset_uri, gdal.GA_Update)
+    dataset = gdal.Open(dataset_path, gdal.GA_Update)
 
     for band_number in range(dataset.RasterCount):
         band = dataset.GetRasterBand(band_number + 1)
@@ -120,18 +120,18 @@ def calculate_raster_stats_uri(dataset_uri):
     dataset = None
 
 
-def get_statistics_from_uri(dataset_uri):
+def get_statistics_from_path(dataset_path):
     """Get the min, max, mean, stdev from first band in a GDAL Dataset.
 
     Args:
-        dataset_uri (string): a uri to a gdal dataset
+        dataset_path (string): a path to a gdal dataset
 
     Returns:
         statistics (tuple): min, max, mean, stddev
 
     """
 
-    dataset = gdal.Open(dataset_uri)
+    dataset = gdal.Open(dataset_path)
     band = dataset.GetRasterBand(1)
     statistics = band.GetStatistics(0, 1)
 
@@ -142,7 +142,8 @@ def get_statistics_from_uri(dataset_uri):
 
     return statistics
 
-def new_raster_from_base_uri(
+
+def new_raster_from_base(
         base_uri, output_uri, gdal_format, nodata, datatype, fill_value=None,
         n_rows=None, n_cols=None, dataset_options=None):
     """Create a new, empty GDAL raster dataset with the spatial references,
@@ -182,43 +183,6 @@ def new_raster_from_base_uri(
         fill_value=fill_value, n_rows=n_rows, n_cols=n_rows,
         dataset_options=dataset_options)
 
-
-def new_raster_from_base(
-        base, output_uri, gdal_format, nodata, datatype, fill_value=None,
-        n_rows=None, n_cols=None, dataset_options=None):
-    """Create a new, empty GDAL raster dataset with the spatial references,
-    geotranforms of the base GDAL raster dataset.
-
-    Args:
-        base: a the GDAL raster dataset to base output size, and transforms
-            on
-        output_uri (string): a string URI to the new output raster dataset.
-        gdal_format (string): a string representing the GDAL file format of the
-            output raster.  See http://gdal.org/formats_list.html for a list
-            of available formats.  This parameter expects the format code, such
-            as 'GTiff' or 'MEM'
-        nodata: a value that will be set as the nodata value for the
-            output raster.  Should be the same type as 'datatype'
-        datatype: the pixel datatype of the output raster, for example
-            gdal.GDT_Float32.  See the following header file for supported
-            pixel types:
-            http://www.gdal.org/gdal_8h.html#22e22ce0a55036a96f652765793fb7a4
-
-    Keyword Args:
-        fill_value: the value to fill in the raster on creation
-        n_rows: if set makes the resulting raster have n_rows in it
-            if not, the number of rows of the outgoing dataset are equal to
-            the base.
-        n_cols: similar to n_rows, but for the columns.
-        dataset_options: a list of dataset options that gets
-            passed to the gdal creation driver, overrides defaults
-
-    Returns:
-        dataset: a new GDAL raster dataset.
-    """
-    return geoprocessing_core.new_raster_from_base(
-        base, output_uri, gdal_format, nodata, datatype, fill_value,
-        n_rows, n_cols, dataset_options)
 
 
 def new_raster(
@@ -479,14 +443,15 @@ def vectorize_points(
 
 
 def aggregate_raster_values_uri(
-        raster_uri, shapefile_uri, shapefile_field=None, ignore_nodata=True,
+        raster_path_band, shapefile_uri, shapefile_field=None, ignore_nodata=True,
         all_touched=False, polygons_might_overlap=True):
     """Collect stats on pixel values which lie within shapefile polygons.
 
     Args:
-        raster_uri (string): a uri to a raster.  In order for hectare
-            mean values to be accurate, this raster must be projected in
-            meter units.
+        raster_path_band (tuple): a str, int tuple where the string indicates
+            the path on disk to a raster and the int is the band index.  In
+            order for hectare mean values to be accurate, this raster must be
+            projected in meter units.
         shapefile_uri (string): a uri to a OGR datasource that should overlap
             raster; raises an exception if not.
 
@@ -524,14 +489,14 @@ def aggregate_raster_values_uri(
         TypeError
         OSError
     """
-    raster_info = get_raster_info(raster_uri)
-    raster_nodata = raster_info['nodata']
+    raster_info = get_raster_info(raster_path_band[0])
+    raster_nodata = raster_info['nodata'][raster_path_band[1]]
     out_pixel_size = raster_info['mean_pixel_size']
     clipped_raster_uri = temporary_filename(suffix='.tif')
     vectorize_datasets(
-        [raster_uri], lambda x: x, clipped_raster_uri, gdal.GDT_Float64,
+        [raster_path_band], lambda x: x, clipped_raster_uri, gdal.GDT_Float64,
         raster_nodata, out_pixel_size, "union",
-        dataset_to_align_index=0, aoi_uri=shapefile_uri,
+        dataset_to_align_index=0, aoi_path=shapefile_uri,
         assert_datasets_projected=False, vectorize_op=False)
     clipped_raster = gdal.Open(clipped_raster_uri)
 
@@ -842,7 +807,7 @@ def clip_dataset_uri(
     pixel_size = get_raster_info(source_dataset_uri)['mean_pixel_size']
     vectorize_datasets(
         [source_dataset_uri], lambda x: x, out_dataset_uri, datatype, nodata,
-        pixel_size, 'intersection', aoi_uri=aoi_datasource_uri,
+        pixel_size, 'intersection', aoi_path=aoi_datasource_uri,
         assert_datasets_projected=assert_projections,
         process_pool=process_pool, vectorize_op=False, all_touched=all_touched)
 
@@ -1456,9 +1421,9 @@ def resize_and_resample_dataset_uri(
 
 
 def align_dataset_list(
-        dataset_uri_list, dataset_out_uri_list, resample_method_list,
+        dataset_uri_list, target_raster_path_list, resample_method_list,
         out_pixel_size, mode, dataset_to_align_index,
-        dataset_to_bound_index=None, aoi_uri=None,
+        dataset_to_bound_index=None, aoi_path=None,
         assert_datasets_projected=True, all_touched=False):
     """Create a new list of datasets that are aligned based on a list of
         inputted datasets.
@@ -1468,10 +1433,10 @@ def align_dataset_list(
 
     Args:
         dataset_uri_list (list): a list of input dataset uris
-        dataset_out_uri_list (list): a parallel dataset uri list whose
+        target_raster_path_list (list): a parallel dataset uri list whose
             positions correspond to entries in dataset_uri_list
         resample_method_list (list): a list of resampling methods for each
-            output uri in dataset_out_uri list.  Each element must be one of
+            output uri in target_raster_path list.  Each element must be one of
             "nearest|bilinear|cubic|cubic_spline|lanczos"
         out_pixel_size: the output pixel size
         mode (string): one of "union", "intersection", or "dataset" which
@@ -1491,8 +1456,8 @@ def align_dataset_list(
     Keyword Args:
         dataset_to_bound_index: if mode is "dataset" then this index is
             used to indicate which dataset to define the output bounds of the
-            dataset_out_uri_list
-        aoi_uri (string): a URI to an OGR datasource to be used for the
+            target_raster_path_list
+        aoi_path (string): a URI to an OGR datasource to be used for the
             aoi.  Irrespective of the `mode` input, the aoi will be used
             to intersect the final bounding box.
 
@@ -1503,11 +1468,11 @@ def align_dataset_list(
 
     # make sure that the input lists are of the same length
     list_lengths = [
-        len(dataset_uri_list), len(dataset_out_uri_list),
+        len(dataset_uri_list), len(target_raster_path_list),
         len(resample_method_list)]
     if len(set(list_lengths)) != 1:
         raise ValueError(
-            "dataset_uri_list, dataset_out_uri_list, and "
+            "dataset_uri_list, target_raster_path_list, and "
             "resample_method_list must be the same length "
             " current lengths are %s" % (str(list_lengths)))
 
@@ -1559,9 +1524,9 @@ def align_dataset_list(
             functools.partial(merge_bounding_boxes, mode=mode),
             [info['bounding_box'] for info in raster_info_list])
 
-    if aoi_uri is not None:
+    if aoi_path is not None:
         bounding_box = merge_bounding_boxes(
-            bounding_box, get_datasource_bounding_box(aoi_uri),
+            bounding_box, get_datasource_bounding_box(aoi_path),
             "intersection")
 
     if (bounding_box[0] >= bounding_box[2] or
@@ -1584,7 +1549,7 @@ def align_dataset_list(
                 n_pixels * align_pixel_size + align_bounding_box[index]
 
     for original_dataset_uri, out_dataset_uri, resample_method, index in zip(
-            dataset_uri_list, dataset_out_uri_list, resample_method_list,
+            dataset_uri_list, target_raster_path_list, resample_method_list,
             range(len(dataset_uri_list))):
         last_time = _invoke_timed_callback(
             last_time, lambda: LOGGER.info(
@@ -1595,8 +1560,8 @@ def align_dataset_list(
             out_dataset_uri, resample_method)
 
     # If there's an AOI, mask it out
-    if aoi_uri is not None:
-        first_dataset = gdal.Open(dataset_out_uri_list[0])
+    if aoi_path is not None:
+        first_dataset = gdal.Open(target_raster_path_list[0])
         n_rows = first_dataset.RasterYSize
         n_cols = first_dataset.RasterXSize
         gdal.Dataset.__swig_destroy__(first_dataset)
@@ -1604,12 +1569,12 @@ def align_dataset_list(
 
         mask_uri = temporary_filename(suffix='.tif')
         new_raster_from_base_uri(
-            dataset_out_uri_list[0], mask_uri, 'GTiff', 255, gdal.GDT_Byte,
+            target_raster_path_list[0], mask_uri, 'GTiff', 255, gdal.GDT_Byte,
             fill_value=0)
 
         mask_dataset = gdal.Open(mask_uri, gdal.GA_Update)
         mask_band = mask_dataset.GetRasterBand(1)
-        aoi_datasource = ogr.Open(aoi_uri)
+        aoi_datasource = ogr.Open(aoi_path)
         aoi_layer = aoi_datasource.GetLayer()
         option_list = ["ALL_TOUCHED=%s" % str(all_touched).upper()]
         gdal.RasterizeLayer(
@@ -1618,11 +1583,11 @@ def align_dataset_list(
         mask_row = numpy.zeros((1, n_cols), dtype=numpy.int8)
 
         out_dataset_list = [
-            gdal.Open(uri, gdal.GA_Update) for uri in dataset_out_uri_list]
+            gdal.Open(uri, gdal.GA_Update) for uri in target_raster_path_list]
         out_band_list = [
             dataset.GetRasterBand(1) for dataset in out_dataset_list]
         nodata_out_list = [
-            get_raster_info(path)['nodata'] for path in dataset_out_uri_list]
+            get_raster_info(path)['nodata'] for path in target_raster_path_list]
 
         for row_index in range(n_rows):
             mask_row = (mask_band.ReadAsArray(
@@ -1656,7 +1621,7 @@ def align_dataset_list(
         out_dataset_list = None
 
 
-def assert_file_existance(dataset_uri_list):
+def _assert_file_existance(dataset_uri_list):
     """Assert that provided uris exist in filesystem.
 
     Verify that the uris passed in the argument exist on the filesystem
@@ -1684,88 +1649,38 @@ def assert_file_existance(dataset_uri_list):
         raise exceptions.IOError(error_message)
 
 
-def vectorize_datasets(
-        dataset_uri_list, dataset_pixel_op, dataset_out_uri, datatype_out,
-        nodata_out, pixel_size_out, bounding_box_mode,
-        resample_method_list=None, dataset_to_align_index=None,
-        dataset_to_bound_index=None, aoi_uri=None,
-        assert_datasets_projected=True, process_pool=None, vectorize_op=True,
-        datasets_are_pre_aligned=False, dataset_options=None,
-        all_touched=False):
-    """Apply local raster operation on stack of datasets.
+def raster_stack_calculator(
+        base_raster_path_band_list, local_op, target_raster_path,
+        datatype_target, nodata_target, dataset_options=None,
+        calc_raster_stats=True):
+    """Apply local a raster operation on a stack of rasters.
 
     This function applies a user defined function across a stack of
-    datasets.  It has functionality align the output dataset grid
-    with one of the input datasets, output a dataset that is the union
-    or intersection of the input dataset bounding boxes, and control
-    over the interpolation techniques of the input datasets, if
-    necessary.  The datasets in dataset_uri_list must be in the same
-    projection; the function will raise an exception if not.
+    rasters' pixel stack. The rasters in `base_raster_path_band_list` must be
+    spatially aligned and have the same cell sizes.
 
-    Args:
-        dataset_uri_list (list): a list of file uris that point to files that
-            can be opened with gdal.Open.
-        dataset_pixel_op (function) a function that must take in as many
-            arguments as there are elements in dataset_uri_list.  The arguments
-            can be treated as interpolated or actual pixel values from the
-            input datasets and the function should calculate the output
-            value for that pixel stack.  The function is a parallel
-            paradigmn and does not know the spatial position of the
-            pixels in question at the time of the call.  If the
-            `bounding_box_mode` parameter is "union" then the values
-            of input dataset pixels that may be outside their original
-            range will be the nodata values of those datasets.  Known
-            bug: if dataset_pixel_op does not return a value in some cases
-            the output dataset values are undefined even if the function
-            does not crash or raise an exception.
-        dataset_out_uri (string): the uri of the output dataset.  The
-            projection will be the same as the datasets in dataset_uri_list.
-        datatype_out: the GDAL output type of the output dataset
-        nodata_out: the nodata value of the output dataset.
-        pixel_size_out: the pixel size of the output dataset in
-            projected coordinates.
-        bounding_box_mode (string): one of "union" or "intersection",
-            "dataset". If union the output dataset bounding box will be the
-            union of the input datasets.  Will be the intersection otherwise.
-            An exception is raised if the mode is "intersection" and the
-            input datasets have an empty intersection. If dataset it will make
-            a bounding box as large as the given dataset, if given
-            dataset_to_bound_index must be defined.
-
-    Keyword Args:
-        resample_method_list (list): a list of resampling methods
-            for each output uri in dataset_out_uri list.  Each element
-            must be one of "nearest|bilinear|cubic|cubic_spline|lanczos".
-            If None, the default is "nearest" for all input datasets.
-        dataset_to_align_index (int): an int that corresponds to the position
-            in one of the dataset_uri_lists that, if positive aligns the output
-            rasters to fix on the upper left hand corner of the output
-            datasets.  If negative, the bounding box aligns the intersection/
-            union without adjustment.
-        dataset_to_bound_index: if mode is "dataset" this indicates which
-            dataset should be the output size.
-        aoi_uri (string): a URI to an OGR datasource to be used for the
-            aoi.  Irrespective of the `mode` input, the aoi will be used
-            to intersect the final bounding box.
-        assert_datasets_projected (boolean): if True this operation will
-            test if any datasets are not projected and raise an exception
-            if so.
-        process_pool: a process pool for multiprocessing
-        vectorize_op (boolean): if true the model will try to numpy.vectorize
-            dataset_pixel_op.  If dataset_pixel_op is designed to use maximize
-            array broadcasting, set this parameter to False, else it may
-            inefficiently invoke the function on individual elements.
-        datasets_are_pre_aligned (boolean): If this value is set to False
-            this operation will first align and interpolate the input datasets
-            based on the rules provided in bounding_box_mode,
-            resample_method_list, dataset_to_align_index, and
-            dataset_to_bound_index, if set to True the input dataset list must
-            be aligned, probably by raster_utils.align_dataset_list
-        dataset_options: this is an argument list that will be
+    Parameters:
+        base_raster_path_band_list (list): a list of (str, int) tuples where
+            the strings are raster paths, and ints are band indexes.
+        local_op (function) a function that must take in as many arguments as
+            there are elements in `base_raster_path_band_list`.  The will be
+            in the same order as the rasters in arguments
+            can be treated as parallel memory blocks from the original
+            rasters though the function is a parallel
+            paradigm and does not express the spatial position of the pixels
+            in question at the time of the call.
+        target_raster_path (string): the path of the output raster.  The
+            projection, size, and cell size will be the same as the rasters
+            in `base_raster_path_band_list`.
+        datatype_target (gdal datatype; int): the desired GDAL output type of
+            the target raster.
+        nodata_target (numerical value): the desired nodata value of the
+            target raster.
+        dataset_options (list): this is an argument list that will be
             passed to the GTiff driver.  Useful for blocksizes, compression,
             etc.
-        all_touched (boolean): if true the clip uses the option
-            ALL_TOUCHED=TRUE when calling RasterizeLayer for AOI masking.
+        calculate_raster_stats (boolean): If True, calculates and sets raster
+            statistics (min, max, mean, and stdev) for target raster.
 
     Returns:
         None
@@ -1773,158 +1688,119 @@ def vectorize_datasets(
     Raises:
         ValueError: invalid input provided
     """
-    if not isinstance(dataset_uri_list, list):
+    not_found_paths = []
+    for path, _ in base_raster_path_band_list:
+        if not os.path.exists(path):
+            not_found_paths.append(path)
+
+    if len(not_found_paths) != 0:
+        raise exceptions.ValueError(
+            "The following files were expected but do not exist on the "
+            "filesystem: " + str(not_found_paths))
+
+    if target_raster_path in [x[0] for x in base_raster_path_band_list]:
         raise ValueError(
-            "dataset_uri_list was not passed in as a list, maybe a single "
-            "file was passed in?  Here is its value: %s" %
-            (str(dataset_uri_list)))
+            "%s is used as a target path, but it is also in the base input "
+            "path list %s" % (
+                target_raster_path, str(base_raster_path_band_list)))
 
-    if aoi_uri is None:
-        assert_file_existance(dataset_uri_list)
-    else:
-        assert_file_existance(dataset_uri_list + [aoi_uri])
-
-    if dataset_out_uri in dataset_uri_list:
+    raster_info_list = [
+        get_raster_info(path_band[0])
+        for path_band in base_raster_path_band_list]
+    geospatial_info_set = set()
+    for raster_info in raster_info_list:
+        geospatial_info_set.add(
+            (raster_info['pixel_size'],
+             raster_info['raster_size'],
+             raster_info['geotransform'],
+             raster_info['projection']))
+    if len(geospatial_info_set) > 1:
         raise ValueError(
-            "%s is used as an output file, but it is also an input file "
-            "in the input list %s" % (dataset_out_uri, str(dataset_uri_list)))
+            "Input Rasters are not geospatially aligned.  For example the "
+            "following geospatial stats are not identical %s" % str(
+                geospatial_info_set))
 
-    valid_bounding_box_modes = ["union", "intersection", "dataset"]
-    if bounding_box_mode not in valid_bounding_box_modes:
-        raise ValueError(
-            "Unknown bounding box mode %s; should be one of %s",
-            bounding_box_mode, valid_bounding_box_modes)
+    base_raster_list = [
+        gdal.Open(path_band[0]) for path_band in base_raster_path_band_list]
+    base_band_list = [
+        raster.GetRasterBand(index) for raster, (_, index) in zip(
+            base_raster_list, base_raster_path_band_list)]
 
-    # Create a temporary list of filenames whose files delete on the python
-    # interpreter exit
-    if not datasets_are_pre_aligned:
-        # Handle the cases where optional arguments are passed in
-        if resample_method_list is None:
-            resample_method_list = ["nearest"] * len(dataset_uri_list)
-        if dataset_to_align_index is None:
-            dataset_to_align_index = -1
-        aligned_dataset_path_list = [
-            temporary_filename(suffix='.tif') for _ in dataset_uri_list]
-        # Align and resample the datasets, then load datasets into a list
-        align_dataset_list(
-            dataset_uri_list, aligned_dataset_path_list, resample_method_list,
-            pixel_size_out, bounding_box_mode, dataset_to_align_index,
-            dataset_to_bound_index=dataset_to_bound_index,
-            aoi_uri=aoi_uri,
-            assert_datasets_projected=assert_datasets_projected,
-            all_touched=all_touched)
-        aligned_datasets = [
-            gdal.Open(filename, gdal.GA_ReadOnly) for filename in
-            aligned_dataset_path_list]
-        base_raster_path = aligned_dataset_path_list[0]
-    else:
-        # otherwise the input datasets are already aligned
-        aligned_datasets = [
-            gdal.Open(filename, gdal.GA_ReadOnly) for filename in
-            dataset_uri_list]
-        base_raster_path = dataset_uri_list[0]
+    base_raster_info = get_raster_info(base_raster_path_band_list[0][0])
 
-    aligned_bands = [dataset.GetRasterBand(1) for dataset in aligned_datasets]
+    new_raster_from_base(
+        base_raster_path_band_list[0][0], target_raster_path, 'GTiff',
+        nodata_target, datatype_target, dataset_options=dataset_options)
+    target_raster = gdal.Open(target_raster_path, gdal.GA_Update)
+    target_band = target_raster.GetRasterBand(1)
 
-    n_rows = aligned_datasets[0].RasterYSize
-    n_cols = aligned_datasets[0].RasterXSize
-
-    output_dataset = new_raster_from_base(
-        aligned_datasets[0], dataset_out_uri, 'GTiff', nodata_out,
-        datatype_out, dataset_options=dataset_options)
-    output_band = output_dataset.GetRasterBand(1)
-
-    # If there's an AOI, mask it out
-    if aoi_uri is not None:
-        mask_uri = temporary_filename(suffix='.tif')
-        mask_dataset = new_raster_from_base(
-            aligned_datasets[0], mask_uri, 'GTiff', 255, gdal.GDT_Byte,
-            fill_value=0, dataset_options=dataset_options)
-        mask_band = mask_dataset.GetRasterBand(1)
-        aoi_datasource = ogr.Open(aoi_uri)
-        aoi_layer = aoi_datasource.GetLayer()
-        # account for possible ALL_TOUCHED flag
-        option_list = ["ALL_TOUCHED=%s" % str(all_touched).upper]
-        gdal.RasterizeLayer(
-            mask_dataset, [1], aoi_layer, burn_values=[1], options=option_list)
-        aoi_layer = None
-        aoi_datasource = None
-
-    # We only want to do this if requested, otherwise we might have a more
-    # efficient call if we don't vectorize.
-    if vectorize_op:
-        LOGGER.warn("this call is vectorizing which is deprecated and slow")
-        dataset_pixel_op = numpy.vectorize(
-            dataset_pixel_op, otypes=[_gdal_to_numpy_type(output_band)])
-
+    n_cols, n_rows = base_raster_info['raster_size']
+    xoff = None
+    yoff = None
     last_time = time.time()
-    block_offset = None
-    dataset_blocks = None
+    raster_blocks = None
     last_blocksize = None
-    for block_offset in iterblocks(base_raster_path, offset_only=True):
+    target_min = None
+    target_max = None
+    target_sum = None
+    target_n = None
+    target_mean = None
+    target_stddev = None
+    for block_offset in iterblocks(
+            base_raster_path_band_list[0][0], offset_only=True):
+        xoff, yoff = block_offset['xoff'], block_offset['yoff']
         last_time = _invoke_timed_callback(
             last_time, lambda: LOGGER.info(
                 'raster stack calculation approx. %.2f%% complete',
-                100.0 * ((n_rows - block_offset['yoff']) *
-                         n_cols - block_offset['xoff']) / (n_rows * n_cols)),
-            _LOGGING_PERIOD)
+                100.0 * ((n_rows - yoff) * n_cols - xoff) /
+                (n_rows * n_cols)), _LOGGING_PERIOD)
         blocksize = (block_offset['win_ysize'], block_offset['win_xsize'])
+
         if last_blocksize != blocksize:
-            dataset_blocks = [numpy.zeros(
-                blocksize,
-                dtype=_gdal_to_numpy_type(band)) for band in aligned_bands]
-            if aoi_uri is not None:
-                mask_array = numpy.zeros(blocksize, dtype=numpy.int8)
+            raster_blocks = [
+                numpy.zeros(blocksize, dtype=_gdal_to_numpy_type(band))
+                for band in base_band_list]
             last_blocksize = blocksize
 
-        for dataset_index in xrange(len(aligned_bands)):
+        for dataset_index in xrange(len(base_band_list)):
             band_data = block_offset.copy()
-            band_data['buf_obj'] = dataset_blocks[dataset_index]
-            aligned_bands[dataset_index].ReadAsArray(**band_data)
+            band_data['buf_obj'] = raster_blocks[dataset_index]
+            base_band_list[dataset_index].ReadAsArray(**band_data)
 
-        out_block = dataset_pixel_op(*dataset_blocks)
+        target_block = local_op(*raster_blocks)
 
-        # Mask out the row if there is a mask
-        if aoi_uri is not None:
-            mask_data = block_offset.copy()
-            mask_data['buf_obj'] = mask_array
-            mask_band.ReadAsArray(**mask_data)
-            out_block[mask_array == 0] = nodata_out
+        target_band.WriteArray(
+            target_block, xoff=block_offset['xoff'],
+            yoff=block_offset['yoff'])
 
-        output_band.WriteArray(
-            out_block, xoff=block_offset['xoff'], yoff=block_offset['yoff'])
+        if calc_raster_stats:
+            valid_mask = target_block != nodata_target
+            valid_block = target_block[valid_mask]
+            target_min = numpy.min(valid_block, target_min)
+            target_max = numpy.max(valid_block, target_max)
+            target_sum = numpy.sum(valid_block, target_sum)
+            target_n = numpy.sum(valid_block.size, target_n)
 
     # Making sure the band and dataset is flushed and not in memory before
     # adding stats
-    output_band.FlushCache()
-    output_band = None
-    output_dataset.FlushCache()
-    gdal.Dataset.__swig_destroy__(output_dataset)
-    output_dataset = None
+    target_band.FlushCache()
 
-    # Clean up the files made by temporary file because we had an issue once
-    # where I was running the water yield model over 2000 times and it made
-    # so many temporary files I ran out of disk space.
-    if aoi_uri is not None:
-        mask_band = None
-        gdal.Dataset.__swig_destroy__(mask_dataset)
-        mask_dataset = None
-        try:
-            os.remove(mask_uri)
-        except OSError:
-            LOGGER.warn("couldn't delete file %s", mask_uri)
-    aligned_bands = None
-    for dataset in aligned_datasets:
-        gdal.Dataset.__swig_destroy__(dataset)
-    aligned_datasets = None
-    if not datasets_are_pre_aligned:
-        # if they weren't pre-aligned then we have temporary files to remove
-        for temp_dataset_uri in aligned_dataset_path_list:
-            try:
-                os.remove(temp_dataset_uri)
-            except OSError:
-                LOGGER.warn("couldn't delete file %s", temp_dataset_uri)
-    calculate_raster_stats_uri(dataset_out_uri)
+    if calc_raster_stats and target_min is not None:
+        target_mean = target_sum / float(target_n)
+        stdev_sum = 0.0
+        for block_offset, target_block in iterblocks(target_raster_path):
+            valid_mask = target_block != nodata_target
+            valid_block = target_block[valid_mask]
+            stdev_sum += numpy.sum((valid_block - target_mean) ** 2)
+        target_stddev = (stdev_sum / float(target_n)) ** 0.5
+
+        target_band.SetStatistics(
+            float(target_min), float(target_max), float(target_mean),
+            float(target_stddev))
+
+    target_band = None
+    target_raster = None
+
 
 def get_lookup_from_table(table_uri, key_field):
     """Read table file in as dictionary.
