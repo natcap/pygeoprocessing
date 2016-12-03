@@ -16,6 +16,7 @@ import exceptions
 import heapq
 import time
 from types import StringType
+import re
 
 from osgeo import gdal
 from osgeo import osr
@@ -217,9 +218,9 @@ def raster_calculator(
 
 def align_raster_stack(
         base_raster_path_list, base_vector_path_list,
-        target_raster_path_list, target_projection_wkt, resample_method_list,
-        target_pixel_size, bounding_box_mode, all_touched=False):
-    """Alter a list of rasters so that they align geospatially.
+        target_raster_path_list, resample_method_list, target_projection_wkt,
+        target_pixel_size, bounding_box_mode, raster_align_index=None):
+    """Generate rasters from a base such that they align geospatially.
 
     This function warps, and resizes base rasters such that the result is an
     aligned stack of rasters that have the same projection, cell size, and
@@ -228,34 +229,34 @@ def align_raster_stack(
     raster and vector input.
 
     Parameters:
-        dataset_uri_list (list): a list of input dataset uris
-        target_raster_path_list (list): a parallel dataset uri list whose
-            positions correspond to entries in dataset_uri_list
-        resample_method_list (list): a list of resampling methods for each
-            output uri in target_raster_path list.  Each element must be one of
-            "nearest|bilinear|cubic|cubic_spline|lanczos"
-        out_pixel_size: the output pixel size
-        mode (string): one of "union", "intersection", or "dataset" which
-            defines how the output output extents are defined as either the
-            union or intersection of the input datasets or to have the same
-            bounds as an existing raster.  If mode is "dataset" then
-            dataset_to_bound_index must be defined
-        dataset_to_align_index (int): an int that corresponds to the position
-            in one of the dataset_uri_lists that, if positive aligns the output
-            rasters to fix on the upper left hand corner of the output
-            datasets.  If negative, the bounding box aligns the intersection/
-            union without adjustment.
-        all_touched (boolean): if True and an AOI is passed, the
-            ALL_TOUCHED=TRUE option is passed to the RasterizeLayer function
-            when determining the mask of the AOI.
-
-    Keyword Args:
-        dataset_to_bound_index: if mode is "dataset" then this index is
-            used to indicate which dataset to define the output bounds of the
-            target_raster_path_list
-        aoi_path (string): a URI to an OGR datasource to be used for the
-            aoi.  Irrespective of the `mode` input, the aoi will be used
-            to intersect the final bounding box.
+        base_raster_path_list (list): a list of base raster paths that will
+            be transformed and will be used to determine the target bounding
+            box.
+        base_vector_path_list (list): a list of base vector paths that will
+            be used to determine the target bounding box depending on
+            the bounding box mode.
+        target_raster_path_list (list): a list of raster paths that will be
+            created to one-to-one map with `base_raster_path_list` as aligned
+            versions of those original rasters.
+        resample_method_list (list): a list of resampling methods which
+            one to one map each path in `base_raster_path_list` during
+            resizing.  Each element must be one of
+            "nearest|bilinear|cubic|cubic_spline|lanczos".
+        target_projection_wkt (string): desired projection in Well Known Text
+            for target rasters.
+        target_pixel_size (tuple): the target raster's x and y pixel size.
+        mode (string): one of "union", "intersection", or
+            "bb=[minx,miny,maxx,maxy]" which defines how the output output
+            extents are defined as the union or intersection of the base
+            raster and vectors' bounding boxes, or to have a user defined
+            boudning box.
+        raster_align_index (int): if not None, then refers to the index of a
+            raster in `base_raster_path_list` that the target rasters'
+            bounding boxes should perfectly align to.  This feature allows
+            rasters whose raster dimensions are the same, but bounding boxes
+            slightly shifted less than a pixel size to align with.  If `None`
+            then the bounding box of the target rasters is calculated as the
+            precise intersection, union, or bounding box.
 
     Returns:
         None
@@ -264,47 +265,41 @@ def align_raster_stack(
 
     # make sure that the input lists are of the same length
     list_lengths = [
-        len(dataset_uri_list), len(target_raster_path_list),
+        len(base_raster_path_list), len(target_raster_path_list),
         len(resample_method_list)]
     if len(set(list_lengths)) != 1:
         raise ValueError(
-            "dataset_uri_list, target_raster_path_list, and "
+            "base_raster_path_list, target_raster_path_list, and "
             "resample_method_list must be the same length "
             " current lengths are %s" % (str(list_lengths)))
 
-    if assert_datasets_projected:
-        assert_datasets_in_same_projection(dataset_uri_list)
+    # regular expression to match a float
+    float_re = r'[[-+]?[0-9]*\.?[0-9]+([eE][-+]?[0-9]+)?'
+    if bounding_box_mode not in ["union", "intersection"] or re.match(
+            r'bb=\[%s,%s,%s,%s\]' % ((float_re,)*4), bounding_box_mode):
+        raise ValueError("Unknown mode %s" % (str(bounding_box_mode)))
 
-    if mode not in ["union", "intersection", "dataset"]:
-        raise ValueError("Unknown mode %s" % (str(mode)))
-
-    if dataset_to_align_index >= len(dataset_uri_list):
+    if 0 > raster_align_index >= len(base_raster_path_list):
         raise ValueError(
             "Alignment index is out of bounds of the datasets index: %s"
-            "n_elements %s" % (dataset_to_align_index, len(dataset_uri_list)))
-    if mode == "dataset" and dataset_to_bound_index is None:
-        raise ValueError(
-            "Mode is 'dataset' but dataset_to_bound_index is not defined")
-    if mode == "dataset" and (dataset_to_bound_index < 0 or
-                              dataset_to_bound_index >= len(dataset_uri_list)):
-        raise ValueError(
-            "dataset_to_bound_index is out of bounds of the datasets index: %s"
-            "n_elements %s" % (dataset_to_bound_index, len(dataset_uri_list)))
+            "n_elements %s" % (raster_align_index, len(base_raster_path_list)))
 
     def merge_bounding_boxes(bb1, bb2, mode):
-        """Helper function to merge two bounding boxes through union or
-            intersection"""
-        less_than_or_equal = lambda x, y: x if x <= y else y
-        greater_than = lambda x, y: x if x > y else y
+        """Merge two bounding boxes through union or intersection."""
+        def _less_than_or_equal(x, y):
+            return x if x <= y else y
+
+        def _greater_than(x, y):
+            return x if x > y else y
 
         if mode == "union":
             comparison_ops = [
-                less_than_or_equal, greater_than, greater_than,
-                less_than_or_equal]
+                _less_than_or_equal, _greater_than, _greater_than,
+                _less_than_or_equal]
         if mode == "intersection":
             comparison_ops = [
-                greater_than, less_than_or_equal, less_than_or_equal,
-                greater_than]
+                _greater_than, _less_than_or_equal, _less_than_or_equal,
+                _greater_than]
 
         bb_out = [op(x, y) for op, x, y in zip(comparison_ops, bb1, bb2)]
         return bb_out
