@@ -216,17 +216,18 @@ def raster_calculator(
     target_band = None
     target_raster = None
 
-def align_raster_stack(
-        base_raster_path_list, base_vector_path_list,
-        target_raster_path_list, resample_method_list, target_projection_wkt,
-        target_pixel_size, bounding_box_mode, raster_align_index=None):
+
+def align_and_resize_raster_stack(
+        base_raster_path_list, target_raster_path_list, resample_method_list,
+        target_pixel_size, bounding_box_mode, base_vector_path_list=None,
+        raster_align_index=None):
     """Generate rasters from a base such that they align geospatially.
 
-    This function warps, and resizes base rasters such that the result is an
-    aligned stack of rasters that have the same projection, cell size, and
-    geotransform.  This can be achieved by clipping the rasters to
-    intersecting, unioning, or equivocating the bounding boxes of all the
-    raster and vector input.
+    This function resizes base rasters that are in the same geospatial
+    projection such that the result is an aligned stack of rasters that have
+    the same cell size, dimensions, and bounding box. This is achieved by
+    clipping or resizing the rasters to intersected, unioned, or equivocated
+    bounding boxes of all the raster and vector input.
 
     Parameters:
         base_raster_path_list (list): a list of base raster paths that will
@@ -242,10 +243,8 @@ def align_raster_stack(
             one to one map each path in `base_raster_path_list` during
             resizing.  Each element must be one of
             "nearest|bilinear|cubic|cubic_spline|lanczos".
-        target_projection_wkt (string): desired projection in Well Known Text
-            for target rasters.
         target_pixel_size (tuple): the target raster's x and y pixel size.
-        mode (string): one of "union", "intersection", or
+        bounding_box_mode (string): one of "union", "intersection", or
             "bb=[minx,miny,maxx,maxy]" which defines how the output output
             extents are defined as the union or intersection of the base
             raster and vectors' bounding boxes, or to have a user defined
@@ -274,64 +273,54 @@ def align_raster_stack(
             " current lengths are %s" % (str(list_lengths)))
 
     # regular expression to match a float
-    float_re = r'[[-+]?[0-9]*\.?[0-9]+([eE][-+]?[0-9]+)?'
+    float_re = r'[-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?'
     if bounding_box_mode not in ["union", "intersection"] or re.match(
             r'bb=\[%s,%s,%s,%s\]' % ((float_re,)*4), bounding_box_mode):
-        raise ValueError("Unknown mode %s" % (str(bounding_box_mode)))
+        raise ValueError("Unknown bounding_box_mode %s" % (
+            str(bounding_box_mode)))
 
-    if 0 > raster_align_index >= len(base_raster_path_list):
+    if ((raster_align_index is not None) and
+            (0 > raster_align_index >= len(base_raster_path_list))):
         raise ValueError(
             "Alignment index is out of bounds of the datasets index: %s"
-            "n_elements %s" % (raster_align_index, len(base_raster_path_list)))
+            "n_elements %s" % (
+                raster_align_index, len(base_raster_path_list)))
 
-    def merge_bounding_boxes(bb1, bb2, mode):
-        """Merge two bounding boxes through union or intersection."""
-        def _less_than_or_equal(x, y):
-            return x if x <= y else y
-
-        def _greater_than(x, y):
-            return x if x > y else y
-
-        if mode == "union":
-            comparison_ops = [
-                _less_than_or_equal, _greater_than, _greater_than,
-                _less_than_or_equal]
-        if mode == "intersection":
-            comparison_ops = [
-                _greater_than, _less_than_or_equal, _less_than_or_equal,
-                _greater_than]
-
-        bb_out = [op(x, y) for op, x, y in zip(comparison_ops, bb1, bb2)]
-        return bb_out
-
-    raster_info_list = [get_raster_info(path) for path in dataset_uri_list]
-
-    # get the intersecting or unioned bounding box
-    if mode == "dataset":
-        bounding_box = (
-            raster_info_list[dataset_to_bound_index]['bounding_box'])
+    raster_info_list = [
+        get_raster_info(path) for path in base_raster_path_list]
+    if base_vector_path_list is not None:
+        vector_info_list = [
+            get_vector_info(path) for path in base_vector_path_list]
     else:
+        vector_info_list = []
+
+    # get the literal or intersecting/unioned bounding box
+    bb_match = re.match(
+        r'bb=\[%s,%s,%s,%s\]' % ((float_re,)*4), bounding_box_mode)
+    if bb_match:
+        bounding_box = [float(x) for x in bb_match.groups()]
+    else:
+        # either intersection or union
         bounding_box = reduce(
-            functools.partial(merge_bounding_boxes, mode=mode),
-            [info['bounding_box'] for info in raster_info_list])
+            functools.partial(_merge_bounding_boxes, mode=bounding_box_mode),
+            [info['bounding_box'] for info in
+             (raster_info_list + vector_info_list)])
 
-    if aoi_path is not None:
-        bounding_box = merge_bounding_boxes(
-            bounding_box, get_datasource_bounding_box(aoi_path),
-            "intersection")
+    if bounding_box_mode == "intersection" and (
+            bounding_box[0] >= bounding_box[2] or
+            bounding_box[1] <= bounding_box[3]):
+        raise ValueError("The rasters' and vectors' intersection is empty "
+                         "(not all rasters and vectors touch each other).")
 
-    if (bounding_box[0] >= bounding_box[2] or
-            bounding_box[1] <= bounding_box[3]) and mode == "intersection":
-        raise ValueError("The datasets' intersection is empty "
-                         "(i.e., not all the datasets touch each other).")
-
-    if dataset_to_align_index >= 0:
+    if raster_align_index >= 0:
         # bounding box needs alignment
         align_bounding_box = (
-            raster_info_list[dataset_to_align_index]['bounding_box'])
+            raster_info_list[raster_align_index]['bounding_box'])
         align_pixel_size = (
-            raster_info_list[dataset_to_align_index]['mean_pixel_size'])
+            raster_info_list[raster_align_index]['pixel_size'])
 
+        # adjust bounding box so lower left corner aligns with a pixel in
+        # raster[raster_align_index]
         for index in [0, 1]:
             n_pixels = int(
                 (bounding_box[index] - align_bounding_box[index]) /
@@ -339,79 +328,16 @@ def align_raster_stack(
             bounding_box[index] = \
                 n_pixels * align_pixel_size + align_bounding_box[index]
 
-    for original_dataset_uri, out_dataset_uri, resample_method, index in zip(
-            dataset_uri_list, target_raster_path_list, resample_method_list,
-            range(len(dataset_uri_list))):
+    for index, (base_path, target_path, resample_method) in enumerate(zip(
+            base_raster_path_list, target_raster_path_list,
+            resample_method_list)):
         last_time = _invoke_timed_callback(
             last_time, lambda: LOGGER.info(
                 "align_dataset_list aligning dataset %d of %d",
-                index, len(dataset_uri_list)), _LOGGING_PERIOD)
+                index, len(base_raster_path_list)), _LOGGING_PERIOD)
         resize_and_resample_dataset_uri(
-            original_dataset_uri, bounding_box, out_pixel_size,
-            out_dataset_uri, resample_method)
-
-    # If there's an AOI, mask it out
-    if aoi_path is not None:
-        first_dataset = gdal.Open(target_raster_path_list[0])
-        n_rows = first_dataset.RasterYSize
-        n_cols = first_dataset.RasterXSize
-        gdal.Dataset.__swig_destroy__(first_dataset)
-        first_dataset = None
-
-        mask_uri = temporary_filename(suffix='.tif')
-        new_raster_from_base_uri(
-            target_raster_path_list[0], mask_uri, 'GTiff', 255, gdal.GDT_Byte,
-            fill_value=0)
-
-        mask_dataset = gdal.Open(mask_uri, gdal.GA_Update)
-        mask_band = mask_dataset.GetRasterBand(1)
-        aoi_datasource = ogr.Open(aoi_path)
-        aoi_layer = aoi_datasource.GetLayer()
-        option_list = ["ALL_TOUCHED=%s" % str(all_touched).upper()]
-        gdal.RasterizeLayer(
-            mask_dataset, [1], aoi_layer, burn_values=[1],
-            options=option_list)
-        mask_row = numpy.zeros((1, n_cols), dtype=numpy.int8)
-
-        out_dataset_list = [
-            gdal.Open(uri, gdal.GA_Update) for uri in target_raster_path_list]
-        out_band_list = [
-            dataset.GetRasterBand(1) for dataset in out_dataset_list]
-        nodata_out_list = [
-            get_raster_info(path)['nodata'] for path in target_raster_path_list]
-
-        for row_index in range(n_rows):
-            mask_row = (mask_band.ReadAsArray(
-                0, row_index, n_cols, 1) == 0)
-            for out_band, nodata_out in zip(out_band_list, nodata_out_list):
-                dataset_row = out_band.ReadAsArray(
-                    0, row_index, n_cols, 1)
-                out_band.WriteArray(
-                    numpy.where(mask_row, nodata_out, dataset_row),
-                    xoff=0, yoff=row_index)
-
-        # Remove the mask aoi if necessary
-        mask_band = None
-        gdal.Dataset.__swig_destroy__(mask_dataset)
-        mask_dataset = None
-        try:
-            os.remove(mask_uri)
-        except OSError:
-            LOGGER.warn("Couldn't clean up temporary mask_uri: %s", mask_uri)
-
-        # Close and clean up datasource
-        aoi_layer = None
-        ogr.DataSource.__swig_destroy__(aoi_datasource)
-        aoi_datasource = None
-
-        # Clean up datasets
-        out_band_list = None
-        for dataset in out_dataset_list:
-            dataset.FlushCache()
-            gdal.Dataset.__swig_destroy__(dataset)
-        out_dataset_list = None
-
-
+            base_path, bounding_box, target_pixel_size,
+            target_path, resample_method)
 
 
 def calculate_raster_stats(dataset_path):
@@ -1129,8 +1055,39 @@ def clip_dataset_uri(
         process_pool=process_pool, vectorize_op=False, all_touched=all_touched)
 
 
+def get_vector_info(vector_path):
+    """Get information about an OGR vector (datasource).
+
+    Parameters:
+       vector_path (String): a path to a OGR vector.
+
+    Returns:
+        raster_properties (dictionary): a dictionary with the properties
+            stored under relevant keys.
+
+            'projection' (string): projection of the vector in Well Known
+                Text.
+            'bounding_box' (list): list of floats representing the bounding
+                box in projected coordinates as "bb=[minx,miny,maxx,maxy]".
+    """
+    vector = ogr.Open(vector_path)
+    vector_properties = {}
+    first_layer = vector.GetLayer()
+    # projection is same for all layers, so just use the first one
+    vector['projection'] = first_layer.GetSpatialRef().ExportToWkt()
+    for layer in vector:
+        layer_bb = layer.GetExtent()
+        # convert form [minx,maxx,miny,maxy] to [minx,miny,maxx,maxy]
+        local_bb = [layer_bb[i] for i in [0, 2, 1, 3]]
+        if 'bounding_box' not in vector_properties:
+            vector_properties['bounding_box'] = local_bb
+        else:
+            vector_properties['bounding_box'] = _merge_bounding_boxes(
+                vector_properties['bounding_box'], local_bb, 'union')
+
+
 def get_raster_info(raster_path):
-    """Get information about a GDAL raster dataset.
+    """Get information about a GDAL raster (dataset).
 
     Parameters:
        raster_path (String): a path to a GDAL raster.
@@ -1155,6 +1112,8 @@ def get_raster_info(raster_path):
                 that represents the datatype of the raster.
             'projection' (string): projection of the raster in Well Known
                 Text.
+            'bounding_box' (list): list of floats representing the bounding
+                box in projected coordinates as "bb=[minx,miny,maxx,maxy]".
     """
     raster_properties = {}
     raster = gdal.Open(raster_path)
@@ -2799,3 +2758,33 @@ def _gdal_to_numpy_type(band):
     if 'PIXELTYPE' in metadata and metadata['PIXELTYPE'] == 'SIGNEDBYTE':
         return numpy.int8
     return numpy.uint8
+
+
+def _merge_bounding_boxes(bb1, bb2, mode):
+    """Merge two bounding boxes through union or intersection.
+
+    Parameters:
+        bb1, bb2 (list): list of float representing bounding box in the
+            form bb=[minx,miny,maxx,maxy]
+        mode (string); one of 'union' or 'intersection'
+
+    Returns:
+        Reduced bounding box of bb1/bb2 depending on mode.
+    """
+    def _less_than_or_equal(x_val, y_val):
+        return x_val if x_val <= y_val else y_val
+
+    def _greater_than(x_val, y_val):
+        return x_val if x_val > y_val else y_val
+
+    if mode == "union":
+        comparison_ops = [
+            _less_than_or_equal, _greater_than, _greater_than,
+            _less_than_or_equal]
+    if mode == "intersection":
+        comparison_ops = [
+            _greater_than, _less_than_or_equal, _less_than_or_equal,
+            _greater_than]
+
+    bb_out = [op(x, y) for op, x, y in zip(comparison_ops, bb1, bb2)]
+    return bb_out
