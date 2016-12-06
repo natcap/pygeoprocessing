@@ -42,6 +42,7 @@ AggregatedValues = collections.namedtuple(
 
 LOGGER = logging.getLogger('pygeoprocessing.geoprocessing')
 _LOGGING_PERIOD = 5.0  # min 5.0 seconds per update log message for the module
+_DEFAULT_GTIFF_CREATION_OPTIONS = ('TILED=YES', 'BIGTIFF=IF_SAFER')
 
 # map gdal types to numpy equivalent
 _GDAL_TYPE_TO_NUMPY_LOOKUP = {
@@ -220,7 +221,8 @@ def raster_calculator(
 def align_and_resize_raster_stack(
         base_raster_path_list, target_raster_path_list, resample_method_list,
         target_pixel_size, bounding_box_mode, base_vector_path_list=None,
-        raster_align_index=None):
+        raster_align_index=None,
+        gtiff_creation_options=_DEFAULT_GTIFF_CREATION_OPTIONS):
     """Generate rasters from a base such that they align geospatially.
 
     This function resizes base rasters that are in the same geospatial
@@ -256,6 +258,9 @@ def align_and_resize_raster_stack(
             slightly shifted less than a pixel size to align with.  If `None`
             then the bounding box of the target rasters is calculated as the
             precise intersection, union, or bounding box.
+        gtiff_creation_options (list): list of strings that will be passed
+            as GDAL "dataset" creation options to the GTIFF driver, or ignored
+            if None.
 
     Returns:
         None
@@ -325,8 +330,9 @@ def align_and_resize_raster_stack(
             n_pixels = int(
                 (bounding_box[index] - align_bounding_box[index]) /
                 float(align_pixel_size[index]))
-            bounding_box[index] = \
-                n_pixels * align_pixel_size[index] + align_bounding_box[index]
+            bounding_box[index] = (
+                n_pixels * align_pixel_size[index] +
+                align_bounding_box[index])
 
     for index, (base_path, target_path, resample_method) in enumerate(zip(
             base_raster_path_list, target_raster_path_list,
@@ -337,7 +343,8 @@ def align_and_resize_raster_stack(
                 index, len(base_raster_path_list)), _LOGGING_PERIOD)
         resize_and_resample_raster(
             base_path, bounding_box, target_pixel_size,
-            target_path, resample_method)
+            target_path, resample_method,
+            gtiff_creation_options=gtiff_creation_options)
 
 
 def calculate_raster_stats(dataset_path):
@@ -1578,7 +1585,8 @@ def get_datasource_bounding_box(datasource_uri):
 
 def resize_and_resample_raster(
         base_raster_path, target_bb, target_pixel_size, target_raster_path,
-        resample_method):
+        resample_method,
+        gtiff_creation_options=_DEFAULT_GTIFF_CREATION_OPTIONS):
     """Resize and resample the raster to given bounding box and pixel size.
 
     Parameters:
@@ -1591,6 +1599,8 @@ def resize_and_resample_raster(
             resampled raster.
         resample_method (string): the resampling technique, one of
             "nearest|bilinear|cubic|cubic_spline|lanczos"
+        gtiff_creation_options (list or tuple): list of strings that will be
+            passed as GDAL "dataset" creation options to the GTIFF driver.
 
     Returns:
         None
@@ -1604,18 +1614,16 @@ def resize_and_resample_raster(
         }
 
     base_raster = gdal.Open(base_raster_path)
-    base_band = base_raster.GetRasterBand(1)
-    base_nodata = base_band.GetNoDataValue()
     base_sr = osr.SpatialReference()
     base_sr.ImportFromWkt(base_raster.GetProjection())
 
     target_geotransform = [
         target_bb[0], target_pixel_size[0], 0.0, target_bb[1], 0.0,
         target_pixel_size[1]]
-    target_x_size = abs(
-        int(numpy.round((target_bb[2] - target_bb[0]) / target_pixel_size[0])))
-    target_y_size = abs(
-        int(numpy.round((target_bb[3] - target_bb[1]) / target_pixel_size[1])))
+    target_x_size = abs(int(numpy.round(
+        (target_bb[2] - target_bb[0]) / target_pixel_size[0])))
+    target_y_size = abs(int(numpy.round(
+        (target_bb[3] - target_bb[1]) / target_pixel_size[1])))
 
     if target_x_size == 0:
         LOGGER.warn(
@@ -1628,36 +1636,31 @@ def resize_and_resample_raster(
             "clamping to 1.")
         target_y_size = 1
 
-    # create the new x and y size
-    block_size = base_band.GetBlockSize()
-    # If the original band is tiled, then its x blocksize will be different
-    # than the number of columns
-    if base_band.XSize > 256 and base_band.YSize > 256:
-        # it makes sense for many functions to have 256x256 blocks
-        block_size[0] = 256
-        block_size[1] = 256
-        gtiff_creation_options = [
-            'TILED=YES', 'BIGTIFF=IF_SAFER', 'BLOCKXSIZE=%d' % block_size[0],
-            'BLOCKYSIZE=%d' % block_size[1]]
-
-        metadata = base_band.GetMetadata('IMAGE_STRUCTURE')
-        if 'PIXELTYPE' in metadata:
-            gtiff_creation_options.append(
-                'PIXELTYPE=' + metadata['PIXELTYPE'])
-    else:
-        # it is so small or strangely aligned, use the default creation options
-        gtiff_creation_options = []
+    local_gtiff_creation_options = list(gtiff_creation_options)
+    # PIXELTYPE is sometimes used to define signed vs. unsigned bytes and
+    # the only place that is stored is in the IMAGE_STRUCTURE metadata
+    # copy it over if it exists; get this info from the first band since
+    # all bands have the same datatype
+    base_band = base_raster.GetRasterBand(1)
+    metadata = base_band.GetMetadata('IMAGE_STRUCTURE')
+    if 'PIXELTYPE' in metadata:
+        local_gtiff_creation_options.append(
+            'PIXELTYPE=' + metadata['PIXELTYPE'])
 
     create_directories([os.path.dirname(target_raster_path)])
     gdal_driver = gdal.GetDriverByName('GTiff')
     target_raster = gdal_driver.Create(
-        target_raster_path, target_x_size, target_y_size, 1,
-        base_band.DataType, options=gtiff_creation_options)
+        target_raster_path, target_x_size, target_y_size,
+        base_raster.RasterCount, base_band.DataType,
+        options=local_gtiff_creation_options)
+    base_band = None
 
-    if base_nodata is not None:
-        target_band = target_raster.GetRasterBand(1)
-        target_band.SetNoDataValue(base_nodata)
-        target_band = None
+    for index in xrange(target_raster.RasterCount):
+        base_nodata = base_raster.GetRasterBand(1+index).GetNoDataValue()
+        if base_nodata is not None:
+            target_band = target_raster.GetRasterBand(1+index)
+            target_band.SetNoDataValue(base_nodata)
+            target_band = None
 
     # Set the geotransform
     target_raster.SetGeoTransform(target_geotransform)
@@ -1665,27 +1668,27 @@ def resize_and_resample_raster(
 
     # need to make this a closure so we get the current time and we can affect
     # state
-    def reproject_callback(df_complete, psz_message, p_progress_arg):
+    def _reproject_callback(df_complete, psz_message, p_progress_arg):
         """The argument names come from the GDAL API for callbacks."""
         try:
             current_time = time.time()
-            if ((current_time - reproject_callback.last_time) > 5.0 or
+            if ((current_time - _reproject_callback.last_time) > 5.0 or
                     (df_complete == 1.0 and
-                     reproject_callback.total_time >= 5.0)):
+                     _reproject_callback.total_time >= 5.0)):
                 LOGGER.info(
                     "ReprojectImage %.1f%% complete %s, psz_message %s",
                     df_complete * 100, p_progress_arg[0], psz_message)
-                reproject_callback.last_time = current_time
-                reproject_callback.total_time += current_time
+                _reproject_callback.last_time = current_time
+                _reproject_callback.total_time += current_time
         except AttributeError:
-            reproject_callback.last_time = time.time()
-            reproject_callback.total_time = 0.0
+            _reproject_callback.last_time = time.time()
+            _reproject_callback.total_time = 0.0
 
     # Perform the projection/resampling
     gdal.ReprojectImage(
         base_raster, target_raster, base_sr.ExportToWkt(),
         base_sr.ExportToWkt(), resample_dict[resample_method], 0, 0,
-        reproject_callback, [target_raster_path])
+        _reproject_callback, [target_raster_path])
 
     target_raster = None
     base_raster = None
