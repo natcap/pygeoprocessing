@@ -277,9 +277,13 @@ def align_and_resize_raster_stack(
             "resample_method_list must be the same length "
             " current lengths are %s" % (str(list_lengths)))
 
-    # regular expression to match a float
+    LOGGER.debug(bounding_box_mode)
+    LOGGER.debug(type(bounding_box_mode))
     float_re = r'[-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?'
-    if bounding_box_mode not in ["union", "intersection"] or re.match(
+    LOGGER.debug(
+        re.match(r'bb=\[%s,%s,%s,%s\]' % ((float_re,)*4), bounding_box_mode))
+    # regular expression to match a float
+    if bounding_box_mode not in ["union", "intersection"] and not re.match(
             r'bb=\[%s,%s,%s,%s\]' % ((float_re,)*4), bounding_box_mode):
         raise ValueError("Unknown bounding_box_mode %s" % (
             str(bounding_box_mode)))
@@ -301,7 +305,7 @@ def align_and_resize_raster_stack(
 
     # get the literal or intersecting/unioned bounding box
     bb_match = re.match(
-        r'bb=\[%s,%s,%s,%s\]' % ((float_re,)*4), bounding_box_mode)
+        r'bb=\[(%s),(%s),(%s),(%s)\]' % ((float_re,)*4), bounding_box_mode)
     if bb_match:
         bounding_box = [float(x) for x in bb_match.groups()]
     else:
@@ -323,7 +327,6 @@ def align_and_resize_raster_stack(
             raster_info_list[raster_align_index]['bounding_box'])
         align_pixel_size = (
             raster_info_list[raster_align_index]['pixel_size'])
-
         # adjust bounding box so lower left corner aligns with a pixel in
         # raster[raster_align_index]
         for index in [0, 1]:
