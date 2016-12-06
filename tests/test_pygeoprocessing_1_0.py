@@ -28,8 +28,8 @@ class PyGeoprocessing10(unittest.TestCase):
         """Clean up remaining files."""
         shutil.rmtree(self.workspace_dir)
 
-    def test_align_and_resize_raster_stack(self):
-        """PGP.geoprocessing; align/resize raster test."""
+    def test_align_and_resize_raster_stack_int(self):
+        """PGP.geoprocessing; align/resize raster test intersection."""
         pixel_a_matrix = numpy.ones((5, 5), numpy.int16)
         reference = sampledata.SRS_COLOMBIA
         nodata_target = -1
@@ -72,6 +72,52 @@ class PyGeoprocessing10(unittest.TestCase):
             self.assertEqual(
                 target_raster_info['pixel_size'],
                 base_a_raster_info['pixel_size'])
+
+    def test_align_and_resize_raster_stack_union(self):
+        """PGP.geoprocessing; align/resize raster test union."""
+        pixel_a_matrix = numpy.ones((5, 5), numpy.int16)
+        reference = sampledata.SRS_COLOMBIA
+        nodata_target = -1
+        base_a_path = os.path.join(self.workspace_dir, 'base_a.tif')
+        pygeoprocessing.testing.create_raster_on_disk(
+            [pixel_a_matrix], reference.origin, reference.projection,
+            nodata_target, reference.pixel_size(30), filename=base_a_path)
+
+        pixel_b_matrix = numpy.ones((10, 10), numpy.int16)
+        reference = sampledata.SRS_COLOMBIA
+        nodata_target = -1
+        base_b_path = os.path.join(self.workspace_dir, 'base_b.tif')
+        pygeoprocessing.testing.create_raster_on_disk(
+            [pixel_b_matrix], reference.origin, reference.projection,
+            nodata_target, reference.pixel_size(60), filename=base_b_path)
+
+        base_raster_path_list = [base_a_path, base_b_path]
+        target_raster_path_list = [
+            os.path.join(self.workspace_dir, 'target_%s.tif' % char)
+            for char in ['a', 'b']]
+
+        resample_method_list = ['nearest'] * 2
+        bounding_box_mode = 'union'
+
+        base_a_raster_info = pygeoprocessing.get_raster_info(base_a_path)
+
+        pygeoprocessing.align_and_resize_raster_stack(
+            base_raster_path_list, target_raster_path_list,
+            resample_method_list,
+            base_a_raster_info['pixel_size'], bounding_box_mode,
+            base_vector_path_list=None, raster_align_index=0)
+
+        # we expect this to be twice as big since second base raster has a
+        # pixel size twice that of the first.
+        expected_matrix_a = numpy.ones((20, 20), numpy.int16)
+        expected_matrix_a[5:, :] = nodata_target
+        expected_matrix_a[:, 5:] = nodata_target
+
+        target_raster = gdal.Open(target_raster_path_list[0])
+        target_band = target_raster.GetRasterBand(1)
+        target_array = target_band.ReadAsArray()
+        numpy.testing.assert_array_equal(expected_matrix_a, target_array)
+
 
     def test_raster_calculator(self):
         """PGP.geoprocessing: raster_calculator identity test."""
