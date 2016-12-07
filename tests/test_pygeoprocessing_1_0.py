@@ -27,6 +27,29 @@ class PyGeoprocessing10(unittest.TestCase):
         """Clean up remaining files."""
         shutil.rmtree(self.workspace_dir)
 
+    def test_align_and_resize_raster_stack_project(self):
+        """PGP.geoprocessing; align/resize raster test reprojection."""
+        pixel_a_matrix = numpy.ones((5, 5), numpy.int16)
+        reference = sampledata.SRS_COLOMBIA
+        nodata_target = -1
+        base_a_path = os.path.join(self.workspace_dir, 'base_a.tif')
+        pygeoprocessing.testing.create_raster_on_disk(
+            [pixel_a_matrix], reference.origin, reference.projection,
+            nodata_target, reference.pixel_size(30), filename=base_a_path)
+
+        target_raster_path = os.path.join(self.workspace_dir, 'target_a.tif')
+        base_a_raster_info = pygeoprocessing.get_raster_info(base_a_path)
+
+        target_reference = osr.SpatialReference()
+        target_reference.ImportFromEPSG(4326)
+
+        pygeoprocessing.resize_and_resample_raster(
+            base_a_path, base_a_raster_info['pixel_size'], target_raster_path,
+            'nearest', 'intersection',
+            target_sr_wkt=target_reference.ExportToWkt(),
+            base_vector_path_list=None, raster_align_index=0)
+
+
     def test_align_and_resize_raster_stack_bad_lengths(self):
         """PGP.geoprocessing; align/resize raster test intersection."""
         pixel_a_matrix = numpy.ones((5, 5), numpy.int16)

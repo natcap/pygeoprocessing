@@ -192,10 +192,18 @@ def raster_calculator(
         if calc_raster_stats:
             valid_mask = target_block != nodata_target
             valid_block = target_block[valid_mask]
-            target_min = numpy.min(valid_block, target_min)
-            target_max = numpy.max(valid_block, target_max)
-            target_sum = numpy.sum(valid_block, target_sum)
-            target_n = numpy.sum(valid_block.size, target_n)
+            if target_min is None:
+                target_min = numpy.min(valid_block)
+            else:
+                target_min = min(numpy.min(valid_block), target_min)
+            if target_max is None:
+                target_max = numpy.max(valid_block)
+            else:
+                target_max = max(numpy.max(valid_block), target_max)
+            if target_n is None:
+                target_n = numpy.sum(valid_block.size)
+            else:
+                target_n += numpy.sum(valid_block.size)
 
     # Making sure the band and dataset is flushed and not in memory before
     # adding stats
@@ -307,17 +315,17 @@ def align_and_resize_raster_stack(
     bb_match = re.match(
         r'bb=\[(%s),(%s),(%s),(%s)\]' % ((float_re,)*4), bounding_box_mode)
     if bb_match:
-        bounding_box = [float(x) for x in bb_match.groups()]
+        target_bounding_box = [float(x) for x in bb_match.groups()]
     else:
         # either intersection or union
-        bounding_box = reduce(
+        target_bounding_box = reduce(
             functools.partial(_merge_bounding_boxes, mode=bounding_box_mode),
             [info['bounding_box'] for info in
              (raster_info_list + vector_info_list)])
 
     if bounding_box_mode == "intersection" and (
-            bounding_box[0] >= bounding_box[2] or
-            bounding_box[1] <= bounding_box[3]):
+            target_bounding_box[0] >= target_bounding_box[2] or
+            target_bounding_box[1] <= target_bounding_box[3]):
         raise ValueError("The rasters' and vectors' intersection is empty "
                          "(not all rasters and vectors touch each other).")
 
@@ -331,9 +339,9 @@ def align_and_resize_raster_stack(
         # raster[raster_align_index]
         for index in [0, 1]:
             n_pixels = int(
-                (bounding_box[index] - align_bounding_box[index]) /
+                (target_bounding_box[index] - align_bounding_box[index]) /
                 float(align_pixel_size[index]))
-            bounding_box[index] = (
+            target_bounding_box[index] = (
                 n_pixels * align_pixel_size[index] +
                 align_bounding_box[index])
 
@@ -344,9 +352,10 @@ def align_and_resize_raster_stack(
             last_time, lambda: LOGGER.info(
                 "align_dataset_list aligning dataset %d of %d",
                 index, len(base_raster_path_list)), _LOGGING_PERIOD)
-        resize_and_resample_raster(
-            base_path, bounding_box, target_pixel_size,
+        warp_and_clip_raster(
+            base_path, target_pixel_size,
             target_path, resample_method,
+            target_bb=target_bounding_box,
             gtiff_creation_options=gtiff_creation_options)
 
 
@@ -1586,22 +1595,26 @@ def get_datasource_bounding_box(datasource_uri):
     return bounding_box
 
 
-def resize_and_resample_raster(
-        base_raster_path, target_bb, target_pixel_size, target_raster_path,
-        resample_method,
+def warp_and_clip_raster(
+        base_raster_path, target_pixel_size, target_raster_path,
+        resample_method, target_bb=None, target_sr_wkt=None,
         gtiff_creation_options=_DEFAULT_GTIFF_CREATION_OPTIONS):
-    """Resize and resample the raster to given bounding box and pixel size.
+    """Resize/resample raster to desired pixel size, bbox and projection.
 
     Parameters:
         base_raster_path (string): path to base raster.
-        target_bb (list): list of float describing target bounding
-            box size as[minx,miny,maxx,maxy].
         target_pixel_size (list): a two element list or tuple indicating the
             x and y pixel size in projected units.
         target_raster_path (string): the location of the resized and
             resampled raster.
         resample_method (string): the resampling technique, one of
             "nearest|bilinear|cubic|cubic_spline|lanczos"
+        target_bb (list): if None, target bounding box is the same as the
+            source bounding box.  Otherwise it's a list of float describing
+            target bounding box in target coordinate system as
+            [minx, miny, maxx, maxy].
+        target_sr_wkt (string): if not None, desired target projection in Well
+            Known Text format.
         gtiff_creation_options (list or tuple): list of strings that will be
             passed as GDAL "dataset" creation options to the GTIFF driver.
 
@@ -1619,6 +1632,9 @@ def resize_and_resample_raster(
     base_raster = gdal.Open(base_raster_path)
     base_sr = osr.SpatialReference()
     base_sr.ImportFromWkt(base_raster.GetProjection())
+
+    if target_bb is None:
+        target_bb = get_raster_info(base_raster_path)['bounding_box']
 
     target_geotransform = [
         target_bb[0], target_pixel_size[0], 0.0, target_bb[1], 0.0,
@@ -1667,7 +1683,9 @@ def resize_and_resample_raster(
 
     # Set the geotransform
     target_raster.SetGeoTransform(target_geotransform)
-    target_raster.SetProjection(base_sr.ExportToWkt())
+    if target_sr_wkt is None:
+        target_sr_wkt = base_sr.ExportToWkt()
+    target_raster.SetProjection(target_sr_wkt)
 
     # need to make this a closure so we get the current time and we can affect
     # state
@@ -1690,7 +1708,7 @@ def resize_and_resample_raster(
     # Perform the projection/resampling
     gdal.ReprojectImage(
         base_raster, target_raster, base_sr.ExportToWkt(),
-        base_sr.ExportToWkt(), resample_dict[resample_method], 0, 0,
+        target_sr_wkt, resample_dict[resample_method], 0, 0,
         _reproject_callback, [target_raster_path])
 
     target_raster = None
