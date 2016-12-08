@@ -1261,55 +1261,6 @@ def reclassify_dataset_uri(
         datasets_are_pre_aligned=True)
 
 
-def temporary_filename(suffix=''):
-    """Get path to new temporary file that will be deleted on program exit.
-
-    Returns a temporary filename using mkstemp. The file is deleted
-    on exit using the atexit register.
-
-    Keyword Args:
-        suffix (string): the suffix to be appended to the temporary file
-
-    Returns:
-        fname: a unique temporary filename
-    """
-    file_handle, path = tempfile.mkstemp(suffix=suffix)
-    os.close(file_handle)
-
-    def remove_file(path):
-        """Function to remove a file and handle exceptions to register
-            in atexit."""
-        try:
-            os.remove(path)
-        except OSError:
-            # This happens if the file didn't exist, which is okay because
-            # maybe we deleted it in a method
-            pass
-
-    atexit.register(remove_file, path)
-    return path
-
-
-def temporary_folder():
-    """Get path to new temporary folder that will be deleted on program exit.
-
-    Returns a temporary folder using mkdtemp.  The folder is deleted on exit
-    using the atexit register.
-
-    Returns:
-        path (string): an absolute, unique and temporary folder path.
-    """
-    path = tempfile.mkdtemp()
-
-    def remove_folder(path):
-        """Function to remove a folder and handle exceptions encountered.  This
-        function will be registered in atexit."""
-        shutil.rmtree(path, ignore_errors=True)
-
-    atexit.register(remove_folder, path)
-    return path
-
-
 class DatasetUnprojected(Exception):
     """An exception in case a dataset is unprojected"""
     pass
