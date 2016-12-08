@@ -1867,37 +1867,6 @@ def get_dataset_projection_wkt_uri(dataset_uri):
     return proj_wkt
 
 
-def unique_raster_values_count(dataset_uri, ignore_nodata=True):
-    """Return a dict from unique int values in the dataset to their frequency.
-
-    Args:
-        dataset_uri (string): uri to a gdal dataset of some integer type
-
-    Keyword Args:
-        ignore_nodata (boolean): if set to false, the nodata count is also
-            included in the result
-
-    Returns:
-        itemfreq (dict): values to count.
-    """
-    dataset = gdal.Open(dataset_uri)
-    band = dataset.GetRasterBand(1)
-    nodata = band.GetNoDataValue()
-
-    itemfreq = collections.defaultdict(int)
-    for row_index in range(band.YSize):
-        cur_array = band.ReadAsArray(0, row_index, band.XSize, 1)[0]
-        for val in numpy.unique(cur_array):
-            if ignore_nodata and val == nodata:
-                continue
-            itemfreq[val] += numpy.count_nonzero(cur_array == val)
-
-    band = None
-    gdal.Dataset.__swig_destroy__(dataset)
-    dataset = None
-    return itemfreq
-
-
 def rasterize_layer_uri(
         raster_uri, shapefile_uri, burn_values=[], option_list=[]):
     """Rasterize datasource layer.
