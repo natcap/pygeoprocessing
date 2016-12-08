@@ -1467,34 +1467,6 @@ def warp_raster(
     calculate_raster_stats(target_raster_path)
 
 
-def _assert_file_existance(dataset_uri_list):
-    """Assert that provided uris exist in filesystem.
-
-    Verify that the uris passed in the argument exist on the filesystem
-    if not, raise an exeception indicating which files do not exist
-
-    Args:
-        dataset_uri_list (list): a list of relative or absolute file paths to
-            validate
-
-    Returns:
-        None
-
-    Raises:
-        IOError: if any files are not found
-    """
-    not_found_uris = []
-    for uri in dataset_uri_list:
-        if not os.path.exists(uri):
-            not_found_uris.append(uri)
-
-    if len(not_found_uris) != 0:
-        error_message = (
-            "The following files do not exist on the filesystem: " +
-            str(not_found_uris))
-        raise exceptions.IOError(error_message)
-
-
 def get_lookup_from_table(table_uri, key_field):
     """Read table file in as dictionary.
 
