@@ -1642,30 +1642,6 @@ def copy_vector(base_vector_path, copy_vector_path):
     drv.CopyDataSource(shape, copy_vector_path)
 
 
-def create_directories(directory_list):
-    """Make directories provided in list of path strings.
-
-    This function will create any of the directories in the directory list
-    if possible and raise exceptions if something exception other than
-    the directory previously existing occurs.
-
-    Args:
-        directory_list (list): a list of string uri paths
-
-    Returns:
-        None
-    """
-    for dir_name in directory_list:
-        try:
-            os.makedirs(dir_name)
-        except OSError as exception:
-            #It's okay if the directory already exists, if it fails for
-            #some other reason, raise that exception
-            if (exception.errno != errno.EEXIST and
-                    exception.errno != errno.ENOENT):
-                raise
-
-
 def dictionary_to_point_shapefile(dict_data, layer_name, output_uri):
     """Create a point shapefile from a dictionary.
 
