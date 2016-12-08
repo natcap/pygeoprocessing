@@ -27,7 +27,7 @@ class PyGeoprocessing10(unittest.TestCase):
         """Clean up remaining files."""
         shutil.rmtree(self.workspace_dir)
 
-    def test_align_and_resize_raster_stack_project(self):
+    def test_warp_raster(self):
         """PGP.geoprocessing; align/resize raster test reprojection."""
         pixel_a_matrix = numpy.ones((5, 5), numpy.int16)
         reference = sampledata.SRS_COLOMBIA
