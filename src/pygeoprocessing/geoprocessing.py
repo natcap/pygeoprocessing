@@ -1467,37 +1467,6 @@ def warp_raster(
     calculate_raster_stats(target_raster_path)
 
 
-def get_lookup_from_table(table_uri, key_field):
-    """Read table file in as dictionary.
-
-    Creates a python dictionary to look up the rest of the fields in a
-    table file indexed by the given key_field.  This function is case
-    insensitive to field header names and returns a lookup table with lowercase
-    keys.
-
-    Args:
-        table_uri (string): a URI to a dbf or csv file containing at
-            least the header key_field
-        key_field: (description)
-
-    Returns:
-        lookup_dict (dict): a dictionary of the form {key_field_0:
-            {header_1: val_1_0, header_2: val_2_0, etc.}
-            where key_field_n is the lowercase version of the column name.
-    """
-    table_object = fileio.TableHandler(table_uri)
-    raw_table_dictionary = table_object.get_table_dictionary(key_field.lower())
-
-    lookup_dict = {}
-    for key, sub_dict in raw_table_dictionary.iteritems():
-        key_value = _smart_cast(key)
-        # Map an entire row to its lookup values
-        lookup_dict[key_value] = (dict(
-            [(sub_key, _smart_cast(value)) for sub_key, value in
-             sub_dict.iteritems()]))
-    return lookup_dict
-
-
 def get_lookup_from_csv(csv_table_uri, key_field):
     """Read CSV table file in as dictionary.
 
