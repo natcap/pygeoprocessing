@@ -353,7 +353,7 @@ def align_and_resize_raster_stack(
             last_time, lambda: LOGGER.info(
                 "align_dataset_list aligning dataset %d of %d",
                 index, len(base_raster_path_list)), _LOGGING_PERIOD)
-        warp_and_clip_raster(
+        warp_raster(
             base_path, target_pixel_size,
             target_path, resample_method,
             target_bb=target_bounding_box,
@@ -1462,7 +1462,7 @@ def get_datasource_bounding_box(datasource_uri):
     return bounding_box
 
 
-def warp_and_clip_raster(
+def warp_raster(
         base_raster_path, target_pixel_size, target_raster_path,
         resample_method, target_bb=None, target_sr_wkt=None,
         gtiff_creation_options=_DEFAULT_GTIFF_CREATION_OPTIONS):

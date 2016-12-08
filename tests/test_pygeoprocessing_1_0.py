@@ -40,7 +40,7 @@ class PyGeoprocessing10(unittest.TestCase):
         target_raster_path = os.path.join(self.workspace_dir, 'target_a.tif')
         base_a_raster_info = pygeoprocessing.get_raster_info(base_a_path)
 
-        pygeoprocessing.warp_and_clip_raster(
+        pygeoprocessing.warp_raster(
             base_a_path, base_a_raster_info['pixel_size'], target_raster_path,
             'nearest', target_sr_wkt=reference.projection,
             gtiff_creation_options=['TILED=NO'])
