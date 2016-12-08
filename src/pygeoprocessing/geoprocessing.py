@@ -383,29 +383,6 @@ def calculate_raster_stats(dataset_path):
     dataset = None
 
 
-def get_statistics_from_path(dataset_path):
-    """Get the min, max, mean, stdev from first band in a GDAL Dataset.
-
-    Args:
-        dataset_path (string): a path to a gdal dataset
-
-    Returns:
-        statistics (tuple): min, max, mean, stddev
-
-    """
-
-    dataset = gdal.Open(dataset_path)
-    band = dataset.GetRasterBand(1)
-    statistics = band.GetStatistics(0, 1)
-
-    # Close and clean up dataset
-    band = None
-    gdal.Dataset.__swig_destroy__(dataset)
-    dataset = None
-
-    return statistics
-
-
 def new_raster_from_base(
         base_uri, output_uri, gdal_format, nodata, datatype, fill_value=None,
         n_rows=None, n_cols=None, dataset_options=None):
