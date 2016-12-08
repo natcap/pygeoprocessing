@@ -1031,50 +1031,6 @@ def calculate_slope(
     calculate_raster_stats_uri(slope_uri)
 
 
-def clip_dataset_uri(
-        source_dataset_uri, aoi_datasource_uri, out_dataset_uri,
-        assert_projections=True, process_pool=None, all_touched=False):
-    """Clip raster dataset to bounding box of provided vector datasource aoi.
-
-    This function will clip source_dataset to the bounding box of the
-    polygons in aoi_datasource and mask out the values in source_dataset
-    outside of the AOI with the nodata values in source_dataset.
-
-    Args:
-        source_dataset_uri (string): uri to single band GDAL dataset to clip
-        aoi_datasource_uri (string): uri to ogr datasource
-        out_dataset_uri (string): path to disk for the clipped datset
-
-    Keyword Args:
-        assert_projections (boolean): a boolean value for whether the dataset
-            needs to be projected
-        process_pool: a process pool for multiprocessing
-        all_touched (boolean): if true the clip uses the option
-            ALL_TOUCHED=TRUE when calling RasterizeLayer for AOI masking.
-
-    Returns:
-        None
-    """
-    source_dataset = gdal.Open(source_dataset_uri)
-
-    band = source_dataset.GetRasterBand(1)
-    nodata = band.GetNoDataValue()
-    datatype = band.DataType
-
-    if nodata is None:
-        nodata = -9999
-
-    gdal.Dataset.__swig_destroy__(source_dataset)
-    source_dataset = None
-
-    pixel_size = get_raster_info(source_dataset_uri)['mean_pixel_size']
-    vectorize_datasets(
-        [source_dataset_uri], lambda x: x, out_dataset_uri, datatype, nodata,
-        pixel_size, 'intersection', aoi_path=aoi_datasource_uri,
-        assert_datasets_projected=assert_projections,
-        process_pool=process_pool, vectorize_op=False, all_touched=all_touched)
-
-
 def get_vector_info(vector_path):
     """Get information about an OGR vector (datasource).
 
