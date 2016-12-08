@@ -1261,50 +1261,6 @@ def reclassify_dataset_uri(
         datasets_are_pre_aligned=True)
 
 
-def load_memory_mapped_array(dataset_uri, memory_file, array_type=None):
-    """Get the first band of a dataset as a memory mapped array.
-
-    Args:
-        dataset_uri (string): the GDAL dataset to load into a memory mapped
-            array
-        memory_uri (string): a path to a file OR a file-like object that will
-            be used to hold the memory map. It is up to the caller to create
-            and delete this file.
-
-    Keyword Args:
-        array_type: the type of the resulting array, if None defaults
-            to the type of the raster band in the dataset
-
-    Returns:
-        memory_array (memmap numpy array): a memmap numpy array of the data
-            contained in the first band of dataset_uri
-    """
-    dataset = gdal.Open(dataset_uri)
-    band = dataset.GetRasterBand(1)
-    n_rows = dataset.RasterYSize
-    n_cols = dataset.RasterXSize
-
-    if array_type == None:
-        try:
-            dtype = _gdal_to_numpy_type(band)
-        except KeyError:
-            raise TypeError('Unknown GDAL type %s' % band.DataType)
-    else:
-        dtype = array_type
-
-    memory_array = numpy.memmap(
-        memory_file, dtype=dtype, mode='w+', shape=(n_rows, n_cols))
-
-    band.ReadAsArray(buf_obj=memory_array)
-
-    #Make sure the dataset is closed and cleaned up
-    band = None
-    gdal.Dataset.__swig_destroy__(dataset)
-    dataset = None
-
-    return memory_array
-
-
 def temporary_filename(suffix=''):
     """Get path to new temporary file that will be deleted on program exit.
 
