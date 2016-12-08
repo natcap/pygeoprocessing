@@ -40,13 +40,13 @@ class PyGeoprocessing10(unittest.TestCase):
         target_raster_path = os.path.join(self.workspace_dir, 'target_a.tif')
         base_a_raster_info = pygeoprocessing.get_raster_info(base_a_path)
 
-        target_reference = osr.SpatialReference()
-        target_reference.ImportFromEPSG(4326)
-
         pygeoprocessing.warp_and_clip_raster(
             base_a_path, base_a_raster_info['pixel_size'], target_raster_path,
-            'nearest', target_sr_wkt=target_reference.ExportToWkt())
+            'nearest', target_sr_wkt=reference.projection,
+            gtiff_creation_options=['TILED=NO'])
 
+        pygeoprocessing.testing.assert_rasters_equal(
+            base_a_path, target_raster_path)
 
     def test_align_and_resize_raster_stack_bad_lengths(self):
         """PGP.geoprocessing; align/resize raster test intersection."""
