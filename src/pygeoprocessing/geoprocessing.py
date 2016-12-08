@@ -158,7 +158,7 @@ def raster_calculator(
     last_blocksize = None
     target_min = None
     target_max = None
-    target_sum = None
+    target_sum = 0.0
     target_n = None
     target_mean = None
     target_stddev = None
@@ -192,6 +192,7 @@ def raster_calculator(
         if calc_raster_stats:
             valid_mask = target_block != nodata_target
             valid_block = target_block[valid_mask]
+            target_sum += numpy.sum(valid_block)
             if target_min is None:
                 target_min = numpy.min(valid_block)
             else:

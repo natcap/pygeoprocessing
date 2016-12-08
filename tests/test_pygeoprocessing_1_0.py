@@ -43,11 +43,9 @@ class PyGeoprocessing10(unittest.TestCase):
         target_reference = osr.SpatialReference()
         target_reference.ImportFromEPSG(4326)
 
-        pygeoprocessing.resize_and_resample_raster(
+        pygeoprocessing.warp_and_clip_raster(
             base_a_path, base_a_raster_info['pixel_size'], target_raster_path,
-            'nearest', 'intersection',
-            target_sr_wkt=target_reference.ExportToWkt(),
-            base_vector_path_list=None, raster_align_index=0)
+            'nearest', target_sr_wkt=target_reference.ExportToWkt())
 
 
     def test_align_and_resize_raster_stack_bad_lengths(self):
