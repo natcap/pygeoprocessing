@@ -1615,22 +1615,6 @@ def dictionary_to_point_shapefile(dict_data, layer_name, output_uri):
     output_layer.SyncToDisk()
 
 
-def get_dataset_projection_wkt_uri(dataset_uri):
-    """Get the projection of a GDAL dataset as well known text (WKT).
-
-    Args:
-        dataset_uri (string): a URI for the GDAL dataset
-
-    Returns:
-        proj_wkt (string): WKT describing the GDAL dataset project
-    """
-    dataset = gdal.Open(dataset_uri)
-    proj_wkt = dataset.GetProjection()
-    gdal.Dataset.__swig_destroy__(dataset)
-    dataset = None
-    return proj_wkt
-
-
 def rasterize_layer_uri(
         raster_uri, shapefile_uri, burn_values=[], option_list=[]):
     """Rasterize datasource layer.
