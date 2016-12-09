@@ -26,9 +26,10 @@ class PyGeoprocessing10(unittest.TestCase):
 
     def test_invoke_timed_callback(self):
         """PGP.geoprocessing; cover a timed callback."""
+        import pygeoprocessing.geoprocessing
         reference_time = time.time()
         time.sleep(0.1)
-        new_time = pygeoprocessing._invoke_timed_callback(
+        new_time = pygeoprocessing.geoprocessing._invoke_timed_callback(
             reference_time, lambda: None, 0.05)
         self.assertNotEqual(reference_time, new_time)
 
