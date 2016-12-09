@@ -1,15 +1,12 @@
 """PyGeoprocessing 1.0 test suite."""
-
+import time
 import tempfile
 import os
 import unittest
 import shutil
 
 from osgeo import gdal
-from osgeo import ogr
-from osgeo import osr
 import numpy
-from shapely.geometry import Polygon
 import pygeoprocessing
 import pygeoprocessing.testing
 from pygeoprocessing.testing import sampledata
@@ -26,6 +23,14 @@ class PyGeoprocessing10(unittest.TestCase):
     def tearDown(self):
         """Clean up remaining files."""
         shutil.rmtree(self.workspace_dir)
+
+    def test_invoke_timed_callback(self):
+        """PGP.geoprocessing; cover a timed callback."""
+        reference_time = time.time()
+        time.sleep(0.1)
+        new_time = pygeoprocessing._invoke_timed_callback(
+            reference_time, lambda: None, 0.05)
+        self.assertNotEqual(reference_time, new_time)
 
     def test_warp_raster(self):
         """PGP.geoprocessing; align/resize raster test reprojection."""
