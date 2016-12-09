@@ -1357,7 +1357,11 @@ def warp_raster(
         local_gtiff_creation_options.append(
             'PIXELTYPE=' + metadata['PIXELTYPE'])
 
-    create_directories([os.path.dirname(target_raster_path)])
+    # make directory if it doesn't exist
+    try:
+        os.makedirs(os.path.dirname(target_raster_path))
+    except OSError:
+        pass
     gdal_driver = gdal.GetDriverByName('GTiff')
     target_raster = gdal_driver.Create(
         target_raster_path, target_x_size, target_y_size,
