@@ -1,21 +1,15 @@
 """A collection of GDAL dataset and raster utilities."""
-
 import threading
 import Queue
 import logging
 import os
-import tempfile
 import shutil
-import atexit
 import functools
-import csv
 import math
-import errno
 import collections
 import exceptions
 import heapq
 import time
-from types import StringType
 import re
 
 from osgeo import gdal
@@ -34,7 +28,6 @@ from shapely import speedups
 import shapely.prepared
 
 import geoprocessing_core
-import fileio
 
 AggregatedValues = collections.namedtuple(
     'AggregatedValues',
@@ -1467,59 +1460,6 @@ def warp_raster(
     calculate_raster_stats(target_raster_path)
 
 
-def get_lookup_from_csv(csv_table_uri, key_field):
-    """Read CSV table file in as dictionary.
-
-    Creates a python dictionary to look up the rest of the fields in a
-    csv table indexed by the given key_field
-
-    Args:
-        csv_table_uri (string): a URI to a csv file containing at
-            least the header key_field
-        key_field: (description)
-
-    Returns:
-        lookup_dict (dict): returns a dictionary of the form {key_field_0:
-            {header_1: val_1_0, header_2: val_2_0, etc.}
-            depending on the values of those fields
-    """
-    def u(string):
-        if type(string) is StringType:
-            return unicode(string, 'utf-8')
-        return string
-
-    with open(csv_table_uri, 'rU') as csv_file:
-        # attempt to detect excel style csvs like the example here
-        # https://docs.python.org/2/library/csv.html#csv.Sniffer
-        # the 1024 is a large chunk of the file, presumably enough to
-        # either figure out the dialect or go home.
-        # Sniffer expects whole lines, so we need to take extra care to return
-        # a string that consists of whole lines.
-        dialect = csv.Sniffer().sniff('\n'.join(csv_file.readlines(1024)),
-                                      delimiters=";,")
-        csv_file.seek(0)
-        csv_reader = csv.reader(csv_file, dialect=dialect)
-        header_row = map(lambda s: u(s), csv_reader.next())
-        key_index = header_row.index(key_field)
-        # This makes a dictionary that maps the headers to the indexes they
-        # represent in the soon to be read lines
-        index_to_field = dict(zip(range(len(header_row)), header_row))
-
-        lookup_dict = {}
-        for line_num, line in enumerate(csv_reader):
-            try:
-                key_value = _smart_cast(line[key_index])
-            except IndexError as error:
-                LOGGER.error('CSV line %s (%s) should have index %s',
-                             line_num, line, key_index)
-                raise error
-            # Map an entire row to its lookup values
-            lookup_dict[key_value] = (
-                dict([(index_to_field[index], _smart_cast(value))
-                      for index, value in zip(range(len(line)), line)]))
-        return lookup_dict
-
-
 def extract_datasource_table_by_key(datasource_uri, key_field):
     """Return vector attribute table of first layer as dictionary.
 
@@ -2123,32 +2063,6 @@ def convolve_2d_uri(
                 yoff=index_dict['yoff'])
     output_band.FlushCache()
 
-
-def _smart_cast(value):
-    """Attempt cast to a float, int, else leave as string.
-
-    Args:
-        value: a string or numeric type
-
-    Returns:
-        value: new value
-    """
-    # If it's not a string, don't try to cast it because i got a bug
-    # where all my floats were happily cast to ints
-    if type(value) != str:
-        return value
-    for cast_function in [int, float]:
-        try:
-            return cast_function(value)
-        except ValueError:
-            pass
-    for unicode_type in ['ascii', 'utf-8', 'latin-1']:
-        try:
-            return value.decode(unicode_type)
-        except UnicodeDecodeError:
-            pass
-    LOGGER.warn("unknown encoding type encountered in _smart_cast: %s" % value)
-    return value
 
 def iterblocks(
         raster_uri, band_list=None, largest_block=2**14, astype=None,
