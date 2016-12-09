@@ -1264,59 +1264,6 @@ class DifferentProjections(Exception):
     pass
 
 
-def assert_datasets_in_same_projection(dataset_uri_list):
-    """Assert that provided datasets are all in the same projection.
-
-    Tests if datasets represented by their uris are projected and in
-    the same projection and raises an exception if not.
-
-    Args:
-        dataset_uri_list (list): (description)
-
-    Returns:
-        is_true (boolean): True (otherwise exception raised)
-
-    Raises:
-        DatasetUnprojected: if one of the datasets is unprojected.
-        DifferentProjections: if at least one of the datasets is in
-            a different projection
-    """
-    dataset_list = [gdal.Open(dataset_uri) for dataset_uri in dataset_uri_list]
-    dataset_projections = []
-
-    unprojected_datasets = set()
-
-    for dataset in dataset_list:
-        projection_as_str = dataset.GetProjection()
-        dataset_sr = osr.SpatialReference()
-        dataset_sr.ImportFromWkt(projection_as_str)
-        if not dataset_sr.IsProjected():
-            unprojected_datasets.add(dataset.GetFileList()[0])
-        dataset_projections.append((dataset_sr, dataset.GetFileList()[0]))
-
-    if len(unprojected_datasets) > 0:
-        raise DatasetUnprojected(
-            "These datasets are unprojected %s" % (unprojected_datasets))
-
-    for index in range(len(dataset_projections)-1):
-        if not dataset_projections[index][0].IsSame(
-                dataset_projections[index+1][0]):
-            LOGGER.warn(
-                "These two datasets might not be in the same projection."
-                " The different projections are:\n\n'filename: %s'\n%s\n\n"
-                "and:\n\n'filename:%s'\n%s\n\n",
-                dataset_projections[index][1],
-                dataset_projections[index][0].ExportToPrettyWkt(),
-                dataset_projections[index+1][1],
-                dataset_projections[index+1][0].ExportToPrettyWkt())
-
-    for dataset in dataset_list:
-        # Close and clean up dataset
-        gdal.Dataset.__swig_destroy__(dataset)
-    dataset_list = None
-    return True
-
-
 def get_datasource_bounding_box(datasource_uri):
     """Get datasource bounding box where coordinates are in projected units.
 
