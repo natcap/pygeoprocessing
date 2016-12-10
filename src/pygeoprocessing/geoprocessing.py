@@ -377,85 +377,91 @@ def calculate_raster_stats(dataset_path):
 
 
 def new_raster_from_base(
-        base_uri, output_uri, gdal_format, nodata, datatype, fill_value=None,
-        n_rows=None, n_cols=None, dataset_options=None):
-    """Create a new, empty GDAL raster dataset with the spatial references,
-    geotranforms of the base GDAL raster dataset.
+        base_path, target_path, datatype, nodata_list, n_bands=1,
+        fill_value_list=None, n_rows=None, n_cols=None,
+        gtiff_creation_options=()):
+    """Create new geotiff by coping spatial reference/geotransform of base.
 
     A wrapper for the function new_raster_from_base that opens up
-    the base_uri before passing it to new_raster_from_base.
+    the base_path before passing it to new_raster_from_base.
 
-    Args:
-        base_uri (string): a URI to a GDAL dataset on disk.
-        output_uri (string): a string URI to the new output raster dataset.
-        gdal_format (string): a string representing the GDAL file format of the
-            output raster.  See http://gdal.org/formats_list.html for a list
-            of available formats.  This parameter expects the format code, such
-            as 'GTiff' or 'MEM'
-        nodata: a value that will be set as the nodata value for the
-            output raster.  Should be the same type as 'datatype'
+    Parameters:
+        base_path (string): path to existing raster.
+        target_path (string): path to desired target raster.
         datatype: the pixel datatype of the output raster, for example
             gdal.GDT_Float32.  See the following header file for supported
             pixel types:
             http://www.gdal.org/gdal_8h.html#22e22ce0a55036a96f652765793fb7a4
-
-    Keyword Args:
-        fill_value: the value to fill in the raster on creation
-        n_rows: if set makes the resulting raster have n_rows in it
-            if not, the number of rows of the outgoing dataset are equal to
-            the base.
-        n_cols: similar to n_rows, but for the columns.
-        dataset_options: a list of dataset options that gets
+        nodata_list (list): list of nodata values, one for each band, to set
+            on target raster; okay to have 'None' values.
+        n_bands (int): number of bands for the target raster.
+        fill_value_list (list): list of values to fill each band with. If None,
+            no filling is done.
+        n_rows (int): if not None, defines the number of target raster rows.
+        n_cols (int): if not None, defines the number of target raster
+            columns.
+        gtiff_creation_options: a list of dataset options that gets
             passed to the gdal creation driver, overrides defaults
 
     Returns:
         nothing
     """
-    geoprocessing_core.new_raster_from_base_uri(
-        base_uri, output_uri, gdal_format, nodata, datatype,
-        fill_value=fill_value, n_rows=n_rows, n_cols=n_rows,
-        dataset_options=dataset_options)
+    # nodata might be a numpy type coming in, set it to native python type
+    base_raster = gdal.Open(base_path)
+    if n_rows is None:
+        n_rows = base_raster.RasterYSize
+    if n_cols is None:
+        n_cols = base_raster.RasterXSize
+    driver = gdal.GetDriverByName('GTiff')
 
+    base_band = base_raster.GetRasterBand(1)
+    block_size = base_band.GetBlockSize()
+    metadata = base_band.GetMetadata('IMAGE_STRUCTURE')
 
+    local_gtiff_creation_options = list(gtiff_creation_options)
+    # PIXELTYPE is sometimes used to define signed vs. unsigned bytes and
+    # the only place that is stored is in the IMAGE_STRUCTURE metadata
+    # copy it over if it exists; get this info from the first band since
+    # all bands have the same datatype
+    metadata = base_band.GetMetadata('IMAGE_STRUCTURE')
+    base_band = None
+    if 'PIXELTYPE' in metadata:
+        local_gtiff_creation_options.append(
+            'PIXELTYPE=' + metadata['PIXELTYPE'])
 
-def new_raster(
-        cols, rows, projection, geotransform, format, nodata, datatype,
-        bands, outputURI):
-    """Create a new raster with the given properties.
+    # first, should it be tiled?  yes if it's not striped
+    if block_size[0] != n_cols:
+        local_gtiff_creation_options.extend([
+            'TILED=YES',
+            'BLOCKXSIZE=%d' % block_size[0],
+            'BLOCKYSIZE=%d' % block_size[1],
+            'BIGTIFF=IF_SAFER'])
 
-    Args:
-        cols (int): number of pixel columns
-        rows (int): number of pixel rows
-        projection: the datum
-        geotransform: the coordinate system
-        format (string): a string representing the GDAL file format of the
-            output raster.  See http://gdal.org/formats_list.html for a list
-            of available formats.  This parameter expects the format code, such
-            as 'GTiff' or 'MEM'
-        nodata: a value that will be set as the nodata value for the
-            output raster.  Should be the same type as 'datatype'
-        datatype: the pixel datatype of the output raster, for example
-            gdal.GDT_Float32.  See the following header file for supported
-            pixel types:
-            http://www.gdal.org/gdal_8h.html#22e22ce0a55036a96f652765793fb7a4
-        bands (int): the number of bands in the raster
-        outputURI (string): the file location for the outputed raster.  If
-            format is 'MEM' this can be an empty string
+    target_raster = driver.Create(
+        target_path.encode('utf-8'), n_cols, n_rows, n_bands, datatype,
+        options=gtiff_creation_options)
+    target_raster.SetProjection(base_raster.GetProjection())
+    target_raster.SetGeoTransform(base_raster.GetGeoTransform())
+    base_raster = None
 
-    Returns:
-        dataset: a new GDAL raster with the parameters as described above
-    """
-    driver = gdal.GetDriverByName(format)
-    new_raster = driver.Create(
-        outputURI.encode('utf-8'), cols, rows, bands, datatype,
-        options=['BIGTIFF=IF_SAFER'])
-    new_raster.SetProjection(projection)
-    new_raster.SetGeoTransform(geotransform)
-    for i in range(bands):
-        new_raster.GetRasterBand(i + 1).SetNoDataValue(nodata)
-        new_raster.GetRasterBand(i + 1).Fill(nodata)
+    for index, nodata_value in enumerate(nodata_list):
+        if nodata_value is None:
+            continue
+        target_band = target_raster.GetRasterBand(index + 1)
+        try:
+            target_band.SetNoDataValue(nodata_value.item())
+        except AttributeError:
+            target_band.SetNoDataValue(nodata_value)
 
-    return new_raster
+    if fill_value_list is not None:
+        for index, fill_value in enumerate(fill_value_list):
+            if fill_value is None:
+                continue
+            target_band = target_raster.GetRasterBand(index + 1)
+            target_band.Fill(fill_value)
+            target_band = None
+
+    target_raster = None
 
 
 def create_raster_from_vector_extents_uri(
@@ -1505,42 +1511,6 @@ def rasterize_layer_uri(
     gdal.Dataset.__swig_destroy__(dataset)
     dataset = None
     shapefile = None
-
-
-def make_constant_raster_from_base_uri(
-        base_dataset_uri, constant_value, out_uri, nodata_value=None,
-        dataset_type=gdal.GDT_Float32):
-    """Create new gdal raster filled with uniform values.
-
-    A helper function that creates a new gdal raster from base, and fills
-    it with the constant value provided.
-
-    Args:
-        base_dataset_uri (string): the gdal base raster
-        constant_value: the value to set the new base raster to
-        out_uri (string): the uri of the output raster
-
-    Keyword Args:
-        nodata_value: the value to set the constant raster's nodata
-            value to.  If not specified, it will be set to constant_value - 1.0
-        dataset_type: the datatype to set the dataset to, default
-            will be a float 32 value.
-
-    Returns:
-        None
-    """
-    if nodata_value is None:
-        nodata_value = constant_value - 1.0
-    new_raster_from_base_uri(
-        base_dataset_uri, out_uri, 'GTiff', nodata_value,
-        dataset_type)
-    base_dataset = gdal.Open(out_uri, gdal.GA_Update)
-    base_band = base_dataset.GetRasterBand(1)
-    base_band.Fill(constant_value)
-
-    base_band = None
-    gdal.Dataset.__swig_destroy__(base_dataset)
-    base_dataset = None
 
 
 def calculate_disjoint_polygon_set(shapefile_uri):
