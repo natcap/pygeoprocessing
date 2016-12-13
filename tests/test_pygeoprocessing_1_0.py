@@ -230,8 +230,7 @@ class PyGeoprocessing10(unittest.TestCase):
             self.workspace_dir, 'target.tif')
         pygeoprocessing.raster_calculator(
             [(base_path, 1)], lambda x: x, target_path,
-            gdal.GDT_Int32, nodata_target, dataset_options=None,
-            calc_raster_stats=True)
+            gdal.GDT_Int32, nodata_target, calc_raster_stats=True)
         pygeoprocessing.testing.assert_rasters_equal(base_path, target_path)
 
     def test_rs_calculator_output_alias(self):
@@ -248,8 +247,7 @@ class PyGeoprocessing10(unittest.TestCase):
             # intentionally passing target path as base path to raise error
             pygeoprocessing.raster_calculator(
                 [(base_path, 1)], lambda x: x, base_path,
-                gdal.GDT_Int32, nodata_base, dataset_options=None,
-                calc_raster_stats=True)
+                gdal.GDT_Int32, nodata_base, calc_raster_stats=True)
 
     def test_rs_calculator_bad_overlap(self):
         """PGP.geoprocessing: rs_calculator expected error on bad overlap."""
@@ -274,4 +272,4 @@ class PyGeoprocessing10(unittest.TestCase):
             pygeoprocessing.raster_calculator(
                 [(base_path_a, 1), (base_path_b, 1)], lambda x: x,
                 target_path, gdal.GDT_Int32, nodata_base,
-                dataset_options=None, calc_raster_stats=True)
+                gtiff_creation_options=None, calc_raster_stats=True)

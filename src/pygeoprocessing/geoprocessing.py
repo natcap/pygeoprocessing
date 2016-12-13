@@ -60,7 +60,7 @@ _RESAMPLE_DICT = {
 
 def raster_calculator(
         base_raster_path_band_list, local_op, target_raster_path,
-        datatype_target, nodata_target, dataset_options=None,
+        datatype_target, nodata_target, gtiff_creation_options=(),
         calc_raster_stats=True):
     """Apply local a raster operation on a stack of rasters.
 
@@ -85,7 +85,7 @@ def raster_calculator(
             the target raster.
         nodata_target (numerical value): the desired nodata value of the
             target raster.
-        dataset_options (list): this is an argument list that will be
+        gtiff_creation_options (list): this is an argument list that will be
             passed to the GTiff driver.  Useful for blocksizes, compression,
             etc.
         calculate_raster_stats (boolean): If True, calculates and sets raster
@@ -138,8 +138,8 @@ def raster_calculator(
     base_raster_info = get_raster_info(base_raster_path_band_list[0][0])
 
     new_raster_from_base(
-        base_raster_path_band_list[0][0], target_raster_path, 'GTiff',
-        nodata_target, datatype_target, dataset_options=dataset_options)
+        base_raster_path_band_list[0][0], target_raster_path, datatype_target,
+        [nodata_target], gtiff_creation_options=gtiff_creation_options)
     target_raster = gdal.Open(target_raster_path, gdal.GA_Update)
     target_band = target_raster.GetRasterBand(1)
 
@@ -1617,7 +1617,7 @@ def distance_transform_edt(
         dataset_to_align_index=0, assert_datasets_projected=False,
         process_pool=process_pool, vectorize_op=False,
         datasets_are_pre_aligned=True,
-        dataset_options=[
+        gtiff_creation_options=[
             'TILED=YES', 'BLOCKXSIZE=%d' % blocksize,
             'BLOCKYSIZE=%d' % blocksize])
 
