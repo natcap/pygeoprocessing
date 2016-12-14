@@ -596,31 +596,69 @@ def vectorize_points_uri(
         datasource, field, output_raster, interpolation=interpolation)
 
 
-def vectorize_points(
-        shapefile, datasource_field, dataset, randomize_points=False,
+def interpolate_points(
+        source_vector_path, vector_attribute_field, target_raster_path_band,
         mask_convex_hull=False, interpolation='nearest'):
-    """Interpolate values in shapefile onto given raster.
+    """Interpolate point values onto an existing raster.
 
-    Takes a shapefile of points and a field defined in that shapefile
-    and interpolate the values in the points onto the given raster
+base_raster_path_band_list
 
-    Args:
-        shapefile: ogr datasource of points
-        datasource_field: a field in shapefile
-        dataset: a gdal dataset must be in the same projection as shapefile
-
-    Keyword Args:
-        randomize_points (boolean): (description)
-        mask_convex_hull (boolean): (description)
+    Parameters:
+        source_vector_path (string):
+        vector_attribute_field (field): a string in the vector referenced at
+            `source_vector_path` that refers to a numeric value in the
+            vector's attribute table.  This is the value that will be
+            interpolated across the raster.
+        target_raster_path (tuple): a path/band number tuple to an existing
+            raster which likely intersects or is nearby the source vector.
+            The band in this raster will take on the interpolated numerical
+            values  provided at each point.
+        mask_convex_hull (boolean): If true, the points are only interpolated
+            within the convex hull defined by the set of points in the source
+            vector.  This is useful in applications where it is nonsensical
+            to interpolate data outside of the point cloud.
         interpolation (string): the interpolation method to use for
-            scipy.interpolate.griddata(). Default is 'nearest'
+            scipy.interpolate.griddata(). Default is 'nearest'.
 
     Returns:
        None
     """
+    source_vector = ogr.Open(source_vector_path)
+    point_list = []
+    value_list = []
+    for layer in source_vector:
+        for point_feature in layer:
+            value = point_feature.GetField(vector_attribute_field)
+            # Add in the numpy notation which is row, col
+            # Here the point geometry is in the form x, y (col, row)
+            geometry = point_feature.GetGeometryRef()
+            point = geometry.GetPoint()
+            point_list.append([point[1], point[0]])
+            value_list.append(value)
+
+    raster = gdal.Open(raster_path_band[0], gdal.GA_Update)
+    band = raster.GetRasterBand(raster_path_band[1])
+    nodata = band.GetNoDataValue()
+    for offsets in iterblocks(
+            target_raster_path_band[0], offset_only=True):
+
+        grid_y, grid_x = numpy.mgrid[
+            offsets['yoff']:offsets['yoff']+offsets['win_ysize'],
+            offsets['xoff']:offsets['xoff']+offsets['win_xsize']]
+        grid_y = grid_y * gt[5] + bounding_box[1]
+        grid_x = grid_x * gt[1] + bounding_box[0]
+
+        raster_out_array = scipy.interpolate.griddata(
+            point_array, value_array, (grid_y, grid_x), interpolation, nodata)
+        band.WriteArray(raster_out_array, offsets['xoff'], offsets['yoff'])
+
+
+        ######## left off here
+    return
+
 
     # Define the initial bounding box
-    gt = dataset.GetGeoTransform()
+    gt = target_raster.GetGeoTransform()
     # order is left, top, right, bottom of rasterbounds
     bounding_box = [gt[0], gt[3], gt[0] + gt[1] * dataset.RasterXSize,
                     gt[3] + gt[5] * dataset.RasterYSize]

@@ -24,8 +24,13 @@ class PyGeoprocessing10(unittest.TestCase):
         """Clean up remaining files."""
         shutil.rmtree(self.workspace_dir)
 
+    def test_interpolate_points(self):
+        """PGP.geoprocessing: test interpolate points feature."""
+
+        self.fail()
+
     def test_invoke_timed_callback(self):
-        """PGP.geoprocessing; cover a timed callback."""
+        """PGP.geoprocessing: cover a timed callback."""
         import pygeoprocessing.geoprocessing
         reference_time = time.time()
         time.sleep(0.1)
@@ -34,7 +39,7 @@ class PyGeoprocessing10(unittest.TestCase):
         self.assertNotEqual(reference_time, new_time)
 
     def test_warp_raster(self):
-        """PGP.geoprocessing; align/resize raster test reprojection."""
+        """PGP.geoprocessing: align/resize raster test reprojection."""
         pixel_a_matrix = numpy.ones((5, 5), numpy.int16)
         reference = sampledata.SRS_COLOMBIA
         nodata_target = -1
@@ -55,7 +60,7 @@ class PyGeoprocessing10(unittest.TestCase):
             base_a_path, target_raster_path)
 
     def test_align_and_resize_raster_stack_bad_lengths(self):
-        """PGP.geoprocessing; align/resize raster test intersection."""
+        """PGP.geoprocessing: align/resize raster test intersection."""
         pixel_a_matrix = numpy.ones((5, 5), numpy.int16)
         reference = sampledata.SRS_COLOMBIA
         nodata_target = -1
@@ -83,7 +88,7 @@ class PyGeoprocessing10(unittest.TestCase):
                 base_vector_path_list=None, raster_align_index=0)
 
     def test_align_and_resize_raster_stack_int(self):
-        """PGP.geoprocessing; align/resize raster test intersection."""
+        """PGP.geoprocessing: align/resize raster test intersection."""
         pixel_a_matrix = numpy.ones((5, 5), numpy.int16)
         reference = sampledata.SRS_COLOMBIA
         nodata_target = -1
@@ -128,7 +133,7 @@ class PyGeoprocessing10(unittest.TestCase):
                 base_a_raster_info['pixel_size'])
 
     def test_align_and_resize_raster_stack_union(self):
-        """PGP.geoprocessing; align/resize raster test union."""
+        """PGP.geoprocessing: align/resize raster test union."""
         pixel_a_matrix = numpy.ones((5, 5), numpy.int16)
         reference = sampledata.SRS_COLOMBIA
         nodata_target = -1
@@ -173,7 +178,7 @@ class PyGeoprocessing10(unittest.TestCase):
         numpy.testing.assert_array_equal(expected_matrix_a, target_array)
 
     def test_align_and_resize_raster_stack_bb(self):
-        """PGP.geoprocessing; align/resize raster test bounding box."""
+        """PGP.geoprocessing: align/resize raster test bounding box."""
         pixel_a_matrix = numpy.ones((5, 5), numpy.int16)
         reference = sampledata.SRS_COLOMBIA
         nodata_target = -1
