@@ -312,6 +312,7 @@ def align_and_resize_raster_stack(
         target_bounding_box = [float(x) for x in bb_match.groups()]
     else:
         # either intersection or union
+        print ([info['bounding_box'] for info in (raster_info_list + vector_info_list)])
         target_bounding_box = reduce(
             functools.partial(_merge_bounding_boxes, mode=bounding_box_mode),
             [info['bounding_box'] for info in
@@ -572,36 +573,10 @@ def create_raster_from_vector_extents(
     return raster
 
 
-def vectorize_points_uri(
-        shapefile_uri, field, output_uri, interpolation='nearest'):
-    """Interpolate values in shapefile onto given raster.
-
-    A wrapper function for pygeoprocessing.vectorize_points, that allows for
-    uri passing.
-
-    Args:
-        shapefile_uri (string): a uri path to an ogr shapefile
-        field (string): a string for the field name
-        output_uri (string): a uri path for the output raster
-        interpolation (string): interpolation method to use on points, default
-            is 'nearest'
-
-    Returns:
-        None
-    """
-
-    datasource = ogr.Open(shapefile_uri)
-    output_raster = gdal.Open(output_uri, 1)
-    vectorize_points(
-        datasource, field, output_raster, interpolation=interpolation)
-
-
 def interpolate_points(
         source_vector_path, vector_attribute_field, target_raster_path_band,
-        mask_convex_hull=False, interpolation='nearest'):
+        interpolation_mode):
     """Interpolate point values onto an existing raster.
-
-base_raster_path_band_list
 
     Parameters:
         source_vector_path (string):
@@ -613,12 +588,8 @@ base_raster_path_band_list
             raster which likely intersects or is nearby the source vector.
             The band in this raster will take on the interpolated numerical
             values  provided at each point.
-        mask_convex_hull (boolean): If true, the points are only interpolated
-            within the convex hull defined by the set of points in the source
-            vector.  This is useful in applications where it is nonsensical
-            to interpolate data outside of the point cloud.
-        interpolation (string): the interpolation method to use for
-            scipy.interpolate.griddata(). Default is 'nearest'.
+        interpolation_mode (string): the interpolation method to use for
+            scipy.interpolate.griddata, one of 'linear', nearest', or 'cubic'.
 
     Returns:
        None
@@ -636,26 +607,27 @@ base_raster_path_band_list
             point_list.append([point[1], point[0]])
             value_list.append(value)
 
-    raster = gdal.Open(raster_path_band[0], gdal.GA_Update)
-    band = raster.GetRasterBand(raster_path_band[1])
+    point_array = numpy.array(point_list)
+    value_array = numpy.array(value_list)
+
+    target_raster = gdal.Open(target_raster_path_band[0], gdal.GA_Update)
+    band = target_raster.GetRasterBand(target_raster_path_band[1])
     nodata = band.GetNoDataValue()
+    geotransform = target_raster.GetGeoTransform()
     for offsets in iterblocks(
             target_raster_path_band[0], offset_only=True):
 
         grid_y, grid_x = numpy.mgrid[
             offsets['yoff']:offsets['yoff']+offsets['win_ysize'],
             offsets['xoff']:offsets['xoff']+offsets['win_xsize']]
-        grid_y = grid_y * gt[5] + bounding_box[1]
-        grid_x = grid_x * gt[1] + bounding_box[0]
+        grid_y = grid_y * geotransform[5] + geotransform[3]
+        grid_x = grid_x * geotransform[1] + geotransform[0]
 
         raster_out_array = scipy.interpolate.griddata(
-            point_array, value_array, (grid_y, grid_x), interpolation, nodata)
+            point_array, value_array, (grid_y, grid_x), interpolation_mode,
+            nodata)
         band.WriteArray(raster_out_array, offsets['xoff'], offsets['yoff'])
-
-
-        ######## left off here
-    return
-
+"""
 
     # Define the initial bounding box
     gt = target_raster.GetGeoTransform()
@@ -716,7 +688,7 @@ base_raster_path_band_list
     # Make sure the dataset is closed and cleaned up
     band = None
     gdal.Dataset.__swig_destroy__(dataset)
-    dataset = None
+    dataset = None"""
 
 
 def aggregate_raster_values_uri(
@@ -1064,7 +1036,7 @@ def get_vector_info(vector_path):
     vector_properties = {}
     first_layer = vector.GetLayer()
     # projection is same for all layers, so just use the first one
-    vector['projection'] = first_layer.GetSpatialRef().ExportToWkt()
+    vector_properties['projection'] = first_layer.GetSpatialRef().ExportToWkt()
     for layer in vector:
         layer_bb = layer.GetExtent()
         # convert form [minx,maxx,miny,maxy] to [minx,miny,maxx,maxy]
@@ -1074,6 +1046,7 @@ def get_vector_info(vector_path):
         else:
             vector_properties['bounding_box'] = _merge_bounding_boxes(
                 vector_properties['bounding_box'], local_bb, 'union')
+    return vector_properties
 
 
 def get_raster_info(raster_path):
@@ -2201,12 +2174,12 @@ def _merge_bounding_boxes(bb1, bb2, mode):
 
     if mode == "union":
         comparison_ops = [
-            _less_than_or_equal, _greater_than, _greater_than,
-            _less_than_or_equal]
+            _less_than_or_equal, _less_than_or_equal,
+            _greater_than, _greater_than]
     if mode == "intersection":
         comparison_ops = [
-            _greater_than, _less_than_or_equal, _less_than_or_equal,
-            _greater_than]
+            _greater_than, _greater_than,
+            _less_than_or_equal, _less_than_or_equal]
 
     bb_out = [op(x, y) for op, x, y in zip(comparison_ops, bb1, bb2)]
     return bb_out
