@@ -317,10 +317,11 @@ def align_and_resize_raster_stack(
             functools.partial(_merge_bounding_boxes, mode=bounding_box_mode),
             [info['bounding_box'] for info in
              (raster_info_list + vector_info_list)])
+        print target_bounding_box
 
     if bounding_box_mode == "intersection" and (
-            target_bounding_box[0] >= target_bounding_box[2] or
-            target_bounding_box[1] <= target_bounding_box[3]):
+            target_bounding_box[0] > target_bounding_box[2] or
+            target_bounding_box[1] > target_bounding_box[3]):
         raise ValueError("The rasters' and vectors' intersection is empty "
                          "(not all rasters and vectors touch each other).")
 
@@ -347,6 +348,7 @@ def align_and_resize_raster_stack(
             last_time, lambda: LOGGER.info(
                 "align_dataset_list aligning dataset %d of %d",
                 index, len(base_raster_path_list)), _LOGGING_PERIOD)
+        print target_bounding_box
         warp_raster(
             base_path, target_pixel_size,
             target_path, resample_method,
@@ -616,7 +618,6 @@ def interpolate_points(
     geotransform = target_raster.GetGeoTransform()
     for offsets in iterblocks(
             target_raster_path_band[0], offset_only=True):
-
         grid_y, grid_x = numpy.mgrid[
             offsets['yoff']:offsets['yoff']+offsets['win_ysize'],
             offsets['xoff']:offsets['xoff']+offsets['win_xsize']]
@@ -1094,12 +1095,20 @@ def get_raster_info(raster_path):
         raster.GetRasterBand(index).GetNoDataValue() for index in xrange(
             1, raster_properties['n_bands']+1)]
 
+    # we dont' really know how the geotransform is laid out, all we can do is
+    # calculate the x and y bounds, then take the appropriate min/max
+    x_bounds = [
+        geo_transform[0], geo_transform[0] +
+        raster_properties['raster_size'][0] * geo_transform[1] +
+        raster_properties['raster_size'][1] * geo_transform[2]]
+    y_bounds = [
+        geo_transform[3], geo_transform[3] +
+        raster_properties['raster_size'][0] * geo_transform[4] +
+        raster_properties['raster_size'][1] * geo_transform[5]]
+
     raster_properties['bounding_box'] = [
-        geo_transform[0], geo_transform[3],
-        (geo_transform[0] +
-         raster_properties['raster_size'][0] * geo_transform[1]),
-        (geo_transform[3] +
-         raster_properties['raster_size'][1] * geo_transform[5])]
+        numpy.min(x_bounds), numpy.min(y_bounds),
+        numpy.max(x_bounds), numpy.max(y_bounds)]
 
     # datatype is the same for the whole raster, but is associated with band
     raster_properties['datatype'] = raster.GetRasterBand(1).DataType
@@ -1347,6 +1356,13 @@ def warp_raster(
     target_geotransform = [
         target_bb[0], target_pixel_size[0], 0.0, target_bb[1], 0.0,
         target_pixel_size[1]]
+    # this handles a case of a negative pixel size in which case the raster
+    # row will increase downward
+    if target_pixel_size[0] < 0:
+        target_geotransform[0] = target_bb[2]
+    if target_pixel_size[1] < 0:
+        target_geotransform[3] = target_bb[3]
+    print target_geotransform
     target_x_size = abs(int(numpy.round(
         (target_bb[2] - target_bb[0]) / target_pixel_size[0])))
     target_y_size = abs(int(numpy.round(
@@ -1889,7 +1905,7 @@ def convolve_2d_uri(
 
 
 def iterblocks(
-        raster_uri, band_list=None, largest_block=2**14, astype=None,
+        raster_uri, band_list=None, largest_block=2**20, astype=None,
         offset_only=False):
     """Iterate across all the memory blocks in the input raster.
 
