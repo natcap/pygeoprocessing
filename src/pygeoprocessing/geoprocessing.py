@@ -36,6 +36,7 @@ AggregatedValues = collections.namedtuple(
 LOGGER = logging.getLogger('pygeoprocessing.geoprocessing')
 _LOGGING_PERIOD = 5.0  # min 5.0 seconds per update log message for the module
 _DEFAULT_GTIFF_CREATION_OPTIONS = ('TILED=YES', 'BIGTIFF=IF_SAFER')
+_LARGEST_ITERBLOCK = 2**20  # largest block for iterblocks to read in cells
 
 # map gdal types to numpy equivalent
 _GDAL_TYPE_TO_NUMPY_LOOKUP = {
@@ -1905,8 +1906,8 @@ def convolve_2d_uri(
 
 
 def iterblocks(
-        raster_uri, band_list=None, largest_block=2**20, astype=None,
-        offset_only=False):
+        raster_uri, band_list=None, largest_block=_LARGEST_ITERBLOCK,
+        astype=None, offset_only=False):
     """Iterate across all the memory blocks in the input raster.
 
     Result is a generator of block location information and numpy arrays.
