@@ -960,9 +960,13 @@ def reproject_and_warp_raster(
         base_raster_info['datatype'], options=['BIGTIFF=IF_SAFER'])
 
     # Set the nodata value for the target raster
-    for index, nodata in enumerate(base_raster_info['nodata'])
-    target_raster.GetRasterBand(1).SetNoDataValue(
-        float(get_raster_info(base_raster_path)['nodata']))
+    if isinstance(base_raster_info['nodata'], list):
+        for index, nodata in enumerate(base_raster_info['nodata']):
+            target_raster.GetRasterBand(index+1).SetNoDataValue(nodata)
+    else:
+        target_raster.GetRasterBand(1).SetNoDataValue(
+            base_raster_info['nodata'])
+
 
     # Calculate the new geotransform
     target_geo = (
