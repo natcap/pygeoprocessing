@@ -11,7 +11,7 @@ import pygeoprocessing
 import pygeoprocessing.testing
 from pygeoprocessing.testing import sampledata
 import pygeoprocessing.routing
-
+import shapely.geometry
 
 class PyGeoprocessing10(unittest.TestCase):
     """Tests for the PyGeoprocesing 1.0 refactor."""
@@ -27,8 +27,37 @@ class PyGeoprocessing10(unittest.TestCase):
     def test_interpolate_points(self):
         """PGP.geoprocessing: test interpolate points feature."""
         # construct a point shapefile
+        reference = sampledata.SRS_COLOMBIA
+        point_a = shapely.geometry.Point(
+            reference.origin[0], reference.origin[1])
+        point_b = shapely.geometry.Point(
+            reference.origin[0] + reference.pixel_size(30)[0] * 10,
+            reference.origin[1] + reference.pixel_size(30)[1] * 10)
+        source_vector_path = os.path.join(self.workspace_dir, 'sample_vector')
+        pygeoprocessing.testing.create_vector_on_disk(
+            [point_a, point_b], reference.projection, fields={'value': 'int'},
+            attributes=[{'value': 0}, {'value': 1}], vector_format='GeoJSON',
+            filename=source_vector_path)
         # construct a raster
+        pixel_matrix = numpy.ones((10, 10), numpy.float32)
+        nodata_target = -1
+        base_path = os.path.join(self.workspace_dir, 'base.tif')
+        pygeoprocessing.testing.create_raster_on_disk(
+            [pixel_matrix], reference.origin, reference.projection,
+            nodata_target, reference.pixel_size(30), filename=base_path)
+
+        # interpolate
+        pygeoprocessing.interpolate_points(
+            source_vector_path, 'value', (base_path, 1), 'nearest')
+
         # verify that result is expected
+        base_raster = gdal.Open(base_path)
+        base_band = base_raster.GetRasterBand(1)
+        base_array = base_band.ReadAsArray()
+        base_band = None
+        base_raster = None
+        print base_array
+
         self.fail()
 
     def test_invoke_timed_callback(self):
