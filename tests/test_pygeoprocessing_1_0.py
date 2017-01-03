@@ -201,10 +201,13 @@ class PyGeoprocessing10(unittest.TestCase):
             for char in ['a', 'b']]
 
         resample_method_list = ['nearest'] * 2
+        # format is xmin,ymin,xmax,ymax; since y pixel size is negative it
+        # goes first in the following bounding box construction
         bounding_box_mode = 'bb=[%d,%d,%d,%d]' % (
-            reference.origin[0], reference.origin[1],
+            reference.origin[0],
+            reference.origin[1] + reference.pixel_size(30)[1] * 5,
             reference.origin[0] + reference.pixel_size(30)[0] * 5,
-            reference.origin[1] + reference.pixel_size(30)[1] * 5)
+            reference.origin[1])
 
         base_a_raster_info = pygeoprocessing.get_raster_info(base_a_path)
 
@@ -219,6 +222,8 @@ class PyGeoprocessing10(unittest.TestCase):
         target_raster = gdal.Open(target_raster_path_list[0])
         target_band = target_raster.GetRasterBand(1)
         target_array = target_band.ReadAsArray()
+        target_band = None
+        target_raster = None
         numpy.testing.assert_array_equal(pixel_a_matrix, target_array)
 
     def test_raster_calculator(self):
