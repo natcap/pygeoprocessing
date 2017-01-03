@@ -26,7 +26,9 @@ class PyGeoprocessing10(unittest.TestCase):
 
     def test_interpolate_points(self):
         """PGP.geoprocessing: test interpolate points feature."""
-
+        # construct a point shapefile
+        # construct a raster
+        # verify that result is expected
         self.fail()
 
     def test_invoke_timed_callback(self):

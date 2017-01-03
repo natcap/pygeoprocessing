@@ -582,15 +582,16 @@ def interpolate_points(
     """Interpolate point values onto an existing raster.
 
     Parameters:
-        source_vector_path (string):
+        source_vector_path (string): path to a shapefile that contains point
+            vector layers.
         vector_attribute_field (field): a string in the vector referenced at
             `source_vector_path` that refers to a numeric value in the
             vector's attribute table.  This is the value that will be
             interpolated across the raster.
-        target_raster_path (tuple): a path/band number tuple to an existing
-            raster which likely intersects or is nearby the source vector.
-            The band in this raster will take on the interpolated numerical
-            values  provided at each point.
+        target_raster_path_band (tuple): a path/band number tuple to an
+            existing raster which likely intersects or is nearby the source
+            vector. The band in this raster will take on the interpolated
+            numerical values  provided at each point.
         interpolation_mode (string): the interpolation method to use for
             scipy.interpolate.griddata, one of 'linear', nearest', or 'cubic'.
 
