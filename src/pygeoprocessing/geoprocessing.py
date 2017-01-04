@@ -284,10 +284,11 @@ def align_and_resize_raster_stack(
             str(bounding_box_mode)))
 
     if ((raster_align_index is not None) and
-            (0 > raster_align_index >= len(base_raster_path_list))):
+            ((raster_align_index < 0) or
+             (raster_align_index >= len(base_raster_path_list)))):
         raise ValueError(
             "Alignment index is out of bounds of the datasets index: %s"
-            "n_elements %s" % (
+            " n_elements %s" % (
                 raster_align_index, len(base_raster_path_list)))
 
     raster_info_list = [
