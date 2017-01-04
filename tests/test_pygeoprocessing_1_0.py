@@ -522,11 +522,18 @@ class PyGeoprocessing10(unittest.TestCase):
             filename=base_path,
             dataset_opts=['PIXELTYPE=SIGNEDBYTE'])
 
-        base_raster = gdal.Open(base_path)
-        base_band = base_raster.GetRasterBand(1)
-        base_matrix = base_band.ReadAsArray()
-        base_band = None
-        base_raster = None
+        target_path = os.path.join(self.workspace_dir, 'target.tif')
+        # 255 should convert to -1 with signed bytes
+        pygeoprocessing.new_raster_from_base(
+            base_path, target_path, gdal.GDT_Byte, [-1],
+            fill_value_list=[255],
+            gtiff_creation_options=['PIXELTYPE=SIGNEDBYTE'])
+
+        target_raster = gdal.Open(target_path)
+        target_band = target_raster.GetRasterBand(1)
+        target_matrix = target_band.ReadAsArray()
+        target_band = None
+        target_raster = None
         # we expect a negative result even though we put in a positive because
         # we know signed bytes will convert
-        self.assertEqual(base_matrix[0, 0], -1)
+        self.assertEqual(target_matrix[0, 0], -1)
