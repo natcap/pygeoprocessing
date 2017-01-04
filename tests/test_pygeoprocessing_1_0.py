@@ -278,6 +278,24 @@ class PyGeoprocessing10(unittest.TestCase):
             gdal.GDT_Int32, nodata_target, calc_raster_stats=True)
         pygeoprocessing.testing.assert_rasters_equal(base_path, target_path)
 
+    def test_raster_calculator_nodata(self):
+        """PGP.geoprocessing: raster_calculator test with all nodata."""
+        pixel_matrix = numpy.empty((5, 5), numpy.int16)
+        reference = sampledata.SRS_COLOMBIA
+        nodata_target = -1
+        pixel_matrix[:] = nodata_target
+        base_path = os.path.join(self.workspace_dir, 'base.tif')
+        pygeoprocessing.testing.create_raster_on_disk(
+            [pixel_matrix], reference.origin, reference.projection,
+            nodata_target, reference.pixel_size(30), filename=base_path)
+
+        target_path = os.path.join(
+            self.workspace_dir, 'target.tif')
+        pygeoprocessing.raster_calculator(
+            [(base_path, 1)], lambda x: x, target_path,
+            gdal.GDT_Int32, nodata_target, calc_raster_stats=True)
+        pygeoprocessing.testing.assert_rasters_equal(base_path, target_path)
+
     def test_rs_calculator_output_alias(self):
         """PGP.geoprocessing: rs_calculator expected error for aliasing."""
         pixel_matrix = numpy.ones((5, 5), numpy.int16)
