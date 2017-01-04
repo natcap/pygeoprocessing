@@ -468,52 +468,26 @@ def new_raster_from_base(
     target_raster = None
 
 
-def create_raster_from_vector_extents_uri(
-        shapefile_uri, pixel_size, gdal_format, nodata_out_value, output_uri):
-    """Create a blank raster based on a vector file extent.
-
-    A wrapper for create_raster_from_vector_extents
-
-    Args:
-        shapefile_uri (string): uri to an OGR datasource to use as the extents
-            of the raster
-        pixel_size: size of output pixels in the projected units of
-            shapefile_uri
-        gdal_format: the raster pixel format, something like
-            gdal.GDT_Float32
-        nodata_out_value: the output nodata value
-        output_uri (string): the URI to write the gdal dataset
-
-    Returns:
-        dataset (gdal.Dataset): gdal dataset
-    """
-    datasource = ogr.Open(shapefile_uri)
-    create_raster_from_vector_extents(
-        pixel_size, pixel_size, gdal_format, nodata_out_value, output_uri,
-        datasource)
-
-
 def create_raster_from_vector_extents(
-        xRes, yRes, format, nodata, rasterFile, shp):
+        x_res, y_res, pixel_format, nodata, raster_path, shp):
     """Create a blank raster based on a vector file extent.
 
     This code is adapted from http://trac.osgeo.org/gdal/wiki/FAQRaster#HowcanIcreateablankrasterbasedonavectorfilesextentsforusewithgdal_rasterizeGDAL1.8.0
 
     Args:
-        xRes: the x size of a pixel in the output dataset must be a
+        x_res: the x size of a pixel in the output dataset must be a
             positive value
-        yRes: the y size of a pixel in the output dataset must be a
+        y_res: the y size of a pixel in the output dataset must be a
             positive value
-        format: gdal GDT pixel type
+        pixel_format: gdal GDT pixel type
         nodata: the output nodata value
-        rasterFile (string): URI to file location for raster
+        raster_path (string): path to location of output tiff
         shp: vector shapefile to base extent of output raster on
 
     Returns:
         raster: blank raster whose bounds fit within `shp`s bounding box
             and features are equivalent to the passed in data
     """
-
     # Determine the width and height of the tiff in pixels based on the
     # maximum size of the combined envelope of all the features
     shp_extent = None
@@ -545,23 +519,19 @@ def create_raster_from_vector_extents(
                 # this feature won't contribute
                 LOGGER.warn(e)
 
-    tiff_width = int(numpy.ceil(abs(shp_extent[1] - shp_extent[0]) / xRes))
-    tiff_height = int(numpy.ceil(abs(shp_extent[3] - shp_extent[2]) / yRes))
+    tiff_width = int(numpy.ceil(abs(shp_extent[1] - shp_extent[0]) / x_res))
+    tiff_height = int(numpy.ceil(abs(shp_extent[3] - shp_extent[2]) / y_res))
 
-    if rasterFile is not None:
-        driver = gdal.GetDriverByName('GTiff')
-    else:
-        rasterFile = ''
-        driver = gdal.GetDriverByName('MEM')
+    driver = gdal.GetDriverByName('GTiff')
     # 1 means only create 1 band
     raster = driver.Create(
-        rasterFile, tiff_width, tiff_height, 1, format,
+        raster_path, tiff_width, tiff_height, 1, pixel_format,
         options=['BIGTIFF=IF_SAFER'])
     raster.GetRasterBand(1).SetNoDataValue(nodata)
 
     # Set the transform based on the upper left corner and given pixel
     # dimensions
-    raster_transform = [shp_extent[0], xRes, 0.0, shp_extent[3], 0.0, -yRes]
+    raster_transform = [shp_extent[0], x_res, 0.0, shp_extent[3], 0.0, -y_res]
     raster.SetGeoTransform(raster_transform)
 
     # Use the same projection on the raster as the shapefile
