@@ -537,3 +537,21 @@ class PyGeoprocessing10(unittest.TestCase):
         # we expect a negative result even though we put in a positive because
         # we know signed bytes will convert
         self.assertEqual(target_matrix[0, 0], -1)
+
+    def test_calculate_raster_stats_empty(self):
+        """PGP.geoprocessing: test empty rasters don't calculate stats."""
+        pixel_matrix = numpy.ones((5, 5), numpy.byte)
+        pixel_matrix[0, 0] = 255  # 255 ubyte is -1 byte
+        reference = sampledata.SRS_COLOMBIA
+        nodata_base = -1
+        pixel_matrix[:] = nodata_base
+        base_path = os.path.join(self.workspace_dir, 'base.tif')
+        pygeoprocessing.testing.create_raster_on_disk(
+            [pixel_matrix], reference.origin, reference.projection,
+            nodata_base, reference.pixel_size(30), datatype=gdal.GDT_Byte,
+            filename=base_path, dataset_opts=['PIXELTYPE=SIGNEDBYTE'])
+
+        # this used to cause an error to be printed, now it won't though it
+        # doesn't bother setting any values in the raster
+        pygeoprocessing.calculate_raster_stats(base_path)
+        self.assertTrue(True)
