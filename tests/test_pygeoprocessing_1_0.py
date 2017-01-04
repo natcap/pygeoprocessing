@@ -221,6 +221,64 @@ class PyGeoprocessing10(unittest.TestCase):
                 target_raster_info['pixel_size'],
                 base_a_raster_info['pixel_size'])
 
+    def test_align_and_resize_raster_stack_int_with_vectors(self):
+        """PGP.geoprocessing: align/resize raster test inters. w/ vectors."""
+        pixel_a_matrix = numpy.ones((5, 5), numpy.int16)
+        reference = sampledata.SRS_COLOMBIA
+        nodata_target = -1
+        base_a_path = os.path.join(self.workspace_dir, 'base_a.tif')
+        pygeoprocessing.testing.create_raster_on_disk(
+            [pixel_a_matrix], reference.origin, reference.projection,
+            nodata_target, reference.pixel_size(30), filename=base_a_path)
+
+        pixel_b_matrix = numpy.ones((15, 15), numpy.int16)
+        reference = sampledata.SRS_COLOMBIA
+        nodata_target = -1
+        base_b_path = os.path.join(self.workspace_dir, 'base_b.tif')
+        pygeoprocessing.testing.create_raster_on_disk(
+            [pixel_b_matrix], reference.origin, reference.projection,
+            nodata_target, reference.pixel_size(60), filename=base_b_path)
+
+        base_raster_path_list = [base_a_path, base_b_path]
+        target_raster_path_list = [
+            os.path.join(self.workspace_dir, 'target_%s.tif' % char)
+            for char in ['a', 'b']]
+
+        resample_method_list = ['nearest'] * 2
+        bounding_box_mode = 'intersection'
+
+        base_a_raster_info = pygeoprocessing.get_raster_info(base_a_path)
+
+        # make a vector whose bounding box is 1 pixel large
+        point_a = shapely.geometry.Point(
+            reference.origin[0], reference.origin[1])
+        point_b = shapely.geometry.Point(
+            reference.origin[0] + reference.pixel_size(30)[0],
+            reference.origin[1] + reference.pixel_size(30)[1])
+        single_pixel_path = os.path.join(self.workspace_dir, 'single_pixel')
+        pygeoprocessing.testing.create_vector_on_disk(
+            [point_a, point_b], reference.projection, fields={'value': 'int'},
+            attributes=[{'value': 0}, {'value': 1}], vector_format='GeoJSON',
+            filename=single_pixel_path)
+
+        pygeoprocessing.align_and_resize_raster_stack(
+            base_raster_path_list, target_raster_path_list,
+            resample_method_list,
+            base_a_raster_info['pixel_size'], bounding_box_mode,
+            raster_align_index=0, base_vector_path_list=[single_pixel_path])
+
+        expected_matrix = numpy.ones((1, 1), numpy.int16)
+        for raster_index in xrange(2):
+            target_raster_info = pygeoprocessing.get_raster_info(
+                target_raster_path_list[raster_index])
+            target_raster = gdal.Open(target_raster_path_list[raster_index])
+            target_band = target_raster.GetRasterBand(1)
+            target_array = target_band.ReadAsArray()
+            numpy.testing.assert_array_equal(expected_matrix, target_array)
+            self.assertEqual(
+                target_raster_info['pixel_size'],
+                base_a_raster_info['pixel_size'])
+
     def test_align_and_resize_raster_stack_union(self):
         """PGP.geoprocessing: align/resize raster test union."""
         pixel_a_matrix = numpy.ones((5, 5), numpy.int16)
