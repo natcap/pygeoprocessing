@@ -234,9 +234,6 @@ def align_and_resize_raster_stack(
         base_raster_path_list (list): a list of base raster paths that will
             be transformed and will be used to determine the target bounding
             box.
-        base_vector_path_list (list): a list of base vector paths that will
-            be used to determine the target bounding box depending on
-            the bounding box mode.
         target_raster_path_list (list): a list of raster paths that will be
             created to one-to-one map with `base_raster_path_list` as aligned
             versions of those original rasters.
@@ -244,19 +241,25 @@ def align_and_resize_raster_stack(
             one to one map each path in `base_raster_path_list` during
             resizing.  Each element must be one of
             "nearest|bilinear|cubic|cubic_spline|lanczos".
-        target_pixel_size (tuple): the target raster's x and y pixel size.
+        target_pixel_size (tuple): the target raster's x and y pixel size
+            example: [30, -30].
         bounding_box_mode (string): one of "union", "intersection", or
             "bb=[minx,miny,maxx,maxy]" which defines how the output output
             extents are defined as the union or intersection of the base
             raster and vectors' bounding boxes, or to have a user defined
             boudning box.
-        raster_align_index (int): if not None, then refers to the index of a
+        base_vector_path_list (list): a list of base vector paths whose
+            bounding boxes will be used to determine the final bounding box
+            of the raster stack if mode is 'union' or 'intersection'.  If mode
+            is 'bb=[...]' then these vectors are not used in any calculation.
+        raster_align_index (int): indicates the index of a
             raster in `base_raster_path_list` that the target rasters'
-            bounding boxes should perfectly align to.  This feature allows
+            bounding boxes pixels should align with.  This feature allows
             rasters whose raster dimensions are the same, but bounding boxes
-            slightly shifted less than a pixel size to align with.  If `None`
-            then the bounding box of the target rasters is calculated as the
-            precise intersection, union, or bounding box.
+            slightly shifted less than a pixel size to align with a desired
+            grid layout.  If `None` then the bounding box of the target
+            rasters is calculated as the precise intersection, union, or
+            bounding box.
         gtiff_creation_options (list): list of strings that will be passed
             as GDAL "dataset" creation options to the GTIFF driver, or ignored
             if None.
