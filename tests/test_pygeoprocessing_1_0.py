@@ -278,6 +278,17 @@ class PyGeoprocessing10(unittest.TestCase):
             gdal.GDT_Int32, nodata_target, calc_raster_stats=True)
         pygeoprocessing.testing.assert_rasters_equal(base_path, target_path)
 
+    def test_raster_calculator_no_path(self):
+        """PGP.geoprocessing: raster_calculator raise ex. on bad file path."""
+        nodata_target = -1
+        nonexistant_path = os.path.join(self.workspace_dir, 'nofile.tif')
+        target_path = os.path.join(
+            self.workspace_dir, 'target.tif')
+        with self.assertRaises(ValueError):
+            pygeoprocessing.raster_calculator(
+                [(nonexistant_path, 1)], lambda x: x, target_path,
+                gdal.GDT_Int32, nodata_target, calc_raster_stats=True)
+
     def test_raster_calculator_nodata(self):
         """PGP.geoprocessing: raster_calculator test with all nodata."""
         pixel_matrix = numpy.empty((5, 5), numpy.int16)
