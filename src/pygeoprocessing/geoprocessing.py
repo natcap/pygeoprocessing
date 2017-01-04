@@ -282,8 +282,6 @@ def align_and_resize_raster_stack(
             "resample_method_list must be the same length "
             " current lengths are %s" % (str(list_lengths)))
 
-    LOGGER.debug(bounding_box_mode)
-    LOGGER.debug(type(bounding_box_mode))
     float_re = r'[-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?'
     # regular expression to match a float
     if bounding_box_mode not in ["union", "intersection"] and not re.match(
@@ -1368,7 +1366,6 @@ def warp_raster(
         target_geotransform[0] = target_bb[2]
     if target_pixel_size[1] < 0:
         target_geotransform[3] = target_bb[3]
-    print target_geotransform
     target_x_size = abs(int(numpy.round(
         (target_bb[2] - target_bb[0]) / target_pixel_size[0])))
     target_y_size = abs(int(numpy.round(
