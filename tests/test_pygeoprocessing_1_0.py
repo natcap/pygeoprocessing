@@ -508,3 +508,25 @@ class PyGeoprocessing10(unittest.TestCase):
                 [(base_path_a, 1), (base_path_b, 1)], lambda x: x,
                 target_path, gdal.GDT_Int32, nodata_base,
                 gtiff_creation_options=None, calc_raster_stats=True)
+
+    def test_new_raster_from_base_unsigned_byte(self):
+        """PGP.geoprocessing: test that signed byte rasters copy over."""
+        pixel_matrix = numpy.ones((5, 5), numpy.byte)
+        pixel_matrix[0, 0] = 255  # 255 ubyte is -1 byte
+        reference = sampledata.SRS_COLOMBIA
+        nodata_base = -1
+        base_path = os.path.join(self.workspace_dir, 'base.tif')
+        pygeoprocessing.testing.create_raster_on_disk(
+            [pixel_matrix], reference.origin, reference.projection,
+            nodata_base, reference.pixel_size(30), datatype=gdal.GDT_Byte,
+            filename=base_path,
+            dataset_opts=['PIXELTYPE=SIGNEDBYTE'])
+
+        base_raster = gdal.Open(base_path)
+        base_band = base_raster.GetRasterBand(1)
+        base_matrix = base_band.ReadAsArray()
+        base_band = None
+        base_raster = None
+        # we expect a negative result even though we put in a positive because
+        # we know signed bytes will convert
+        self.assertEqual(base_matrix[0, 0], -1)

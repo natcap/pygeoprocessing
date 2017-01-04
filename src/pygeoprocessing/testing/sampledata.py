@@ -57,6 +57,7 @@ OGR_DRIVERS = sorted([ogr.GetDriver(i).GetName()
 # Helpful for debug messages, used when creating sample rasters.
 DTYPES = [
     (numpy.byte, gdal.GDT_Byte),
+    (numpy.ubyte, gdal.GDT_Byte),
     (numpy.uint16, gdal.GDT_UInt16),
     (numpy.uint32, gdal.GDT_UInt32),
     (numpy.int16, gdal.GDT_Int16),
