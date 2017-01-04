@@ -29,36 +29,40 @@ class PyGeoprocessing10(unittest.TestCase):
         # construct a point shapefile
         reference = sampledata.SRS_COLOMBIA
         point_a = shapely.geometry.Point(
-            reference.origin[0], reference.origin[1])
+            reference.origin[0] + reference.pixel_size(30)[0] * 9 / 2,
+            reference.origin[1])
         point_b = shapely.geometry.Point(
-            reference.origin[0] + reference.pixel_size(30)[0] * 10,
-            reference.origin[1] + reference.pixel_size(30)[1] * 10)
+            reference.origin[0] + reference.pixel_size(30)[0] * 9 / 2,
+            reference.origin[1] + reference.pixel_size(30)[1] * 9)
         source_vector_path = os.path.join(self.workspace_dir, 'sample_vector')
         pygeoprocessing.testing.create_vector_on_disk(
             [point_a, point_b], reference.projection, fields={'value': 'int'},
             attributes=[{'value': 0}, {'value': 1}], vector_format='GeoJSON',
             filename=source_vector_path)
         # construct a raster
-        pixel_matrix = numpy.ones((10, 10), numpy.float32)
+        pixel_matrix = numpy.ones((9, 9), numpy.float32)
         nodata_target = -1
-        base_path = os.path.join(self.workspace_dir, 'base.tif')
+        result_path = os.path.join(self.workspace_dir, 'result.tif')
         pygeoprocessing.testing.create_raster_on_disk(
             [pixel_matrix], reference.origin, reference.projection,
-            nodata_target, reference.pixel_size(30), filename=base_path)
+            nodata_target, reference.pixel_size(30), filename=result_path)
 
         # interpolate
         pygeoprocessing.interpolate_points(
-            source_vector_path, 'value', (base_path, 1), 'nearest')
+            source_vector_path, 'value', (result_path, 1), 'nearest')
 
         # verify that result is expected
-        base_raster = gdal.Open(base_path)
-        base_band = base_raster.GetRasterBand(1)
-        base_array = base_band.ReadAsArray()
-        base_band = None
-        base_raster = None
-        print base_array
+        result_raster = gdal.Open(result_path)
+        result_band = result_raster.GetRasterBand(1)
+        result_array = result_band.ReadAsArray()
+        result_band = None
+        result_raster = None
 
-        self.fail()
+        # we expect the first 4 rows to be 0, then the last ones to be 1
+        expected_result = numpy.ones((9, 9), numpy.float32)
+        expected_result[:5, :] = 0
+
+        numpy.testing.assert_array_equal(result_array, expected_result)
 
     def test_invoke_timed_callback(self):
         """PGP.geoprocessing: cover a timed callback."""
