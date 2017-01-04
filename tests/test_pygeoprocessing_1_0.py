@@ -574,10 +574,10 @@ class PyGeoprocessing10(unittest.TestCase):
         # 255 should convert to -1 with signed bytes
         pygeoprocessing.new_raster_from_base(
             base_path, target_path, gdal.GDT_Byte, [None],
-            fill_value_list=[255],
+            fill_value_list=[None],
             gtiff_creation_options=[
                 'PIXELTYPE=SIGNEDBYTE',
                 ])
 
         raster_properties = pygeoprocessing.get_raster_info(target_path)
-        print raster_properties
+        self.assertEqual(raster_properties['nodata'], [None])
