@@ -308,7 +308,7 @@ class PyGeoprocessing10(unittest.TestCase):
         base_path_b = os.path.join(self.workspace_dir, 'base_b.tif')
         pygeoprocessing.testing.create_raster_on_disk(
             [pixel_matrix_b], reference.origin, reference.projection,
-            nodata_base, reference.pixel_size(30), filename=base_path_a)
+            nodata_base, reference.pixel_size(30), filename=base_path_b)
 
         target_path = os.path.join(self.workspace_dir, 'target.tif')
         with self.assertRaises(ValueError):
