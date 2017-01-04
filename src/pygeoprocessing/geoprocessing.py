@@ -186,6 +186,8 @@ def raster_calculator(
         if calc_raster_stats:
             valid_mask = target_block != nodata_target
             valid_block = target_block[valid_mask]
+            if valid_block.size == 0:
+                continue
             target_sum += numpy.sum(valid_block)
             if target_min is None:
                 target_min = numpy.min(valid_block)
