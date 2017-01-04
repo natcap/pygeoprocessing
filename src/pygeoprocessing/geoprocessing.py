@@ -357,27 +357,64 @@ def align_and_resize_raster_stack(
             gtiff_creation_options=gtiff_creation_options)
 
 
-def calculate_raster_stats(dataset_path):
-    """Calculate min, max, stdev, and mean for all bands in dataset.
+def calculate_raster_stats(raster_path):
+    """Calculate and set min, max, stdev, and mean for all bands in raster.
 
     Args:
-        dataset_path (string): a path to a GDAL raster dataset that will be
+        raster_path (string): a path to a GDAL raster raster that will be
             modified by having its band statistics set
 
     Returns:
         None
     """
+    raster = gdal.Open(raster_path, gdal.GA_Update)
+    raster_properties = get_raster_info(raster_path)
+    for band_index in xrange(raster.RasterCount):
+        for _, target_block in iterblocks(
+                raster_path, band_list=[band_index+1]):
+            nodata_target = raster_properties['nodata'][band_index]
+            target_min = None
+            target_max = None
+            target_n = None
+            target_sum = 0.0
+            valid_mask = target_block != nodata_target
+            valid_block = target_block[valid_mask]
+            if valid_block.size == 0:
+                continue
+            target_sum += numpy.sum(valid_block)
+            if target_min is None:
+                target_min = numpy.min(valid_block)
+            else:
+                target_min = min(numpy.min(valid_block), target_min)
+            if target_max is None:
+                target_max = numpy.max(valid_block)
+            else:
+                target_max = max(numpy.max(valid_block), target_max)
+            if target_n is None:
+                target_n = numpy.sum(valid_block.size)
+            else:
+                target_n += numpy.sum(valid_block.size)
 
-    dataset = gdal.Open(dataset_path, gdal.GA_Update)
+        if target_min is not None:
+            target_mean = target_sum / float(target_n)
+            stdev_sum = 0.0
+            for _, target_block in iterblocks(
+                    raster_path, band_list=[band_index+1]):
+                valid_mask = target_block != nodata_target
+                valid_block = target_block[valid_mask]
+                stdev_sum += numpy.sum((valid_block - target_mean) ** 2)
+            target_stddev = (stdev_sum / float(target_n)) ** 0.5
 
-    for band_number in range(dataset.RasterCount):
-        band = dataset.GetRasterBand(band_number + 1)
-        band.ComputeStatistics(False)
-
-    # Close and clean up dataset
-    band = None
-    gdal.Dataset.__swig_destroy__(dataset)
-    dataset = None
+            target_band = raster.GetRasterBand(band_index+1)
+            target_band.SetStatistics(
+                float(target_min), float(target_max), float(target_mean),
+                float(target_stddev))
+            target_band = None
+        else:
+            LOGGER.warn(
+                "Stats no calculated for %s since no non-nodata pixels were "
+                "found.", raster_path)
+    raster = None
 
 
 def new_raster_from_base(
