@@ -285,8 +285,6 @@ def align_and_resize_raster_stack(
     LOGGER.debug(bounding_box_mode)
     LOGGER.debug(type(bounding_box_mode))
     float_re = r'[-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?'
-    LOGGER.debug(
-        re.match(r'bb=\[%s,%s,%s,%s\]' % ((float_re,)*4), bounding_box_mode))
     # regular expression to match a float
     if bounding_box_mode not in ["union", "intersection"] and not re.match(
             r'bb=\[%s,%s,%s,%s\]' % ((float_re,)*4), bounding_box_mode):
@@ -315,12 +313,10 @@ def align_and_resize_raster_stack(
         target_bounding_box = [float(x) for x in bb_match.groups()]
     else:
         # either intersection or union
-        print ([info['bounding_box'] for info in (raster_info_list + vector_info_list)])
         target_bounding_box = reduce(
             functools.partial(_merge_bounding_boxes, mode=bounding_box_mode),
             [info['bounding_box'] for info in
              (raster_info_list + vector_info_list)])
-        print target_bounding_box
 
     if bounding_box_mode == "intersection" and (
             target_bounding_box[0] > target_bounding_box[2] or
@@ -351,7 +347,6 @@ def align_and_resize_raster_stack(
             last_time, lambda: LOGGER.info(
                 "align_dataset_list aligning dataset %d of %d",
                 index, len(base_raster_path_list)), _LOGGING_PERIOD)
-        print target_bounding_box
         warp_raster(
             base_path, target_pixel_size,
             target_path, resample_method,
