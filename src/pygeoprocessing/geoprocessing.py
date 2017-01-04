@@ -153,7 +153,7 @@ def raster_calculator(
     target_min = None
     target_max = None
     target_sum = 0.0
-    target_n = None
+    target_n = 0
     target_mean = None
     target_stddev = None
     for block_offset in iterblocks(
@@ -188,19 +188,13 @@ def raster_calculator(
             valid_block = target_block[valid_mask]
             if valid_block.size == 0:
                 continue
-            target_sum += numpy.sum(valid_block)
             if target_min is None:
-                target_min = numpy.min(valid_block)
-            else:
-                target_min = min(numpy.min(valid_block), target_min)
-            if target_max is None:
-                target_max = numpy.max(valid_block)
-            else:
-                target_max = max(numpy.max(valid_block), target_max)
-            if target_n is None:
-                target_n = numpy.sum(valid_block.size)
-            else:
-                target_n += numpy.sum(valid_block.size)
+                # initialize first min/max
+                target_min = target_max = valid_block[0]
+            target_sum += numpy.sum(valid_block)
+            target_min = min(numpy.min(valid_block), target_min)
+            target_max = max(numpy.max(valid_block), target_max)
+            target_n += valid_block.size
 
     # Making sure the band and dataset is flushed and not in memory before
     # adding stats
@@ -365,30 +359,24 @@ def calculate_raster_stats(raster_path):
     raster = gdal.Open(raster_path, gdal.GA_Update)
     raster_properties = get_raster_info(raster_path)
     for band_index in xrange(raster.RasterCount):
+        target_min = None
+        target_max = None
+        target_n = 0
+        target_sum = 0.0
         for _, target_block in iterblocks(
                 raster_path, band_list=[band_index+1]):
             nodata_target = raster_properties['nodata'][band_index]
-            target_min = None
-            target_max = None
-            target_n = None
-            target_sum = 0.0
             valid_mask = target_block != nodata_target
             valid_block = target_block[valid_mask]
             if valid_block.size == 0:
                 continue
-            target_sum += numpy.sum(valid_block)
             if target_min is None:
-                target_min = numpy.min(valid_block)
-            else:
-                target_min = min(numpy.min(valid_block), target_min)
-            if target_max is None:
-                target_max = numpy.max(valid_block)
-            else:
-                target_max = max(numpy.max(valid_block), target_max)
-            if target_n is None:
-                target_n = numpy.sum(valid_block.size)
-            else:
-                target_n += numpy.sum(valid_block.size)
+                # initialize first min/max
+                target_min = target_max = valid_block[0]
+            target_sum += numpy.sum(valid_block)
+            target_min = min(numpy.min(valid_block), target_min)
+            target_max = max(numpy.max(valid_block), target_max)
+            target_n += valid_block.size
 
         if target_min is not None:
             target_mean = target_sum / float(target_n)
@@ -407,8 +395,8 @@ def calculate_raster_stats(raster_path):
             target_band = None
         else:
             LOGGER.warn(
-                "Stats no calculated for %s since no non-nodata pixels were "
-                "found.", raster_path)
+                "Stats not calculated for %s band %d since no non-nodata "
+                "pixels were found.", raster_path, band_index+1)
     raster = None
 
 
