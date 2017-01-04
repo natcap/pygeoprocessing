@@ -2071,8 +2071,8 @@ def transform_bounding_box(
             system describing the bound in the order [xmin, ymin, xmax, ymax]
         base_ref_wkt (string): the spatial reference of the input coordinate
             system in Well Known Text.
-        new_ref_wkt (string): the EPSG code of the desired output coordinate
-            system in Well Known Text.
+        new_ref_wkt (string): the spatial reference of the desired output
+            coordinate system in Well Known Text.
         edge_samples (int): the number of interpolated points along each
             bounding box edge to sample along. A value of 2 will sample just
             the corners while a value of 3 will also sample the corners and
