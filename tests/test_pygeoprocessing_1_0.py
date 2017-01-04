@@ -511,7 +511,7 @@ class PyGeoprocessing10(unittest.TestCase):
 
     def test_new_raster_from_base_unsigned_byte(self):
         """PGP.geoprocessing: test that signed byte rasters copy over."""
-        pixel_matrix = numpy.ones((5, 5), numpy.byte)
+        pixel_matrix = numpy.ones((128, 128), numpy.byte)
         pixel_matrix[0, 0] = 255  # 255 ubyte is -1 byte
         reference = sampledata.SRS_COLOMBIA
         nodata_base = -1
@@ -520,14 +520,21 @@ class PyGeoprocessing10(unittest.TestCase):
             [pixel_matrix], reference.origin, reference.projection,
             nodata_base, reference.pixel_size(30), datatype=gdal.GDT_Byte,
             filename=base_path,
-            dataset_opts=['PIXELTYPE=SIGNEDBYTE'])
+            dataset_opts=[
+                'PIXELTYPE=SIGNEDBYTE',
+                'TILED=YES',
+                'BLOCKXSIZE=64',
+                'BLOCKYSIZE=64',
+                ])
 
         target_path = os.path.join(self.workspace_dir, 'target.tif')
         # 255 should convert to -1 with signed bytes
         pygeoprocessing.new_raster_from_base(
             base_path, target_path, gdal.GDT_Byte, [-1],
             fill_value_list=[255],
-            gtiff_creation_options=['PIXELTYPE=SIGNEDBYTE'])
+            gtiff_creation_options=[
+                'PIXELTYPE=SIGNEDBYTE',
+                ])
 
         target_raster = gdal.Open(target_path)
         target_band = target_raster.GetRasterBand(1)
@@ -555,3 +562,22 @@ class PyGeoprocessing10(unittest.TestCase):
         # doesn't bother setting any values in the raster
         pygeoprocessing.calculate_raster_stats(base_path)
         self.assertTrue(True)
+
+    def test_new_raster_from_base_nodata_not_set(self):
+        """PGP.geoprocessing: test new raster with nodata not set."""
+        driver = gdal.GetDriverByName('GTiff')
+        base_path = os.path.join(self.workspace_dir, 'base.tif')
+        new_raster = driver.Create(base_path, 128, 128, 1, gdal.GDT_Int32)
+        new_raster = None
+
+        target_path = os.path.join(self.workspace_dir, 'target.tif')
+        # 255 should convert to -1 with signed bytes
+        pygeoprocessing.new_raster_from_base(
+            base_path, target_path, gdal.GDT_Byte, [None],
+            fill_value_list=[255],
+            gtiff_creation_options=[
+                'PIXELTYPE=SIGNEDBYTE',
+                ])
+
+        raster_properties = pygeoprocessing.get_raster_info(target_path)
+        print raster_properties
