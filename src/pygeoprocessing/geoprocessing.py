@@ -61,7 +61,8 @@ _RESAMPLE_DICT = {
 
 def raster_calculator(
         base_raster_path_band_list, local_op, target_raster_path,
-        datatype_target, nodata_target, gtiff_creation_options=(),
+        datatype_target, nodata_target,
+        gtiff_creation_options=_DEFAULT_GTIFF_CREATION_OPTIONS,
         calc_raster_stats=True):
     """Apply local a raster operation on a stack of rasters.
 
@@ -88,7 +89,7 @@ def raster_calculator(
             target raster.
         gtiff_creation_options (list): this is an argument list that will be
             passed to the GTiff driver.  Useful for blocksizes, compression,
-            etc.
+            and more.
         calculate_raster_stats (boolean): If True, calculates and sets raster
             statistics (min, max, mean, and stdev) for target raster.
 
@@ -407,7 +408,7 @@ def calculate_raster_stats(raster_path):
 def new_raster_from_base(
         base_path, target_path, datatype, nodata_list, n_bands=1,
         fill_value_list=None, n_rows=None, n_cols=None,
-        gtiff_creation_options=()):
+        gtiff_creation_options=_DEFAULT_GTIFF_CREATION_OPTIONS):
     """Create new geotiff by coping spatial reference/geotransform of base.
 
     A wrapper for the function new_raster_from_base that opens up
@@ -493,81 +494,96 @@ def new_raster_from_base(
 
 
 def create_raster_from_vector_extents(
-        x_res, y_res, pixel_format, nodata, raster_path, shp):
+        source_vector_path, target_raster_path, target_pixel_size,
+        target_pixel_type, target_nodata, fill_value=None,
+        gtiff_creation_options=_DEFAULT_GTIFF_CREATION_OPTIONS):
     """Create a blank raster based on a vector file extent.
 
-    This code is adapted from http://trac.osgeo.org/gdal/wiki/FAQRaster#HowcanIcreateablankrasterbasedonavectorfilesextentsforusewithgdal_rasterizeGDAL1.8.0
-
-    Args:
-        x_res: the x size of a pixel in the output dataset must be a
-            positive value
-        y_res: the y size of a pixel in the output dataset must be a
-            positive value
-        pixel_format: gdal GDT pixel type
-        nodata: the output nodata value
-        raster_path (string): path to location of output tiff
-        shp: vector shapefile to base extent of output raster on
+    Parameters:
+        source_vector_path (string): path to vector shapefile to base the
+            bounding box for the target raster.
+        target_raster_path (string): path to location of generated geotiff;
+            the upper left hand corner of this raster will be aligned with the
+            bounding box of the source vector and the extent will be exactly
+            equal or contained the source vector's bounding box depending on
+            whether the pixel size divides evenly into the source bounding
+            box; if not coordinates will be rounded up to contain the original
+            extent.
+        target_pixel_size (list): the x/y pixel size as a list [30.0, -30.0]
+        target_pixel_type (int): gdal GDT pixel type of target raster
+        target_nodata: target nodata value
+        fill_value (int/float): value to fill in the target raster; no fill if
+            value is None
+        gtiff_creation_options (list): this is an argument list that will be
+            passed to the GTiff driver.  Useful for blocksizes, compression,
+            and more.
 
     Returns:
-        raster: blank raster whose bounds fit within `shp`s bounding box
-            and features are equivalent to the passed in data
+        None
     """
     # Determine the width and height of the tiff in pixels based on the
     # maximum size of the combined envelope of all the features
+    vector = ogr.Open(source_vector_path)
     shp_extent = None
-    for layer_index in range(shp.GetLayerCount()):
-        shp_layer = shp.GetLayer(layer_index)
-        for feature_index in range(shp_layer.GetFeatureCount()):
+    for layer in vector:
+        for feature in layer:
             try:
-                feature = shp_layer.GetFeature(feature_index)
-                geometry = feature.GetGeometryRef()
-
-                # feature_extent = [xmin, xmax, ymin, ymax]
-                feature_extent = geometry.GetEnvelope()
-                # This is an array based way of mapping the right function
-                # to the right index.
-                functions = [min, max, min, max]
-                for i in range(len(functions)):
-                    try:
-                        shp_extent[i] = functions[i](
-                            shp_extent[i], feature_extent[i])
-                    except TypeError:
-                        # need to cast to list because returned as a tuple
-                        # and we can't assign to a tuple's index, also need to
-                        # define this as the initial state
-                        shp_extent = list(feature_extent)
-            except AttributeError as e:
+                # envelope is [xmin, xmax, ymin, ymax]
+                feature_extent = feature.GetGeometryRef().GetEnvelope()
+                if shp_extent is None:
+                    shp_extent = list(feature_extent)
+                else:
+                    # expand bounds of current bounding box to include that
+                    # of the newest feature
+                    shp_extent = [
+                        f(shp_extent[index], feature_extent[index])
+                        for index, f in enumerate([min, max, min, max])]
+            except AttributeError as error:
                 # For some valid OGR objects the geometry can be undefined
                 # since it's valid to have a NULL entry in the attribute table
                 # this is expressed as a None value in the geometry reference
                 # this feature won't contribute
-                LOGGER.warn(e)
+                LOGGER.warn(error)
 
-    tiff_width = int(numpy.ceil(abs(shp_extent[1] - shp_extent[0]) / x_res))
-    tiff_height = int(numpy.ceil(abs(shp_extent[3] - shp_extent[2]) / y_res))
+    # round up on the rows and cols so that the target raster encloses the
+    # base vector
+    n_cols = int(numpy.ceil(
+        abs((shp_extent[1] - shp_extent[0]) / target_pixel_size[0])))
+    n_rows = int(numpy.ceil(
+        abs((shp_extent[3] - shp_extent[2]) / target_pixel_size[1])))
 
     driver = gdal.GetDriverByName('GTiff')
-    # 1 means only create 1 band
+    n_bands = 1
     raster = driver.Create(
-        raster_path, tiff_width, tiff_height, 1, pixel_format,
-        options=['BIGTIFF=IF_SAFER'])
-    raster.GetRasterBand(1).SetNoDataValue(nodata)
+        target_raster_path, n_cols, n_rows, n_bands, target_pixel_type,
+        options=gtiff_creation_options)
+    raster.GetRasterBand(1).SetNoDataValue(target_nodata)
 
     # Set the transform based on the upper left corner and given pixel
     # dimensions
-    raster_transform = [shp_extent[0], x_res, 0.0, shp_extent[3], 0.0, -y_res]
+    if target_pixel_size[0] < 0:
+        x_source = shp_extent[1]
+    else:
+        x_source = shp_extent[0]
+    if target_pixel_size[1] < 0:
+        y_source = shp_extent[3]
+    else:
+        y_source = shp_extent[2]
+    raster_transform = [
+        x_source, target_pixel_size[0], 0.0,
+        y_source, 0.0, target_pixel_size[1]]
     raster.SetGeoTransform(raster_transform)
 
     # Use the same projection on the raster as the shapefile
-    srs = osr.SpatialReference()
-    srs.ImportFromWkt(shp.GetLayer(0).GetSpatialRef().__str__())
-    raster.SetProjection(srs.ExportToWkt())
+    raster.SetProjection(vector.GetLayer(0).GetSpatialRef().ExportToWkt())
 
     # Initialize everything to nodata
-    raster.GetRasterBand(1).Fill(nodata)
-    raster.GetRasterBand(1).FlushCache()
-
-    return raster
+    if fill_value is not None:
+        band = raster.GetRasterBand(1)
+        band.Fill(fill_value)
+        band.FlushCache()
+        band = None
+    raster = None
 
 
 def interpolate_points(

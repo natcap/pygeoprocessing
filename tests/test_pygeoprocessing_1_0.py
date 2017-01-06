@@ -88,8 +88,7 @@ class PyGeoprocessing10(unittest.TestCase):
 
         pygeoprocessing.warp_raster(
             base_a_path, base_a_raster_info['pixel_size'], target_raster_path,
-            'nearest', target_sr_wkt=reference.projection,
-            gtiff_creation_options=['TILED=NO'])
+            'nearest', target_sr_wkt=reference.projection)
 
         pygeoprocessing.testing.assert_rasters_equal(
             base_a_path, target_raster_path)
@@ -581,3 +580,35 @@ class PyGeoprocessing10(unittest.TestCase):
 
         raster_properties = pygeoprocessing.get_raster_info(target_path)
         self.assertEqual(raster_properties['nodata'], [None])
+
+    def test_create_raster_from_vector_extents(self):
+        """PGP.geoprocessing: test creation of raster from vector extents."""
+        reference = sampledata.SRS_COLOMBIA
+        point_a = shapely.geometry.Point(
+            reference.origin[0], reference.origin[1])
+        mean_pixel_size = 30
+        n_pixels_x = 9
+        n_pixels_y = 19
+        point_b = shapely.geometry.Point(
+            reference.origin[0] +
+            reference.pixel_size(mean_pixel_size)[0] * n_pixels_x,
+            reference.origin[1] +
+            reference.pixel_size(mean_pixel_size)[1] * n_pixels_y)
+        source_vector_path = os.path.join(self.workspace_dir, 'sample_vector')
+        pygeoprocessing.testing.create_vector_on_disk(
+            [point_a, point_b], reference.projection, fields={'value': 'int'},
+            attributes=[{'value': 0}, {'value': 1}], vector_format='GeoJSON',
+            filename=source_vector_path)
+        target_raster_path = os.path.join(
+            self.workspace_dir, 'target_raster.tif')
+        target_pixel_size = [mean_pixel_size, -mean_pixel_size]
+        target_nodata = -1
+        target_pixel_type = gdal.GDT_Int16
+        pygeoprocessing.create_raster_from_vector_extents(
+            source_vector_path, target_raster_path, target_pixel_size,
+            target_pixel_type, target_nodata)
+
+        raster_properties = pygeoprocessing.get_raster_info(
+            target_raster_path)
+        self.assertEqual(raster_properties['raster_size'][0], n_pixels_x)
+        self.assertEqual(raster_properties['raster_size'][1], n_pixels_y)
