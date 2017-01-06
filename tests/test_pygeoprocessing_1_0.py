@@ -6,6 +6,8 @@ import unittest
 import shutil
 
 from osgeo import gdal
+from osgeo import ogr
+from osgeo import osr
 import numpy
 import pygeoprocessing
 import pygeoprocessing.testing
@@ -612,3 +614,91 @@ class PyGeoprocessing10(unittest.TestCase):
             target_raster_path)
         self.assertEqual(raster_properties['raster_size'][0], n_pixels_x)
         self.assertEqual(raster_properties['raster_size'][1], n_pixels_y)
+
+    def test_create_raster_from_vector_extents_odd_pixel_shapes(self):
+        """PGP.geoprocessing: create raster vector ext. w/ odd pixel size."""
+        reference = sampledata.SRS_COLOMBIA
+        point_a = shapely.geometry.Point(
+            reference.origin[0], reference.origin[1])
+        pixel_x_size = -10
+        pixel_y_size = 20
+        n_pixels_x = 9
+        n_pixels_y = 19
+        point_b = shapely.geometry.Point(
+            reference.origin[0] +
+            pixel_x_size * n_pixels_x,
+            reference.origin[1] +
+            pixel_y_size * n_pixels_y)
+        source_vector_path = os.path.join(self.workspace_dir, 'sample_vector')
+        pygeoprocessing.testing.create_vector_on_disk(
+            [point_a, point_b], reference.projection, fields={'value': 'int'},
+            attributes=[{'value': 0}, {'value': 1}], vector_format='GeoJSON',
+            filename=source_vector_path)
+        target_raster_path = os.path.join(
+            self.workspace_dir, 'target_raster.tif')
+        target_pixel_size = [pixel_x_size, pixel_y_size]
+        target_nodata = -1
+        target_pixel_type = gdal.GDT_Int16
+        pygeoprocessing.create_raster_from_vector_extents(
+            source_vector_path, target_raster_path, target_pixel_size,
+            target_pixel_type, target_nodata)
+
+        raster_properties = pygeoprocessing.get_raster_info(
+            target_raster_path)
+        self.assertEqual(raster_properties['raster_size'][0], n_pixels_x)
+        self.assertEqual(raster_properties['raster_size'][1], n_pixels_y)
+
+    def test_create_raster_from_vector_extents_bad_geometry(self):
+        """PGP.geoprocessing: create raster from v. ext. with bad geometry."""
+        reference = sampledata.SRS_COLOMBIA
+        vector_driver = ogr.GetDriverByName('GeoJSON')
+        source_vector_path = os.path.join(self.workspace_dir, 'vector.json')
+        source_vector = vector_driver.CreateDataSource(source_vector_path)
+        srs = osr.SpatialReference(reference.projection)
+        source_layer = source_vector.CreateLayer(
+            'vector', srs=srs)
+
+        layer_defn = source_layer.GetLayerDefn()
+
+        point_a = shapely.geometry.Point(
+            reference.origin[0], reference.origin[1])
+        mean_pixel_size = 30
+        n_pixels_x = 9
+        n_pixels_y = 19
+        point_b = shapely.geometry.Point(
+            reference.origin[0] +
+            reference.pixel_size(mean_pixel_size)[0] * n_pixels_x,
+            reference.origin[1] +
+            reference.pixel_size(mean_pixel_size)[1] * n_pixels_y)
+
+        for point in [point_a, point_b]:
+            feature = ogr.Feature(layer_defn)
+            feature_geometry = ogr.CreateGeometryFromWkb(point.wkb)
+            feature.SetGeometry(feature_geometry)
+            source_layer.CreateFeature(feature)
+        null_feature = ogr.Feature(layer_defn)
+        source_layer.CreateFeature(null_feature)
+        source_layer.SyncToDisk()
+        source_layer = None
+        source_vector = None
+
+        target_raster_path = os.path.join(
+            self.workspace_dir, 'target_raster.tif')
+        target_pixel_size = [mean_pixel_size, -mean_pixel_size]
+        target_nodata = -1
+        target_pixel_type = gdal.GDT_Int16
+        pygeoprocessing.create_raster_from_vector_extents(
+            source_vector_path, target_raster_path, target_pixel_size,
+            target_pixel_type, target_nodata, fill_value=0)
+
+        raster_properties = pygeoprocessing.get_raster_info(
+            target_raster_path)
+        self.assertEqual(raster_properties['raster_size'][0], n_pixels_x)
+        self.assertEqual(raster_properties['raster_size'][1], n_pixels_y)
+        expected_result = numpy.zeros((19, 9))
+        raster = gdal.Open(target_raster_path)
+        band = raster.GetRasterBand(1)
+        result = band.ReadAsArray()
+        band = None
+        raster = None
+        numpy.testing.assert_array_equal(expected_result, result)
