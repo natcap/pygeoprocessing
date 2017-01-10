@@ -11,6 +11,7 @@ import exceptions
 import heapq
 import time
 import re
+import tempfile
 
 from osgeo import gdal
 from osgeo import osr
@@ -704,31 +705,40 @@ def interpolate_points(
     dataset = None"""
 
 
-def aggregate_raster_values_uri(
-        raster_path_band, shapefile_uri, shapefile_field=None, ignore_nodata=True,
-        all_touched=False, polygons_might_overlap=True):
-    """Collect stats on pixel values which lie within shapefile polygons.
+def zonal_statistics(
+        base_raster_path_band, aggregating_vector_path, aggregate_field_name,
+        ignore_nodata=True, all_touched=False, polygons_might_overlap=True):
+    """Collect stats on pixel values which lie within polygons.
 
-    Args:
-        raster_path_band (tuple): a str, int tuple where the string indicates
-            the path on disk to a raster and the int is the band index.  In
+    This function summarizes raster statistics including min, max,
+    mean, stddev, and pixel count over the regions on the raster that are
+    overlaped by the polygons in the vector.  This function can correctly
+    handle cases where polygons overlap, which is mentioned since common zonal
+    stats functions provided by ArcGIS or QGIS usually incorrectly aggregate
+    these areas.  Overlap avoidance is achieved by calculating a minimal set
+    of disjoint non-overlapping polygons from `aggregating_vector_path` and
+    rasterizing each set separately during the raster aggregation phase.  That
+    set of rasters are then used to calculate the zonal stats of all polygons
+    without aggregating vector overlap.
+
+    Parameters:
+        base_raster_path_band (tuple): a str/int tuple indicating the path to
+            the base raster and the band number of that raster to analyze. In
             order for hectare mean values to be accurate, this raster must be
             projected in meter units.
-        shapefile_uri (string): a uri to a OGR datasource that should overlap
-            raster; raises an exception if not.
-
-    Keyword Args:
-        shapefile_field (string): a string indicating which key in shapefile to
-            associate the output dictionary values with whose values are
-            associated with ints; if None dictionary returns a value over
-            the entire shapefile region that intersects the raster.
-        ignore_nodata: if operation == 'mean' then it does not
-            account for nodata pixels when determining the pixel_mean,
-            otherwise all pixels in the AOI are used for calculation of the
-            mean.  This does not affect hectare_mean which is calculated from
-            the geometrical area of the feature.
+        aggregating_vector_path (string): a path to an ogr compatable polygon
+            vector whose geometric features indicate the areas over
+            `base_raster_path_band` to calculate statistics over.
+        aggregate_field_name (string): field name in `aggregating_vector_path`
+            that represents an identifying integer value for sets of polygons
+            in the layer such as a unique integer ID per polygon.  Result of
+            this function will be indexed by the values found in this field.
+        ignore_nodata: if true, then nodata pixels are not accounted for when
+            calculating min, max, count, or mean.  However the value of
+            `nodata_count` will always be the number of nodata pixels
+            aggregated under the polygon.
         all_touched (boolean): if true will account for any pixel whose
-            geometry passes through the pixel, not just the center point
+            geometry passes through the pixel, not just the center point.
         polygons_might_overlap (boolean): if True the function calculates
             aggregation coverage close to optimally by rasterizing sets of
             polygons that don't overlap.  However, this step can be
@@ -737,276 +747,178 @@ def aggregate_raster_values_uri(
             step.
 
     Returns:
-        result_tuple (tuple): named tuple of the form
-           ('aggregate_values', 'total pixel_mean hectare_mean n_pixels
-            pixel_min pixel_max')
-           Each of [sum pixel_mean hectare_mean] contains a dictionary that
-           maps shapefile_field value to the total, pixel mean, hecatare mean,
-           pixel max, and pixel min of the values under that feature.
-           'n_pixels' contains the total number of valid pixels used in that
-           calculation.  hectare_mean is None if raster_uri is unprojected.
-
-    Raises:
-        AttributeError
-        TypeError
-        OSError
+        nested dictionary indexed by aggregating feature id, and then by one
+        of 'min' 'max' 'sum' 'mean' 'count' and 'nodata_count'.  Example:
+        {0: {'min': 0, 'max': 1, 'mean': 0.5, 'count': 2, 'nodata_count': 1}}
     """
-    raster_info = get_raster_info(raster_path_band[0])
-    raster_nodata = raster_info['nodata'][raster_path_band[1]]
-    out_pixel_size = raster_info['mean_pixel_size']
-    clipped_raster_uri = temporary_filename(suffix='.tif')
-    vectorize_datasets(
-        [raster_path_band], lambda x: x, clipped_raster_uri, gdal.GDT_Float64,
-        raster_nodata, out_pixel_size, "union",
-        dataset_to_align_index=0, aoi_path=shapefile_uri,
-        assert_datasets_projected=False, vectorize_op=False)
-    clipped_raster = gdal.Open(clipped_raster_uri)
+    aggregate_vector = ogr.Open(aggregating_vector_path)
+    aggregate_layer = aggregate_vector.GetLayer()
+    aggregate_layer_defn = aggregate_layer.GetLayerDefn()
+    aggregate_field_index = aggregate_layer_defn.GetFieldIndex(
+        aggregate_field_name)
+    if aggregate_field_index == -1:  # -1 returned when field does not exist.
+        # Raise exception if user provided a field that's not in vector
+        raise AttributeError(
+            'Vector %s must have a field named %s' %
+            (aggregating_vector_path, aggregate_field_name))
 
-    # This should be a value that's not in shapefile[shapefile_field]
-    mask_nodata = -1
-    mask_uri = temporary_filename(suffix='.tif')
-    new_raster_from_base_uri(
-        clipped_raster_uri, mask_uri, 'GTiff', mask_nodata,
-        gdal.GDT_Int32, fill_value=mask_nodata)
-
-    mask_dataset = gdal.Open(mask_uri, gdal.GA_Update)
-    shapefile = ogr.Open(shapefile_uri)
-    shapefile_layer = shapefile.GetLayer()
+    aggregate_field_def = aggregate_layer_defn.GetFieldDefn(
+        aggregate_field_index)
+    if aggregate_field_def.GetTypeName() != 'Integer':
+        raise TypeError(
+            'Can only aggregate by integer based fields, requested '
+            'field is of type  %s' % aggregate_field_def.GetTypeName())
+    # Adding the rasterize by attribute option
     rasterize_layer_args = {
-        'options': ['ALL_TOUCHED=%s' % str(all_touched).upper()],
-    }
+        'options': [
+            'ALL_TOUCHED=%s' % str(all_touched).upper(),
+            'ATTRIBUTE=%s' % aggregate_field_name]
+        }
 
-    if shapefile_field is not None:
-        # Make sure that the layer name refers to an integer
-        layer_d = shapefile_layer.GetLayerDefn()
-        field_index = layer_d.GetFieldIndex(shapefile_field)
-        if field_index == -1:  # -1 returned when field does not exist.
-            # Raise exception if user provided a field that's not in vector
-            raise AttributeError(
-                'Vector %s must have a field named %s' %
-                (shapefile_uri, shapefile_field))
-
-        field_def = layer_d.GetFieldDefn(field_index)
-        if field_def.GetTypeName() != 'Integer':
-            raise TypeError(
-                'Can only aggregate by integer based fields, requested '
-                'field is of type  %s' % field_def.GetTypeName())
-        # Adding the rasterize by attribute option
-        rasterize_layer_args['options'].append(
-            'ATTRIBUTE=%s' % shapefile_field)
-    else:
-        # 9999 is a classic unknown value
-        global_id_value = 9999
-        rasterize_layer_args['burn_values'] = [global_id_value]
-
-    # loop over the subset of feature layers and rasterize/aggregate each one
-    aggregate_dict_values = {}
-    aggregate_dict_counts = {}
-    result_tuple = AggregatedValues(
-        total={},
-        pixel_mean={},
-        hectare_mean={},
-        n_pixels={},
-        pixel_min={},
-        pixel_max={})
+    # clip base raster to aggregating vector intersection
+    raster_info = get_raster_info(base_raster_path_band[0])
+    # -1 here because bands are 1 indexed
+    raster_nodata = raster_info['nodata'][base_raster_path_band[1]-1]
+    with tempfile.NamedTemporaryFile(
+            prefix='clipped_raster', delete=False) as clipped_raster_file:
+        clipped_raster_path = clipped_raster_file.name
+    align_and_resize_raster_stack(
+        [base_raster_path_band[0]], [clipped_raster_path], ['nearest'],
+        raster_info['pixel_size'], 'intersection',
+        base_vector_path_list=[aggregating_vector_path], raster_align_index=0)
+    clipped_raster = gdal.Open(clipped_raster_path)
 
     # make a shapefile that non-overlapping layers can be added to
     driver = ogr.GetDriverByName('ESRI Shapefile')
-    layer_dir = temporary_folder()
-    subset_layer_datasouce = driver.CreateDataSource(
-        os.path.join(layer_dir, 'subset_layer.shp'))
-    spat_ref = shapefile_layer.GetSpatialRef()
-    subset_layer = subset_layer_datasouce.CreateLayer(
-        'subset_layer', spat_ref, ogr.wkbPolygon)
-    defn = shapefile_layer.GetLayerDefn()
-
-    # For every field, create a duplicate field and add it to the new
-    # subset_layer layer
-    defn.GetFieldCount()
-    for fld_index in range(defn.GetFieldCount()):
-        original_field = defn.GetFieldDefn(fld_index)
-        output_field = ogr.FieldDefn(
-            original_field.GetName(), original_field.GetType())
-        subset_layer.CreateField(output_field)
+    disjoint_vector_dir = tempfile.mkdtemp()
+    disjoint_vector = driver.CreateDataSource(
+        os.path.join(disjoint_vector_dir, 'disjoint_vector.shp'))
+    spat_ref = aggregate_layer.GetSpatialRef()
 
     # Initialize these dictionaries to have the shapefile fields in the
     # original datasource even if we don't pick up a value later
-
-    # This will store the sum/count with index of shapefile attribute
-    if shapefile_field is not None:
-        shapefile_table = extract_datasource_table_by_key(
-            shapefile_uri, shapefile_field)
-    else:
-        shapefile_table = {global_id_value: 0.0}
-
-    current_iteration_shapefiles = dict([
-        (shapefile_id, 0.0) for shapefile_id in shapefile_table.iterkeys()])
-    aggregate_dict_values = current_iteration_shapefiles.copy()
-    aggregate_dict_counts = current_iteration_shapefiles.copy()
-    # Populate the means and totals with something in case the underlying
-    # raster doesn't exist for those features.  we use -9999 as a recognizable
-    # nodata value.
-    for shapefile_id in shapefile_table:
-        result_tuple.pixel_mean[shapefile_id] = -9999
-        result_tuple.total[shapefile_id] = -9999
-        result_tuple.hectare_mean[shapefile_id] = -9999
-
-    pixel_min_dict = dict(
-        [(shapefile_id, None) for shapefile_id in shapefile_table.iterkeys()])
-    pixel_max_dict = pixel_min_dict.copy()
+    aggregate_results = {}
+    for feature in aggregate_layer:
+        aggregate_results[feature.GetField(aggregate_field_name)] = None
+    aggregate_layer.ResetReading()
+    aggregate_ids = numpy.array(sorted(aggregate_results.iterkeys()))
 
     # Loop over each polygon and aggregate
     if polygons_might_overlap:
         minimal_polygon_sets = calculate_disjoint_polygon_set(
-            shapefile_uri)
+            aggregating_vector_path)
     else:
         minimal_polygon_sets = [
-            set([feat.GetFID() for feat in shapefile_layer])]
+            set([feat.GetFID() for feat in aggregate_layer])]
 
-    clipped_band = clipped_raster.GetRasterBand(1)
+    clipped_band = clipped_raster.GetRasterBand(base_raster_path_band[1])
 
+    with tempfile.NamedTemporaryFile(
+            prefix='aggregate_id_raster',
+            delete=False) as aggregate_id_raster_file:
+        aggregate_id_raster_path = aggregate_id_raster_file.name
+
+    aggregate_id_nodata = _find_int_not_in_array(aggregate_ids)
+    new_raster_from_base(
+        clipped_raster_path, aggregate_id_raster_path, gdal.GDT_Int32,
+        [aggregate_id_nodata], n_bands=1)
+    aggregate_id_raster = gdal.Open(aggregate_id_raster_path, gdal.GA_Update)
+    aggregate_stats = {}
     for polygon_set in minimal_polygon_sets:
+        disjoint_layer = disjoint_vector.CreateLayer(
+            'disjoint_vector', spat_ref, ogr.wkbPolygon)
+        disjoint_layer.CreateField(aggregate_field_def)
         # add polygons to subset_layer
         for poly_fid in polygon_set:
-            poly_feat = shapefile_layer.GetFeature(poly_fid)
-            subset_layer.CreateFeature(poly_feat)
-        subset_layer_datasouce.SyncToDisk()
+            poly_feat = aggregate_layer.GetFeature(poly_fid)
+            disjoint_layer.CreateFeature(poly_feat)
+        disjoint_layer.SyncToDisk()
 
         # nodata out the mask
-        mask_band = mask_dataset.GetRasterBand(1)
-        mask_band.Fill(mask_nodata)
-        mask_band = None
+        aggregate_id_band = aggregate_id_raster.GetRasterBand(1)
+        aggregate_id_band.Fill(aggregate_id_nodata)
+        aggregate_id_band = None
 
         gdal.RasterizeLayer(
-            mask_dataset, [1], subset_layer, **rasterize_layer_args)
-        mask_dataset.FlushCache()
+            aggregate_id_raster, [1], disjoint_layer, **rasterize_layer_args)
+        aggregate_id_raster.FlushCache()
 
-        # get feature areas
-        feature_areas = collections.defaultdict(int)
-        for feature in subset_layer:
-            # feature = subset_layer.GetFeature(index)
-            geom = feature.GetGeometryRef()
-            if shapefile_field is not None:
-                feature_id = feature.GetField(shapefile_field)
-                feature_areas[feature_id] = geom.GetArea()
-            else:
-                feature_areas[global_id_value] += geom.GetArea()
-        subset_layer.ResetReading()
-        geom = None
+        # Delete the features we just added to the subset_layer
+        #disjoint_layer.ResetReading()
+        #for feature in disjoint_layer:
+        #    disjoint_layer.DeleteFeature(feature)
+        #disjoint_layer.SyncToDisk()
+        disjoint_layer = None
+        disjoint_vector.DeleteLayer(0)
 
-        # Need a complicated step to see what the FIDs are in the subset_layer
-        # then need to loop through and delete them
-        fid_to_delete = set()
-        for feature in subset_layer:
-            fid_to_delete.add(feature.GetFID())
-        subset_layer.ResetReading()
-        for fid in fid_to_delete:
-            subset_layer.DeleteFeature(fid)
-        subset_layer_datasouce.SyncToDisk()
-
-        current_iteration_attribute_ids = set()
-
-        for mask_offsets, mask_block in iterblocks(mask_uri):
-            clipped_block = clipped_band.ReadAsArray(**mask_offsets)
-
-            unique_ids = numpy.unique(mask_block)
-            current_iteration_attribute_ids = (
-                current_iteration_attribute_ids.union(unique_ids))
-            for attribute_id in unique_ids:
-                # ignore masked values
-                if attribute_id == mask_nodata:
+        # create a key array
+        # and parallel min, max, count, and nodata count arrays
+        for aggregate_id_offsets, aggregate_id_block in iterblocks(
+                aggregate_id_raster_path):
+            clipped_block = clipped_band.ReadAsArray(**aggregate_id_offsets)
+            valid_mask = aggregate_id_block != aggregate_id_nodata
+            valid_aggregate_id = aggregate_id_block[valid_mask]
+            valid_clipped = clipped_block[valid_mask]
+            for aggregate_id in numpy.unique(valid_aggregate_id):
+                aggregate_mask = valid_aggregate_id == aggregate_id
+                masked_clipped_block = valid_clipped[aggregate_mask]
+                if masked_clipped_block.size == 0:
+                    continue
+                clipped_nodata_mask = (masked_clipped_block == raster_nodata)
+                if aggregate_id not in aggregate_stats:
+                    aggregate_stats[aggregate_id] = {
+                        'min': None,
+                        'max': None,
+                        'count': 0,
+                        'nodata_count': 0,
+                        'sum': 0.0
+                    }
+                aggregate_stats[aggregate_id]['nodata_count'] += (
+                    numpy.count_nonzero(clipped_nodata_mask))
+                if ignore_nodata:
+                    masked_clipped_block = (
+                        masked_clipped_block[~clipped_nodata_mask])
+                if masked_clipped_block.size == 0:
                     continue
 
-                # Consider values which lie in the polygon for attribute_id
-                masked_values = clipped_block[
-                    (mask_block == attribute_id) &
-                    (~numpy.isnan(clipped_block))]
-                # Remove the nodata and ignore values for later processing
-                masked_values_nodata_removed = (
-                    masked_values[~numpy.in1d(
-                        masked_values, [raster_nodata]).
-                                  reshape(masked_values.shape)])
+                if aggregate_stats[aggregate_id]['min'] is None:
+                    aggregate_stats[aggregate_id]['min'] = (
+                        masked_clipped_block[0])
+                    aggregate_stats[aggregate_id]['max'] = (
+                        masked_clipped_block[0])
 
-                # Find the min and max which might not yet be calculated
-                if masked_values_nodata_removed.size > 0:
-                    if pixel_min_dict[attribute_id] is None:
-                        pixel_min_dict[attribute_id] = numpy.min(
-                            masked_values_nodata_removed)
-                        pixel_max_dict[attribute_id] = numpy.max(
-                            masked_values_nodata_removed)
-                    else:
-                        pixel_min_dict[attribute_id] = min(
-                            pixel_min_dict[attribute_id],
-                            numpy.min(masked_values_nodata_removed))
-                        pixel_max_dict[attribute_id] = max(
-                            pixel_max_dict[attribute_id],
-                            numpy.max(masked_values_nodata_removed))
-
-                if ignore_nodata:
-                    # Only consider values which are not nodata values
-                    aggregate_dict_counts[attribute_id] += (
-                        masked_values_nodata_removed.size)
-                else:
-                    aggregate_dict_counts[attribute_id] += masked_values.size
-
-                aggregate_dict_values[attribute_id] += numpy.sum(
-                    masked_values_nodata_removed)
-
-        # Initialize the dictionary to have an n_pixels field that contains the
-        # counts of all the pixels used in the calculation.
-        result_tuple.n_pixels.update(aggregate_dict_counts.copy())
-        result_tuple.pixel_min.update(pixel_min_dict.copy())
-        result_tuple.pixel_max.update(pixel_max_dict.copy())
-        # Don't want to calculate stats for the nodata
-        current_iteration_attribute_ids.discard(mask_nodata)
-        for attribute_id in current_iteration_attribute_ids:
-            result_tuple.total[attribute_id] = (
-                aggregate_dict_values[attribute_id])
-
-            # intitalize to 0
-            result_tuple.pixel_mean[attribute_id] = 0.0
-            result_tuple.hectare_mean[attribute_id] = 0.0
-
-            if aggregate_dict_counts[attribute_id] != 0.0:
-                n_pixels = aggregate_dict_counts[attribute_id]
-                result_tuple.pixel_mean[attribute_id] = (
-                    aggregate_dict_values[attribute_id] / n_pixels)
-
-                # To get the total area multiply n pixels by their area then
-                # divide by 10000 to get Ha.  Notice that's in the denominator
-                # so the * 10000 goes on the top
-                if feature_areas[attribute_id] != 0:
-                    result_tuple.hectare_mean[attribute_id] = 10000.0 * (
-                        aggregate_dict_values[attribute_id] /
-                        feature_areas[attribute_id])
-
-    # Make sure the dataset is closed and cleaned up
-    mask_band = None
-    gdal.Dataset.__swig_destroy__(mask_dataset)
-    mask_dataset = None
+                aggregate_stats[aggregate_id]['min'] = min(
+                    numpy.min(masked_clipped_block),
+                    aggregate_stats[aggregate_id]['min'])
+                aggregate_stats[aggregate_id]['max'] = max(
+                    numpy.max(masked_clipped_block),
+                    aggregate_stats[aggregate_id]['max'])
+                aggregate_stats[aggregate_id]['count'] += (
+                    masked_clipped_block.size)
+                aggregate_stats[aggregate_id]['sum'] += numpy.sum(
+                    masked_clipped_block)
 
     clipped_band = None
-    gdal.Dataset.__swig_destroy__(clipped_raster)
     clipped_raster = None
+    aggregate_id_raster = None
+    disjoint_layer = None
+    disjoint_vector = None
 
-    for filename in [mask_uri, clipped_raster_uri]:
+    for filename in [aggregate_id_raster_path, clipped_raster_path]:
         try:
             os.remove(filename)
         except OSError as error:
             LOGGER.warn(
                 "couldn't remove file %s. Exception %s", filename, str(error))
 
-    subset_layer = None
-    ogr.DataSource.__swig_destroy__(subset_layer_datasouce)
-    subset_layer_datasouce = None
     try:
-        shutil.rmtree(layer_dir)
+        shutil.rmtree(disjoint_vector_dir)
     except OSError as error:
         LOGGER.warn(
-            "couldn't remove directory %s.  Exception %s", layer_dir,
+            "couldn't remove directory %s.  Exception %s", disjoint_vector_dir,
             str(error))
 
-    return result_tuple
+    return aggregate_stats
 
 
 def calculate_slope(
@@ -2210,3 +2122,41 @@ def _merge_bounding_boxes(bb1, bb2, mode):
 
     bb_out = [op(x, y) for op, x, y in zip(comparison_ops, bb1, bb2)]
     return bb_out
+
+
+def _find_int_not_in_array(values):
+    """Return a value not in the integer array.
+
+    This function is used to determine good values for nodata in rasters that
+    don't collide with other values in the array.
+
+    Parameter:
+        values (numpy.ndarray): a sorted integer array
+
+    Returns:
+        An integer that's not contained in the array.
+    """
+    if (values[-1] - values[0]) == values.size - 1:
+        # then values are all incrementing numbers, either choose +/- 1 bounds
+        if values[0] != numpy.iinfo(numpy.int32).min:
+            return values[0] - 1
+        elif values[1] != numpy.iinfo(numpy.int32).max:
+            return values[-1] + 1
+        # we could concevebly get here if the array had every 32 bit int in it
+        raise ValueError("Can't find an int not in array.")
+    else:
+        # array is at least two elements large
+        left_index = 0
+        right_index = values.size - 1
+        while right_index - left_index > 1:
+            # binary search for a gap
+            mid_index = (left_index + right_index) / 2
+            left_size = mid_index - left_index + 1
+            if (values[mid_index] - values[left_index]) == left_size - 1:
+                # left list is packed; try the right
+                left_index = mid_index
+            else:
+                right_index = mid_index
+        # if we get here, there are exactly two elements in the subarray and
+        # they contain a gap; so arbitrarily choose +1 of the left value.
+        return values[left_index] + 1
