@@ -3,6 +3,8 @@
 import logging
 import os
 import collections
+import tempfile
+import shutil
 
 import numpy
 cimport numpy
@@ -2760,13 +2762,13 @@ def delineate_watershed(
     output_sr.ImportFromWkt(projection_wkt)
 
     output_driver = ogr.GetDriverByName('ESRI Shapefile')
-    watershed_datasource = output_driver.CreateDataSource(
-        watershed_out_uri)
-    watershed_layer = watershed_datasource.CreateLayer(
-            'serviceshed', output_sr, ogr.wkbPolygon)
-
+    temp_target_dir = tempfile.mkdtemp()
+    working_watershed_vector = output_driver.CreateDataSource(
+        os.path.join(temp_target_dir, 'workingwatersheds.shp'))
+    working_watershed_layer = working_watershed_vector.CreateLayer(
+        'serviceshed', output_sr, ogr.wkbPolygon)
     field = ogr.FieldDefn('pixel_valu', ogr.OFTReal)
-    watershed_layer.CreateField(field)
+    working_watershed_layer.CreateField(field)
 
     if os.path.isfile(snapped_outlet_points_uri):
         os.remove(snapped_outlet_points_uri)
@@ -2782,7 +2784,7 @@ def delineate_watershed(
     for index in xrange(outlet_defn.GetFieldCount()):
         field_defn = outlet_defn.GetFieldDefn(index)
         snapped_outlet_points_layer.CreateField(field_defn)
-        watershed_layer.CreateField(field_defn)
+        working_watershed_layer.CreateField(field_defn)
 
     #center point of global index
     cdef int global_row, global_col #index into the overall raster
@@ -2967,27 +2969,48 @@ def delineate_watershed(
                     work_stack.push(neighbor_row * n_cols + neighbor_col)
 
             block_cache.flush_cache()
-            original_feature_count = watershed_layer.GetFeatureCount()
+            original_feature_count = working_watershed_layer.GetFeatureCount()
             gdal.Polygonize(
-                watershed_band, watershed_band, watershed_layer, 0, ["8CONNECTED=8"])
+                watershed_band, watershed_band, working_watershed_layer, 0,
+                ["8CONNECTED=8"])
             #get the last n features and add the point field values
             #to the polygon feature
-            n_added = watershed_layer.GetFeatureCount() - original_feature_count
+            n_added = (
+                working_watershed_layer.GetFeatureCount() -
+                original_feature_count)
             for added_feature_index in xrange(n_added):
-                watershed_feature = watershed_layer.GetFeature(
-                    watershed_layer.GetFeatureCount() - 1 - added_feature_index)
+                watershed_feature = working_watershed_layer.GetFeature(
+                    working_watershed_layer.GetFeatureCount() - 1 -
+                    added_feature_index)
                 for index in xrange(point_feature.GetFieldCount()):
                     watershed_feature.SetField(
                         index+1, point_feature.GetField(index))
-                watershed_layer.SetFeature(watershed_feature)
+                working_watershed_layer.SetFeature(watershed_feature)
                 watershed_feature = None
             watershed_band.Fill(watershed_nodata)
 
+    watershed_datasource = output_driver.CreateDataSource(
+        watershed_out_uri)
+    watershed_layer = watershed_datasource.CreateLayer(
+        'serviceshed', output_sr, ogr.wkbPolygon)
+    field = ogr.FieldDefn('pixel_valu', ogr.OFTReal)
+    watershed_layer.CreateField(field)
+    for index in xrange(outlet_defn.GetFieldCount()):
+        field_defn = outlet_defn.GetFieldDefn(index)
+        snapped_outlet_points_layer.CreateField(field_defn)
+        watershed_layer.CreateField(field_defn)
 
-    for feature_id in xrange(watershed_layer.GetFeatureCount()):
-        watershed_feature = watershed_layer.GetFeature(feature_id)
+    for feature_id in xrange(working_watershed_layer.GetFeatureCount()):
+        watershed_feature = working_watershed_layer.GetFeature(feature_id)
         pixel_value = watershed_feature.GetField('pixel_valu')
-        if pixel_value == watershed_nodata:
-            watershed_layer.DeleteFeature(feature_id)
-    #finally, remove the pixel value field
+        if pixel_value != watershed_nodata:
+            # feature was created off a defined value, not nodata; save it.
+            watershed_layer.CreateFeature(watershed_feature)
+    # remove the pixel_valu field
     watershed_layer.DeleteField(0)
+    watershed_layer = None
+    watershed_datasource = None
+    working_watershed_layer = None
+    working_watershed_vector = None
+    # delete the directory the working shapefile is in
+    shutil.rmtree(temp_target_dir)
