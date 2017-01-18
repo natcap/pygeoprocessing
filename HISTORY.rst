@@ -1,6 +1,10 @@
 Release History
 ===============
 
+0.3.1 (1/18/2017)
+-----------------
+* Hotfix patch to address an issue in watershed delineation that doesn't pack the target watershed output file.  Half the shapefile consists of features polygonalized around nodata values that are flagged for deletion, but not removed from the file.  This patch packs those features and returns a clean watershed.
+
 0.3.0 (10/21/2016)
 ------------------
 * Added `rel_tol` and `abs_tol` parameters to `testing.assertions` to be consistent with PEP485 and deal with real world testing situations that required an absolute tolerance.
