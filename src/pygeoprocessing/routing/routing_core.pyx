@@ -2750,7 +2750,6 @@ def delineate_watershed(
     cdef int block_col_size, block_row_size
     block_col_size, block_row_size = outflow_direction_band.GetBlockSize()
 
-
     if os.path.isfile(watershed_out_uri):
         os.remove(watershed_out_uri)
 
@@ -2768,6 +2767,7 @@ def delineate_watershed(
     working_watershed_layer = working_watershed_vector.CreateLayer(
         'serviceshed', output_sr, ogr.wkbPolygon)
     field = ogr.FieldDefn('pixel_valu', ogr.OFTReal)
+    field.SetWidth(24)
     working_watershed_layer.CreateField(field)
 
     if os.path.isfile(snapped_outlet_points_uri):
@@ -2783,6 +2783,12 @@ def delineate_watershed(
     outlet_defn = outlet_layer.GetLayerDefn()
     for index in xrange(outlet_defn.GetFieldCount()):
         field_defn = outlet_defn.GetFieldDefn(index)
+        field_type = field_defn.GetType()
+        # for some reason the default numerical width can be set to less than
+        # the precision of the fields being copied over.  This addresses that
+        # issue
+        if field_type in [ogr.OFTInteger, ogr.OFTReal]:
+            field_defn.SetWidth(24)
         snapped_outlet_points_layer.CreateField(field_defn)
         working_watershed_layer.CreateField(field_defn)
 
@@ -2997,7 +3003,12 @@ def delineate_watershed(
     watershed_layer.CreateField(field)
     for index in xrange(outlet_defn.GetFieldCount()):
         field_defn = outlet_defn.GetFieldDefn(index)
-        snapped_outlet_points_layer.CreateField(field_defn)
+        field_type = field_defn.GetType()
+        # for some reason the default numerical width can be set to less than
+        # the precision of the fields being copied over.  This addresses that
+        # issue
+        if field_type in [ogr.OFTInteger, ogr.OFTReal]:
+            field_defn.SetWidth(24)
         watershed_layer.CreateField(field_defn)
 
     for feature_id in xrange(working_watershed_layer.GetFeatureCount()):
