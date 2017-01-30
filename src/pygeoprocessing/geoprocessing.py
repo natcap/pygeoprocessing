@@ -641,68 +641,6 @@ def interpolate_points(
             point_array, value_array, (grid_y, grid_x), interpolation_mode,
             nodata)
         band.WriteArray(raster_out_array, offsets['xoff'], offsets['yoff'])
-"""
-
-    # Define the initial bounding box
-    gt = target_raster.GetGeoTransform()
-    # order is left, top, right, bottom of rasterbounds
-    bounding_box = [gt[0], gt[3], gt[0] + gt[1] * dataset.RasterXSize,
-                    gt[3] + gt[5] * dataset.RasterYSize]
-
-    def in_bounds(point):
-        return point[0] <= bounding_box[2] and point[0] >= bounding_box[0] \
-            and point[1] <= bounding_box[1] and point[1] >= bounding_box[3]
-
-    layer = shapefile.GetLayer(0)
-    point_list = []
-    value_list = []
-
-    # Calculate a small amount to perturb points by so that we don't
-    # get a linear Delauney triangle, the 1e-6 is larger than eps for
-    # floating point, but large enough not to cause errors in interpolation.
-    delta_difference = 1e-6 * min(abs(gt[1]), abs(gt[5]))
-    if randomize_points:
-        random_array = numpy.random.randn(layer.GetFeatureCount(), 2)
-        random_offsets = random_array*delta_difference
-    else:
-        random_offsets = numpy.zeros((layer.GetFeatureCount(), 2))
-
-    for feature_id in range(layer.GetFeatureCount()):
-        feature = layer.GetFeature(feature_id)
-        geometry = feature.GetGeometryRef()
-        # Here the point geometry is in the form x, y (col, row)
-        point = geometry.GetPoint()
-        if in_bounds(point):
-            value = feature.GetField(datasource_field)
-            # Add in the numpy notation which is row, col
-            point_list.append([point[1]+random_offsets[feature_id, 1],
-                               point[0]+random_offsets[feature_id, 0]])
-            value_list.append(value)
-
-    point_array = numpy.array(point_list)
-    value_array = numpy.array(value_list)
-
-    band = dataset.GetRasterBand(1)
-
-    # Create grid points for interpolation outputs later
-    # top-bottom:y_stepsize, left-right:x_stepsize
-
-    # Make as an integer grid then divide subtract by bounding box parts
-    # so we don't get a roundoff error and get off by one pixel one way or
-    # the other
-    grid_y, grid_x = numpy.mgrid[0:band.YSize, 0:band.XSize]
-    grid_y = grid_y * gt[5] + bounding_box[1]
-    grid_x = grid_x * gt[1] + bounding_box[0]
-    nodata = band.GetNoDataValue()
-
-    raster_out_array = scipy.interpolate.griddata(
-        point_array, value_array, (grid_y, grid_x), interpolation, nodata)
-    band.WriteArray(raster_out_array, 0, 0)
-
-    # Make sure the dataset is closed and cleaned up
-    band = None
-    gdal.Dataset.__swig_destroy__(dataset)
-    dataset = None"""
 
 
 def zonal_statistics(
