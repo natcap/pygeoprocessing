@@ -812,8 +812,6 @@ def zonal_statistics(
             for aggregate_id in numpy.unique(valid_aggregate_id):
                 aggregate_mask = valid_aggregate_id == aggregate_id
                 masked_clipped_block = valid_clipped[aggregate_mask]
-                if masked_clipped_block.size == 0:
-                    continue
                 clipped_nodata_mask = (masked_clipped_block == raster_nodata)
                 if aggregate_id not in aggregate_stats:
                     aggregate_stats[aggregate_id] = {
