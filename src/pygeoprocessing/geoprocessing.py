@@ -644,7 +644,8 @@ def interpolate_points(
 
 
 def zonal_statistics(
-        base_raster_path_band, aggregating_vector_path, aggregate_field_name,
+        base_raster_path_band, aggregating_vector_path,
+        aggregate_field_name, aggregate_layer_name=None,
         ignore_nodata=True, all_touched=False, polygons_might_overlap=True):
     """Collect stats on pixel values which lie within polygons.
 
@@ -671,6 +672,13 @@ def zonal_statistics(
             that represents an identifying integer value for sets of polygons
             in the layer such as a unique integer ID per polygon.  Result of
             this function will be indexed by the values found in this field.
+            If set to None the result will be aggregated and indexed by FID.
+        aggregate_layer_name (string): name of shapefile layer that will be
+            used to aggregate results over.  If set to None, the first layer
+            in the DataSource will be used as retrieved by `.GetLayer()`.
+            Note: it is normal and expected to set this field at None if the
+            aggregating shapefile is a single layer as many shapefiles,
+            including the common 'ESRI Shapefile' are.
         ignore_nodata: if true, then nodata pixels are not accounted for when
             calculating min, max, count, or mean.  However the value of
             `nodata_count` will always be the number of nodata pixels
@@ -690,7 +698,11 @@ def zonal_statistics(
         {0: {'min': 0, 'max': 1, 'mean': 0.5, 'count': 2, 'nodata_count': 1}}
     """
     aggregate_vector = ogr.Open(aggregating_vector_path)
-    aggregate_layer = aggregate_vector.GetLayer()
+    if aggregate_layer_name is not None:
+        aggregate_layer = aggregate_vector.GetLayerByName(
+            aggregate_layer_name)
+    else:
+        aggregate_layer = aggregate_vector.GetLayer()
     aggregate_layer_defn = aggregate_layer.GetLayerDefn()
     aggregate_field_index = aggregate_layer_defn.GetFieldIndex(
         aggregate_field_name)
