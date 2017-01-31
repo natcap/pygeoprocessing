@@ -708,7 +708,7 @@ def zonal_statistics(
         aggregate_field_name)
     if aggregate_field_index == -1:  # -1 returned when field does not exist.
         # Raise exception if user provided a field that's not in vector
-        raise AttributeError(
+        raise ValueError(
             'Vector %s must have a field named %s' %
             (aggregating_vector_path, aggregate_field_name))
 
