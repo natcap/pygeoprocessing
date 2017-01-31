@@ -651,9 +651,9 @@ def zonal_statistics(
 
     This function summarizes raster statistics including min, max,
     mean, stddev, and pixel count over the regions on the raster that are
-    overlaped by the polygons in the vector.  This function can correctly
-    handle cases where polygons overlap, which is mentioned since common zonal
-    stats functions provided by ArcGIS or QGIS usually incorrectly aggregate
+    overlaped by the polygons in the vector layer.  This function can
+    handle cases where polygons overlap, which is notable since zonal stats
+    functions provided by ArcGIS or QGIS usually incorrectly aggregate
     these areas.  Overlap avoidance is achieved by calculating a minimal set
     of disjoint non-overlapping polygons from `aggregating_vector_path` and
     rasterizing each set separately during the raster aggregation phase.  That
