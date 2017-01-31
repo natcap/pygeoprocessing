@@ -794,10 +794,6 @@ def zonal_statistics(
         aggregate_id_raster.FlushCache()
 
         # Delete the features we just added to the subset_layer
-        #disjoint_layer.ResetReading()
-        #for feature in disjoint_layer:
-        #    disjoint_layer.DeleteFeature(feature)
-        #disjoint_layer.SyncToDisk()
         disjoint_layer = None
         disjoint_vector.DeleteLayer(0)
 
@@ -846,25 +842,15 @@ def zonal_statistics(
                 aggregate_stats[aggregate_id]['sum'] += numpy.sum(
                     masked_clipped_block)
 
+    # clean up temporary files
     clipped_band = None
     clipped_raster = None
     aggregate_id_raster = None
     disjoint_layer = None
     disjoint_vector = None
-
     for filename in [aggregate_id_raster_path, clipped_raster_path]:
-        try:
-            os.remove(filename)
-        except OSError as error:
-            LOGGER.warn(
-                "couldn't remove file %s. Exception %s", filename, str(error))
-
-    try:
-        shutil.rmtree(disjoint_vector_dir)
-    except OSError as error:
-        LOGGER.warn(
-            "couldn't remove directory %s.  Exception %s", disjoint_vector_dir,
-            str(error))
+        os.remove(filename)
+    shutil.rmtree(disjoint_vector_dir)
 
     return aggregate_stats
 
