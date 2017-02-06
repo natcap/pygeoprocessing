@@ -876,15 +876,17 @@ def calculate_slope(
     calculate_raster_stats_uri(slope_uri)
 
 
-def get_vector_info(vector_path):
+def get_vector_info(vector_path, layer_index=0):
     """Get information about an OGR vector (datasource).
 
     Parameters:
-       vector_path (String): a path to a OGR vector.
+        vector_path (str): a path to a OGR vector.
+        layer_index (int): index of underlying layer to analyze.  Defaults to
+            0.
 
     Returns:
-        raster_properties (dictionary): a dictionary with the properties
-            stored under relevant keys.
+        raster_properties (dictionary): a dictionary with the following
+            properties stored under relevant keys.
 
             'projection' (string): projection of the vector in Well Known
                 Text.
@@ -893,18 +895,14 @@ def get_vector_info(vector_path):
     """
     vector = ogr.Open(vector_path)
     vector_properties = {}
-    first_layer = vector.GetLayer()
+    layer = vector.GetLayer(iLayer=layer_index)
     # projection is same for all layers, so just use the first one
-    vector_properties['projection'] = first_layer.GetSpatialRef().ExportToWkt()
-    for layer in vector:
-        layer_bb = layer.GetExtent()
-        # convert form [minx,maxx,miny,maxy] to [minx,miny,maxx,maxy]
-        local_bb = [layer_bb[i] for i in [0, 2, 1, 3]]
-        if 'bounding_box' not in vector_properties:
-            vector_properties['bounding_box'] = local_bb
-        else:
-            vector_properties['bounding_box'] = _merge_bounding_boxes(
-                vector_properties['bounding_box'], local_bb, 'union')
+    vector_properties['projection'] = layer.GetSpatialRef().ExportToWkt()
+    layer_bb = layer.GetExtent()
+    layer = None
+    vector = None
+    # convert form [minx,maxx,miny,maxy] to [minx,miny,maxx,maxy]
+    vector_properties['bounding_box'] = [layer_bb[i] for i in [0, 2, 1, 3]]
     return vector_properties
 
 
