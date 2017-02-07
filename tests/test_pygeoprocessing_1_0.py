@@ -27,6 +27,10 @@ class PyGeoprocessing10(unittest.TestCase):
         """Clean up remaining files."""
         shutil.rmtree(self.workspace_dir)
 
+    def test_reproject_vector(self):
+        """PGP.geoprocessing: test reproject vector."""
+        pass
+
     def test_zonal_statistics(self):
         """PGP.geoprocessing: test zonal stats function."""
         # create aggregating polygon

@@ -972,17 +972,20 @@ def get_raster_info(raster_path):
     return raster_properties
 
 
-def reproject_vector(base_vector_path, target_wkt, target_path):
+def reproject_vector(
+        base_vector_path, target_wkt, target_path, layer_index=0):
     """Reproject OGR DataSource (vector).
 
     Transforms the features of the base vector to the desired output
-    projection in a new file.
+    projection in a new ESRI Shapefile.
 
     Parameters:
         base_vector_path (string): Path to the base shapefile to transform.
         target_wkt (string): the desired output projection in Well Known Text
             (by layer.GetSpatialRef().ExportToWkt())
         target_path (string): the filepath to the transformed shapefile
+        layer_index (int): index of layer in `base_vector_path` to reproject.
+            Defaults to 0.
 
     Returns:
         None
@@ -1003,64 +1006,64 @@ def reproject_vector(base_vector_path, target_wkt, target_path):
     target_driver = ogr.GetDriverByName('ESRI Shapefile')
     target_vector = target_driver.CreateDataSource(target_path)
 
-    # loop through all the layers in the orginal_datasource
-    for layer in base_vector:
-        layer_dfn = layer.GetLayerDefn()
+    layer = base_vector.GetLayer(layer_index)
+    layer_dfn = layer.GetLayerDefn()
 
-        # Create new layer for target_vector using same name and
-        # geometry type from base vector but new projection
-        target_layer = target_vector.CreateLayer(
-            layer_dfn.GetName(), target_sr, layer_dfn.GetGeomType())
+    # Create new layer for target_vector using same name and
+    # geometry type from base vector but new projection
+    target_layer = target_vector.CreateLayer(
+        layer_dfn.GetName(), target_sr, layer_dfn.GetGeomType())
 
-        # Get the number of fields in original_layer
-        original_field_count = layer_dfn.GetFieldCount()
+    # Get the number of fields in original_layer
+    original_field_count = layer_dfn.GetFieldCount()
 
-        # For every field, create a duplicate field in the new layer
-        for fld_index in xrange(original_field_count):
-            original_field = layer_dfn.GetFieldDefn(fld_index)
-            target_field = ogr.FieldDefn(
-                original_field.GetName(), original_field.GetType())
-            target_layer.CreateField(target_field)
+    # For every field, create a duplicate field in the new layer
+    for fld_index in xrange(original_field_count):
+        original_field = layer_dfn.GetFieldDefn(fld_index)
+        target_field = ogr.FieldDefn(
+            original_field.GetName(), original_field.GetType())
+        target_layer.CreateField(target_field)
 
-        # Get the SR of the original_layer to use in transforming
-        base_sr = layer.GetSpatialRef()
+    # Get the SR of the original_layer to use in transforming
+    base_sr = layer.GetSpatialRef()
 
-        # Create a coordinate transformation
-        coord_trans = osr.CoordinateTransformation(base_sr, target_sr)
+    # Create a coordinate transformation
+    coord_trans = osr.CoordinateTransformation(base_sr, target_sr)
 
-        # Copy all of the features in layer to the new shapefile
-        error_count = 0
-        for base_feature in layer:
-            geom = base_feature.GetGeometryRef()
+    # Copy all of the features in layer to the new shapefile
+    error_count = 0
+    for base_feature in layer:
+        geom = base_feature.GetGeometryRef()
 
-            # Transform geometry into format desired for the new projection
-            error_code = geom.Transform(coord_trans)
-            if error_code != 0:  # error
-                # this could be caused by an out of range transformation
-                # whatever the case, don't put the transformed poly into the
-                # output set
-                error_count += 1
-                continue
+        # Transform geometry into format desired for the new projection
+        error_code = geom.Transform(coord_trans)
+        if error_code != 0:  # error
+            # this could be caused by an out of range transformation
+            # whatever the case, don't put the transformed poly into the
+            # output set
+            error_count += 1
+            continue
 
-            # Copy original_datasource's feature and set as new shapes feature
-            target_feature = ogr.Feature(target_layer.GetLayerDefn())
-            target_feature.SetGeometry(geom)
+        # Copy original_datasource's feature and set as new shapes feature
+        target_feature = ogr.Feature(target_layer.GetLayerDefn())
+        target_feature.SetGeometry(geom)
 
-            # For all the fields in the feature set the field values from the
-            # source field
-            for fld_index in xrange(target_feature.GetFieldCount()):
-                target_feature.SetField(
-                    fld_index, base_feature.GetField(fld_index))
+        # For all the fields in the feature set the field values from the
+        # source field
+        for fld_index in xrange(target_feature.GetFieldCount()):
+            target_feature.SetField(
+                fld_index, base_feature.GetField(fld_index))
 
-            target_layer.CreateFeature(target_feature)
-            target_feature = None
-            base_feature = None
-        if error_count > 0:
-            LOGGER.warn(
-                '%d features out of %d were unable to be transformed and are'
-                ' not in the output vector at %s', error_count,
-                layer.GetFeatureCount(), target_path)
-        layer = None
+        target_layer.CreateFeature(target_feature)
+        target_feature = None
+        base_feature = None
+    if error_count > 0:
+        LOGGER.warn(
+            '%d features out of %d were unable to be transformed and are'
+            ' not in the output vector at %s', error_count,
+            layer.GetFeatureCount(), target_path)
+    layer = None
+    base_vector = None
 
 
 def reclassify_dataset_uri(
