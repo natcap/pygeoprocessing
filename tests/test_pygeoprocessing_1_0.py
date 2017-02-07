@@ -29,7 +29,46 @@ class PyGeoprocessing10(unittest.TestCase):
 
     def test_reproject_vector(self):
         """PGP.geoprocessing: test reproject vector."""
-        pass
+        reference = sampledata.SRS_COLOMBIA
+        pixel_size = 30.0
+        n_pixels = 9
+        polygon_a = shapely.geometry.Polygon([
+            (reference.origin[0], reference.origin[1]),
+            (reference.origin[0], -pixel_size * n_pixels+reference.origin[1]),
+            (reference.origin[0]+pixel_size * n_pixels,
+             -pixel_size * n_pixels+reference.origin[1]),
+            (reference.origin[0]+pixel_size * n_pixels, reference.origin[1]),
+            (reference.origin[0], reference.origin[1])])
+        base_vector_path = os.path.join(
+            self.workspace_dir, 'base_vector.json')
+        aggregate_field_name = 'id'
+        pygeoprocessing.testing.create_vector_on_disk(
+            [polygon_a], reference.projection,
+            fields={'id': 'int'}, attributes=[
+                {aggregate_field_name: 0}],
+            vector_format='GeoJSON', filename=base_vector_path)
+
+        target_reference = osr.SpatialReference()
+        # UTM zone 18N
+        target_reference.ImportFromEPSG(21818)
+
+        target_vector_path = os.path.join(
+            self.workspace_dir, 'target_vector.shp')
+        pygeoprocessing.reproject_vector(
+            base_vector_path, target_reference.ExportToWkt(),
+            target_vector_path, layer_index=0)
+
+        vector = ogr.Open(target_vector_path)
+        layer = vector.GetLayer()
+        result_reference = layer.GetSpatialRef()
+        layer = None
+        vector = None
+        print result_reference.ExportToWkt()
+        print osr.SpatialReference(target_reference.ExportToWkt())
+        self.assertTrue(
+            osr.SpatialReference(result_reference.ExportToWkt()).IsSameGeogCS(
+                osr.SpatialReference(target_reference.ExportToWkt())))
+
 
     def test_zonal_statistics(self):
         """PGP.geoprocessing: test zonal stats function."""

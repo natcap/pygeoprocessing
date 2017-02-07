@@ -973,7 +973,8 @@ def get_raster_info(raster_path):
 
 
 def reproject_vector(
-        base_vector_path, target_wkt, target_path, layer_index=0):
+        base_vector_path, target_wkt, target_path, layer_index=0,
+        driver_name='ESRI Shapefile'):
     """Reproject OGR DataSource (vector).
 
     Transforms the features of the base vector to the desired output
@@ -986,6 +987,8 @@ def reproject_vector(
         target_path (string): the filepath to the transformed shapefile
         layer_index (int): index of layer in `base_vector_path` to reproject.
             Defaults to 0.
+        driver_name (string): String to pass to ogr.GetDriverByName, defaults
+            to 'ESRI Shapefile'.
 
     Returns:
         None
@@ -999,11 +1002,10 @@ def reproject_vector(
             target_path)
         os.remove(target_path)
 
-    target_sr = osr.SpatialReference()
-    target_sr.ImportFromWkt(target_wkt)
+    target_sr = osr.SpatialReference(target_wkt)
 
     # create a new shapefile from the orginal_datasource
-    target_driver = ogr.GetDriverByName('ESRI Shapefile')
+    target_driver = ogr.GetDriverByName(driver_name)
     target_vector = target_driver.CreateDataSource(target_path)
 
     layer = base_vector.GetLayer(layer_index)
