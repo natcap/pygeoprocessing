@@ -2334,21 +2334,23 @@ def calculate_disjoint_polygon_set(shapefile_uri):
     for poly_feat in shapefile_layer:
         poly_wkt = poly_feat.GetGeometryRef().ExportToWkt()
         shapely_polygon = shapely.wkt.loads(poly_wkt)
+        poly_wkt = None
         poly_fid = poly_feat.GetFID()
         poly_intersect_lookup[poly_fid] = {
             'poly': shapely_polygon,
-            'prepared': shapely.prepared.prep(shapely_polygon),
             'intersects': set(),
         }
     shapefile_layer.ResetReading()
 
     for poly_fid in poly_intersect_lookup:
+        polygon = shapely.prepared.prep(
+            poly_intersect_lookup[poly_fid]['poly'])
         for intersect_poly_fid in poly_intersect_lookup:
-            polygon = poly_intersect_lookup[poly_fid]['prepared']
-            if polygon.intersects(
+            if intersect_poly_fid == poly_fid or polygon.intersects(
                     poly_intersect_lookup[intersect_poly_fid]['poly']):
                 poly_intersect_lookup[poly_fid]['intersects'].add(
                     intersect_poly_fid)
+        polygon = None
 
     # Build maximal subsets
     subset_list = []

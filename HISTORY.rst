@@ -5,6 +5,7 @@ Unreleased Changes
 ------------------
 * Fixing an issue with aggregate_raster_values that caused a crash if feature IDs were not in increasing order starting with 0.
 * Removed "create_rat/create_rat_uri" and migrated it to natcap.invest.wind_energy; the only InVEST model that uses that function.
+* Fixing a potential memory leak with large polygons when calculating disjoint set.
 
 0.3.2 (1/24/2017)
 -----------------
