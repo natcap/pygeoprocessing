@@ -120,7 +120,8 @@ def _cython_calculate_slope(dem_dataset_uri, slope_uri):
             # -= 1 allows us to handle single row DEMs
             n_rows_to_read -= 1
 
-        dem_array = dem_band.ReadAsArray(0, start_row_index, n_cols, n_rows_to_read, buf_obj=dem_array)
+        dem_band.ReadAsArray(
+            0, start_row_index, n_cols, n_rows_to_read, buf_obj=dem_array)
         slope_array[0, :] = slope_nodata
         dzdx[:] = slope_nodata
         dzdy[:] = slope_nodata
@@ -196,9 +197,12 @@ def _cython_calculate_slope(dem_dataset_uri, slope_uri):
 
             dzdx[0, col_index] = ((c+2*f+i) - (a+2*d+g)) / (cell_size_times_8)
             dzdy[0, col_index] = ((g+2*h+i) - (a+2*b+c)) / (cell_size_times_8)
-            #output in terms of percent
 
-        slope_array[:] = numpy.where(dzdx != slope_nodata, numpy.tan(numpy.arctan(numpy.sqrt(dzdx**2 + dzdy**2))) * 100, slope_nodata)
+        valid_mask = dzdx != slope_nodata
+        slope_array[:] = slope_nodata
+        # multiply by 100 for percent output
+        slope_array[valid_mask] = numpy.tan(numpy.arctan(
+            numpy.sqrt(dzdx[valid_mask]**2 + dzdy[valid_mask]**2))) * 100
         slope_band.WriteArray(slope_array, 0, row_index)
 
     dem_band = None
