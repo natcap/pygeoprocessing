@@ -1,6 +1,10 @@
 Release History
 ===============
 
+0.3.3 (2/9/2017)
+----------------
+* Fixing a memory leak with large polygons when calculating disjoint set.
+
 0.3.2 (1/24/2017)
 -----------------
 * Hotfix to patch an issue with watershed delineation packing that causes some field values to lose precision due to default field widths being set.
