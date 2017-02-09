@@ -2871,12 +2871,11 @@ def calculate_disjoint_polygon_set(shapefile_uri):
         polygon = shapely.prepared.prep(
             poly_intersect_lookup[poly_fid]['poly'])
         for intersect_poly_fid in poly_intersect_lookup:
-            polygon = poly_intersect_lookup[poly_fid]['prepared']
             if intersect_poly_fid == poly_fid or polygon.intersects(
                     poly_intersect_lookup[intersect_poly_fid]['poly']):
                 poly_intersect_lookup[poly_fid]['intersects'].add(
                     intersect_poly_fid)
-            polygon = None
+        polygon = None
 
     # Build maximal subsets
     subset_list = []
