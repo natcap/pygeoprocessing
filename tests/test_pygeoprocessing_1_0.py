@@ -27,6 +27,27 @@ class PyGeoprocessing10(unittest.TestCase):
         """Clean up remaining files."""
         shutil.rmtree(self.workspace_dir)
 
+    def test_reclassify_raster(self):
+        """PGP.geoprocessing: test reclassify raster."""
+        reference = sampledata.SRS_COLOMBIA
+        n_pixels = 9
+        pixel_matrix = numpy.ones((n_pixels, n_pixels), numpy.float32)
+        pixel_matrix[:] = 0.5
+        nodata_target = -1
+        raster_path = os.path.join(self.workspace_dir, 'raster.tif')
+        target_path = os.path.join(self.workspace_dir, 'target.tif')
+        pygeoprocessing.testing.create_raster_on_disk(
+            [pixel_matrix], reference.origin, reference.projection,
+            nodata_target, reference.pixel_size(30), filename=raster_path)
+
+        value_map = {
+            0.5: 100,
+        }
+        target_nodata = -1
+        pygeoprocessing.reclassify_raster(
+            raster_path, value_map, target_path, gdal.GDT_Float32,
+            target_nodata, exception_flag='values_required', band_index=1)
+
     def test_reproject_vector(self):
         """PGP.geoprocessing: test reproject vector."""
         reference = sampledata.SRS_WILLAMETTE

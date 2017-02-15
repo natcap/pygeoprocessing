@@ -1068,58 +1068,57 @@ def reproject_vector(
     base_vector = None
 
 
-def reclassify_dataset_uri(
-        dataset_uri, value_map, raster_out_uri, out_datatype, out_nodata,
-        exception_flag='values_required', assert_dataset_projected=True,
-        band_index=0):
-    """Reclassify values in a dataset.
+def reclassify_raster(
+        base_raster_path, value_map, target_raster_path, target_datatype,
+        target_nodata, exception_flag='values_required', band_index=1):
+    """Reclassify pixel values in a raster.
 
-    A function to reclassify values in dataset to any output type. By default
-    the values except for nodata must be in value_map.
+    A function to reclassify values in raster to any output type. By default
+    the values except for nodata must be in `value_map`.
 
     Args:
-        dataset_uri (string): a uri to a gdal dataset
+        base_raster_path (string): a path to a raster
         value_map (dictionary): a dictionary of values of
-            {source_value: dest_value, ...}
-            where source_value's type is a postive integer type and dest_value
-            is of type out_datatype.
-        raster_out_uri (string): the uri for the output raster
-        out_datatype (gdal type): the type for the output dataset
-        out_nodata (numerical type): the nodata value for the output raster.
-            Must be the same type as out_datatype
-        band_index (int): Indicates which band in `dataset_uri` the
-            reclassification should operate on.  Defaults to 0.
+            {source_value: dest_value, ...} where source_value's type is the
+            same as the values in `base_raster_path` at band `band_index`.
+        target_raster_path (string): target raster output path; overwritten if
+            it exists
+        target_datatype (gdal type): the numerical type for the target raster
+        target_nodata (numerical type): the nodata value for the target raster
+            Must be the same type as target_datatype
+        band_index (int): Indicates which band in `base_raster_path` the
+            reclassification should operate on.  Defaults to 1.
 
     Keyword Args:
         exception_flag (string): either 'none' or 'values_required'.
             If 'values_required' raise an exception if there is a value in the
             raster that is not found in value_map
-        assert_dataset_projected (boolean): if True this operation will
-            test if the input dataset is not projected and raise an exception
+        assert_raster_projected (boolean): if True this operation will
+            test if the input raster is not projected and raise an exception
             if so.
 
     Returns:
-        nothing
+        None
 
     Raises:
-        Exception: if exception_flag == 'values_required' and the value from
+        ValueError if exception_flag == 'values_required' and the value from
            'key_raster' is not a key in 'attr_dict'
     """
     if exception_flag not in ['none', 'values_required']:
         raise ValueError('unknown exception_flag %s', exception_flag)
     values_required = exception_flag == 'values_required'
 
-    raster_info = get_raster_info(dataset_uri)
-    nodata = raster_info['nodata'][band_index]
+    raster_info = get_raster_info(base_raster_path)
+    nodata = raster_info['nodata'][band_index-1]
     value_map_copy = value_map.copy()
     # possible that nodata value is not defined, so test for None first
     # otherwise if nodata not predefined, remap it into the dictionary
     if nodata is not None and nodata not in value_map_copy:
-        value_map_copy[nodata] = out_nodata
+        value_map_copy[nodata] = target_nodata
     keys = sorted(numpy.array(value_map_copy.keys()))
     values = numpy.array([value_map_copy[x] for x in keys])
 
-    def map_dataset_to_value(original_values):
+    def _map_dataset_to_value_op(original_values):
         """Convert a block of original values to the lookup values."""
         if values_required:
             unique = numpy.unique(original_values)
@@ -1128,17 +1127,13 @@ def reclassify_dataset_uri(
                 raise ValueError(
                     'There was not a value for at least the following codes '
                     '%s for this file %s.\nNodata value is: %s' % (
-                        str(unique[~has_map]), dataset_uri, str(nodata)))
+                        str(unique[~has_map]), base_raster_path, str(nodata)))
         index = numpy.digitize(original_values.ravel(), keys, right=True)
         return values[index].reshape(original_values.shape)
 
-    out_pixel_size = raster_info['mean_pixel_size']
-    vectorize_datasets(
-        [dataset_uri], map_dataset_to_value,
-        raster_out_uri, out_datatype, out_nodata, out_pixel_size,
-        "intersection", dataset_to_align_index=0,
-        vectorize_op=False, assert_datasets_projected=assert_dataset_projected,
-        datasets_are_pre_aligned=True)
+    raster_calculator(
+        [(base_raster_path, band_index)], _map_dataset_to_value_op,
+        target_raster_path, target_datatype, target_nodata)
 
 
 class DatasetUnprojected(Exception):
