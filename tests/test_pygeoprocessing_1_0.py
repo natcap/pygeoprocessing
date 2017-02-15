@@ -29,7 +29,7 @@ class PyGeoprocessing10(unittest.TestCase):
 
     def test_reproject_vector(self):
         """PGP.geoprocessing: test reproject vector."""
-        reference = sampledata.SRS_COLOMBIA
+        reference = sampledata.SRS_WILLAMETTE
         pixel_size = 30.0
         n_pixels = 9
         polygon_a = shapely.geometry.Polygon([
@@ -50,7 +50,7 @@ class PyGeoprocessing10(unittest.TestCase):
 
         target_reference = osr.SpatialReference()
         # UTM zone 18N
-        target_reference.ImportFromEPSG(21818)
+        target_reference.ImportFromEPSG(26918)
 
         target_vector_path = os.path.join(
             self.workspace_dir, 'target_vector.shp')
@@ -63,10 +63,8 @@ class PyGeoprocessing10(unittest.TestCase):
         result_reference = layer.GetSpatialRef()
         layer = None
         vector = None
-        print result_reference.ExportToWkt()
-        print osr.SpatialReference(target_reference.ExportToWkt())
         self.assertTrue(
-            osr.SpatialReference(result_reference.ExportToWkt()).IsSameGeogCS(
+            osr.SpatialReference(result_reference.ExportToWkt()).IsSame(
                 osr.SpatialReference(target_reference.ExportToWkt())))
 
 
