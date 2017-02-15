@@ -54,6 +54,9 @@ class PyGeoprocessing10(unittest.TestCase):
 
         target_vector_path = os.path.join(
             self.workspace_dir, 'target_vector.shp')
+        # create the file first so the model needs to deal with that
+        target_file = open(target_vector_path, 'w')
+        target_file.close()
         pygeoprocessing.reproject_vector(
             base_vector_path, target_reference.ExportToWkt(),
             target_vector_path, layer_index=0)
