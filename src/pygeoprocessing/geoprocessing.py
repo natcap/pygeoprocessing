@@ -146,77 +146,84 @@ def raster_calculator(
     target_raster = gdal.Open(target_raster_path, gdal.GA_Update)
     target_band = target_raster.GetRasterBand(1)
 
-    n_cols, n_rows = base_raster_info['raster_size']
-    xoff = None
-    yoff = None
-    last_time = time.time()
-    raster_blocks = None
-    last_blocksize = None
-    target_min = None
-    target_max = None
-    target_sum = 0.0
-    target_n = 0
-    target_mean = None
-    target_stddev = None
-    for block_offset in iterblocks(
-            base_raster_path_band_list[0][0], offset_only=True):
-        xoff, yoff = block_offset['xoff'], block_offset['yoff']
-        last_time = _invoke_timed_callback(
-            last_time, lambda: LOGGER.info(
-                'raster stack calculation approx. %.2f%% complete',
-                100.0 * ((n_rows - yoff) * n_cols - xoff) /
-                (n_rows * n_cols)), _LOGGING_PERIOD)
-        blocksize = (block_offset['win_ysize'], block_offset['win_xsize'])
+    try:
+        n_cols, n_rows = base_raster_info['raster_size']
+        xoff = None
+        yoff = None
+        last_time = time.time()
+        raster_blocks = None
+        last_blocksize = None
+        target_min = None
+        target_max = None
+        target_sum = 0.0
+        target_n = 0
+        target_mean = None
+        target_stddev = None
+        for block_offset in iterblocks(
+                base_raster_path_band_list[0][0], offset_only=True):
+            xoff, yoff = block_offset['xoff'], block_offset['yoff']
+            last_time = _invoke_timed_callback(
+                last_time, lambda: LOGGER.info(
+                    'raster stack calculation approx. %.2f%% complete',
+                    100.0 * ((n_rows - yoff) * n_cols - xoff) /
+                    (n_rows * n_cols)), _LOGGING_PERIOD)
+            blocksize = (block_offset['win_ysize'], block_offset['win_xsize'])
 
-        if last_blocksize != blocksize:
-            raster_blocks = [
-                numpy.zeros(blocksize, dtype=_gdal_to_numpy_type(band))
-                for band in base_band_list]
-            last_blocksize = blocksize
+            if last_blocksize != blocksize:
+                raster_blocks = [
+                    numpy.zeros(blocksize, dtype=_gdal_to_numpy_type(band))
+                    for band in base_band_list]
+                last_blocksize = blocksize
 
-        for dataset_index in xrange(len(base_band_list)):
-            band_data = block_offset.copy()
-            band_data['buf_obj'] = raster_blocks[dataset_index]
-            base_band_list[dataset_index].ReadAsArray(**band_data)
+            for dataset_index in xrange(len(base_band_list)):
+                band_data = block_offset.copy()
+                band_data['buf_obj'] = raster_blocks[dataset_index]
+                base_band_list[dataset_index].ReadAsArray(**band_data)
 
-        target_block = local_op(*raster_blocks)
+            target_block = local_op(*raster_blocks)
 
-        target_band.WriteArray(
-            target_block, xoff=block_offset['xoff'],
-            yoff=block_offset['yoff'])
+            target_band.WriteArray(
+                target_block, xoff=block_offset['xoff'],
+                yoff=block_offset['yoff'])
 
-        if calc_raster_stats:
-            valid_mask = target_block != nodata_target
-            valid_block = target_block[valid_mask]
-            if valid_block.size == 0:
-                continue
-            if target_min is None:
-                # initialize first min/max
-                target_min = target_max = valid_block[0]
-            target_sum += numpy.sum(valid_block)
-            target_min = min(numpy.min(valid_block), target_min)
-            target_max = max(numpy.max(valid_block), target_max)
-            target_n += valid_block.size
+            if calc_raster_stats:
+                valid_mask = target_block != nodata_target
+                valid_block = target_block[valid_mask]
+                if valid_block.size == 0:
+                    continue
+                if target_min is None:
+                    # initialize first min/max
+                    target_min = target_max = valid_block[0]
+                target_sum += numpy.sum(valid_block)
+                target_min = min(numpy.min(valid_block), target_min)
+                target_max = max(numpy.max(valid_block), target_max)
+                target_n += valid_block.size
 
-    # Making sure the band and dataset is flushed and not in memory before
-    # adding stats
-    target_band.FlushCache()
+        # Making sure the band and dataset is flushed and not in memory before
+        # adding stats
+        target_band.FlushCache()
 
-    if calc_raster_stats and target_min is not None:
-        target_mean = target_sum / float(target_n)
-        stdev_sum = 0.0
-        for block_offset, target_block in iterblocks(target_raster_path):
-            valid_mask = target_block != nodata_target
-            valid_block = target_block[valid_mask]
-            stdev_sum += numpy.sum((valid_block - target_mean) ** 2)
-        target_stddev = (stdev_sum / float(target_n)) ** 0.5
+        if calc_raster_stats and target_min is not None:
+            target_mean = target_sum / float(target_n)
+            stdev_sum = 0.0
+            for block_offset, target_block in iterblocks(target_raster_path):
+                valid_mask = target_block != nodata_target
+                valid_block = target_block[valid_mask]
+                stdev_sum += numpy.sum((valid_block - target_mean) ** 2)
+            target_stddev = (stdev_sum / float(target_n)) ** 0.5
 
-        target_band.SetStatistics(
-            float(target_min), float(target_max), float(target_mean),
-            float(target_stddev))
-
-    target_band = None
-    target_raster = None
+            target_band.SetStatistics(
+                float(target_min), float(target_max), float(target_mean),
+                float(target_stddev))
+    finally:
+        base_band_list[:] = []
+        for raster in base_raster_list:
+            gdal.Dataset.__swig_destroy__(raster)
+        base_raster_list[:] = []
+        target_band.FlushCache()
+        target_band = None
+        gdal.Dataset.__swig_destroy__(target_raster)
+        target_raster = None
 
 
 def align_and_resize_raster_stack(

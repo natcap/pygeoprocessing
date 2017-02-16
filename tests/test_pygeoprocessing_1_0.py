@@ -27,6 +27,53 @@ class PyGeoprocessing10(unittest.TestCase):
         """Clean up remaining files."""
         shutil.rmtree(self.workspace_dir)
 
+    def test_reclassify_raster_missing_pixel_value(self):
+        """PGP.geoprocessing: test reclassify raster with missing value."""
+        reference = sampledata.SRS_COLOMBIA
+        n_pixels = 9
+        pixel_matrix = numpy.ones((n_pixels, n_pixels), numpy.float32)
+        test_value = 0.5
+        pixel_matrix[:] = test_value
+        pixel_matrix[-1, 0] = test_value - 1  # making a bad value
+        nodata_target = -1
+        raster_path = os.path.join(self.workspace_dir, 'raster.tif')
+        target_path = os.path.join(self.workspace_dir, 'target.tif')
+        pygeoprocessing.testing.create_raster_on_disk(
+            [pixel_matrix], reference.origin, reference.projection,
+            nodata_target, reference.pixel_size(30), filename=raster_path)
+
+        value_map = {
+            test_value: 100,
+        }
+        target_nodata = -1
+        with self.assertRaises(ValueError):
+            pygeoprocessing.reclassify_raster(
+                raster_path, value_map, target_path, gdal.GDT_Float32,
+                target_nodata, exception_flag='values_required', band_index=1)
+
+    def test_reclassify_raster_bad_mode(self):
+        """PGP.geoprocessing: test reclassify raster with bad flag."""
+        reference = sampledata.SRS_COLOMBIA
+        n_pixels = 9
+        pixel_matrix = numpy.ones((n_pixels, n_pixels), numpy.float32)
+        test_value = 0.5
+        pixel_matrix[:] = test_value
+        nodata_target = -1
+        raster_path = os.path.join(self.workspace_dir, 'raster.tif')
+        target_path = os.path.join(self.workspace_dir, 'target.tif')
+        pygeoprocessing.testing.create_raster_on_disk(
+            [pixel_matrix], reference.origin, reference.projection,
+            nodata_target, reference.pixel_size(30), filename=raster_path)
+
+        value_map = {
+            test_value: 100,
+        }
+        target_nodata = -1
+        with self.assertRaises(ValueError):
+            pygeoprocessing.reclassify_raster(
+                raster_path, value_map, target_path, gdal.GDT_Float32,
+                target_nodata, exception_flag='BAD FLAG', band_index=1)
+
     def test_reclassify_raster(self):
         """PGP.geoprocessing: test reclassify raster."""
         reference = sampledata.SRS_COLOMBIA
