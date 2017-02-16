@@ -32,7 +32,8 @@ class PyGeoprocessing10(unittest.TestCase):
         reference = sampledata.SRS_COLOMBIA
         n_pixels = 9
         pixel_matrix = numpy.ones((n_pixels, n_pixels), numpy.float32)
-        pixel_matrix[:] = 0.5
+        test_value = 0.5
+        pixel_matrix[:] = test_value
         nodata_target = -1
         raster_path = os.path.join(self.workspace_dir, 'raster.tif')
         target_path = os.path.join(self.workspace_dir, 'target.tif')
@@ -41,12 +42,19 @@ class PyGeoprocessing10(unittest.TestCase):
             nodata_target, reference.pixel_size(30), filename=raster_path)
 
         value_map = {
-            0.5: 100,
+            test_value: 100,
         }
         target_nodata = -1
         pygeoprocessing.reclassify_raster(
             raster_path, value_map, target_path, gdal.GDT_Float32,
             target_nodata, exception_flag='values_required', band_index=1)
+        target_raster = gdal.Open(target_path)
+        target_band = target_raster.GetRasterBand(1)
+        target_array = target_band.ReadAsArray()
+        target_band = None
+        target_raster = None
+        self.assertEqual(
+            numpy.sum(target_array), n_pixels**2 * value_map[test_value])
 
     def test_reproject_vector(self):
         """PGP.geoprocessing: test reproject vector."""
