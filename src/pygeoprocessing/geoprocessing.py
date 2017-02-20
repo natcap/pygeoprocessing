@@ -1284,26 +1284,6 @@ def warp_raster(
     calculate_raster_stats(target_raster_path)
 
 
-def copy_vector(base_vector_path, copy_vector_path):
-    """Create a copy of an ESRI Shapefile.
-
-    Args:
-        base_vector_path (string): path to ESRI Shapefile that is to  be
-            copied
-        copy_vector_path (string): output path for the copy of
-            `base_vector_path`
-
-    Returns:
-        None
-    """
-    if os.path.isfile(copy_vector_path):
-        os.remove(copy_vector_path)
-
-    shape = ogr.Open(base_vector_path)
-    drv = ogr.GetDriverByName('ESRI Shapefile')
-    drv.CopyDataSource(shape, copy_vector_path)
-
-
 def rasterize_layer_uri(
         raster_uri, shapefile_uri, burn_values=[], option_list=[]):
     """Rasterize datasource layer.
