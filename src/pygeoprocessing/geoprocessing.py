@@ -1153,28 +1153,6 @@ class DifferentProjections(Exception):
     pass
 
 
-def get_datasource_bounding_box(datasource_uri):
-    """Get datasource bounding box where coordinates are in projected units.
-
-    Args:
-        dataset_uri (string): a uri to a GDAL dataset
-
-    Returns:
-        bounding_box (list):
-            [upper_left_x, upper_left_y, lower_right_x, lower_right_y] in
-            projected coordinates
-    """
-    datasource = ogr.Open(datasource_uri)
-    layer = datasource.GetLayer(0)
-    extent = layer.GetExtent()
-    # Reindex datasource extents into the upper left/lower right coordinates
-    bounding_box = [extent[0],
-                    extent[3],
-                    extent[1],
-                    extent[2]]
-    return bounding_box
-
-
 def warp_raster(
         base_raster_path, target_pixel_size, target_raster_path,
         resample_method, target_bb=None, target_sr_wkt=None,
