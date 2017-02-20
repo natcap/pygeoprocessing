@@ -1284,49 +1284,6 @@ def warp_raster(
     calculate_raster_stats(target_raster_path)
 
 
-def extract_datasource_table_by_key(datasource_uri, key_field):
-    """Return vector attribute table of first layer as dictionary.
-
-    Create a dictionary lookup table of the features in the attribute table
-    of the datasource referenced by datasource_uri.
-
-    Args:
-        datasource_uri (string): a uri to an OGR datasource
-        key_field: a field in datasource_uri that refers to a key value
-            for each row such as a polygon id.
-
-    Returns:
-        attribute_dictionary (dict): returns a dictionary of the
-            form {key_field_0: {field_0: value0, field_1: value1}...}
-    """
-    # Pull apart the datasource
-    datasource = ogr.Open(datasource_uri)
-    layer = datasource.GetLayer()
-    layer_def = layer.GetLayerDefn()
-
-    # Build up a list of field names for the datasource table
-    field_names = []
-    for field_id in xrange(layer_def.GetFieldCount()):
-        field_def = layer_def.GetFieldDefn(field_id)
-        field_names.append(field_def.GetName())
-
-    # Loop through each feature and build up the dictionary representing the
-    # attribute table
-    attribute_dictionary = {}
-    for feature in layer:
-        feature_fields = {}
-        for field_name in field_names:
-            feature_fields[field_name] = feature.GetField(field_name)
-        key_value = feature.GetField(key_field)
-        attribute_dictionary[key_value] = feature_fields
-
-    layer.ResetReading()
-    # Explictly clean up the layers so the files close
-    layer = None
-    datasource = None
-    return attribute_dictionary
-
-
 def copy_vector(base_vector_path, copy_vector_path):
     """Create a copy of an ESRI Shapefile.
 
