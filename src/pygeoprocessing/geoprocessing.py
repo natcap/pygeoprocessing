@@ -1778,57 +1778,39 @@ def iterblocks(
         block_type_list = [
             _gdal_to_numpy_type(ds_band) for ds_band in ds_bands]
 
-    def _block_gen(queue):
-        """Load the next memory block via generator paradigm.
+    for row_block_index in xrange(n_row_blocks):
+        row_offset = row_block_index * rows_per_block
+        row_block_width = n_rows - row_offset
+        if row_block_width > rows_per_block:
+            row_block_width = rows_per_block
 
-        Parameters:
-            queue (Queue.Queue): thread safe queue to return offset_dict and
-                results
+        for col_block_index in xrange(n_col_blocks):
+            col_offset = col_block_index * cols_per_block
+            col_block_width = n_cols - col_offset
+            if col_block_width > cols_per_block:
+                col_block_width = cols_per_block
 
-        Returns:
-            None
-        """
-        for row_block_index in xrange(n_row_blocks):
-            row_offset = row_block_index * rows_per_block
-            row_block_width = n_rows - row_offset
-            if row_block_width > rows_per_block:
-                row_block_width = rows_per_block
+            # resize the dataset block cache if necessary
+            if (last_row_block_width != row_block_width or
+                    last_col_block_width != col_block_width):
+                dataset_blocks = [
+                    numpy.zeros(
+                        (row_block_width, col_block_width),
+                        dtype=block_type) for block_type in
+                    block_type_list]
 
-            for col_block_index in xrange(n_col_blocks):
-                col_offset = col_block_index * cols_per_block
-                col_block_width = n_cols - col_offset
-                if col_block_width > cols_per_block:
-                    col_block_width = cols_per_block
-
-                # resize the dataset block cache if necessary
-                if (last_row_block_width != row_block_width or
-                        last_col_block_width != col_block_width):
-                    dataset_blocks = [
-                        numpy.zeros(
-                            (row_block_width, col_block_width),
-                            dtype=block_type) for block_type in
-                        block_type_list]
-
-                offset_dict = {
-                    'xoff': col_offset,
-                    'yoff': row_offset,
-                    'win_xsize': col_block_width,
-                    'win_ysize': row_block_width,
-                }
-                result = offset_dict
-                if not offset_only:
-                    for ds_band, block in zip(ds_bands, dataset_blocks):
-                        ds_band.ReadAsArray(buf_obj=block, **offset_dict)
-                    result = (result,) + tuple(dataset_blocks)
-                queue.put(result)
-        queue.put('STOP')  # sentinel indicating end of iteration
-
-    # Make the queue only one element deep so it attempts to load the next
-    # block while waiting for the next .next() call.
-    block_queue = Queue.Queue(1)
-    threading.Thread(target=_block_gen, args=(block_queue,)).start()
-    for result in iter(block_queue.get, 'STOP'):
-        yield result
+            offset_dict = {
+                'xoff': col_offset,
+                'yoff': row_offset,
+                'win_xsize': col_block_width,
+                'win_ysize': row_block_width,
+            }
+            result = offset_dict
+            if not offset_only:
+                for ds_band, block in zip(ds_bands, dataset_blocks):
+                    ds_band.ReadAsArray(buf_obj=block, **offset_dict)
+                result = (result,) + tuple(dataset_blocks)
+            yield result
 
 
 def transform_bounding_box(
