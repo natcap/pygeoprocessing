@@ -1832,7 +1832,7 @@ def iterblocks(
 
 
 def transform_bounding_box(
-        bounding_box, base_ref_wkt, new_ref_wkt, edge_samples=11):
+        bounding_box, base_ref_wkt, target_ref_wkt, edge_samples=11):
     """Transform input bounding box to output projection.
 
     This transform accounts for the fact that the reprojected square bounding
@@ -1846,7 +1846,7 @@ def transform_bounding_box(
             system describing the bound in the order [xmin, ymin, xmax, ymax]
         base_ref_wkt (string): the spatial reference of the input coordinate
             system in Well Known Text.
-        new_ref_wkt (string): the spatial reference of the desired output
+        target_ref_wkt (string): the spatial reference of the desired output
             coordinate system in Well Known Text.
         edge_samples (int): the number of interpolated points along each
             bounding box edge to sample along. A value of 2 will sample just
@@ -1861,13 +1861,13 @@ def transform_bounding_box(
     base_ref = osr.SpatialReference()
     base_ref.ImportFromWkt(base_ref_wkt)
 
-    new_ref = osr.SpatialReference()
-    new_ref.ImportFromWkt(new_ref_wkt)
+    target_ref = osr.SpatialReference()
+    target_ref.ImportFromWkt(target_ref_wkt)
 
-    transformer = osr.CoordinateTransformation(base_ref, new_ref)
+    transformer = osr.CoordinateTransformation(base_ref, target_ref)
 
     def _transform_point(point):
-        """Transform an (x,y) point tuple from base_ref to new_ref."""
+        """Transform an (x,y) point tuple from base_ref to target_ref."""
         trans_x, trans_y, _ = (transformer.TransformPoint(*point))
         return (trans_x, trans_y)
 

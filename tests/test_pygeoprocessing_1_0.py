@@ -1082,3 +1082,25 @@ class PyGeoprocessing10(unittest.TestCase):
             value = pygeoprocessing.geoprocessing._find_int_not_in_array(
                 numpy.array(array))
             self.assertTrue(value not in array)
+
+    def test_transform_box(self):
+        """PGP.geoprocessing: test geotransforming lat/lng box to UTM10N."""
+        # Willamette valley in lat/lng
+        bounding_box = [-123.587984, 44.415778, -123.397976, 44.725814]
+        base_ref = osr.SpatialReference()
+        base_ref.ImportFromEPSG(4326)  # WGS84 EPSG
+
+        target_ref = osr.SpatialReference()
+        target_ref.ImportFromEPSG(26910)  # UTM10N EPSG
+
+        result = pygeoprocessing.transform_bounding_box(
+            bounding_box, base_ref.ExportToWkt(), target_ref.ExportToWkt())
+        # I have confidence this function works by taking the result and
+        # plotting it in a GIS polygon, so the expected result below is
+        # regression data
+        expected_result = [
+            453189.3366727062, 4918131.085894576,
+            468484.1637522648, 4952660.678869661]
+        self.assertIs(
+            numpy.testing.assert_allclose(
+                result, expected_result), None)
