@@ -1104,3 +1104,26 @@ class PyGeoprocessing10(unittest.TestCase):
         self.assertIs(
             numpy.testing.assert_allclose(
                 result, expected_result), None)
+
+    def test_iterblocks(self):
+        """PGP.geoprocessing: test iterblocks."""
+        reference = sampledata.SRS_COLOMBIA
+        n_pixels = 100
+        pixel_matrix = numpy.ones((n_pixels, n_pixels), numpy.float32)
+        test_value = 0.5
+        pixel_matrix[:] = test_value
+        nodata_target = None
+        raster_path = os.path.join(self.workspace_dir, 'raster.tif')
+        pygeoprocessing.testing.create_raster_on_disk(
+            [pixel_matrix], reference.origin, reference.projection,
+            nodata_target, reference.pixel_size(30), filename=raster_path,
+            dataset_opts=[
+                'TILED=YES',
+                'BLOCKXSIZE=64',
+                'BLOCKYSIZE=64'])
+
+        total = 0
+        for _, block in pygeoprocessing.iterblocks(
+                raster_path, largest_block=0):
+            total += numpy.sum(block)
+        self.assertEqual(total, test_value * n_pixels**2)

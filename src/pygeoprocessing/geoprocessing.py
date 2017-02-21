@@ -1682,7 +1682,7 @@ def convolve_2d_uri(
 
 
 def iterblocks(
-        raster_uri, band_list=None, largest_block=_LARGEST_ITERBLOCK,
+        raster_path, band_list=None, largest_block=_LARGEST_ITERBLOCK,
         astype=None, offset_only=False):
     """Iterate across all the memory blocks in the input raster.
 
@@ -1698,7 +1698,7 @@ def iterblocks(
     be careful to do so only with prealigned rasters.
 
     Parameters:
-        raster_uri (string): The string filepath to the raster to iterate over.
+        raster_path (string): The string filepath to the raster to iterate over.
         band_list=None (list of ints or None): A list of the bands for which
             the matrices should be returned. The band number to operate on.
             Defaults to None, which will return all bands.  Bands may be
@@ -1736,7 +1736,7 @@ def iterblocks(
         If `offset_only` is True, the function returns only the block data and
             does not attempt to read binary data from the raster.
     """
-    dataset = gdal.Open(raster_uri)
+    dataset = gdal.Open(raster_path)
 
     if band_list is None:
         band_list = range(1, dataset.RasterCount + 1)
