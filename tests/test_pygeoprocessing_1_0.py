@@ -324,7 +324,7 @@ class PyGeoprocessing10(unittest.TestCase):
                 polygons_might_overlap=False)
 
     def test_zonal_statistics_bad_aggregate_type(self):
-        """PGP.geoprocessing: test zonal stats function with missing id."""
+        """PGP.geoprocessing: test zonal stats function with bad agg type."""
         # create aggregating polygon
         reference = sampledata.SRS_COLOMBIA
         pixel_size = 30.0
@@ -413,7 +413,7 @@ class PyGeoprocessing10(unittest.TestCase):
         self.assertNotEqual(reference_time, new_time)
 
     def test_warp_raster(self):
-        """PGP.geoprocessing: align/resize raster test reprojection."""
+        """PGP.geoprocessing: warp raster test."""
         pixel_a_matrix = numpy.ones((5, 5), numpy.int16)
         reference = sampledata.SRS_COLOMBIA
         nodata_target = -1
@@ -431,6 +431,34 @@ class PyGeoprocessing10(unittest.TestCase):
 
         pygeoprocessing.testing.assert_rasters_equal(
             base_a_path, target_raster_path)
+
+    def test_warp_raster_unusual_pixel_size(self):
+        """PGP.geoprocessing: warp on unusual pixel types and sizes."""
+        pixel_a_matrix = numpy.ones((1, 1), numpy.byte)
+        reference = sampledata.SRS_COLOMBIA
+        nodata_target = -1
+        base_a_path = os.path.join(self.workspace_dir, 'base_a.tif')
+        pygeoprocessing.testing.create_raster_on_disk(
+            [pixel_a_matrix], reference.origin, reference.projection,
+            nodata_target, reference.pixel_size(20), filename=base_a_path,
+            dataset_opts=['PIXELTYPE=SIGNEDBYTE'])
+
+        target_raster_path = os.path.join(self.workspace_dir, 'target_a.tif')
+
+        # convert 1x1 pixel to a 30x30m pixel
+        pygeoprocessing.warp_raster(
+            base_a_path, [-30, 30], target_raster_path,
+            'nearest', target_sr_wkt=reference.projection)
+
+        expected_raster_path = os.path.join(
+            self.workspace_dir, 'expected.tif')
+        pygeoprocessing.testing.create_raster_on_disk(
+            [pixel_a_matrix], reference.origin, reference.projection,
+            nodata_target, reference.pixel_size(30),
+            filename=expected_raster_path)
+
+        pygeoprocessing.testing.assert_rasters_equal(
+            expected_raster_path, target_raster_path)
 
     def test_align_and_resize_raster_stack_bad_lengths(self):
         """PGP.geoprocessing: align/resize raster bad list lengths."""
