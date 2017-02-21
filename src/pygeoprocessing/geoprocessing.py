@@ -1979,34 +1979,39 @@ def _merge_bounding_boxes(bb1, bb2, mode):
 
 
 def _find_int_not_in_array(values):
-    """Return a value not in the integer array.
+    """Return a value not in the sorted integer array.
 
     This function is used to determine good values for nodata in rasters that
     don't collide with other values in the array.
 
     Parameter:
-        values (numpy.ndarray): a sorted integer array
+        values (numpy.ndarray): a non-empty integer array sorted in
+            increasing order.
 
     Returns:
-        An integer that's not contained in the array.
+        An integer that's not contained in `values`.
     """
-    if (values[-1] - values[0]) == values.size - 1:
+    left_bound = int(values[0])
+    right_bound = int(values[-1])
+    if (right_bound - left_bound) == values.size - 1:
         # then values are all incrementing numbers, either choose +/- 1 bounds
         if values[0] != numpy.iinfo(numpy.int32).min:
             return values[0] - 1
         elif values[1] != numpy.iinfo(numpy.int32).max:
             return values[-1] + 1
-        # we could concevebly get here if the array had every 32 bit int in it
+        # we could get here if the array had every 32 bit int in it
         raise ValueError("Can't find an int not in array.")
     else:
         # array is at least two elements large
         left_index = 0
-        right_index = values.size - 1
+        right_index = int(values.size - 1)
         while right_index - left_index > 1:
             # binary search for a gap
             mid_index = (left_index + right_index) / 2
             left_size = mid_index - left_index + 1
-            if (values[mid_index] - values[left_index]) == left_size - 1:
+            mid_value = int(values[mid_index])
+            left_value = int(values[left_index])
+            if (mid_value - left_value) == left_size - 1:
                 # left list is packed; try the right
                 left_index = mid_index
             else:

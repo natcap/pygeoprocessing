@@ -1067,3 +1067,18 @@ class PyGeoprocessing10(unittest.TestCase):
         band = None
         raster = None
         numpy.testing.assert_array_equal(expected_result, result)
+
+    def test_find_int_not_in_array(self):
+        """PGP.geoprocessing: test find int not in array."""
+        import pygeoprocessing.geoprocessing
+        for array in [[1, 2, 3],
+                      [1, 2, 3, 4, 5, 6, 8],
+                      [-10, 0, 1000],
+                      [0],
+                      [numpy.iinfo(numpy.int32).min,
+                       numpy.iinfo(numpy.int32).min+1],
+                      [numpy.iinfo(numpy.int32).min,
+                       numpy.iinfo(numpy.int32).max]]:
+            value = pygeoprocessing.geoprocessing._find_int_not_in_array(
+                numpy.array(array))
+            self.assertTrue(value not in array)
