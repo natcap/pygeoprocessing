@@ -1491,8 +1491,9 @@ def _next_regular(target):
     return match
 
 
-def convolve_2d_uri(
-        signal_path, kernel_path, output_path, output_type=gdal.GDT_Float64):
+def convolve_2d(
+        signal_path, kernel_path, target_path,
+        target_datatype=gdal.GDT_Float64):
     """Convolve 2D kernel over 2D signal.
 
     Convolves the raster in `kernel_path` over `signal_path`.  Nodata values
@@ -1500,58 +1501,52 @@ def convolve_2d_uri(
     the output result where `signal_path` has nodata.
 
     Parameters:
-        signal_path (string): a filepath to a gdal dataset that's the
-            source input.
-        kernel_path (string): a filepath to a gdal dataset that's the
-            source input.
-        output_path (string): a filepath to the gdal dataset
-            that's the convolution output of signal and kernel
-            that is the same size and projection of signal_path. Any nodata
-            pixels that align with `signal_path` will be set to nodata.
-        output_type (GDAL type): a GDAL raster type to set the output
+        signal_path (string): filepath signal raster.
+        kernel_path (string): filepath kernel raster.
+        target_path (string): filepath to target raster that's the convolution
+            of signal with kernel.  Output will be same size and projection
+            of `signal_path`. Any nodata pixels that align with `signal_path`
+            will be set to nodata.
+        target_datatype (GDAL type): a GDAL raster type to set the output
             raster type to, as well as the type to calculate the convolution
-            in.  Defaults to GDT_Float64
+            in.  Defaults to GDT_Float64.
 
     Returns:
         None
     """
-    output_nodata = numpy.finfo(numpy.float32).min
-    new_raster_from_base_uri(
-        signal_path, output_path, 'GTiff', output_nodata, output_type,
-        fill_value=0)
+    #TODO: change to path/band inputs
+    target_nodata = numpy.finfo(numpy.float32).min
+    new_raster_from_base(
+        signal_path, target_path, target_datatype, [target_nodata], n_bands=1,
+        fill_value_list=[0])
 
     signal_raster_info = get_raster_info(signal_path)
     kernel_raster_info = get_raster_info(kernel_path)
     signal_raster_size = signal_raster_info['raster_size']
     kernel_raster_size = kernel_raster_info['raster_size']
 
-    n_signal_pixels = signal_raster_size[0] * signal_raster_size[1]
-    n_kernel_pixels = kernel_raster_size[0] * kernel_raster_size[1]
-
+    n_cols_signal, n_rows_signal = signal_raster_info['raster_size']
+    n_cols_kernel, n_rows_kernel = kernel_raster_info['raster_size']
     # by experimentation i found having the smaller raster to be cached
     # gives the best performance
-    if n_signal_pixels < n_kernel_pixels:
+    if n_cols_signal * n_rows_signal < n_cols_kernel * n_rows_kernel:
         s_path = signal_path
         k_path = kernel_path
-        n_cols_signal, n_rows_signal = signal_raster_info['raster_size']
-        n_cols_kernel, n_rows_kernel = kernel_raster_info['raster_size']
-        s_nodata = signal_raster_info['nodata']
-        k_nodata = kernel_raster_info['nodata']
+        s_nodata = signal_raster_info['nodata'][0]
+        k_nodata = kernel_raster_info['nodata'][0]
     else:
         k_path = signal_path
         s_path = kernel_path
-        n_cols_signal, n_rows_signal = kernel_raster_info['raster_size']
-        n_cols_kernel, n_rows_kernel = signal_raster_info['raster_size']
-        k_nodata = signal_raster_info['nodata']
-        s_nodata = kernel_raster_info['nodata']
+        k_nodata = signal_raster_info['nodata'][0]
+        s_nodata = kernel_raster_info['nodata'][0]
 
     # we need the original signal raster info because we want the output to
     # be clipped and NODATA masked to it
-    signal_nodata = signal_raster_info['nodata']
+    base_signal_nodata = signal_raster_info['nodata']
     signal_ds = gdal.Open(signal_path)
     signal_band = signal_ds.GetRasterBand(1)
-    output_ds = gdal.Open(output_path, gdal.GA_Update)
-    output_band = output_ds.GetRasterBand(1)
+    target_ds = gdal.Open(target_path, gdal.GA_Update)
+    target_band = target_ds.GetRasterBand(1)
 
     def _fft_cache(fshape, xoff, yoff, data_block):
         """Helper function to remember the last computed fft.
@@ -1576,20 +1571,19 @@ def convolve_2d_uri(
 
     LOGGER.info('starting convolve')
     last_time = time.time()
-    signal_data = {}
+    signal_data = None
     for signal_data, signal_block in iterblocks(
-            s_path, astype=_GDAL_TYPE_TO_NUMPY_LOOKUP[output_type]):
+            s_path, astype=_GDAL_TYPE_TO_NUMPY_LOOKUP[target_datatype]):
         last_time = _invoke_timed_callback(
             last_time, lambda: LOGGER.info(
                 "convolution operating on signal pixel (%d, %d)",
                 signal_data['xoff'], signal_data['yoff']),
             _LOGGING_PERIOD)
-
         signal_nodata_mask = signal_block == s_nodata
         signal_block[signal_nodata_mask] = 0.0
 
         for kernel_data, kernel_block in iterblocks(
-                k_path, astype=_GDAL_TYPE_TO_NUMPY_LOOKUP[output_type]):
+                k_path, astype=_GDAL_TYPE_TO_NUMPY_LOOKUP[target_datatype]):
             left_index_raster = (
                 signal_data['xoff'] - n_cols_kernel / 2 + kernel_data['xoff'])
             right_index_raster = (
@@ -1660,25 +1654,24 @@ def convolve_2d_uri(
                 'win_xsize': right_index_raster-left_index_raster,
                 'win_ysize': bottom_index_raster-top_index_raster
             }
-
-            current_output = output_band.ReadAsArray(**index_dict)
+            current_output = target_band.ReadAsArray(**index_dict)
             potential_nodata_signal_array = signal_band.ReadAsArray(
                 **index_dict)
             output_array = numpy.empty(
                 current_output.shape, dtype=numpy.float32)
 
             # read the signal block so we know where the nodata are
-            valid_mask = potential_nodata_signal_array != signal_nodata
-            output_array[:] = output_nodata
+            valid_mask = potential_nodata_signal_array != base_signal_nodata
+            output_array[:] = target_nodata
             output_array[valid_mask] = (
                 (result[top_index_result:bottom_index_result,
                         left_index_result:right_index_result])[valid_mask] +
                 current_output[valid_mask])
 
-            output_band.WriteArray(
+            target_band.WriteArray(
                 output_array, xoff=index_dict['xoff'],
                 yoff=index_dict['yoff'])
-    output_band.FlushCache()
+    target_band.FlushCache()
 
 
 def iterblocks(

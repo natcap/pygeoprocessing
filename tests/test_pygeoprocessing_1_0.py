@@ -1127,3 +1127,35 @@ class PyGeoprocessing10(unittest.TestCase):
                 raster_path, largest_block=0):
             total += numpy.sum(block)
         self.assertEqual(total, test_value * n_pixels**2)
+
+    def test_convolve_2d(self):
+        """PGP.geoprocessing: test convolve 2d."""
+        reference = sampledata.SRS_COLOMBIA
+        n_pixels = 100
+        signal_array = numpy.ones((n_pixels, n_pixels), numpy.float32)
+        test_value = 0.5
+        signal_array[:] = test_value
+        nodata_target = -1
+        signal_path = os.path.join(self.workspace_dir, 'signal.tif')
+        pygeoprocessing.testing.create_raster_on_disk(
+            [signal_array], reference.origin, reference.projection,
+            nodata_target, reference.pixel_size(30), filename=signal_path)
+        kernel_path = os.path.join(self.workspace_dir, 'kernel.tif')
+        kernel_array = numpy.ones((3, 3), numpy.float32)
+        pygeoprocessing.testing.create_raster_on_disk(
+            [kernel_array], reference.origin, reference.projection,
+            nodata_target, reference.pixel_size(30), filename=kernel_path)
+        target_path = os.path.join(self.workspace_dir, 'target.tif')
+        pygeoprocessing.convolve_2d(
+            signal_path, kernel_path, target_path)
+        target_raster = gdal.Open(target_path)
+        target_band = target_raster.GetRasterBand(1)
+        target_array = target_band.ReadAsArray()
+        target_band = None
+        target_raster = None
+
+        # calculate expected result by adding up all squares, subtracting off
+        # the sides and realizing diagonals got subtracted twice
+        expected_result = test_value * (
+            n_pixels ** 2 * 9 - n_pixels * 4 * 3 + 4)
+        self.assertEqual(numpy.sum(target_array), expected_result)
