@@ -1492,7 +1492,7 @@ def _next_regular(target):
 
 
 def convolve_2d(
-        signal_path, kernel_path, target_path,
+        signal_path_band, kernel_path_band, target_path,
         target_datatype=gdal.GDT_Float64):
     """Convolve 2D kernel over 2D signal.
 
@@ -1501,12 +1501,14 @@ def convolve_2d(
     the output result where `signal_path` has nodata.
 
     Parameters:
-        signal_path (string): filepath signal raster.
-        kernel_path (string): filepath kernel raster.
+        signal_path (tuple): a 2 tuple of the form
+            (filepath to signal raster, band index).
+        kernel_path (tuple): a 2 tuple of the form
+            (filepath to kernel raster, band index).
         target_path (string): filepath to target raster that's the convolution
-            of signal with kernel.  Output will be same size and projection
-            of `signal_path`. Any nodata pixels that align with `signal_path`
-            will be set to nodata.
+            of signal with kernel.  Output will be a single band raster of
+            same size and projection as `signal_path`. Any nodata pixels that
+            align with `signal_path` will be set to nodata.
         target_datatype (GDAL type): a GDAL raster type to set the output
             raster type to, as well as the type to calculate the convolution
             in.  Defaults to GDT_Float64.
@@ -1514,41 +1516,39 @@ def convolve_2d(
     Returns:
         None
     """
-    #TODO: change to path/band inputs
     target_nodata = numpy.finfo(numpy.float32).min
     new_raster_from_base(
-        signal_path, target_path, target_datatype, [target_nodata], n_bands=1,
-        fill_value_list=[0])
+        signal_path_band[0], target_path, target_datatype, [target_nodata],
+        n_bands=1, fill_value_list=[0])
 
-    signal_raster_info = get_raster_info(signal_path)
-    kernel_raster_info = get_raster_info(kernel_path)
+    signal_raster_info = get_raster_info(signal_path_band[0])
+    kernel_raster_info = get_raster_info(kernel_path_band[0])
 
     n_cols_signal, n_rows_signal = signal_raster_info['raster_size']
     n_cols_kernel, n_rows_kernel = kernel_raster_info['raster_size']
     # by experimentation i found having the smaller raster to be cached
     # gives the best performance
     if n_cols_signal * n_rows_signal < n_cols_kernel * n_rows_kernel:
-        s_path = signal_path
-        k_path = kernel_path
+        s_path_band = signal_path_band
+        k_path_band = kernel_path_band
         s_nodata = signal_raster_info['nodata'][0]
         k_nodata = kernel_raster_info['nodata'][0]
     else:
-        k_path = signal_path
-        s_path = kernel_path
+        k_path_band = signal_path_band
+        s_path_band = kernel_path_band
         k_nodata = signal_raster_info['nodata'][0]
         s_nodata = kernel_raster_info['nodata'][0]
 
     # we need the original signal raster info because we want the output to
     # be clipped and NODATA masked to it
     base_signal_nodata = signal_raster_info['nodata']
-    signal_ds = gdal.Open(signal_path)
-    signal_band = signal_ds.GetRasterBand(1)
+    signal_ds = gdal.Open(signal_path_band[0])
+    signal_band = signal_ds.GetRasterBand(signal_path_band[1])
     target_ds = gdal.Open(target_path, gdal.GA_Update)
     target_band = target_ds.GetRasterBand(1)
 
     def _make_cache():
         """Create a helper function to remember the last computed fft."""
-
         def _fft_cache(fshape, xoff, yoff, data_block):
             """Helper function to remember the last computed fft.
 
@@ -1577,7 +1577,8 @@ def convolve_2d(
     last_time = time.time()
     signal_data = None
     for signal_data, signal_block in iterblocks(
-            s_path, astype=_GDAL_TYPE_TO_NUMPY_LOOKUP[target_datatype]):
+            s_path_band[0], band_list=[s_path_band[1]],
+            astype=_GDAL_TYPE_TO_NUMPY_LOOKUP[target_datatype]):
         last_time = _invoke_timed_callback(
             last_time, lambda: LOGGER.info(
                 "convolution operating on signal pixel (%d, %d)",
@@ -1587,7 +1588,8 @@ def convolve_2d(
         signal_block[signal_nodata_mask] = 0.0
 
         for kernel_data, kernel_block in iterblocks(
-                k_path, astype=_GDAL_TYPE_TO_NUMPY_LOOKUP[target_datatype]):
+                k_path_band[0], band_list=[k_path_band[1]],
+                astype=_GDAL_TYPE_TO_NUMPY_LOOKUP[target_datatype]):
             left_index_raster = (
                 signal_data['xoff'] - n_cols_kernel / 2 + kernel_data['xoff'])
             right_index_raster = (

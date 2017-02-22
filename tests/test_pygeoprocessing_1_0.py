@@ -1147,7 +1147,7 @@ class PyGeoprocessing10(unittest.TestCase):
             nodata_target, reference.pixel_size(30), filename=kernel_path)
         target_path = os.path.join(self.workspace_dir, 'target.tif')
         pygeoprocessing.convolve_2d(
-            signal_path, kernel_path, target_path)
+            (signal_path, 1), (kernel_path, 1), target_path)
         target_raster = gdal.Open(target_path)
         target_band = target_raster.GetRasterBand(1)
         target_array = target_band.ReadAsArray()
