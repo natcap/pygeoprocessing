@@ -1522,8 +1522,6 @@ def convolve_2d(
 
     signal_raster_info = get_raster_info(signal_path)
     kernel_raster_info = get_raster_info(kernel_path)
-    signal_raster_size = signal_raster_info['raster_size']
-    kernel_raster_size = kernel_raster_info['raster_size']
 
     n_cols_signal, n_rows_signal = signal_raster_info['raster_size']
     n_cols_kernel, n_rows_kernel = kernel_raster_info['raster_size']
@@ -1548,28 +1546,34 @@ def convolve_2d(
     target_ds = gdal.Open(target_path, gdal.GA_Update)
     target_band = target_ds.GetRasterBand(1)
 
-    def _fft_cache(fshape, xoff, yoff, data_block):
-        """Helper function to remember the last computed fft.
+    def _make_cache():
+        """Create a helper function to remember the last computed fft."""
 
-        Parameters:
-            fshape (numpy.ndarray): shape of fft
-            xoff,yoff (int): offsets of the data block
-            data_block (numpy.ndarray): the 2D array to calculate the FFT
-                on if not already calculated.
+        def _fft_cache(fshape, xoff, yoff, data_block):
+            """Helper function to remember the last computed fft.
 
-        Returns:
-            fft transformed data_block of fshape size.
-        """
-        cache_key = (fshape[0], fshape[1], xoff, yoff)
-        if cache_key != _fft_cache.key:
-            _fft_cache.cache = numpy.fft.rfftn(data_block, fshape)
-            _fft_cache.key = cache_key
-        return _fft_cache.cache
+            Parameters:
+                fshape (numpy.ndarray): shape of fft
+                xoff,yoff (int): offsets of the data block
+                data_block (numpy.ndarray): the 2D array to calculate the FFT
+                    on if not already calculated.
 
-    _fft_cache.cache = None
-    _fft_cache.key = None
+            Returns:
+                fft transformed data_block of fshape size.
+            """
+            cache_key = (fshape[0], fshape[1], xoff, yoff)
+            if cache_key != _fft_cache.key:
+                _fft_cache.cache = numpy.fft.rfftn(data_block, fshape)
+                _fft_cache.key = cache_key
+            return _fft_cache.cache
+
+        _fft_cache.cache = None
+        _fft_cache.key = None
+        return _fft_cache
 
     LOGGER.info('starting convolve')
+    _signal_fft_cache = _make_cache()
+    _kernel_fft_cache = _make_cache()
     last_time = time.time()
     signal_data = None
     for signal_data, signal_block in iterblocks(
@@ -1616,10 +1620,12 @@ def convolve_2d(
             # add zero padding so FFT is fast
             fshape = [_next_regular(int(d)) for d in shape]
 
-            kernel_fft = numpy.fft.rfftn(kernel_block, fshape)
-            signal_fft = _fft_cache(
+            signal_fft = _signal_fft_cache(
                 fshape, signal_data['xoff'], signal_data['yoff'],
                 signal_block)
+            kernel_fft = _kernel_fft_cache(
+                fshape, kernel_data['xoff'], kernel_data['yoff'],
+                kernel_block)
 
             # this variable determines the output slice that doesn't include
             # the padded array region made for fast FFTs.
