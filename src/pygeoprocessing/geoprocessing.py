@@ -1493,7 +1493,8 @@ def _next_regular(target):
 
 def convolve_2d(
         signal_path_band, kernel_path_band, target_path,
-        target_datatype=gdal.GDT_Float64):
+        target_datatype=gdal.GDT_Float64,
+        gtiff_creation_options=_DEFAULT_GTIFF_CREATION_OPTIONS):
     """Convolve 2D kernel over 2D signal.
 
     Convolves the raster in `kernel_path` over `signal_path`.  Nodata values
@@ -1512,6 +1513,9 @@ def convolve_2d(
         target_datatype (GDAL type): a GDAL raster type to set the output
             raster type to, as well as the type to calculate the convolution
             in.  Defaults to GDT_Float64.
+        gtiff_creation_options (list): an argument list that will be
+            passed to the GTiff driver for creating `target_path`.  Useful for
+            blocksizes, compression, and more.
 
     Returns:
         None
@@ -1519,7 +1523,8 @@ def convolve_2d(
     target_nodata = numpy.finfo(numpy.float32).min
     new_raster_from_base(
         signal_path_band[0], target_path, target_datatype, [target_nodata],
-        n_bands=1, fill_value_list=[0])
+        n_bands=1, fill_value_list=[0],
+        gtiff_creation_options=gtiff_creation_options)
 
     signal_raster_info = get_raster_info(signal_path_band[0])
     kernel_raster_info = get_raster_info(kernel_path_band[0])
@@ -1578,7 +1583,8 @@ def convolve_2d(
     signal_data = None
     for signal_data, signal_block in iterblocks(
             s_path_band[0], band_list=[s_path_band[1]],
-            astype=_GDAL_TYPE_TO_NUMPY_LOOKUP[target_datatype]):
+            astype=_GDAL_TYPE_TO_NUMPY_LOOKUP[target_datatype],
+            largest_block=0):
         last_time = _invoke_timed_callback(
             last_time, lambda: LOGGER.info(
                 "convolution operating on signal pixel (%d, %d)",
@@ -1589,7 +1595,8 @@ def convolve_2d(
 
         for kernel_data, kernel_block in iterblocks(
                 k_path_band[0], band_list=[k_path_band[1]],
-                astype=_GDAL_TYPE_TO_NUMPY_LOOKUP[target_datatype]):
+                astype=_GDAL_TYPE_TO_NUMPY_LOOKUP[target_datatype],
+                largest_block=0):
             left_index_raster = (
                 signal_data['xoff'] - n_cols_kernel / 2 + kernel_data['xoff'])
             right_index_raster = (
