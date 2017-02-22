@@ -1583,8 +1583,7 @@ def convolve_2d(
     signal_data = None
     for signal_data, signal_block in iterblocks(
             s_path_band[0], band_list=[s_path_band[1]],
-            astype=_GDAL_TYPE_TO_NUMPY_LOOKUP[target_datatype],
-            largest_block=0):
+            astype=_GDAL_TYPE_TO_NUMPY_LOOKUP[target_datatype]):
         last_time = _invoke_timed_callback(
             last_time, lambda: LOGGER.info(
                 "convolution operating on signal pixel (%d, %d)",
@@ -1595,8 +1594,7 @@ def convolve_2d(
 
         for kernel_data, kernel_block in iterblocks(
                 k_path_band[0], band_list=[k_path_band[1]],
-                astype=_GDAL_TYPE_TO_NUMPY_LOOKUP[target_datatype],
-                largest_block=0):
+                astype=_GDAL_TYPE_TO_NUMPY_LOOKUP[target_datatype]):
             left_index_raster = (
                 signal_data['xoff'] - n_cols_kernel / 2 + kernel_data['xoff'])
             right_index_raster = (
