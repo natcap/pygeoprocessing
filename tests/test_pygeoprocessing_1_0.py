@@ -1198,14 +1198,24 @@ class PyGeoprocessing10(unittest.TestCase):
         pixel_matrix = numpy.ones((n_pixels, n_pixels), numpy.float32)
         pixel_matrix[:] = numpy.arange((n_pixels))
         nodata_value = -1
+        # make a nodata hole in the middle to test boundary cases
         pixel_matrix[n_pixels/2,n_pixels/2] = nodata_value
         dem_path = os.path.join(self.workspace_dir, 'dem.tif')
-        #target_slope_path = os.path.join(self.workspace_dir, 'slope.tif')
-        target_slope_path = 'slope.tif'
+        target_slope_path = os.path.join(self.workspace_dir, 'slope.tif')
         pygeoprocessing.testing.create_raster_on_disk(
             [pixel_matrix], reference.origin, reference.projection,
             nodata_value, reference.pixel_size(1), filename=dem_path)
 
         pygeoprocessing.calculate_slope((dem_path, 1), target_slope_path)
+        target_slope_raster = gdal.Open(target_slope_path)
+        target_nodata = target_slope_raster.GetRasterBand(1).GetNoDataValue()
+        target_slope_raster = None
+        count = 0
         for _, block in pygeoprocessing.iterblocks(target_slope_path):
-            print block
+            bad_mask = (block != target_nodata) & (block != 1.0)
+            if numpy.any(bad_mask):
+                self.fail(
+                    "Unexpected value in slope raster: %s" % block[bad_mask])
+            count += numpy.count_nonzero(block == 1.0)
+        # all slopes should be 1 except center pixel
+        self.assertEqual(count, n_pixels**2 - 1)
