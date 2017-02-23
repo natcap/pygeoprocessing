@@ -1193,6 +1193,6 @@ class PyGeoprocessing10(unittest.TestCase):
 
     def test_calculate_slope(self):
         """PGP.geoprocessing: test calculate slope."""
-        dem_path = r"C:\Users\rpsharp\Dropbox\shared_with_users\pakistan_utm42n_90m_clean.tif"
+        dem_path = r"C:\Users\rpsharp\Documents\bitbucket_repos\invest\data\invest-data\Base_Data\Freshwater\dem"
         target_slope_path = r"C:\Users\rpsharp\Documents\slope.tif"
         pygeoprocessing.calculate_slope((dem_path, 1), target_slope_path)

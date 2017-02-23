@@ -377,7 +377,7 @@ def calculate_raster_stats(raster_path):
         target_n = 0
         target_sum = 0.0
         for _, target_block in iterblocks(
-                raster_path, band_list=[band_index+1]):
+                raster_path, band_index_list=[band_index+1]):
             nodata_target = raster_properties['nodata'][band_index]
             valid_mask = target_block != nodata_target
             valid_block = target_block[valid_mask]
@@ -395,7 +395,7 @@ def calculate_raster_stats(raster_path):
             target_mean = target_sum / float(target_n)
             stdev_sum = 0.0
             for _, target_block in iterblocks(
-                    raster_path, band_list=[band_index+1]):
+                    raster_path, band_index_list=[band_index+1]):
                 valid_mask = target_block != nodata_target
                 valid_block = target_block[valid_mask]
                 stdev_sum += numpy.sum((valid_block - target_mean) ** 2)
@@ -867,8 +867,8 @@ def calculate_slope(
         gtiff_creation_options=_DEFAULT_GTIFF_CREATION_OPTIONS):
     """Create slope raster from DEM raster.
 
-    Follows the algorithm described here:
-    http://webhelp.esri.com/arcgiSDEsktop/9.3/index.cfm?TopicName=How%20Slope%20works
+    Algorithm is from Zevenbergen & Thorne "Quantiative Analysis of Land
+    Surface Topgraphy" 1987.
 
     Parameters:
         dem_raster_path_band (string): a path/band tuple to a raster of height
@@ -876,6 +876,8 @@ def calculate_slope(
         target_slope_path (string): path to target slope raster; will be a
             32 bit float GeoTIFF of same size/projection as calculate slope
             with units of percent slope.
+        gtiff_creation_options (list or tuple): list of strings that will be
+            passed as GDAL "dataset" creation options to the GTIFF driver.
 
     Returns:
         None
@@ -991,9 +993,8 @@ def calculate_slope(
                 valid_z_block[opposite_valid_z_offset_mask] -
                 opposite_offset_z_block[opposite_valid_z_offset_mask])
 
-
-        H = (z_list[0] - z_list[1]) / 2 * dem_info['pixel_size'][1]
-        G = (z_list[2] - z_list[3]) / 2 * dem_info['pixel_size'][0]
+        H = (z_list[0] - z_list[1]) / (2 * dem_info['pixel_size'][1])
+        G = (z_list[2] - z_list[3]) / (2 * dem_info['pixel_size'][0])
         slope = numpy.empty(z_block.shape)
         slope[:] = slope_nodata
         slope[valid_mask] = (G**2 + H**2)**0.5
@@ -1002,10 +1003,11 @@ def calculate_slope(
         target_band.WriteArray(
             slope, xoff=target_offset['xoff'], yoff=target_offset['yoff'])
 
-    raise Exception("Implement alternatiave to _cython_calculate_slope")
-    #geoprocessing_core._cython_calculate_slope(dem_raster_path_band, target_slope_path)
+    target_band.FlushCache()
+    target_band = None
+    gdal.Dataset.__swig_destroy__(target_raster)
+    target_raster = None
     calculate_raster_stats(target_slope_path)
-    # destroy Gdal rasters
 
 
 def get_vector_info(vector_path, layer_index=0):
@@ -1707,7 +1709,7 @@ def convolve_2d(
     last_time = time.time()
     signal_data = None
     for signal_data, signal_block in iterblocks(
-            s_path_band[0], band_list=[s_path_band[1]],
+            s_path_band[0], band_index_list=[s_path_band[1]],
             astype=_GDAL_TYPE_TO_NUMPY_LOOKUP[target_datatype]):
         last_time = _invoke_timed_callback(
             last_time, lambda: LOGGER.info(
@@ -1718,7 +1720,7 @@ def convolve_2d(
         signal_block[signal_nodata_mask] = 0.0
 
         for kernel_data, kernel_block in iterblocks(
-                k_path_band[0], band_list=[k_path_band[1]],
+                k_path_band[0], band_index_list=[k_path_band[1]],
                 astype=_GDAL_TYPE_TO_NUMPY_LOOKUP[target_datatype]):
             left_index_raster = (
                 signal_data['xoff'] - n_cols_kernel / 2 + kernel_data['xoff'])
@@ -1869,12 +1871,12 @@ def iterblocks(
     """
     raster = gdal.Open(raster_path)
 
-    if band_list is None:
-        band_list = range(1, raster.RasterCount + 1)
+    if band_index_list is None:
+        band_index_list = range(1, raster.RasterCount + 1)
 
-    band_list = [raster.GetRasterBand(index) for index in band_index_list]
+    band_index_list = [raster.GetRasterBand(index) for index in band_index_list]
 
-    block = band_list[0].GetBlockSize()
+    block = band_index_list[0].GetBlockSize()
     cols_per_block = block[0]
     rows_per_block = block[1]
 
@@ -1904,10 +1906,10 @@ def iterblocks(
     last_col_block_width = None
 
     if astype is not None:
-        block_type_list = [astype] * len(band_list)
+        block_type_list = [astype] * len(band_index_list)
     else:
         block_type_list = [
-            _gdal_to_numpy_type(ds_band) for ds_band in band_list]
+            _gdal_to_numpy_type(ds_band) for ds_band in band_index_list]
 
     for row_block_index in xrange(n_row_blocks):
         row_offset = row_block_index * rows_per_block
@@ -1938,7 +1940,7 @@ def iterblocks(
             }
             result = offset_dict
             if not offset_only:
-                for ds_band, block in zip(band_list, raster_blocks):
+                for ds_band, block in zip(band_index_list, raster_blocks):
                     ds_band.ReadAsArray(buf_obj=block, **offset_dict)
                 result = (result,) + tuple(raster_blocks)
             yield result
