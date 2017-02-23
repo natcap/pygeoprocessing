@@ -861,7 +861,7 @@ def zonal_statistics(
 
     return aggregate_stats
 
-
+@profile
 def calculate_slope(
         dem_raster_path_band, target_slope_path,
         gtiff_creation_options=_DEFAULT_GTIFF_CREATION_OPTIONS):
@@ -932,70 +932,52 @@ def calculate_slope(
     #  4
     block_index_offsets = [(-1, 0), (0, -1), (0, 0), (0, 1), (1, 0)]
 
-    for block_id, (row_block_index, col_block_index) in enumerate(
-            block_offset_lookup):
-        block_list = []
+    for row_block_index, col_block_index in block_offset_lookup:
+        kernel_shape = (
+            block_offset_lookup[
+                (row_block_index, col_block_index)]['win_ysize']+2,
+            block_offset_lookup[
+                (row_block_index, col_block_index)]['win_xsize']+2)
+        kernel = numpy.empty(kernel_shape)
+        kernel[:] = dem_nodata
         for block_index, offsets in enumerate(block_index_offsets):
             offset_tuple = (
                 row_block_index + offsets[0], col_block_index + offsets[1])
-            if (offset_tuple[0] < 0 or offset_tuple[0] >= n_row_blocks or
-                    offset_tuple[1] < 0 or offset_tuple[1] >= n_col_blocks):
-                block_list.append(None)
-            else:
+            if (offset_tuple[0] >= 0 and offset_tuple[0] < n_row_blocks and
+                    offset_tuple[1] >= 0 and offset_tuple[1] < n_col_blocks):
                 xoff = block_offset_lookup[offset_tuple]['xoff']
                 yoff = block_offset_lookup[offset_tuple]['yoff']
                 win_xsize = block_offset_lookup[offset_tuple]['win_xsize']
                 win_ysize = block_offset_lookup[offset_tuple]['win_ysize']
                 if block_index == 0:
-                    block_list.append(
-                        dem_band.ReadAsArray(
-                            xoff=xoff, yoff=yoff+win_ysize-1,
-                            win_xsize=win_xsize,
-                            win_ysize=1))
+                    dem_band.ReadAsArray(
+                        xoff=xoff, yoff=yoff+win_ysize-1,
+                        win_xsize=win_xsize,
+                        win_ysize=1,
+                        buf_obj=kernel[0, 1:-1].reshape(1, kernel.shape[1]-2))
                 elif block_index == 1:
-                    block_list.append(
-                        dem_band.ReadAsArray(
-                            xoff=xoff+win_xsize-1, yoff=yoff, win_xsize=1,
-                            win_ysize=win_ysize))
+                    dem_band.ReadAsArray(
+                        xoff=xoff+win_xsize-1, yoff=yoff, win_xsize=1,
+                        win_ysize=win_ysize,
+                        buf_obj=kernel[1:-1, 0].reshape(kernel.shape[0]-2, 1))
                 elif block_index == 2:
-                    block_list.append(
-                        dem_band.ReadAsArray(
-                            xoff=xoff, yoff=yoff, win_xsize=win_xsize,
-                            win_ysize=win_ysize))
+                    dem_band.ReadAsArray(
+                        xoff=xoff, yoff=yoff, win_xsize=win_xsize,
+                        win_ysize=win_ysize,
+                        buf_obj=kernel[1:-1, 1:-1].reshape(
+                            kernel.shape[0]-2, kernel.shape[1]-2))
                 elif block_index == 3:
-                    block_list.append(
-                        dem_band.ReadAsArray(
-                            xoff=xoff, yoff=yoff, win_xsize=1,
-                            win_ysize=win_ysize))
+                    dem_band.ReadAsArray(
+                        xoff=xoff, yoff=yoff, win_xsize=1,
+                        win_ysize=win_ysize,
+                        buf_obj=kernel[1:-1, -1].reshape(
+                            kernel.shape[0]-2, 1))
                 else:  # block_index == 4
-                    block_list.append(
-                        dem_band.ReadAsArray(
-                            xoff=xoff, yoff=yoff, win_xsize=win_xsize,
-                            win_ysize=1))
-        kernel_shape = tuple([i+2 for i in block_list[2].shape])
-        kernel = numpy.zeros(kernel_shape)
-        # top row
-        if block_list[0] is not None:
-            kernel[0, 1:-1] = block_list[0][-1, :]
-        else:
-            kernel[0, 1:-1] = dem_nodata
-        if block_list[1] is not None:
-            kernel[1:-1, 0] = block_list[1][:, -1]
-        else:
-            kernel[1:-1, 0] = dem_nodata
-        if block_list[2] is not None:
-            kernel[1:-1, 1:-1] = block_list[2]
-        else:
-            kernel[1:-1, 1:-1] = dem_nodata
-        if block_list[3] is not None:
-            kernel[1:-1, -1] = block_list[3][:, 0]
-        else:
-            kernel[1:-1, -1] = dem_nodata
-        if block_list[4] is not None:
-            kernel[-1, 1:-1] = block_list[4][0, :]
-        else:
-            kernel[-1, 1:-1] = dem_nodata
-
+                    dem_band.ReadAsArray(
+                        xoff=xoff, yoff=yoff, win_xsize=win_xsize,
+                        win_ysize=1,
+                        buf_obj=kernel[-1, 1:-1].reshape(
+                            1, kernel.shape[1]-2))
         z_block = kernel[1:-1, 1:-1]
         valid_mask = z_block != dem_nodata
         if not numpy.any(valid_mask):
@@ -1003,10 +985,10 @@ def calculate_slope(
         valid_z_block = z_block[valid_mask]
         z_list = [None] * 4
         z_slices = [
-            (slice(0,-2), slice(1,-1)),  # z_2
-            (slice(1,-1), slice(2,kernel.shape[1])),  # z_6
-            (slice(2,kernel.shape[0]), slice(1,-1)),  # z_8
-            (slice(1,-1), slice(0,-2)),  # z_4
+            (slice(0, -2), slice(1, -1)),  # z_2
+            (slice(1, -1), slice(2, kernel.shape[1])),  # z_6
+            (slice(2, kernel.shape[0]), slice(1, -1)),  # z_8
+            (slice(1, -1), slice(0, -2)),  # z_4
             ]
         for z_index, z_slice in enumerate(z_slices):
             offset_z_block = kernel[z_slice][valid_mask]
