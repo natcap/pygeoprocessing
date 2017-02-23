@@ -861,10 +861,12 @@ def zonal_statistics(
 
     return aggregate_stats
 
+
 @profile
 def calculate_slope(
         dem_raster_path_band, target_slope_path,
-        gtiff_creation_options=_DEFAULT_GTIFF_CREATION_OPTIONS):
+        gtiff_creation_options=_DEFAULT_GTIFF_CREATION_OPTIONS,
+        largest_block=_LARGEST_ITERBLOCK):
     """Create slope raster from DEM raster.
 
     Algorithm is from Zevenbergen & Thorne "Quantiative Analysis of Land
@@ -892,6 +894,21 @@ def calculate_slope(
 
     n_cols = dem_raster.RasterXSize
     n_rows = dem_raster.RasterYSize
+
+    block_area = cols_per_block * rows_per_block
+    # try to make block wider
+    if largest_block / block_area > 0:
+        width_factor = largest_block / block_area
+        cols_per_block *= width_factor
+        if cols_per_block > n_cols:
+            cols_per_block = n_cols
+        block_area = cols_per_block * rows_per_block
+    # try to make block taller
+    if largest_block / block_area > 0:
+        height_factor = largest_block / block_area
+        rows_per_block *= height_factor
+        if rows_per_block > n_rows:
+            rows_per_block = n_rows
 
     n_col_blocks = int(math.ceil(n_cols / float(cols_per_block)))
     n_row_blocks = int(math.ceil(n_rows / float(rows_per_block)))
@@ -925,59 +942,38 @@ def calculate_slope(
         gtiff_creation_options=gtiff_creation_options)
     target_raster = gdal.Open(target_slope_path, gdal.GA_Update)
     target_band = target_raster.GetRasterBand(1)
-    # we load neighboring blocks to handle boundary cases, index convention
-    # is below:
-    #  0
-    # 123
-    #  4
-    block_index_offsets = [(-1, 0), (0, -1), (0, 0), (0, 1), (1, 0)]
-
     for row_block_index, col_block_index in block_offset_lookup:
+        block_offset = block_offset_lookup[
+            (row_block_index, col_block_index)]
         kernel_shape = (
-            block_offset_lookup[
-                (row_block_index, col_block_index)]['win_ysize']+2,
-            block_offset_lookup[
-                (row_block_index, col_block_index)]['win_xsize']+2)
+            block_offset['win_ysize']+2,
+            block_offset['win_xsize']+2)
         kernel = numpy.empty(kernel_shape)
         kernel[:] = dem_nodata
-        for block_index, offsets in enumerate(block_index_offsets):
-            offset_tuple = (
-                row_block_index + offsets[0], col_block_index + offsets[1])
-            if (offset_tuple[0] >= 0 and offset_tuple[0] < n_row_blocks and
-                    offset_tuple[1] >= 0 and offset_tuple[1] < n_col_blocks):
-                xoff = block_offset_lookup[offset_tuple]['xoff']
-                yoff = block_offset_lookup[offset_tuple]['yoff']
-                win_xsize = block_offset_lookup[offset_tuple]['win_xsize']
-                win_ysize = block_offset_lookup[offset_tuple]['win_ysize']
-                if block_index == 0:
-                    dem_band.ReadAsArray(
-                        xoff=xoff, yoff=yoff+win_ysize-1,
-                        win_xsize=win_xsize,
-                        win_ysize=1,
-                        buf_obj=kernel[0, 1:-1].reshape(1, kernel.shape[1]-2))
-                elif block_index == 1:
-                    dem_band.ReadAsArray(
-                        xoff=xoff+win_xsize-1, yoff=yoff, win_xsize=1,
-                        win_ysize=win_ysize,
-                        buf_obj=kernel[1:-1, 0].reshape(kernel.shape[0]-2, 1))
-                elif block_index == 2:
-                    dem_band.ReadAsArray(
-                        xoff=xoff, yoff=yoff, win_xsize=win_xsize,
-                        win_ysize=win_ysize,
-                        buf_obj=kernel[1:-1, 1:-1].reshape(
-                            kernel.shape[0]-2, kernel.shape[1]-2))
-                elif block_index == 3:
-                    dem_band.ReadAsArray(
-                        xoff=xoff, yoff=yoff, win_xsize=1,
-                        win_ysize=win_ysize,
-                        buf_obj=kernel[1:-1, -1].reshape(
-                            kernel.shape[0]-2, 1))
-                else:  # block_index == 4
-                    dem_band.ReadAsArray(
-                        xoff=xoff, yoff=yoff, win_xsize=win_xsize,
-                        win_ysize=1,
-                        buf_obj=kernel[-1, 1:-1].reshape(
-                            1, kernel.shape[1]-2))
+
+        adjusted_offset_lookup = block_offset.copy()
+        # try to expand the block around the edges if it fits
+        x_start = 1
+        x_end = block_offset['win_xsize']+1
+        y_start = 1
+        y_end = block_offset['win_ysize']+1
+
+        if block_offset['xoff'] > 0:
+            adjusted_offset_lookup['xoff'] -= 1
+            adjusted_offset_lookup['win_xsize'] += 1
+            x_start -= 1
+        if block_offset['xoff']+block_offset['win_xsize'] < n_cols:
+            adjusted_offset_lookup['win_xsize'] += 1
+            x_end += 1
+        if block_offset['yoff'] > 0:
+            adjusted_offset_lookup['yoff'] -= 1
+            adjusted_offset_lookup['win_ysize'] += 1
+            y_start -= 1
+        if block_offset['yoff']+block_offset['win_ysize'] < n_rows:
+            adjusted_offset_lookup['win_ysize'] += 1
+            y_end += 1
+        kernel[y_start:y_end, x_start:x_end] = dem_band.ReadAsArray(
+            **adjusted_offset_lookup)
         z_block = kernel[1:-1, 1:-1]
         valid_mask = z_block != dem_nodata
         if not numpy.any(valid_mask):
