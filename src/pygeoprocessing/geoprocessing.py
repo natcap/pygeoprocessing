@@ -953,14 +953,24 @@ def calculate_slope(
         #top row
         if block_list[0] is not None:
             kernel[0, 1:-1] = block_list[0][-1, :]
+        else:
+            kernel[0, 1:-1] = dem_nodata
         if block_list[1] is not None:
             kernel[1:-1, 0] = block_list[1][:, -1]
+        else:
+            kernel[1:-1, 0] = dem_nodata
         if block_list[2] is not None:
             kernel[1:-1, 1:-1] = block_list[2]
+        else:
+            kernel[1:-1, 1:-1] = dem_nodata
         if block_list[3] is not None:
             kernel[1:-1, -1] = block_list[3][:, 0]
+        else:
+            kernel[1:-1, -1] = dem_nodata
         if block_list[4] is not None:
             kernel[-1, 1:-1] = block_list[4][0, :]
+        else:
+            kernel[-1, 1:-1] = dem_nodata
 
         z_block = kernel[1:-1, 1:-1]
         valid_mask = z_block != dem_nodata
@@ -970,8 +980,8 @@ def calculate_slope(
         z_list = [None] * 4
         z_slices = [
             (slice(0,-2), slice(1,-1)),  # z_2
-            (slice(2,kernel.shape[0]), slice(1,-1)),  # z_8
             (slice(1,-1), slice(2,kernel.shape[1])),  # z_6
+            (slice(2,kernel.shape[0]), slice(1,-1)),  # z_8
             (slice(1,-1), slice(0,-2)),  # z_4
             ]
         for z_index, z_slice in enumerate(z_slices):
@@ -993,8 +1003,8 @@ def calculate_slope(
                 valid_z_block[opposite_valid_z_offset_mask] -
                 opposite_offset_z_block[opposite_valid_z_offset_mask])
 
-        H = (z_list[0] - z_list[1]) / (2 * dem_info['pixel_size'][1])
-        G = (z_list[2] - z_list[3]) / (2 * dem_info['pixel_size'][0])
+        H = (z_list[0] - z_list[2]) / (2 * dem_info['pixel_size'][1])
+        G = (z_list[1] - z_list[3]) / (2 * dem_info['pixel_size'][0])
         slope = numpy.empty(z_block.shape)
         slope[:] = slope_nodata
         slope[valid_mask] = (G**2 + H**2)**0.5

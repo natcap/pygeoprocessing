@@ -1193,6 +1193,19 @@ class PyGeoprocessing10(unittest.TestCase):
 
     def test_calculate_slope(self):
         """PGP.geoprocessing: test calculate slope."""
-        dem_path = r"C:\Users\rpsharp\Documents\bitbucket_repos\invest\data\invest-data\Base_Data\Freshwater\dem"
-        target_slope_path = r"C:\Users\rpsharp\Documents\slope.tif"
+        reference = sampledata.SRS_COLOMBIA
+        n_pixels = 9
+        pixel_matrix = numpy.ones((n_pixels, n_pixels), numpy.float32)
+        pixel_matrix[:] = numpy.arange((n_pixels))
+        nodata_value = -1
+        pixel_matrix[n_pixels/2,n_pixels/2] = nodata_value
+        dem_path = os.path.join(self.workspace_dir, 'dem.tif')
+        #target_slope_path = os.path.join(self.workspace_dir, 'slope.tif')
+        target_slope_path = 'slope.tif'
+        pygeoprocessing.testing.create_raster_on_disk(
+            [pixel_matrix], reference.origin, reference.projection,
+            nodata_value, reference.pixel_size(1), filename=dem_path)
+
         pygeoprocessing.calculate_slope((dem_path, 1), target_slope_path)
+        for _, block in pygeoprocessing.iterblocks(target_slope_path):
+            print block
