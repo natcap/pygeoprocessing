@@ -863,24 +863,118 @@ def zonal_statistics(
 
 
 def calculate_slope(
-        dem_dataset_uri, slope_uri):
+        dem_raster_path_band, target_slope_path,
+        gtiff_creation_options=_DEFAULT_GTIFF_CREATION_OPTIONS):
     """Create slope raster from DEM raster.
 
     Follows the algorithm described here:
     http://webhelp.esri.com/arcgiSDEsktop/9.3/index.cfm?TopicName=How%20Slope%20works
 
-    Args:
-        dem_dataset_uri (string): a URI to a  single band raster of z values.
-        slope_uri (string): a path to the output slope uri in percent.
+    Parameters:
+        dem_raster_path_band (string): a path/band tuple to a raster of height
+            values. (path_to_raster, band_index)
+        target_slope_path (string): path to target slope raster; will be a
+            32 bit float GeoTIFF of same size/projection as calculate slope
+            with units of percent slope.
 
     Returns:
         None
     """
+    dem_raster = gdal.Open(dem_raster_path_band[0])
+    dem_band = dem_raster.GetRasterBand(dem_raster_path_band[1])
+    dem_info = get_raster_info(dem_raster_path_band[0])
+    block = dem_band.GetBlockSize()
+    cols_per_block = block[0]
+    rows_per_block = block[1]
+
+    n_cols = dem_raster.RasterXSize
+    n_rows = dem_raster.RasterYSize
+
+    block_area = cols_per_block * rows_per_block
+    n_col_blocks = int(math.ceil(n_cols / float(cols_per_block)))
+    n_row_blocks = int(math.ceil(n_rows / float(rows_per_block)))
+
+    block_offset_lookup = {}
+
+    # Initialize to None so a block array is created on the first iteration
+    last_row_block_width = None
+    last_col_block_width = None
+
+    for row_block_index in xrange(n_row_blocks):
+        row_offset = row_block_index * rows_per_block
+        row_block_width = n_rows - row_offset
+        if row_block_width > rows_per_block:
+            row_block_width = rows_per_block
+
+        for col_block_index in xrange(n_col_blocks):
+            col_offset = col_block_index * cols_per_block
+            col_block_width = n_cols - col_offset
+            if col_block_width > cols_per_block:
+                col_block_width = cols_per_block
+
+            block_offset_lookup[(row_block_index, col_block_index)] = {
+                'xoff': col_offset,
+                'yoff': row_offset,
+                'win_xsize': col_block_width,
+                'win_ysize': row_block_width,
+            }
+
     slope_nodata = numpy.finfo(numpy.float32).min
-    new_raster_from_base_uri(
-        dem_dataset_uri, slope_uri, 'GTiff', slope_nodata, gdal.GDT_Float32)
-    geoprocessing_core._cython_calculate_slope(dem_dataset_uri, slope_uri)
-    calculate_raster_stats_uri(slope_uri)
+    new_raster_from_base(
+        dem_raster_path_band[0], target_slope_path, gdal.GDT_Float32,
+        [slope_nodata], gtiff_creation_options=gtiff_creation_options)
+    target_raster = gdal.Open(target_slope_path, gdal.GA_Update)
+    target_band = target_raster.GetRasterBand(1)
+    # we loadneighboring blocks to handle boundary cases, index convention
+    # is below:
+    #  0
+    # 123
+    #  4
+    block_index_offsets = [(-1, 0), (0, -1), (0, 0), (0, 1), (1, 0)]
+
+    for row_block_index, col_block_index in block_offset_lookup:
+        block_list = []
+        for block_index, offsets in enumerate(block_index_offsets):
+            offset_tuple = (
+                row_block_index + offsets[0], col_block_index + offsets[1])
+            if (offset_tuple[0] < 0 or offset_tuple[0] >= n_row_blocks or
+                    offset_tuple[1] < 0 or offset_tuple[1] >= n_col_blocks):
+                block_list.append(None)
+            else:
+                block_list.append(
+                    dem_band.ReadAsArray(
+                        **block_offset_lookup[offset_tuple]))
+        kernel_shape = tuple([i+2 for i in block_list[2].shape])
+        kernel = numpy.zeros(kernel_shape)
+        #top row
+        if block_list[0] is not None:
+            kernel[0, 1:-1] = block_list[0][-1, :]
+        if block_list[1] is not None:
+            kernel[1:-1, 0] = block_list[1][:, -1]
+        if block_list[2] is not None:
+            kernel[1:-1, 1:-1] = block_list[2]
+        if block_list[3] is not None:
+            kernel[1:-1, -1] = block_list[3][:, 0]
+        if block_list[4] is not None:
+            kernel[-1, 1:-1] = block_list[4][0, :]
+
+        z_2 = kernel[0:-2, 1:-1] - kernel[1:-1, 1:-1]
+        z_8 = kernel[2::, 1:-1] - kernel[1:-1, 1:-1]
+        z_6 = kernel[1:-1, 2::] - kernel[1:-1, 1:-1]
+        z_4 = kernel[1:-1, 0:-2] - kernel[1:-1, 1:-1]
+
+        G = (z_6-z_4) / 2 * dem_info['pixel_size'][0]
+        H = (z_2-z_8) / 2 * dem_info['pixel_size'][1]
+
+        slope = (G**2 + H**2)**0.5
+        target_offset = block_offset_lookup[(row_block_index, col_block_index)]
+        target_band.WriteArray(
+            slope, xoff=target_offset['xoff'], yoff=target_offset['yoff'])
+
+    raise Exception("Implement alternatiave to _cython_calculate_slope")
+    #geoprocessing_core._cython_calculate_slope(dem_raster_path_band, target_slope_path)
+    calculate_raster_stats(target_slope_path)
+    # destroy Gdal rasters
 
 
 def get_vector_info(vector_path, layer_index=0):
@@ -1688,7 +1782,7 @@ def convolve_2d(
 
 
 def iterblocks(
-        raster_path, band_list=None, largest_block=_LARGEST_ITERBLOCK,
+        raster_path, band_index_list=None, largest_block=_LARGEST_ITERBLOCK,
         astype=None, offset_only=False):
     """Iterate across all the memory blocks in the input raster.
 
@@ -1704,8 +1798,8 @@ def iterblocks(
     be careful to do so only with prealigned rasters.
 
     Parameters:
-        raster_path (string): The string filepath to the raster to iterate over.
-        band_list=None (list of ints or None): A list of the bands for which
+        raster_path (string): Path to raster file to iterate over.
+        band_index_list (list of ints or None): A list of the bands for which
             the matrices should be returned. The band number to operate on.
             Defaults to None, which will return all bands.  Bands may be
             specified in any order, and band indexes may be specified multiple
@@ -1719,7 +1813,7 @@ def iterblocks(
             result in blocksizes equal to the original size.
         astype (list of numpy types): If none, output blocks are in the native
             type of the raster bands.  Otherwise this parameter is a list
-            of len(band_list) length that contains the desired output types
+            of len(band_index_list) length that contains the desired output types
             that iterblock generates for each band.
         offset_only (boolean): defaults to False, if True `iterblocks` only
             returns offset dictionary and doesn't read any binary data from
@@ -1742,19 +1836,19 @@ def iterblocks(
         If `offset_only` is True, the function returns only the block data and
             does not attempt to read binary data from the raster.
     """
-    dataset = gdal.Open(raster_path)
+    raster = gdal.Open(raster_path)
 
     if band_list is None:
-        band_list = range(1, dataset.RasterCount + 1)
+        band_list = range(1, raster.RasterCount + 1)
 
-    ds_bands = [dataset.GetRasterBand(index) for index in band_list]
+    band_list = [raster.GetRasterBand(index) for index in band_index_list]
 
-    block = ds_bands[0].GetBlockSize()
+    block = band_list[0].GetBlockSize()
     cols_per_block = block[0]
     rows_per_block = block[1]
 
-    n_cols = dataset.RasterXSize
-    n_rows = dataset.RasterYSize
+    n_cols = raster.RasterXSize
+    n_rows = raster.RasterYSize
 
     block_area = cols_per_block * rows_per_block
     # try to make block wider
@@ -1779,10 +1873,10 @@ def iterblocks(
     last_col_block_width = None
 
     if astype is not None:
-        block_type_list = [astype] * len(ds_bands)
+        block_type_list = [astype] * len(band_list)
     else:
         block_type_list = [
-            _gdal_to_numpy_type(ds_band) for ds_band in ds_bands]
+            _gdal_to_numpy_type(ds_band) for ds_band in band_list]
 
     for row_block_index in xrange(n_row_blocks):
         row_offset = row_block_index * rows_per_block
@@ -1796,10 +1890,10 @@ def iterblocks(
             if col_block_width > cols_per_block:
                 col_block_width = cols_per_block
 
-            # resize the dataset block cache if necessary
+            # resize the raster block cache if necessary
             if (last_row_block_width != row_block_width or
                     last_col_block_width != col_block_width):
-                dataset_blocks = [
+                raster_blocks = [
                     numpy.zeros(
                         (row_block_width, col_block_width),
                         dtype=block_type) for block_type in
@@ -1813,9 +1907,9 @@ def iterblocks(
             }
             result = offset_dict
             if not offset_only:
-                for ds_band, block in zip(ds_bands, dataset_blocks):
+                for ds_band, block in zip(band_list, raster_blocks):
                     ds_band.ReadAsArray(buf_obj=block, **offset_dict)
-                result = (result,) + tuple(dataset_blocks)
+                result = (result,) + tuple(raster_blocks)
             yield result
 
 

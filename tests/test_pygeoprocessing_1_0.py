@@ -1190,3 +1190,9 @@ class PyGeoprocessing10(unittest.TestCase):
         # the sides and realizing diagonals got subtracted twice
         expected_result = test_value * (n_pixels ** 4)
         self.assertEqual(numpy.sum(target_array), expected_result)
+
+    def test_calculate_slope(self):
+        """PGP.geoprocessing: test calculate slope."""
+        dem_path = r"C:\Users\rpsharp\Dropbox\shared_with_users\pakistan_utm42n_90m_clean.tif"
+        target_slope_path = r"C:\Users\rpsharp\Documents\slope.tif"
+        pygeoprocessing.calculate_slope((dem_path, 1), target_slope_path)
