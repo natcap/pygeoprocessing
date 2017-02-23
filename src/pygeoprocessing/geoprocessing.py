@@ -923,7 +923,8 @@ def calculate_slope(
     slope_nodata = numpy.finfo(numpy.float32).min
     new_raster_from_base(
         dem_raster_path_band[0], target_slope_path, gdal.GDT_Float32,
-        [slope_nodata], gtiff_creation_options=gtiff_creation_options)
+        [slope_nodata], fill_value_list=[float(slope_nodata)],
+        gtiff_creation_options=gtiff_creation_options)
     target_raster = gdal.Open(target_slope_path, gdal.GA_Update)
     target_band = target_raster.GetRasterBand(1)
     # we loadneighboring blocks to handle boundary cases, index convention
@@ -961,6 +962,8 @@ def calculate_slope(
 
         z_block = kernel[1:-1, 1:-1]
         valid_mask = z_block != dem_nodata
+        if not numpy.any(valid_mask):
+            continue
         valid_z_block = z_block[valid_mask]
         z_list = [None] * 4
         z_slices = [
@@ -971,8 +974,23 @@ def calculate_slope(
             ]
         for z_index, z_slice in enumerate(z_slices):
             offset_z_block = kernel[z_slice][valid_mask]
+            valid_z_offset_mask = offset_z_block != dem_nodata
+            z_list[z_index] = numpy.zeros(valid_z_offset_mask.shape)
+            z_list[z_index][valid_z_offset_mask] = (
+                offset_z_block[valid_z_offset_mask] -
+                valid_z_block[valid_z_offset_mask])
 
-            z_list[z_index] = offset_z_block - valid_z_block
+            # handle the case where the current slice is undefined but the
+            # opposite direction might be
+            opposite_z_slice = z_slices[(z_index + 2) % 4]
+            opposite_offset_z_block = kernel[opposite_z_slice][valid_mask]
+            opposite_valid_z_offset_mask = ~valid_z_offset_mask & (
+                opposite_offset_z_block != dem_nodata)
+
+            z_list[z_index][opposite_valid_z_offset_mask] = (
+                valid_z_block[opposite_valid_z_offset_mask] -
+                opposite_offset_z_block[opposite_valid_z_offset_mask])
+
 
         H = (z_list[0] - z_list[1]) / 2 * dem_info['pixel_size'][1]
         G = (z_list[2] - z_list[3]) / 2 * dem_info['pixel_size'][0]
