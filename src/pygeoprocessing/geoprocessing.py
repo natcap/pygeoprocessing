@@ -960,7 +960,9 @@ def calculate_slope(
             kernel[-1, 1:-1] = block_list[4][0, :]
 
         z_block = kernel[1:-1, 1:-1]
-        z_list = [0.] * 4
+        valid_mask = z_block != dem_nodata
+        valid_z_block = z_block[valid_mask]
+        z_list = [None] * 4
         z_slices = [
             (slice(0,-2), slice(1,-1)),  # z_2
             (slice(2,kernel.shape[0]), slice(1,-1)),  # z_8
@@ -968,11 +970,15 @@ def calculate_slope(
             (slice(1,-1), slice(0,-2)),  # z_4
             ]
         for z_index, z_slice in enumerate(z_slices):
-            z_list[z_index] = kernel[z_slice] - z_block
+            offset_z_block = kernel[z_slice][valid_mask]
+
+            z_list[z_index] = offset_z_block - valid_z_block
 
         H = (z_list[0] - z_list[1]) / 2 * dem_info['pixel_size'][1]
         G = (z_list[2] - z_list[3]) / 2 * dem_info['pixel_size'][0]
-        slope = (G**2 + H**2)**0.5
+        slope = numpy.empty(z_block.shape)
+        slope[:] = slope_nodata
+        slope[valid_mask] = (G**2 + H**2)**0.5
 
         target_offset = block_offset_lookup[(row_block_index, col_block_index)]
         target_band.WriteArray(
