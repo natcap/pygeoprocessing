@@ -893,16 +893,12 @@ def calculate_slope(
     n_cols = dem_raster.RasterXSize
     n_rows = dem_raster.RasterYSize
 
-    block_area = cols_per_block * rows_per_block
     n_col_blocks = int(math.ceil(n_cols / float(cols_per_block)))
     n_row_blocks = int(math.ceil(n_rows / float(rows_per_block)))
 
     block_offset_lookup = {}
 
     # Initialize to None so a block array is created on the first iteration
-    last_row_block_width = None
-    last_col_block_width = None
-
     for row_block_index in xrange(n_row_blocks):
         row_offset = row_block_index * rows_per_block
         row_block_width = n_rows - row_offset
@@ -929,14 +925,15 @@ def calculate_slope(
         gtiff_creation_options=gtiff_creation_options)
     target_raster = gdal.Open(target_slope_path, gdal.GA_Update)
     target_band = target_raster.GetRasterBand(1)
-    # we loadneighboring blocks to handle boundary cases, index convention
+    # we load neighboring blocks to handle boundary cases, index convention
     # is below:
     #  0
     # 123
     #  4
     block_index_offsets = [(-1, 0), (0, -1), (0, 0), (0, 1), (1, 0)]
 
-    for row_block_index, col_block_index in block_offset_lookup:
+    for block_id, (row_block_index, col_block_index) in enumerate(
+            block_offset_lookup):
         block_list = []
         for block_index, offsets in enumerate(block_index_offsets):
             offset_tuple = (
@@ -945,12 +942,39 @@ def calculate_slope(
                     offset_tuple[1] < 0 or offset_tuple[1] >= n_col_blocks):
                 block_list.append(None)
             else:
-                block_list.append(
-                    dem_band.ReadAsArray(
-                        **block_offset_lookup[offset_tuple]))
+                xoff = block_offset_lookup[offset_tuple]['xoff']
+                yoff = block_offset_lookup[offset_tuple]['yoff']
+                win_xsize = block_offset_lookup[offset_tuple]['win_xsize']
+                win_ysize = block_offset_lookup[offset_tuple]['win_ysize']
+                if block_index == 0:
+                    block_list.append(
+                        dem_band.ReadAsArray(
+                            xoff=xoff, yoff=yoff+win_ysize-1,
+                            win_xsize=win_xsize,
+                            win_ysize=1))
+                elif block_index == 1:
+                    block_list.append(
+                        dem_band.ReadAsArray(
+                            xoff=xoff+win_xsize-1, yoff=yoff, win_xsize=1,
+                            win_ysize=win_ysize))
+                elif block_index == 2:
+                    block_list.append(
+                        dem_band.ReadAsArray(
+                            xoff=xoff, yoff=yoff, win_xsize=win_xsize,
+                            win_ysize=win_ysize))
+                elif block_index == 3:
+                    block_list.append(
+                        dem_band.ReadAsArray(
+                            xoff=xoff, yoff=yoff, win_xsize=1,
+                            win_ysize=win_ysize))
+                else:  # block_index == 4
+                    block_list.append(
+                        dem_band.ReadAsArray(
+                            xoff=xoff, yoff=yoff, win_xsize=win_xsize,
+                            win_ysize=1))
         kernel_shape = tuple([i+2 for i in block_list[2].shape])
         kernel = numpy.zeros(kernel_shape)
-        #top row
+        # top row
         if block_list[0] is not None:
             kernel[0, 1:-1] = block_list[0][-1, :]
         else:

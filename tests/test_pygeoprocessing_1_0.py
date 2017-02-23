@@ -1199,7 +1199,7 @@ class PyGeoprocessing10(unittest.TestCase):
         pixel_matrix[:] = numpy.arange((n_pixels))
         nodata_value = -1
         # make a nodata hole in the middle to test boundary cases
-        pixel_matrix[n_pixels/2,n_pixels/2] = nodata_value
+        pixel_matrix[n_pixels/2, n_pixels/2] = nodata_value
         dem_path = os.path.join(self.workspace_dir, 'dem.tif')
         target_slope_path = os.path.join(self.workspace_dir, 'slope.tif')
         pygeoprocessing.testing.create_raster_on_disk(
