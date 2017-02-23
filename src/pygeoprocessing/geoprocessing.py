@@ -883,6 +883,7 @@ def calculate_slope(
     dem_raster = gdal.Open(dem_raster_path_band[0])
     dem_band = dem_raster.GetRasterBand(dem_raster_path_band[1])
     dem_info = get_raster_info(dem_raster_path_band[0])
+    dem_nodata = dem_info['nodata'][0]
     block = dem_band.GetBlockSize()
     cols_per_block = block[0]
     rows_per_block = block[1]
@@ -958,15 +959,21 @@ def calculate_slope(
         if block_list[4] is not None:
             kernel[-1, 1:-1] = block_list[4][0, :]
 
-        z_2 = kernel[0:-2, 1:-1] - kernel[1:-1, 1:-1]
-        z_8 = kernel[2::, 1:-1] - kernel[1:-1, 1:-1]
-        z_6 = kernel[1:-1, 2::] - kernel[1:-1, 1:-1]
-        z_4 = kernel[1:-1, 0:-2] - kernel[1:-1, 1:-1]
+        z_block = kernel[1:-1, 1:-1]
+        z_list = [0.] * 4
+        z_slices = [
+            (slice(0,-2), slice(1,-1)),  # z_2
+            (slice(2,kernel.shape[0]), slice(1,-1)),  # z_8
+            (slice(1,-1), slice(2,kernel.shape[1])),  # z_6
+            (slice(1,-1), slice(0,-2)),  # z_4
+            ]
+        for z_index, z_slice in enumerate(z_slices):
+            z_list[z_index] = kernel[z_slice] - z_block
 
-        G = (z_6-z_4) / 2 * dem_info['pixel_size'][0]
-        H = (z_2-z_8) / 2 * dem_info['pixel_size'][1]
-
+        H = (z_list[0] - z_list[1]) / 2 * dem_info['pixel_size'][1]
+        G = (z_list[2] - z_list[3]) / 2 * dem_info['pixel_size'][0]
         slope = (G**2 + H**2)**0.5
+
         target_offset = block_offset_lookup[(row_block_index, col_block_index)]
         target_band.WriteArray(
             slope, xoff=target_offset['xoff'], yoff=target_offset['yoff'])
