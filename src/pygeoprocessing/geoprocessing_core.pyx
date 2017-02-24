@@ -551,10 +551,12 @@ def calculate_slope(
     Returns:
         None
     """
+    print 'MAKE ALL CALCS IN 64 BIT FLOAT THEN WRITE TO 32?'
     cdef numpy.npy_float32 a, b, c, d, e, f, g, h, i, dem_nodata, z
     cdef numpy.npy_float32 x_cell_size, y_cell_size,
     cdef numpy.npy_float32 dzdx_accumulator, dzdy_accumulator
-    cdef int row_index, col_index, n_rows, n_cols, x_denom_factor, y_denom_factor
+    cdef int row_index, col_index, n_rows, n_cols,
+    cdef int x_denom_factor, y_denom_factor, win_xsize, win_ysize
     cdef numpy.ndarray[numpy.npy_float32, ndim=2] dem_array
     cdef numpy.ndarray[numpy.npy_float32, ndim=2] slope_array
     cdef numpy.ndarray[numpy.npy_float32, ndim=2] dzdx_array
@@ -579,46 +581,47 @@ def calculate_slope(
         adjusted_offset_lookup = block_offset.copy()
         # try to expand the block around the edges if it fits
         x_start = 1
-        x_end = block_offset['win_xsize']+1
+        win_xsize = block_offset['win_xsize']
+        x_end = win_xsize+1
         y_start = 1
-        y_end = block_offset['win_ysize']+1
+        win_ysize = block_offset['win_ysize']
+        y_end = win_ysize+1
 
         if block_offset['xoff'] > 0:
             adjusted_offset_lookup['xoff'] -= 1
             adjusted_offset_lookup['win_xsize'] += 1
             x_start -= 1
-        if block_offset['xoff']+block_offset['win_xsize'] < n_cols:
+        if block_offset['xoff']+win_xsize < n_cols:
             adjusted_offset_lookup['win_xsize'] += 1
             x_end += 1
         if block_offset['yoff'] > 0:
             adjusted_offset_lookup['yoff'] -= 1
             adjusted_offset_lookup['win_ysize'] += 1
             y_start -= 1
-        if block_offset['yoff']+block_offset['win_ysize'] < n_rows:
+        if block_offset['yoff']+win_ysize < n_rows:
             adjusted_offset_lookup['win_ysize'] += 1
             y_end += 1
 
         dem_array = numpy.empty(
-            (block_offset['win_ysize']+2, block_offset['win_xsize']+2),
+            (win_ysize+2, win_xsize+2),
             dtype=numpy.float32)
         dem_array[:] = dem_nodata
         slope_array = numpy.empty(
-            (block_offset['win_ysize'], block_offset['win_xsize']),
+            (win_ysize, win_xsize),
             dtype=numpy.float32)
         dzdx_array = numpy.empty(
-            (block_offset['win_ysize'], block_offset['win_xsize']),
+            (win_ysize, win_xsize),
             dtype=numpy.float32)
         dzdy_array = numpy.empty(
-            (block_offset['win_ysize'], block_offset['win_xsize']),
+            (win_ysize, win_xsize),
             dtype=numpy.float32)
 
         dem_band.ReadAsArray(
             buf_obj=dem_array[y_start:y_end, x_start:x_end],
             **adjusted_offset_lookup)
-        print dem_array
 
-        for row_index in xrange(1, block_offset['win_ysize']+1):
-            for col_index in xrange(1, block_offset['win_xsize']+1):
+        for row_index in xrange(1, win_ysize+1):
+            for col_index in xrange(1, win_xsize+1):
                 dzdx_accumulator = 0.0
                 dzdy_accumulator = 0.0
                 x_denom_factor = 0
@@ -742,11 +745,11 @@ def calculate_slope(
                         dzdy_accumulator / (y_denom_factor * y_cell_size))
                 else:
                     dzdy_array[row_index-1, col_index-1] = 0.0
-            valid_mask = dzdx_array != slope_nodata
-            slope_array[:] = slope_nodata
-            # multiply by 100 for percent output
-            slope_array[valid_mask] = numpy.sqrt(
-                dzdx_array[valid_mask]**2 + dzdy_array[valid_mask]**2)
-            target_slope_band.WriteArray(
-                slope_array, xoff=block_offset['xoff'],
-                yoff=block_offset['yoff'])
+        valid_mask = dzdx_array != slope_nodata
+        slope_array[:] = slope_nodata
+        # multiply by 100 for percent output
+        slope_array[valid_mask] = numpy.sqrt(
+            dzdx_array[valid_mask]**2 + dzdy_array[valid_mask]**2)
+        target_slope_band.WriteArray(
+            slope_array, xoff=block_offset['xoff'],
+            yoff=block_offset['yoff'])
