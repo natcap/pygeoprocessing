@@ -551,16 +551,15 @@ def calculate_slope(
     Returns:
         None
     """
-    print 'MAKE ALL CALCS IN 64 BIT FLOAT THEN WRITE TO 32?'
-    cdef numpy.npy_float32 a, b, c, d, e, f, g, h, i, dem_nodata, z
-    cdef numpy.npy_float32 x_cell_size, y_cell_size,
-    cdef numpy.npy_float32 dzdx_accumulator, dzdy_accumulator
+    cdef numpy.npy_float64 a, b, c, d, e, f, g, h, i, dem_nodata, z
+    cdef numpy.npy_float64 x_cell_size, y_cell_size,
+    cdef numpy.npy_float64 dzdx_accumulator, dzdy_accumulator
     cdef int row_index, col_index, n_rows, n_cols,
     cdef int x_denom_factor, y_denom_factor, win_xsize, win_ysize
-    cdef numpy.ndarray[numpy.npy_float32, ndim=2] dem_array
-    cdef numpy.ndarray[numpy.npy_float32, ndim=2] slope_array
-    cdef numpy.ndarray[numpy.npy_float32, ndim=2] dzdx_array
-    cdef numpy.ndarray[numpy.npy_float32, ndim=2] dzdy_array
+    cdef numpy.ndarray[numpy.npy_float64, ndim=2] dem_array
+    cdef numpy.ndarray[numpy.npy_float64, ndim=2] slope_array
+    cdef numpy.ndarray[numpy.npy_float64, ndim=2] dzdx_array
+    cdef numpy.ndarray[numpy.npy_float64, ndim=2] dzdy_array
 
     dem_raster = gdal.Open(dem_raster_path_band[0])
     dem_band = dem_raster.GetRasterBand(dem_raster_path_band[1])
@@ -568,7 +567,7 @@ def calculate_slope(
     dem_nodata = dem_info['nodata'][0]
     x_cell_size, y_cell_size = dem_info['pixel_size']
     n_cols, n_rows = dem_info['raster_size']
-    cdef float slope_nodata = numpy.finfo(numpy.float32).min
+    cdef numpy.npy_float64 slope_nodata = numpy.finfo(numpy.float32).min
     pygeoprocessing.new_raster_from_base(
         dem_raster_path_band[0], target_slope_path, gdal.GDT_Float32,
         [slope_nodata], fill_value_list=[float(slope_nodata)],
@@ -604,17 +603,17 @@ def calculate_slope(
 
         dem_array = numpy.empty(
             (win_ysize+2, win_xsize+2),
-            dtype=numpy.float32)
+            dtype=numpy.float64)
         dem_array[:] = dem_nodata
         slope_array = numpy.empty(
             (win_ysize, win_xsize),
-            dtype=numpy.float32)
+            dtype=numpy.float64)
         dzdx_array = numpy.empty(
             (win_ysize, win_xsize),
-            dtype=numpy.float32)
+            dtype=numpy.float64)
         dzdy_array = numpy.empty(
             (win_ysize, win_xsize),
-            dtype=numpy.float32)
+            dtype=numpy.float64)
 
         dem_band.ReadAsArray(
             buf_obj=dem_array[y_start:y_end, x_start:x_end],
