@@ -534,10 +534,11 @@ def new_raster_from_base(
 def calculate_slope(
         dem_raster_path_band, target_slope_path,
         gtiff_creation_options=_DEFAULT_GTIFF_CREATION_OPTIONS):
-    """Create slope raster from DEM raster.
+    """Create a percent slope raster from DEM raster.
 
-    Algorithm is from Zevenbergen & Thorne "Quantiative Analysis of Land
-    Surface Topgraphy" 1987.
+    Base algorithm is from Zevenbergen & Thorne "Quantiative Analysis of Land
+    Surface Topgraphy" 1987 although it has been modified to include the
+    diagonal pixels by classic finite difference analysis.
 
     Parameters:
         dem_raster_path_band (string): a path/band tuple to a raster of height
