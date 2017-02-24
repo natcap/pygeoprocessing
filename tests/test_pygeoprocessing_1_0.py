@@ -1193,7 +1193,6 @@ class PyGeoprocessing10(unittest.TestCase):
 
     def test_calculate_slope(self):
         """PGP.geoprocessing: test calculate slope."""
-        import pygeoprocessing.geoprocessing_core
         reference = sampledata.SRS_COLOMBIA
         n_pixels = 9
         pixel_matrix = numpy.ones((n_pixels, n_pixels), numpy.float32)
@@ -1208,7 +1207,7 @@ class PyGeoprocessing10(unittest.TestCase):
             [pixel_matrix], reference.origin, reference.projection,
             nodata_value, reference.pixel_size(1), filename=dem_path)
 
-        pygeoprocessing.geoprocessing_core.calculate_slope(
+        pygeoprocessing.calculate_slope(
             (dem_path, 1), target_slope_path)
         target_slope_raster = gdal.Open(target_slope_path)
         target_nodata = target_slope_raster.GetRasterBand(1).GetNoDataValue()

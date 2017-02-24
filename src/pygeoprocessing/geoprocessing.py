@@ -865,10 +865,30 @@ def zonal_statistics(
 def calculate_slope(
         dem_raster_path_band, target_slope_path,
         gtiff_creation_options=_DEFAULT_GTIFF_CREATION_OPTIONS):
-    """Create slope raster from DEM raster.
+    """Create a percent slope raster from DEM raster.
 
-    Algorithm is from Zevenbergen & Thorne "Quantiative Analysis of Land
-    Surface Topgraphy" 1987.
+    Base algorithm is from Zevenbergen & Thorne "Quantiative Analysis of Land
+    Surface Topgraphy" 1987 although it has been modified to include the
+    diagonal pixels by classic finite difference analysis.
+
+    For the following notation, we define each pixel's DEM value by a letter
+    with this spatial scheme:
+
+        abc
+        def
+        ghi
+
+    Then the slope at e is defined at ([dz/dx]^2 + [dz/dy]^2)^0.5
+
+    Where
+
+    [dz/dx] = ((c+2f+i)-(a+2d+g)/(8*x_cell_size)
+    [dz/dy] = ((g+2h+i)-(a+2b+c))/(8*y_cell_size)
+
+    In cases where a cell is nodata, we attempt to use the middle cell inline
+    with the direction of differentiation (either in x or y direction).  If
+    no inline pixel is defined, we use `e` and multiply the difference by
+    2^0.5 to account for the diagonal projection.
 
     Parameters:
         dem_raster_path_band (string): a path/band tuple to a raster of height
@@ -882,97 +902,10 @@ def calculate_slope(
     Returns:
         None
     """
-    dem_raster = gdal.Open(dem_raster_path_band[0])
-    dem_band = dem_raster.GetRasterBand(dem_raster_path_band[1])
-    dem_info = get_raster_info(dem_raster_path_band[0])
-    dem_nodata = dem_info['nodata'][0]
-    n_cols, n_rows = dem_info['raster_size']
-    slope_nodata = numpy.finfo(numpy.float32).min
-    new_raster_from_base(
-        dem_raster_path_band[0], target_slope_path, gdal.GDT_Float32,
-        [slope_nodata], fill_value_list=[float(slope_nodata)],
+    # call-through to cython implementation
+    geoprocessing_core.calculate_slope(
+        dem_raster_path_band, target_slope_path,
         gtiff_creation_options=gtiff_creation_options)
-    target_raster = gdal.Open(target_slope_path, gdal.GA_Update)
-    target_band = target_raster.GetRasterBand(1)
-
-    for block_offset in iterblocks(dem_raster_path_band[0], offset_only=True):
-        kernel_shape = (
-            block_offset['win_ysize']+2,
-            block_offset['win_xsize']+2)
-        kernel = numpy.empty(kernel_shape)
-        kernel[:] = dem_nodata
-
-        adjusted_offset_lookup = block_offset.copy()
-        # try to expand the block around the edges if it fits
-        x_start = 1
-        x_end = block_offset['win_xsize']+1
-        y_start = 1
-        y_end = block_offset['win_ysize']+1
-
-        if block_offset['xoff'] > 0:
-            adjusted_offset_lookup['xoff'] -= 1
-            adjusted_offset_lookup['win_xsize'] += 1
-            x_start -= 1
-        if block_offset['xoff']+block_offset['win_xsize'] < n_cols:
-            adjusted_offset_lookup['win_xsize'] += 1
-            x_end += 1
-        if block_offset['yoff'] > 0:
-            adjusted_offset_lookup['yoff'] -= 1
-            adjusted_offset_lookup['win_ysize'] += 1
-            y_start -= 1
-        if block_offset['yoff']+block_offset['win_ysize'] < n_rows:
-            adjusted_offset_lookup['win_ysize'] += 1
-            y_end += 1
-        dem_band.ReadAsArray(
-            buf_obj=kernel[y_start:y_end, x_start:x_end],
-            **adjusted_offset_lookup)
-        z_block = kernel[1:-1, 1:-1]
-        valid_mask = z_block != dem_nodata
-        if not numpy.any(valid_mask):
-            continue
-        valid_z_block = z_block[valid_mask]
-        z_list = [None] * 4
-        z_slices = [
-            (slice(0, -2), slice(1, -1)),  # z_2
-            (slice(1, -1), slice(2, kernel.shape[1])),  # z_6
-            (slice(2, kernel.shape[0]), slice(1, -1)),  # z_8
-            (slice(1, -1), slice(0, -2)),  # z_4
-            ]
-        for z_index, z_slice in enumerate(z_slices):
-            offset_z_block = kernel[z_slice][valid_mask]
-            valid_z_offset_mask = offset_z_block != dem_nodata
-            z_list[z_index] = numpy.zeros(valid_z_offset_mask.shape)
-            a = offset_z_block[valid_z_offset_mask]
-            b = valid_z_block[valid_z_offset_mask]
-            z_list[z_index][valid_z_offset_mask] = (
-                offset_z_block[valid_z_offset_mask] -
-                valid_z_block[valid_z_offset_mask])
-
-            # handle the case where the current slice is undefined but the
-            # opposite direction might be
-            opposite_z_slice = z_slices[(z_index + 2) % 4]
-            opposite_offset_z_block = kernel[opposite_z_slice][valid_mask]
-            opposite_valid_z_offset_mask = ~valid_z_offset_mask & (
-                opposite_offset_z_block != dem_nodata)
-
-            z_list[z_index][opposite_valid_z_offset_mask] = (
-                valid_z_block[opposite_valid_z_offset_mask] -
-                opposite_offset_z_block[opposite_valid_z_offset_mask])
-
-        H = (z_list[0] - z_list[2]) / (2 * dem_info['pixel_size'][1])
-        G = (z_list[1] - z_list[3]) / (2 * dem_info['pixel_size'][0])
-        slope = numpy.empty(z_block.shape)
-        slope[:] = slope_nodata
-        slope[valid_mask] = (G**2 + H**2)**0.5
-
-        target_band.WriteArray(
-            slope, xoff=block_offset['xoff'], yoff=block_offset['yoff'])
-
-    target_band.FlushCache()
-    target_band = None
-    gdal.Dataset.__swig_destroy__(target_raster)
-    target_raster = None
-    calculate_raster_stats(target_slope_path)
 
 
 def get_vector_info(vector_path, layer_index=0):

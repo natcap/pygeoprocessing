@@ -72,150 +72,6 @@ def reclassify_by_dictionary(dataset, rules, output_uri, format,
 
     return output_dataset
 
-def _cython_calculate_slope(dem_dataset_uri, slope_uri):
-    """Generates raster maps of slope.  Follows the algorithm described here:
-        http://webhelp.esri.com/arcgiSDEsktop/9.3/index.cfm?TopicName=How%20Slope%20works
-        and generates a slope dataset as a percent
-
-        dem_dataset_uri - (input) a URI to a  single band raster of z values.
-        slope_uri - (input) a path to the output slope uri in percent.
-
-        returns nothing"""
-
-    #Read the DEM directly into an array
-    cdef float a,b,c,d,e,f,g,h,i,dem_nodata,z
-    cdef int row_index, col_index, n_rows, n_cols
-
-    dem_dataset = gdal.Open(dem_dataset_uri)
-    dem_band = dem_dataset.GetRasterBand(1)
-    dem_nodata = dem_band.GetNoDataValue()
-
-    slope_dataset = gdal.Open(slope_uri, gdal.GA_Update)
-    slope_band = slope_dataset.GetRasterBand(1)
-    slope_nodata = slope_band.GetNoDataValue()
-
-    gt = dem_dataset.GetGeoTransform()
-    cdef float cell_size_times_8 = gt[1] * 8
-
-    n_rows = dem_band.YSize
-    n_cols = dem_band.XSize
-
-    cdef numpy.ndarray[numpy.float_t, ndim=2] dem_array = numpy.empty((3, n_cols))
-    cdef numpy.ndarray[numpy.float_t, ndim=2] slope_array = numpy.empty((1, n_cols))
-
-    #Fill the top and bottom row of the slope since we won't touch it in this loop
-    slope_array[0, :] = slope_nodata
-    slope_band.WriteArray(slope_array, 0, 0)
-    slope_band.WriteArray(slope_array, 0, n_rows - 1)
-
-    cdef numpy.ndarray[numpy.float_t, ndim=2] dzdx = numpy.empty((1, n_cols))
-    cdef numpy.ndarray[numpy.float_t, ndim=2] dzdy = numpy.empty((1, n_cols))
-
-    for row_index in xrange(n_rows):
-        #Loop through the dataset 3 rows at a time
-        start_row_index = row_index - 1
-        n_rows_to_read = 3
-        # see if we need to loose a row on the top
-        if start_row_index < 0:
-            n_rows_to_read -= 1
-            start_row_index = 0
-        # see if we need to lose a row on the bottom
-        if start_row_index + 2 >= n_rows:
-            # -= 1 allows us to handle single row DEMs
-            n_rows_to_read -= 1
-
-        dem_band.ReadAsArray(
-            0, start_row_index, n_cols, n_rows_to_read, buf_obj=dem_array)
-        slope_array[0, :] = slope_nodata
-        dzdx[:] = slope_nodata
-        dzdy[:] = slope_nodata
-        for col_index in xrange(n_cols):
-            # abc
-            # def
-            # ghi
-
-            # e will be the value of any out of bound or nodata pixels
-            e = dem_array[1, col_index]
-            if e == dem_nodata:
-                continue
-
-            if row_index > 0:  # top bounds check
-                if col_index > 0:  # left bounds check
-                    a = dem_array[0, col_index - 1]
-                    if a == dem_nodata:
-                        a = e
-                else:
-                    a = e
-
-                b = dem_array[0, col_index]
-                if b == dem_nodata:
-                    b = e
-
-                if col_index < n_cols - 1:  # right bounds check
-                    c = dem_array[0, col_index + 1]
-                if c == dem_nodata:
-                    c = e
-            else:
-                # entire top row is out of bounds
-                a = e
-                b = e
-                c = e
-
-            if col_index > 0:  # left bounds check
-                d = dem_array[1, col_index - 1]
-                if d == dem_nodata:
-                    d = e
-            else:
-                d = e
-
-            if col_index < n_cols - 1:  # right bounds check
-                f = dem_array[1, col_index + 1]
-                if f == dem_nodata:
-                    f = e
-            else:
-                f = e
-
-            if row_index < n_rows - 1:  # bottom bounds check
-                if col_index > 0:  # left bounds check
-                    g = dem_array[2, col_index - 1]
-                    if g == dem_nodata:
-                        g = e
-                else:
-                    g = e
-
-                h = dem_array[2, col_index]
-                if h == dem_nodata:
-                    h = e
-
-                if col_index < n_cols - 1:  # right bounds check
-                    i = dem_array[2, col_index + 1]
-                    if i == dem_nodata:
-                        i = e
-                else:
-                    i = e
-            else:
-                # entire bottom row is out of bounds
-                g = e
-                h = e
-                i = e
-
-            dzdx[0, col_index] = ((c+2*f+i) - (a+2*d+g)) / (cell_size_times_8)
-            dzdy[0, col_index] = ((g+2*h+i) - (a+2*b+c)) / (cell_size_times_8)
-
-        valid_mask = dzdx != slope_nodata
-        slope_array[:] = slope_nodata
-        # multiply by 100 for percent output
-        slope_array[valid_mask] = numpy.tan(numpy.arctan(
-            numpy.sqrt(dzdx[valid_mask]**2 + dzdy[valid_mask]**2))) * 100
-        slope_band.WriteArray(slope_array, 0, row_index)
-
-    dem_band = None
-    slope_band = None
-    gdal.Dataset.__swig_destroy__(dem_dataset)
-    gdal.Dataset.__swig_destroy__(slope_dataset)
-    dem_dataset = None
-    slope_dataset = None
-
 
 cdef long long _f(long long x, long long i, long long gi):
     return (x-i)*(x-i)+ gi*gi
@@ -540,6 +396,25 @@ def calculate_slope(
     Surface Topgraphy" 1987 although it has been modified to include the
     diagonal pixels by classic finite difference analysis.
 
+    For the following notation, we define each pixel's DEM value by a letter
+    with this spatial scheme:
+
+        abc
+        def
+        ghi
+
+    Then the slope at e is defined at ([dz/dx]^2 + [dz/dy]^2)^0.5
+
+    Where
+
+    [dz/dx] = ((c+2f+i)-(a+2d+g)/(8*x_cell_size)
+    [dz/dy] = ((g+2h+i)-(a+2b+c))/(8*y_cell_size)
+
+    In cases where a cell is nodata, we attempt to use the middle cell inline
+    with the direction of differentiation (either in x or y direction).  If
+    no inline pixel is defined, we use `e` and multiply the difference by
+    2^0.5 to account for the diagonal projection.
+
     Parameters:
         dem_raster_path_band (string): a path/band tuple to a raster of height
             values. (path_to_raster, band_index)
@@ -578,7 +453,7 @@ def calculate_slope(
 
     for block_offset in pygeoprocessing.iterblocks(
             dem_raster_path_band[0], offset_only=True):
-        block_offset = block_offset.copy()
+        block_offset_copy = block_offset.copy()
         # try to expand the block around the edges if it fits
         x_start = 1
         win_xsize = block_offset['win_xsize']
@@ -588,18 +463,18 @@ def calculate_slope(
         y_end = win_ysize+1
 
         if block_offset['xoff'] > 0:
-            block_offset['xoff'] -= 1
-            block_offset['win_xsize'] += 1
+            block_offset_copy['xoff'] -= 1
+            block_offset_copy['win_xsize'] += 1
             x_start -= 1
         if block_offset['xoff']+win_xsize < n_cols:
-            block_offset['win_xsize'] += 1
+            block_offset_copy['win_xsize'] += 1
             x_end += 1
         if block_offset['yoff'] > 0:
-            block_offset['yoff'] -= 1
-            block_offset['win_ysize'] += 1
+            block_offset_copy['yoff'] -= 1
+            block_offset_copy['win_ysize'] += 1
             y_start -= 1
         if block_offset['yoff']+win_ysize < n_rows:
-            block_offset['win_ysize'] += 1
+            block_offset_copy['win_ysize'] += 1
             y_end += 1
 
         dem_array = numpy.empty(
@@ -618,14 +493,10 @@ def calculate_slope(
 
         dem_band.ReadAsArray(
             buf_obj=dem_array[y_start:y_end, x_start:x_end],
-            **block_offset)
+            **block_offset_copy)
 
         for row_index in xrange(1, win_ysize+1):
             for col_index in xrange(1, win_xsize+1):
-                dzdx_accumulator = 0.0
-                dzdy_accumulator = 0.0
-                x_denom_factor = 0
-                y_denom_factor = 0
                 # Notation of the cell below comes from the algorithm
                 # description, cells are arraged as follows:
                 # abc
@@ -633,8 +504,13 @@ def calculate_slope(
                 # ghi
                 e = dem_array[row_index, col_index]
                 if e == dem_nodata:
+                    # we use dzdx as a guard below, no need to set dzdy
                     dzdx_array[row_index-1, col_index-1] = slope_nodata
                     continue
+                dzdx_accumulator = 0.0
+                dzdy_accumulator = 0.0
+                x_denom_factor = 0
+                y_denom_factor = 0
                 a = dem_array[row_index-1, col_index-1]
                 b = dem_array[row_index-1, col_index]
                 c = dem_array[row_index-1, col_index+1]
@@ -733,7 +609,6 @@ def calculate_slope(
                 elif i != dem_nodata:
                     dzdy_accumulator += (e - i) * 2**0.5
                     y_denom_factor += 1
-                # no boundary around dzdx or dzdy arrays so -1 on indexes
 
                 if x_denom_factor != 0:
                     dzdx_array[row_index-1, col_index-1] = (
@@ -753,3 +628,10 @@ def calculate_slope(
         target_slope_band.WriteArray(
             slope_array, xoff=block_offset['xoff'],
             yoff=block_offset['yoff'])
+
+    dem_band = None
+    target_slope_band = None
+    gdal.Dataset.__swig_destroy__(dem_raster)
+    gdal.Dataset.__swig_destroy__(target_slope_raster)
+    dem_raster = None
+    target_slope_raster = None
