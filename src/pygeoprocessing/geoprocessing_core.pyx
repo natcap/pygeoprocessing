@@ -577,7 +577,7 @@ def calculate_slope(
 
     for block_offset in pygeoprocessing.iterblocks(
             dem_raster_path_band[0], offset_only=True):
-        adjusted_offset_lookup = block_offset.copy()
+        block_offset = block_offset.copy()
         # try to expand the block around the edges if it fits
         x_start = 1
         win_xsize = block_offset['win_xsize']
@@ -587,18 +587,18 @@ def calculate_slope(
         y_end = win_ysize+1
 
         if block_offset['xoff'] > 0:
-            adjusted_offset_lookup['xoff'] -= 1
-            adjusted_offset_lookup['win_xsize'] += 1
+            block_offset['xoff'] -= 1
+            block_offset['win_xsize'] += 1
             x_start -= 1
         if block_offset['xoff']+win_xsize < n_cols:
-            adjusted_offset_lookup['win_xsize'] += 1
+            block_offset['win_xsize'] += 1
             x_end += 1
         if block_offset['yoff'] > 0:
-            adjusted_offset_lookup['yoff'] -= 1
-            adjusted_offset_lookup['win_ysize'] += 1
+            block_offset['yoff'] -= 1
+            block_offset['win_ysize'] += 1
             y_start -= 1
         if block_offset['yoff']+win_ysize < n_rows:
-            adjusted_offset_lookup['win_ysize'] += 1
+            block_offset['win_ysize'] += 1
             y_end += 1
 
         dem_array = numpy.empty(
@@ -617,7 +617,7 @@ def calculate_slope(
 
         dem_band.ReadAsArray(
             buf_obj=dem_array[y_start:y_end, x_start:x_end],
-            **adjusted_offset_lookup)
+            **block_offset)
 
         for row_index in xrange(1, win_ysize+1):
             for col_index in xrange(1, win_xsize+1):
@@ -747,7 +747,7 @@ def calculate_slope(
         valid_mask = dzdx_array != slope_nodata
         slope_array[:] = slope_nodata
         # multiply by 100 for percent output
-        slope_array[valid_mask] = numpy.sqrt(
+        slope_array[valid_mask] = 100.0 * numpy.sqrt(
             dzdx_array[valid_mask]**2 + dzdy_array[valid_mask]**2)
         target_slope_band.WriteArray(
             slope_array, xoff=block_offset['xoff'],

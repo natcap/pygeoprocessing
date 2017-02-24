@@ -1214,11 +1214,12 @@ class PyGeoprocessing10(unittest.TestCase):
         target_nodata = target_slope_raster.GetRasterBand(1).GetNoDataValue()
         target_slope_raster = None
         count = 0
+        expected_slope = 100.0
         for _, block in pygeoprocessing.iterblocks(target_slope_path):
-            bad_mask = (block != target_nodata) & (block != 1.0)
+            bad_mask = (block != target_nodata) & (block != expected_slope)
             if numpy.any(bad_mask):
                 self.fail(
                     "Unexpected value in slope raster: %s" % block[bad_mask])
-            count += numpy.count_nonzero(block == 1.0)
+            count += numpy.count_nonzero(block == expected_slope)
         # all slopes should be 1 except center pixel
         self.assertEqual(count, n_pixels**2 - 1)
