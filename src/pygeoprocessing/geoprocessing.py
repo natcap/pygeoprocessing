@@ -862,11 +862,9 @@ def zonal_statistics(
     return aggregate_stats
 
 
-@profile
 def calculate_slope(
         dem_raster_path_band, target_slope_path,
-        gtiff_creation_options=_DEFAULT_GTIFF_CREATION_OPTIONS,
-        largest_block=_LARGEST_ITERBLOCK):
+        gtiff_creation_options=_DEFAULT_GTIFF_CREATION_OPTIONS):
     """Create slope raster from DEM raster.
 
     Algorithm is from Zevenbergen & Thorne "Quantiative Analysis of Land
@@ -888,53 +886,7 @@ def calculate_slope(
     dem_band = dem_raster.GetRasterBand(dem_raster_path_band[1])
     dem_info = get_raster_info(dem_raster_path_band[0])
     dem_nodata = dem_info['nodata'][0]
-    block = dem_band.GetBlockSize()
-    cols_per_block = block[0]
-    rows_per_block = block[1]
-
-    n_cols = dem_raster.RasterXSize
-    n_rows = dem_raster.RasterYSize
-
-    block_area = cols_per_block * rows_per_block
-    # try to make block wider
-    if largest_block / block_area > 0:
-        width_factor = largest_block / block_area
-        cols_per_block *= width_factor
-        if cols_per_block > n_cols:
-            cols_per_block = n_cols
-        block_area = cols_per_block * rows_per_block
-    # try to make block taller
-    if largest_block / block_area > 0:
-        height_factor = largest_block / block_area
-        rows_per_block *= height_factor
-        if rows_per_block > n_rows:
-            rows_per_block = n_rows
-
-    n_col_blocks = int(math.ceil(n_cols / float(cols_per_block)))
-    n_row_blocks = int(math.ceil(n_rows / float(rows_per_block)))
-
-    block_offset_lookup = {}
-
-    # Initialize to None so a block array is created on the first iteration
-    for row_block_index in xrange(n_row_blocks):
-        row_offset = row_block_index * rows_per_block
-        row_block_width = n_rows - row_offset
-        if row_block_width > rows_per_block:
-            row_block_width = rows_per_block
-
-        for col_block_index in xrange(n_col_blocks):
-            col_offset = col_block_index * cols_per_block
-            col_block_width = n_cols - col_offset
-            if col_block_width > cols_per_block:
-                col_block_width = cols_per_block
-
-            block_offset_lookup[(row_block_index, col_block_index)] = {
-                'xoff': col_offset,
-                'yoff': row_offset,
-                'win_xsize': col_block_width,
-                'win_ysize': row_block_width,
-            }
-
+    n_cols, n_rows = dem_info['raster_size']
     slope_nodata = numpy.finfo(numpy.float32).min
     new_raster_from_base(
         dem_raster_path_band[0], target_slope_path, gdal.GDT_Float32,
@@ -942,9 +894,8 @@ def calculate_slope(
         gtiff_creation_options=gtiff_creation_options)
     target_raster = gdal.Open(target_slope_path, gdal.GA_Update)
     target_band = target_raster.GetRasterBand(1)
-    for row_block_index, col_block_index in block_offset_lookup:
-        block_offset = block_offset_lookup[
-            (row_block_index, col_block_index)]
+
+    for block_offset in iterblocks(dem_raster_path_band[0], offset_only=True):
         kernel_shape = (
             block_offset['win_ysize']+2,
             block_offset['win_xsize']+2)
@@ -972,7 +923,8 @@ def calculate_slope(
         if block_offset['yoff']+block_offset['win_ysize'] < n_rows:
             adjusted_offset_lookup['win_ysize'] += 1
             y_end += 1
-        kernel[y_start:y_end, x_start:x_end] = dem_band.ReadAsArray(
+        dem_band.ReadAsArray(
+            buf_obj=kernel[y_start:y_end, x_start:x_end],
             **adjusted_offset_lookup)
         z_block = kernel[1:-1, 1:-1]
         valid_mask = z_block != dem_nodata
@@ -990,6 +942,8 @@ def calculate_slope(
             offset_z_block = kernel[z_slice][valid_mask]
             valid_z_offset_mask = offset_z_block != dem_nodata
             z_list[z_index] = numpy.zeros(valid_z_offset_mask.shape)
+            a = offset_z_block[valid_z_offset_mask]
+            b = valid_z_block[valid_z_offset_mask]
             z_list[z_index][valid_z_offset_mask] = (
                 offset_z_block[valid_z_offset_mask] -
                 valid_z_block[valid_z_offset_mask])
@@ -1011,9 +965,8 @@ def calculate_slope(
         slope[:] = slope_nodata
         slope[valid_mask] = (G**2 + H**2)**0.5
 
-        target_offset = block_offset_lookup[(row_block_index, col_block_index)]
         target_band.WriteArray(
-            slope, xoff=target_offset['xoff'], yoff=target_offset['yoff'])
+            slope, xoff=block_offset['xoff'], yoff=block_offset['yoff'])
 
     target_band.FlushCache()
     target_band = None
@@ -1878,8 +1831,8 @@ def iterblocks(
             data['win_xsize'] - The width of the block.
             data['win_ysize'] - The height of the block.
 
-        If `offset_only` is True, the function returns only the block data and
-            does not attempt to read binary data from the raster.
+        If `offset_only` is True, the function returns only the block offset
+            data and does not attempt to read binary data from the raster.
     """
     raster = gdal.Open(raster_path)
 

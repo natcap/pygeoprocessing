@@ -1193,6 +1193,7 @@ class PyGeoprocessing10(unittest.TestCase):
 
     def test_calculate_slope(self):
         """PGP.geoprocessing: test calculate slope."""
+        import pygeoprocessing.geoprocessing_core
         reference = sampledata.SRS_COLOMBIA
         n_pixels = 9
         pixel_matrix = numpy.ones((n_pixels, n_pixels), numpy.float32)
@@ -1201,12 +1202,14 @@ class PyGeoprocessing10(unittest.TestCase):
         # make a nodata hole in the middle to test boundary cases
         pixel_matrix[n_pixels/2, n_pixels/2] = nodata_value
         dem_path = os.path.join(self.workspace_dir, 'dem.tif')
-        target_slope_path = os.path.join(self.workspace_dir, 'slope.tif')
+        #target_slope_path = os.path.join(self.workspace_dir, 'slope.tif')
+        target_slope_path = 'slope.tif'
         pygeoprocessing.testing.create_raster_on_disk(
             [pixel_matrix], reference.origin, reference.projection,
             nodata_value, reference.pixel_size(1), filename=dem_path)
 
-        pygeoprocessing.calculate_slope((dem_path, 1), target_slope_path)
+        pygeoprocessing.geoprocessing_core.calculate_slope(
+            (dem_path, 1), target_slope_path)
         target_slope_raster = gdal.Open(target_slope_path)
         target_nodata = target_slope_raster.GetRasterBand(1).GetNoDataValue()
         target_slope_raster = None

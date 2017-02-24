@@ -1,3 +1,5 @@
+# cython: profile=True
+# cython: linetrace=True
 import os
 import tempfile
 import logging
@@ -15,8 +17,11 @@ from libc.math cimport exp
 from libc.math cimport ceil
 
 from osgeo import gdal
+import pygeoprocessing
 
-LOGGER = logging.getLogger('geoprocessing_cython')
+_DEFAULT_GTIFF_CREATION_OPTIONS = ('TILED=YES', 'BIGTIFF=IF_SAFER')
+
+LOGGER = logging.getLogger('geoprocessing_core')
 
 
 @cython.boundscheck(False)
@@ -66,7 +71,6 @@ def reclassify_by_dictionary(dataset, rules, output_uri, format,
     output_dataset.FlushCache()
 
     return output_dataset
-
 
 def _cython_calculate_slope(dem_dataset_uri, slope_uri):
     """Generates raster maps of slope.  Follows the algorithm described here:
@@ -522,3 +526,227 @@ def new_raster_from_base(
     band = None
 
     return new_raster
+
+@cython.boundscheck(False)
+@cython.wraparound(False)
+@cython.nonecheck(False)
+@cython.cdivision(True)
+def calculate_slope(
+        dem_raster_path_band, target_slope_path,
+        gtiff_creation_options=_DEFAULT_GTIFF_CREATION_OPTIONS):
+    """Create slope raster from DEM raster.
+
+    Algorithm is from Zevenbergen & Thorne "Quantiative Analysis of Land
+    Surface Topgraphy" 1987.
+
+    Parameters:
+        dem_raster_path_band (string): a path/band tuple to a raster of height
+            values. (path_to_raster, band_index)
+        target_slope_path (string): path to target slope raster; will be a
+            32 bit float GeoTIFF of same size/projection as calculate slope
+            with units of percent slope.
+        gtiff_creation_options (list or tuple): list of strings that will be
+            passed as GDAL "dataset" creation options to the GTIFF driver.
+
+    Returns:
+        None
+    """
+    cdef numpy.npy_float32 a, b, c, d, e, f, g, h, i, dem_nodata, z
+    cdef numpy.npy_float32 x_cell_size, y_cell_size,
+    cdef numpy.npy_float32 dzdx_accumulator, dzdy_accumulator
+    cdef int row_index, col_index, n_rows, n_cols, x_denom_factor, y_denom_factor
+    cdef numpy.ndarray[numpy.npy_float32, ndim=2] dem_array
+    cdef numpy.ndarray[numpy.npy_float32, ndim=2] slope_array
+    cdef numpy.ndarray[numpy.npy_float32, ndim=2] dzdx_array
+    cdef numpy.ndarray[numpy.npy_float32, ndim=2] dzdy_array
+
+    dem_raster = gdal.Open(dem_raster_path_band[0])
+    dem_band = dem_raster.GetRasterBand(dem_raster_path_band[1])
+    dem_info = pygeoprocessing.get_raster_info(dem_raster_path_band[0])
+    dem_nodata = dem_info['nodata'][0]
+    x_cell_size, y_cell_size = dem_info['pixel_size']
+    n_cols, n_rows = dem_info['raster_size']
+    cdef float slope_nodata = numpy.finfo(numpy.float32).min
+    pygeoprocessing.new_raster_from_base(
+        dem_raster_path_band[0], target_slope_path, gdal.GDT_Float32,
+        [slope_nodata], fill_value_list=[float(slope_nodata)],
+        gtiff_creation_options=gtiff_creation_options)
+    target_slope_raster = gdal.Open(target_slope_path, gdal.GA_Update)
+    target_slope_band = target_slope_raster.GetRasterBand(1)
+
+    for block_offset in pygeoprocessing.iterblocks(
+            dem_raster_path_band[0], offset_only=True):
+        adjusted_offset_lookup = block_offset.copy()
+        # try to expand the block around the edges if it fits
+        x_start = 1
+        x_end = block_offset['win_xsize']+1
+        y_start = 1
+        y_end = block_offset['win_ysize']+1
+
+        if block_offset['xoff'] > 0:
+            adjusted_offset_lookup['xoff'] -= 1
+            adjusted_offset_lookup['win_xsize'] += 1
+            x_start -= 1
+        if block_offset['xoff']+block_offset['win_xsize'] < n_cols:
+            adjusted_offset_lookup['win_xsize'] += 1
+            x_end += 1
+        if block_offset['yoff'] > 0:
+            adjusted_offset_lookup['yoff'] -= 1
+            adjusted_offset_lookup['win_ysize'] += 1
+            y_start -= 1
+        if block_offset['yoff']+block_offset['win_ysize'] < n_rows:
+            adjusted_offset_lookup['win_ysize'] += 1
+            y_end += 1
+
+        dem_array = numpy.empty(
+            (block_offset['win_ysize']+2, block_offset['win_xsize']+2),
+            dtype=numpy.float32)
+        dem_array[:] = dem_nodata
+        slope_array = numpy.empty(
+            (block_offset['win_ysize'], block_offset['win_xsize']),
+            dtype=numpy.float32)
+        dzdx_array = numpy.empty(
+            (block_offset['win_ysize'], block_offset['win_xsize']),
+            dtype=numpy.float32)
+        dzdy_array = numpy.empty(
+            (block_offset['win_ysize'], block_offset['win_xsize']),
+            dtype=numpy.float32)
+
+        dem_band.ReadAsArray(
+            buf_obj=dem_array[y_start:y_end, x_start:x_end],
+            **adjusted_offset_lookup)
+        print dem_array
+
+        for row_index in xrange(1, block_offset['win_ysize']+1):
+            for col_index in xrange(1, block_offset['win_xsize']+1):
+                dzdx_accumulator = 0.0
+                dzdy_accumulator = 0.0
+                x_denom_factor = 0
+                y_denom_factor = 0
+                # Notation of the cell below comes from the algorithm
+                # description, cells are arraged as follows:
+                # abc
+                # def
+                # ghi
+                e = dem_array[row_index, col_index]
+                if e == dem_nodata:
+                    dzdx_array[row_index-1, col_index-1] = slope_nodata
+                    continue
+                a = dem_array[row_index-1, col_index-1]
+                b = dem_array[row_index-1, col_index]
+                c = dem_array[row_index-1, col_index+1]
+                d = dem_array[row_index, col_index-1]
+                f = dem_array[row_index, col_index+1]
+                g = dem_array[row_index+1, col_index-1]
+                h = dem_array[row_index+1, col_index]
+                i = dem_array[row_index+1, col_index+1]
+
+                # a - c direction
+                if a != dem_nodata and c != dem_nodata:
+                    dzdx_accumulator += a - c
+                    x_denom_factor += 2
+                elif a != dem_nodata and b != dem_nodata:
+                    dzdx_accumulator += a - b
+                    x_denom_factor += 1
+                elif b != dem_nodata and c != dem_nodata:
+                    dzdx_accumulator += b - c
+                    x_denom_factor += 1
+                elif a != dem_nodata:
+                    dzdx_accumulator += (a - e) * 2**0.5
+                    x_denom_factor += 1
+                elif c != dem_nodata:
+                    dzdx_accumulator += (e - c) * 2**0.5
+                    x_denom_factor += 1
+
+                # d - f direction
+                if d != dem_nodata and f != dem_nodata:
+                    dzdx_accumulator += 2 * (d - f)
+                    x_denom_factor += 4
+                elif d != dem_nodata:
+                    dzdx_accumulator += 2 * (d - e)
+                    x_denom_factor += 2
+                elif f != dem_nodata:
+                    dzdx_accumulator += 2 * (e - f)
+                    x_denom_factor += 2
+
+                # g - i direction
+                if g != dem_nodata and i != dem_nodata:
+                    dzdx_accumulator += g - i
+                    x_denom_factor += 2
+                elif g != dem_nodata and h != dem_nodata:
+                    dzdx_accumulator += g - h
+                    x_denom_factor += 1
+                elif h != dem_nodata and i != dem_nodata:
+                    dzdx_accumulator += h - i
+                    x_denom_factor += 1
+                elif g != dem_nodata:
+                    dzdx_accumulator += (g - e) * 2**0.5
+                    x_denom_factor += 1
+                elif i != dem_nodata:
+                    dzdx_accumulator += (e - i) * 2**0.5
+                    x_denom_factor += 1
+
+                # a - g direction
+                if a != dem_nodata and g != dem_nodata:
+                    dzdy_accumulator += a - g
+                    y_denom_factor += 2
+                elif a != dem_nodata and d != dem_nodata:
+                    dzdy_accumulator += a - d
+                    y_denom_factor += 1
+                elif d != dem_nodata and g != dem_nodata:
+                    dzdy_accumulator += d - g
+                    y_denom_factor += 1
+                elif a != dem_nodata:
+                    dzdy_accumulator += (a - e) * 2**0.5
+                    y_denom_factor += 1
+                elif g != dem_nodata:
+                    dzdy_accumulator += (e - g) * 2**0.5
+                    y_denom_factor += 1
+
+                # b - h direction
+                if b != dem_nodata and h != dem_nodata:
+                    dzdy_accumulator += 2 * (b - h)
+                    y_denom_factor += 4
+                elif b != dem_nodata:
+                    dzdy_accumulator += 2 * (b - e)
+                    y_denom_factor += 2
+                elif h != dem_nodata:
+                    dzdy_accumulator += 2 * (e - h)
+                    y_denom_factor += 2
+
+                # c - i direction
+                if c != dem_nodata and i != dem_nodata:
+                    dzdy_accumulator += c - i
+                    y_denom_factor += 2
+                elif c != dem_nodata and f != dem_nodata:
+                    dzdy_accumulator += c - f
+                    y_denom_factor += 1
+                elif f != dem_nodata and i != dem_nodata:
+                    dzdy_accumulator += f - i
+                    y_denom_factor += 1
+                elif c != dem_nodata:
+                    dzdy_accumulator += (c - e) * 2**0.5
+                    y_denom_factor += 1
+                elif i != dem_nodata:
+                    dzdy_accumulator += (e - i) * 2**0.5
+                    y_denom_factor += 1
+                # no boundary around dzdx or dzdy arrays so -1 on indexes
+
+                if x_denom_factor != 0:
+                    dzdx_array[row_index-1, col_index-1] = (
+                        dzdx_accumulator / (x_denom_factor * x_cell_size))
+                else:
+                    dzdx_array[row_index-1, col_index-1] = 0.0
+                if y_denom_factor != 0:
+                    dzdy_array[row_index-1, col_index-1] = (
+                        dzdy_accumulator / (y_denom_factor * y_cell_size))
+                else:
+                    dzdy_array[row_index-1, col_index-1] = 0.0
+            valid_mask = dzdx_array != slope_nodata
+            slope_array[:] = slope_nodata
+            # multiply by 100 for percent output
+            slope_array[valid_mask] = numpy.sqrt(
+                dzdx_array[valid_mask]**2 + dzdy_array[valid_mask]**2)
+            target_slope_band.WriteArray(
+                slope_array, xoff=block_offset['xoff'],
+                yoff=block_offset['yoff'])
