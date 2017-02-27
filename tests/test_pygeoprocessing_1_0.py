@@ -48,8 +48,8 @@ class PyGeoprocessing10(unittest.TestCase):
         target_nodata = -1
         with self.assertRaises(ValueError):
             pygeoprocessing.reclassify_raster(
-                raster_path, value_map, target_path, gdal.GDT_Float32,
-                target_nodata, exception_flag='values_required', band_index=1)
+                (raster_path, 1), value_map, target_path, gdal.GDT_Float32,
+                target_nodata, exception_flag='values_required')
 
     def test_reclassify_raster_bad_mode(self):
         """PGP.geoprocessing: test reclassify raster with bad flag."""
@@ -71,8 +71,8 @@ class PyGeoprocessing10(unittest.TestCase):
         target_nodata = -1
         with self.assertRaises(ValueError):
             pygeoprocessing.reclassify_raster(
-                raster_path, value_map, target_path, gdal.GDT_Float32,
-                target_nodata, exception_flag='BAD FLAG', band_index=1)
+                (raster_path, 1), value_map, target_path, gdal.GDT_Float32,
+                target_nodata, exception_flag='BAD FLAG')
 
     def test_reclassify_raster(self):
         """PGP.geoprocessing: test reclassify raster."""
@@ -93,8 +93,8 @@ class PyGeoprocessing10(unittest.TestCase):
         }
         target_nodata = -1
         pygeoprocessing.reclassify_raster(
-            raster_path, value_map, target_path, gdal.GDT_Float32,
-            target_nodata, exception_flag='values_required', band_index=1)
+            (raster_path, 1), value_map, target_path, gdal.GDT_Float32,
+            target_nodata, exception_flag='values_required')
         target_raster = gdal.Open(target_path)
         target_band = target_raster.GetRasterBand(1)
         target_array = target_band.ReadAsArray()

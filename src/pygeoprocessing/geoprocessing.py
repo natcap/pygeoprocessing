@@ -1101,15 +1101,16 @@ def reproject_vector(
 
 
 def reclassify_raster(
-        base_raster_path, value_map, target_raster_path, target_datatype,
-        target_nodata, exception_flag='values_required', band_index=1):
+        base_raster_path_band, value_map, target_raster_path, target_datatype,
+        target_nodata, exception_flag='values_required'):
     """Reclassify pixel values in a raster.
 
     A function to reclassify values in raster to any output type. By default
     the values except for nodata must be in `value_map`.
 
     Args:
-        base_raster_path (string): a path to a raster
+        base_raster_path_band (tuple): a tuple including file path to a raster
+            and the band index to operate over. ex: (path, band_index)
         value_map (dictionary): a dictionary of values of
             {source_value: dest_value, ...} where source_value's type is the
             same as the values in `base_raster_path` at band `band_index`.
@@ -1140,8 +1141,8 @@ def reclassify_raster(
         raise ValueError('unknown exception_flag %s', exception_flag)
     values_required = exception_flag == 'values_required'
 
-    raster_info = get_raster_info(base_raster_path)
-    nodata = raster_info['nodata'][band_index-1]
+    raster_info = get_raster_info(base_raster_path_band[0])
+    nodata = raster_info['nodata'][base_raster_path_band[1]-1]
     value_map_copy = value_map.copy()
     # possible that nodata value is not defined, so test for None first
     # otherwise if nodata not predefined, remap it into the dictionary
@@ -1159,12 +1160,13 @@ def reclassify_raster(
                 raise ValueError(
                     'There was not a value for at least the following codes '
                     '%s for this file %s.\nNodata value is: %s' % (
-                        str(unique[~has_map]), base_raster_path, str(nodata)))
+                        str(unique[~has_map]), base_raster_path_band[0],
+                        str(nodata)))
         index = numpy.digitize(original_values.ravel(), keys, right=True)
         return values[index].reshape(original_values.shape)
 
     raster_calculator(
-        [(base_raster_path, band_index)], _map_dataset_to_value_op,
+        [base_raster_path_band], _map_dataset_to_value_op,
         target_raster_path, target_datatype, target_nodata)
 
 
