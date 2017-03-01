@@ -1206,14 +1206,6 @@ def warp_raster(
     Returns:
         None
     """
-    resample_dict = {
-        "nearest": gdal.GRA_NearestNeighbour,
-        "bilinear": gdal.GRA_Bilinear,
-        "cubic": gdal.GRA_Cubic,
-        "cubic_spline": gdal.GRA_CubicSpline,
-        "lanczos": gdal.GRA_Lanczos
-        }
-
     base_raster = gdal.Open(base_raster_path)
     base_sr = osr.SpatialReference()
     base_sr.ImportFromWkt(base_raster.GetProjection())
@@ -1303,7 +1295,7 @@ def warp_raster(
     # Perform the projection/resampling
     gdal.ReprojectImage(
         base_raster, target_raster, base_sr.ExportToWkt(),
-        target_sr_wkt, resample_dict[resample_method], 0, 0,
+        target_sr_wkt, _RESAMPLE_DICT[resample_method], 0, 0,
         _reproject_callback, [target_raster_path])
 
     target_raster = None
