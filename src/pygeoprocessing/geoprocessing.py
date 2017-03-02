@@ -1212,6 +1212,12 @@ def warp_raster(
 
     if target_bb is None:
         target_bb = get_raster_info(base_raster_path)['bounding_box']
+        # transform the target_bb if target_sr_wkt is not None
+        if target_sr_wkt is not None:
+            target_bb = transform_bounding_box(
+                get_raster_info(base_raster_path)['bounding_box'],
+                get_raster_info(base_raster_path)['projection'],
+                target_sr_wkt)
 
     target_geotransform = [
         target_bb[0], target_pixel_size[0], 0.0, target_bb[1], 0.0,
