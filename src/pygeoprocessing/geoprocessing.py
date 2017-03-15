@@ -791,7 +791,6 @@ def zonal_statistics(
         # add polygons to subset_layer
         for index, poly_fid in enumerate(polygon_set):
             poly_feat = aggregate_layer.GetFeature(poly_fid)
-            print poly_feat.GetField(aggregate_field_index)
             disjoint_layer.CreateFeature(poly_feat)
             # we seem to need to reload the feature and set the index because
             # just copying over the feature left indexes as all 0s.  Not sure
