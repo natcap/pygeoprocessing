@@ -786,11 +786,21 @@ def zonal_statistics(
     for polygon_set in minimal_polygon_sets:
         disjoint_layer = disjoint_vector.CreateLayer(
             'disjoint_vector', spat_ref, ogr.wkbPolygon)
+
         disjoint_layer.CreateField(aggregate_field_def)
         # add polygons to subset_layer
-        for poly_fid in polygon_set:
+        for index, poly_fid in enumerate(polygon_set):
             poly_feat = aggregate_layer.GetFeature(poly_fid)
+            print poly_feat.GetField(aggregate_field_index)
             disjoint_layer.CreateFeature(poly_feat)
+            # we seem to need to reload the feature and set the index because
+            # just copying over the feature left indexes as all 0s.  Not sure
+            # why.
+            new_feat = disjoint_layer.GetFeature(index)
+            new_feat.SetField(
+                aggregate_field_name, poly_feat.GetField(
+                    aggregate_field_name))
+            disjoint_layer.SetFeature(new_feat)
         disjoint_layer.SyncToDisk()
 
         # nodata out the mask
