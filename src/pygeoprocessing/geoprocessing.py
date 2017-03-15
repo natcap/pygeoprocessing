@@ -679,7 +679,9 @@ def zonal_statistics(
             that represents an identifying integer value for sets of polygons
             in the layer such as a unique integer ID per polygon.  Result of
             this function will be indexed by the values found in this field.
-            If set to None the result will be aggregated and indexed by FID.
+            Note that a field is required and working with FIDs are considered
+            dangerous.  See comment on question at
+            http://gis.stackexchange.com/q/232101/2397
         aggregate_layer_name (string): name of shapefile layer that will be
             used to aggregate results over.  If set to None, the first layer
             in the DataSource will be used as retrieved by `.GetLayer()`.
