@@ -1522,19 +1522,19 @@ def convolve_2d(
         gtiff_creation_options=_DEFAULT_GTIFF_CREATION_OPTIONS):
     """Convolve 2D kernel over 2D signal.
 
-    Convolves the raster in `kernel_path` over `signal_path`.  Nodata values
-    are treated as 0.0 during the convolution and masked to nodata for
-    the output result where `signal_path` has nodata.
+    Convolves the raster in `kernel_path_band` over `signal_path_band`.
+    Nodata values are treated as 0.0 during the convolution and masked to
+    nodata for the output result where `signal_path` has nodata.
 
     Parameters:
-        signal_path (tuple): a 2 tuple of the form
+        signal_path_band (tuple): a 2 tuple of the form
             (filepath to signal raster, band index).
-        kernel_path (tuple): a 2 tuple of the form
+        kernel_path_band (tuple): a 2 tuple of the form
             (filepath to kernel raster, band index).
         target_path (string): filepath to target raster that's the convolution
             of signal with kernel.  Output will be a single band raster of
-            same size and projection as `signal_path`. Any nodata pixels that
-            align with `signal_path` will be set to nodata.
+            same size and projection as `signal_path_band`. Any nodata pixels
+            that align with `signal_path_band` will be set to nodata.
         target_datatype (GDAL type): a GDAL raster type to set the output
             raster type to, as well as the type to calculate the convolution
             in.  Defaults to GDT_Float64.
