@@ -8,11 +8,6 @@ from setuptools.extension import Extension
 from setuptools import setup
 import pkg_resources
 
-from Cython.Compiler.Options import directive_defaults
-
-directive_defaults['linetrace'] = True
-directive_defaults['binding'] = True
-
 # Monkeypatch os.link to prevent hard lnks from being formed.  Useful when
 # running tests across filesystems, like in our test docker containers.
 # Only an issue pre python 2.7.9.
