@@ -1201,8 +1201,7 @@ class PyGeoprocessing10(unittest.TestCase):
         # make a nodata hole in the middle to test boundary cases
         pixel_matrix[n_pixels/2, n_pixels/2] = nodata_value
         dem_path = os.path.join(self.workspace_dir, 'dem.tif')
-        #target_slope_path = os.path.join(self.workspace_dir, 'slope.tif')
-        target_slope_path = 'slope.tif'
+        target_slope_path = os.path.join(self.workspace_dir, 'slope.tif')
         pygeoprocessing.testing.create_raster_on_disk(
             [pixel_matrix], reference.origin, reference.projection,
             nodata_value, reference.pixel_size(1), filename=dem_path)
@@ -1222,3 +1221,54 @@ class PyGeoprocessing10(unittest.TestCase):
             count += numpy.count_nonzero(block == expected_slope)
         # all slopes should be 1 except center pixel
         self.assertEqual(count, n_pixels**2 - 1)
+
+    def test_rasterize(self):
+        """PGP.geoprocessing: test rasterize."""
+        reference = sampledata.SRS_COLOMBIA
+        n_pixels = 3
+        target_raster_array = numpy.ones((n_pixels, n_pixels), numpy.float32)
+        test_value = 0.5
+        target_raster_array[:] = test_value
+        nodata_target = -1
+        target_raster_path = os.path.join(
+            self.workspace_dir, 'target_raster.tif')
+        pygeoprocessing.testing.create_raster_on_disk(
+            [target_raster_array], reference.origin, reference.projection,
+            nodata_target, reference.pixel_size(30), filename=target_raster_path)
+
+        reference = sampledata.SRS_COLOMBIA
+        pixel_size = 30.0
+        polygon = shapely.geometry.Polygon([
+            (reference.origin[0], reference.origin[1]),
+            (reference.origin[0], -pixel_size * n_pixels+reference.origin[1]),
+            (reference.origin[0]+pixel_size * n_pixels,
+             -pixel_size * n_pixels+reference.origin[1]),
+            (reference.origin[0]+pixel_size * n_pixels, reference.origin[1]),
+            (reference.origin[0], reference.origin[1])])
+        base_vector_path = os.path.join(
+            self.workspace_dir, 'base_vector.json')
+        pygeoprocessing.testing.create_vector_on_disk(
+            [polygon], reference.projection,
+            fields={'id': 'int'}, attributes=[{'id': 5}],
+            vector_format='GeoJSON', filename=base_vector_path)
+
+        pygeoprocessing.rasterize(
+            base_vector_path, target_raster_path, [test_value], None,
+            layer_index=0)
+
+        target_raster = gdal.Open(target_raster_path)
+        target_band = target_raster.GetRasterBand(1)
+        result = target_band.ReadAsArray()
+        target_band = None
+        target_raster = None
+        self.assertTrue((result == test_value).all())
+
+        pygeoprocessing.rasterize(
+            base_vector_path, target_raster_path, None,
+            ["ATTRIBUTE=id"], layer_index=0)
+        target_raster = gdal.Open(target_raster_path)
+        target_band = target_raster.GetRasterBand(1)
+        result = target_band.ReadAsArray()
+        target_band = None
+        target_raster = None
+        self.assertTrue((result == 5).all())

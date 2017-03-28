@@ -1299,7 +1299,7 @@ def warp_raster(
                     (df_complete == 1.0 and
                      _reproject_callback.total_time >= 5.0)):
                 LOGGER.info(
-                    "ReprojectImage %.1f%% complete %s, psz_message %s",
+                    "ReprojectImage %.1f%% complete %s, psz_message '%s'",
                     df_complete * 100, p_progress_arg[0], psz_message)
                 _reproject_callback.last_time = current_time
                 _reproject_callback.total_time += current_time
@@ -1318,37 +1318,87 @@ def warp_raster(
     calculate_raster_stats(target_raster_path)
 
 
-def rasterize_layer_uri(
-        raster_uri, shapefile_uri, burn_values=[], option_list=[]):
-    """Rasterize datasource layer.
+def rasterize(
+        vector_path, target_raster_path, burn_values, option_list,
+        layer_index=0):
+    """Project a vector onto an existing raster.
 
-    Burn the layer from 'shapefile_uri' onto the raster from 'raster_uri'.
-    Will burn 'burn_value' onto the raster unless 'field' is not None,
-    in which case it will burn the value from shapefiles field.
+    Burn the layer at `layer_index` in `vector_path` to an existing
+    raster at `target_raster_path_band`.
 
     Args:
-        raster_uri (string): a URI to a gdal dataset
-        shapefile_uri (string): a URI to an ogr datasource
+        vector_path (string): filepath to vector to rasterize.
+        target_raster_path (string): path to an existing raster to burn vector
+            into.  Can have multiple bands.
+        burn_values (list): list of values to burn into each band of the
+            raster.  If used, should have the same length as number of bands
+            at the `target_raster_path` raster.  Can otherwise be None.
+        option_list (list): a list of burn options (or None if not used), each
+            element is a string of the form:
+                "ATTRIBUTE=?": Identifies an attribute field on the features
+                    to be used for a burn in value. The value will be burned
+                    into all output bands. If specified, `burn_values`
+                    will not be used and can be None.
+                "CHUNKYSIZE=?": The height in lines of the chunk to operate
+                    on. The larger the chunk size the less times we need to
+                    make a pass through all the shapes. If it is not set or
+                    set to zero the default chunk size will be used. Default
+                    size will be estimated based on the GDAL cache buffer size
+                    using formula: cache_size_bytes/scanline_size_bytes, so
+                    the chunk will not exceed the cache.
+                "ALL_TOUCHED=TRUE/FALSE": May be set to TRUE to set all pixels
+                    touched by the line or polygons, not just those whose
+                    center is within the polygon or that are selected by
+                    Brezenhams line algorithm. Defaults to FALSE.
+                "BURN_VALUE_FROM": May be set to "Z" to use the Z values of
+                    the geometries. The value from burn_values or the
+                    attribute field value is added to this before burning. In
+                    default case dfBurnValue is burned as it is (richpsharp:
+                    note, I'm not sure what this means, but copied from formal
+                    docs). This is implemented properly only for points and
+                    lines for now. Polygons will be burned using the Z value
+                    from the first point.
+                "MERGE_ALG=REPLACE/ADD": REPLACE results in overwriting of
+                    value, while ADD adds the new value to the existing
+                    raster, suitable for heatmaps for instance.
 
-    Keyword Args:
-        burn_values (list): the equivalent value for burning
-            into a polygon.  If empty uses the Z values.
-        option_list (list): a Python list of options for the operation.
-            Example: ["ATTRIBUTE=NPV", "ALL_TOUCHED=TRUE"]
+            Example: ["ATTRIBUTE=npv", "ALL_TOUCHED=TRUE"]
 
     Returns:
         None
     """
-    dataset = gdal.Open(raster_uri, gdal.GA_Update)
-    shapefile = ogr.Open(shapefile_uri)
-    layer = shapefile.GetLayer()
+    if not os.path.exists(target_raster_path):
+        raise ValueError("%s doesn't exist, but needed to rasterize.")
+    raster = gdal.Open(target_raster_path, gdal.GA_Update)
+    vector = ogr.Open(vector_path)
+    layer = vector.GetLayer(layer_index)
+
+    def _rasterize_callback(df_complete, psz_message, p_progress_arg):
+        """The argument names come from the GDAL API for callbacks."""
+        try:
+            current_time = time.time()
+            if ((current_time - _rasterize_callback.last_time) > 5.0 or
+                    (df_complete == 1.0 and
+                     _rasterize_callback.total_time >= 5.0)):
+                LOGGER.info(
+                    "RasterizeLayer %.1f%% complete %s, psz_message '%s'",
+                    df_complete * 100, p_progress_arg[0], psz_message)
+                _rasterize_callback.last_time = current_time
+                _rasterize_callback.total_time += current_time
+        except AttributeError:
+            _rasterize_callback.last_time = time.time()
+            _rasterize_callback.total_time = 0.0
+
+    if burn_values is None:
+        burn_values = []
+    if option_list is None:
+        option_list = []
 
     gdal.RasterizeLayer(
-        dataset, [1], layer, burn_values=burn_values, options=option_list)
-
-    gdal.Dataset.__swig_destroy__(dataset)
-    dataset = None
-    shapefile = None
+        raster, [1], layer, burn_values=burn_values, options=option_list,
+        callback=_rasterize_callback)
+    raster.FlushCache()
+    gdal.Dataset.__swig_destroy__(raster)
 
 
 def calculate_disjoint_polygon_set(shapefile_uri):
@@ -1418,26 +1468,26 @@ def calculate_disjoint_polygon_set(shapefile_uri):
 
 
 def distance_transform_edt(
-        input_mask_uri, output_distance_uri, process_pool=None):
-    """Find the Euclidean distance transform on input_mask_uri and output
-    the result as raster.
+        base_mask_raster_path_band, target_distance_raster_path):
+    """Calculate the euclidean distance transform on base raster.
 
-    Args:
-        input_mask_uri (string): a gdal raster to calculate distance from
-            the non 0 value pixels
-        output_distance_uri (string): will make a float raster w/ same
-            dimensions and projection as input_mask_uri where all zero values
-            of input_mask_uri are equal to the euclidean distance to the
+    Calculates the euclidean distance transform on the base raster in units of
+    pixels.
+
+    Parameters:
+        base_mask_raster_path_band (string): a gdal raster to calculate
+            distance from the non 0 value pixels
+        target_distance_raster_path (string): will make a float raster w/ same
+            dimensions and projection as base_mask_raster_path_band where all
+            zero values of base_mask_raster_path_band are equal to the
+            euclidean distance to the
             closest non-zero pixel.
-
-    Keyword Args:
-        process_pool: (description)
 
     Returns:
         None
     """
     mask_as_byte_uri = temporary_filename(suffix='.tif')
-    raster_info = get_raster_info(input_mask_uri)
+    raster_info = get_raster_info(base_mask_raster_path_band)
     nodata = raster_info['nodata']
     out_pixel_size = raster_info['mean_pixel_size']
     nodata_out = 255
@@ -1450,7 +1500,7 @@ def distance_transform_edt(
     # 64 seems like a reasonable blocksize
     blocksize = 64
     vectorize_datasets(
-        [input_mask_uri], to_byte, mask_as_byte_uri, gdal.GDT_Byte,
+        [base_mask_raster_path_band], to_byte, mask_as_byte_uri, gdal.GDT_Byte,
         nodata_out, out_pixel_size, "union",
         dataset_to_align_index=0, assert_datasets_projected=False,
         process_pool=process_pool, vectorize_op=False,
@@ -1460,7 +1510,7 @@ def distance_transform_edt(
             'BLOCKYSIZE=%d' % blocksize])
 
     geoprocessing_core.distance_transform_edt(
-        mask_as_byte_uri, output_distance_uri)
+        mask_as_byte_uri, target_distance_raster_path)
     try:
         os.remove(mask_as_byte_uri)
     except OSError:
