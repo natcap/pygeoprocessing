@@ -1,6 +1,4 @@
 """A collection of GDAL dataset and raster utilities."""
-import threading
-import Queue
 import logging
 import os
 import shutil
