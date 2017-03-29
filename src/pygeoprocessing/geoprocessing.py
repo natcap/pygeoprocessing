@@ -247,7 +247,7 @@ def align_and_resize_raster_stack(
         resample_method_list (list): a list of resampling methods which
             one to one map each path in `base_raster_path_list` during
             resizing.  Each element must be one of
-            "nearest|bilinear|cubic|cubic_spline|lanczos".
+            "nearest|bilinear|cubic|cubic_spline|lanczos|mode".
         target_pixel_size (tuple): the target raster's x and y pixel size
             example: [30, -30].
         bounding_box_mode (string): one of "union", "intersection", or
@@ -1202,7 +1202,7 @@ def warp_raster(
         target_raster_path (string): the location of the resized and
             resampled raster.
         resample_method (string): the resampling technique, one of
-            "nearest|bilinear|cubic|cubic_spline|lanczos"
+            "nearest|bilinear|cubic|cubic_spline|lanczos|mode"
         target_bb (list): if None, target bounding box is the same as the
             source bounding box.  Otherwise it's a list of float describing
             target bounding box in target coordinate system as
