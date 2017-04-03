@@ -120,8 +120,8 @@ def raster_calculator(
     geospatial_info_set = set()
     for raster_info in raster_info_list:
         LOGGER.debug('TODO: do something better here than blindly rounding')
-        rounded_geotransform = (
-            round(x,5) for x in raster_info['geotransform'])
+        rounded_geotransform = tuple([
+            round(x, 5) for x in raster_info['geotransform']])
         geospatial_info_set.add(
             (raster_info['pixel_size'],
              raster_info['raster_size'],
@@ -129,7 +129,7 @@ def raster_calculator(
              raster_info['projection']))
     if len(geospatial_info_set) > 1:
         raise ValueError(
-            "Input Rasters are not geospatially aligned.  For example the "
+            "Input Rasters are not geospatially aligned.  The "
             "following geospatial stats are not identical %s" % str(
                 geospatial_info_set))
 
