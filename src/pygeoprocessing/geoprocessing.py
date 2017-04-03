@@ -1240,10 +1240,18 @@ def warp_raster(
         target_geotransform[0] = target_bb[2]
     if target_pixel_size[1] < 0:
         target_geotransform[3] = target_bb[3]
-    target_x_size = abs(int(numpy.round(
-        (target_bb[2] - target_bb[0]) / target_pixel_size[0])))
-    target_y_size = abs(int(numpy.round(
-        (target_bb[3] - target_bb[1]) / target_pixel_size[1])))
+    target_x_size = abs((target_bb[2] - target_bb[0]) / target_pixel_size[0])
+    target_y_size = abs((target_bb[3] - target_bb[1]) / target_pixel_size[1])
+
+    if target_x_size - int(target_x_size) > 0:
+        target_x_size = int(target_x_size) + 1
+    else:
+        target_x_size = int(target_x_size)
+
+    if target_y_size - int(target_y_size) > 0:
+        target_y_size = int(target_y_size) + 1
+    else:
+        target_y_size = int(target_y_size)
 
     if target_x_size == 0:
         LOGGER.warn(
