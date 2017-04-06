@@ -119,9 +119,11 @@ def raster_calculator(
         for path_band in base_raster_path_band_list]
     geospatial_info_set = set()
     for raster_info in raster_info_list:
-        LOGGER.debug('TODO: do something better here than blindly rounding')
+        # Rouding geotransform to 3 places to determine equality between
+        # geotransforms.  Otherwise identical GTs can detect as different
+        # depending on what the GT passed through on the way here.
         rounded_geotransform = tuple([
-            round(x, 5) for x in raster_info['geotransform']])
+            round(x, 3) for x in raster_info['geotransform']])
         geospatial_info_set.add(
             (raster_info['pixel_size'],
              raster_info['raster_size'],
