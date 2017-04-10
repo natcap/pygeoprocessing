@@ -1122,7 +1122,7 @@ def reclassify_raster(
     A function to reclassify values in raster to any output type. By default
     the values except for nodata must be in `value_map`.
 
-    Args:
+    Parameters:
         base_raster_path_band (tuple): a tuple including file path to a raster
             and the band index to operate over. ex: (path, band_index)
         value_map (dictionary): a dictionary of values of
@@ -1135,14 +1135,9 @@ def reclassify_raster(
             Must be the same type as target_datatype
         band_index (int): Indicates which band in `base_raster_path` the
             reclassification should operate on.  Defaults to 1.
-
-    Keyword Args:
         exception_flag (string): either 'none' or 'values_required'.
             If 'values_required' raise an exception if there is a value in the
-            raster that is not found in value_map
-        assert_raster_projected (boolean): if True this operation will
-            test if the input raster is not projected and raise an exception
-            if so.
+            raster that is not found in value_map.
 
     Returns:
         None
@@ -1462,8 +1457,8 @@ def distance_transform_edt(
     pixels.
 
     Parameters:
-        base_mask_raster_path_band (string): a gdal raster to calculate
-            distance from the non 0 value pixels
+        base_raster_path_band (tuple): a tuple including file path to a raster
+            and the band index to operate over. eg: (path, band_index)
         target_distance_raster_path (string): will make a float raster w/ same
             dimensions and projection as base_mask_raster_path_band where all
             zero values of base_mask_raster_path_band are equal to the
@@ -1473,35 +1468,27 @@ def distance_transform_edt(
     Returns:
         None
     """
-    mask_as_byte_uri = temporary_filename(suffix='.tif')
-    raster_info = get_raster_info(base_mask_raster_path_band)
-    nodata = raster_info['nodata']
-    out_pixel_size = raster_info['mean_pixel_size']
+    with tempfile.NamedTemporaryFile(
+            prefix='dt_mask', delete=False) as dt_mask_file:
+        dt_mask_path = dt_mask_file.name
+    raster_info = get_raster_info(base_mask_raster_path_band[0])
+    nodata = raster_info['nodata'][base_mask_raster_path_band[1]-1]
     nodata_out = 255
 
-    def to_byte(input_vector):
-        """Convert vector to 1, 0, or nodata value to fit in a byte raster."""
+    def _mask_op(base_array):
+        """Convert base_array to 1 if >0, 0 if == 0 or nodata."""
         return numpy.where(
-            input_vector == nodata, nodata_out, input_vector != 0)
+            base_array == nodata, nodata_out, base_array != 0)
 
-    # 64 seems like a reasonable blocksize
-    blocksize = 64
-    vectorize_datasets(
-        [base_mask_raster_path_band], to_byte, mask_as_byte_uri, gdal.GDT_Byte,
-        nodata_out, out_pixel_size, "union",
-        dataset_to_align_index=0, assert_datasets_projected=False,
-        process_pool=process_pool, vectorize_op=False,
-        datasets_are_pre_aligned=True,
-        gtiff_creation_options=[
-            'TILED=YES', 'BLOCKXSIZE=%d' % blocksize,
-            'BLOCKYSIZE=%d' % blocksize])
-
+    raster_calculator(
+        [base_mask_raster_path_band], _mask_op, dt_mask_path,
+        gdal.GDT_Byte, nodata_out, calc_raster_stats=False)
     geoprocessing_core.distance_transform_edt(
-        mask_as_byte_uri, target_distance_raster_path)
+        dt_mask_path, target_distance_raster_path)
     try:
-        os.remove(mask_as_byte_uri)
+        os.remove(dt_mask_path)
     except OSError:
-        LOGGER.warn("couldn't remove file %s", mask_as_byte_uri)
+        LOGGER.warn("couldn't remove file %s", dt_mask_path)
 
 
 def _next_regular(target):

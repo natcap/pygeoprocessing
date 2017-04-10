@@ -1305,3 +1305,37 @@ class PyGeoprocessing10(unittest.TestCase):
             pygeoprocessing.rasterize(
                 base_vector_path, target_raster_path, [test_value], None,
                 layer_index=0)
+
+    def test_distance_transform_edt(self):
+        """PGP.geoprocessing: test distance transform EDT."""
+        reference = sampledata.SRS_COLOMBIA
+        n_pixels = 3
+        base_raster_array = numpy.ones((n_pixels, n_pixels), numpy.float32)
+        base_raster_array[:] = 0.0
+        base_raster_array[1, 1] = 1
+        nodata_target = -1
+        base_raster_path = os.path.join(
+            self.workspace_dir, 'base_raster.tif')
+        pygeoprocessing.testing.create_raster_on_disk(
+            [base_raster_array], reference.origin, reference.projection,
+            nodata_target, reference.pixel_size(30),
+            filename=base_raster_path)
+
+        target_distance_raster_path = os.path.join(
+            self.workspace_dir, 'target_distance.tif')
+
+        pygeoprocessing.distance_transform_edt(
+            (base_raster_path, 1), target_distance_raster_path)
+
+        target_raster = gdal.Open(target_distance_raster_path)
+        target_band = target_raster.GetRasterBand(1)
+        target_array = target_band.ReadAsArray()
+        target_band = None
+        target_raster = None
+
+        expected_result = numpy.array([
+            [2**0.5, 1, 2**0.5],
+            [1, 0, 1],
+            [2**0.5, 1, 2**0.5]])
+
+        numpy.testing.assert_array_equal(target_array, expected_result)
