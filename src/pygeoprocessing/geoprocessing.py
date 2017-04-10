@@ -1491,9 +1491,9 @@ def distance_transform_edt(
         LOGGER.warn("couldn't remove file %s", dt_mask_path)
 
 
-def _next_regular(target):
+def _next_regular(base):
     """
-    Find the next regular number greater than or equal to target.
+    Find the next regular number greater than or equal to base.
 
     Regular numbers are composites of the prime factors 2, 3, and 5.
     Also known as 5-smooth numbers or Hamming numbers, these are the optimal
@@ -1506,43 +1506,43 @@ def _next_regular(target):
     https://github.com/scipy/scipy/blob/v0.17.1/scipy/signal/signaltools.py#L211
 
     Parameters:
-        target (int): a positive integer to start to find the next Hamming
+        base (int): a positive integer to start to find the next Hamming
             number.
 
     Returns:
-        The next regular number greater than or equal to `target`.
+        The next regular number greater than or equal to `base`.
     """
-    if target <= 6:
-        return target
+    if base <= 6:
+        return base
 
     # Quickly check if it's already a power of 2
-    if not (target & (target-1)):
-        return target
+    if not (base & (base-1)):
+        return base
 
     match = float('inf')  # Anything found will be smaller
     p5 = 1
-    while p5 < target:
+    while p5 < base:
         p35 = p5
-        while p35 < target:
+        while p35 < base:
             # Ceiling integer division, avoiding conversion to float
-            # (quotient = ceil(target / p35))
-            quotient = -(-target // p35)
+            # (quotient = ceil(base / p35))
+            quotient = -(-base // p35)
 
             # Quickly find next power of 2 >= quotient
             p2 = 2**((quotient - 1).bit_length())
 
             N = p2 * p35
-            if N == target:
+            if N == base:
                 return N
             elif N < match:
                 match = N
             p35 *= 3
-            if p35 == target:
+            if p35 == base:
                 return p35
         if p35 < match:
             match = p35
         p5 *= 5
-        if p5 == target:
+        if p5 == base:
             return p5
     if p5 < match:
         match = p5

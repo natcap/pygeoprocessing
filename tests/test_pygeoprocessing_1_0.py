@@ -1339,3 +1339,19 @@ class PyGeoprocessing10(unittest.TestCase):
             [2**0.5, 1, 2**0.5]])
 
         numpy.testing.assert_array_equal(target_array, expected_result)
+
+    def test_next_regular(self):
+        """PGP.geoprocessing: test next regular number generator."""
+        import pygeoprocessing.geoprocessing
+        # just test the first few numbers in the A051037 series
+        regular_ints = [
+            1, 2, 3, 4, 5, 6, 8, 9, 10, 12, 15, 16, 18, 20, 24,  25, 27, 30,
+            32, 36, 40, 45, 48, 50, 54, 60, 64, 72, 75, 80, 81, 90, 96, 100,
+            108, 120, 125, 128, 135, 144, 150, 160, 162, 180, 192, 200, 216,
+            225, 240, 243, 250, 256, 270, 288, 300, 320, 324, 360, 375, 384,
+            400, 405]
+
+        next_int = 0
+        for regular_int in regular_ints:
+            next_int = pygeoprocessing.geoprocessing._next_regular(next_int+1)
+            self.assertEqual(next_int, regular_int)
