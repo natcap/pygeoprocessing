@@ -1272,3 +1272,36 @@ class PyGeoprocessing10(unittest.TestCase):
         target_band = None
         target_raster = None
         self.assertTrue((result == 5).all())
+
+    def test_rasterize_missing_file(self):
+        """PGP.geoprocessing: test rasterize with no target raster."""
+        reference = sampledata.SRS_COLOMBIA
+        n_pixels = 3
+        target_raster_array = numpy.ones((n_pixels, n_pixels), numpy.float32)
+        test_value = 0.5
+        target_raster_array[:] = test_value
+        nodata_target = -1
+        target_raster_path = os.path.join(
+            self.workspace_dir, 'target_raster.tif')
+
+        # intentionally not making the raster on disk
+        reference = sampledata.SRS_COLOMBIA
+        pixel_size = 30.0
+        polygon = shapely.geometry.Polygon([
+            (reference.origin[0], reference.origin[1]),
+            (reference.origin[0], -pixel_size * n_pixels+reference.origin[1]),
+            (reference.origin[0]+pixel_size * n_pixels,
+             -pixel_size * n_pixels+reference.origin[1]),
+            (reference.origin[0]+pixel_size * n_pixels, reference.origin[1]),
+            (reference.origin[0], reference.origin[1])])
+        base_vector_path = os.path.join(
+            self.workspace_dir, 'base_vector.json')
+        pygeoprocessing.testing.create_vector_on_disk(
+            [polygon], reference.projection,
+            fields={'id': 'int'}, attributes=[{'id': 5}],
+            vector_format='GeoJSON', filename=base_vector_path)
+
+        with self.assertRaises(ValueError):
+            pygeoprocessing.rasterize(
+                base_vector_path, target_raster_path, [test_value], None,
+                layer_index=0)
