@@ -1304,27 +1304,14 @@ def warp_raster(
 
     # need to make this a closure so we get the current time and we can affect
     # state
-    def _reproject_callback(df_complete, psz_message, p_progress_arg):
-        """The argument names come from the GDAL API for callbacks."""
-        try:
-            current_time = time.time()
-            if ((current_time - _reproject_callback.last_time) > 5.0 or
-                    (df_complete == 1.0 and
-                     _reproject_callback.total_time >= 5.0)):
-                LOGGER.info(
-                    "ReprojectImage %.1f%% complete %s, psz_message '%s'",
-                    df_complete * 100, p_progress_arg[0], psz_message)
-                _reproject_callback.last_time = current_time
-                _reproject_callback.total_time += current_time
-        except AttributeError:
-            _reproject_callback.last_time = time.time()
-            _reproject_callback.total_time = 0.0
+    reproject_callback = _make_logger_callback(
+        "ReprojectImage %.1f%% complete %s, psz_message '%s'")
 
     # Perform the projection/resampling
     gdal.ReprojectImage(
         base_raster, target_raster, base_sr.ExportToWkt(),
         target_sr_wkt, _RESAMPLE_DICT[resample_method], 0, 0,
-        _reproject_callback, [target_raster_path])
+        reproject_callback, [target_raster_path])
 
     target_raster = None
     base_raster = None
@@ -1386,21 +1373,8 @@ def rasterize(
     vector = ogr.Open(vector_path)
     layer = vector.GetLayer(layer_index)
 
-    def _rasterize_callback(df_complete, psz_message, p_progress_arg):
-        """The argument names come from the GDAL API for callbacks."""
-        try:
-            current_time = time.time()
-            if ((current_time - _rasterize_callback.last_time) > 5.0 or
-                    (df_complete == 1.0 and
-                     _rasterize_callback.total_time >= 5.0)):
-                LOGGER.info(
-                    "RasterizeLayer %.1f%% complete %s, psz_message '%s'",
-                    df_complete * 100, p_progress_arg[0], psz_message)
-                _rasterize_callback.last_time = current_time
-                _rasterize_callback.total_time += current_time
-        except AttributeError:
-            _rasterize_callback.last_time = time.time()
-            _rasterize_callback.total_time = 0.0
+    rasterize_callback = _make_logger_callback(
+        "RasterizeLayer %.1f%% complete %s, psz_message '%s'")
 
     if burn_values is None:
         burn_values = []
@@ -1409,7 +1383,7 @@ def rasterize(
 
     gdal.RasterizeLayer(
         raster, [1], layer, burn_values=burn_values, options=option_list,
-        callback=_rasterize_callback)
+        callback=rasterize_callback)
     raster.FlushCache()
     gdal.Dataset.__swig_destroy__(raster)
 
@@ -2104,3 +2078,33 @@ def _find_int_not_in_array(values):
         # if we get here, there are exactly two elements in the subarray and
         # they contain a gap; so arbitrarily choose +1 of the left value.
         return values[left_index] + 1
+
+
+def _make_logger_callback(message):
+    """Build a timed logger callback that prints `message` replaced.
+
+    Parameters:
+        message (string): a string that expects 3 placement %% variables,
+            first for % complete from `df_complete`, second `psz_message`
+            and last is `p_progress_arg[0]`.
+
+    Returns:
+        Function with signature:
+            logger_callback(df_complete, psz_message, p_progress_arg)"""
+    def logger_callback(df_complete, psz_message, p_progress_arg):
+            """The argument names come from the GDAL API for callbacks."""
+            try:
+                current_time = time.time()
+                if ((current_time - logger_callback.last_time) > 5.0 or
+                        (df_complete == 1.0 and
+                         logger_callback.total_time >= 5.0)):
+                    LOGGER.info(
+                        message, df_complete * 100, p_progress_arg[0],
+                        psz_message)
+                    logger_callback.last_time = current_time
+                    logger_callback.total_time += current_time
+            except AttributeError:
+                logger_callback.last_time = time.time()
+                logger_callback.total_time = 0.0
+
+    return logger_callback
