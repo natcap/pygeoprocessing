@@ -460,6 +460,41 @@ class PyGeoprocessing10(unittest.TestCase):
         pygeoprocessing.testing.assert_rasters_equal(
             expected_raster_path, target_raster_path)
 
+    def test_warp_raster_0x0_size(self):
+        """PGP.geoprocessing: test warp where so small it would be 0x0."""
+        pixel_a_matrix = numpy.ones((5, 5), numpy.int16)
+        reference = sampledata.SRS_COLOMBIA
+        nodata_target = -1
+        base_a_path = os.path.join(self.workspace_dir, 'base_a.tif')
+        pygeoprocessing.testing.create_raster_on_disk(
+            [pixel_a_matrix], reference.origin, reference.projection,
+            nodata_target, reference.pixel_size(30), filename=base_a_path)
+
+        target_raster_path = os.path.join(self.workspace_dir, 'target_a.tif')
+        base_a_raster_info = pygeoprocessing.get_raster_info(base_a_path)
+        target_bb = base_a_raster_info['bounding_box']
+        # pick a tiny tiny bounding box in the middle (less than a pixel big)
+        target_bb[0] = (target_bb[0] + target_bb[2]) / 2.0
+        target_bb[1] = (target_bb[1] + target_bb[3]) / 2.0
+        target_bb[2] = target_bb[0]
+        target_bb[3] = target_bb[1]
+        pygeoprocessing.warp_raster(
+            base_a_path, base_a_raster_info['pixel_size'], target_raster_path,
+            'nearest', target_bb=target_bb,
+            target_sr_wkt=reference.projection)
+
+        expected_raster_path = os.path.join(
+            self.workspace_dir, 'expected.tif')
+        expected_matrix = numpy.ones((1, 1), numpy.int16)
+        pygeoprocessing.testing.create_raster_on_disk(
+            [expected_matrix], reference.origin, reference.projection,
+            nodata_target, reference.pixel_size(30),
+            filename=expected_raster_path)
+
+        pygeoprocessing.testing.assert_rasters_equal(
+            expected_raster_path, target_raster_path)
+
+
     def test_align_and_resize_raster_stack_bad_lengths(self):
         """PGP.geoprocessing: align/resize raster bad list lengths."""
         pixel_a_matrix = numpy.ones((5, 5), numpy.int16)
