@@ -1485,6 +1485,10 @@ def distance_transform_edt(
         gdal.GDT_Byte, nodata_out, calc_raster_stats=False)
     geoprocessing_core.distance_transform_edt(
         dt_mask_path, target_distance_raster_path)
+    #import line_profiler
+    #profile = line_profiler.LineProfiler(geoprocessing_core.distance_transform_edt)
+    #profile.runcall(geoprocessing_core.distance_transform_edt, dt_mask_path, target_distance_raster_path)
+    #profile.print_stats()
     try:
         os.remove(dt_mask_path)
     except OSError:
@@ -2095,3 +2099,93 @@ def _make_logger_callback(message):
                 logger_callback.total_time = 0.0
 
     return logger_callback
+
+
+def distance_transform_edt_v2(
+        base_mask_raster_path_band, target_distance_raster_path):
+    """Calculate the euclidean distance transform on base raster.
+
+    Calculates the euclidean distance transform on the base raster in units of
+    pixels.
+
+    Parameters:
+        base_raster_path_band (tuple): a tuple including file path to a raster
+            and the band index to operate over. eg: (path, band_index)
+        target_distance_raster_path (string): will make a float raster w/ same
+            dimensions and projection as base_mask_raster_path_band where all
+            zero values of base_mask_raster_path_band are equal to the
+            euclidean distance to the
+            closest non-zero pixel.
+
+    Returns:
+        None
+    """
+    with tempfile.NamedTemporaryFile(
+            prefix='dt_mask', delete=False) as dt_mask_file:
+        dt_mask_path = dt_mask_file.name
+    raster_info = get_raster_info(base_mask_raster_path_band[0])
+    nodata = raster_info['nodata'][base_mask_raster_path_band[1]-1]
+    nodata_out = 255
+
+    print '"%s"' % nodata
+
+    def _mask_op(base_array):
+        """Convert base_array to 1 if >0, 0 if == 0 or nodata."""
+        result = numpy.empty(base_array.shape, dtype=numpy.int8)
+        result[:] = nodata_out
+        valid_mask = base_array != nodata
+        result[valid_mask] = base_array[valid_mask] != 0
+        return result
+
+    raster_calculator(
+        [base_mask_raster_path_band], _mask_op, dt_mask_path,
+        gdal.GDT_Byte, nodata_out, calc_raster_stats=False)
+
+    g_path = 'g2.tif'
+    new_raster_from_base(
+        base_mask_raster_path_band[0], g_path, gdal.GDT_Int32, [-1],
+        fill_value_list=None)
+    g_raster = gdal.Open(g_path, gdal.GA_Update)
+    g_band = g_raster.GetRasterBand(1)
+
+    numerical_inf = (
+        raster_info['raster_size'][0] + raster_info['raster_size'][1])
+
+    for block_offset, mask_block in iterblocks(base_mask_raster_path_band[0]):
+        g_block = numpy.empty(mask_block.shape, dtype=numpy.int32)
+        if block_offset['yoff'] == 0:
+            # base case
+            g_block[0, :] = (mask_block[0, :] == 0) * numerical_inf
+            print g_block[0, :]
+        else:
+            g_prev_row = g_band.ReadAsArray(
+                xoff=block_offset['xoff'], yoff=block_offset['yoff']-1,
+                win_xsize=block_offset['win_xsize'],
+                win_ysize=block_offset['win_ysize'])
+            active_mask = mask_block[0, :] == 1
+            g_block[0, active_mask] = 0
+            g_block[0, ~active_mask] = (
+                g_prev_row[0, ~active_mask] + 1)
+
+        for row_index in xrange(1, block_offset['win_ysize']):
+            active_mask = mask_block[row_index, :] == 1
+            g_block[row_index, active_mask] = 0
+            g_block[row_index, ~active_mask] = (
+                g_block[row_index-1, ~active_mask] + 1)
+
+        g_band.WriteArray(
+            g_block, xoff=block_offset['xoff'], yoff=block_offset['yoff'])
+
+
+
+
+    #geoprocessing_core.distance_transform_edt(
+    #    dt_mask_path, target_distance_raster_path)
+    #import line_profiler
+    #profile = line_profiler.LineProfiler(geoprocessing_core.distance_transform_edt)
+    #profile.runcall(geoprocessing_core.distance_transform_edt, dt_mask_path, target_distance_raster_path)
+    #profile.print_stats()
+    try:
+        os.remove(dt_mask_path)
+    except OSError:
+        LOGGER.warn("couldn't remove file %s", dt_mask_path)

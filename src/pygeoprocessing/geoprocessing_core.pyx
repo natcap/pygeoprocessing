@@ -32,8 +32,8 @@ cdef long long _f(long long x, long long i, long long gi):
 cdef long long _sep(long long i, long long u, long long gu, long long gi):
     return (u*u - i*i + gu*gu - gi*gi) / (2*(u-i))
 
-
 #@cython.boundscheck(False)
+@cython.binding(True)
 def distance_transform_edt(input_mask_uri, output_distance_uri):
     """Calculate the Euclidean distance transform on input_mask_uri and output
         the result into an output raster
@@ -58,6 +58,7 @@ def distance_transform_edt(input_mask_uri, output_distance_uri):
     #create a transposed g function
     file_handle, g_dataset_uri = tempfile.mkstemp()
     os.close(file_handle)
+    g_dataset_uri = 'g.tif'
     cdef int g_nodata = -1
 
     input_projection = input_mask_ds.GetProjection()
@@ -225,7 +226,7 @@ def distance_transform_edt(input_mask_uri, output_distance_uri):
     gdal.Dataset.__swig_destroy__(g_dataset)
     g_dataset = None
     try:
-        os.remove(g_dataset_uri)
+        pass #os.remove(g_dataset_uri)
     except OSError:
         LOGGER.warn("couldn't remove file %s" % g_dataset_uri)
 
