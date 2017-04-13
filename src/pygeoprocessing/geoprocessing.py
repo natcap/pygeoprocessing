@@ -2165,7 +2165,7 @@ def distance_transform_edt_v2(
             g_prev_row = g_band.ReadAsArray(
                 xoff=block_offset['xoff'], yoff=block_offset['yoff']-1,
                 win_xsize=block_offset['win_xsize'],
-                win_ysize=block_offset['win_ysize'])
+                win_ysize=1)
             active_mask = mask_block[0, :] == 1
             g_block[0, active_mask] = 0
             g_block[0, ~active_mask] = (
