@@ -2151,7 +2151,11 @@ def distance_transform_edt_v2(
     numerical_inf = (
         raster_info['raster_size'][0] + raster_info['raster_size'][1])
 
+    block_index = {}
+    # scan 1
     for block_offset, mask_block in iterblocks(base_mask_raster_path_band[0]):
+        block_index[(block_offset['yoff'], block_offset['xoff'])] = (
+            block_offset)
         g_block = numpy.empty(mask_block.shape, dtype=numpy.int32)
         if block_offset['yoff'] == 0:
             # base case
@@ -2176,8 +2180,35 @@ def distance_transform_edt_v2(
         g_band.WriteArray(
             g_block, xoff=block_offset['xoff'], yoff=block_offset['yoff'])
 
+    # scan 2
+    base_mask_raster = gdal.Open(g_path)
+    base_mask_band = base_mask_raster.GetRasterBand(1)
+    # go in lowest blocks to highest
+    for index in reversed(sorted(block_index)):
+        block_offset = block_index[index]
+        mask_block = base_mask_band.ReadAsArray(**block_offset)
+        g_block = g_band.ReadAsArray(**block_offset)
 
+        # if this is the bottom block, have a special case, otherwise load
+        # the previous row
+        if ((block_offset['yoff'] + block_offset['win_ysize']) !=
+                raster_info['raster_size'][1]):
+            g_prev_row = g_band.ReadAsArray(
+                xoff=block_offset['xoff'],
+                yoff=block_offset['yoff'] + block_offset['win_ysize'],
+                win_xsize=block_offset['win_xsize'], win_ysize=1)
+            active_mask = (
+                g_prev_row[0, :] < g_block[block_offset['win_ysize']-1, :])
+            g_block[block_offset['win_ysize']-1, active_mask] = (
+                1 + g_prev_row[0, active_mask])
 
+        for row_index in reversed(xrange(
+                block_offset['win_ysize'] - 1)):
+            active_mask = g_block[row_index+1, :] < g_block[row_index, :]
+            g_block[row_index, active_mask] = (
+                1 + g_block[row_index+1, active_mask])
+        g_band.WriteArray(
+            g_block, xoff=block_offset['xoff'], yoff=block_offset['yoff'])
 
     #geoprocessing_core.distance_transform_edt(
     #    dt_mask_path, target_distance_raster_path)
