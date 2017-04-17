@@ -34,201 +34,189 @@ cdef long long _sep(long long i, long long u, long long gu, long long gi):
 
 #@cython.boundscheck(False)
 @cython.binding(True)
-def distance_transform_edt(input_mask_uri, output_distance_uri):
-    """Calculate the Euclidean distance transform on input_mask_uri and output
-        the result into an output raster
+def distance_transform_edt(base_mask_raster_path_band, target_distance_path):
+    """Calculate the Euclidean distance transform.
 
-        input_mask_uri - a gdal raster to calculate distance from the 0 value
-            pixels
+    Parameters:
+        base_mask_raster_path_band (tuple): a (path, band index) tuple to
+            calculate value from non-zero valued pixels.
 
-        output_distance_uri - will make a float raster w/ same dimensions and
-            projection as input_mask_uri where all non-zero values of
-            input_mask_uri are equal to the euclidean distance to the closest
-            0 pixel.
+        target_distance_path (string): a path to a raster created by this
+        function with same dimensions and projection as base_mask_path where
+        all non-zero values of base_mask_path are equal to the euclidean
+        distance to the closest 0 pixel.
 
-        returns nothing"""
-
-    input_mask_ds = gdal.Open(input_mask_uri)
-    input_mask_band = input_mask_ds.GetRasterBand(1)
-    cdef int n_cols = input_mask_ds.RasterXSize
-    cdef int n_rows = input_mask_ds.RasterYSize
-    cdef int block_size = input_mask_band.GetBlockSize()[0]
-    cdef int input_nodata = input_mask_band.GetNoDataValue()
-
-    #create a transposed g function
-    file_handle, g_dataset_uri = tempfile.mkstemp()
+    Returns:
+        None."""
+    file_handle, base_mask_path = tempfile.mkstemp()
     os.close(file_handle)
-    g_dataset_uri = 'g.tif'
+    nodata_base_mask = 255
+    base_raster_info = pygeoprocessing.get_raster_info(
+        base_mask_raster_path_band[0])
+    base_nodata = base_raster_info['nodata'][
+        base_mask_raster_path_band[1]-1]
+
+    def _mask_op(base_array):
+        """Convert base_array to 1 if >0, 0 if == 0 or nodata."""
+        result = numpy.empty(base_array.shape, dtype=numpy.int8)
+        result[:] = nodata_base_mask
+        valid_mask = base_array != base_nodata
+        result[valid_mask] = base_array[valid_mask] != 0
+        return result
+
+    pygeoprocessing.raster_calculator(
+        [base_mask_raster_path_band], _mask_op, base_mask_path,
+        gdal.GDT_Byte, nodata_base_mask, calc_raster_stats=False)
+
+    base_mask_raster = gdal.Open(base_mask_path)
+    base_mask_band = base_mask_raster.GetRasterBand(1)
+
+    cdef int n_cols = base_mask_raster.RasterXSize
+    cdef int n_rows = base_mask_raster.RasterYSize
+
+    # create a transposed g function
+    file_handle, g_path = tempfile.mkstemp()
+    os.close(file_handle)
+    g_path = 'g.tif'
+    raster_info = pygeoprocessing.get_raster_info(
+        base_mask_raster_path_band[0])
+    nodata = raster_info['nodata'][base_mask_raster_path_band[1]-1]
+    nodata_out = 255
+    pygeoprocessing.new_raster_from_base(
+        base_mask_raster_path_band[0], g_path, gdal.GDT_Int32, [-1],
+        fill_value_list=None)
+    g_raster = gdal.Open(g_path, gdal.GA_Update)
+    g_band = g_raster.GetRasterBand(1)
+
     cdef int g_nodata = -1
+    numerical_inf = (
+        raster_info['raster_size'][0] + raster_info['raster_size'][1])
+    block_index = {}
+    # scan 1
+    for block_offset, mask_block in pygeoprocessing.iterblocks(
+            base_mask_raster_path_band[0]):
+        block_index[(block_offset['yoff'], block_offset['xoff'])] = (
+            block_offset)
+        g_block = numpy.empty(mask_block.shape, dtype=numpy.int32)
+        if block_offset['yoff'] == 0:
+            # base case
+            g_block[0, :] = (mask_block[0, :] == 0) * numerical_inf
+            print g_block[0, :]
+        else:
+            g_prev_row = g_band.ReadAsArray(
+                xoff=block_offset['xoff'], yoff=block_offset['yoff']-1,
+                win_xsize=block_offset['win_xsize'],
+                win_ysize=1)
+            active_mask = mask_block[0, :] == 1
+            g_block[0, active_mask] = 0
+            g_block[0, ~active_mask] = (
+                g_prev_row[0, ~active_mask] + 1)
 
-    input_projection = input_mask_ds.GetProjection()
-    input_geotransform = input_mask_ds.GetGeoTransform()
+        for row_index in xrange(1, block_offset['win_ysize']):
+            active_mask = mask_block[row_index, :] == 1
+            g_block[row_index, active_mask] = 0
+            g_block[row_index, ~active_mask] = (
+                g_block[row_index-1, ~active_mask] + 1)
+
+        g_band.WriteArray(
+            g_block, xoff=block_offset['xoff'], yoff=block_offset['yoff'])
+
+    # scan 2
+    base_mask_raster = gdal.Open(g_path)
+    base_mask_band = base_mask_raster.GetRasterBand(1)
+    # go in lowest blocks to highest
+    for index in reversed(sorted(block_index)):
+        block_offset = block_index[index]
+        mask_block = base_mask_band.ReadAsArray(**block_offset)
+        g_block = g_band.ReadAsArray(**block_offset)
+
+        # if this is the bottom block, have a special case, otherwise load
+        # the previous row
+        if ((block_offset['yoff'] + block_offset['win_ysize']) !=
+                raster_info['raster_size'][1]):
+            g_prev_row = g_band.ReadAsArray(
+                xoff=block_offset['xoff'],
+                yoff=block_offset['yoff'] + block_offset['win_ysize'],
+                win_xsize=block_offset['win_xsize'], win_ysize=1)
+            active_mask = (
+                g_prev_row[0, :] < g_block[block_offset['win_ysize']-1, :])
+            g_block[block_offset['win_ysize']-1, active_mask] = (
+                1 + g_prev_row[0, active_mask])
+
+        for row_index in reversed(xrange(
+                block_offset['win_ysize'] - 1)):
+            active_mask = g_block[row_index+1, :] < g_block[row_index, :]
+            g_block[row_index, active_mask] = (
+                1 + g_block[row_index+1, active_mask])
+        g_band.WriteArray(
+            g_block, xoff=block_offset['xoff'], yoff=block_offset['yoff'])
+    g_band.FlushCache()
     driver = gdal.GetDriverByName('GTiff')
-    #invert the rows and columns since it's a transpose
-    g_dataset = driver.Create(
-        g_dataset_uri.encode('utf-8'), n_cols, n_rows, 1, gdal.GDT_Int32,
-        options=['TILED=YES', 'BLOCKXSIZE=%d' % block_size, 'BLOCKYSIZE=%d' % block_size])
-
-    g_dataset.SetProjection(input_projection)
-    g_dataset.SetGeoTransform(input_geotransform)
-    g_band = g_dataset.GetRasterBand(1)
-    g_band.SetNoDataValue(g_nodata)
 
     cdef float output_nodata = -1.0
-    output_dataset = driver.Create(
-        output_distance_uri.encode('utf-8'), n_cols, n_rows, 1,
-        gdal.GDT_Float64, options=['TILED=YES', 'BLOCKXSIZE=%d' % block_size,
-        'BLOCKYSIZE=%d' % block_size])
-    output_dataset.SetProjection(input_projection)
-    output_dataset.SetGeoTransform(input_geotransform)
-    output_band = output_dataset.GetRasterBand(1)
-    output_band.SetNoDataValue(output_nodata)
+    pygeoprocessing.new_raster_from_base(
+        base_mask_raster_path_band[0], target_distance_path.encode('utf-8'),
+        gdal.GDT_Float64, [output_nodata], fill_value_list=None)
+    target_distance_raster = gdal.Open(target_distance_path, gdal.GA_Update)
+    target_distance_band = target_distance_raster.GetRasterBand(1)
 
-    #the euclidan distance will be less than this
-    cdef int numerical_inf = n_cols + n_rows
-
-    LOGGER.info('Distance Transform Phase 1')
-    output_blocksize = output_band.GetBlockSize()
-    if output_blocksize[0] != block_size or output_blocksize[1] != block_size:
-        raise Exception(
-            "Output blocksize should be %d,%d, instead it's %d,%d" % (
-                block_size, block_size, output_blocksize[0], output_blocksize[1]))
-
-    #phase one, calculate column G(x,y)
-
-    cdef numpy.ndarray[numpy.int32_t, ndim=2] g_array
-    cdef numpy.ndarray[numpy.uint8_t, ndim=2] b_array
-
-    cdef int col_index, row_index, q_index, u_index
-    cdef long long w
-    cdef int n_col_blocks = int(numpy.ceil(n_cols/float(block_size)))
-    cdef int col_block_index, local_col_index, win_xsize
-    cdef double current_time, last_time
-    last_time = time.time()
-    for col_block_index in xrange(n_col_blocks):
-        current_time = time.time()
-        if current_time - last_time > 5.0:
-            LOGGER.info(
-                'Distance transform phase 1 %.2f%% complete' %
-                (col_block_index/float(n_col_blocks)*100.0))
-            last_time = current_time
-        local_col_index = col_block_index * block_size
-        if n_cols - local_col_index < block_size:
-            win_xsize = n_cols - local_col_index
-        else:
-            win_xsize = block_size
-        b_array = input_mask_band.ReadAsArray(
-            xoff=local_col_index, yoff=0, win_xsize=win_xsize,
-            win_ysize=n_rows)
-        g_array = numpy.empty((n_rows, win_xsize), dtype=numpy.int32)
-
-        #initalize the first element to either be infinate distance, or zero if it's a blob
-        for col_index in xrange(win_xsize):
-            if b_array[0, col_index] and b_array[0, col_index] != input_nodata:
-                g_array[0, col_index] = 0
-            else:
-                g_array[0, col_index] = numerical_inf
-
-            #pass 1 go down
-            for row_index in xrange(1, n_rows):
-                if b_array[row_index, col_index] and b_array[row_index, col_index] != input_nodata:
-                    g_array[row_index, col_index] = 0
-                else:
-                    g_array[row_index, col_index] = (
-                        1 + g_array[row_index - 1, col_index])
-
-            #pass 2 come back up
-            for row_index in xrange(n_rows-2, -1, -1):
-                if (g_array[row_index + 1, col_index] <
-                    g_array[row_index, col_index]):
-                    g_array[row_index, col_index] = (
-                        1 + g_array[row_index + 1, col_index])
-        g_band.WriteArray(
-            g_array, xoff=local_col_index, yoff=0)
-
-    g_band.FlushCache()
     LOGGER.info('Distance Transform Phase 2')
     cdef numpy.ndarray[numpy.int64_t, ndim=2] s_array
     cdef numpy.ndarray[numpy.int64_t, ndim=2] t_array
     cdef numpy.ndarray[numpy.float64_t, ndim=2] dt
 
+    cdef int win_ysize
 
-    cdef int n_row_blocks = int(numpy.ceil(n_rows/float(block_size)))
-    cdef int row_block_index, local_row_index, win_ysize
+    cdef double current_time, last_time
+    last_time = time.time()
 
-    for row_block_index in xrange(n_row_blocks):
-        current_time = time.time()
-        if current_time - last_time > 5.0:
-            LOGGER.info(
-                'Distance transform phase 2 %.2f%% complete' %
-                (row_block_index/float(n_row_blocks)*100.0))
-            last_time = current_time
-
-        local_row_index = row_block_index * block_size
-        if n_rows - local_row_index < block_size:
-            win_ysize = n_rows - local_row_index
-        else:
-            win_ysize = block_size
-
+    s_array = numpy.zeros((1, n_cols), dtype=numpy.int64)
+    t_array = numpy.zeros((1, n_cols), dtype=numpy.int64)
+    dt = numpy.empty((1, n_cols), dtype=numpy.float64)
+    for row_index in xrange(n_rows):
         g_array = g_band.ReadAsArray(
-            xoff=0, yoff=local_row_index, win_xsize=n_cols,
-            win_ysize=win_ysize)
+            xoff=0, yoff=row_index, win_xsize=n_cols,
+            win_ysize=1)
+        q_index = 0
+        s_array[0, 0] = 0
+        t_array[0, 0] = 0
+        for u_index in xrange(1, n_cols):
+            while (q_index >= 0 and
+                _f(t_array[0, q_index], s_array[0, q_index],
+                    g_array[0, s_array[0, q_index]]) >
+                _f(t_array[0, q_index], u_index, g_array[0, u_index])):
+                q_index -= 1
+            if q_index < 0:
+               q_index = 0
+               s_array[0, 0] = u_index
+            else:
+                w = 1 + _sep(
+                    s_array[0, q_index], u_index, g_array[0, u_index],
+                    g_array[0, s_array[0, q_index]])
+                if w < n_cols:
+                    q_index += 1
+                    s_array[0, q_index] = u_index
+                    t_array[0, q_index] = w
 
-        s_array = numpy.zeros((win_ysize, n_cols), dtype=numpy.int64)
-        t_array = numpy.zeros((win_ysize, n_cols), dtype=numpy.int64)
-        dt = numpy.empty((win_ysize, n_cols), dtype=numpy.float64)
-
-        for row_index in xrange(win_ysize):
-            q_index = 0
-            s_array[row_index, 0] = 0
-            t_array[row_index, 0] = 0
-            for u_index in xrange(1, n_cols):
-                while (q_index >= 0 and
-                    _f(t_array[row_index, q_index], s_array[row_index, q_index],
-                        g_array[row_index, s_array[row_index, q_index]]) >
-                    _f(t_array[row_index, q_index], u_index, g_array[row_index, u_index])):
-                    q_index -= 1
-                if q_index < 0:
-                   q_index = 0
-                   s_array[row_index, 0] = u_index
-                else:
-                    w = 1 + _sep(
-                        s_array[row_index, q_index], u_index, g_array[row_index, u_index],
-                        g_array[row_index, s_array[row_index, q_index]])
-                    if w < n_cols:
-                        q_index += 1
-                        s_array[row_index, q_index] = u_index
-                        t_array[row_index, q_index] = w
-
-            for u_index in xrange(n_cols-1, -1, -1):
-                dt[row_index, u_index] = _f(
-                    u_index, s_array[row_index, q_index],
-                    g_array[row_index, s_array[row_index, q_index]])
-                if u_index == t_array[row_index, q_index]:
-                    q_index -= 1
-
-        b_array = input_mask_band.ReadAsArray(
-            xoff=0, yoff=local_row_index, win_xsize=n_cols,
-            win_ysize=win_ysize)
+        for u_index in xrange(n_cols-1, -1, -1):
+            dt[0, u_index] = _f(
+                u_index, s_array[0, q_index],
+                g_array[0, s_array[0, q_index]])
+            if u_index == t_array[0, q_index]:
+                q_index -= 1
 
         dt = numpy.sqrt(dt)
-        dt[b_array == input_nodata] = output_nodata
-        output_band.WriteArray(dt, xoff=0, yoff=local_row_index)
+        dt[g_array == base_nodata] = output_nodata
+        target_distance_band.WriteArray(dt, xoff=0, yoff=row_index)
 
-    output_band.FlushCache()
-    output_band = None
-    gdal.Dataset.__swig_destroy__(output_dataset)
-    output_dataset = None
-    input_mask_band = None
-    gdal.Dataset.__swig_destroy__(input_mask_ds)
-    input_mask_ds = None
-    g_band = None
-    gdal.Dataset.__swig_destroy__(g_dataset)
-    g_dataset = None
+    target_distance_band.FlushCache()
+    gdal.Dataset.__swig_destroy__(target_distance_raster)
+    gdal.Dataset.__swig_destroy__(base_mask_raster)
+    gdal.Dataset.__swig_destroy__(g_raster)
     try:
-        pass #os.remove(g_dataset_uri)
+        pass #os.remove(g_path)
     except OSError:
-        LOGGER.warn("couldn't remove file %s" % g_dataset_uri)
+        LOGGER.warn("couldn't remove file %s" % g_path)
 
 
 @cython.boundscheck(False)

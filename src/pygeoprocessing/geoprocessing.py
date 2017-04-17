@@ -1484,7 +1484,7 @@ def distance_transform_edt(
         [base_mask_raster_path_band], _mask_op, dt_mask_path,
         gdal.GDT_Byte, nodata_out, calc_raster_stats=False)
     geoprocessing_core.distance_transform_edt(
-        dt_mask_path, target_distance_raster_path)
+        (dt_mask_path, 1), target_distance_raster_path)
     #import line_profiler
     #profile = line_profiler.LineProfiler(geoprocessing_core.distance_transform_edt)
     #profile.runcall(geoprocessing_core.distance_transform_edt, dt_mask_path, target_distance_raster_path)
@@ -2211,7 +2211,7 @@ def distance_transform_edt_v2(
             g_block, xoff=block_offset['xoff'], yoff=block_offset['yoff'])
 
     for block_offset, mask_block in iterblocks(base_mask_raster_path_band[0]):
-
+        pass
 
     #geoprocessing_core.distance_transform_edt(
     #    dt_mask_path, target_distance_raster_path)
