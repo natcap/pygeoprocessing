@@ -2210,6 +2210,9 @@ def distance_transform_edt_v2(
         g_band.WriteArray(
             g_block, xoff=block_offset['xoff'], yoff=block_offset['yoff'])
 
+    for block_offset, mask_block in iterblocks(base_mask_raster_path_band[0]):
+
+
     #geoprocessing_core.distance_transform_edt(
     #    dt_mask_path, target_distance_raster_path)
     #import line_profiler
