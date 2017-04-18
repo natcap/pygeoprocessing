@@ -92,6 +92,7 @@ def distance_transform_edt(base_mask_raster_path_band, target_distance_path):
     numerical_inf = (
         raster_info['raster_size'][0] + raster_info['raster_size'][1])
     block_index = {}
+    last_g_row = {}
     # scan 1
     for block_offset, mask_block in pygeoprocessing.iterblocks(
             base_mask_raster_path_band[0]):
@@ -101,16 +102,16 @@ def distance_transform_edt(base_mask_raster_path_band, target_distance_path):
         if block_offset['yoff'] == 0:
             # base case
             g_block[0, :] = (mask_block[0, :] == 0) * numerical_inf
-            print g_block[0, :]
         else:
-            g_prev_row = g_band.ReadAsArray(
-                xoff=block_offset['xoff'], yoff=block_offset['yoff']-1,
-                win_xsize=block_offset['win_xsize'],
-                win_ysize=1)
+            index = (block_offset['xoff'], block_offset['yoff'])
+            g_prev_row = last_g_row[index]
+            del last_g_row[index]
+
             active_mask = mask_block[0, :] == 1
             g_block[0, active_mask] = 0
             g_block[0, ~active_mask] = (
                 g_prev_row[0, ~active_mask] + 1)
+            del g_prev_row
 
         for row_index in xrange(1, block_offset['win_ysize']):
             active_mask = mask_block[row_index, :] == 1
@@ -120,11 +121,17 @@ def distance_transform_edt(base_mask_raster_path_band, target_distance_path):
 
         g_band.WriteArray(
             g_block, xoff=block_offset['xoff'], yoff=block_offset['yoff'])
+        last_g_row[(
+            block_offset['xoff'],
+            block_offset['yoff'] + block_offset['win_ysize'])] = (
+                g_block[-1, :])
+    del last_g_row
 
     # scan 2
     base_mask_raster = gdal.Open(g_path)
     base_mask_band = base_mask_raster.GetRasterBand(1)
     # go in lowest blocks to highest
+    last_bottom_g_row = {}
     for index in reversed(sorted(block_index)):
         block_offset = block_index[index]
         mask_block = base_mask_band.ReadAsArray(**block_offset)
@@ -134,10 +141,9 @@ def distance_transform_edt(base_mask_raster_path_band, target_distance_path):
         # the previous row
         if ((block_offset['yoff'] + block_offset['win_ysize']) !=
                 raster_info['raster_size'][1]):
-            g_prev_row = g_band.ReadAsArray(
-                xoff=block_offset['xoff'],
-                yoff=block_offset['yoff'] + block_offset['win_ysize'],
-                win_xsize=block_offset['win_xsize'], win_ysize=1)
+            index = (block_offset['xoff'], block_offset['yoff'])
+            g_prev_row = last_bottom_g_row[index]
+            del last_bottom_g_row[index]
             active_mask = (
                 g_prev_row[0, :] < g_block[block_offset['win_ysize']-1, :])
             g_block[block_offset['win_ysize']-1, active_mask] = (
@@ -150,6 +156,10 @@ def distance_transform_edt(base_mask_raster_path_band, target_distance_path):
                 1 + g_block[row_index+1, active_mask])
         g_band.WriteArray(
             g_block, xoff=block_offset['xoff'], yoff=block_offset['yoff'])
+        last_bottom_g_row[(
+            block_offset['xoff'],
+            block_offset['yoff']-block_offset['win_ysize'])] = g_block[0, :]
+    del last_bottom_g_row
     g_band.FlushCache()
     driver = gdal.GetDriverByName('GTiff')
 
