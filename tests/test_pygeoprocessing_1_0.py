@@ -1345,7 +1345,7 @@ class PyGeoprocessing10(unittest.TestCase):
     def test_distance_transform_edt(self):
         """PGP.geoprocessing: test distance transform EDT."""
         reference = sampledata.SRS_COLOMBIA
-        n_pixels = 100
+        n_pixels = 1000
         base_raster_array = numpy.zeros((n_pixels, n_pixels), numpy.float32)
         base_raster_array[n_pixels/2, n_pixels/2] = 1
         base_raster_array[0,0] = 1

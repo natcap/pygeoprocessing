@@ -76,6 +76,7 @@ def distance_transform_edt(base_mask_raster_path_band, target_distance_path):
 
     file_handle, g_path = tempfile.mkstemp()
     os.close(file_handle)
+    g_path = 'g.tif'
     raster_info = pygeoprocessing.get_raster_info(
         base_mask_raster_path_band[0])
     nodata = raster_info['nodata'][base_mask_raster_path_band[1]-1]
@@ -91,12 +92,13 @@ def distance_transform_edt(base_mask_raster_path_band, target_distance_path):
         raster_info['raster_size'][0] + raster_info['raster_size'][1])
     # scan 1
     done = False
-    for xoff in numpy.arange(0, base_raster_info['block_size'][0], n_cols):
-        win_xsize = base_raster_info['block_size'][0]
+    block_xsize = raster_info['block_size'][0]
+    for xoff in numpy.arange(0, n_cols, block_xsize):
+        win_xsize = block_xsize
         if xoff + win_xsize > n_cols:
             win_xsize = n_cols - xoff
             done = True
-        print xoff, win_xsize, n_rows
+            print win_xsize
         mask_block = base_mask_band.ReadAsArray(
             xoff=xoff, yoff=0, win_xsize=win_xsize, win_ysize=n_rows)
         g_block = numpy.empty(mask_block.shape, dtype=numpy.int32)
@@ -137,8 +139,9 @@ def distance_transform_edt(base_mask_raster_path_band, target_distance_path):
     t_array = numpy.empty(n_cols, dtype=numpy.int64)
 
     done = False
-    for yoff in numpy.arange(0, g_band_blocksize[1], n_rows):
-        win_ysize = g_band_blocksize[1]
+    block_ysize = g_band_blocksize[1]
+    for yoff in numpy.arange(0, n_rows, block_ysize):
+        win_ysize = block_ysize
         if yoff + win_ysize >= n_rows:
             win_ysize = n_rows - yoff
             done = True
