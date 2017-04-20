@@ -56,7 +56,7 @@ def distance_transform_edt(base_mask_raster_path_band, target_distance_path):
     cdef numpy.ndarray[numpy.int64_t, ndim=1] s_array
     cdef numpy.ndarray[numpy.int64_t, ndim=1] t_array
     cdef numpy.ndarray[numpy.float64_t, ndim=2] dt
-    cdef numpy.ndarray[numpy.int16_t, ndim=2] mask_block
+    cdef numpy.ndarray[numpy.int32_t, ndim=2] mask_block
 
     file_handle, base_mask_path = tempfile.mkstemp()
     os.close(file_handle)
@@ -76,7 +76,7 @@ def distance_transform_edt(base_mask_raster_path_band, target_distance_path):
 
     pygeoprocessing.raster_calculator(
         [base_mask_raster_path_band], _mask_op, base_mask_path,
-        gdal.GDT_Int16, g_nodata, calc_raster_stats=False)
+        gdal.GDT_Int32, g_nodata, calc_raster_stats=False)
 
     base_mask_raster = gdal.Open(base_mask_path)
     base_mask_band = base_mask_raster.GetRasterBand(1)
@@ -103,35 +103,41 @@ def distance_transform_edt(base_mask_raster_path_band, target_distance_path):
     # scan 1
     done = False
     block_xsize = raster_info['block_size'][0]
+    mask_block = numpy.empty((n_rows, block_xsize), dtype=numpy.int32)
+    g_block = numpy.empty((n_rows, block_xsize), dtype=numpy.int32)
     for xoff in numpy.arange(0, n_cols, block_xsize):
         print 'xoff', xoff
         win_xsize = block_xsize
         if xoff + win_xsize > n_cols:
             win_xsize = n_cols - xoff
+            mask_block = numpy.empty((n_rows, win_xsize), dtype=numpy.int32)
+            g_block = numpy.empty((n_rows, win_xsize), dtype=numpy.int32)
             done = True
-        mask_block = base_mask_band.ReadAsArray(
-            xoff=xoff, yoff=0, win_xsize=win_xsize, win_ysize=n_rows)
-        g_block = numpy.empty((n_rows, win_xsize), dtype=numpy.int32)
+        base_mask_band.ReadAsArray(
+            xoff=xoff, yoff=0, win_xsize=win_xsize, win_ysize=n_rows,
+            buf_obj=mask_block)
         # base case
         first_loop = 0.0
         second_loop = 0.0
         g_block[0, :] = (mask_block[0, :] == 0) * numerical_inf
-        for local_x_index in xrange(win_xsize):
-            start = time.time()
-            for row_index in xrange(1, n_rows):
+        g_block_flat = g_block.flatten()
+        start = time.time()
+        for row_index in xrange(1, n_rows):
+            for local_x_index in xrange(win_xsize):
                 if mask_block[row_index, local_x_index] == 1:
                     g_block[row_index, local_x_index] = 0
                 else:
                     g_block[row_index, local_x_index] = (
                         g_block[row_index-1, local_x_index] + 1)
-            first_loop += time.time() - start
-            start = time.time()
-            for row_index in xrange(n_rows-2, -1, -1):
+        first_loop += time.time() - start
+        start = time.time()
+        for row_index in xrange(n_rows-2, -1, -1):
+            for local_x_index in xrange(win_xsize):
                 if (g_block[row_index+1, local_x_index] <
                         g_block[row_index, local_x_index]):
                     g_block[row_index, local_x_index] = (
                         1 + g_block[row_index+1, local_x_index])
-            second_loop += time.time() - start
+        second_loop += time.time() - start
         print 'first loop time %.2f' % (first_loop)
         print 'second loop time %.2f' % (second_loop)
         g_band.WriteArray(g_block, xoff=xoff, yoff=0)

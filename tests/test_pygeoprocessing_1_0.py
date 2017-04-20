@@ -1347,11 +1347,15 @@ class PyGeoprocessing10(unittest.TestCase):
         reference = sampledata.SRS_COLOMBIA
         n_pixels = 1000
         base_raster_array = numpy.zeros((n_pixels, n_pixels), numpy.float32)
-        base_raster_array[n_pixels/2, n_pixels/2] = 1
-        base_raster_array[0,0] = 1
-        base_raster_array[0,n_pixels-1] = 1
-        base_raster_array[n_pixels-1,0] = 1
-        base_raster_array[n_pixels-1,n_pixels-1] = 1
+        for x_index in xrange(0, n_pixels, 2):
+            for y_index in xrange(1, n_pixels, 2):
+                base_raster_array[y_index, x_index] = 1
+
+        #base_raster_array[n_pixels/2, n_pixels/2] = 1
+        #base_raster_array[0,0] = 1
+        #base_raster_array[0,n_pixels-1] = 1
+        #base_raster_array[n_pixels-1,0] = 1
+        #base_raster_array[n_pixels-1,n_pixels-1] = 1
         nodata_target = -1
         base_raster_path = os.path.join(
             self.workspace_dir, 'base_raster.tif')
