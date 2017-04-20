@@ -32,8 +32,9 @@ cdef long long _f(long long x, long long i, long long gi):
 cdef long long _sep(long long i, long long u, long long gu, long long gi):
     return (u*u - i*i + gu*gu - gi*gi) / (2*(u-i))
 
-#@cython.boundscheck(False)
 @cython.binding(True)
+@cython.boundscheck(False)
+@cython.wraparound(False)
 def distance_transform_edt(base_mask_raster_path_band, target_distance_path):
     """Calculate the Euclidean distance transform.
 
@@ -48,6 +49,15 @@ def distance_transform_edt(base_mask_raster_path_band, target_distance_path):
 
     Returns:
         None."""
+    cdef int yoff, row_index, block_ysize, win_ysize, n_rows
+    cdef int xoff, col_index, block_xsize, win_xsize, n_cols
+    cdef int q_index, local_x_index, local_y_index
+    cdef numpy.ndarray[numpy.int32_t, ndim=2] g_block
+    cdef numpy.ndarray[numpy.int64_t, ndim=1] s_array
+    cdef numpy.ndarray[numpy.int64_t, ndim=1] t_array
+    cdef numpy.ndarray[numpy.float64_t, ndim=2] dt
+    cdef numpy.ndarray[numpy.int16_t, ndim=2] mask_block
+
     file_handle, base_mask_path = tempfile.mkstemp()
     os.close(file_handle)
     cdef int g_nodata = -1
@@ -66,13 +76,13 @@ def distance_transform_edt(base_mask_raster_path_band, target_distance_path):
 
     pygeoprocessing.raster_calculator(
         [base_mask_raster_path_band], _mask_op, base_mask_path,
-        gdal.GDT_Byte, g_nodata, calc_raster_stats=False)
+        gdal.GDT_Int16, g_nodata, calc_raster_stats=False)
 
     base_mask_raster = gdal.Open(base_mask_path)
     base_mask_band = base_mask_raster.GetRasterBand(1)
 
-    cdef int n_cols = base_mask_raster.RasterXSize
-    cdef int n_rows = base_mask_raster.RasterYSize
+    n_cols = base_mask_raster.RasterXSize
+    n_rows = base_mask_raster.RasterYSize
 
     file_handle, g_path = tempfile.mkstemp()
     os.close(file_handle)
@@ -94,27 +104,36 @@ def distance_transform_edt(base_mask_raster_path_band, target_distance_path):
     done = False
     block_xsize = raster_info['block_size'][0]
     for xoff in numpy.arange(0, n_cols, block_xsize):
+        print 'xoff', xoff
         win_xsize = block_xsize
         if xoff + win_xsize > n_cols:
             win_xsize = n_cols - xoff
             done = True
-            print win_xsize
         mask_block = base_mask_band.ReadAsArray(
             xoff=xoff, yoff=0, win_xsize=win_xsize, win_ysize=n_rows)
-        g_block = numpy.empty(mask_block.shape, dtype=numpy.int32)
+        g_block = numpy.empty((n_rows, win_xsize), dtype=numpy.int32)
         # base case
+        first_loop = 0.0
+        second_loop = 0.0
         g_block[0, :] = (mask_block[0, :] == 0) * numerical_inf
-        for row_index in xrange(1, n_rows):
-            active_mask = mask_block[row_index, :] == 1
-            g_block[row_index, active_mask] = 0
-            g_block[row_index, ~active_mask] = (
-                g_block[row_index-1, ~active_mask] + 1)
-
-        for row_index in reversed(xrange(0, n_rows-1)):
-            active_mask = g_block[row_index+1, :] < g_block[row_index, :]
-            g_block[row_index, active_mask] = (
-                1 + g_block[row_index+1, active_mask])
-
+        for local_x_index in xrange(win_xsize):
+            start = time.time()
+            for row_index in xrange(1, n_rows):
+                if mask_block[row_index, local_x_index] == 1:
+                    g_block[row_index, local_x_index] = 0
+                else:
+                    g_block[row_index, local_x_index] = (
+                        g_block[row_index-1, local_x_index] + 1)
+            first_loop += time.time() - start
+            start = time.time()
+            for row_index in xrange(n_rows-2, -1, -1):
+                if (g_block[row_index+1, local_x_index] <
+                        g_block[row_index, local_x_index]):
+                    g_block[row_index, local_x_index] = (
+                        1 + g_block[row_index+1, local_x_index])
+            second_loop += time.time() - start
+        print 'first loop time %.2f' % (first_loop)
+        print 'second loop time %.2f' % (second_loop)
         g_band.WriteArray(g_block, xoff=xoff, yoff=0)
         if done:
             break
@@ -128,9 +147,6 @@ def distance_transform_edt(base_mask_raster_path_band, target_distance_path):
     target_distance_band = target_distance_raster.GetRasterBand(1)
 
     LOGGER.info('Distance Transform Phase 2')
-    cdef numpy.ndarray[numpy.int64_t, ndim=1] s_array
-    cdef numpy.ndarray[numpy.int64_t, ndim=1] t_array
-    cdef numpy.ndarray[numpy.float64_t, ndim=2] dt
 
     cdef double current_time, last_time
     last_time = time.time()
@@ -141,13 +157,14 @@ def distance_transform_edt(base_mask_raster_path_band, target_distance_path):
     done = False
     block_ysize = g_band_blocksize[1]
     for yoff in numpy.arange(0, n_rows, block_ysize):
+        print 'yoff', yoff
         win_ysize = block_ysize
         if yoff + win_ysize >= n_rows:
             win_ysize = n_rows - yoff
             done = True
-        g_array = g_band.ReadAsArray(
+        g_block = g_band.ReadAsArray(
             xoff=0, yoff=yoff, win_xsize=n_cols, win_ysize=win_ysize)
-        dt = numpy.empty(g_array.shape, dtype=numpy.float64)
+        dt = numpy.empty((win_ysize, n_cols), dtype=numpy.float64)
         for local_y_index in xrange(win_ysize):
             q_index = 0
             s_array[0] = 0
@@ -155,9 +172,9 @@ def distance_transform_edt(base_mask_raster_path_band, target_distance_path):
             for u_index in xrange(1, n_cols):
                 while (q_index >= 0 and
                        _f(t_array[q_index], s_array[q_index],
-                          g_array[local_y_index, s_array[q_index]]) >
+                          g_block[local_y_index, s_array[q_index]]) >
                        _f(t_array[q_index], u_index,
-                          g_array[local_y_index, u_index])):
+                          g_block[local_y_index, u_index])):
                     q_index -= 1
                 if q_index < 0:
                     q_index = 0
@@ -165,8 +182,8 @@ def distance_transform_edt(base_mask_raster_path_band, target_distance_path):
                 else:
                     w = 1 + _sep(
                         s_array[q_index], u_index,
-                        g_array[local_y_index, u_index],
-                        g_array[local_y_index, s_array[q_index]])
+                        g_block[local_y_index, u_index],
+                        g_block[local_y_index, s_array[q_index]])
                     if w < n_cols:
                         q_index += 1
                         s_array[q_index] = u_index
@@ -175,12 +192,12 @@ def distance_transform_edt(base_mask_raster_path_band, target_distance_path):
             for u_index in xrange(n_cols-1, -1, -1):
                 dt[local_y_index, u_index] = _f(
                     u_index, s_array[q_index],
-                    g_array[local_y_index, s_array[q_index]])
+                    g_block[local_y_index, s_array[q_index]])
                 if u_index == t_array[q_index]:
                     q_index -= 1
 
         dt = numpy.sqrt(dt)
-        dt[g_array == g_nodata] = output_nodata
+        dt[g_block == g_nodata] = output_nodata
         target_distance_band.WriteArray(dt, xoff=0, yoff=yoff)
 
         # we do this in the case where the blocksize is many times larger than

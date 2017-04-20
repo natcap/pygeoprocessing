@@ -1374,8 +1374,10 @@ class PyGeoprocessing10(unittest.TestCase):
         target_band = None
         target_raster = None
 
+        start = time.time()
         expected_result = scipy.ndimage.morphology.distance_transform_edt(
             1-base_raster_array)
+        print 'scipy took %.2fs' % (time.time()-start)
         numpy.testing.assert_array_almost_equal(
             target_array, expected_result, decimal=5)
 
