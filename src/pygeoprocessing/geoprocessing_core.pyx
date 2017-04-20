@@ -30,7 +30,6 @@ cdef long long _f(long long x, long long i, long long gi):
 cdef long long _sep(long long i, long long u, long long gu, long long gi):
     return (u*u - i*i + gu*gu - gi*gi) / (2*(u-i))
 
-@cython.binding(True)
 @cython.boundscheck(False)
 @cython.wraparound(False)
 def distance_transform_edt(base_mask_raster_path_band, target_distance_path):
@@ -189,8 +188,6 @@ def distance_transform_edt(base_mask_raster_path_band, target_distance_path):
         # the raster size so we don't re-loop through the only block
         if done:
             break
-
-    ########3
 
     target_distance_band.FlushCache()
     gdal.Dataset.__swig_destroy__(target_distance_raster)
