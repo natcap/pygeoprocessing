@@ -979,7 +979,9 @@ def get_raster_info(raster_path):
             'projection' (string): projection of the raster in Well Known
                 Text.
             'bounding_box' (list): list of floats representing the bounding
-                box in projected coordinates as "bb=[minx,miny,maxx,maxy]".
+                box in projected coordinates as "bb=[minx,miny,maxx,maxy]"
+            'block_size' (tuple): underlying x/y raster block size for
+                efficient reading.
     """
     raster_properties = {}
     raster = gdal.Open(raster_path)
@@ -996,6 +998,8 @@ def get_raster_info(raster_path):
     raster_properties['nodata'] = [
         raster.GetRasterBand(index).GetNoDataValue() for index in xrange(
             1, raster_properties['n_bands']+1)]
+    # blocksize is the same for all bands, so we can just get the first
+    raster_properties['block_size'] = raster.GetRasterBand(1).GetBlockSize()
 
     # we dont' really know how the geotransform is laid out, all we can do is
     # calculate the x and y bounds, then take the appropriate min/max

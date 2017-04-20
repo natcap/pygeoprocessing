@@ -1345,9 +1345,13 @@ class PyGeoprocessing10(unittest.TestCase):
     def test_distance_transform_edt(self):
         """PGP.geoprocessing: test distance transform EDT."""
         reference = sampledata.SRS_COLOMBIA
-        n_pixels = 500
+        n_pixels = 100
         base_raster_array = numpy.zeros((n_pixels, n_pixels), numpy.float32)
         base_raster_array[n_pixels/2, n_pixels/2] = 1
+        base_raster_array[0,0] = 1
+        base_raster_array[0,n_pixels-1] = 1
+        base_raster_array[n_pixels-1,0] = 1
+        base_raster_array[n_pixels-1,n_pixels-1] = 1
         nodata_target = -1
         base_raster_path = os.path.join(
             self.workspace_dir, 'base_raster.tif')
@@ -1370,12 +1374,10 @@ class PyGeoprocessing10(unittest.TestCase):
         target_band = None
         target_raster = None
 
-        expected_result_array = numpy.ones(
-            (n_pixels, n_pixels), numpy.float32)
-        expected_result_array[n_pixels/2, n_pixels/2] = 0
         expected_result = scipy.ndimage.morphology.distance_transform_edt(
-            expected_result_array)
-        numpy.testing.assert_array_almost_equal(target_array, expected_result)
+            1-base_raster_array)
+        numpy.testing.assert_array_almost_equal(
+            target_array, expected_result, decimal=5)
 
     def test_next_regular(self):
         """PGP.geoprocessing: test next regular number generator."""

@@ -50,7 +50,7 @@ def distance_transform_edt(base_mask_raster_path_band, target_distance_path):
         None."""
     file_handle, base_mask_path = tempfile.mkstemp()
     os.close(file_handle)
-    nodata_base_mask = 255
+    cdef int g_nodata = -1
     base_raster_info = pygeoprocessing.get_raster_info(
         base_mask_raster_path_band[0])
     base_nodata = base_raster_info['nodata'][
@@ -59,14 +59,14 @@ def distance_transform_edt(base_mask_raster_path_band, target_distance_path):
     def _mask_op(base_array):
         """Convert base_array to 1 if >0, 0 if == 0 or nodata."""
         result = numpy.empty(base_array.shape, dtype=numpy.int8)
-        result[:] = nodata_base_mask
+        result[:] = g_nodata
         valid_mask = base_array != base_nodata
         result[valid_mask] = base_array[valid_mask] != 0
         return result
 
     pygeoprocessing.raster_calculator(
         [base_mask_raster_path_band], _mask_op, base_mask_path,
-        gdal.GDT_Byte, nodata_base_mask, calc_raster_stats=False)
+        gdal.GDT_Byte, g_nodata, calc_raster_stats=False)
 
     base_mask_raster = gdal.Open(base_mask_path)
     base_mask_band = base_mask_raster.GetRasterBand(1)
@@ -74,10 +74,8 @@ def distance_transform_edt(base_mask_raster_path_band, target_distance_path):
     cdef int n_cols = base_mask_raster.RasterXSize
     cdef int n_rows = base_mask_raster.RasterYSize
 
-    # create a transposed g function
     file_handle, g_path = tempfile.mkstemp()
     os.close(file_handle)
-    g_path = 'g.tif'
     raster_info = pygeoprocessing.get_raster_info(
         base_mask_raster_path_band[0])
     nodata = raster_info['nodata'][base_mask_raster_path_band[1]-1]
@@ -87,81 +85,38 @@ def distance_transform_edt(base_mask_raster_path_band, target_distance_path):
         fill_value_list=None)
     g_raster = gdal.Open(g_path, gdal.GA_Update)
     g_band = g_raster.GetRasterBand(1)
+    g_band_blocksize = g_band.GetBlockSize()
 
-    cdef int g_nodata = -1
     numerical_inf = (
         raster_info['raster_size'][0] + raster_info['raster_size'][1])
-    block_index = {}
-    last_g_row = {}
     # scan 1
-    for block_offset, mask_block in pygeoprocessing.iterblocks(
-            base_mask_raster_path_band[0]):
-        block_index[(block_offset['yoff'], block_offset['xoff'])] = (
-            block_offset)
+    done = False
+    for xoff in numpy.arange(0, base_raster_info['block_size'][0], n_cols):
+        win_xsize = base_raster_info['block_size'][0]
+        if xoff + win_xsize > n_cols:
+            win_xsize = n_cols - xoff
+            done = True
+        print xoff, win_xsize, n_rows
+        mask_block = base_mask_band.ReadAsArray(
+            xoff=xoff, yoff=0, win_xsize=win_xsize, win_ysize=n_rows)
         g_block = numpy.empty(mask_block.shape, dtype=numpy.int32)
-        if block_offset['yoff'] == 0:
-            # base case
-            g_block[0, :] = (mask_block[0, :] == 0) * numerical_inf
-        else:
-            index = (block_offset['xoff'], block_offset['yoff'])
-            g_prev_row = last_g_row[index]
-            del last_g_row[index]
-
-            active_mask = mask_block[0, :] == 1
-            g_block[0, active_mask] = 0
-            g_block[0, ~active_mask] = (
-                g_prev_row[0, ~active_mask] + 1)
-            del g_prev_row
-
-        for row_index in xrange(1, block_offset['win_ysize']):
+        # base case
+        g_block[0, :] = (mask_block[0, :] == 0) * numerical_inf
+        for row_index in xrange(1, n_rows):
             active_mask = mask_block[row_index, :] == 1
             g_block[row_index, active_mask] = 0
             g_block[row_index, ~active_mask] = (
                 g_block[row_index-1, ~active_mask] + 1)
 
-        g_band.WriteArray(
-            g_block, xoff=block_offset['xoff'], yoff=block_offset['yoff'])
-        last_g_row[(
-            block_offset['xoff'],
-            block_offset['yoff'] + block_offset['win_ysize'])] = (
-                g_block[-1, :])
-    del last_g_row
-
-    # scan 2
-    base_mask_raster = gdal.Open(g_path)
-    base_mask_band = base_mask_raster.GetRasterBand(1)
-    # go in lowest blocks to highest
-    last_bottom_g_row = {}
-    for index in reversed(sorted(block_index)):
-        block_offset = block_index[index]
-        mask_block = base_mask_band.ReadAsArray(**block_offset)
-        g_block = g_band.ReadAsArray(**block_offset)
-
-        # if this is the bottom block, have a special case, otherwise load
-        # the previous row
-        if ((block_offset['yoff'] + block_offset['win_ysize']) !=
-                raster_info['raster_size'][1]):
-            index = (block_offset['xoff'], block_offset['yoff'])
-            g_prev_row = last_bottom_g_row[index]
-            del last_bottom_g_row[index]
-            active_mask = (
-                g_prev_row[0, :] < g_block[block_offset['win_ysize']-1, :])
-            g_block[block_offset['win_ysize']-1, active_mask] = (
-                1 + g_prev_row[0, active_mask])
-
-        for row_index in reversed(xrange(
-                block_offset['win_ysize'] - 1)):
+        for row_index in reversed(xrange(0, n_rows-1)):
             active_mask = g_block[row_index+1, :] < g_block[row_index, :]
             g_block[row_index, active_mask] = (
                 1 + g_block[row_index+1, active_mask])
-        g_band.WriteArray(
-            g_block, xoff=block_offset['xoff'], yoff=block_offset['yoff'])
-        last_bottom_g_row[(
-            block_offset['xoff'],
-            block_offset['yoff']-block_offset['win_ysize'])] = g_block[0, :]
-    del last_bottom_g_row
+
+        g_band.WriteArray(g_block, xoff=xoff, yoff=0)
+        if done:
+            break
     g_band.FlushCache()
-    driver = gdal.GetDriverByName('GTiff')
 
     cdef float output_nodata = -1.0
     pygeoprocessing.new_raster_from_base(
@@ -171,53 +126,66 @@ def distance_transform_edt(base_mask_raster_path_band, target_distance_path):
     target_distance_band = target_distance_raster.GetRasterBand(1)
 
     LOGGER.info('Distance Transform Phase 2')
-    cdef numpy.ndarray[numpy.int64_t, ndim=2] s_array
-    cdef numpy.ndarray[numpy.int64_t, ndim=2] t_array
+    cdef numpy.ndarray[numpy.int64_t, ndim=1] s_array
+    cdef numpy.ndarray[numpy.int64_t, ndim=1] t_array
     cdef numpy.ndarray[numpy.float64_t, ndim=2] dt
-
-    cdef int win_ysize
 
     cdef double current_time, last_time
     last_time = time.time()
 
-    s_array = numpy.zeros((1, n_cols), dtype=numpy.int64)
-    t_array = numpy.zeros((1, n_cols), dtype=numpy.int64)
-    dt = numpy.empty((1, n_cols), dtype=numpy.float64)
-    for row_index in xrange(n_rows):
-        g_array = g_band.ReadAsArray(
-            xoff=0, yoff=row_index, win_xsize=n_cols,
-            win_ysize=1)
-        q_index = 0
-        s_array[0, 0] = 0
-        t_array[0, 0] = 0
-        for u_index in xrange(1, n_cols):
-            while (q_index >= 0 and
-                _f(t_array[0, q_index], s_array[0, q_index],
-                    g_array[0, s_array[0, q_index]]) >
-                _f(t_array[0, q_index], u_index, g_array[0, u_index])):
-                q_index -= 1
-            if q_index < 0:
-               q_index = 0
-               s_array[0, 0] = u_index
-            else:
-                w = 1 + _sep(
-                    s_array[0, q_index], u_index, g_array[0, u_index],
-                    g_array[0, s_array[0, q_index]])
-                if w < n_cols:
-                    q_index += 1
-                    s_array[0, q_index] = u_index
-                    t_array[0, q_index] = w
+    s_array = numpy.empty(n_cols, dtype=numpy.int64)
+    t_array = numpy.empty(n_cols, dtype=numpy.int64)
 
-        for u_index in xrange(n_cols-1, -1, -1):
-            dt[0, u_index] = _f(
-                u_index, s_array[0, q_index],
-                g_array[0, s_array[0, q_index]])
-            if u_index == t_array[0, q_index]:
-                q_index -= 1
+    done = False
+    for yoff in numpy.arange(0, g_band_blocksize[1], n_rows):
+        win_ysize = g_band_blocksize[1]
+        if yoff + win_ysize >= n_rows:
+            win_ysize = n_rows - yoff
+            done = True
+        g_array = g_band.ReadAsArray(
+            xoff=0, yoff=yoff, win_xsize=n_cols, win_ysize=win_ysize)
+        dt = numpy.empty(g_array.shape, dtype=numpy.float64)
+        for local_y_index in xrange(win_ysize):
+            q_index = 0
+            s_array[0] = 0
+            t_array[0] = 0
+            for u_index in xrange(1, n_cols):
+                while (q_index >= 0 and
+                       _f(t_array[q_index], s_array[q_index],
+                          g_array[local_y_index, s_array[q_index]]) >
+                       _f(t_array[q_index], u_index,
+                          g_array[local_y_index, u_index])):
+                    q_index -= 1
+                if q_index < 0:
+                    q_index = 0
+                    s_array[0] = u_index
+                else:
+                    w = 1 + _sep(
+                        s_array[q_index], u_index,
+                        g_array[local_y_index, u_index],
+                        g_array[local_y_index, s_array[q_index]])
+                    if w < n_cols:
+                        q_index += 1
+                        s_array[q_index] = u_index
+                        t_array[q_index] = w
+
+            for u_index in xrange(n_cols-1, -1, -1):
+                dt[local_y_index, u_index] = _f(
+                    u_index, s_array[q_index],
+                    g_array[local_y_index, s_array[q_index]])
+                if u_index == t_array[q_index]:
+                    q_index -= 1
 
         dt = numpy.sqrt(dt)
-        dt[g_array == base_nodata] = output_nodata
-        target_distance_band.WriteArray(dt, xoff=0, yoff=row_index)
+        dt[g_array == g_nodata] = output_nodata
+        target_distance_band.WriteArray(dt, xoff=0, yoff=yoff)
+
+        # we do this in the case where the blocksize is many times larger than
+        # the raster size so we don't re-loop through the only block
+        if done:
+            break
+
+    ########3
 
     target_distance_band.FlushCache()
     gdal.Dataset.__swig_destroy__(target_distance_raster)
