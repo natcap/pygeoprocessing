@@ -92,14 +92,12 @@ EXTENSION_LIST = ([
         name="pygeoprocessing.geoprocessing_core",
         sources=[
             'src/pygeoprocessing/geoprocessing_core.pyx'],
-        language="c++",
-        define_macros=[('CYTHON_TRACE_NOGIL', '1')]),
+        language="c++"),
     Extension(
         name="pygeoprocessing.routing.routing_core",
         sources=[
             'src/pygeoprocessing/routing/routing_core.pyx'],
-        language="c++",
-        define_macros=[('CYTHON_TRACE_NOGIL', '1')]),
+        language="c++"),
     ])
 
 if not USE_CYTHON:

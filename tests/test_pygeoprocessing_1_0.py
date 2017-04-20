@@ -1361,8 +1361,7 @@ class PyGeoprocessing10(unittest.TestCase):
             filename=base_raster_path)
 
         target_distance_raster_path = os.path.join(
-            #self.workspace_dir, 'target_distance.tif')
-            'target_distance.tif')
+            self.workspace_dir, 'target_distance.tif')
 
         start = time.time()
         pygeoprocessing.distance_transform_edt(
