@@ -1489,10 +1489,6 @@ def distance_transform_edt(
         gdal.GDT_Byte, nodata_out, calc_raster_stats=False)
     geoprocessing_core.distance_transform_edt(
         (dt_mask_path, 1), target_distance_raster_path)
-    #import line_profiler
-    #profile = line_profiler.LineProfiler(geoprocessing_core.distance_transform_edt)
-    #profile.runcall(geoprocessing_core.distance_transform_edt, dt_mask_path, target_distance_raster_path)
-    #profile.print_stats()
     try:
         os.remove(dt_mask_path)
     except OSError:
