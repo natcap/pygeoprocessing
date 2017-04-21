@@ -21,11 +21,7 @@ _DEFAULT_GTIFF_CREATION_OPTIONS = ('TILED=YES', 'BIGTIFF=IF_SAFER')
 
 LOGGER = logging.getLogger('geoprocessing_core')
 
-
 @cython.cdivision(True)
-cdef long long _sep(long long i, long long u, long long gu, long long gi):
-    return (u*u - i*i + gu*gu - gi*gi) / (2*(u-i))
-
 @cython.boundscheck(False)
 @cython.wraparound(False)
 def distance_transform_edt(base_mask_raster_path_band, target_distance_path):
@@ -159,35 +155,37 @@ def distance_transform_edt(base_mask_raster_path_band, target_distance_path):
             s_array[0] = 0
             t_array[0] = 0
             for u_index in xrange(1, n_cols):
-                gu = g_block[local_y_index, u_index]
+                gu = g_block[local_y_index, u_index]**2
                 while (q_index >= 0):
                     tq = t_array[q_index]
                     sq = s_array[q_index]
-                    gsq = g_block[local_y_index, sq]
-                    if ((tq-sq)**2 + gsq**2 <= (tq-u_index)**2 + gu**2):
+                    gsq = g_block[local_y_index, sq]**2
+                    if ((tq-sq)**2 + gsq <= (tq-u_index)**2 + gu):
                         break
                     q_index -= 1
                 if q_index < 0:
                     q_index = 0
                     s_array[0] = u_index
                     sq = u_index
-                    gsq = g_block[local_y_index, sq]
+                    gsq = g_block[local_y_index, sq]**2
                 else:
-                    w = 1 + _sep(sq, u_index, gu, gsq)
+                    w = 1 + (
+                        u_index**2 - sq**2 + gu - gsq) / (
+                            2*(u_index-sq))
                     if w < n_cols:
                         q_index += 1
                         s_array[q_index] = u_index
                         t_array[q_index] = w
 
             sq = s_array[q_index]
-            gsq = g_block[local_y_index, sq]
+            gsq = g_block[local_y_index, sq]**2
             for u_index in xrange(n_cols-1, -1, -1):
-                dt[local_y_index, u_index] = (u_index-sq)**2+gsq**2
+                dt[local_y_index, u_index] = (u_index-sq)**2+gsq
                 if u_index == t_array[q_index]:
                     q_index -= 1
                     if q_index >= 0:
                         sq = s_array[q_index]
-                        gsq = g_block[local_y_index, sq]
+                        gsq = g_block[local_y_index, sq]**2
 
         dt = numpy.sqrt(dt)
         dt[g_block == g_nodata] = output_nodata
