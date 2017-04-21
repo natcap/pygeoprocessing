@@ -1410,20 +1410,16 @@ class PyGeoprocessing10(unittest.TestCase):
         target_distance_raster_path = os.path.join(
             self.workspace_dir, 'target_distance.tif')
 
-        start = time.time()
         pygeoprocessing.distance_transform_edt(
             (base_raster_path, 1), target_distance_raster_path)
-        print 'run took %.2fs' % (time.time()-start)
         target_raster = gdal.Open(target_distance_raster_path)
         target_band = target_raster.GetRasterBand(1)
         target_array = target_band.ReadAsArray()
         target_band = None
         target_raster = None
 
-        start = time.time()
         expected_result = scipy.ndimage.morphology.distance_transform_edt(
             1-base_raster_array)
-        print 'scipy took %.2fs' % (time.time()-start)
         numpy.testing.assert_array_almost_equal(
             target_array, expected_result, decimal=4)
 
