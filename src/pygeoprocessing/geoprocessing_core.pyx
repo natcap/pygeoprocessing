@@ -174,11 +174,10 @@ def distance_transform_edt(base_mask_raster_path_band, target_distance_path):
                 if q_index < 0:
                     q_index = 0
                     s_array[0] = u_index
+                    sq = u_index
+                    gsq = g_block[local_y_index, sq]
                 else:
-                    w = 1 + _sep(
-                        s_array[q_index], u_index,
-                        gu,
-                        g_block[local_y_index, s_array[q_index]])
+                    w = 1 + _sep(sq, u_index, gu, gsq)
                     if w < n_cols:
                         q_index += 1
                         s_array[q_index] = u_index
