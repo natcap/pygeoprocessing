@@ -48,7 +48,8 @@ def distance_transform_edt(base_mask_raster_path_band, target_distance_path):
         None."""
     cdef int yoff, row_index, block_ysize, win_ysize, n_rows
     cdef int xoff, col_index, block_xsize, win_xsize, n_cols
-    cdef int q_index, local_x_index, local_y_index
+    cdef int q_index, local_x_index, local_y_index, u_index
+    cdef int gq, gsq
     cdef numpy.ndarray[numpy.int32_t, ndim=2] g_block
     cdef numpy.ndarray[numpy.int32_t, ndim=1] s_array
     cdef numpy.ndarray[numpy.int32_t, ndim=1] t_array
@@ -162,11 +163,13 @@ def distance_transform_edt(base_mask_raster_path_band, target_distance_path):
             s_array[0] = 0
             t_array[0] = 0
             for u_index in xrange(1, n_cols):
-                while (q_index >= 0 and
-                       _f(t_array[q_index], s_array[q_index],
-                          g_block[local_y_index, s_array[q_index]]) >
-                       _f(t_array[q_index], u_index,
-                          g_block[local_y_index, u_index])):
+                gu = g_block[local_y_index, u_index]
+                while (q_index >= 0):
+
+                    if (_f(t_array[q_index], s_array[q_index],
+                           g_block[local_y_index, s_array[q_index]]) <=
+                        _f(t_array[q_index], u_index, gu)):
+                        break
                     q_index -= 1
                 if q_index < 0:
                     q_index = 0
@@ -174,7 +177,7 @@ def distance_transform_edt(base_mask_raster_path_band, target_distance_path):
                 else:
                     w = 1 + _sep(
                         s_array[q_index], u_index,
-                        g_block[local_y_index, u_index],
+                        gu,
                         g_block[local_y_index, s_array[q_index]])
                     if w < n_cols:
                         q_index += 1

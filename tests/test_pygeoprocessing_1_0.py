@@ -1387,6 +1387,9 @@ class PyGeoprocessing10(unittest.TestCase):
         base_raster_array[0,n_pixels-1] = 1
         base_raster_array[n_pixels-1,0] = 1
         base_raster_array[n_pixels-1,n_pixels-1] = 1
+        base_raster_array[n_pixels/2,n_pixels/2] = 1
+        base_raster_array[n_pixels/2,n_pixels/4] = 1
+        base_raster_array[n_pixels/2,(3*n_pixels)/4] = 1
         nodata_target = -1
         base_raster_path = os.path.join(
             self.workspace_dir, 'base_raster.tif')
