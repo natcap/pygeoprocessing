@@ -22,10 +22,6 @@ _DEFAULT_GTIFF_CREATION_OPTIONS = ('TILED=YES', 'BIGTIFF=IF_SAFER')
 LOGGER = logging.getLogger('geoprocessing_core')
 
 
-cdef long long _f(long long x, long long i, long long gi):
-    return (x-i)*(x-i)+ gi*gi
-
-
 @cython.cdivision(True)
 cdef long long _sep(long long i, long long u, long long gu, long long gi):
     return (u*u - i*i + gu*gu - gi*gi) / (2*(u-i))
@@ -183,12 +179,15 @@ def distance_transform_edt(base_mask_raster_path_band, target_distance_path):
                         s_array[q_index] = u_index
                         t_array[q_index] = w
 
+            sq = s_array[q_index]
+            gsq = g_block[local_y_index, sq]
             for u_index in xrange(n_cols-1, -1, -1):
-                dt[local_y_index, u_index] = _f(
-                    u_index, s_array[q_index],
-                    g_block[local_y_index, s_array[q_index]])
+                dt[local_y_index, u_index] = (u_index-sq)**2+gsq**2
                 if u_index == t_array[q_index]:
                     q_index -= 1
+                    if q_index >= 0:
+                        sq = s_array[q_index]
+                        gsq = g_block[local_y_index, sq]
 
         dt = numpy.sqrt(dt)
         dt[g_block == g_nodata] = output_nodata
