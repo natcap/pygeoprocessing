@@ -170,8 +170,7 @@ def distance_transform_edt(base_mask_raster_path_band, target_distance_path):
                     gsq = g_block[local_y_index, sq]**2
                 else:
                     w = 1 + (
-                        u_index**2 - sq**2 + gu - gsq) / (
-                            2*(u_index-sq))
+                        u_index**2 - sq**2 + gu - gsq) / (2*(u_index-sq))
                     if w < n_cols:
                         q_index += 1
                         s_array[q_index] = u_index
@@ -179,13 +178,15 @@ def distance_transform_edt(base_mask_raster_path_band, target_distance_path):
 
             sq = s_array[q_index]
             gsq = g_block[local_y_index, sq]**2
+            tq = t_array[q_index]
             for u_index in xrange(n_cols-1, -1, -1):
                 dt[local_y_index, u_index] = (u_index-sq)**2+gsq
-                if u_index == t_array[q_index]:
+                if u_index == tq:
                     q_index -= 1
                     if q_index >= 0:
                         sq = s_array[q_index]
                         gsq = g_block[local_y_index, sq]**2
+                        tq = t_array[q_index]
 
         dt = numpy.sqrt(dt)
         dt[g_block == g_nodata] = output_nodata
