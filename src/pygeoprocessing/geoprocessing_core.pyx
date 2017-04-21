@@ -1,5 +1,3 @@
-# cython: profile=True
-# cython: linetrace=True
 import os
 import tempfile
 import logging
@@ -32,7 +30,6 @@ cdef long long _f(long long x, long long i, long long gi):
 cdef long long _sep(long long i, long long u, long long gu, long long gi):
     return (u*u - i*i + gu*gu - gi*gi) / (2*(u-i))
 
-@cython.binding(True)
 @cython.boundscheck(False)
 @cython.wraparound(False)
 def distance_transform_edt(base_mask_raster_path_band, target_distance_path):
@@ -53,9 +50,9 @@ def distance_transform_edt(base_mask_raster_path_band, target_distance_path):
     cdef int xoff, col_index, block_xsize, win_xsize, n_cols
     cdef int q_index, local_x_index, local_y_index
     cdef numpy.ndarray[numpy.int32_t, ndim=2] g_block
-    cdef numpy.ndarray[numpy.int64_t, ndim=1] s_array
-    cdef numpy.ndarray[numpy.int64_t, ndim=1] t_array
-    cdef numpy.ndarray[numpy.float64_t, ndim=2] dt
+    cdef numpy.ndarray[numpy.int32_t, ndim=1] s_array
+    cdef numpy.ndarray[numpy.int32_t, ndim=1] t_array
+    cdef numpy.ndarray[numpy.float32_t, ndim=2] dt
     cdef numpy.ndarray[numpy.int32_t, ndim=2] mask_block
 
     file_handle, base_mask_path = tempfile.mkstemp()
@@ -86,7 +83,6 @@ def distance_transform_edt(base_mask_raster_path_band, target_distance_path):
 
     file_handle, g_path = tempfile.mkstemp()
     os.close(file_handle)
-    g_path = 'g.tif'
     raster_info = pygeoprocessing.get_raster_info(
         base_mask_raster_path_band[0])
     nodata = raster_info['nodata'][base_mask_raster_path_band[1]-1]
@@ -106,7 +102,6 @@ def distance_transform_edt(base_mask_raster_path_band, target_distance_path):
     mask_block = numpy.empty((n_rows, block_xsize), dtype=numpy.int32)
     g_block = numpy.empty((n_rows, block_xsize), dtype=numpy.int32)
     for xoff in numpy.arange(0, n_cols, block_xsize):
-        print 'xoff', xoff
         win_xsize = block_xsize
         if xoff + win_xsize > n_cols:
             win_xsize = n_cols - xoff
@@ -117,11 +112,7 @@ def distance_transform_edt(base_mask_raster_path_band, target_distance_path):
             xoff=xoff, yoff=0, win_xsize=win_xsize, win_ysize=n_rows,
             buf_obj=mask_block)
         # base case
-        first_loop = 0.0
-        second_loop = 0.0
         g_block[0, :] = (mask_block[0, :] == 0) * numerical_inf
-        g_block_flat = g_block.flatten()
-        start = time.time()
         for row_index in xrange(1, n_rows):
             for local_x_index in xrange(win_xsize):
                 if mask_block[row_index, local_x_index] == 1:
@@ -129,17 +120,12 @@ def distance_transform_edt(base_mask_raster_path_band, target_distance_path):
                 else:
                     g_block[row_index, local_x_index] = (
                         g_block[row_index-1, local_x_index] + 1)
-        first_loop += time.time() - start
-        start = time.time()
         for row_index in xrange(n_rows-2, -1, -1):
             for local_x_index in xrange(win_xsize):
                 if (g_block[row_index+1, local_x_index] <
                         g_block[row_index, local_x_index]):
                     g_block[row_index, local_x_index] = (
                         1 + g_block[row_index+1, local_x_index])
-        second_loop += time.time() - start
-        print 'first loop time %.2f' % (first_loop)
-        print 'second loop time %.2f' % (second_loop)
         g_band.WriteArray(g_block, xoff=xoff, yoff=0)
         if done:
             break
@@ -148,29 +134,29 @@ def distance_transform_edt(base_mask_raster_path_band, target_distance_path):
     cdef float output_nodata = -1.0
     pygeoprocessing.new_raster_from_base(
         base_mask_raster_path_band[0], target_distance_path.encode('utf-8'),
-        gdal.GDT_Float64, [output_nodata], fill_value_list=None)
+        gdal.GDT_Float32, [output_nodata], fill_value_list=None)
     target_distance_raster = gdal.Open(target_distance_path, gdal.GA_Update)
     target_distance_band = target_distance_raster.GetRasterBand(1)
 
     LOGGER.info('Distance Transform Phase 2')
 
-    cdef double current_time, last_time
-    last_time = time.time()
-
-    s_array = numpy.empty(n_cols, dtype=numpy.int64)
-    t_array = numpy.empty(n_cols, dtype=numpy.int64)
+    s_array = numpy.empty(n_cols, dtype=numpy.int32)
+    t_array = numpy.empty(n_cols, dtype=numpy.int32)
 
     done = False
     block_ysize = g_band_blocksize[1]
+    g_block = numpy.empty((block_ysize, n_cols), dtype=numpy.int32)
+    dt = numpy.empty((block_ysize, n_cols), dtype=numpy.float32)
     for yoff in numpy.arange(0, n_rows, block_ysize):
-        print 'yoff', yoff
         win_ysize = block_ysize
         if yoff + win_ysize >= n_rows:
             win_ysize = n_rows - yoff
+            g_block = numpy.empty((win_ysize, n_cols), dtype=numpy.int32)
+            dt = numpy.empty((win_ysize, n_cols), dtype=numpy.float32)
             done = True
-        g_block = g_band.ReadAsArray(
-            xoff=0, yoff=yoff, win_xsize=n_cols, win_ysize=win_ysize)
-        dt = numpy.empty((win_ysize, n_cols), dtype=numpy.float64)
+        g_band.ReadAsArray(
+            xoff=0, yoff=yoff, win_xsize=n_cols, win_ysize=win_ysize,
+            buf_obj=g_block)
         for local_y_index in xrange(win_ysize):
             q_index = 0
             s_array[0] = 0
@@ -211,14 +197,12 @@ def distance_transform_edt(base_mask_raster_path_band, target_distance_path):
         if done:
             break
 
-    ########3
-
     target_distance_band.FlushCache()
     gdal.Dataset.__swig_destroy__(target_distance_raster)
     gdal.Dataset.__swig_destroy__(base_mask_raster)
     gdal.Dataset.__swig_destroy__(g_raster)
     try:
-        pass #os.remove(g_path)
+        os.remove(g_path)
     except OSError:
         LOGGER.warn("couldn't remove file %s" % g_path)
 
