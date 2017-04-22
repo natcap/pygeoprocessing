@@ -1428,7 +1428,7 @@ class PyGeoprocessing10(unittest.TestCase):
         import pygeoprocessing.geoprocessing
         # just test the first few numbers in the A051037 series
         regular_ints = [
-            1, 2, 3, 4, 5, 6, 8, 9, 10, 12, 15, 16, 18, 20, 24,  25, 27, 30,
+            1, 2, 3, 4, 5, 6, 8, 9, 10, 12, 15, 16, 18, 20, 24, 25, 27, 30,
             32, 36, 40, 45, 48, 50, 54, 60, 64, 72, 75, 80, 81, 90, 96, 100,
             108, 120, 125, 128, 135, 144, 150, 160, 162, 180, 192, 200, 216,
             225, 240, 243, 250, 256, 270, 288, 300, 320, 324, 360, 375, 384,
@@ -1438,3 +1438,30 @@ class PyGeoprocessing10(unittest.TestCase):
         for regular_int in regular_ints:
             next_int = pygeoprocessing.geoprocessing._next_regular(next_int+1)
             self.assertEqual(next_int, regular_int)
+
+    def test_flow_direction_d_inf(self):
+        import pygeoprocessing.routing
+
+        reference = sampledata.SRS_COLOMBIA
+        elevation_matrix = numpy.array(
+            [[3, 2, 1],
+             [3, 2, 1],
+             [3, 2, 1]])
+        elevation_path = os.path.join(self.workspace_dir, 'elevation.tif')
+        elevation_nodata = -1
+        pygeoprocessing.testing.create_raster_on_disk(
+            [elevation_matrix], reference.origin, reference.projection,
+            elevation_nodata, reference.pixel_size(30), filename=elevation_path)
+
+        target_flow_direction_path = os.path.join(
+            self.workspace_dir, 'target_flow_direction.tif')
+        pygeoprocessing.routing.flow_direction_d_inf(
+            (elevation_path, 1), target_flow_direction_path)
+
+        target_flow_direction_raster = gdal.Open(target_flow_direction_path)
+        target_flow_direction_band = target_flow_direction_raster.GetRasterBand(1)
+        result = target_flow_direction_band.ReadAsArray()
+        target_flow_direction_band = None
+        target_flow_direction_raster = None
+        expected_result = numpy.zeros((3, 3))
+        numpy.testing.assert_array_almost_equal(result, expected_result)

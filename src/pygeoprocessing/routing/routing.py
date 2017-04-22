@@ -303,67 +303,75 @@ def distance_to_stream(
         flow_direction_uri, stream_uri, distance_uri, factor_uri=factor_uri)
 
 
-def flow_direction_d_inf(dem_uri, flow_direction_uri):
-    """Calculate the D-infinity flow algorithm.
+def flow_direction_d_inf(
+        elevation_raster_path_band, target_flow_direction_path):
+    """Calculate flow direction per the deterministic infinity flow algorithm.
 
-    The output is a float raster whose values range from 0 to 2pi.
-        Algorithm from: Tarboton, "A new method for the determination of flow
-        directions and upslope areas in grid digital elevation models," Water
-        Resources Research, vol. 33, no. 2, pages 309 - 319, February 1997.
+    Given an elevation raster, compute the flow directions using the
+    deterministic-infinity flow algorithm from  Tarboton, "A new method
+    for the determination of flow directions and upslope areas in grid
+    digital elevation models," Water Resources Research, vol. 33, no. 2,
+    pages 309 - 319, February 1997.  Output is a directional raster whose
+    values are degrees radians, starting at 0 on the increasing x-axis and
+    increasing w.r.t. right hand rule.
 
-    Args:
-        dem_uri (string): (input) a uri to a single band GDAL Dataset with
-            elevation values
-        flow_direction_uri (string): (output) a uri to a single band GDAL
-            dataset with d infinity flow directions in it.
+    Parameters:
+        elevation_raster_path_band (tuple): path/band tuple to an elevation
+            raster.
+        target_flow_direction_path (string): output raster whose pixel values
+            are the flow direction from that pixel.
 
     Returns:
         None
     """
     # inital pass to define flow directions off the dem
     routing_core.flow_direction_inf(
-        dem_uri, flow_direction_uri)
+        elevation_raster_path_band, target_flow_direction_path)
 
-    flat_mask_uri = geoprocessing.temporary_filename()
-    labels_uri = geoprocessing.temporary_filename()
+    file_handle, flat_mask_raster_path = tempfile.mkstemp()
+    os.close(file_handle)
+    file_handle, labels_raster_path = tempfile.mkstemp()
+    os.close(file_handle)
 
     flats_exist = routing_core.resolve_flats(
-        dem_uri, flow_direction_uri, flat_mask_uri, labels_uri,
-        drain_off_edge=False)
+        elevation_raster_path_band, target_flow_direction_path,
+        flat_mask_raster_path, labels_raster_path, drain_off_edge=False)
 
     # Do the second pass with the flat mask and overwrite the flow direction
     # nodata that was not calculated on the first pass
     if flats_exist:
         LOGGER.debug('flats exist, calculating flow direction for them')
         routing_core.flow_direction_inf_masked_flow_dirs(
-                flat_mask_uri, labels_uri, flow_direction_uri)
+                flat_mask_raster_path, labels_raster_path, target_flow_direction_path)
         try:
-            os.remove(flat_mask_uri)
-            os.remove(labels_uri)
+            os.remove(flat_mask_raster_path)
+            os.remove(labels_raster_path)
         except OSError:
             pass  # just a file lock
-        flat_mask_uri = geoprocessing.temporary_filename()
-        labels_uri = geoprocessing.temporary_filename()
+        file_handle, flat_mask_raster_path = tempfile.mkstemp()
+        os.close(file_handle)
+        file_handle, labels_raster_path = tempfile.mkstemp()
+        os.close(file_handle)
 
         # check to make sure there isn't a flat only region that should drain
         # off the edge of the raster
         flats_exist = routing_core.resolve_flats(
-            dem_uri, flow_direction_uri, flat_mask_uri, labels_uri,
+            elevation_raster_path, target_flow_direction_path, flat_mask_raster_path, labels_raster_path,
             drain_off_edge=True)
         if flats_exist:
             LOGGER.info(
                 'flats exist on second pass, must be flat areas that abut the '
                 'raster edge')
             routing_core.flow_direction_inf_masked_flow_dirs(
-                    flat_mask_uri, labels_uri, flow_direction_uri)
+                    flat_mask_raster_path, labels_raster_path, target_flow_direction_path)
 
     else:
         LOGGER.debug('flats don\'t exist')
 
     # clean up temp files
     try:
-        os.remove(flat_mask_uri)
-        os.remove(labels_uri)
+        os.remove(flat_mask_raster_path)
+        os.remove(labels_raster_path)
     except OSError:
         pass  # just a file lock
 
