@@ -365,7 +365,7 @@ def align_and_resize_raster_stack(
 def calculate_raster_stats(raster_path):
     """Calculate and set min, max, stdev, and mean for all bands in raster.
 
-    Args:
+    Parameters:
         raster_path (string): a path to a GDAL raster raster that will be
             modified by having its band statistics set
 
@@ -444,9 +444,8 @@ def new_raster_from_base(
             passed to the gdal creation driver, overrides defaults
 
     Returns:
-        nothing
+        None
     """
-    # nodata might be a numpy type coming in, set it to native python type
     base_raster = gdal.Open(base_path)
     if n_rows is None:
         n_rows = base_raster.RasterYSize
@@ -916,7 +915,7 @@ def calculate_slope(
     Returns:
         None
     """
-    # call-through to cython implementation
+    # call-through to Cython implementation
     geoprocessing_core.calculate_slope(
         dem_raster_path_band, target_slope_path,
         gtiff_creation_options=gtiff_creation_options)
@@ -1315,7 +1314,7 @@ def rasterize(
     Burn the layer at `layer_index` in `vector_path` to an existing
     raster at `target_raster_path_band`.
 
-    Args:
+    Parameters:
         vector_path (string): filepath to vector to rasterize.
         target_raster_path (string): path to an existing raster to burn vector
             into.  Can have multiple bands.
@@ -1377,23 +1376,25 @@ def rasterize(
     gdal.Dataset.__swig_destroy__(raster)
 
 
-def calculate_disjoint_polygon_set(shapefile_uri):
+def calculate_disjoint_polygon_set(vector_path, layer_index=0):
     """Create a list of sets of polygons that don't overlap.
 
     Determining the minimal number of those sets is an np-complete problem so
     this is an approximation that builds up sets of maximal subsets.
 
-    Args:
-        shapefile_uri (string): a uri to an OGR shapefile to process
+    Parameters:
+        vector_path (string): a path to an OGR vector.
+        layer_index (int): index of underlying layer in `vector_path` to
+            calculate disjoint set. Defaults to 0.
 
     Returns:
-        subset_list (list): list of sets of FIDs from shapefile_uri
+        subset_list (list): list of sets of FIDs from vector_path
     """
-    shapefile = ogr.Open(shapefile_uri)
-    shapefile_layer = shapefile.GetLayer()
+    vector = ogr.Open(vector_path)
+    vector_layer = vector.GetLayer()
 
     poly_intersect_lookup = {}
-    for poly_feat in shapefile_layer:
+    for poly_feat in vector_layer:
         poly_wkt = poly_feat.GetGeometryRef().ExportToWkt()
         shapely_polygon = shapely.wkt.loads(poly_wkt)
         poly_fid = poly_feat.GetFID()
@@ -1402,7 +1403,8 @@ def calculate_disjoint_polygon_set(shapefile_uri):
             'prepared': shapely.prepared.prep(shapely_polygon),
             'intersects': set(),
         }
-    shapefile_layer.ResetReading()
+    vector_layer = None
+    vector = None
 
     for poly_fid in poly_intersect_lookup:
         for intersect_poly_fid in poly_intersect_lookup:
@@ -1430,7 +1432,7 @@ def calculate_disjoint_polygon_set(shapefile_uri):
                     # it intersects and can't be part of the maximal subset
                     break
             else:
-                # we made it through without an intersection, add poly_fid to
+                # made it through without an intersection, add poly_fid to
                 # the maximal set
                 maximal_set.add(poly_fid)
                 # remove that polygon and update the intersections
@@ -1954,7 +1956,7 @@ def _invoke_timed_callback(
         callback_period (float): time in seconds to pass until
             `callback_lambda` is invoked.
 
-    Return:
+    Returns:
         `reference_time` if `callback_lambda` not invoked, otherwise the time
         when `callback_lambda` was invoked.
     """
