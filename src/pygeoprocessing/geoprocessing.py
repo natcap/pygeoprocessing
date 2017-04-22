@@ -28,10 +28,6 @@ import shapely.prepared
 
 import geoprocessing_core
 
-AggregatedValues = collections.namedtuple(
-    'AggregatedValues',
-    'total pixel_mean hectare_mean n_pixels pixel_min pixel_max')
-
 LOGGER = logging.getLogger('pygeoprocessing.geoprocessing')
 _LOGGING_PERIOD = 5.0  # min 5.0 seconds per update log message for the module
 _DEFAULT_GTIFF_CREATION_OPTIONS = ('TILED=YES', 'BIGTIFF=IF_SAFER')
@@ -119,7 +115,7 @@ def raster_calculator(
         for path_band in base_raster_path_band_list]
     geospatial_info_set = set()
     for raster_info in raster_info_list:
-        # Rouding geotransform to 3 places to determine equality between
+        # Rounding geotransform to 3 places to determine equality between
         # geotransforms.  Otherwise identical GTs can detect as different
         # depending on what the GT passed through on the way here.
         rounded_geotransform = tuple([
