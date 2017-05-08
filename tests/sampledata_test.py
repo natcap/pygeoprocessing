@@ -84,7 +84,8 @@ class RasterCreationTest(unittest.TestCase):
         pixels = numpy.ones((4, 4), numpy.uint16)
         nodata = 0
         reference = SRS_COLOMBIA
-        filename = pygeoprocessing.temporary_filename()
+        file_handle, filename = tempfile.mkstemp()
+        os.close(file_handle)
 
         create_raster_on_disk([pixels], reference.origin,
                               reference.projection,
@@ -106,7 +107,8 @@ class RasterCreationTest(unittest.TestCase):
         pixels = numpy.ones((4, 4), numpy.uint16)
         nodata = 0
         reference = SRS_WILLAMETTE
-        filename = pygeoprocessing.temporary_filename()
+        file_handle, filename = tempfile.mkstemp()
+        os.close(file_handle)
 
         # Error raised when `pixels` is not a list.  List of 2D matrices
         # expected.
@@ -128,7 +130,8 @@ class RasterCreationTest(unittest.TestCase):
         ]
         nodata = 0
         reference = SRS_WILLAMETTE
-        filename = pygeoprocessing.temporary_filename()
+        file_handle, filename = tempfile.mkstemp()
+        os.close(file_handle)
 
         create_raster_on_disk(pixels, reference.origin,
                               reference.projection, nodata,
@@ -153,7 +156,8 @@ class RasterCreationTest(unittest.TestCase):
         ]
         nodata = 0
         reference = SRS_WILLAMETTE
-        filename = pygeoprocessing.temporary_filename()
+        file_handle, filename = tempfile.mkstemp()
+        os.close(file_handle)
         with self.assertRaises(TypeError):
             create_raster_on_disk(
                 pixels, reference.origin, reference.projection, nodata,
@@ -167,12 +171,14 @@ class RasterCreationTest(unittest.TestCase):
         pixels = [numpy.array([[0]])]
         nodata = None
         reference = SRS_WILLAMETTE
-        filename = pygeoprocessing.temporary_filename()
+        file_handle, filename = tempfile.mkstemp()
+        os.close(file_handle)
         create_raster_on_disk(
             pixels, reference.origin, reference.projection, nodata,
             reference.pixel_size(30), datatype='auto', filename=filename)
 
-        set_nodata_value = pygeoprocessing.get_raster_info(filename)['nodata']
+        set_nodata_value = (
+            pygeoprocessing.get_raster_info(filename)['nodata'][0])
         self.assertEqual(set_nodata_value, None)
 
     def test_raster_bad_matrix_iterable_input(self):
@@ -182,7 +188,8 @@ class RasterCreationTest(unittest.TestCase):
         pixels = set([1])
         nodata = None
         reference = SRS_WILLAMETTE
-        filename = pygeoprocessing.temporary_filename()
+        file_handle, filename = tempfile.mkstemp()
+        os.close(file_handle)
         with self.assertRaises(TypeError):
             create_raster_on_disk(
                 pixels, reference.origin, reference.projection, nodata,
@@ -196,7 +203,8 @@ class RasterCreationTest(unittest.TestCase):
                   numpy.array([[0]], dtype=numpy.float)]
         nodata = None
         reference = SRS_WILLAMETTE
-        filename = pygeoprocessing.temporary_filename()
+        file_handle, filename = tempfile.mkstemp()
+        os.close(file_handle)
         with self.assertRaises(TypeError):
             create_raster_on_disk(
                 pixels, reference.origin, reference.projection, nodata,
