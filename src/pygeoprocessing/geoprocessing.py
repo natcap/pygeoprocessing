@@ -1393,22 +1393,24 @@ def calculate_disjoint_polygon_set(vector_path, layer_index=0):
     for poly_feat in vector_layer:
         poly_wkt = poly_feat.GetGeometryRef().ExportToWkt()
         shapely_polygon = shapely.wkt.loads(poly_wkt)
+        poly_wkt = None
         poly_fid = poly_feat.GetFID()
         poly_intersect_lookup[poly_fid] = {
             'poly': shapely_polygon,
-            'prepared': shapely.prepared.prep(shapely_polygon),
             'intersects': set(),
         }
     vector_layer = None
     vector = None
 
     for poly_fid in poly_intersect_lookup:
+        polygon = shapely.prepared.prep(
+            poly_intersect_lookup[poly_fid]['poly'])
         for intersect_poly_fid in poly_intersect_lookup:
-            polygon = poly_intersect_lookup[poly_fid]['prepared']
-            if polygon.intersects(
+            if intersect_poly_fid == poly_fid or polygon.intersects(
                     poly_intersect_lookup[intersect_poly_fid]['poly']):
                 poly_intersect_lookup[poly_fid]['intersects'].add(
                     intersect_poly_fid)
+        polygon = None
 
     # Build maximal subsets
     subset_list = []

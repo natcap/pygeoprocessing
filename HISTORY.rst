@@ -39,6 +39,20 @@ Unreleased Changes
   IDs were not in increasing order starting with 0.
 * Removed "create_rat/create_rat_uri" and migrated it to
   natcap.invest.wind_energy; the only InVEST model that uses that function.
+* Fixing an issue with aggregate_raster_values that caused a crash if feature IDs were not in increasing order starting with 0.
+* Removed "create_rat/create_rat_uri" and migrated it to natcap.invest.wind_energy; the only InVEST model that uses that function.
+
+0.3.3 (2/9/2017)
+----------------
+* Fixing a memory leak with large polygons when calculating disjoint set.
+
+0.3.2 (1/24/2017)
+-----------------
+* Hotfix to patch an issue with watershed delineation packing that causes some field values to lose precision due to default field widths being set.
+
+0.3.1 (1/18/2017)
+-----------------
+* Hotfix patch to address an issue in watershed delineation that doesn't pack the target watershed output file.  Half the shapefile consists of features polygonalized around nodata values that are flagged for deletion, but not removed from the file.  This patch packs those features and returns a clean watershed.
 
 0.3.0 (10/21/2016)
 ------------------
