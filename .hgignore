@@ -11,3 +11,4 @@ Syntax: regexp
 \.coverage
 \.pyc$
 \.cpp$
+^dev_env
