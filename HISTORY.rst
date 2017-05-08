@@ -1,8 +1,8 @@
 Release History
 ===============
 
-0.4.0 (5/8/2017)
-----------------
+Unreleased Changes
+------------------
 * Non-backwards compatible refactor of core PyGeoprocessing geoprocessing
   pipeline. Includes:
     * Full test coverage for `pygeoprocessing.geoprocessing` module
@@ -33,6 +33,8 @@ Release History
       aggregated into `get_raster_info` and `get_vector_info` respectively.
     * Introducing `warp_raster` to wrap GDAL's `ReprojectImage` functionality
       that also works on bounding box clips.
+    * Removed the `temporary_filename()` paradigm.  Users should manage
+      temporary filenames directly.
 * Fixing an issue with aggregate_raster_values that caused a crash if feature
   IDs were not in increasing order starting with 0.
 * Removed "create_rat/create_rat_uri" and migrated it to

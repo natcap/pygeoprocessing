@@ -30,6 +30,7 @@ Here are some conventions of this model:
 
 import logging
 import os
+import tempfile
 
 from osgeo import gdal
 import numpy
@@ -325,8 +326,9 @@ def flow_direction_d_inf(
         None
     """
     # inital pass to define flow directions off the dem
+    # TODO: fix this raster/path band thing later
     routing_core.flow_direction_inf(
-        elevation_raster_path_band, target_flow_direction_path)
+        elevation_raster_path_band[0], target_flow_direction_path)
 
     file_handle, flat_mask_raster_path = tempfile.mkstemp()
     os.close(file_handle)
@@ -334,7 +336,7 @@ def flow_direction_d_inf(
     os.close(file_handle)
 
     flats_exist = routing_core.resolve_flats(
-        elevation_raster_path_band, target_flow_direction_path,
+        elevation_raster_path_band[0], target_flow_direction_path,
         flat_mask_raster_path, labels_raster_path, drain_off_edge=False)
 
     # Do the second pass with the flat mask and overwrite the flow direction
@@ -356,7 +358,7 @@ def flow_direction_d_inf(
         # check to make sure there isn't a flat only region that should drain
         # off the edge of the raster
         flats_exist = routing_core.resolve_flats(
-            elevation_raster_path, target_flow_direction_path, flat_mask_raster_path, labels_raster_path,
+            elevation_raster_path_band[0], target_flow_direction_path, flat_mask_raster_path, labels_raster_path,
             drain_off_edge=True)
         if flats_exist:
             LOGGER.info(

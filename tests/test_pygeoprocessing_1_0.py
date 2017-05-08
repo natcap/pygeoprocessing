@@ -1438,30 +1438,3 @@ class PyGeoprocessing10(unittest.TestCase):
         for regular_int in regular_ints:
             next_int = pygeoprocessing.geoprocessing._next_regular(next_int+1)
             self.assertEqual(next_int, regular_int)
-
-    def test_flow_direction_d_inf(self):
-        import pygeoprocessing.routing
-
-        reference = sampledata.SRS_COLOMBIA
-        elevation_matrix = numpy.array(
-            [[3, 2, 1],
-             [3, 2, 1],
-             [3, 2, 1]])
-        elevation_path = os.path.join(self.workspace_dir, 'elevation.tif')
-        elevation_nodata = -1
-        pygeoprocessing.testing.create_raster_on_disk(
-            [elevation_matrix], reference.origin, reference.projection,
-            elevation_nodata, reference.pixel_size(30), filename=elevation_path)
-
-        target_flow_direction_path = os.path.join(
-            self.workspace_dir, 'target_flow_direction.tif')
-        pygeoprocessing.routing.flow_direction_d_inf(
-            (elevation_path, 1), target_flow_direction_path)
-
-        target_flow_direction_raster = gdal.Open(target_flow_direction_path)
-        target_flow_direction_band = target_flow_direction_raster.GetRasterBand(1)
-        result = target_flow_direction_band.ReadAsArray()
-        target_flow_direction_band = None
-        target_flow_direction_raster = None
-        expected_result = numpy.zeros((3, 3))
-        numpy.testing.assert_array_almost_equal(result, expected_result)
