@@ -290,7 +290,8 @@ def align_and_resize_raster_stack(
     float_re = r'[-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?'
     # regular expression to match a float
     if bounding_box_mode not in ["union", "intersection"] and not re.match(
-            r'bb=\[%s,%s,%s,%s\]' % ((float_re,)*4), bounding_box_mode):
+            r'bb=\[[ ]*%s,[ ]*%s,[ ]*%s,[ ]*%s[ ]*\]' % (
+                (float_re,)*4), bounding_box_mode):
         raise ValueError("Unknown bounding_box_mode %s" % (
             str(bounding_box_mode)))
 
@@ -312,7 +313,8 @@ def align_and_resize_raster_stack(
 
     # get the literal or intersecting/unioned bounding box
     bb_match = re.match(
-        r'bb=\[(%s),(%s),(%s),(%s)\]' % ((float_re,)*4), bounding_box_mode)
+        r'bb=\[[ ]*(%s),[ ]*(%s),[ ]*(%s),[ ]*(%s)\]' % (
+            (float_re,)*4), bounding_box_mode)
     if bb_match:
         target_bounding_box = [float(x) for x in bb_match.groups()]
     else:
