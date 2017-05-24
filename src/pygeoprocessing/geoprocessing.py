@@ -36,6 +36,7 @@ _LARGEST_ITERBLOCK = 2**20  # largest block for iterblocks to read in cells
 
 # map gdal types to numpy equivalent
 _GDAL_TYPE_TO_NUMPY_LOOKUP = {
+    gdal.GDT_Byte: numpy.int8,
     gdal.GDT_Int16: numpy.int16,
     gdal.GDT_Int32: numpy.int32,
     gdal.GDT_UInt16: numpy.uint16,
@@ -98,7 +99,7 @@ def raster_calculator(
     # It's a common error to not pass in path/band tuples, so check for that
     # and report error if so
     bad_raster_path_list = False
-    if isinstance(base_raster_path_band_list, (list, tuple)):
+    if not isinstance(base_raster_path_band_list, (list, tuple)):
         bad_raster_path_list = True
     else:
         for value in base_raster_path_band_list:
