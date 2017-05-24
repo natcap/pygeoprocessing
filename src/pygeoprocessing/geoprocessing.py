@@ -1,4 +1,5 @@
 """A collection of GDAL dataset and raster utilities."""
+import types
 import logging
 import os
 import shutil
@@ -94,6 +95,29 @@ def raster_calculator(
     Raises:
         ValueError: invalid input provided
     """
+    # It's a common error to not pass in path/band tuples, so check for that
+    # and report error if so
+    bad_raster_path_list = False
+    if isinstance(base_raster_path_band_list, (list, tuple)):
+        bad_raster_path_list = True
+    else:
+        for value in base_raster_path_band_list:
+            if not isinstance(value, (list, tuple)):
+                bad_raster_path_list = True
+            elif len(value) != 2:
+                bad_raster_path_list = True
+            elif not isinstance(value[0], types.StringTypes):
+                bad_raster_path_list = True
+            elif not isinstance(value[1], int):
+                bad_raster_path_list = True
+            if bad_raster_path_list:
+                break
+    if bad_raster_path_list:
+        raise ValueError(
+            "Expected a list of path / integer band tuples for "
+            "`base_raster_path_band_list`, instead got: %s" %
+            base_raster_path_band_list)
+
     not_found_paths = []
     for path, _ in base_raster_path_band_list:
         if not os.path.exists(path):
