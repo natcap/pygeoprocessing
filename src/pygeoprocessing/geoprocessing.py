@@ -2073,7 +2073,8 @@ def _make_logger_callback(message):
 
     Returns:
         Function with signature:
-            logger_callback(df_complete, psz_message, p_progress_arg)"""
+            logger_callback(df_complete, psz_message, p_progress_arg)
+    """
     def logger_callback(df_complete, psz_message, p_progress_arg):
         """The argument names come from the GDAL API for callbacks."""
         try:

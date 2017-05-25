@@ -21,7 +21,13 @@ _DEFAULT_GTIFF_CREATION_OPTIONS = ('TILED=YES', 'BIGTIFF=IF_SAFER')
 
 LOGGER = logging.getLogger('geoprocessing_core')
 
+cdef long long _f(long long x, long long i, long long gi):
+    return (x-i)*(x-i) + gi*gi
+
 @cython.cdivision(True)
+cdef long long _sep(long long i, long long u, long long gu, long long gi):
+    return (u*u - i*i + gu*gu - gi*gi) / (2*(u-i))
+
 @cython.boundscheck(False)
 @cython.wraparound(False)
 def distance_transform_edt(base_mask_raster_path_band, target_distance_path):
@@ -46,7 +52,7 @@ def distance_transform_edt(base_mask_raster_path_band, target_distance_path):
     cdef numpy.ndarray[numpy.int32_t, ndim=1] s_array
     cdef numpy.ndarray[numpy.int32_t, ndim=1] t_array
     cdef numpy.ndarray[numpy.float32_t, ndim=2] dt
-    cdef numpy.ndarray[numpy.int32_t, ndim=2] mask_block
+    cdef numpy.ndarray[numpy.int8_t, ndim=2] mask_block
 
     file_handle, base_mask_path = tempfile.mkstemp()
     os.close(file_handle)
@@ -58,7 +64,7 @@ def distance_transform_edt(base_mask_raster_path_band, target_distance_path):
 
     def _mask_op(base_array):
         """Convert base_array to 1 if >0, 0 if == 0 or nodata."""
-        result = numpy.empty(base_array.shape, dtype=numpy.int8)
+        result = numpy.empty(base_array.shape, dtype=numpy.int16)
         result[:] = g_nodata
         valid_mask = base_array != base_nodata
         result[valid_mask] = base_array[valid_mask] != 0
@@ -66,7 +72,7 @@ def distance_transform_edt(base_mask_raster_path_band, target_distance_path):
 
     pygeoprocessing.raster_calculator(
         [base_mask_raster_path_band], _mask_op, base_mask_path,
-        gdal.GDT_Int32, g_nodata, calc_raster_stats=False)
+        gdal.GDT_Byte, g_nodata, calc_raster_stats=False)
 
     base_mask_raster = gdal.Open(base_mask_path)
     base_mask_band = base_mask_raster.GetRasterBand(1)
@@ -92,13 +98,13 @@ def distance_transform_edt(base_mask_raster_path_band, target_distance_path):
     # scan 1
     done = False
     block_xsize = raster_info['block_size'][0]
-    mask_block = numpy.empty((n_rows, block_xsize), dtype=numpy.int32)
+    mask_block = numpy.empty((n_rows, block_xsize), dtype=numpy.int8)
     g_block = numpy.empty((n_rows, block_xsize), dtype=numpy.int32)
     for xoff in numpy.arange(0, n_cols, block_xsize):
         win_xsize = block_xsize
         if xoff + win_xsize > n_cols:
             win_xsize = n_cols - xoff
-            mask_block = numpy.empty((n_rows, win_xsize), dtype=numpy.int32)
+            mask_block = numpy.empty((n_rows, win_xsize), dtype=numpy.int8)
             g_block = numpy.empty((n_rows, win_xsize), dtype=numpy.int32)
             done = True
         base_mask_band.ReadAsArray(
@@ -188,8 +194,9 @@ def distance_transform_edt(base_mask_raster_path_band, target_distance_path):
                         gsq = g_block[local_y_index, sq]**2
                         tq = t_array[q_index]
 
-        dt = numpy.sqrt(dt)
-        dt[g_block == g_nodata] = output_nodata
+        valid_mask = g_block != g_nodata
+        dt[valid_mask] = numpy.sqrt(dt[valid_mask])
+        dt[~valid_mask] = output_nodata
         target_distance_band.WriteArray(dt, xoff=0, yoff=yoff)
 
         # we do this in the case where the blocksize is many times larger than
