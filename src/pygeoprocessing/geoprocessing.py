@@ -36,6 +36,7 @@ _LARGEST_ITERBLOCK = 2**20  # largest block for iterblocks to read in cells
 
 # map gdal types to numpy equivalent
 _GDAL_TYPE_TO_NUMPY_LOOKUP = {
+    gdal.GDT_Byte: numpy.int8,
     gdal.GDT_Int16: numpy.int16,
     gdal.GDT_Int32: numpy.int32,
     gdal.GDT_UInt16: numpy.uint16,
