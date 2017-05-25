@@ -99,7 +99,7 @@ def raster_calculator(
     # It's a common error to not pass in path/band tuples, so check for that
     # and report error if so
     bad_raster_path_list = False
-    if isinstance(base_raster_path_band_list, (list, tuple)):
+    if not isinstance(base_raster_path_band_list, (list, tuple)):
         bad_raster_path_list = True
     else:
         for value in base_raster_path_band_list:
