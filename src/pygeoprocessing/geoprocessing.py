@@ -114,6 +114,7 @@ def raster_calculator(
             if bad_raster_path_list:
                 break
     if bad_raster_path_list:
+        # TODO: base_raster_path_band_list could contain UTF-8 chars
         raise ValueError(
             "Expected a list of path / integer band tuples for "
             "`base_raster_path_band_list`, instead got: %s" %
@@ -125,11 +126,13 @@ def raster_calculator(
             not_found_paths.append(path)
 
     if len(not_found_paths) != 0:
+        # TODO: not_found_paths could contain UTF-8 chars
         raise exceptions.ValueError(
             "The following files were expected but do not exist on the "
             "filesystem: " + str(not_found_paths))
 
     if target_raster_path in [x[0] for x in base_raster_path_band_list]:
+        # TODO: base_raster_path_band_list could contain UTF-8 chars
         raise ValueError(
             "%s is used as a target path, but it is also in the base input "
             "path list %s" % (
@@ -312,6 +315,13 @@ def align_and_resize_raster_stack(
             "resample_method_list must be the same length "
             " current lengths are %s" % (str(list_lengths)))
 
+    # TODO: consider just passing the bbox?
+    # JD: while I kind of like the consistency of always having the bounding
+    # box mode be a string, it also feels a little odd to have to go through
+    # the extra step of formatting the 'bb=%s' string.  Other pgp geoprocessing
+    # functions just take certain params verbatim from get_raster_info and
+    # get_vector_info, and it felt most natural and intuitive to do so when
+    # providing this parameter as well.
     float_re = r'[-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?'
     # regular expression to match a float
     if bounding_box_mode not in ["union", "intersection"] and not re.match(
@@ -443,6 +453,11 @@ def new_raster_from_base(
         base_path, target_path, datatype, nodata_list, n_bands=1,
         fill_value_list=None, n_rows=None, n_cols=None,
         gtiff_creation_options=_DEFAULT_GTIFF_CREATION_OPTIONS):
+    # TODO: Description still talks about opening up dataset before passing on
+    # TODO: OK to have None as a nodata value, but what happens when this is
+    # the case?  Is the nodata not set?  Is None the nodata value?
+    # TODO: number of bands could be inferred from nodata_list, since it's a
+    # required parameter.
     """Create new geotiff by coping spatial reference/geotransform of base.
 
     A wrapper for the function new_raster_from_base that opens up
@@ -492,6 +507,7 @@ def new_raster_from_base(
             'PIXELTYPE=' + metadata['PIXELTYPE'])
 
     # first, should it be tiled?  yes if it's not striped
+    # TODO: Wouldn't this break with 256x512 raster with blocksize=256x256?
     if block_size[0] != n_cols:
         local_gtiff_creation_options.extend([
             'TILED=YES',
@@ -499,6 +515,8 @@ def new_raster_from_base(
             'BLOCKYSIZE=%d' % block_size[1],
             'BIGTIFF=IF_SAFER'])
 
+    # TODO: We'll need to revisit how to handle paths.  User could provide any
+    # encoding, and GDAL needs it to be either ASCII or UTF-8
     target_raster = driver.Create(
         target_path.encode('utf-8'), n_cols, n_rows, n_bands, datatype,
         options=gtiff_creation_options)
@@ -944,6 +962,7 @@ def calculate_slope(
         gtiff_creation_options=gtiff_creation_options)
 
 
+# TODO: bbox returned differs from the documentation.
 def get_vector_info(vector_path, layer_index=0):
     """Get information about an OGR vector (datasource).
 
