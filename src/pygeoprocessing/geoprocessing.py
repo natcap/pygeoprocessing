@@ -544,6 +544,8 @@ def new_raster_from_base(
     target_raster = None
 
 
+# TODO: should `source` or `base` be the prefix for spatial inputs throughout
+# pygeoprocessing?
 def create_raster_from_vector_extents(
         source_vector_path, target_raster_path, target_pixel_size,
         target_pixel_type, target_nodata, fill_value=None,
@@ -693,6 +695,9 @@ def interpolate_points(
         band.WriteArray(raster_out_array, offsets['xoff'], offsets['yoff'])
 
 
+# TODO: base_raster is supposed to be projected in meters, but this is never
+# checked. If this isn't an exception-worthy issue when it arises, what about a
+# LOGGER.warning or warnings.warn instead?
 def zonal_statistics(
         base_raster_path_band, aggregating_vector_path,
         aggregate_field_name, aggregate_layer_name=None,
@@ -730,9 +735,9 @@ def zonal_statistics(
             in the DataSource will be used as retrieved by `.GetLayer()`.
             Note: it is normal and expected to set this field at None if the
             aggregating shapefile is a single layer as many shapefiles,
-            including the common 'ESRI Shapefile' are.
+            including the common 'ESRI Shapefile', are.
         ignore_nodata: if true, then nodata pixels are not accounted for when
-            calculating min, max, count, or mean.  However the value of
+            calculating min, max, count, or mean.  However, the value of
             `nodata_count` will always be the number of nodata pixels
             aggregated under the polygon.
         all_touched (boolean): if true will account for any pixel whose
@@ -916,6 +921,16 @@ def zonal_statistics(
     return aggregate_stats
 
 
+# TODO: I like the specificity of including 'DEM' in the parameter, but it does
+# deviate from the rest of PGP.  Is the plan to use 'dem' as an input prefix
+# for other DEM-specific functionality such as routing?
+# TODO: This function is kind of interesting, since it's just a callthrough to
+# geoprocessing_core.calculate_slope.  The docstring is the same as well.  It
+# makes me wonder if we can just expose geoprocessing_core.calculate_slope as
+# calculate_slope and then get rid of the duplication.  Offhand, I think this
+# should be possible since geoprocessing_core.calculate_slope is a python
+# function.  Do you know if there's
+# a reason (technical or otherwise) to keep this callthrough?
 def calculate_slope(
         dem_raster_path_band, target_slope_path,
         gtiff_creation_options=_DEFAULT_GTIFF_CREATION_OPTIONS):
@@ -962,7 +977,7 @@ def calculate_slope(
         gtiff_creation_options=gtiff_creation_options)
 
 
-# TODO: bbox returned differs from the documentation.
+# TODO: bbox returned differs from the docstring.
 def get_vector_info(vector_path, layer_index=0):
     """Get information about an OGR vector (datasource).
 
@@ -992,7 +1007,7 @@ def get_vector_info(vector_path, layer_index=0):
     vector_properties['bounding_box'] = [layer_bb[i] for i in [0, 2, 1, 3]]
     return vector_properties
 
-
+# TODO: bbox as described differs from bbox returned.
 def get_raster_info(raster_path):
     """Get information about a GDAL raster (dataset).
 
