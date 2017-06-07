@@ -56,6 +56,8 @@ _RESAMPLE_DICT = {
     }
 
 
+# TODO: Make it easier to handle masking by a vector?  Is this a common need
+# for geoprocessing?
 def raster_calculator(
         base_raster_path_band_list, local_op, target_raster_path,
         datatype_target, nodata_target,
@@ -698,6 +700,8 @@ def interpolate_points(
 # TODO: base_raster is supposed to be projected in meters, but this is never
 # checked. If this isn't an exception-worthy issue when it arises, what about a
 # LOGGER.warning or warnings.warn instead?
+# TODO: update 'aggregating_vector_path' to 'aggregate_vector_path'?  Feels
+# more grammatically consistent with other names.
 def zonal_statistics(
         base_raster_path_band, aggregating_vector_path,
         aggregate_field_name, aggregate_layer_name=None,
@@ -771,6 +775,12 @@ def zonal_statistics(
 
     aggregate_field_def = aggregate_layer_defn.GetFieldDefn(
         aggregate_field_index)
+    # TODO: consider supporting aggregation by non-integer fields?
+    # I have a vector of yosemite that doesn't happen to have any integer
+    # fields in it.  I could add an integer field, but since there are several
+    # polygons that can be uniquely identified by a non-integer field, it would
+    # be convenient to be able to get the results back by one of these existing
+    # fields.
     if aggregate_field_def.GetTypeName() != 'Integer':
         raise TypeError(
             'Can only aggregate by integer based fields, requested '
