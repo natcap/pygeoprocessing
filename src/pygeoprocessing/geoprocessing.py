@@ -30,6 +30,7 @@ import shapely.prepared
 import geoprocessing_core
 
 LOGGER = logging.getLogger('pygeoprocessing.geoprocessing')
+LOGGER.addHandler(logging.handlers.NullHandler())  # silence logging by default
 _LOGGING_PERIOD = 5.0  # min 5.0 seconds per update log message for the module
 _DEFAULT_GTIFF_CREATION_OPTIONS = ('TILED=YES', 'BIGTIFF=IF_SAFER')
 _LARGEST_ITERBLOCK = 2**20  # largest block for iterblocks to read in cells
@@ -702,6 +703,10 @@ def interpolate_points(
 # LOGGER.warning or warnings.warn instead?
 # TODO: update 'aggregating_vector_path' to 'aggregate_vector_path'?  Feels
 # more grammatically consistent with other names.
+# TODO: verify that `base_raster_path_band` is a (path, band) tuple?
+# Accidentally passed a string, and got an error that wouldn't make sense
+# without having the GDAL errors visible.  Band number validation would help as
+# well, or at least have GDAL warnings logged as warnings.
 def zonal_statistics(
         base_raster_path_band, aggregating_vector_path,
         aggregate_field_name, aggregate_layer_name=None,
@@ -1184,6 +1189,15 @@ def reproject_vector(
     base_vector = None
 
 
+# TODO: Change exception flag to boolean?
+# It seems a little strange to have to specify one of two strings, when it
+# could be replaced by a bool.  Maybe the param name could be
+# 'values_required', which defaults to True?  Are there plans for other
+# exception flags?
+# TODO: if I pass value_map={}; exception_flag='none', I get a cryptic error.
+# A more likely scenario is that someone passes a value_map that is missing a
+# value, but the entire block is pixels of that missing value.  The result is:
+# IndexError: index 1 is out of bounds for axis 1 with size 1
 def reclassify_raster(
         base_raster_path_band, value_map, target_raster_path, target_datatype,
         target_nodata, exception_flag='values_required'):
