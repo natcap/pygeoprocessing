@@ -1,6 +1,7 @@
 """A collection of GDAL dataset and raster utilities."""
 import types
 import logging
+import logging.handlers
 import os
 import shutil
 import functools
@@ -30,7 +31,6 @@ import shapely.prepared
 import geoprocessing_core
 
 LOGGER = logging.getLogger('pygeoprocessing.geoprocessing')
-LOGGER.addHandler(logging.handlers.NullHandler())  # silence logging by default
 _LOGGING_PERIOD = 5.0  # min 5.0 seconds per update log message for the module
 _DEFAULT_GTIFF_CREATION_OPTIONS = ('TILED=YES', 'BIGTIFF=IF_SAFER')
 _LARGEST_ITERBLOCK = 2**20  # largest block for iterblocks to read in cells
@@ -451,13 +451,9 @@ def calculate_raster_stats(raster_path):
 
 
 def new_raster_from_base(
-        base_path, target_path, datatype, nodata_list, n_bands=1,
+        base_path, target_path, datatype, band_nodata_list,
         fill_value_list=None, n_rows=None, n_cols=None,
         gtiff_creation_options=_DEFAULT_GTIFF_CREATION_OPTIONS):
-    # TODO: OK to have None as a nodata value, but what happens when this is
-    # the case?  Is the nodata not set?  Is None the nodata value?
-    # TODO: number of bands could be inferred from nodata_list, since it's a
-    # required parameter.
     """Create new GeoTIFF by coping spatial reference/geotransform of base.
 
     A convenience function to simplify the creation of a new raster from the
@@ -474,9 +470,10 @@ def new_raster_from_base(
             gdal.GDT_Float32.  See the following header file for supported
             pixel types:
             http://www.gdal.org/gdal_8h.html#22e22ce0a55036a96f652765793fb7a4
-        nodata_list (list): list of nodata values, one for each band, to set
-            on target raster; okay to have 'None' values.
-        n_bands (int): number of bands for the target raster.
+        band_nodata_list (list): list of nodata values, one for each band, to
+            set on target raster.  If value is 'None' the nodata value is not
+            set for that band.  The number of target bands is inferred from
+            the length of this list.
         fill_value_list (list): list of values to fill each band with. If None,
             no filling is done.
         n_rows (int): if not None, defines the number of target raster rows.
@@ -521,6 +518,7 @@ def new_raster_from_base(
 
     # TODO: We'll need to revisit how to handle paths.  User could provide any
     # encoding, and GDAL needs it to be either ASCII or UTF-8
+    n_bands = len(band_nodata_list)
     target_raster = driver.Create(
         target_path.encode('utf-8'), n_cols, n_rows, n_bands, datatype,
         options=gtiff_creation_options)
@@ -528,7 +526,7 @@ def new_raster_from_base(
     target_raster.SetGeoTransform(base_raster.GetGeoTransform())
     base_raster = None
 
-    for index, nodata_value in enumerate(nodata_list):
+    for index, nodata_value in enumerate(band_nodata_list):
         if nodata_value is None:
             continue
         target_band = target_raster.GetRasterBand(index + 1)
@@ -844,7 +842,7 @@ def zonal_statistics(
     aggregate_id_nodata = _find_int_not_in_array(aggregate_ids)
     new_raster_from_base(
         clipped_raster_path, aggregate_id_raster_path, gdal.GDT_Int32,
-        [aggregate_id_nodata], n_bands=1)
+        [aggregate_id_nodata])
     aggregate_id_raster = gdal.Open(aggregate_id_raster_path, gdal.GA_Update)
     aggregate_stats = {}
     for polygon_set in minimal_polygon_sets:
@@ -1661,7 +1659,7 @@ def convolve_2d(
     target_nodata = numpy.finfo(numpy.float32).min
     new_raster_from_base(
         signal_path_band[0], target_path, target_datatype, [target_nodata],
-        n_bands=1, fill_value_list=[0],
+        fill_value_list=[0],
         gtiff_creation_options=gtiff_creation_options)
 
     signal_raster_info = get_raster_info(signal_path_band[0])
