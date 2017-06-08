@@ -492,29 +492,40 @@ def new_raster_from_base(
         n_cols = base_raster.RasterXSize
     driver = gdal.GetDriverByName('GTiff')
 
-    base_band = base_raster.GetRasterBand(1)
-    block_size = base_band.GetBlockSize()
-    metadata = base_band.GetMetadata('IMAGE_STRUCTURE')
-
     local_gtiff_creation_options = list(gtiff_creation_options)
     # PIXELTYPE is sometimes used to define signed vs. unsigned bytes and
     # the only place that is stored is in the IMAGE_STRUCTURE metadata
-    # copy it over if it exists; get this info from the first band since
+    # copy it over if it exists and it not already defined by the input
+    # creation options. It's okay to get this info from the first band since
     # all bands have the same datatype
+    base_band = base_raster.GetRasterBand(1)
     metadata = base_band.GetMetadata('IMAGE_STRUCTURE')
-    base_band = None
-    if 'PIXELTYPE' in metadata:
+    if 'PIXELTYPE' in metadata and not any(
+            ['PIXELTYPE' in option for option in
+             local_gtiff_creation_options]):
         local_gtiff_creation_options.append(
             'PIXELTYPE=' + metadata['PIXELTYPE'])
 
-    # first, should it be tiled?  yes if it's not striped
-    # TODO: Wouldn't this break with 256x512 raster with blocksize=256x256?
-    if block_size[0] != n_cols:
+    block_size = base_band.GetBlockSize()
+    # It's not clear how or IF we can determine if the output should be
+    # striped or tiled.  Here we leave it up to the default inputs or if its
+    # obviously not striped we tile.
+    if not any(
+            ['TILED' in option for option in local_gtiff_creation_options]):
+        # TILED not set, so lets try to set it to a reasonable value
+        if block_size[0] != n_cols:
+            # if x block is not the width of the raster it *must* be tiled
+            # otherwise okay if it's striped or tiled
+            local_gtiff_creation_options.append('TILED=YES')
+
+    if not any(
+            ['BLOCK' in option for option in local_gtiff_creation_options]):
+        # not defined, so lets copy what we know from the current raster
         local_gtiff_creation_options.extend([
-            'TILED=YES',
             'BLOCKXSIZE=%d' % block_size[0],
-            'BLOCKYSIZE=%d' % block_size[1],
-            'BIGTIFF=IF_SAFER'])
+            'BLOCKYSIZE=%d' % block_size[1]])
+
+    base_band = None
 
     # TODO: We'll need to revisit how to handle paths.  User could provide any
     # encoding, and GDAL needs it to be either ASCII or UTF-8
