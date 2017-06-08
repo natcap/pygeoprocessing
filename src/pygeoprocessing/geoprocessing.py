@@ -706,9 +706,6 @@ def interpolate_points(
         band.WriteArray(raster_out_array, offsets['xoff'], offsets['yoff'])
 
 
-# TODO: base_raster is supposed to be projected in meters, but this is never
-# checked. If this isn't an exception-worthy issue when it arises, what about a
-# LOGGER.warning or warnings.warn instead?
 # TODO: update 'aggregating_vector_path' to 'aggregate_vector_path'?  Feels
 # more grammatically consistent with other names.
 # TODO: verify that `base_raster_path_band` is a (path, band) tuple?
@@ -734,9 +731,7 @@ def zonal_statistics(
 
     Parameters:
         base_raster_path_band (tuple): a str/int tuple indicating the path to
-            the base raster and the band number of that raster to analyze. In
-            order for hectare mean values to be accurate, this raster must be
-            projected in meter units.
+            the base raster and the band index of that raster to analyze.
         aggregating_vector_path (string): a path to an ogr compatable polygon
             vector whose geometric features indicate the areas over
             `base_raster_path_band` to calculate statistics over.
