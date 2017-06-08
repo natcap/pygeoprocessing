@@ -764,6 +764,19 @@ def zonal_statistics(
         of 'min' 'max' 'sum' 'mean' 'count' and 'nodata_count'.  Example:
         {0: {'min': 0, 'max': 1, 'mean': 0.5, 'count': 2, 'nodata_count': 1}}
     """
+    bad_base_raster_path_band_value = False
+    if not isinstance(base_raster_path_band, (list, tuple)):
+        bad_base_raster_path_band_value = True
+    elif len(base_raster_path_band) != 2:
+        bad_base_raster_path_band_value = True
+    elif not isinstance(base_raster_path_band[0], types.StringTypes):
+        bad_base_raster_path_band_value = True
+    elif not isinstance(base_raster_path_band[1], int):
+        bad_base_raster_path_band_value = True
+    if bad_base_raster_path_band_value:
+        raise ValueError(
+            "`base_raster_path_band` not formatted as expected.  Expects "
+            "(path, band_index), recieved %s" + base_raster_path_band)
     aggregate_vector = ogr.Open(aggregate_vector_path)
     if aggregate_layer_name is not None:
         aggregate_layer = aggregate_vector.GetLayerByName(
