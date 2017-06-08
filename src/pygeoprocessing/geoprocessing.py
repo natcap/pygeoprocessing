@@ -57,8 +57,6 @@ _RESAMPLE_DICT = {
     }
 
 
-# TODO: Make it easier to handle masking by a vector?  Is this a common need
-# for geoprocessing?
 def raster_calculator(
         base_raster_path_band_list, local_op, target_raster_path,
         datatype_target, nodata_target,
