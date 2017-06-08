@@ -706,14 +706,12 @@ def interpolate_points(
         band.WriteArray(raster_out_array, offsets['xoff'], offsets['yoff'])
 
 
-# TODO: update 'aggregating_vector_path' to 'aggregate_vector_path'?  Feels
-# more grammatically consistent with other names.
 # TODO: verify that `base_raster_path_band` is a (path, band) tuple?
 # Accidentally passed a string, and got an error that wouldn't make sense
 # without having the GDAL errors visible.  Band number validation would help as
 # well, or at least have GDAL warnings logged as warnings.
 def zonal_statistics(
-        base_raster_path_band, aggregating_vector_path,
+        base_raster_path_band, aggregate_vector_path,
         aggregate_field_name, aggregate_layer_name=None,
         ignore_nodata=True, all_touched=False, polygons_might_overlap=True):
     """Collect stats on pixel values which lie within polygons.
@@ -724,7 +722,7 @@ def zonal_statistics(
     handle cases where polygons overlap, which is notable since zonal stats
     functions provided by ArcGIS or QGIS usually incorrectly aggregate
     these areas.  Overlap avoidance is achieved by calculating a minimal set
-    of disjoint non-overlapping polygons from `aggregating_vector_path` and
+    of disjoint non-overlapping polygons from `aggregate_vector_path` and
     rasterizing each set separately during the raster aggregation phase.  That
     set of rasters are then used to calculate the zonal stats of all polygons
     without aggregating vector overlap.
@@ -732,10 +730,10 @@ def zonal_statistics(
     Parameters:
         base_raster_path_band (tuple): a str/int tuple indicating the path to
             the base raster and the band index of that raster to analyze.
-        aggregating_vector_path (string): a path to an ogr compatable polygon
+        aggregate_vector_path (string): a path to an ogr compatable polygon
             vector whose geometric features indicate the areas over
             `base_raster_path_band` to calculate statistics over.
-        aggregate_field_name (string): field name in `aggregating_vector_path`
+        aggregate_field_name (string): field name in `aggregate_vector_path`
             that represents an identifying integer value for sets of polygons
             in the layer such as a unique integer ID per polygon.  Result of
             this function will be indexed by the values found in this field.
@@ -766,7 +764,7 @@ def zonal_statistics(
         of 'min' 'max' 'sum' 'mean' 'count' and 'nodata_count'.  Example:
         {0: {'min': 0, 'max': 1, 'mean': 0.5, 'count': 2, 'nodata_count': 1}}
     """
-    aggregate_vector = ogr.Open(aggregating_vector_path)
+    aggregate_vector = ogr.Open(aggregate_vector_path)
     if aggregate_layer_name is not None:
         aggregate_layer = aggregate_vector.GetLayerByName(
             aggregate_layer_name)
@@ -779,7 +777,7 @@ def zonal_statistics(
         # Raise exception if user provided a field that's not in vector
         raise ValueError(
             'Vector %s must have a field named %s' %
-            (aggregating_vector_path, aggregate_field_name))
+            (aggregate_vector_path, aggregate_field_name))
 
     aggregate_field_def = aggregate_layer_defn.GetFieldDefn(
         aggregate_field_index)
@@ -810,7 +808,7 @@ def zonal_statistics(
     align_and_resize_raster_stack(
         [base_raster_path_band[0]], [clipped_raster_path], ['nearest'],
         raster_info['pixel_size'], 'intersection',
-        base_vector_path_list=[aggregating_vector_path], raster_align_index=0)
+        base_vector_path_list=[aggregate_vector_path], raster_align_index=0)
     clipped_raster = gdal.Open(clipped_raster_path)
 
     # make a shapefile that non-overlapping layers can be added to
@@ -831,7 +829,7 @@ def zonal_statistics(
     # Loop over each polygon and aggregate
     if polygons_might_overlap:
         minimal_polygon_sets = calculate_disjoint_polygon_set(
-            aggregating_vector_path)
+            aggregate_vector_path)
     else:
         minimal_polygon_sets = [
             set([feat.GetFID() for feat in aggregate_layer])]
