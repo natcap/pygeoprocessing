@@ -454,15 +454,18 @@ def new_raster_from_base(
         base_path, target_path, datatype, nodata_list, n_bands=1,
         fill_value_list=None, n_rows=None, n_cols=None,
         gtiff_creation_options=_DEFAULT_GTIFF_CREATION_OPTIONS):
-    # TODO: Description still talks about opening up dataset before passing on
     # TODO: OK to have None as a nodata value, but what happens when this is
     # the case?  Is the nodata not set?  Is None the nodata value?
     # TODO: number of bands could be inferred from nodata_list, since it's a
     # required parameter.
-    """Create new geotiff by coping spatial reference/geotransform of base.
+    """Create new GeoTIFF by coping spatial reference/geotransform of base.
 
-    A wrapper for the function new_raster_from_base that opens up
-    the base_path before passing it to new_raster_from_base.
+    A convenience function to simplify the creation of a new raster from the
+    basis of an existing one.  Depending on the input mode, one can create
+    a new raster of the same dimensions, geotransform, and georeference as
+    the base.  Other options are provided to change the raster dimensions,
+    number of bands, nodata values, data type, and core GeoTIFF creation
+    options.
 
     Parameters:
         base_path (string): path to existing raster.
