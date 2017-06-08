@@ -557,16 +557,14 @@ def new_raster_from_base(
     target_raster = None
 
 
-# TODO: should `source` or `base` be the prefix for spatial inputs throughout
-# pygeoprocessing?
 def create_raster_from_vector_extents(
-        source_vector_path, target_raster_path, target_pixel_size,
+        base_vector_path, target_raster_path, target_pixel_size,
         target_pixel_type, target_nodata, fill_value=None,
         gtiff_creation_options=_DEFAULT_GTIFF_CREATION_OPTIONS):
     """Create a blank raster based on a vector file extent.
 
     Parameters:
-        source_vector_path (string): path to vector shapefile to base the
+        base_vector_path (string): path to vector shapefile to base the
             bounding box for the target raster.
         target_raster_path (string): path to location of generated geotiff;
             the upper left hand corner of this raster will be aligned with the
@@ -589,7 +587,7 @@ def create_raster_from_vector_extents(
     """
     # Determine the width and height of the tiff in pixels based on the
     # maximum size of the combined envelope of all the features
-    vector = ogr.Open(source_vector_path)
+    vector = ogr.Open(base_vector_path)
     shp_extent = None
     for layer in vector:
         for feature in layer:
@@ -653,15 +651,15 @@ def create_raster_from_vector_extents(
 
 
 def interpolate_points(
-        source_vector_path, vector_attribute_field, target_raster_path_band,
+        base_vector_path, vector_attribute_field, target_raster_path_band,
         interpolation_mode):
     """Interpolate point values onto an existing raster.
 
     Parameters:
-        source_vector_path (string): path to a shapefile that contains point
+        base_vector_path (string): path to a shapefile that contains point
             vector layers.
         vector_attribute_field (field): a string in the vector referenced at
-            `source_vector_path` that refers to a numeric value in the
+            `base_vector_path` that refers to a numeric value in the
             vector's attribute table.  This is the value that will be
             interpolated across the raster.
         target_raster_path_band (tuple): a path/band number tuple to an
@@ -674,7 +672,7 @@ def interpolate_points(
     Returns:
        None
     """
-    source_vector = ogr.Open(source_vector_path)
+    source_vector = ogr.Open(base_vector_path)
     point_list = []
     value_list = []
     for layer in source_vector:
