@@ -8,6 +8,7 @@ import logging
 import types
 
 from geoprocessing import *
+from geoprocessing_core import calculate_slope
 
 __all__ = []
 for attrname in dir(geoprocessing):

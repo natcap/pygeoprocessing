@@ -950,59 +950,6 @@ def zonal_statistics(
     return aggregate_stats
 
 
-# TODO: This function is kind of interesting, since it's just a callthrough to
-# geoprocessing_core.calculate_slope.  The docstring is the same as well.  It
-# makes me wonder if we can just expose geoprocessing_core.calculate_slope as
-# calculate_slope and then get rid of the duplication.  Offhand, I think this
-# should be possible since geoprocessing_core.calculate_slope is a python
-# function.  Do you know if there's
-# a reason (technical or otherwise) to keep this callthrough?
-def calculate_slope(
-        base_elevation_raster_path_band, target_slope_path,
-        gtiff_creation_options=_DEFAULT_GTIFF_CREATION_OPTIONS):
-    """Create a percent slope raster from DEM raster.
-
-    Base algorithm is from Zevenbergen & Thorne "Quantiative Analysis of Land
-    Surface Topgraphy" 1987 although it has been modified to include the
-    diagonal pixels by classic finite difference analysis.
-
-    For the following notation, we define each pixel's DEM value by a letter
-    with this spatial scheme:
-
-        abc
-        def
-        ghi
-
-    Then the slope at e is defined at ([dz/dx]^2 + [dz/dy]^2)^0.5
-
-    Where
-
-    [dz/dx] = ((c+2f+i)-(a+2d+g)/(8*x_cell_size)
-    [dz/dy] = ((g+2h+i)-(a+2b+c))/(8*y_cell_size)
-
-    In cases where a cell is nodata, we attempt to use the middle cell inline
-    with the direction of differentiation (either in x or y direction).  If
-    no inline pixel is defined, we use `e` and multiply the difference by
-    2^0.5 to account for the diagonal projection.
-
-    Parameters:
-        base_elevation_raster_path_band (string): a path/band tuple to a
-            raster of height values. (path_to_raster, band_index)
-        target_slope_path (string): path to target slope raster; will be a
-            32 bit float GeoTIFF of same size/projection as calculate slope
-            with units of percent slope.
-        gtiff_creation_options (list or tuple): list of strings that will be
-            passed as GDAL "dataset" creation options to the GTIFF driver.
-
-    Returns:
-        None
-    """
-    # call-through to Cython implementation
-    geoprocessing_core.calculate_slope(
-        base_elevation_raster_path_band, target_slope_path,
-        gtiff_creation_options=gtiff_creation_options)
-
-
 # TODO: bbox returned differs from the docstring.
 def get_vector_info(vector_path, layer_index=0):
     """Get information about an OGR vector (datasource).
