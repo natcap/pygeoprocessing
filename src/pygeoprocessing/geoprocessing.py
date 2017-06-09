@@ -118,7 +118,7 @@ def raster_calculator(
         raise ValueError(
             "Expected a list of path / integer band tuples for "
             "`base_raster_path_band_list`, instead got: %s" %
-            base_raster_path_band_list)
+            str(base_raster_path_band_list))
 
     not_found_paths = []
     for path, _ in base_raster_path_band_list:
@@ -278,10 +278,9 @@ def align_and_resize_raster_stack(
         target_pixel_size (tuple): the target raster's x and y pixel size
             example: [30, -30].
         bounding_box_mode (string): one of "union", "intersection", or
-            "bb=[minx,miny,maxx,maxy]" which defines how the output output
-            extents are defined as the union or intersection of the base
-            raster and vectors' bounding boxes, or to have a user defined
-            boudning box.
+            a list of floats of the form [minx, miny, maxx, maxy].  Depending
+            on the value, output extents are defined as the union,
+            intersection, or the explicit bounding box.
         base_vector_path_list (list): a list of base vector paths whose
             bounding boxes will be used to determine the final bounding box
             of the raster stack if mode is 'union' or 'intersection'.  If mode
@@ -313,18 +312,10 @@ def align_and_resize_raster_stack(
             "resample_method_list must be the same length "
             " current lengths are %s" % (str(list_lengths)))
 
-    # TODO: consider just passing the bbox?
-    # JD: while I kind of like the consistency of always having the bounding
-    # box mode be a string, it also feels a little odd to have to go through
-    # the extra step of formatting the 'bb=%s' string.  Other pgp geoprocessing
-    # functions just take certain params verbatim from get_raster_info and
-    # get_vector_info, and it felt most natural and intuitive to do so when
-    # providing this parameter as well.
-    float_re = r'[-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?'
-    # regular expression to match a float
-    if bounding_box_mode not in ["union", "intersection"] and not re.match(
-            r'bb=\[[ ]*%s,[ ]*%s,[ ]*%s,[ ]*%s[ ]*\]' % (
-                (float_re,)*4), bounding_box_mode):
+    # we can accept 'union', 'intersection', or a 4 element list/tuple
+    if bounding_box_mode not in ["union", "intersection"] and (
+            not isinstance(bounding_box_mode, (list, tuple)) or
+            len(bounding_box_mode) != 4):
         raise ValueError("Unknown bounding_box_mode %s" % (
             str(bounding_box_mode)))
 
@@ -345,11 +336,8 @@ def align_and_resize_raster_stack(
         vector_info_list = []
 
     # get the literal or intersecting/unioned bounding box
-    bb_match = re.match(
-        r'bb=\[[ ]*(%s),[ ]*(%s),[ ]*(%s),[ ]*(%s)\]' % (
-            (float_re,)*4), bounding_box_mode)
-    if bb_match:
-        target_bounding_box = [float(x) for x in bb_match.groups()]
+    if isinstance(bounding_box_mode, (list, tuple)):
+        target_bounding_box = bounding_box_mode
     else:
         # either intersection or union
         target_bounding_box = reduce(

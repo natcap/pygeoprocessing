@@ -800,11 +800,11 @@ class PyGeoprocessing10(unittest.TestCase):
         resample_method_list = ['nearest'] * 2
         # format is xmin,ymin,xmax,ymax; since y pixel size is negative it
         # goes first in the following bounding box construction
-        bounding_box_mode = 'bb=[%d,%d,%d,%d]' % (
+        bounding_box_mode = [
             reference.origin[0],
             reference.origin[1] + reference.pixel_size(30)[1] * 5,
             reference.origin[0] + reference.pixel_size(30)[0] * 5,
-            reference.origin[1])
+            reference.origin[1]]
 
         base_a_raster_info = pygeoprocessing.get_raster_info(base_a_path)
 
