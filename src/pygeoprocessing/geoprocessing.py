@@ -706,10 +706,6 @@ def interpolate_points(
         band.WriteArray(raster_out_array, offsets['xoff'], offsets['yoff'])
 
 
-# TODO: verify that `base_raster_path_band` is a (path, band) tuple?
-# Accidentally passed a string, and got an error that wouldn't make sense
-# without having the GDAL errors visible.  Band number validation would help as
-# well, or at least have GDAL warnings logged as warnings.
 def zonal_statistics(
         base_raster_path_band, aggregate_vector_path,
         aggregate_field_name, aggregate_layer_name=None,
