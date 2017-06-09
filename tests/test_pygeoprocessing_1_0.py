@@ -81,6 +81,28 @@ class PyGeoprocessing10(unittest.TestCase):
         self.assertEqual(
             numpy.sum(target_array), n_pixels**2 * value_map[test_value])
 
+    def test_reclassify_raster_empty_value_map(self):
+        """PGP.geoprocessing: test reclassify raster."""
+        reference = sampledata.SRS_COLOMBIA
+        n_pixels = 9
+        pixel_matrix = numpy.ones((n_pixels, n_pixels), numpy.float32)
+        test_value = 0.5
+        pixel_matrix[:] = test_value
+        nodata_target = -1
+        raster_path = os.path.join(self.workspace_dir, 'raster.tif')
+        target_path = os.path.join(self.workspace_dir, 'target.tif')
+        pygeoprocessing.testing.create_raster_on_disk(
+            [pixel_matrix], reference.origin, reference.projection,
+            nodata_target, reference.pixel_size(30), filename=raster_path)
+
+        empty_value_map = {
+        }
+        target_nodata = -1
+        with self.assertRaises(ValueError):
+            pygeoprocessing.reclassify_raster(
+                (raster_path, 1), empty_value_map, target_path, gdal.GDT_Float32,
+                target_nodata, values_required=False)
+
     def test_reproject_vector(self):
         """PGP.geoprocessing: test reproject vector."""
         reference = sampledata.SRS_WILLAMETTE

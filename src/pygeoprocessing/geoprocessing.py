@@ -1136,10 +1136,6 @@ def reproject_vector(
     base_vector = None
 
 
-# TODO: if I pass value_map={}; exception_flag='none', I get a cryptic error.
-# A more likely scenario is that someone passes a value_map that is missing a
-# value, but the entire block is pixels of that missing value.  The result is:
-# IndexError: index 1 is out of bounds for axis 1 with size 1
 def reclassify_raster(
         base_raster_path_band, value_map, target_raster_path, target_datatype,
         target_nodata, values_required=True):
@@ -1154,6 +1150,7 @@ def reclassify_raster(
         value_map (dictionary): a dictionary of values of
             {source_value: dest_value, ...} where source_value's type is the
             same as the values in `base_raster_path` at band `band_index`.
+            Must contain at least one value.
         target_raster_path (string): target raster output path; overwritten if
             it exists
         target_datatype (gdal type): the numerical type for the target raster
@@ -1171,6 +1168,8 @@ def reclassify_raster(
         ValueError if values_required is True and the value from
            'key_raster' is not a key in 'attr_dict'
     """
+    if len(value_map) == 0:
+        raise ValueError("value_map must contain at least one value")
     raster_info = get_raster_info(base_raster_path_band[0])
     nodata = raster_info['nodata'][base_raster_path_band[1]-1]
     value_map_copy = value_map.copy()
