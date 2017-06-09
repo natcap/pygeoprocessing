@@ -950,9 +950,6 @@ def zonal_statistics(
     return aggregate_stats
 
 
-# TODO: I like the specificity of including 'DEM' in the parameter, but it does
-# deviate from the rest of PGP.  Is the plan to use 'dem' as an input prefix
-# for other DEM-specific functionality such as routing?
 # TODO: This function is kind of interesting, since it's just a callthrough to
 # geoprocessing_core.calculate_slope.  The docstring is the same as well.  It
 # makes me wonder if we can just expose geoprocessing_core.calculate_slope as
@@ -961,7 +958,7 @@ def zonal_statistics(
 # function.  Do you know if there's
 # a reason (technical or otherwise) to keep this callthrough?
 def calculate_slope(
-        dem_raster_path_band, target_slope_path,
+        base_elevation_raster_path_band, target_slope_path,
         gtiff_creation_options=_DEFAULT_GTIFF_CREATION_OPTIONS):
     """Create a percent slope raster from DEM raster.
 
@@ -989,8 +986,8 @@ def calculate_slope(
     2^0.5 to account for the diagonal projection.
 
     Parameters:
-        dem_raster_path_band (string): a path/band tuple to a raster of height
-            values. (path_to_raster, band_index)
+        base_elevation_raster_path_band (string): a path/band tuple to a
+            raster of height values. (path_to_raster, band_index)
         target_slope_path (string): path to target slope raster; will be a
             32 bit float GeoTIFF of same size/projection as calculate slope
             with units of percent slope.
@@ -1002,7 +999,7 @@ def calculate_slope(
     """
     # call-through to Cython implementation
     geoprocessing_core.calculate_slope(
-        dem_raster_path_band, target_slope_path,
+        base_elevation_raster_path_band, target_slope_path,
         gtiff_creation_options=gtiff_creation_options)
 
 
