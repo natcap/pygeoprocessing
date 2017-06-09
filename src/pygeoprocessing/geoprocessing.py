@@ -790,12 +790,6 @@ def zonal_statistics(
 
     aggregate_field_def = aggregate_layer_defn.GetFieldDefn(
         aggregate_field_index)
-    # TODO: consider supporting aggregation by non-integer fields?
-    # I have a vector of yosemite that doesn't happen to have any integer
-    # fields in it.  I could add an integer field, but since there are several
-    # polygons that can be uniquely identified by a non-integer field, it would
-    # be convenient to be able to get the results back by one of these existing
-    # fields.
     if aggregate_field_def.GetTypeName() != 'Integer':
         raise TypeError(
             'Can only aggregate by integer based fields, requested '
