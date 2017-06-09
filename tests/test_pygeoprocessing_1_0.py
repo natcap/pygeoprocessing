@@ -146,7 +146,6 @@ class PyGeoprocessing10(unittest.TestCase):
             osr.SpatialReference(result_reference.ExportToWkt()).IsSame(
                 osr.SpatialReference(target_reference.ExportToWkt())))
 
-
     def test_zonal_statistics(self):
         """PGP.geoprocessing: test zonal stats function."""
         # create aggregating polygon
@@ -359,6 +358,46 @@ class PyGeoprocessing10(unittest.TestCase):
         with self.assertRaises(TypeError):
             _ = pygeoprocessing.zonal_statistics(
                 (raster_path, 1), aggregating_vector_path,
+                aggregate_field_name, aggregate_layer_name=None,
+                ignore_nodata=True, all_touched=False,
+                polygons_might_overlap=True)
+
+    def test_zonal_statistics_bad_raster_path_band(self):
+        """PGP.geoprocessing: test zonal stats with bad raster/path type."""
+        reference = sampledata.SRS_COLOMBIA
+        pixel_size = 30.0
+        n_pixels = 9
+        polygon_a = shapely.geometry.Polygon([
+            (reference.origin[0], reference.origin[1]),
+            (reference.origin[0], -pixel_size * n_pixels+reference.origin[1]),
+            (reference.origin[0]+pixel_size * n_pixels,
+             -pixel_size * n_pixels+reference.origin[1]),
+            (reference.origin[0]+pixel_size * n_pixels, reference.origin[1]),
+            (reference.origin[0], reference.origin[1])])
+        polygon_b = shapely.geometry.Polygon([
+            (reference.origin[0], reference.origin[1]),
+            (reference.origin[0], -pixel_size+reference.origin[1]),
+            (reference.origin[0]+pixel_size, -pixel_size+reference.origin[1]),
+            (reference.origin[0]+pixel_size, reference.origin[1]),
+            (reference.origin[0], reference.origin[1])])
+        aggregating_vector_path = os.path.join(
+            self.workspace_dir, 'aggregate_vector')
+        aggregate_field_name = 'id'
+        pygeoprocessing.testing.create_vector_on_disk(
+            [polygon_a, polygon_b], reference.projection,
+            fields={'id': 'string'}, attributes=[
+                {aggregate_field_name: '0'}, {aggregate_field_name: '1'}],
+            vector_format='GeoJSON', filename=aggregating_vector_path)
+        pixel_matrix = numpy.ones((n_pixels, n_pixels), numpy.float32)
+        nodata_target = -1
+        raster_path = os.path.join(self.workspace_dir, 'raster.tif')
+        pygeoprocessing.testing.create_raster_on_disk(
+            [pixel_matrix], reference.origin, reference.projection,
+            nodata_target, reference.pixel_size(30), filename=raster_path)
+        with self.assertRaises(ValueError):
+            # intentionally not passing a (path, band) tuple as first arg
+            _ = pygeoprocessing.zonal_statistics(
+                raster_path, aggregating_vector_path,
                 aggregate_field_name, aggregate_layer_name=None,
                 ignore_nodata=True, all_touched=False,
                 polygons_might_overlap=True)
@@ -852,12 +891,12 @@ class PyGeoprocessing10(unittest.TestCase):
 
         target_path = os.path.join(
             self.workspace_dir, 'target.tif')
-        for bad_raster_path_band in [
-                base_path, (base_path, "1"), (1, 1),
-                (base_path, 1, base_path, 2)]:
+        for bad_raster_path_band_list in [
+                [base_path], [(base_path, "1")], [(1, 1)],
+                [(base_path, 1, base_path, 2)], base_path]:
             with self.assertRaises(ValueError):
                 pygeoprocessing.raster_calculator(
-                    [bad_raster_path_band], lambda x: x, target_path,
+                    bad_raster_path_band_list, lambda x: x, target_path,
                     gdal.GDT_Int32, nodata_target, calc_raster_stats=True)
 
     def test_raster_calculator_no_path(self):

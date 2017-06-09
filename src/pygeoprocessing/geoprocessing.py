@@ -104,15 +104,8 @@ def raster_calculator(
         bad_raster_path_list = True
     else:
         for value in base_raster_path_band_list:
-            if not isinstance(value, (list, tuple)):
+            if not _is_raster_path_band_formatted(value):
                 bad_raster_path_list = True
-            elif len(value) != 2:
-                bad_raster_path_list = True
-            elif not isinstance(value[0], types.StringTypes):
-                bad_raster_path_list = True
-            elif not isinstance(value[1], int):
-                bad_raster_path_list = True
-            if bad_raster_path_list:
                 break
     if bad_raster_path_list:
         raise ValueError(
@@ -743,16 +736,7 @@ def zonal_statistics(
         of 'min' 'max' 'sum' 'mean' 'count' and 'nodata_count'.  Example:
         {0: {'min': 0, 'max': 1, 'mean': 0.5, 'count': 2, 'nodata_count': 1}}
     """
-    bad_base_raster_path_band_value = False
-    if not isinstance(base_raster_path_band, (list, tuple)):
-        bad_base_raster_path_band_value = True
-    elif len(base_raster_path_band) != 2:
-        bad_base_raster_path_band_value = True
-    elif not isinstance(base_raster_path_band[0], types.StringTypes):
-        bad_base_raster_path_band_value = True
-    elif not isinstance(base_raster_path_band[1], int):
-        bad_base_raster_path_band_value = True
-    if bad_base_raster_path_band_value:
+    if not _is_raster_path_band_formatted(base_raster_path_band):
         raise ValueError(
             "`base_raster_path_band` not formatted as expected.  Expects "
             "(path, band_index), recieved %s" + base_raster_path_band)
@@ -2096,3 +2080,17 @@ def _make_logger_callback(message):
             logger_callback.total_time = 0.0
 
     return logger_callback
+
+
+def _is_raster_path_band_formatted(raster_path_band):
+    """Returns true if raster path band is a (str, int) tuple/list."""
+    if not isinstance(raster_path_band, (list, tuple)):
+        return False
+    elif len(raster_path_band) != 2:
+        return False
+    elif not isinstance(raster_path_band[0], types.StringTypes):
+        return False
+    elif not isinstance(raster_path_band[1], int):
+        return False
+    else:
+        return True
