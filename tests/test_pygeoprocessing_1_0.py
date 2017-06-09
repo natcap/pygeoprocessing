@@ -840,6 +840,26 @@ class PyGeoprocessing10(unittest.TestCase):
             gdal.GDT_Int32, nodata_target, calc_raster_stats=True)
         pygeoprocessing.testing.assert_rasters_equal(base_path, target_path)
 
+    def test_raster_calculator_bad_raster_path(self):
+        """PGP.geoprocessing: raster_calculator bad raster path pairs test."""
+        pixel_matrix = numpy.ones((5, 5), numpy.int16)
+        reference = sampledata.SRS_COLOMBIA
+        nodata_target = -1
+        base_path = os.path.join(self.workspace_dir, 'base.tif')
+        pygeoprocessing.testing.create_raster_on_disk(
+            [pixel_matrix], reference.origin, reference.projection,
+            nodata_target, reference.pixel_size(30), filename=base_path)
+
+        target_path = os.path.join(
+            self.workspace_dir, 'target.tif')
+        for bad_raster_path_band in [
+                base_path, (base_path, "1"), (1, 1),
+                (base_path, 1, base_path, 2)]:
+            with self.assertRaises(ValueError):
+                pygeoprocessing.raster_calculator(
+                    [bad_raster_path_band], lambda x: x, target_path,
+                    gdal.GDT_Int32, nodata_target, calc_raster_stats=True)
+
     def test_raster_calculator_no_path(self):
         """PGP.geoprocessing: raster_calculator raise ex. on bad file path."""
         nodata_target = -1
