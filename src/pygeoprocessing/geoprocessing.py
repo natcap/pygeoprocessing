@@ -970,6 +970,7 @@ def get_vector_info(vector_path, layer_index=0):
     vector_properties['bounding_box'] = [layer_bb[i] for i in [0, 2, 1, 3]]
     return vector_properties
 
+
 # TODO: bbox as described differs from bbox returned.
 def get_raster_info(raster_path):
     """Get information about a GDAL raster (dataset).
@@ -1137,18 +1138,13 @@ def reproject_vector(
     base_vector = None
 
 
-# TODO: Change exception flag to boolean?
-# It seems a little strange to have to specify one of two strings, when it
-# could be replaced by a bool.  Maybe the param name could be
-# 'values_required', which defaults to True?  Are there plans for other
-# exception flags?
 # TODO: if I pass value_map={}; exception_flag='none', I get a cryptic error.
 # A more likely scenario is that someone passes a value_map that is missing a
 # value, but the entire block is pixels of that missing value.  The result is:
 # IndexError: index 1 is out of bounds for axis 1 with size 1
 def reclassify_raster(
         base_raster_path_band, value_map, target_raster_path, target_datatype,
-        target_nodata, exception_flag='values_required'):
+        target_nodata, values_required=True):
     """Reclassify pixel values in a raster.
 
     A function to reclassify values in raster to any output type. By default
@@ -1167,21 +1163,16 @@ def reclassify_raster(
             Must be the same type as target_datatype
         band_index (int): Indicates which band in `base_raster_path` the
             reclassification should operate on.  Defaults to 1.
-        exception_flag (string): either 'none' or 'values_required'.
-            If 'values_required' raise an exception if there is a value in the
-            raster that is not found in value_map.
+        values_required (bool): If True, raise a ValueError if there is a
+            value in the raster that is not found in value_map.
 
     Returns:
         None
 
     Raises:
-        ValueError if exception_flag == 'values_required' and the value from
+        ValueError if values_required is True and the value from
            'key_raster' is not a key in 'attr_dict'
     """
-    if exception_flag not in ['none', 'values_required']:
-        raise ValueError('unknown exception_flag %s', exception_flag)
-    values_required = exception_flag == 'values_required'
-
     raster_info = get_raster_info(base_raster_path_band[0])
     nodata = raster_info['nodata'][base_raster_path_band[1]-1]
     value_map_copy = value_map.copy()
