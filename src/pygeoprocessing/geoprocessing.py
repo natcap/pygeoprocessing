@@ -524,8 +524,6 @@ def new_raster_from_base(
 
     base_band = None
 
-    # TODO: We'll need to revisit how to handle paths.  User could provide any
-    # encoding, and GDAL needs it to be either ASCII or UTF-8
     n_bands = len(band_nodata_list)
     target_raster = driver.Create(
         target_path.encode('utf-8'), n_cols, n_rows, n_bands, datatype,
