@@ -115,7 +115,6 @@ def raster_calculator(
             if bad_raster_path_list:
                 break
     if bad_raster_path_list:
-        # TODO: base_raster_path_band_list could contain UTF-8 chars
         raise ValueError(
             "Expected a list of path / integer band tuples for "
             "`base_raster_path_band_list`, instead got: %s" %
@@ -127,13 +126,11 @@ def raster_calculator(
             not_found_paths.append(path)
 
     if len(not_found_paths) != 0:
-        # TODO: not_found_paths could contain UTF-8 chars
         raise exceptions.ValueError(
             "The following files were expected but do not exist on the "
             "filesystem: " + str(not_found_paths))
 
     if target_raster_path in [x[0] for x in base_raster_path_band_list]:
-        # TODO: base_raster_path_band_list could contain UTF-8 chars
         raise ValueError(
             "%s is used as a target path, but it is also in the base input "
             "path list %s" % (
