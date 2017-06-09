@@ -940,7 +940,6 @@ def zonal_statistics(
     return aggregate_stats
 
 
-# TODO: bbox returned differs from the docstring.
 def get_vector_info(vector_path, layer_index=0):
     """Get information about an OGR vector (datasource).
 
@@ -956,7 +955,7 @@ def get_vector_info(vector_path, layer_index=0):
             'projection' (string): projection of the vector in Well Known
                 Text.
             'bounding_box' (list): list of floats representing the bounding
-                box in projected coordinates as "bb=[minx,miny,maxx,maxy]".
+                box in projected coordinates as [minx, miny, maxx, maxy].
     """
     vector = ogr.Open(vector_path)
     vector_properties = {}
@@ -971,7 +970,6 @@ def get_vector_info(vector_path, layer_index=0):
     return vector_properties
 
 
-# TODO: bbox as described differs from bbox returned.
 def get_raster_info(raster_path):
     """Get information about a GDAL raster (dataset).
 
@@ -999,7 +997,7 @@ def get_raster_info(raster_path):
             'projection' (string): projection of the raster in Well Known
                 Text.
             'bounding_box' (list): list of floats representing the bounding
-                box in projected coordinates as "bb=[minx,miny,maxx,maxy]"
+                box in projected coordinates as [minx, miny, maxx, maxy]
             'block_size' (tuple): underlying x/y raster block size for
                 efficient reading.
     """
