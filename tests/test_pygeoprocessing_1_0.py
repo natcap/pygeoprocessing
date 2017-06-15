@@ -31,13 +31,18 @@ class PyGeoprocessing10(unittest.TestCase):
 
     def test_star_import(self):
         """PGP: verify we can use *-import statement."""
-        try:
-            from pygeoprocessing import *
-        except Exception as exc_obj:
-            self.fail('Could not use *-import; exception raised: %s: %s' % (
-                exc_obj.__class__.__name__, str(exc_obj)))
-
-        self.assertTrue(isinstance(raster_calculator, types.FunctionType))
+        # Actually trying out the `from pygeoprocessing import *` notation here
+        # raises a SyntaxWarning.  Instead, I'll just ensure that every
+        # attribute in pygeoprocessing.__all__ is a function that is available
+        # at the pygeoprocessing level.
+        import pygeoprocessing
+        for attrname in pygeoprocessing.__all__:
+            try:
+                func = getattr(pygeoprocessing, attrname)
+                self.assertTrue(isinstance(func, types.FunctionType))
+            except AttributeError:
+                self.fail(('Function %s is in pygeoprocessing.__all__ but '
+                           'is not exposed at the package level') % attrname)
 
     def test_reclassify_raster_missing_pixel_value(self):
         """PGP.geoprocessing: test reclassify raster with missing value."""
