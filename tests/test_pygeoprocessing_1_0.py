@@ -4,6 +4,7 @@ import tempfile
 import os
 import unittest
 import shutil
+import types
 
 from osgeo import gdal
 from osgeo import ogr
@@ -27,6 +28,16 @@ class PyGeoprocessing10(unittest.TestCase):
     def tearDown(self):
         """Clean up remaining files."""
         shutil.rmtree(self.workspace_dir)
+
+    def test_star_import(self):
+        """PGP: verify we can use *-import statement."""
+        try:
+            from pygeoprocessing import *
+        except Exception as exc_obj:
+            self.fail('Could not use *-import; exception raised: %s: %s' % (
+                exc_obj.__class__.__name__, str(exc_obj)))
+
+        self.assertTrue(isinstance(raster_calculator, types.FunctionType))
 
     def test_reclassify_raster_missing_pixel_value(self):
         """PGP.geoprocessing: test reclassify raster with missing value."""
