@@ -30,7 +30,7 @@ import shapely.prepared
 import geoprocessing_core
 
 LOGGER = logging.getLogger('pygeoprocessing.geoprocessing')
-LOGGER.addHandler(logging.NullHandler())
+LOGGER.addHandler(logging.NullHandler())  # silence logging by default
 _LOGGING_PERIOD = 5.0  # min 5.0 seconds per update log message for the module
 _DEFAULT_GTIFF_CREATION_OPTIONS = ('TILED=YES', 'BIGTIFF=IF_SAFER')
 _LARGEST_ITERBLOCK = 2**20  # largest block for iterblocks to read in cells
