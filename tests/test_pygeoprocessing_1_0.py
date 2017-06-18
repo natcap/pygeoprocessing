@@ -4,6 +4,7 @@ import tempfile
 import os
 import unittest
 import shutil
+import types
 
 from osgeo import gdal
 from osgeo import ogr
@@ -27,6 +28,21 @@ class PyGeoprocessing10(unittest.TestCase):
     def tearDown(self):
         """Clean up remaining files."""
         shutil.rmtree(self.workspace_dir)
+
+    def test_star_import(self):
+        """PGP: verify we can use *-import statement."""
+        # Actually trying out the `from pygeoprocessing import *` notation here
+        # raises a SyntaxWarning.  Instead, I'll just ensure that every
+        # attribute in pygeoprocessing.__all__ is a function that is available
+        # at the pygeoprocessing level.
+        import pygeoprocessing
+        for attrname in pygeoprocessing.__all__:
+            try:
+                func = getattr(pygeoprocessing, attrname)
+                self.assertTrue(isinstance(func, types.FunctionType))
+            except AttributeError:
+                self.fail(('Function %s is in pygeoprocessing.__all__ but '
+                           'is not exposed at the package level') % attrname)
 
     def test_reclassify_raster_missing_pixel_value(self):
         """PGP.geoprocessing: test reclassify raster with missing value."""
