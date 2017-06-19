@@ -214,12 +214,12 @@ def distance_transform_edt(base_mask_raster_path_band, target_distance_path):
 @cython.nonecheck(False)
 @cython.cdivision(True)
 def calculate_slope(
-        dem_raster_path_band, target_slope_path,
+        base_elevation_raster_path_band, target_slope_path,
         gtiff_creation_options=_DEFAULT_GTIFF_CREATION_OPTIONS):
     """Create a percent slope raster from DEM raster.
 
-    Base algorithm is from Zevenbergen & Thorne "Quantiative Analysis of Land
-    Surface Topgraphy" 1987 although it has been modified to include the
+    Base algorithm is from Zevenbergen & Thorne "Quantitative Analysis of Land
+    Surface Topography" 1987 although it has been modified to include the
     diagonal pixels by classic finite difference analysis.
 
     For the following notation, we define each pixel's DEM value by a letter
@@ -242,8 +242,8 @@ def calculate_slope(
     2^0.5 to account for the diagonal projection.
 
     Parameters:
-        dem_raster_path_band (string): a path/band tuple to a raster of height
-            values. (path_to_raster, band_index)
+        base_elevation_raster_path_band (string): a path/band tuple to a
+            raster of height values. (path_to_raster, band_index)
         target_slope_path (string): path to target slope raster; will be a
             32 bit float GeoTIFF of same size/projection as calculate slope
             with units of percent slope.
@@ -263,22 +263,22 @@ def calculate_slope(
     cdef numpy.ndarray[numpy.npy_float64, ndim=2] dzdx_array
     cdef numpy.ndarray[numpy.npy_float64, ndim=2] dzdy_array
 
-    dem_raster = gdal.Open(dem_raster_path_band[0])
-    dem_band = dem_raster.GetRasterBand(dem_raster_path_band[1])
-    dem_info = pygeoprocessing.get_raster_info(dem_raster_path_band[0])
+    dem_raster = gdal.Open(base_elevation_raster_path_band[0])
+    dem_band = dem_raster.GetRasterBand(base_elevation_raster_path_band[1])
+    dem_info = pygeoprocessing.get_raster_info(base_elevation_raster_path_band[0])
     dem_nodata = dem_info['nodata'][0]
     x_cell_size, y_cell_size = dem_info['pixel_size']
     n_cols, n_rows = dem_info['raster_size']
     cdef numpy.npy_float64 slope_nodata = numpy.finfo(numpy.float32).min
     pygeoprocessing.new_raster_from_base(
-        dem_raster_path_band[0], target_slope_path, gdal.GDT_Float32,
+        base_elevation_raster_path_band[0], target_slope_path, gdal.GDT_Float32,
         [slope_nodata], fill_value_list=[float(slope_nodata)],
         gtiff_creation_options=gtiff_creation_options)
     target_slope_raster = gdal.Open(target_slope_path, gdal.GA_Update)
     target_slope_band = target_slope_raster.GetRasterBand(1)
 
     for block_offset in pygeoprocessing.iterblocks(
-            dem_raster_path_band[0], offset_only=True):
+            base_elevation_raster_path_band[0], offset_only=True):
         block_offset_copy = block_offset.copy()
         # try to expand the block around the edges if it fits
         x_start = 1
