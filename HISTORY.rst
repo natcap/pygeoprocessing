@@ -1,8 +1,8 @@
 Release History
 ===============
 
-Unreleased Changes
-------------------
+0.4.0 (6/19/2017)
+-----------------
 * Non-backwards compatible refactor of core PyGeoprocessing geoprocessing
   pipeline. Includes:
     * Full test coverage for `pygeoprocessing.geoprocessing` module
