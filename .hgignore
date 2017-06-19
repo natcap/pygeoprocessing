@@ -1,0 +1,14 @@
+Syntax: regexp
+\.hgignore
+
+^src/pygeoprocessing/version\.py
+^dist/
+^data/
+^cover/
+^pygeoprocessing.egg-info/
+^build/
+^\.eggs/
+\.coverage
+\.pyc$
+\.cpp$
+^dev_env
