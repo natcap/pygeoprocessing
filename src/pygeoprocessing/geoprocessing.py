@@ -30,6 +30,7 @@ import shapely.prepared
 import geoprocessing_core
 
 LOGGER = logging.getLogger('pygeoprocessing.geoprocessing')
+LOGGER.addHandler(logging.NullHandler())  # silence logging by default
 _LOGGING_PERIOD = 5.0  # min 5.0 seconds per update log message for the module
 _DEFAULT_GTIFF_CREATION_OPTIONS = ('TILED=YES', 'BIGTIFF=IF_SAFER')
 _LARGEST_ITERBLOCK = 2**20  # largest block for iterblocks to read in cells
@@ -103,21 +104,14 @@ def raster_calculator(
         bad_raster_path_list = True
     else:
         for value in base_raster_path_band_list:
-            if not isinstance(value, (list, tuple)):
+            if not _is_raster_path_band_formatted(value):
                 bad_raster_path_list = True
-            elif len(value) != 2:
-                bad_raster_path_list = True
-            elif not isinstance(value[0], types.StringTypes):
-                bad_raster_path_list = True
-            elif not isinstance(value[1], int):
-                bad_raster_path_list = True
-            if bad_raster_path_list:
                 break
     if bad_raster_path_list:
         raise ValueError(
             "Expected a list of path / integer band tuples for "
             "`base_raster_path_band_list`, instead got: %s" %
-            base_raster_path_band_list)
+            str(base_raster_path_band_list))
 
     not_found_paths = []
     for path, _ in base_raster_path_band_list:
@@ -277,10 +271,9 @@ def align_and_resize_raster_stack(
         target_pixel_size (tuple): the target raster's x and y pixel size
             example: [30, -30].
         bounding_box_mode (string): one of "union", "intersection", or
-            "bb=[minx,miny,maxx,maxy]" which defines how the output output
-            extents are defined as the union or intersection of the base
-            raster and vectors' bounding boxes, or to have a user defined
-            boudning box.
+            a list of floats of the form [minx, miny, maxx, maxy].  Depending
+            on the value, output extents are defined as the union,
+            intersection, or the explicit bounding box.
         base_vector_path_list (list): a list of base vector paths whose
             bounding boxes will be used to determine the final bounding box
             of the raster stack if mode is 'union' or 'intersection'.  If mode
@@ -312,11 +305,10 @@ def align_and_resize_raster_stack(
             "resample_method_list must be the same length "
             " current lengths are %s" % (str(list_lengths)))
 
-    float_re = r'[-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?'
-    # regular expression to match a float
-    if bounding_box_mode not in ["union", "intersection"] and not re.match(
-            r'bb=\[[ ]*%s,[ ]*%s,[ ]*%s,[ ]*%s[ ]*\]' % (
-                (float_re,)*4), bounding_box_mode):
+    # we can accept 'union', 'intersection', or a 4 element list/tuple
+    if bounding_box_mode not in ["union", "intersection"] and (
+            not isinstance(bounding_box_mode, (list, tuple)) or
+            len(bounding_box_mode) != 4):
         raise ValueError("Unknown bounding_box_mode %s" % (
             str(bounding_box_mode)))
 
@@ -337,11 +329,8 @@ def align_and_resize_raster_stack(
         vector_info_list = []
 
     # get the literal or intersecting/unioned bounding box
-    bb_match = re.match(
-        r'bb=\[[ ]*(%s),[ ]*(%s),[ ]*(%s),[ ]*(%s)\]' % (
-            (float_re,)*4), bounding_box_mode)
-    if bb_match:
-        target_bounding_box = [float(x) for x in bb_match.groups()]
+    if isinstance(bounding_box_mode, (list, tuple)):
+        target_bounding_box = bounding_box_mode
     else:
         # either intersection or union
         target_bounding_box = reduce(
@@ -440,13 +429,17 @@ def calculate_raster_stats(raster_path):
 
 
 def new_raster_from_base(
-        base_path, target_path, datatype, nodata_list, n_bands=1,
+        base_path, target_path, datatype, band_nodata_list,
         fill_value_list=None, n_rows=None, n_cols=None,
         gtiff_creation_options=_DEFAULT_GTIFF_CREATION_OPTIONS):
-    """Create new geotiff by coping spatial reference/geotransform of base.
+    """Create new GeoTIFF by coping spatial reference/geotransform of base.
 
-    A wrapper for the function new_raster_from_base that opens up
-    the base_path before passing it to new_raster_from_base.
+    A convenience function to simplify the creation of a new raster from the
+    basis of an existing one.  Depending on the input mode, one can create
+    a new raster of the same dimensions, geotransform, and georeference as
+    the base.  Other options are provided to change the raster dimensions,
+    number of bands, nodata values, data type, and core GeoTIFF creation
+    options.
 
     Parameters:
         base_path (string): path to existing raster.
@@ -455,9 +448,10 @@ def new_raster_from_base(
             gdal.GDT_Float32.  See the following header file for supported
             pixel types:
             http://www.gdal.org/gdal_8h.html#22e22ce0a55036a96f652765793fb7a4
-        nodata_list (list): list of nodata values, one for each band, to set
-            on target raster; okay to have 'None' values.
-        n_bands (int): number of bands for the target raster.
+        band_nodata_list (list): list of nodata values, one for each band, to
+            set on target raster.  If value is 'None' the nodata value is not
+            set for that band.  The number of target bands is inferred from
+            the length of this list.
         fill_value_list (list): list of values to fill each band with. If None,
             no filling is done.
         n_rows (int): if not None, defines the number of target raster rows.
@@ -476,29 +470,42 @@ def new_raster_from_base(
         n_cols = base_raster.RasterXSize
     driver = gdal.GetDriverByName('GTiff')
 
-    base_band = base_raster.GetRasterBand(1)
-    block_size = base_band.GetBlockSize()
-    metadata = base_band.GetMetadata('IMAGE_STRUCTURE')
-
     local_gtiff_creation_options = list(gtiff_creation_options)
     # PIXELTYPE is sometimes used to define signed vs. unsigned bytes and
     # the only place that is stored is in the IMAGE_STRUCTURE metadata
-    # copy it over if it exists; get this info from the first band since
+    # copy it over if it exists and it not already defined by the input
+    # creation options. It's okay to get this info from the first band since
     # all bands have the same datatype
+    base_band = base_raster.GetRasterBand(1)
     metadata = base_band.GetMetadata('IMAGE_STRUCTURE')
-    base_band = None
-    if 'PIXELTYPE' in metadata:
+    if 'PIXELTYPE' in metadata and not any(
+            ['PIXELTYPE' in option for option in
+             local_gtiff_creation_options]):
         local_gtiff_creation_options.append(
             'PIXELTYPE=' + metadata['PIXELTYPE'])
 
-    # first, should it be tiled?  yes if it's not striped
-    if block_size[0] != n_cols:
-        local_gtiff_creation_options.extend([
-            'TILED=YES',
-            'BLOCKXSIZE=%d' % block_size[0],
-            'BLOCKYSIZE=%d' % block_size[1],
-            'BIGTIFF=IF_SAFER'])
+    block_size = base_band.GetBlockSize()
+    # It's not clear how or IF we can determine if the output should be
+    # striped or tiled.  Here we leave it up to the default inputs or if its
+    # obviously not striped we tile.
+    if not any(
+            ['TILED' in option for option in local_gtiff_creation_options]):
+        # TILED not set, so lets try to set it to a reasonable value
+        if block_size[0] != n_cols:
+            # if x block is not the width of the raster it *must* be tiled
+            # otherwise okay if it's striped or tiled
+            local_gtiff_creation_options.append('TILED=YES')
 
+    if not any(
+            ['BLOCK' in option for option in local_gtiff_creation_options]):
+        # not defined, so lets copy what we know from the current raster
+        local_gtiff_creation_options.extend([
+            'BLOCKXSIZE=%d' % block_size[0],
+            'BLOCKYSIZE=%d' % block_size[1]])
+
+    base_band = None
+
+    n_bands = len(band_nodata_list)
     target_raster = driver.Create(
         target_path.encode('utf-8'), n_cols, n_rows, n_bands, datatype,
         options=gtiff_creation_options)
@@ -506,7 +513,7 @@ def new_raster_from_base(
     target_raster.SetGeoTransform(base_raster.GetGeoTransform())
     base_raster = None
 
-    for index, nodata_value in enumerate(nodata_list):
+    for index, nodata_value in enumerate(band_nodata_list):
         if nodata_value is None:
             continue
         target_band = target_raster.GetRasterBand(index + 1)
@@ -527,13 +534,13 @@ def new_raster_from_base(
 
 
 def create_raster_from_vector_extents(
-        source_vector_path, target_raster_path, target_pixel_size,
+        base_vector_path, target_raster_path, target_pixel_size,
         target_pixel_type, target_nodata, fill_value=None,
         gtiff_creation_options=_DEFAULT_GTIFF_CREATION_OPTIONS):
     """Create a blank raster based on a vector file extent.
 
     Parameters:
-        source_vector_path (string): path to vector shapefile to base the
+        base_vector_path (string): path to vector shapefile to base the
             bounding box for the target raster.
         target_raster_path (string): path to location of generated geotiff;
             the upper left hand corner of this raster will be aligned with the
@@ -556,7 +563,7 @@ def create_raster_from_vector_extents(
     """
     # Determine the width and height of the tiff in pixels based on the
     # maximum size of the combined envelope of all the features
-    vector = ogr.Open(source_vector_path)
+    vector = ogr.Open(base_vector_path)
     shp_extent = None
     for layer in vector:
         for feature in layer:
@@ -620,15 +627,15 @@ def create_raster_from_vector_extents(
 
 
 def interpolate_points(
-        source_vector_path, vector_attribute_field, target_raster_path_band,
+        base_vector_path, vector_attribute_field, target_raster_path_band,
         interpolation_mode):
     """Interpolate point values onto an existing raster.
 
     Parameters:
-        source_vector_path (string): path to a shapefile that contains point
+        base_vector_path (string): path to a shapefile that contains point
             vector layers.
         vector_attribute_field (field): a string in the vector referenced at
-            `source_vector_path` that refers to a numeric value in the
+            `base_vector_path` that refers to a numeric value in the
             vector's attribute table.  This is the value that will be
             interpolated across the raster.
         target_raster_path_band (tuple): a path/band number tuple to an
@@ -641,7 +648,7 @@ def interpolate_points(
     Returns:
        None
     """
-    source_vector = ogr.Open(source_vector_path)
+    source_vector = ogr.Open(base_vector_path)
     point_list = []
     value_list = []
     for layer in source_vector:
@@ -676,7 +683,7 @@ def interpolate_points(
 
 
 def zonal_statistics(
-        base_raster_path_band, aggregating_vector_path,
+        base_raster_path_band, aggregate_vector_path,
         aggregate_field_name, aggregate_layer_name=None,
         ignore_nodata=True, all_touched=False, polygons_might_overlap=True):
     """Collect stats on pixel values which lie within polygons.
@@ -687,20 +694,18 @@ def zonal_statistics(
     handle cases where polygons overlap, which is notable since zonal stats
     functions provided by ArcGIS or QGIS usually incorrectly aggregate
     these areas.  Overlap avoidance is achieved by calculating a minimal set
-    of disjoint non-overlapping polygons from `aggregating_vector_path` and
+    of disjoint non-overlapping polygons from `aggregate_vector_path` and
     rasterizing each set separately during the raster aggregation phase.  That
     set of rasters are then used to calculate the zonal stats of all polygons
     without aggregating vector overlap.
 
     Parameters:
         base_raster_path_band (tuple): a str/int tuple indicating the path to
-            the base raster and the band number of that raster to analyze. In
-            order for hectare mean values to be accurate, this raster must be
-            projected in meter units.
-        aggregating_vector_path (string): a path to an ogr compatable polygon
+            the base raster and the band index of that raster to analyze.
+        aggregate_vector_path (string): a path to an ogr compatable polygon
             vector whose geometric features indicate the areas over
             `base_raster_path_band` to calculate statistics over.
-        aggregate_field_name (string): field name in `aggregating_vector_path`
+        aggregate_field_name (string): field name in `aggregate_vector_path`
             that represents an identifying integer value for sets of polygons
             in the layer such as a unique integer ID per polygon.  Result of
             this function will be indexed by the values found in this field.
@@ -712,9 +717,9 @@ def zonal_statistics(
             in the DataSource will be used as retrieved by `.GetLayer()`.
             Note: it is normal and expected to set this field at None if the
             aggregating shapefile is a single layer as many shapefiles,
-            including the common 'ESRI Shapefile' are.
+            including the common 'ESRI Shapefile', are.
         ignore_nodata: if true, then nodata pixels are not accounted for when
-            calculating min, max, count, or mean.  However the value of
+            calculating min, max, count, or mean.  However, the value of
             `nodata_count` will always be the number of nodata pixels
             aggregated under the polygon.
         all_touched (boolean): if true will account for any pixel whose
@@ -731,7 +736,11 @@ def zonal_statistics(
         of 'min' 'max' 'sum' 'mean' 'count' and 'nodata_count'.  Example:
         {0: {'min': 0, 'max': 1, 'mean': 0.5, 'count': 2, 'nodata_count': 1}}
     """
-    aggregate_vector = ogr.Open(aggregating_vector_path)
+    if not _is_raster_path_band_formatted(base_raster_path_band):
+        raise ValueError(
+            "`base_raster_path_band` not formatted as expected.  Expects "
+            "(path, band_index), recieved %s" + base_raster_path_band)
+    aggregate_vector = ogr.Open(aggregate_vector_path)
     if aggregate_layer_name is not None:
         aggregate_layer = aggregate_vector.GetLayerByName(
             aggregate_layer_name)
@@ -744,7 +753,7 @@ def zonal_statistics(
         # Raise exception if user provided a field that's not in vector
         raise ValueError(
             'Vector %s must have a field named %s' %
-            (aggregating_vector_path, aggregate_field_name))
+            (aggregate_vector_path, aggregate_field_name))
 
     aggregate_field_def = aggregate_layer_defn.GetFieldDefn(
         aggregate_field_index)
@@ -769,7 +778,7 @@ def zonal_statistics(
     align_and_resize_raster_stack(
         [base_raster_path_band[0]], [clipped_raster_path], ['nearest'],
         raster_info['pixel_size'], 'intersection',
-        base_vector_path_list=[aggregating_vector_path], raster_align_index=0)
+        base_vector_path_list=[aggregate_vector_path], raster_align_index=0)
     clipped_raster = gdal.Open(clipped_raster_path)
 
     # make a shapefile that non-overlapping layers can be added to
@@ -790,7 +799,7 @@ def zonal_statistics(
     # Loop over each polygon and aggregate
     if polygons_might_overlap:
         minimal_polygon_sets = calculate_disjoint_polygon_set(
-            aggregating_vector_path)
+            aggregate_vector_path)
     else:
         minimal_polygon_sets = [
             set([feat.GetFID() for feat in aggregate_layer])]
@@ -805,7 +814,7 @@ def zonal_statistics(
     aggregate_id_nodata = _find_int_not_in_array(aggregate_ids)
     new_raster_from_base(
         clipped_raster_path, aggregate_id_raster_path, gdal.GDT_Int32,
-        [aggregate_id_nodata], n_bands=1)
+        [aggregate_id_nodata])
     aggregate_id_raster = gdal.Open(aggregate_id_raster_path, gdal.GA_Update)
     aggregate_stats = {}
     for polygon_set in minimal_polygon_sets:
@@ -898,52 +907,6 @@ def zonal_statistics(
     return aggregate_stats
 
 
-def calculate_slope(
-        dem_raster_path_band, target_slope_path,
-        gtiff_creation_options=_DEFAULT_GTIFF_CREATION_OPTIONS):
-    """Create a percent slope raster from DEM raster.
-
-    Base algorithm is from Zevenbergen & Thorne "Quantiative Analysis of Land
-    Surface Topgraphy" 1987 although it has been modified to include the
-    diagonal pixels by classic finite difference analysis.
-
-    For the following notation, we define each pixel's DEM value by a letter
-    with this spatial scheme:
-
-        abc
-        def
-        ghi
-
-    Then the slope at e is defined at ([dz/dx]^2 + [dz/dy]^2)^0.5
-
-    Where
-
-    [dz/dx] = ((c+2f+i)-(a+2d+g)/(8*x_cell_size)
-    [dz/dy] = ((g+2h+i)-(a+2b+c))/(8*y_cell_size)
-
-    In cases where a cell is nodata, we attempt to use the middle cell inline
-    with the direction of differentiation (either in x or y direction).  If
-    no inline pixel is defined, we use `e` and multiply the difference by
-    2^0.5 to account for the diagonal projection.
-
-    Parameters:
-        dem_raster_path_band (string): a path/band tuple to a raster of height
-            values. (path_to_raster, band_index)
-        target_slope_path (string): path to target slope raster; will be a
-            32 bit float GeoTIFF of same size/projection as calculate slope
-            with units of percent slope.
-        gtiff_creation_options (list or tuple): list of strings that will be
-            passed as GDAL "dataset" creation options to the GTIFF driver.
-
-    Returns:
-        None
-    """
-    # call-through to Cython implementation
-    geoprocessing_core.calculate_slope(
-        dem_raster_path_band, target_slope_path,
-        gtiff_creation_options=gtiff_creation_options)
-
-
 def get_vector_info(vector_path, layer_index=0):
     """Get information about an OGR vector (datasource).
 
@@ -959,7 +922,7 @@ def get_vector_info(vector_path, layer_index=0):
             'projection' (string): projection of the vector in Well Known
                 Text.
             'bounding_box' (list): list of floats representing the bounding
-                box in projected coordinates as "bb=[minx,miny,maxx,maxy]".
+                box in projected coordinates as [minx, miny, maxx, maxy].
     """
     vector = ogr.Open(vector_path)
     vector_properties = {}
@@ -1001,7 +964,7 @@ def get_raster_info(raster_path):
             'projection' (string): projection of the raster in Well Known
                 Text.
             'bounding_box' (list): list of floats representing the bounding
-                box in projected coordinates as "bb=[minx,miny,maxx,maxy]"
+                box in projected coordinates as [minx, miny, maxx, maxy]
             'block_size' (tuple): underlying x/y raster block size for
                 efficient reading.
     """
@@ -1142,7 +1105,7 @@ def reproject_vector(
 
 def reclassify_raster(
         base_raster_path_band, value_map, target_raster_path, target_datatype,
-        target_nodata, exception_flag='values_required'):
+        target_nodata, values_required=True):
     """Reclassify pixel values in a raster.
 
     A function to reclassify values in raster to any output type. By default
@@ -1154,6 +1117,7 @@ def reclassify_raster(
         value_map (dictionary): a dictionary of values of
             {source_value: dest_value, ...} where source_value's type is the
             same as the values in `base_raster_path` at band `band_index`.
+            Must contain at least one value.
         target_raster_path (string): target raster output path; overwritten if
             it exists
         target_datatype (gdal type): the numerical type for the target raster
@@ -1161,21 +1125,18 @@ def reclassify_raster(
             Must be the same type as target_datatype
         band_index (int): Indicates which band in `base_raster_path` the
             reclassification should operate on.  Defaults to 1.
-        exception_flag (string): either 'none' or 'values_required'.
-            If 'values_required' raise an exception if there is a value in the
-            raster that is not found in value_map.
+        values_required (bool): If True, raise a ValueError if there is a
+            value in the raster that is not found in value_map.
 
     Returns:
         None
 
     Raises:
-        ValueError if exception_flag == 'values_required' and the value from
+        ValueError if values_required is True and the value from
            'key_raster' is not a key in 'attr_dict'
     """
-    if exception_flag not in ['none', 'values_required']:
-        raise ValueError('unknown exception_flag %s', exception_flag)
-    values_required = exception_flag == 'values_required'
-
+    if len(value_map) == 0:
+        raise ValueError("value_map must contain at least one value")
     raster_info = get_raster_info(base_raster_path_band[0])
     nodata = raster_info['nodata'][base_raster_path_band[1]-1]
     value_map_copy = value_map.copy()
@@ -1602,7 +1563,7 @@ def convolve_2d(
     target_nodata = numpy.finfo(numpy.float32).min
     new_raster_from_base(
         signal_path_band[0], target_path, target_datatype, [target_nodata],
-        n_bands=1, fill_value_list=[0],
+        fill_value_list=[0],
         gtiff_creation_options=gtiff_creation_options)
 
     signal_raster_info = get_raster_info(signal_path_band[0])
@@ -2119,3 +2080,17 @@ def _make_logger_callback(message):
             logger_callback.total_time = 0.0
 
     return logger_callback
+
+
+def _is_raster_path_band_formatted(raster_path_band):
+    """Returns true if raster path band is a (str, int) tuple/list."""
+    if not isinstance(raster_path_band, (list, tuple)):
+        return False
+    elif len(raster_path_band) != 2:
+        return False
+    elif not isinstance(raster_path_band[0], types.StringTypes):
+        return False
+    elif not isinstance(raster_path_band[1], int):
+        return False
+    else:
+        return True

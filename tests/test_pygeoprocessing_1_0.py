@@ -4,6 +4,7 @@ import tempfile
 import os
 import unittest
 import shutil
+import types
 
 from osgeo import gdal
 from osgeo import ogr
@@ -28,6 +29,22 @@ class PyGeoprocessing10(unittest.TestCase):
         """Clean up remaining files."""
         shutil.rmtree(self.workspace_dir)
 
+    def test_star_import(self):
+        """PGP: verify we can use *-import statement."""
+        # Actually trying out the `from pygeoprocessing import *` notation here
+        # raises a SyntaxWarning.  Instead, I'll just ensure that every
+        # attribute in pygeoprocessing.__all__ is a function that is available
+        # at the pygeoprocessing level.
+        import pygeoprocessing
+        for attrname in pygeoprocessing.__all__:
+            try:
+                func = getattr(pygeoprocessing, attrname)
+                self.assertTrue(isinstance(func, (
+                    types.FunctionType, types.BuiltinFunctionType)))
+            except AttributeError:
+                self.fail(('Function %s is in pygeoprocessing.__all__ but '
+                           'is not exposed at the package level') % attrname)
+
     def test_reclassify_raster_missing_pixel_value(self):
         """PGP.geoprocessing: test reclassify raster with missing value."""
         reference = sampledata.SRS_COLOMBIA
@@ -50,30 +67,7 @@ class PyGeoprocessing10(unittest.TestCase):
         with self.assertRaises(ValueError):
             pygeoprocessing.reclassify_raster(
                 (raster_path, 1), value_map, target_path, gdal.GDT_Float32,
-                target_nodata, exception_flag='values_required')
-
-    def test_reclassify_raster_bad_mode(self):
-        """PGP.geoprocessing: test reclassify raster with bad flag."""
-        reference = sampledata.SRS_COLOMBIA
-        n_pixels = 9
-        pixel_matrix = numpy.ones((n_pixels, n_pixels), numpy.float32)
-        test_value = 0.5
-        pixel_matrix[:] = test_value
-        nodata_target = -1
-        raster_path = os.path.join(self.workspace_dir, 'raster.tif')
-        target_path = os.path.join(self.workspace_dir, 'target.tif')
-        pygeoprocessing.testing.create_raster_on_disk(
-            [pixel_matrix], reference.origin, reference.projection,
-            nodata_target, reference.pixel_size(30), filename=raster_path)
-
-        value_map = {
-            test_value: 100,
-        }
-        target_nodata = -1
-        with self.assertRaises(ValueError):
-            pygeoprocessing.reclassify_raster(
-                (raster_path, 1), value_map, target_path, gdal.GDT_Float32,
-                target_nodata, exception_flag='BAD FLAG')
+                target_nodata, values_required=True)
 
     def test_reclassify_raster(self):
         """PGP.geoprocessing: test reclassify raster."""
@@ -95,7 +89,7 @@ class PyGeoprocessing10(unittest.TestCase):
         target_nodata = -1
         pygeoprocessing.reclassify_raster(
             (raster_path, 1), value_map, target_path, gdal.GDT_Float32,
-            target_nodata, exception_flag='values_required')
+            target_nodata, values_required=True)
         target_raster = gdal.Open(target_path)
         target_band = target_raster.GetRasterBand(1)
         target_array = target_band.ReadAsArray()
@@ -103,6 +97,28 @@ class PyGeoprocessing10(unittest.TestCase):
         target_raster = None
         self.assertEqual(
             numpy.sum(target_array), n_pixels**2 * value_map[test_value])
+
+    def test_reclassify_raster_empty_value_map(self):
+        """PGP.geoprocessing: test reclassify raster."""
+        reference = sampledata.SRS_COLOMBIA
+        n_pixels = 9
+        pixel_matrix = numpy.ones((n_pixels, n_pixels), numpy.float32)
+        test_value = 0.5
+        pixel_matrix[:] = test_value
+        nodata_target = -1
+        raster_path = os.path.join(self.workspace_dir, 'raster.tif')
+        target_path = os.path.join(self.workspace_dir, 'target.tif')
+        pygeoprocessing.testing.create_raster_on_disk(
+            [pixel_matrix], reference.origin, reference.projection,
+            nodata_target, reference.pixel_size(30), filename=raster_path)
+
+        empty_value_map = {
+        }
+        target_nodata = -1
+        with self.assertRaises(ValueError):
+            pygeoprocessing.reclassify_raster(
+                (raster_path, 1), empty_value_map, target_path, gdal.GDT_Float32,
+                target_nodata, values_required=False)
 
     def test_reproject_vector(self):
         """PGP.geoprocessing: test reproject vector."""
@@ -146,7 +162,6 @@ class PyGeoprocessing10(unittest.TestCase):
         self.assertTrue(
             osr.SpatialReference(result_reference.ExportToWkt()).IsSame(
                 osr.SpatialReference(target_reference.ExportToWkt())))
-
 
     def test_zonal_statistics(self):
         """PGP.geoprocessing: test zonal stats function."""
@@ -360,6 +375,46 @@ class PyGeoprocessing10(unittest.TestCase):
         with self.assertRaises(TypeError):
             _ = pygeoprocessing.zonal_statistics(
                 (raster_path, 1), aggregating_vector_path,
+                aggregate_field_name, aggregate_layer_name=None,
+                ignore_nodata=True, all_touched=False,
+                polygons_might_overlap=True)
+
+    def test_zonal_statistics_bad_raster_path_band(self):
+        """PGP.geoprocessing: test zonal stats with bad raster/path type."""
+        reference = sampledata.SRS_COLOMBIA
+        pixel_size = 30.0
+        n_pixels = 9
+        polygon_a = shapely.geometry.Polygon([
+            (reference.origin[0], reference.origin[1]),
+            (reference.origin[0], -pixel_size * n_pixels+reference.origin[1]),
+            (reference.origin[0]+pixel_size * n_pixels,
+             -pixel_size * n_pixels+reference.origin[1]),
+            (reference.origin[0]+pixel_size * n_pixels, reference.origin[1]),
+            (reference.origin[0], reference.origin[1])])
+        polygon_b = shapely.geometry.Polygon([
+            (reference.origin[0], reference.origin[1]),
+            (reference.origin[0], -pixel_size+reference.origin[1]),
+            (reference.origin[0]+pixel_size, -pixel_size+reference.origin[1]),
+            (reference.origin[0]+pixel_size, reference.origin[1]),
+            (reference.origin[0], reference.origin[1])])
+        aggregating_vector_path = os.path.join(
+            self.workspace_dir, 'aggregate_vector')
+        aggregate_field_name = 'id'
+        pygeoprocessing.testing.create_vector_on_disk(
+            [polygon_a, polygon_b], reference.projection,
+            fields={'id': 'string'}, attributes=[
+                {aggregate_field_name: '0'}, {aggregate_field_name: '1'}],
+            vector_format='GeoJSON', filename=aggregating_vector_path)
+        pixel_matrix = numpy.ones((n_pixels, n_pixels), numpy.float32)
+        nodata_target = -1
+        raster_path = os.path.join(self.workspace_dir, 'raster.tif')
+        pygeoprocessing.testing.create_raster_on_disk(
+            [pixel_matrix], reference.origin, reference.projection,
+            nodata_target, reference.pixel_size(30), filename=raster_path)
+        with self.assertRaises(ValueError):
+            # intentionally not passing a (path, band) tuple as first arg
+            _ = pygeoprocessing.zonal_statistics(
+                raster_path, aggregating_vector_path,
                 aggregate_field_name, aggregate_layer_name=None,
                 ignore_nodata=True, all_touched=False,
                 polygons_might_overlap=True)
@@ -801,11 +856,11 @@ class PyGeoprocessing10(unittest.TestCase):
         resample_method_list = ['nearest'] * 2
         # format is xmin,ymin,xmax,ymax; since y pixel size is negative it
         # goes first in the following bounding box construction
-        bounding_box_mode = 'bb=[%d,%d,%d,%d]' % (
+        bounding_box_mode = [
             reference.origin[0],
             reference.origin[1] + reference.pixel_size(30)[1] * 5,
             reference.origin[0] + reference.pixel_size(30)[0] * 5,
-            reference.origin[1])
+            reference.origin[1]]
 
         base_a_raster_info = pygeoprocessing.get_raster_info(base_a_path)
 
@@ -840,6 +895,26 @@ class PyGeoprocessing10(unittest.TestCase):
             [(base_path, 1)], lambda x: x, target_path,
             gdal.GDT_Int32, nodata_target, calc_raster_stats=True)
         pygeoprocessing.testing.assert_rasters_equal(base_path, target_path)
+
+    def test_raster_calculator_bad_raster_path(self):
+        """PGP.geoprocessing: raster_calculator bad raster path pairs test."""
+        pixel_matrix = numpy.ones((5, 5), numpy.int16)
+        reference = sampledata.SRS_COLOMBIA
+        nodata_target = -1
+        base_path = os.path.join(self.workspace_dir, 'base.tif')
+        pygeoprocessing.testing.create_raster_on_disk(
+            [pixel_matrix], reference.origin, reference.projection,
+            nodata_target, reference.pixel_size(30), filename=base_path)
+
+        target_path = os.path.join(
+            self.workspace_dir, 'target.tif')
+        for bad_raster_path_band_list in [
+                [base_path], [(base_path, "1")], [(1, 1)],
+                [(base_path, 1, base_path, 2)], base_path]:
+            with self.assertRaises(ValueError):
+                pygeoprocessing.raster_calculator(
+                    bad_raster_path_band_list, lambda x: x, target_path,
+                    gdal.GDT_Int32, nodata_target, calc_raster_stats=True)
 
     def test_raster_calculator_no_path(self):
         """PGP.geoprocessing: raster_calculator raise ex. on bad file path."""
