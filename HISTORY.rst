@@ -1,6 +1,13 @@
 Release History
 ===============
 
+0.4.2 (6/20/2017)
+-----------------
+* Hotfix to fix an issue with `iterblocks` that would return signed values on
+  unsigned raster types.
+* Hotfix to correctly cite Natural Capital Project partners in license and
+  update the copyright year.
+
 0.4.1 (6/19/2017)
 -----------------
 * Non-backwards compatible refactor of core PyGeoprocessing geoprocessing
