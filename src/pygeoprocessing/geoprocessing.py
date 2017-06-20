@@ -1656,8 +1656,8 @@ def convolve_2d(
                     top_index_raster > n_rows_signal):
                 continue
 
-            kernel_nodata_mask = (kernel_block == k_nodata)
-            kernel_block[kernel_nodata_mask] = 0.0
+            if k_nodata is not None:
+                kernel_block[kernel_block == k_nodata] = 0.0
 
             # determine the output convolve shape
             shape = (
