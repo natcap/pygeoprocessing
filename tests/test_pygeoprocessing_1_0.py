@@ -1239,6 +1239,29 @@ class PyGeoprocessing10(unittest.TestCase):
             total += numpy.sum(block)
         self.assertEqual(total, test_value * n_pixels**2)
 
+    def test_iterblocks_unsigned_byte(self):
+        """PGP.geoprocessing: test iterblocks with unsigned byte."""
+        reference = sampledata.SRS_COLOMBIA
+        n_pixels = 100
+        pixel_matrix = numpy.empty((n_pixels, n_pixels), numpy.uint8)
+        test_value = 255
+        pixel_matrix[:] = test_value
+        nodata_target = None
+        raster_path = os.path.join(self.workspace_dir, 'raster.tif')
+        pygeoprocessing.testing.create_raster_on_disk(
+            [pixel_matrix], reference.origin, reference.projection,
+            nodata_target, reference.pixel_size(30), filename=raster_path,
+            dataset_opts=[
+                'TILED=YES',
+                'BLOCKXSIZE=64',
+                'BLOCKYSIZE=64'])
+
+        total = 0
+        for _, block in pygeoprocessing.iterblocks(
+                raster_path, largest_block=0):
+            total += numpy.sum(block)
+        self.assertEqual(total, test_value * n_pixels**2)
+
     def test_convolve_2d(self):
         """PGP.geoprocessing: test convolve 2d."""
         reference = sampledata.SRS_COLOMBIA
