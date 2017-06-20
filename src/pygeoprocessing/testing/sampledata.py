@@ -55,24 +55,20 @@ GDAL_DRIVERS = sorted([gdal.GetDriver(i).GetDescription()
 OGR_DRIVERS = sorted([ogr.GetDriver(i).GetName()
                       for i in range(ogr.GetDriverCount())])
 
-# Higher index in list represents more information is stored by the datatype
-# Helpful for debug messages, used when creating sample rasters.
-DTYPES = [
-    (numpy.byte, gdal.GDT_Byte),
-    (numpy.ubyte, gdal.GDT_Byte),
-    (numpy.uint16, gdal.GDT_UInt16),
-    (numpy.uint32, gdal.GDT_UInt32),
-    (numpy.int16, gdal.GDT_Int16),
-    (numpy.int32, gdal.GDT_Int32),
-    (numpy.int64, gdal.GDT_Int32),  # GDAL doesn't have an int64.
-    (numpy.float32, gdal.GDT_Float32),
-    (numpy.float64, gdal.GDT_Float64),
-    (numpy.cfloat, gdal.GDT_CFloat32),
-    (numpy.cfloat, gdal.GDT_CFloat64)
-]
-
 # Mappings of numpy -> GDAL types and GDAL -> numpy types.
-NUMPY_GDAL_DTYPES = dict(DTYPES)
+NUMPY_GDAL_DTYPES = {
+    numpy.byte: gdal.GDT_Byte,
+    numpy.ubyte: gdal.GDT_Byte,
+    numpy.uint16: gdal.GDT_UInt16,
+    numpy.uint32: gdal.GDT_UInt32,
+    numpy.int16: gdal.GDT_Int16,
+    numpy.int32: gdal.GDT_Int32,
+    numpy.int64: gdal.GDT_Int32,  # GDAL doesn't have an int6.
+    numpy.float32: gdal.GDT_Float32,
+    numpy.float64: gdal.GDT_Float64,
+    numpy.cfloat: gdal.GDT_CFloat32,
+    numpy.cfloat: gdal.GDT_CFloat64
+}
 GDAL_NUMPY_TYPES = dict((g, n) for (n, g) in NUMPY_GDAL_DTYPES.iteritems())
 
 # Build up an index mapping GDAL datatype index to the string label of the
@@ -82,6 +78,7 @@ for _attrname in dir(gdal):
     if _attrname.startswith('GDT_'):
         _dtype_value = getattr(gdal, _attrname)
         GDAL_DTYPE_LABELS[_dtype_value] = _attrname
+
 
 def projection_wkt(epsg_id):
     """
@@ -135,29 +132,6 @@ for keyname, typename in [('int64', 'OFTInteger64'),
         VECTOR_FIELD_TYPES[keyname] = getattr(ogr, typename)
     except AttributeError:
         pass
-
-
-def dtype_index(dtype):
-    """
-    Return the relative data complexity index of the datatype provided.
-
-    Parameters:
-        dtype (numpy.dtype or int GDAL datatype): The dtype to check.
-
-    Returns:
-        The data complexity index relative to the other numpy/gdal type pairs.
-    """
-
-    if isinstance(dtype, type):
-        # It's a numpy type.
-        dtype_tuple_index = 0
-    elif isinstance(dtype, int):
-        # It's a GDAL type.
-        dtype_tuple_index = 1
-    else:
-        raise RuntimeError(('Datatype %s not recognized.  Must be a numpy or '
-                            'gdal datatype') % dtype)
-    return [x[dtype_tuple_index] for x in DTYPES].index(dtype)
 
 
 def make_geotransform(x_len, y_len, origin):
@@ -267,17 +241,6 @@ def create_raster_on_disk(
     numpy_dtype = band_matrix.dtype.type
     if datatype == 'auto':
         datatype = NUMPY_GDAL_DTYPES[numpy_dtype]
-
-    # Warn the user if loss of precision is likely when converting from numpy
-    # datatype to a gdal datatype.
-    if dtype_index(numpy_dtype) > dtype_index(datatype):
-        gdal_dtype_label = GDAL_DTYPE_LABELS[datatype]
-        numpy_dtype_label = numpy_dtype.__name__
-        message = ('Pixels have a datatype of %s, which is greater than the '
-                   'allowed precision of the GDAL datatype %s.  Loss of '
-                   'precision is likely when saving to the new raster.')
-        message %= (numpy_dtype_label, gdal_dtype_label)
-        warnings.warn(message)
 
     # Create a raster given the shape of the pixels given the input driver
     n_rows, n_cols = band_matrices[0].shape
