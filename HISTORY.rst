@@ -1,10 +1,12 @@
 Release History
 ===============
 
-0.4.0 (6/19/2017)
+0.4.1 (6/19/2017)
 -----------------
 * Non-backwards compatible refactor of core PyGeoprocessing geoprocessing
-  pipeline. Includes:
+  pipeline. This is to in part expose only orthogonal functionality, address
+  runtime complexity issues, and follow more conventional GIS naming
+  conventions. Changes include:
     * Full test coverage for `pygeoprocessing.geoprocessing` module
     * Dropping "uri" moniker in lieu of "path".
     * If a raster path is specified and operation requires a single band,
@@ -35,6 +37,7 @@ Release History
       that also works on bounding box clips.
     * Removed the `temporary_filename()` paradigm.  Users should manage
       temporary filenames directly.
+    * Numerous API changes from the 0.3.x version of PyGeoprocessing.
 * Fixing an issue with aggregate_raster_values that caused a crash if feature
   IDs were not in increasing order starting with 0.
 * Removed "create_rat/create_rat_uri" and migrated it to
