@@ -194,7 +194,10 @@ def raster_calculator(
                 yoff=block_offset['yoff'])
 
             if calc_raster_stats:
-                valid_mask = target_block != nodata_target
+                # guard against an undefined nodata target
+                valid_mask = numpy.ones(target_block.shape, dtype=bool)
+                if nodata_target is not None:
+                    valid_mask[:] = target_block != nodata_target
                 valid_block = target_block[valid_mask]
                 if valid_block.size == 0:
                     continue
@@ -214,7 +217,10 @@ def raster_calculator(
             target_mean = target_sum / float(target_n)
             stdev_sum = 0.0
             for block_offset, target_block in iterblocks(target_raster_path):
-                valid_mask = target_block != nodata_target
+                # guard against an undefined nodata target
+                valid_mask = numpy.ones(target_block.shape, dtype=bool)
+                if nodata_target is not None:
+                    valid_mask[:] = target_block != nodata_target
                 valid_block = target_block[valid_mask]
                 stdev_sum += numpy.sum((valid_block - target_mean) ** 2)
             target_stddev = (stdev_sum / float(target_n)) ** 0.5
@@ -383,7 +389,10 @@ def calculate_raster_stats(raster_path):
         for _, target_block in iterblocks(
                 raster_path, band_index_list=[band_index+1]):
             nodata_target = raster_properties['nodata'][band_index]
-            valid_mask = target_block != nodata_target
+            # guard against an undefined nodata target
+            valid_mask = numpy.ones(target_block.shape, dtype=bool)
+            if nodata_target is not None:
+                valid_mask[:] = target_block != nodata_target
             valid_block = target_block[valid_mask]
             if valid_block.size == 0:
                 continue
@@ -400,7 +409,10 @@ def calculate_raster_stats(raster_path):
             stdev_sum = 0.0
             for _, target_block in iterblocks(
                     raster_path, band_index_list=[band_index+1]):
-                valid_mask = target_block != nodata_target
+                # guard against an undefined nodata target
+                valid_mask = numpy.ones(target_block.shape, dtype=bool)
+                if nodata_target is not None:
+                    valid_mask = target_block != nodata_target
                 valid_block = target_block[valid_mask]
                 stdev_sum += numpy.sum((valid_block - target_mean) ** 2)
             target_stddev = (stdev_sum / float(target_n)) ** 0.5
@@ -843,7 +855,10 @@ def zonal_statistics(
         for aggregate_id_offsets, aggregate_id_block in iterblocks(
                 aggregate_id_raster_path):
             clipped_block = clipped_band.ReadAsArray(**aggregate_id_offsets)
-            valid_mask = aggregate_id_block != aggregate_id_nodata
+            # guard against a None nodata type
+            valid_mask = numpy.ones(aggregate_id_block.shape, dtype=bool)
+            if aggregate_id_nodata is not None:
+                valid_mask[:] = aggregate_id_block != aggregate_id_nodata
             valid_aggregate_id = aggregate_id_block[valid_mask]
             valid_clipped = clipped_block[valid_mask]
             for aggregate_id in numpy.unique(valid_aggregate_id):
@@ -1714,7 +1729,12 @@ def convolve_2d(
                 current_output.shape, dtype=numpy.float32)
 
             # read the signal block so we know where the nodata are
-            valid_mask = potential_nodata_signal_array != base_signal_nodata
+            valid_mask = numpy.ones(
+                potential_nodata_signal_array.shape, dtype=bool)
+            # guard against a None nodata value
+            if base_signal_nodata is not None:
+                valid_mask[:] = (
+                    potential_nodata_signal_array != base_signal_nodata)
             output_array[:] = target_nodata
             output_array[valid_mask] = (
                 (result[top_index_result:bottom_index_result,
