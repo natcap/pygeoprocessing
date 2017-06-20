@@ -35,17 +35,6 @@ _LOGGING_PERIOD = 5.0  # min 5.0 seconds per update log message for the module
 _DEFAULT_GTIFF_CREATION_OPTIONS = ('TILED=YES', 'BIGTIFF=IF_SAFER')
 _LARGEST_ITERBLOCK = 2**20  # largest block for iterblocks to read in cells
 
-# map gdal types to numpy equivalent
-_GDAL_TYPE_TO_NUMPY_LOOKUP = {
-    gdal.GDT_Byte: numpy.int8,
-    gdal.GDT_Int16: numpy.int16,
-    gdal.GDT_Int32: numpy.int32,
-    gdal.GDT_UInt16: numpy.uint16,
-    gdal.GDT_UInt32: numpy.uint32,
-    gdal.GDT_Float32: numpy.float32,
-    gdal.GDT_Float64: numpy.float64,
-}
-
 # A dictionary to map the resampling method input string to the gdal type
 _RESAMPLE_DICT = {
     "nearest": gdal.GRA_NearestNeighbour,
@@ -1552,7 +1541,8 @@ def convolve_2d(
             that align with `signal_path_band` will be set to nodata.
         target_datatype (GDAL type): a GDAL raster type to set the output
             raster type to, as well as the type to calculate the convolution
-            in.  Defaults to GDT_Float64.
+            in.  Defaults to GDT_Float64.  Note unsigned byte is not
+            supported.
         gtiff_creation_options (list): an argument list that will be
             passed to the GTiff driver for creating `target_path`.  Useful for
             blocksizes, compression, and more.
@@ -1560,6 +1550,16 @@ def convolve_2d(
     Returns:
         None
     """
+    _gdal_type_to_numpy_lookup = {
+        gdal.GDT_Byte: numpy.int8,
+        gdal.GDT_Int16: numpy.int16,
+        gdal.GDT_Int32: numpy.int32,
+        gdal.GDT_UInt16: numpy.uint16,
+        gdal.GDT_UInt32: numpy.uint32,
+        gdal.GDT_Float32: numpy.float32,
+        gdal.GDT_Float64: numpy.float64,
+    }
+
     target_nodata = numpy.finfo(numpy.float32).min
     new_raster_from_base(
         signal_path_band[0], target_path, target_datatype, [target_nodata],
@@ -1623,7 +1623,7 @@ def convolve_2d(
     signal_data = None
     for signal_data, signal_block in iterblocks(
             s_path_band[0], band_index_list=[s_path_band[1]],
-            astype=_GDAL_TYPE_TO_NUMPY_LOOKUP[target_datatype]):
+            astype=_gdal_type_to_numpy_lookup[target_datatype]):
         last_time = _invoke_timed_callback(
             last_time, lambda: LOGGER.info(
                 "convolution operating on signal pixel (%d, %d)",
@@ -1634,7 +1634,7 @@ def convolve_2d(
 
         for kernel_data, kernel_block in iterblocks(
                 k_path_band[0], band_index_list=[k_path_band[1]],
-                astype=_GDAL_TYPE_TO_NUMPY_LOOKUP[target_datatype]):
+                astype=_gdal_type_to_numpy_lookup[target_datatype]):
             left_index_raster = (
                 signal_data['xoff'] - n_cols_kernel / 2 + kernel_data['xoff'])
             right_index_raster = (
@@ -1957,7 +1957,7 @@ def _gdal_to_numpy_type(band):
     """Calculate the equivalent numpy datatype from a GDAL raster band type.
 
     This function doesn't handle complex or unknown types.  If they are
-    passed in, this function will rase a ValueERror.
+    passed in, this function will raise a ValueError.
 
     Parameters:
         band (gdal.Band): GDAL Band
@@ -1965,13 +1965,23 @@ def _gdal_to_numpy_type(band):
     Returns:
         numpy_datatype (numpy.dtype): equivalent of band.DataType
     """
-    if band.DataType in _GDAL_TYPE_TO_NUMPY_LOOKUP:
-        return _GDAL_TYPE_TO_NUMPY_LOOKUP[band.DataType]
+    # doesn't include GDT_Byte because that's a special case
+    base_gdal_type_to_numpy = {
+        gdal.GDT_Int16: numpy.int16,
+        gdal.GDT_Int32: numpy.int32,
+        gdal.GDT_UInt16: numpy.uint16,
+        gdal.GDT_UInt32: numpy.uint32,
+        gdal.GDT_Float32: numpy.float32,
+        gdal.GDT_Float64: numpy.float64,
+    }
 
-    # only class not in the lookup is a Byte but double check.
+    if band.DataType in base_gdal_type_to_numpy:
+        return base_gdal_type_to_numpy[band.DataType]
+
     if band.DataType != gdal.GDT_Byte:
         raise ValueError("Unsupported DataType: %s" % str(band.DataType))
 
+    # band must be GDT_Byte type, check if it is signed/unsigned
     metadata = band.GetMetadata('IMAGE_STRUCTURE')
     if 'PIXELTYPE' in metadata and metadata['PIXELTYPE'] == 'SIGNEDBYTE':
         return numpy.int8
