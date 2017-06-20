@@ -1,6 +1,18 @@
 Release History
 ===============
 
+0.4.2 (6/20/2017)
+-----------------
+* Hotfix to fix an issue with `iterblocks` that would return signed values on
+  unsigned raster types.
+* Hotfix to correctly cite Natural Capital Project partners in license and
+  update the copyright year.
+* Hotfix to patch an issue that gave incorrect results in many PyGeoprocessing
+  functions when a raster was passed with an NoData value.  In these cases the
+  internal raster block masks would blindly pass through on the first row
+  since a test for `numpy.ndarray == None` is `False` and later `x[False]`
+  is the equivalent of indexing the first row of the array.
+
 0.4.1 (6/19/2017)
 -----------------
 * Non-backwards compatible refactor of core PyGeoprocessing geoprocessing
