@@ -1,6 +1,11 @@
 Release History
 ===============
 
+Unreleased Changes
+------------------
+* Changed the error message in `reclassify_raster` so it's more informative
+  about how many values are missing and the values in the input lookup table.
+
 0.4.2 (6/20/2017)
 -----------------
 * Hotfix to fix an issue with `iterblocks` that would return signed values on

@@ -1166,11 +1166,12 @@ def reclassify_raster(
             unique = numpy.unique(original_values)
             has_map = numpy.in1d(unique, keys)
             if not all(has_map):
+                missing_values = unique[~has_map]
                 raise ValueError(
-                    'There was not a value for at least the following codes '
-                    '%s for this file %s.\nNodata value is: %s' % (
-                        str(unique[~has_map]), base_raster_path_band[0],
-                        str(nodata)))
+                    'The following %d raster values %s from "%s" do not have '
+                    'corresponding entries in the `value_map`: %s' % (
+                        missing_values.size, str(missing_values),
+                        base_raster_path_band[0], str(value_map)))
         index = numpy.digitize(original_values.ravel(), keys, right=True)
         return values[index].reshape(original_values.shape)
 
