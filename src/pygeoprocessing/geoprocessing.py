@@ -1654,8 +1654,8 @@ def convolve_2d(
                 "convolution operating on signal pixel (%d, %d)",
                 signal_data['xoff'], signal_data['yoff']),
             _LOGGING_PERIOD)
-        signal_nodata_mask = signal_block == s_nodata
-        signal_block[signal_nodata_mask] = 0.0
+        if s_nodata is not None:
+            signal_block[signal_block == s_nodata] = 0.0
 
         for kernel_data, kernel_block in iterblocks(
                 k_path_band[0], band_index_list=[k_path_band[1]],
