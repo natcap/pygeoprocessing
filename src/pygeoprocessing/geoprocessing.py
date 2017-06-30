@@ -1084,6 +1084,13 @@ def reproject_vector(
     error_count = 0
     for base_feature in layer:
         geom = base_feature.GetGeometryRef()
+        if geom is None:
+            # we encountered this error occasionally when transforming clipped
+            # global polygons.  Not clear what is happening but perhaps a
+            # feature was retained that otherwise wouldn't have been included
+            # in the clip
+            error_count += 1
+            continue
 
         # Transform geometry into format desired for the new projection
         error_code = geom.Transform(coord_trans)
