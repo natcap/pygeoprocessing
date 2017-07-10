@@ -1555,6 +1555,7 @@ def _next_regular(base):
 def convolve_2d(
         signal_path_band, kernel_path_band, target_path,
         target_datatype=gdal.GDT_Float64,
+        target_nodata=None,
         gtiff_creation_options=_DEFAULT_GTIFF_CREATION_OPTIONS):
     """Convolve 2D kernel over 2D signal.
 
@@ -1592,7 +1593,8 @@ def convolve_2d(
         gdal.GDT_Float64: numpy.float64,
     }
 
-    target_nodata = numpy.finfo(numpy.float32).min
+    if target_nodata is None:
+        target_nodata = numpy.finfo(numpy.float32).min
     new_raster_from_base(
         signal_path_band[0], target_path, target_datatype, [target_nodata],
         fill_value_list=[0],
