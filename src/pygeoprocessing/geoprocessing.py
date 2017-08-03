@@ -1157,6 +1157,10 @@ def reclassify_raster(
     """
     if len(value_map) == 0:
         raise ValueError("value_map must contain at least one value")
+    if not _is_raster_path_band_formatted(base_raster_path_band):
+        raise ValueError(
+            "Expected a (path, band_id) tuple, instead got '%s'" %
+            base_raster_path_band)
     raster_info = get_raster_info(base_raster_path_band[0])
     nodata = raster_info['nodata'][base_raster_path_band[1]-1]
     value_map_copy = value_map.copy()
