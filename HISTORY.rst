@@ -1,10 +1,12 @@
 Release History
 ===============
 
-Unreleased Changes
-------------------
+0.4.3 (8/16/2017)
+-----------------
 * Changed the error message in `reclassify_raster` so it's more informative
   about how many values are missing and the values in the input lookup table.
+* Added an optional parameter `target_nodata` to `convolve_2d` to set the
+  desired target nodata value.
 
 0.4.2 (6/20/2017)
 -----------------
