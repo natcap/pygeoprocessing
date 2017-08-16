@@ -5,12 +5,11 @@ import os
 import shutil
 import functools
 import math
-import collections
 import exceptions
 import heapq
 import time
-import re
 import tempfile
+import uuid
 
 from osgeo import gdal
 from osgeo import osr
@@ -707,12 +706,9 @@ def zonal_statistics(
             vector whose geometric features indicate the areas over
             `base_raster_path_band` to calculate statistics over.
         aggregate_field_name (string): field name in `aggregate_vector_path`
-            that represents an identifying integer value for sets of polygons
-            in the layer such as a unique integer ID per polygon.  Result of
-            this function will be indexed by the values found in this field.
-            Note that a field is required and working with FIDs are considered
-            dangerous.  See comment on question at
-            http://gis.stackexchange.com/q/232101/2397
+            that represents an identifying value for a given polygon. Result
+            of this function will be indexed by the values found in this
+            field.
         aggregate_layer_name (string): name of shapefile layer that will be
             used to aggregate results over.  If set to None, the first layer
             in the DataSource will be used as retrieved by `.GetLayer()`.
@@ -758,15 +754,18 @@ def zonal_statistics(
 
     aggregate_field_def = aggregate_layer_defn.GetFieldDefn(
         aggregate_field_index)
-    if aggregate_field_def.GetTypeName() != 'Integer':
-        raise TypeError(
-            'Can only aggregate by integer based fields, requested '
-            'field is of type  %s' % aggregate_field_def.GetTypeName())
+
+    # create a new aggregate ID field to map base vector aggregate fields to
+    # local ones that are guaranteed to be integers.
+    local_aggregate_field_name = str(uuid.uuid4())[-8:-1]
+    local_aggregate_field_def = ogr.FieldDefn(
+        local_aggregate_field_name, ogr.OFTInteger)
+
     # Adding the rasterize by attribute option
     rasterize_layer_args = {
         'options': [
             'ALL_TOUCHED=%s' % str(all_touched).upper(),
-            'ATTRIBUTE=%s' % aggregate_field_name]
+            'ATTRIBUTE=%s' % local_aggregate_field_name]
         }
 
     # clip base raster to aggregating vector intersection
@@ -791,11 +790,14 @@ def zonal_statistics(
 
     # Initialize these dictionaries to have the shapefile fields in the
     # original datasource even if we don't pick up a value later
-    aggregate_results = {}
+    base_to_local_aggregate_value = {}
     for feature in aggregate_layer:
-        aggregate_results[feature.GetField(aggregate_field_name)] = None
+        aggregate_field_value = feature.GetField(aggregate_field_name)
+        # this builds up a map of aggregate field values to unique ids
+        if aggregate_field_value not in base_to_local_aggregate_value:
+            base_to_local_aggregate_value[aggregate_field_value] = len(
+                base_to_local_aggregate_value)
     aggregate_layer.ResetReading()
-    aggregate_ids = numpy.array(sorted(aggregate_results.iterkeys()))
 
     # Loop over each polygon and aggregate
     if polygons_might_overlap:
@@ -812,17 +814,17 @@ def zonal_statistics(
             delete=False) as aggregate_id_raster_file:
         aggregate_id_raster_path = aggregate_id_raster_file.name
 
-    aggregate_id_nodata = _find_int_not_in_array(aggregate_ids)
+    aggregate_id_nodata = len(base_to_local_aggregate_value)
     new_raster_from_base(
         clipped_raster_path, aggregate_id_raster_path, gdal.GDT_Int32,
         [aggregate_id_nodata])
     aggregate_id_raster = gdal.Open(aggregate_id_raster_path, gdal.GA_Update)
     aggregate_stats = {}
+
     for polygon_set in minimal_polygon_sets:
         disjoint_layer = disjoint_vector.CreateLayer(
             'disjoint_vector', spat_ref, ogr.wkbPolygon)
-
-        disjoint_layer.CreateField(aggregate_field_def)
+        disjoint_layer.CreateField(local_aggregate_field_def)
         # add polygons to subset_layer
         for index, poly_fid in enumerate(polygon_set):
             poly_feat = aggregate_layer.GetFeature(poly_fid)
@@ -832,8 +834,8 @@ def zonal_statistics(
             # why.
             new_feat = disjoint_layer.GetFeature(index)
             new_feat.SetField(
-                aggregate_field_name, poly_feat.GetField(
-                    aggregate_field_name))
+                local_aggregate_field_name, base_to_local_aggregate_value[
+                    poly_feat.GetField(aggregate_field_name)])
             disjoint_layer.SetFeature(new_feat)
         disjoint_layer.SyncToDisk()
 
@@ -908,7 +910,14 @@ def zonal_statistics(
         os.remove(filename)
     shutil.rmtree(disjoint_vector_dir)
 
-    return aggregate_stats
+    # map the local ids back to the original base value
+    local_to_base_aggregate_value = {
+        value: key for key, value in
+        base_to_local_aggregate_value.iteritems()}
+
+    return {
+        local_to_base_aggregate_value[key]: value
+        for key, value in aggregate_stats.iteritems()}
 
 
 def get_vector_info(vector_path, layer_index=0):
@@ -1075,6 +1084,13 @@ def reproject_vector(
     error_count = 0
     for base_feature in layer:
         geom = base_feature.GetGeometryRef()
+        if geom is None:
+            # we encountered this error occasionally when transforming clipped
+            # global polygons.  Not clear what is happening but perhaps a
+            # feature was retained that otherwise wouldn't have been included
+            # in the clip
+            error_count += 1
+            continue
 
         # Transform geometry into format desired for the new projection
         error_code = geom.Transform(coord_trans)
@@ -1141,6 +1157,10 @@ def reclassify_raster(
     """
     if len(value_map) == 0:
         raise ValueError("value_map must contain at least one value")
+    if not _is_raster_path_band_formatted(base_raster_path_band):
+        raise ValueError(
+            "Expected a (path, band_id) tuple, instead got '%s'" %
+            base_raster_path_band)
     raster_info = get_raster_info(base_raster_path_band[0])
     nodata = raster_info['nodata'][base_raster_path_band[1]-1]
     value_map_copy = value_map.copy()
@@ -1157,11 +1177,12 @@ def reclassify_raster(
             unique = numpy.unique(original_values)
             has_map = numpy.in1d(unique, keys)
             if not all(has_map):
+                missing_values = unique[~has_map]
                 raise ValueError(
-                    'There was not a value for at least the following codes '
-                    '%s for this file %s.\nNodata value is: %s' % (
-                        str(unique[~has_map]), base_raster_path_band[0],
-                        str(nodata)))
+                    'The following %d raster values %s from "%s" do not have '
+                    'corresponding entries in the `value_map`: %s' % (
+                        missing_values.size, str(missing_values),
+                        base_raster_path_band[0], str(value_map)))
         index = numpy.digitize(original_values.ravel(), keys, right=True)
         return values[index].reshape(original_values.shape)
 
@@ -1538,6 +1559,7 @@ def _next_regular(base):
 def convolve_2d(
         signal_path_band, kernel_path_band, target_path,
         target_datatype=gdal.GDT_Float64,
+        target_nodata=None,
         gtiff_creation_options=_DEFAULT_GTIFF_CREATION_OPTIONS):
     """Convolve 2D kernel over 2D signal.
 
@@ -1575,7 +1597,8 @@ def convolve_2d(
         gdal.GDT_Float64: numpy.float64,
     }
 
-    target_nodata = numpy.finfo(numpy.float32).min
+    if target_nodata is None:
+        target_nodata = numpy.finfo(numpy.float32).min
     new_raster_from_base(
         signal_path_band[0], target_path, target_datatype, [target_nodata],
         fill_value_list=[0],
@@ -1644,8 +1667,8 @@ def convolve_2d(
                 "convolution operating on signal pixel (%d, %d)",
                 signal_data['xoff'], signal_data['yoff']),
             _LOGGING_PERIOD)
-        signal_nodata_mask = signal_block == s_nodata
-        signal_block[signal_nodata_mask] = 0.0
+        if s_nodata is not None:
+            signal_block[signal_block == s_nodata] = 0.0
 
         for kernel_data, kernel_block in iterblocks(
                 k_path_band[0], band_index_list=[k_path_band[1]],
@@ -2036,49 +2059,6 @@ def _merge_bounding_boxes(bb1, bb2, mode):
 
     bb_out = [op(x, y) for op, x, y in zip(comparison_ops, bb1, bb2)]
     return bb_out
-
-
-def _find_int_not_in_array(values):
-    """Return a value not in the sorted integer array.
-
-    This function is used to determine good values for nodata in rasters that
-    don't collide with other values in the array.
-
-    Parameter:
-        values (numpy.ndarray): a non-empty integer array sorted in
-            increasing order.
-
-    Returns:
-        An integer that's not contained in `values`.
-    """
-    left_bound = int(values[0])
-    right_bound = int(values[-1])
-    if (right_bound - left_bound) == values.size - 1:
-        # then values are all incrementing numbers, either choose +/- 1 bounds
-        if values[0] != numpy.iinfo(numpy.int32).min:
-            return values[0] - 1
-        elif values[1] != numpy.iinfo(numpy.int32).max:
-            return values[-1] + 1
-        # we could get here if the array had every 32 bit int in it
-        raise ValueError("Can't find an int not in array.")
-    else:
-        # array is at least two elements large
-        left_index = 0
-        right_index = int(values.size - 1)
-        while right_index - left_index > 1:
-            # binary search for a gap
-            mid_index = (left_index + right_index) / 2
-            left_size = mid_index - left_index + 1
-            mid_value = int(values[mid_index])
-            left_value = int(values[left_index])
-            if (mid_value - left_value) == left_size - 1:
-                # left list is packed; try the right
-                left_index = mid_index
-            else:
-                right_index = mid_index
-        # if we get here, there are exactly two elements in the subarray and
-        # they contain a gap; so arbitrarily choose +1 of the left value.
-        return values[left_index] + 1
 
 
 def _make_logger_callback(message):

@@ -339,46 +339,6 @@ class PyGeoprocessing10(unittest.TestCase):
                 ignore_nodata=True, all_touched=False,
                 polygons_might_overlap=False)
 
-    def test_zonal_statistics_bad_aggregate_type(self):
-        """PGP.geoprocessing: test zonal stats function with bad agg type."""
-        # create aggregating polygon
-        reference = sampledata.SRS_COLOMBIA
-        pixel_size = 30.0
-        n_pixels = 9
-        polygon_a = shapely.geometry.Polygon([
-            (reference.origin[0], reference.origin[1]),
-            (reference.origin[0], -pixel_size * n_pixels+reference.origin[1]),
-            (reference.origin[0]+pixel_size * n_pixels,
-             -pixel_size * n_pixels+reference.origin[1]),
-            (reference.origin[0]+pixel_size * n_pixels, reference.origin[1]),
-            (reference.origin[0], reference.origin[1])])
-        polygon_b = shapely.geometry.Polygon([
-            (reference.origin[0], reference.origin[1]),
-            (reference.origin[0], -pixel_size+reference.origin[1]),
-            (reference.origin[0]+pixel_size, -pixel_size+reference.origin[1]),
-            (reference.origin[0]+pixel_size, reference.origin[1]),
-            (reference.origin[0], reference.origin[1])])
-        aggregating_vector_path = os.path.join(
-            self.workspace_dir, 'aggregate_vector')
-        aggregate_field_name = 'id'
-        pygeoprocessing.testing.create_vector_on_disk(
-            [polygon_a, polygon_b], reference.projection,
-            fields={'id': 'string'}, attributes=[
-                {aggregate_field_name: '0'}, {aggregate_field_name: '1'}],
-            vector_format='GeoJSON', filename=aggregating_vector_path)
-        pixel_matrix = numpy.ones((n_pixels, n_pixels), numpy.float32)
-        nodata_target = -1
-        raster_path = os.path.join(self.workspace_dir, 'raster.tif')
-        pygeoprocessing.testing.create_raster_on_disk(
-            [pixel_matrix], reference.origin, reference.projection,
-            nodata_target, reference.pixel_size(30), filename=raster_path)
-        with self.assertRaises(TypeError):
-            _ = pygeoprocessing.zonal_statistics(
-                (raster_path, 1), aggregating_vector_path,
-                aggregate_field_name, aggregate_layer_name=None,
-                ignore_nodata=True, all_touched=False,
-                polygons_might_overlap=True)
-
     def test_zonal_statistics_bad_raster_path_band(self):
         """PGP.geoprocessing: test zonal stats with bad raster/path type."""
         reference = sampledata.SRS_COLOMBIA
@@ -1178,21 +1138,6 @@ class PyGeoprocessing10(unittest.TestCase):
         band = None
         raster = None
         numpy.testing.assert_array_equal(expected_result, result)
-
-    def test_find_int_not_in_array(self):
-        """PGP.geoprocessing: test find int not in array."""
-        import pygeoprocessing.geoprocessing
-        for array in [[1, 2, 3],
-                      [1, 2, 3, 4, 5, 6, 8],
-                      [-10, 0, 1000],
-                      [0],
-                      [numpy.iinfo(numpy.int32).min,
-                       numpy.iinfo(numpy.int32).min+1],
-                      [numpy.iinfo(numpy.int32).min,
-                       numpy.iinfo(numpy.int32).max]]:
-            value = pygeoprocessing.geoprocessing._find_int_not_in_array(
-                numpy.array(array))
-            self.assertTrue(value not in array)
 
     def test_transform_box(self):
         """PGP.geoprocessing: test geotransforming lat/lng box to UTM10N."""
