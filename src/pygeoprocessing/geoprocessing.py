@@ -1580,6 +1580,9 @@ def convolve_2d(
             raster type to, as well as the type to calculate the convolution
             in.  Defaults to GDT_Float64.  Note unsigned byte is not
             supported.
+        target_nodata (int/float): nodata value to set on output raster.
+            If `target_datatype` is not gdal.GDT_Float64, this value must
+            be set.  Otherwise defaults to the minimum value of a float32.
         gtiff_creation_options (list): an argument list that will be
             passed to the GTiff driver for creating `target_path`.  Useful for
             blocksizes, compression, and more.
@@ -1596,7 +1599,11 @@ def convolve_2d(
         gdal.GDT_Float32: numpy.float32,
         gdal.GDT_Float64: numpy.float64,
     }
-
+    if target_datatype is not gdal.GDT_Float64 and target_nodata is None:
+        raise ValueError(
+            "`target_datatype` is set, but `target_nodata` is None. "
+            "`target_nodata` must be set if `target_datatype` is not "
+            "`gdal.GDT_Float64`.  `target_nodata` is set to None.")
     if target_nodata is None:
         target_nodata = numpy.finfo(numpy.float32).min
     new_raster_from_base(

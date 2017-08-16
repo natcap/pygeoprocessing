@@ -1239,6 +1239,29 @@ class PyGeoprocessing10(unittest.TestCase):
             n_pixels ** 2 * 9 - n_pixels * 4 * 3 + 4)
         self.assertEqual(numpy.sum(target_array), expected_result)
 
+    def test_convolve_2d_missing_nodata(self):
+        """PGP.geoprocessing: test convolve2d if target type but no nodata."""
+        reference = sampledata.SRS_COLOMBIA
+        n_pixels = 100
+        signal_array = numpy.ones((n_pixels, n_pixels), numpy.float32)
+        test_value = 0.5
+        signal_array[:] = test_value
+        nodata_target = -1
+        signal_path = os.path.join(self.workspace_dir, 'signal.tif')
+        pygeoprocessing.testing.create_raster_on_disk(
+            [signal_array], reference.origin, reference.projection,
+            nodata_target, reference.pixel_size(30), filename=signal_path)
+        kernel_path = os.path.join(self.workspace_dir, 'kernel.tif')
+        kernel_array = numpy.ones((3, 3), numpy.float32)
+        pygeoprocessing.testing.create_raster_on_disk(
+            [kernel_array], reference.origin, reference.projection,
+            nodata_target, reference.pixel_size(30), filename=kernel_path)
+        target_path = os.path.join(self.workspace_dir, 'target.tif')
+        with self.assertRaises(ValueError):
+            pygeoprocessing.convolve_2d(
+                (signal_path, 1), (kernel_path, 1), target_path,
+                target_datatype=gdal.GDT_Int32)
+
     def test_convolve_2d_reverse(self):
         """PGP.geoprocessing: test convolve 2d reversed."""
         reference = sampledata.SRS_COLOMBIA
