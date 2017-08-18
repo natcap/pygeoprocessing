@@ -1,6 +1,13 @@
 Release History
 ===============
 
+0.4.4 (8/18/2017)
+-----------------
+* When testing for raster alignment `raster_calculator` no longer checks the
+  string equality for projections.  Instead it only checks raster size, pixel
+  size, and geotransform equality.  This fixes issues where users rasters DO
+  align, but have a slightly different text format of the WKT of projection.
+
 0.4.3 (8/16/2017)
 -----------------
 * Changed the error message in `reclassify_raster` so it's more informative
