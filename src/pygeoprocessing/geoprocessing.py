@@ -130,8 +130,7 @@ def raster_calculator(
         geospatial_info_set.add(
             (raster_info['pixel_size'],
              raster_info['raster_size'],
-             rounded_geotransform,
-             raster_info['projection']))
+             rounded_geotransform))
     if len(geospatial_info_set) > 1:
         raise ValueError(
             "Input Rasters are not geospatially aligned.  The "
