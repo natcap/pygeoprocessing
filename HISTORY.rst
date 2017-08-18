@@ -4,9 +4,11 @@ Release History
 0.4.4 (8/18/2017)
 -----------------
 * When testing for raster alignment `raster_calculator` no longer checks the
-  string equality for projections.  Instead it only checks raster size, pixel
-  size, and geotransform equality.  This fixes issues where users rasters DO
-  align, but have a slightly different text format of the WKT of projection.
+  string equality for projections or geotransforms.  Instead it only checks
+  raster size equality.  This fixes issues where users rasters DO align, but
+  have a slightly different text format of the WKT of projection.  It also
+  abstracts the problem of georeferencing away from raster_calculator that is
+  only a grid based operation.
 
 0.4.3 (8/16/2017)
 -----------------

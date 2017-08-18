@@ -58,7 +58,9 @@ def raster_calculator(
 
     Parameters:
         base_raster_path_band_list (list): a list of (str, int) tuples where
-            the strings are raster paths, and ints are band indexes.
+            the strings are raster paths, and ints are band indexes.  The
+            rasters in this list must have the same raster size so pixel
+            stacks align.
         local_op (function) a function that must take in as many arguments as
             there are elements in `base_raster_path_band_list`.  The will be
             in the same order as the rasters in arguments
@@ -122,19 +124,11 @@ def raster_calculator(
         for path_band in base_raster_path_band_list]
     geospatial_info_set = set()
     for raster_info in raster_info_list:
-        # Rounding geotransform to 3 places to determine equality between
-        # geotransforms.  Otherwise identical GTs can detect as different
-        # depending on what the GT passed through on the way here.
-        rounded_geotransform = tuple([
-            round(x, 3) for x in raster_info['geotransform']])
-        geospatial_info_set.add(
-            (raster_info['pixel_size'],
-             raster_info['raster_size'],
-             rounded_geotransform))
+        geospatial_info_set.add(raster_info['raster_size'])
     if len(geospatial_info_set) > 1:
         raise ValueError(
-            "Input Rasters are not geospatially aligned.  The "
-            "following geospatial stats are not identical %s" % str(
+            "Input Rasters are not the same dimensions. The "
+            "following raster are not identical %s" % str(
                 geospatial_info_set))
 
     base_raster_list = [
