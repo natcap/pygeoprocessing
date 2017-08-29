@@ -1,6 +1,13 @@
 Release History
 ===============
 
+Unreleased Changes
+------------------
+* Fixed an issue where NETCDF files incorrectly raised Exceptions in
+  `raster_calculator`  and `rasterize` because they aren't filepaths.
+* Added a NullHandler so that users wouldn't get an error that a logger
+  handler was undefined.
+
 0.4.4 (8/18/2017)
 -----------------
 * When testing for raster alignment `raster_calculator` no longer checks the

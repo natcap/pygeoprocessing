@@ -104,9 +104,11 @@ def raster_calculator(
             str(base_raster_path_band_list))
 
     not_found_paths = []
+    gdal.PushErrorHandler('CPLQuietErrorHandler')
     for path, _ in base_raster_path_band_list:
-        if not os.path.exists(path):
+        if gdal.Open(path) is None:
             not_found_paths.append(path)
+    gdal.PopErrorHandler()
 
     if len(not_found_paths) != 0:
         raise exceptions.ValueError(
@@ -1357,9 +1359,11 @@ def rasterize(
     Returns:
         None
     """
-    if not os.path.exists(target_raster_path):
-        raise ValueError("%s doesn't exist, but needed to rasterize.")
+    gdal.PushErrorHandler('CPLQuietErrorHandler')
     raster = gdal.Open(target_raster_path, gdal.GA_Update)
+    gdal.PopErrorHandler()
+    if raster is None:
+        raise ValueError("%s doesn't exist, but needed to rasterize.")
     vector = ogr.Open(vector_path)
     layer = vector.GetLayer(layer_index)
 
