@@ -104,9 +104,11 @@ def raster_calculator(
             str(base_raster_path_band_list))
 
     not_found_paths = []
+    gdal.PushErrorHandler('CPLQuietErrorHandler')
     for path, _ in base_raster_path_band_list:
-        if not os.path.exists(path):
+        if gdal.Open(path) is None:
             not_found_paths.append(path)
+    gdal.PopErrorHandler()
 
     if len(not_found_paths) != 0:
         raise exceptions.ValueError(
