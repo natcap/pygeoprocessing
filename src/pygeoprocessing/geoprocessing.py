@@ -1555,7 +1555,7 @@ def _next_regular(base):
 
 def convolve_2d(
         signal_path_band, kernel_path_band, target_path,
-        ignore_nodata=True, mask_nodata=True,
+        ignore_nodata=True, mask_nodata=True, normalize_kernel=False,
         target_datatype=gdal.GDT_Float64,
         target_nodata=None,
         gtiff_creation_options=_DEFAULT_GTIFF_CREATION_OPTIONS):
@@ -1577,6 +1577,8 @@ def convolve_2d(
         ignore_nodata (boolean): If true, any pixels that are equal to
             `signal_path_band`'s nodata value are not included when averaging
             the convolution filter.
+        normalize_kernel (boolean): If true, the result is divided by the
+            sum of the kernel.
         mask_nodata (boolean): If true, `target_path` raster's output is
             nodata where `signal_path_band`'s pixels were nodata.
         target_datatype (GDAL type): a GDAL raster type to set the output
@@ -1619,18 +1621,10 @@ def convolve_2d(
 
     n_cols_signal, n_rows_signal = signal_raster_info['raster_size']
     n_cols_kernel, n_rows_kernel = kernel_raster_info['raster_size']
-    # by experimentation i found having the smaller raster to be cached
-    # gives the best performance
-    if n_cols_signal * n_rows_signal < n_cols_kernel * n_rows_kernel:
-        s_path_band = signal_path_band
-        k_path_band = kernel_path_band
-        s_nodata = signal_raster_info['nodata'][0]
-        k_nodata = kernel_raster_info['nodata'][0]
-    else:
-        k_path_band = signal_path_band
-        s_path_band = kernel_path_band
-        k_nodata = signal_raster_info['nodata'][0]
-        s_nodata = kernel_raster_info['nodata'][0]
+    s_path_band = signal_path_band
+    k_path_band = kernel_path_band
+    s_nodata = signal_raster_info['nodata'][0]
+    k_nodata = kernel_raster_info['nodata'][0]
 
     # we need the original signal raster info because we want the output to
     # be clipped and NODATA masked to it
@@ -1678,7 +1672,8 @@ def convolve_2d(
                 signal_data['xoff'], signal_data['yoff']),
             _LOGGING_PERIOD)
         if s_nodata is not None and ignore_nodata:
-            signal_block[signal_block == s_nodata] = 0.0
+            signal_nodata_mask = signal_block == s_nodata
+            signal_block[signal_nodata_mask] = 0.0
 
         for kernel_data, kernel_block in iterblocks(
                 k_path_band[0], band_index_list=[k_path_band[1]],
@@ -1728,20 +1723,24 @@ def convolve_2d(
             fslice = tuple([slice(0, int(sz)) for sz in shape])
             # classic FFT convolution
             result = numpy.fft.irfftn(signal_fft * kernel_fft, fshape)[fslice]
-
+            LOGGER.debug("%s %s", s_nodata, ignore_nodata)
             if s_nodata is not None and ignore_nodata:
                 # normalize by signal being 1 where nodata is not defined
                 # and 0 otherwise
                 mask_fft = _signal_fft_cache(
                     fshape, signal_data['xoff'], signal_data['yoff'],
-                    numpy.where(signal_block != base_signal_nodata, 1.0, 0.0))
+                    numpy.where(signal_nodata_mask, 0.0, 1.0))
                 mask_result = numpy.fft.irfftn(
                     mask_fft * kernel_fft, fshape)[fslice]
-                non_zero_mask = mask_result != 0.0
+                non_zero_mask = ~numpy.isclose(mask_result, 0)
                 result[non_zero_mask] = (
                     result[non_zero_mask] / mask_result[non_zero_mask])
                 # I think it's better to set 0.0 here than Nan
                 result[~non_zero_mask] = 0.0
+                if not normalize_kernel:
+                    result *= numpy.sum(kernel_block)
+            elif normalize_kernel:
+                result /= numpy.sum(kernel_block)
 
             left_index_result = 0
             right_index_result = result.shape[1]
