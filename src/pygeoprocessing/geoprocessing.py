@@ -1660,9 +1660,20 @@ def convolve_2d(
 
     LOGGER.info('starting convolve')
     _signal_fft_cache = _make_cache()
+    _mask_fft_cache = _make_cache()
     _kernel_fft_cache = _make_cache()
     last_time = time.time()
     signal_data = None
+
+    kernel_sum = 1.0
+    if normalize_kernel:
+        kernel_sum = 0.0
+        for kernel_data, kernel_block in iterblocks(
+                k_path_band[0], band_index_list=[k_path_band[1]]):
+            if k_nodata is not None and ignore_nodata:
+                kernel_block[kernel_block == k_nodata] = 0.0
+            kernel_sum += numpy.sum(kernel_block)
+
     for signal_data, signal_block in iterblocks(
             s_path_band[0], band_index_list=[s_path_band[1]],
             astype=_gdal_type_to_numpy_lookup[target_datatype]):
@@ -1699,8 +1710,11 @@ def convolve_2d(
                     top_index_raster > n_rows_signal):
                 continue
 
-            if k_nodata is not None:
+            if k_nodata is not None and ignore_nodata:
                 kernel_block[kernel_block == k_nodata] = 0.0
+
+            # normalize_kernel if necessary (kernel_sum is 1 if no normal)
+            kernel_block /= kernel_sum
 
             # determine the output convolve shape
             shape = (
@@ -1723,11 +1737,10 @@ def convolve_2d(
             fslice = tuple([slice(0, int(sz)) for sz in shape])
             # classic FFT convolution
             result = numpy.fft.irfftn(signal_fft * kernel_fft, fshape)[fslice]
-            LOGGER.debug("%s %s", s_nodata, ignore_nodata)
             if s_nodata is not None and ignore_nodata:
                 # normalize by signal being 1 where nodata is not defined
                 # and 0 otherwise
-                mask_fft = _signal_fft_cache(
+                mask_fft = _mask_fft_cache(
                     fshape, signal_data['xoff'], signal_data['yoff'],
                     numpy.where(signal_nodata_mask, 0.0, 1.0))
                 mask_result = numpy.fft.irfftn(
@@ -1738,9 +1751,8 @@ def convolve_2d(
                 # I think it's better to set 0.0 here than Nan
                 result[~non_zero_mask] = 0.0
                 if not normalize_kernel:
-                    result *= numpy.sum(kernel_block)
-            elif normalize_kernel:
-                result /= numpy.sum(kernel_block)
+                    # undo the "natural" normalization by the mask division
+                    result *= kernel_sum
 
             left_index_result = 0
             right_index_result = result.shape[1]
