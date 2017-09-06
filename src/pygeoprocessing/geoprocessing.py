@@ -1555,6 +1555,7 @@ def _next_regular(base):
 
 def convolve_2d(
         signal_path_band, kernel_path_band, target_path,
+        ignore_nodata=True, mask_nodata=True,
         target_datatype=gdal.GDT_Float64,
         target_nodata=None,
         gtiff_creation_options=_DEFAULT_GTIFF_CREATION_OPTIONS):
@@ -1573,6 +1574,11 @@ def convolve_2d(
             of signal with kernel.  Output will be a single band raster of
             same size and projection as `signal_path_band`. Any nodata pixels
             that align with `signal_path_band` will be set to nodata.
+        ignore_nodata (boolean): If true, any pixels that are equal to
+            `signal_path_band`'s nodata value are not included when averaging
+            the convolution filter.
+        mask_nodata (boolean): If true, `target_path` raster's output is
+            nodata where `signal_path_band`'s pixels were nodata.
         target_datatype (GDAL type): a GDAL raster type to set the output
             raster type to, as well as the type to calculate the convolution
             in.  Defaults to GDT_Float64.  Note unsigned byte is not
@@ -1671,7 +1677,7 @@ def convolve_2d(
                 "convolution operating on signal pixel (%d, %d)",
                 signal_data['xoff'], signal_data['yoff']),
             _LOGGING_PERIOD)
-        if s_nodata is not None:
+        if s_nodata is not None and ignore_nodata:
             signal_block[signal_block == s_nodata] = 0.0
 
         for kernel_data, kernel_block in iterblocks(
@@ -1712,6 +1718,7 @@ def convolve_2d(
             signal_fft = _signal_fft_cache(
                 fshape, signal_data['xoff'], signal_data['yoff'],
                 signal_block)
+
             kernel_fft = _kernel_fft_cache(
                 fshape, kernel_data['xoff'], kernel_data['yoff'],
                 kernel_block)
@@ -1721,6 +1728,20 @@ def convolve_2d(
             fslice = tuple([slice(0, int(sz)) for sz in shape])
             # classic FFT convolution
             result = numpy.fft.irfftn(signal_fft * kernel_fft, fshape)[fslice]
+
+            if s_nodata is not None and ignore_nodata:
+                # normalize by signal being 1 where nodata is not defined
+                # and 0 otherwise
+                mask_fft = _signal_fft_cache(
+                    fshape, signal_data['xoff'], signal_data['yoff'],
+                    numpy.where(signal_block != base_signal_nodata, 1.0, 0.0))
+                mask_result = numpy.fft.irfftn(
+                    mask_fft * kernel_fft, fshape)[fslice]
+                non_zero_mask = mask_result != 0.0
+                result[non_zero_mask] = (
+                    result[non_zero_mask] / mask_result[non_zero_mask])
+                # I think it's better to set 0.0 here than Nan
+                result[~non_zero_mask] = 0.0
 
             left_index_result = 0
             right_index_result = result.shape[1]
@@ -1759,7 +1780,7 @@ def convolve_2d(
             valid_mask = numpy.ones(
                 potential_nodata_signal_array.shape, dtype=bool)
             # guard against a None nodata value
-            if base_signal_nodata is not None:
+            if base_signal_nodata is not None and mask_nodata:
                 valid_mask[:] = (
                     potential_nodata_signal_array != base_signal_nodata)
             output_array[:] = target_nodata
