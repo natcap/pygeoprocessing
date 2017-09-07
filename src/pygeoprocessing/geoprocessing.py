@@ -1555,7 +1555,7 @@ def _next_regular(base):
 
 def convolve_2d(
         signal_path_band, kernel_path_band, target_path,
-        ignore_nodata=True, mask_nodata=True, normalize_kernel=False,
+        ignore_nodata=False, mask_nodata=True, normalize_kernel=False,
         target_datatype=gdal.GDT_Float64,
         target_nodata=None,
         gtiff_creation_options=_DEFAULT_GTIFF_CREATION_OPTIONS):
