@@ -1711,7 +1711,6 @@ def convolve_2d(
             if k_nodata is not None and ignore_nodata:
                 kernel_block[kernel_block == k_nodata] = 0.0
 
-            # normalize_kernel if necessary (kernel_sum is 1 if no normal)
             if normalize_kernel:
                 kernel_block /= kernel_sum
 
