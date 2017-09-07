@@ -98,6 +98,31 @@ class PyGeoprocessing10(unittest.TestCase):
         self.assertEqual(
             numpy.sum(target_array), n_pixels**2 * value_map[test_value])
 
+    def test_reclassify_raster_no_raster_path_band(self):
+        """PGP.geoprocessing: test reclassify raster is path band aware."""
+        reference = sampledata.SRS_COLOMBIA
+        n_pixels = 9
+        pixel_matrix = numpy.ones((n_pixels, n_pixels), numpy.float32)
+        test_value = 0.5
+        pixel_matrix[:] = test_value
+        nodata_target = -1
+        raster_path = os.path.join(self.workspace_dir, 'raster.tif')
+        target_path = os.path.join(self.workspace_dir, 'target.tif')
+        pygeoprocessing.testing.create_raster_on_disk(
+            [pixel_matrix], reference.origin, reference.projection,
+            nodata_target, reference.pixel_size(30), filename=raster_path)
+
+        value_map = {
+            test_value: 100,
+        }
+        target_nodata = -1
+        # we expect a value error because we didn't pass a (path, band)
+        # for the first argument
+        with self.assertRaises(ValueError):
+            pygeoprocessing.reclassify_raster(
+                raster_path, value_map, target_path, gdal.GDT_Float32,
+                target_nodata, values_required=True)
+
     def test_reclassify_raster_empty_value_map(self):
         """PGP.geoprocessing: test reclassify raster."""
         reference = sampledata.SRS_COLOMBIA
