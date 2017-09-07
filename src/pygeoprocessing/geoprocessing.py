@@ -1665,14 +1665,12 @@ def convolve_2d(
     last_time = time.time()
     signal_data = None
 
-    kernel_sum = 1.0
-    if normalize_kernel:
-        kernel_sum = 0.0
-        for kernel_data, kernel_block in iterblocks(
-                k_path_band[0], band_index_list=[k_path_band[1]]):
-            if k_nodata is not None and ignore_nodata:
-                kernel_block[kernel_block == k_nodata] = 0.0
-            kernel_sum += numpy.sum(kernel_block)
+    kernel_sum = 0.0
+    for kernel_data, kernel_block in iterblocks(
+            k_path_band[0], band_index_list=[k_path_band[1]]):
+        if k_nodata is not None and ignore_nodata:
+            kernel_block[kernel_block == k_nodata] = 0.0
+        kernel_sum += numpy.sum(kernel_block)
 
     for signal_data, signal_block in iterblocks(
             s_path_band[0], band_index_list=[s_path_band[1]],
@@ -1714,7 +1712,8 @@ def convolve_2d(
                 kernel_block[kernel_block == k_nodata] = 0.0
 
             # normalize_kernel if necessary (kernel_sum is 1 if no normal)
-            kernel_block /= kernel_sum
+            if normalize_kernel:
+                kernel_block /= kernel_sum
 
             # determine the output convolve shape
             shape = (
