@@ -153,7 +153,7 @@ setup(
     long_description=README,
     maintainer='Rich Sharp',
     maintainer_email='richpsharp@gmail.com',
-    url='https://bitbucket.org/richpsharp/pygeoprocessing',
+    url='https://bitbucket.org/richsharp/pygeoprocessing',
     packages=[
         'pygeoprocessing',
         'pygeoprocessing.routing',

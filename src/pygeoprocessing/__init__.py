@@ -14,6 +14,7 @@ from .geoprocessing_core import calculate_slope
 
 LOGGER = logging.getLogger('pygeoprocessing')
 LOGGER.setLevel(logging.DEBUG)
+LOGGER.addHandler(logging.NullHandler())
 
 __all__ = ['calculate_slope']
 for attrname in dir(geoprocessing):
