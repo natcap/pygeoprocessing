@@ -1,8 +1,8 @@
 Release History
 ===============
 
-Unreleased Changes
-------------------
+0.5.0 (9/14/2017)
+-----------------
 * Fixed an issue where NETCDF files incorrectly raised Exceptions in
   `raster_calculator`  and `rasterize` because they aren't filepaths.
 * Added a NullHandler so that users wouldn't get an error that a logger
