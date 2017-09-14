@@ -7,6 +7,12 @@ Unreleased Changes
   `raster_calculator`  and `rasterize` because they aren't filepaths.
 * Added a NullHandler so that users wouldn't get an error that a logger
   handler was undefined.
+* Added `ignore_nodata`, `mask_nodata`, and `normalize_kernel` options to
+  `convolve_2d` which make this function capable of adapting the nodata
+  overlap with the kernel rather than zero out the result, as well as on
+  the fly normalization of the kernel for weighted averaging purposes. This
+  is in part to make this functionality more consistent with ArcGIS's
+  spatial filters.
 
 0.4.4 (8/18/2017)
 -----------------

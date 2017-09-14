@@ -98,6 +98,31 @@ class PyGeoprocessing10(unittest.TestCase):
         self.assertEqual(
             numpy.sum(target_array), n_pixels**2 * value_map[test_value])
 
+    def test_reclassify_raster_no_raster_path_band(self):
+        """PGP.geoprocessing: test reclassify raster is path band aware."""
+        reference = sampledata.SRS_COLOMBIA
+        n_pixels = 9
+        pixel_matrix = numpy.ones((n_pixels, n_pixels), numpy.float32)
+        test_value = 0.5
+        pixel_matrix[:] = test_value
+        nodata_target = -1
+        raster_path = os.path.join(self.workspace_dir, 'raster.tif')
+        target_path = os.path.join(self.workspace_dir, 'target.tif')
+        pygeoprocessing.testing.create_raster_on_disk(
+            [pixel_matrix], reference.origin, reference.projection,
+            nodata_target, reference.pixel_size(30), filename=raster_path)
+
+        value_map = {
+            test_value: 100,
+        }
+        target_nodata = -1
+        # we expect a value error because we didn't pass a (path, band)
+        # for the first argument
+        with self.assertRaises(ValueError):
+            pygeoprocessing.reclassify_raster(
+                raster_path, value_map, target_path, gdal.GDT_Float32,
+                target_nodata, values_required=True)
+
     def test_reclassify_raster_empty_value_map(self):
         """PGP.geoprocessing: test reclassify raster."""
         reference = sampledata.SRS_COLOMBIA
@@ -1238,6 +1263,95 @@ class PyGeoprocessing10(unittest.TestCase):
         expected_result = test_value * (
             n_pixels ** 2 * 9 - n_pixels * 4 * 3 + 4)
         self.assertEqual(numpy.sum(target_array), expected_result)
+
+    def test_convolve_2d_normalize_ignore_nodata(self):
+        """PGP.geoprocessing: test convolve 2d w/ normalize and ignore."""
+        reference = sampledata.SRS_COLOMBIA
+        n_pixels = 100
+        signal_array = numpy.ones((n_pixels, n_pixels), numpy.float32)
+        test_value = 0.5
+        signal_array[:] = test_value
+        nodata_target = -1
+        signal_path = os.path.join(self.workspace_dir, 'signal.tif')
+        pygeoprocessing.testing.create_raster_on_disk(
+            [signal_array], reference.origin, reference.projection,
+            nodata_target, reference.pixel_size(30), filename=signal_path)
+        kernel_path = os.path.join(self.workspace_dir, 'kernel.tif')
+        kernel_array = numpy.ones((3, 3), numpy.float32)
+        pygeoprocessing.testing.create_raster_on_disk(
+            [kernel_array], reference.origin, reference.projection,
+            nodata_target, reference.pixel_size(30), filename=kernel_path)
+        target_path = os.path.join(self.workspace_dir, 'target.tif')
+        pygeoprocessing.convolve_2d(
+            (signal_path, 1), (kernel_path, 1), target_path,
+            ignore_nodata=True, normalize_kernel=True)
+        target_raster = gdal.Open(target_path)
+        target_band = target_raster.GetRasterBand(1)
+        target_array = target_band.ReadAsArray()
+        target_band = None
+        target_raster = None
+
+    def test_convolve_2d_ignore_nodata(self):
+        """PGP.geoprocessing: test convolve 2d w/ normalize and ignore."""
+        reference = sampledata.SRS_COLOMBIA
+        n_pixels = 3
+        signal_array = numpy.ones((n_pixels, n_pixels), numpy.float32)
+        test_value = 0.5
+        signal_array[:] = test_value
+        nodata_target = -1
+        signal_path = os.path.join(self.workspace_dir, 'signal.tif')
+        pygeoprocessing.testing.create_raster_on_disk(
+            [signal_array], reference.origin, reference.projection,
+            nodata_target, reference.pixel_size(30), filename=signal_path)
+        kernel_path = os.path.join(self.workspace_dir, 'kernel.tif')
+        kernel_array = numpy.ones((3, 3), numpy.float32)
+        pygeoprocessing.testing.create_raster_on_disk(
+            [kernel_array], reference.origin, reference.projection,
+            nodata_target, reference.pixel_size(30), filename=kernel_path)
+        target_path = os.path.join(self.workspace_dir, 'target.tif')
+        pygeoprocessing.convolve_2d(
+            (signal_path, 1), (kernel_path, 1), target_path,
+            ignore_nodata=True)
+        target_raster = gdal.Open(target_path)
+        target_band = target_raster.GetRasterBand(1)
+        target_array = target_band.ReadAsArray()
+        target_band = None
+        target_raster = None
+
+        # calculate by working on some graph paper
+        expected_result = 9*9*.5
+        self.assertEqual(numpy.sum(target_array), expected_result)
+
+    def test_convolve_2d_normalize(self):
+        """PGP.geoprocessing: test convolve 2d w/ normalize."""
+        reference = sampledata.SRS_COLOMBIA
+        n_pixels = 3
+        signal_array = numpy.ones((n_pixels, n_pixels), numpy.float32)
+        test_value = 0.5
+        signal_array[:] = test_value
+        nodata_target = -1
+        signal_path = os.path.join(self.workspace_dir, 'signal.tif')
+        pygeoprocessing.testing.create_raster_on_disk(
+            [signal_array], reference.origin, reference.projection,
+            nodata_target, reference.pixel_size(30), filename=signal_path)
+        kernel_path = os.path.join(self.workspace_dir, 'kernel.tif')
+        kernel_array = numpy.ones((3, 3), numpy.float32)
+        pygeoprocessing.testing.create_raster_on_disk(
+            [kernel_array], reference.origin, reference.projection,
+            nodata_target, reference.pixel_size(30), filename=kernel_path)
+        target_path = os.path.join(self.workspace_dir, 'target.tif')
+        pygeoprocessing.convolve_2d(
+            (signal_path, 1), (kernel_path, 1), target_path,
+            normalize_kernel=True)
+        target_raster = gdal.Open(target_path)
+        target_band = target_raster.GetRasterBand(1)
+        target_array = target_band.ReadAsArray()
+        target_band = None
+        target_raster = None
+
+        # I calculated this by manually doing a grid on graph paper
+        expected_result = .5 + 4 * 5./9.
+        self.assertAlmostEqual(numpy.sum(target_array), expected_result)
 
     def test_convolve_2d_missing_nodata(self):
         """PGP.geoprocessing: test convolve2d if target type but no nodata."""
