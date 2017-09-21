@@ -158,7 +158,6 @@ setup(
         'pygeoprocessing',
         'pygeoprocessing.routing',
         'pygeoprocessing.testing',
-        'pygeoprocessing.dbfpy',
     ],
     package_dir={
         'pygeoprocessing': 'src/pygeoprocessing'
