@@ -1,6 +1,13 @@
 Release History
 ===============
 
+Unreleased Changes
+------------------
+* Added an optional parameter to `iterblocks` to allow the `largest_block` to
+  be set something other than the PyGeoprocessing default. This in turn
+  allows the `largest_block` parameter in `raster_calculator` to be passed
+  through to `iterblocks`.
+
 0.5.0 (9/14/2017)
 -----------------
 * Fixed an issue where NETCDF files incorrectly raised Exceptions in
