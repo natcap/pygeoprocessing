@@ -297,8 +297,28 @@ ctypedef double[:, :] FloatMemView
 
 
 #@cython.boundscheck(False)
-def fill_pits(dem_raster_band_path, workspace_dir):
-    """Identify drainage DEM pixels that abut nodata or raster edge."""
+def fill_pits(
+        dem_raster_band_path, target_filled_dem_raster_path,
+        target_watershed_raster_path):
+    """Fill hydrological pits in input DEM.
+
+    Implementation of the algorithm described in "An efficient variant of the
+    Priority-Flood alogirhtm for filling depressions in raster digital
+    elevation models. Zhou, Sun, and Fu.
+
+    Parameters:
+        dem_raster_band_path (tuple): a path, band number tuple indicating the
+            DEM to be filled.
+        target_filled_dem_raster_path (string): path to a single band raster
+            that will be created as a copy of `dem_raster_band_path` with any
+            hydrological depressions filled.
+        target_watershed_raster_path (string): path to a single band raster
+            which will have unique integer values in clumps indicating pixels
+            regions that are hydrologically connected.
+
+    Returns:
+        None.
+    """
     cdef numpy.ndarray[numpy.float64_t, ndim=2] buffer_array
     cdef numpy.float64_t center_value, s_center_value
     cdef int i, j, yi, xi, xi_q, yi_q, xi_s, yi_s, xi_n, yi_n, xj_n, yj_n
