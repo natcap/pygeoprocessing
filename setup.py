@@ -14,45 +14,23 @@ README = open('README.rst').read().format(
     requirements='\n'.join(['    ' + r for r in _REQUIREMENTS]))
 
 
-def requirements(*pkgnames):
+def requirements():
     """Get individual package requirements from requirements.txt.
-
-    This is particularly useful for keeping requirements.txt the central
-    location for a required package's version specification, so the only thing
-    that needs to be specified here in setup.py is the package name.
-
-    Parameters:
-        pkgnames (strings): Optional.  Package names, provided as individual
-            string parameters.  If provided, only requirements matching
-            these packages will be returned.  If not provided, all package
-            requirements will be returned.
 
     Returns:
         A list of package requirement strings, one for each package name
         parameter.
-
-    Raises:
-        ValueError: When a packagename requested is not in requirements.txt
     """
-    desired_pkgnames = set(pkgnames)
-
-    found_pkgnames = {}
-    with open('requirements.txt') as requirements:
-        for line in requirements:
+    found_pkgnames = []
+    with open('requirements.txt') as requirements_file:
+        for line in requirements_file:
             try:
-                package_req = pkg_resources.Requirement.parse(line)
+                found_pkgnames.append(
+                    str(pkg_resources.Requirement.parse(line).project_name))
             except ValueError:
                 continue
-            else:
-                project_name = package_req.project_name
-                if project_name in desired_pkgnames:
-                    found_pkgnames[project_name] = str(package_req)
-
-    if len(desired_pkgnames) != len(found_pkgnames):
-        missing_pkgs = desired_pkgnames - set(found_pkgnames.keys())
-        raise ValueError(('Could not find package '
-                          'requirements for %s') % list(missing_pkgs))
-    return found_pkgnames.values()
+    print found_pkgnames
+    return found_pkgnames
 
 
 BUILD_REQUIREMENTS = ['cython'] + requirements()
@@ -75,7 +53,7 @@ setup(
     natcap_version='src/pygeoprocessing/version.py',
     include_package_data=True,
     install_requires=BUILD_REQUIREMENTS,
-    setup_requires=requirements(),
+    setup_requires=['cython', 'numpy'],
     license='BSD',
     zip_safe=False,
     keywords='gis pygeoprocessing',
