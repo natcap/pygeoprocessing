@@ -93,7 +93,7 @@ setup(
     ],
     ext_modules=cythonize(
         [Extension(
-            "pygeoprocessing.routing",
+            "pygeoprocessing.routing.routing",
             ["src/pygeoprocessing/routing/routing.pyx"],
             include_dirs=[
                 numpy.get_include(),
