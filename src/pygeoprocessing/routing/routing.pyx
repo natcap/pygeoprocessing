@@ -3,6 +3,7 @@
 import tempfile
 import errno
 import os
+import logging
 
 import numpy
 import scipy.signal
@@ -85,8 +86,6 @@ cdef class ManagedRaster:
         self.write_mode = write_mode
 
     def __dealloc__(self):
-        print 'IMPLEMENT SAVING DIRTY CACHE'
-
         cdef int xi_copy, yi_copy
         cdef numpy.ndarray[double, ndim=2] block_array = numpy.empty(
             (self.block_ysize, self.block_xsize))
@@ -110,8 +109,6 @@ cdef class ManagedRaster:
                 free(deref(it).second)
                 inc(it)
             return
-
-        print 'saving', self.raster_path
 
         raster = gdal.Open(self.raster_path, gdal.GA_Update)
         raster_band = raster.GetRasterBand(1)
@@ -275,24 +272,6 @@ cdef cppclass GreaterPixel nogil:
     bint get "operator()"(PixelPtr& lhs, PixelPtr& rhs):
         return lhs[0].value > rhs[0].value
 
-
-def priority_queue_tracer():
-    cdef priority_queue[PixelPtr, vector[PixelPtr], GreaterPixel] q
-    cdef PixelPtr x = new Pixel(1, 1, 1)
-    q.push(x)
-    q.push(new Pixel(1, 1, 19))
-    q.push(new Pixel(2, 1, 11))
-    q.push(new Pixel(-1, 15, 1))
-    q.push(new Pixel(5, 1, 11))
-    q.push(new Pixel(0, 12, 1))
-
-    cdef PixelPtr p
-    while not q.empty():
-        p = q.top()
-        q.pop()
-        print p[0].value
-        del p
-
 ctypedef double[:, :] FloatMemView
 
 
@@ -334,6 +313,9 @@ def fill_pits(
     cdef ManagedRaster flag_managed_raster
     cdef ManagedRaster dem_managed_raster
 
+    logger = logging.getLogger('pygeoprocessing.routing.fill_pits')
+    logger.addHandler(logging.NullHandler())  # silence logging by default
+
     # use this to have offsets to visit neighbor pixels, pick 2 at a time to
     # add to a (xi, yi) tuple
     cdef int* OFFSET_ARRAY = [
@@ -345,48 +327,42 @@ def fill_pits(
         1, -1,
         1, 0,
         1, 1]
-    try:
-        os.mkdir(workspace_dir)
-    except OSError as exc:
-        if exc.errno != errno.EEXIST:
-            raise
-        pass
-
-    _, flag_raster_path = tempfile.mkstemp(
-        suffix='.tif', prefix='flag', dir=workspace_dir)
 
     pygeoprocessing.new_raster_from_base(
-        dem_raster_band_path[0], flag_raster_path, gdal.GDT_Int32,
-        [FLAG_NODATA], fill_value_list=[0],
-        gtiff_creation_options=(
-            'TILED=YES', 'BIGTIFF=IF_SAFER', 'COMPRESS=NONE'))
-
-    _, dem_filled_raster_path = tempfile.mkstemp(
-        suffix='.tif', prefix='dem', dir=workspace_dir)
+        dem_raster_band_path[0], target_watershed_raster_path, gdal.GDT_Int32,
+        [FLAG_NODATA], fill_value_list=[0])
 
     dem_raster_info = pygeoprocessing.get_raster_info(dem_raster_band_path[0])
     dem_nodata = numpy.array(dem_raster_info['nodata']).astype(
         numpy.float64)[dem_raster_band_path[1]-1]
     raster_x_size, raster_y_size = dem_raster_info['raster_size']
-    print dem_nodata, raster_x_size, raster_y_size
 
     # this raster is to fill in as we go so we can also see what the algorithm is touching
+    logger.info('copying base dem to target')
     pygeoprocessing.new_raster_from_base(
-        dem_raster_band_path[0], dem_filled_raster_path, gdal.GDT_Float64,
-        [dem_nodata], fill_value_list=[dem_nodata],
-        gtiff_creation_options=(
-            'TILED=YES', 'BIGTIFF=IF_SAFER', 'COMPRESS=NONE'))
+        dem_raster_band_path[0], target_filled_dem_raster_path,
+        gdal.GDT_Float64, [dem_nodata], fill_value_list=[dem_nodata])
+    target_filled_dem_raster = gdal.Open(
+        target_filled_dem_raster_path, gdal.GA_Update)
+    target_filled_dem_band = target_filled_dem_raster.GetRasterBand(1)
+    for block_offset, block_data in pygeoprocessing.iterblocks(
+            dem_raster_band_path[0]):
+        target_filled_dem_band.WriteArray(
+            block_data, xoff=block_offset['xoff'], yoff=block_offset['yoff'])
+    target_filled_dem_band = None
+    target_filled_dem_raster = None
 
-    flag_managed_raster = ManagedRaster(flag_raster_path, 2**11, 1)
+    flag_managed_raster = ManagedRaster(
+        target_watershed_raster_path, 2**11, 1)
 
     dem_managed_raster = ManagedRaster(dem_raster_band_path[0], 2**11, 0)
     dem_filled_managed_raster = ManagedRaster(
-        dem_filled_raster_path, 2**11, 1)
+        target_filled_dem_raster_path, 2**11, 1)
 
     dem_raster = gdal.Open(dem_raster_band_path[0])
     dem_band = dem_raster.GetRasterBand(dem_raster_band_path[1])
 
-    print 'building edges'
+    logger.info('detecting building edges')
     for offset_dict in pygeoprocessing.iterblocks(
             dem_raster_band_path[0], offset_only=True, largest_block=0):
 
@@ -454,7 +430,7 @@ def fill_pits(
                                 center_value, xi-1+xoff, yi-1+yoff))
                         flag_managed_raster.set(xi-1+xoff, yi-1+yoff, 2)
                         break
-    print 'printing result'
+    logger.info('filling pits')
     while not p_queue.empty():
         p = p_queue.top()
         p_queue.pop()
@@ -572,8 +548,5 @@ def fill_pits(
                         else:
                             isProcessed = 0
 
-    print 'done printing result'
-    print 'deleting flag'
     del flag_managed_raster
-    print 'deleting dem'
     del dem_managed_raster
