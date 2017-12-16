@@ -13,28 +13,6 @@ _REQUIREMENTS = [
 README = open('README.rst').read().format(
     requirements='\n'.join(['    ' + r for r in _REQUIREMENTS]))
 
-
-def requirements():
-    """Get individual package requirements from requirements.txt.
-
-    Returns:
-        A list of package requirement strings, one for each package name
-        parameter.
-    """
-    found_pkgnames = []
-    with open('requirements.txt') as requirements_file:
-        for line in requirements_file:
-            try:
-                found_pkgnames.append(
-                    str(pkg_resources.Requirement.parse(line).project_name))
-            except ValueError:
-                continue
-    print found_pkgnames
-    return found_pkgnames
-
-
-BUILD_REQUIREMENTS = ['cython'] + requirements()
-
 setup(
     name='pygeoprocessing',
     description="PyGeoprocessing: Geoprocessing routines for GIS",
@@ -52,7 +30,8 @@ setup(
     },
     natcap_version='src/pygeoprocessing/version.py',
     include_package_data=True,
-    install_requires=BUILD_REQUIREMENTS,
+    install_requires=[
+        'gdal', 'natcap.versioner', 'numpy', 'scipy', 'shapely'],
     setup_requires=['cython', 'numpy'],
     license='BSD',
     zip_safe=False,
