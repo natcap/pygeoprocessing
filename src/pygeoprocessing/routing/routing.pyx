@@ -312,6 +312,7 @@ def fill_pits(
     cdef queue[CoordinatePair] q, sq
     cdef ManagedRaster flag_managed_raster
     cdef ManagedRaster dem_managed_raster
+    cdef int flag_id
 
     logger = logging.getLogger('pygeoprocessing.routing.fill_pits')
     logger.addHandler(logging.NullHandler())  # silence logging by default
@@ -431,13 +432,14 @@ def fill_pits(
                         flag_managed_raster.set(xi-1+xoff, yi-1+yoff, 2)
                         break
     logger.info('filling pits')
+    flag_id = 1
     while not p_queue.empty():
         p = p_queue.top()
-        p_queue.pop()
         xi = p.xi
         yi = p.yi
         center_value = p.value
         # loop invariant, center_value != nodata because it wouldn't have been pushed
+        p_queue.pop()
         del p
 
         for i in xrange(8):
@@ -452,7 +454,8 @@ def fill_pits(
                 # if flag is set, cell is processed, so skip
                 continue
             # we're about to process, so set its flag
-            flag_managed_raster.set(xi_n, yi_n, 3) # 1 means start of upstream
+            flag_managed_raster.set(xi_n, yi_n, flag_id)
+            flag_id += 1
             n_value = dem_managed_raster.get(xi_n, yi_n)
             # loop invariant, n_value != nodata because flag is not set
             if n_value <= center_value:
@@ -482,7 +485,8 @@ def fill_pits(
 
                         # check for <= center value
                         if n_value <= center_value:
-                            flag_managed_raster.set(xi_n, yi_n, 4) # filled as neighbor
+                            flag_managed_raster.set(xi_n, yi_n, flag_id) # filled as neighbor
+                            flag_id += 1
                             q.push(CoordinatePair(xi_n, yi_n))
                             # raise neighbor dem to center value
                             if n_value < center_value:
@@ -491,7 +495,8 @@ def fill_pits(
                         else:
                             # not flat so must be a slope pixel,
                             # push to slope queue
-                            flag_managed_raster.set(xi_n, yi_n, 5) # filled as upslope
+                            flag_managed_raster.set(xi_n, yi_n, flag_id) # filled as upslope
+                            flag_id += 1
                             sq.push(CoordinatePair(xi_n, yi_n))
             else:
                 # otherwise it's a slope pixel, push to slope queue
@@ -518,7 +523,8 @@ def fill_pits(
                     # if neighbor is higher than center, grow slope
                     if n_value > s_center_value:
                         sq.push(CoordinatePair(xi_n, yi_n))
-                        flag_managed_raster.set(xi_n, yi_n, 6)
+                        flag_managed_raster.set(xi_n, yi_n, flag_id)
+                        flag_id += 1
                     elif not isProcessed:
                         isProcessed = 1
                         # nonRegionCell call
