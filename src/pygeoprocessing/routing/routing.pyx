@@ -484,7 +484,7 @@ def fill_pits(
                         n_value = dem_managed_raster.get(xi_n, yi_n)
                         # check for <= center value
                         if n_value <= center_value:
-                            flag_managed_raster.set(xi_n, yi_n, 100+flag_id) # filled as neighbor
+                            flag_managed_raster.set(xi_n, yi_n, flag_id) # filled as neighbor
                             flag_id += 1
                             q.push(CoordinatePair(xi_n, yi_n))
                             # raise neighbor dem to center value
