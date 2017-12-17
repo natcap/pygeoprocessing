@@ -460,7 +460,7 @@ def fill_pits(
             # loop invariant, n_value != nodata because flag is not set
             if n_value <= center_value:
                 # neighbor is less than current cell so we grow the region
-
+                dem_filled_managed_raster.set(xi_n, yi_n, center_value)
                 q.push(CoordinatePair(xi_n, yi_n))
                 while not q.empty():
                     xi_q = q.front().first
@@ -482,10 +482,9 @@ def fill_pits(
 
                         # li: n_value is not nodata because flag was not set
                         n_value = dem_managed_raster.get(xi_n, yi_n)
-
                         # check for <= center value
                         if n_value <= center_value:
-                            flag_managed_raster.set(xi_n, yi_n, flag_id) # filled as neighbor
+                            flag_managed_raster.set(xi_n, yi_n, 100+flag_id) # filled as neighbor
                             flag_id += 1
                             q.push(CoordinatePair(xi_n, yi_n))
                             # raise neighbor dem to center value
