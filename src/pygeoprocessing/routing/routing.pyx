@@ -26,7 +26,7 @@ from libcpp.unordered_map cimport unordered_map
 from libcpp.list cimport list
 from libcpp.pair cimport pair
 
-BLOCK_BITS = 8
+cdef int BLOCK_BITS = 8
 
 cdef bint isclose(double a, double b):
     return abs(a - b) <= (1e-5 + 1e-7 * abs(b))
@@ -150,26 +150,26 @@ cdef class ManagedRaster:
         raster = None
 
     cdef void set(self, int xi, int yi, double value) except *:
-        cdef int block_xi = xi / self.block_xsize
-        cdef int block_yi = yi / self.block_ysize
+        cdef int block_xi = xi >> BLOCK_BITS
+        cdef int block_yi = yi >> BLOCK_BITS
         # this is the flat index for the block
         cdef int block_index = block_yi * self.block_nx + block_xi
         if not self.lru_cache.exist(block_index):
             self.load_block(block_index)
-        cdef int xoff = block_xi * self.block_xsize
-        cdef int yoff = block_yi * self.block_ysize
+        cdef int xoff = block_xi << BLOCK_BITS
+        cdef int yoff = block_yi << BLOCK_BITS
         self.lru_cache.get(
             block_index)[(yi-yoff)*self.block_xsize+xi-xoff] = value
 
     cdef double get(self, int xi, int yi) except *:
-        cdef int block_xi = xi / self.block_xsize
-        cdef int block_yi = yi / self.block_ysize
+        cdef int block_xi = xi >> BLOCK_BITS
+        cdef int block_yi = yi >> BLOCK_BITS
         # this is the flat index for the block
         cdef int block_index = block_yi * self.block_nx + block_xi
         if not self.lru_cache.exist(block_index):
             self.load_block(block_index)
-        cdef int xoff = block_xi * self.block_xsize
-        cdef int yoff = block_yi * self.block_ysize
+        cdef int xoff = block_xi << BLOCK_BITS
+        cdef int yoff = block_yi << BLOCK_BITS
         return self.lru_cache.get(
             block_index)[(yi-yoff)*self.block_xsize+xi-xoff]
 
