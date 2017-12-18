@@ -328,7 +328,7 @@ ctypedef double[:, :] FloatMemView
 #@cython.boundscheck(False)
 def fill_pits(
         dem_raster_band_path, target_filled_dem_raster_path,
-        temp_dir_path=None):
+        target_flow_direction_path, temp_dir_path=None):
     """Fill hydrological pits in input DEM.
 
     Implementation of the algorithm described in "An efficient variant of the
@@ -341,7 +341,8 @@ def fill_pits(
         target_filled_dem_raster_path (string): path to a single band raster
             that will be created as a copy of `dem_raster_band_path` with any
             hydrological depressions filled.
-        target_flow_direction_path (string):
+        target_flow_direction_path (string): path to a int8 single band raster
+            that will be created as a flow direction output
         temp_dir_path (string): if not None, indicates where algorithm can
             construct intermediate files for bookkeeping during algorithm
             processing.
@@ -365,10 +366,37 @@ def fill_pits(
     logger = logging.getLogger('pygeoprocessing.routing.fill_pits')
     logger.addHandler(logging.NullHandler())  # silence logging by default
 
+    # flow direction scheme is
+    # 321
+    # 4 0
+    # 567
+    # each flow direction is encoded as 1 << n, n in [0, 7]
+
     # use this to have offsets to visit neighbor pixels, pick 2 at a time to
     # add to a (xi, yi) tuple
     cdef int* OFFSET_ARRAY = [
-        -1, -1, -1, 0, -1, 1, 0, -1, 0, 1, 1, -1, 1, 0, 1, 1]
+        1, 0,  # 0
+        1, -1,  # 1
+        0, -1,  # 2
+        -1, -1,  # 3
+        -1, 0,  # 4
+        -1, 1,  # 5
+        0, 1,  # 6
+        1, 1  # 7
+        ]
+
+    # this is used to set flow direction on a neighbor by indicating which
+    # neighbor it flows to
+    cdef int* REVERSE_FLOW_DIR = [
+        1 << 4, # 0
+        1 << 5, # 1
+        1 << 6, # 2
+        1 << 7, # 3
+        1 << 0, # 4
+        1 << 1, # 5
+        1 << 2, # 6
+        1 << 3 # 7
+    ]
 
     # make an interesting temporary directory that has the time/date and
     # 'fill_pits' on it so we can figure out what's going on if we ever run
@@ -414,14 +442,25 @@ def fill_pits(
     target_filled_dem_band = None
     target_filled_dem_raster = None
 
+    pygeoprocessing.new_raster_from_base(
+        dem_raster_band_path[0], target_flow_direction_path, gdal.GDT_Byte,
+        [255], fill_value_list=[255], gtiff_creation_options=(
+            'TILED=YES', 'BIGTIFF=IF_SAFER', 'COMPRESS=LZW',
+            'BLOCKXSIZE=%d' % (1<<BLOCK_BITS),
+            'BLOCKYSIZE=%d' % (1<<BLOCK_BITS)))
+
     # these are used to determine if a sample is within the raster
     raster_x_size, raster_y_size = dem_raster_info['raster_size']
 
+    # used to set flow directions
+    flow_direction_managed_raster = ManagedRaster(
+        target_flow_direction_path, 2**10, 1)
+
     # used to set and read flags
-    flag_managed_raster = ManagedRaster(flag_raster_path, 2**11, 1)
+    flag_managed_raster = ManagedRaster(flag_raster_path, 2**10, 1)
     # used to set filled DEM and read current DEM.
     dem_filled_managed_raster = ManagedRaster(
-        target_filled_dem_raster_path, 2**11, 1)
+        target_filled_dem_raster_path, 2**10, 1)
 
     dem_raster = gdal.Open(dem_raster_band_path[0])
     dem_band = dem_raster.GetRasterBand(dem_raster_band_path[1])
@@ -488,8 +527,8 @@ def fill_pits(
                 # than 8 identical if statements.
                 for i in xrange(8):
                     if isclose(buffer_array[
-                            yi+OFFSET_ARRAY[2*i],
-                            xi+OFFSET_ARRAY[2*i+1]], dem_nodata):
+                            yi+OFFSET_ARRAY[2*i+1],
+                            xi+OFFSET_ARRAY[2*i]], dem_nodata):
                         p_queue.push(
                             Pixel(
                                 center_value, xi-1+xoff, yi-1+yoff))
@@ -514,8 +553,8 @@ def fill_pits(
 
         for i in xrange(8):
             # neighbor x,y indexes
-            xi_n = xi+OFFSET_ARRAY[2*i+1]
-            yi_n = yi+OFFSET_ARRAY[2*i]
+            xi_n = xi+OFFSET_ARRAY[2*i]
+            yi_n = yi+OFFSET_ARRAY[2*i+1]
             if check_bounds_top:
                 if (xi_n < 0 or yi_n < 0 or
                         xi_n >= raster_x_size or yi_n >= raster_y_size):
@@ -531,6 +570,8 @@ def fill_pits(
             if n_value <= center_value:
                 # neighbor is less than current cell so we grow the region
                 dem_filled_managed_raster.set(xi_n, yi_n, center_value)
+                flow_direction_managed_raster.set(
+                    xi_n, yi_n, REVERSE_FLOW_DIR[i])
                 q.push(CoordinatePair(xi_n, yi_n))
                 while not q.empty():
                     xi_q = q.front().first
@@ -543,8 +584,8 @@ def fill_pits(
                     q.pop()
                     for i in xrange(8):
                         # neighbor x,y indexes
-                        xi_n = xi_q+OFFSET_ARRAY[2*i+1]
-                        yi_n = yi_q+OFFSET_ARRAY[2*i]
+                        xi_n = xi_q+OFFSET_ARRAY[2*i]
+                        yi_n = yi_q+OFFSET_ARRAY[2*i+1]
                         if check_bounds:
                             if (xi_n < 0 or yi_n < 0 or
                                     xi_n >= raster_x_size or
@@ -558,6 +599,9 @@ def fill_pits(
 
                         # li: n_value is not nodata because flag was not set
                         n_value = dem_filled_managed_raster.get(xi_n, yi_n)
+                        flow_direction_managed_raster.set(
+                            xi_n, yi_n, REVERSE_FLOW_DIR[i])
+
                         # check for <= center value
                         if n_value <= center_value:
                             flag_managed_raster.set(xi_n, yi_n, 1) # filled as neighbor
@@ -588,8 +632,8 @@ def fill_pits(
                 sq.pop()
                 s_center_value = dem_filled_managed_raster.get(xi_s, yi_s)
                 for i in xrange(8):
-                    xi_n = xi_s+OFFSET_ARRAY[2*i+1]
-                    yi_n = yi_s+OFFSET_ARRAY[2*i]
+                    xi_n = xi_s+OFFSET_ARRAY[2*i]
+                    yi_n = yi_s+OFFSET_ARRAY[2*i+1]
                     if check_bounds:
                         if (xi_n < 0 or yi_n < 0 or
                                 xi_n >= raster_x_size or
@@ -601,6 +645,8 @@ def fill_pits(
                     # loop invariant: n_value not nodata because flag not set
                     # if neighbor is higher than center, grow slope
                     if n_value > s_center_value:
+                        flow_direction_managed_raster.set(
+                            xi_n, yi_n, REVERSE_FLOW_DIR[i])
                         sq.push(CoordinatePair(xi_n, yi_n))
                         flag_managed_raster.set(xi_n, yi_n, 1)
                     elif not isProcessed:
@@ -609,8 +655,8 @@ def fill_pits(
                         isBoundary = 1
                         for j in xrange(8):
                             # check neighbors of neighbor
-                            xj_n = xi_n+OFFSET_ARRAY[2*j+1]
-                            yj_n = yi_n+OFFSET_ARRAY[2*j]
+                            xj_n = xi_n+OFFSET_ARRAY[2*j]
+                            yj_n = yi_n+OFFSET_ARRAY[2*j+1]
                             if check_bounds:
                                 if (xj_n < 0 or yj_n < 0 or
                                         xj_n >= raster_x_size or
