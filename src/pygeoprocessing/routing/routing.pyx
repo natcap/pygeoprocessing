@@ -26,6 +26,7 @@ from libcpp.unordered_map cimport unordered_map
 from libcpp.list cimport list
 from libcpp.pair cimport pair
 
+# This module expects rasters with a memory xy block size of 2**BLOCK_BITS
 cdef int BLOCK_BITS = 8
 
 cdef bint isclose(double a, double b):
@@ -77,9 +78,17 @@ cdef class ManagedRaster:
         raster_info = pygeoprocessing.get_raster_info(raster_path)
         self.raster_x_size, self.raster_y_size = raster_info['raster_size']
         self.block_xsize, self.block_ysize = raster_info['block_size']
+        if (self.block_xsize != (1 << BLOCK_BITS) or
+                self.block_ysize != (1 << BLOCK_BITS)):
+            error_string = (
+                "Expected block size that was %d bits wide, got %s" % (
+                    BLOCK_BITS, raster_info['block_size']))
+            raise ValueError(error_string)
 
-        self.block_nx = (self.raster_x_size + self.block_xsize - 1) / self.block_xsize
-        self.block_ny = (self.raster_y_size + self.block_ysize - 1) / self.block_ysize
+        self.block_nx = (
+            self.raster_x_size + (self.block_xsize) - 1) / self.block_xsize
+        self.block_ny = (
+            self.raster_y_size + (self.block_ysize) - 1) / self.block_ysize
 
         self.lru_cache = new LRUCache[int, double*](n_blocks)
         self.raster_path = raster_path
@@ -203,8 +212,8 @@ cdef class ManagedRaster:
                 if yi < 0 or yi >= self.raster_y_size:
                     continue
 
-                block_xi = xi / self.block_xsize
-                block_yi = yi / self.block_ysize
+                block_xi = xi >> BLOCK_BITS
+                block_yi = yi >> BLOCK_BITS
                 block_index = block_yi * self.block_nx + block_xi
                 # this is the flat index for the block
                 if not self.lru_cache.exist(block_index):
