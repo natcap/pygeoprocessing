@@ -26,6 +26,8 @@ from libcpp.unordered_map cimport unordered_map
 from libcpp.list cimport list
 from libcpp.pair cimport pair
 
+BLOCK_BITS = 8
+
 cdef bint isclose(double a, double b):
     return abs(a - b) <= (1e-5 + 1e-7 * abs(b))
 
@@ -345,11 +347,7 @@ def fill_pits(
     cdef Pixel p
     cdef queue[CoordinatePair] q, sq
     cdef ManagedRaster flag_managed_raster, dem_filled_managed_raster
-    cdef double* dem_center_block
-    cdef double* flag_block
-
-    dem_center_block = <double*>malloc(sizeof(double) * 9)
-    flag_block = <double*>malloc(sizeof(double) * 9)
+    cdef int check_bounds
 
     logger = logging.getLogger('pygeoprocessing.routing.fill_pits')
     logger.addHandler(logging.NullHandler())  # silence logging by default
@@ -370,7 +368,10 @@ def fill_pits(
     # make a byte flag raster, no need for a nodata value but initialize to 0
     pygeoprocessing.new_raster_from_base(
         dem_raster_band_path[0], flag_raster_path, gdal.GDT_Byte,
-        [None], fill_value_list=[0])
+        [None], fill_value_list=[0], gtiff_creation_options=(
+            'TILED=YES', 'BIGTIFF=IF_SAFER', 'COMPRESS=LZW',
+            'BLOCKXSIZE=%d' % 2**BLOCK_BITS, 'BLOCKYSIZE=%d' % 2**BLOCK_BITS))
+
     logger.info('flag raster created at %s', flag_raster_path)
 
     # this will always make the DEM a 64 bit float, it's the 'safest' choice
@@ -384,7 +385,10 @@ def fill_pits(
         dem_raster_info['nodata'][dem_raster_band_path[1]-1])
     pygeoprocessing.new_raster_from_base(
         dem_raster_band_path[0], target_filled_dem_raster_path,
-        gdal.GDT_Float64, [dem_nodata], fill_value_list=[dem_nodata])
+        gdal.GDT_Float64, [dem_nodata], fill_value_list=[dem_nodata],
+        gtiff_creation_options=(
+            'TILED=YES', 'BIGTIFF=IF_SAFER', 'COMPRESS=LZW',
+            'BLOCKXSIZE=%d' % 2**BLOCK_BITS, 'BLOCKYSIZE=%d' % 2**BLOCK_BITS))
     target_filled_dem_raster = gdal.Open(
         target_filled_dem_raster_path, gdal.GA_Update)
     target_filled_dem_band = target_filled_dem_raster.GetRasterBand(1)
@@ -487,15 +491,20 @@ def fill_pits(
         # loop invariant, center_value != nodata because it wouldn't have been pushed
         p_queue.pop()
 
-        dem_filled_managed_raster.get_block(xi, yi, dem_center_block, 1)
-        flag_managed_raster.get_block(xi, yi, flag_block, 1)
+        if (xi == 0 or xi == (raster_x_size-1) or
+                yi == 0 or yi == (raster_y_size-1)):
+            check_bounds_top = 1
+        else:
+            check_bounds_top = 0
+
         for i in xrange(8):
             # neighbor x,y indexes
             xi_n = xi+OFFSET_ARRAY[2*i+1]
             yi_n = yi+OFFSET_ARRAY[2*i]
-            if (xi_n < 0 or yi_n < 0 or
-                    xi_n >= raster_x_size or yi_n >= raster_y_size):
-                continue
+            if check_bounds_top:
+                if (xi_n < 0 or yi_n < 0 or
+                        xi_n >= raster_x_size or yi_n >= raster_y_size):
+                    continue
 
             if flag_managed_raster.get(xi_n, yi_n):
                 # if flag is set, cell is processed, so skip
@@ -511,15 +520,21 @@ def fill_pits(
                 while not q.empty():
                     xi_q = q.front().first
                     yi_q = q.front().second
+                    if (xi_q == 0 or yi_q == 0 or xi_q == (raster_x_size-1) or
+                            yi_q == (raster_y_size-1)):
+                        check_bounds = 1
+                    else:
+                        check_bounds = 0
                     q.pop()
                     for i in xrange(8):
                         # neighbor x,y indexes
                         xi_n = xi_q+OFFSET_ARRAY[2*i+1]
                         yi_n = yi_q+OFFSET_ARRAY[2*i]
-                        if (xi_n < 0 or yi_n < 0 or
-                                xi_n >= raster_x_size or
-                                yi_n >= raster_y_size):
-                            continue
+                        if check_bounds:
+                            if (xi_n < 0 or yi_n < 0 or
+                                    xi_n >= raster_x_size or
+                                    yi_n >= raster_y_size):
+                                continue
                         # if flag is set, then skip
                         if flag_managed_raster.get(xi_n, yi_n):
                             continue
@@ -550,15 +565,21 @@ def fill_pits(
                 isProcessed = 0
                 xi_s = sq.front().first
                 yi_s = sq.front().second
+                if (xi_s <= 1 or xi_s >= raster_x_size-2 or
+                        yi_s <= 1 or yi_s >= raster_y_size-2):
+                    check_bounds = 1
+                else:
+                    check_bounds = 0
                 sq.pop()
                 s_center_value = dem_filled_managed_raster.get(xi_s, yi_s)
                 for i in xrange(8):
                     xi_n = xi_s+OFFSET_ARRAY[2*i+1]
                     yi_n = yi_s+OFFSET_ARRAY[2*i]
-                    if (xi_n < 0 or yi_n < 0 or
-                            xi_n >= raster_x_size or
-                            yi_n >= raster_y_size):
-                        continue
+                    if check_bounds:
+                        if (xi_n < 0 or yi_n < 0 or
+                                xi_n >= raster_x_size or
+                                yi_n >= raster_y_size):
+                            continue
                     if flag_managed_raster.get(xi_n, yi_n):
                         # if n_value < s_center_value use in MFD
                         continue
@@ -576,10 +597,11 @@ def fill_pits(
                             # check neighbors of neighbor
                             xj_n = xi_n+OFFSET_ARRAY[2*j+1]
                             yj_n = yi_n+OFFSET_ARRAY[2*j]
-                            if (xj_n < 0 or yj_n < 0 or
-                                    xj_n >= raster_x_size or
-                                    yj_n > raster_y_size):
-                                continue
+                            if check_bounds:
+                                if (xj_n < 0 or yj_n < 0 or
+                                        xj_n >= raster_x_size or
+                                        yj_n > raster_y_size):
+                                    continue
                             j_value = dem_filled_managed_raster.get(xj_n, yj_n)
                             # check for nodata
                             if isclose(j_value, dem_nodata):
@@ -599,7 +621,5 @@ def fill_pits(
     logger.info("pits filled in %fs", time.time()-start_pit_time)
 
     del flag_managed_raster
-    free(dem_center_block)
-    free(flag_block)
 
     shutil.rmtree(temp_dir_path)
