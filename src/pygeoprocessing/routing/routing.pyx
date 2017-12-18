@@ -43,14 +43,10 @@ cdef extern from "<queue>" namespace "std" nogil:
         T& top()
 
 # this is the class type that'll get stored in the priority queue
-cdef cppclass Pixel nogil:
-    void Pixel(double value, int xi, int yi):
-        this.xi = xi
-        this.yi = yi
-        this.value = value
+cdef struct Pixel:
+    double value
     int xi
     int yi
-    double value
 
 cdef extern from "LRUCache.h" nogil:
     cdef cppclass LRUCache[KEY_T, VAL_T]:
@@ -264,15 +260,11 @@ cdef class ManagedRaster:
 
 ctypedef pair[int, int] CoordinatePair
 
-# made this type def because cython sometimes has trouble recognizing the
-# "*" pointer type notation without some extra syntax
-ctypedef Pixel* PixelPtr
-
 # This functor is used to determine order in the priority queue by comparing
 # value only.
 cdef cppclass GreaterPixel nogil:
-    bint get "operator()"(PixelPtr& lhs, PixelPtr& rhs):
-        return lhs[0].value > rhs[0].value
+    bint get "operator()"(Pixel& lhs, Pixel& rhs):
+        return lhs.value > rhs.value
 
 ctypedef double[:, :] FloatMemView
 
@@ -310,8 +302,8 @@ def fill_pits(
     cdef int xoff, yoff
     cdef numpy.float64_t dem_nodata
     cdef numpy.int32_t FLAG_NODATA = -1
-    cdef priority_queue[PixelPtr, vector[PixelPtr], GreaterPixel] p_queue
-    cdef PixelPtr p
+    cdef priority_queue[Pixel, vector[Pixel], GreaterPixel] p_queue
+    cdef Pixel p
     cdef queue[CoordinatePair] q, sq
     cdef ManagedRaster flag_managed_raster, dem_filled_managed_raster
 
@@ -436,7 +428,7 @@ def fill_pits(
                             yi+OFFSET_ARRAY[2*i],
                             xi+OFFSET_ARRAY[2*i+1]], dem_nodata):
                         p_queue.push(
-                            new Pixel(
+                            Pixel(
                                 center_value, xi-1+xoff, yi-1+yoff))
                         flag_managed_raster.set(xi-1+xoff, yi-1+yoff, 1)
                         break
@@ -450,7 +442,6 @@ def fill_pits(
         center_value = p.value
         # loop invariant, center_value != nodata because it wouldn't have been pushed
         p_queue.pop()
-        del p
 
         for i in xrange(8):
             # neighbor x,y indexes
@@ -555,8 +546,7 @@ def fill_pits(
                                 isBoundary = 0
                                 break
                         if isBoundary:
-                            p_queue.push(
-                                new Pixel(s_center_value, xi_s, yi_s))
+                            p_queue.push(Pixel(s_center_value, xi_s, yi_s))
                         else:
                             # USE i_n in MFD for i_s
                             isProcessed = 0
