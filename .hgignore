@@ -12,3 +12,4 @@ Syntax: regexp
 \.pyc$
 \.cpp$
 ^dev_env
+^venv
