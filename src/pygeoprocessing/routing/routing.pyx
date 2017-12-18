@@ -158,7 +158,7 @@ cdef class ManagedRaster:
         raster_band = None
         raster = None
 
-    cdef void set(self, int xi, int yi, double value) except *:
+    cdef void set(self, int xi, int yi, double value):
         cdef int block_xi = xi >> BLOCK_BITS
         cdef int block_yi = yi >> BLOCK_BITS
         # this is the flat index for the block
@@ -170,7 +170,7 @@ cdef class ManagedRaster:
         self.lru_cache.get(
             block_index)[(yi-yoff)*self.block_xsize+xi-xoff] = value
 
-    cdef double get(self, int xi, int yi) except *:
+    cdef double get(self, int xi, int yi):
         cdef int block_xi = xi >> BLOCK_BITS
         cdef int block_yi = yi >> BLOCK_BITS
         # this is the flat index for the block
@@ -590,7 +590,6 @@ def fill_pits(
                                 yi_n >= raster_y_size):
                             continue
                     if flag_managed_raster.get(xi_n, yi_n):
-                        # if n_value < s_center_value use in MFD
                         continue
                     n_value = dem_filled_managed_raster.get(xi_n, yi_n)
                     # loop invariant: n_value not nodata because flag not set
@@ -611,12 +610,13 @@ def fill_pits(
                                         xj_n >= raster_x_size or
                                         yj_n > raster_y_size):
                                     continue
-                            j_value = dem_filled_managed_raster.get(xj_n, yj_n)
+                            j_value = dem_filled_managed_raster.get(
+                                xj_n, yj_n)
                             # check for nodata
                             if isclose(j_value, dem_nodata):
                                 continue
-                            if (flag_managed_raster.get(xj_n, yj_n) and
-                                    (j_value < n_value)):
+                            if ((j_value < n_value) and
+                                    flag_managed_raster.get(xj_n, yj_n)):
                                 # if flag(j) && DEM(j) < DEM(n) it's not a
                                 # boundary because downhill neighbor has been
                                 # processed
