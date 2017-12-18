@@ -10,6 +10,7 @@ logging.basicConfig(
 
 def main():
     raster_path = r"C:\Users\Rich\Dropbox\big_dems_for_testing_routing\dem_with_pits.tif"
+    raster_path = r"C:\Users\Rich\Dropbox\big_dems_for_testing_routing\DEM_SRTM_90m_my_fill_v2.tif"
     target_filled_dem_raster_path = 'dem_with_pits_filled.tif'
 
     base_test_dem_path = 'for_testing_dem_with_pits_filled.tif'

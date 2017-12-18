@@ -72,19 +72,23 @@ cdef class ManagedRaster:
     cdef int block_nx
     cdef int block_ny
     cdef int write_mode
+    cdef int block_bits
     cdef char* raster_path
 
     def __cinit__(self, char* raster_path, n_blocks, write_mode):
         raster_info = pygeoprocessing.get_raster_info(raster_path)
         self.raster_x_size, self.raster_y_size = raster_info['raster_size']
         self.block_xsize, self.block_ysize = raster_info['block_size']
-        if (self.block_xsize != (1 << BLOCK_BITS) or
-                self.block_ysize != (1 << BLOCK_BITS)):
+        self.block_bits = BLOCK_BITS
+        self.block_xsize = 1<<self.block_bits
+        self.block_ysize = 1<<self.block_bits
+        """if (self.block_xsize != (1 << self.block_bits) or
+                self.block_ysize != (1 << self.block_bits)):
             error_string = (
                 "Expected block size that was %d bits wide, got %s" % (
-                    BLOCK_BITS, raster_info['block_size']))
+                    self.block_bits, raster_info['block_size']))
             raise ValueError(error_string)
-
+        """
         self.block_nx = (
             self.raster_x_size + (self.block_xsize) - 1) / self.block_xsize
         self.block_ny = (
@@ -159,26 +163,26 @@ cdef class ManagedRaster:
         raster = None
 
     cdef void set(self, int xi, int yi, double value):
-        cdef int block_xi = xi >> BLOCK_BITS
-        cdef int block_yi = yi >> BLOCK_BITS
+        cdef int block_xi = xi >> self.block_bits
+        cdef int block_yi = yi >> self.block_bits
         # this is the flat index for the block
         cdef int block_index = block_yi * self.block_nx + block_xi
         if not self.lru_cache.exist(block_index):
             self.load_block(block_index)
-        cdef int xoff = block_xi << BLOCK_BITS
-        cdef int yoff = block_yi << BLOCK_BITS
+        cdef int xoff = block_xi << self.block_bits
+        cdef int yoff = block_yi << self.block_bits
         self.lru_cache.get(
             block_index)[(yi-yoff)*self.block_xsize+xi-xoff] = value
 
     cdef double get(self, int xi, int yi):
-        cdef int block_xi = xi >> BLOCK_BITS
-        cdef int block_yi = yi >> BLOCK_BITS
+        cdef int block_xi = xi >> self.block_bits
+        cdef int block_yi = yi >> self.block_bits
         # this is the flat index for the block
         cdef int block_index = block_yi * self.block_nx + block_xi
         if not self.lru_cache.exist(block_index):
             self.load_block(block_index)
-        cdef int xoff = block_xi << BLOCK_BITS
-        cdef int yoff = block_yi << BLOCK_BITS
+        cdef int xoff = block_xi << self.block_bits
+        cdef int yoff = block_yi << self.block_bits
         return self.lru_cache.get(
             block_index)[(yi-yoff)*self.block_xsize+xi-xoff]
 
@@ -212,14 +216,14 @@ cdef class ManagedRaster:
                 if yi < 0 or yi >= self.raster_y_size:
                     continue
 
-                block_xi = xi >> BLOCK_BITS
-                block_yi = yi >> BLOCK_BITS
+                block_xi = xi >> self.block_bits
+                block_yi = yi >> self.block_bits
                 block_index = block_yi * self.block_nx + block_xi
                 # this is the flat index for the block
                 if not self.lru_cache.exist(block_index):
                     self.load_block(block_index)
-                xoff = block_xi * self.block_xsize
-                yoff = block_yi * self.block_ysize
+                xoff = block_xi << self.block_bits
+                yoff = block_yi << self.block_bits
                 block[(yi-(yc-border))*(1+border*2)+xi-(xc-border)] = (
                     self.lru_cache.get(
                         block_index)[(yi-yoff)*self.block_xsize+xi-xoff])
@@ -379,7 +383,8 @@ def fill_pits(
         dem_raster_band_path[0], flag_raster_path, gdal.GDT_Byte,
         [None], fill_value_list=[0], gtiff_creation_options=(
             'TILED=YES', 'BIGTIFF=IF_SAFER', 'COMPRESS=LZW',
-            'BLOCKXSIZE=%d' % 2**BLOCK_BITS, 'BLOCKYSIZE=%d' % 2**BLOCK_BITS))
+            'BLOCKXSIZE=%d' % (1<<BLOCK_BITS),
+            'BLOCKYSIZE=%d' % (1<<BLOCK_BITS)))
 
     logger.info('flag raster created at %s', flag_raster_path)
 
@@ -397,7 +402,8 @@ def fill_pits(
         gdal.GDT_Float64, [dem_nodata], fill_value_list=[dem_nodata],
         gtiff_creation_options=(
             'TILED=YES', 'BIGTIFF=IF_SAFER', 'COMPRESS=LZW',
-            'BLOCKXSIZE=%d' % 2**BLOCK_BITS, 'BLOCKYSIZE=%d' % 2**BLOCK_BITS))
+            'BLOCKXSIZE=%d' % (1<<BLOCK_BITS),
+            'BLOCKYSIZE=%d' % (1<<BLOCK_BITS)))
     target_filled_dem_raster = gdal.Open(
         target_filled_dem_raster_path, gdal.GA_Update)
     target_filled_dem_band = target_filled_dem_raster.GetRasterBand(1)
