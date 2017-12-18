@@ -293,6 +293,7 @@ def fill_pits(
         target_filled_dem_raster_path (string): path to a single band raster
             that will be created as a copy of `dem_raster_band_path` with any
             hydrological depressions filled.
+        target_flow_direction_path (string):
         temp_dir_path (string): if not None, indicates where algorithm can
             construct intermediate files for bookkeeping during algorithm
             processing.
