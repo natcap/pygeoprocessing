@@ -147,7 +147,6 @@ cdef class ManagedRaster:
         raster_band = None
         raster = None
 
-
     cdef void set(self, int xi, int yi, double value) except *:
         cdef int block_xi = xi / self.block_xsize
         cdef int block_yi = yi / self.block_ysize
@@ -171,6 +170,48 @@ cdef class ManagedRaster:
         cdef int yoff = block_yi * self.block_ysize
         return self.lru_cache.get(
             block_index)[(yi-yoff)*self.block_xsize+xi-xoff]
+
+    cdef void get_block(self, int xc, int yc, double* block, int border) except *:
+        """Load a block from the raster into `block`.
+
+        Parameters:
+            xc (int): x coordinate at center of block
+            yy (int): y coordinate at center of block
+            block (double*): pre-allocated block of size `(1+2*border)**2`
+                after the call this array will contain either random pixels
+                if the block lies outside of the raster, or the pixel values
+                that overlap the block.
+            border (int): number of pixels around `xc`, `yc` to load into
+                `block`.
+
+        Returns:
+            None
+        """
+        cdef int block_xi
+        cdef int block_yi
+        cdef int block_index
+        cdef int xi, yi
+        cdef int xoff
+        cdef int yoff
+
+        for xi in xrange(xc-border, xc+border+1):
+            if xi < 0 or xi >= self.raster_x_size:
+                continue
+            for yi in xrange(yc-border, yc+border+1):
+                if yi < 0 or yi >= self.raster_y_size:
+                    continue
+
+                block_xi = xi / self.block_xsize
+                block_yi = yi / self.block_ysize
+                block_index = block_yi * self.block_nx + block_xi
+                # this is the flat index for the block
+                if not self.lru_cache.exist(block_index):
+                    self.load_block(block_index)
+                xoff = block_xi * self.block_xsize
+                yoff = block_yi * self.block_ysize
+                block[(yi-(yc-border))*(1+border*2)+xi-(xc-border)] = (
+                    self.lru_cache.get(
+                        block_index)[(yi-yoff)*self.block_xsize+xi-xoff])
 
     cdef void load_block(self, int block_index) except *:
         cdef int block_xi = block_index % self.block_nx
@@ -296,16 +337,19 @@ def fill_pits(
     cdef numpy.ndarray[numpy.float64_t, ndim=2] buffer_array
     cdef numpy.float64_t center_value, s_center_value
     cdef int i, j, yi, xi, xi_q, yi_q, xi_s, yi_s, xi_n, yi_n, xj_n, yj_n
-    cdef int watershed_id
     cdef int raster_x_size, raster_y_size
     cdef int win_ysize, win_xsize
     cdef int xoff, yoff
     cdef numpy.float64_t dem_nodata
-    cdef numpy.int32_t FLAG_NODATA = -1
     cdef priority_queue[Pixel, vector[Pixel], GreaterPixel] p_queue
     cdef Pixel p
     cdef queue[CoordinatePair] q, sq
     cdef ManagedRaster flag_managed_raster, dem_filled_managed_raster
+    cdef double* dem_center_block
+    cdef double* flag_block
+
+    dem_center_block = <double*>malloc(sizeof(double) * 9)
+    flag_block = <double*>malloc(sizeof(double) * 9)
 
     logger = logging.getLogger('pygeoprocessing.routing.fill_pits')
     logger.addHandler(logging.NullHandler())  # silence logging by default
@@ -443,6 +487,8 @@ def fill_pits(
         # loop invariant, center_value != nodata because it wouldn't have been pushed
         p_queue.pop()
 
+        dem_filled_managed_raster.get_block(xi, yi, dem_center_block, 1)
+        flag_managed_raster.get_block(xi, yi, flag_block, 1)
         for i in xrange(8):
             # neighbor x,y indexes
             xi_n = xi+OFFSET_ARRAY[2*i+1]
@@ -553,4 +599,7 @@ def fill_pits(
     logger.info("pits filled in %fs", time.time()-start_pit_time)
 
     del flag_managed_raster
+    free(dem_center_block)
+    free(flag_block)
+
     shutil.rmtree(temp_dir_path)
