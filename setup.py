@@ -57,3 +57,12 @@ setup(
                 'src/pygeoprocessing/routing'],
             language="c++")]),
 )
+# this is for profiling, also add this to main pxd
+# #cython: profile=True
+# #cython: linetrace=True
+"""            language="c++",
+            define_macros=[('CYTHON_TRACE', '1')])],
+        compiler_directives={
+            'linetrace': True,
+            'binding': True}),
+"""
