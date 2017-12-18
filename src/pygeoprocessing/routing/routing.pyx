@@ -312,7 +312,7 @@ def fill_pits(
     cdef priority_queue[PixelPtr, vector[PixelPtr], GreaterPixel] p_queue
     cdef PixelPtr p
     cdef queue[CoordinatePair] q, sq
-    cdef ManagedRaster flag_managed_raster
+    cdef ManagedRaster flag_managed_raster, dem_filled_managed_raster
 
     logger = logging.getLogger('pygeoprocessing.routing.fill_pits')
     logger.addHandler(logging.NullHandler())  # silence logging by default
@@ -339,7 +339,9 @@ def fill_pits(
     # this will always make the DEM a 64 bit float, it's the 'safest' choice
     # since we need to statically type a DEM. Is it possible to template
     # this algorithm? maybe?
-    logger.info('copying base dem to %s', target_filled_dem_raster_path)
+    logger.info(
+        'copying %s dem to %s', dem_raster_band_path,
+        target_filled_dem_raster_path)
     dem_raster_info = pygeoprocessing.get_raster_info(dem_raster_band_path[0])
     dem_nodata = numpy.float64(
         dem_raster_info['nodata'][dem_raster_band_path[1]-1])
@@ -435,7 +437,7 @@ def fill_pits(
                         p_queue.push(
                             new Pixel(
                                 center_value, xi-1+xoff, yi-1+yoff))
-                        flag_managed_raster.set(xi-1+xoff, yi-1+yoff, 2)
+                        flag_managed_raster.set(xi-1+xoff, yi-1+yoff, 1)
                         break
     logger.info("edges detected in %fs", time.time()-start_edge_time)
     start_pit_time = time.time()
@@ -462,7 +464,7 @@ def fill_pits(
                 continue
             # we're about to process, so set its flag
             flag_managed_raster.set(xi_n, yi_n, 1)
-            n_value = flag_managed_raster.get(xi_n, yi_n)
+            n_value = dem_filled_managed_raster.get(xi_n, yi_n)
             # loop invariant, n_value != nodata because flag is not set
             if n_value <= center_value:
                 # neighbor is less than current cell so we grow the region
@@ -487,7 +489,7 @@ def fill_pits(
                         # so okay to set flag here
 
                         # li: n_value is not nodata because flag was not set
-                        n_value = flag_managed_raster.get(xi_n, yi_n)
+                        n_value = dem_filled_managed_raster.get(xi_n, yi_n)
                         # check for <= center value
                         if n_value <= center_value:
                             flag_managed_raster.set(xi_n, yi_n, 1) # filled as neighbor
@@ -511,7 +513,7 @@ def fill_pits(
                 xi_s = sq.front().first
                 yi_s = sq.front().second
                 sq.pop()
-                s_center_value = flag_managed_raster.get(xi_s, yi_s)
+                s_center_value = dem_filled_managed_raster.get(xi_s, yi_s)
                 for i in xrange(8):
                     xi_n = xi_s+OFFSET_ARRAY[2*i+1]
                     yi_n = yi_s+OFFSET_ARRAY[2*i]
@@ -522,7 +524,7 @@ def fill_pits(
                     if flag_managed_raster.get(xi_n, yi_n):
                         # if n_value < s_center_value use in MFD
                         continue
-                    n_value = flag_managed_raster.get(xi_n, yi_n)
+                    n_value = dem_filled_managed_raster.get(xi_n, yi_n)
                     # loop invariant: n_value not nodata because flag not set
                     # if neighbor is higher than center, grow slope
                     if n_value > s_center_value:
@@ -540,7 +542,7 @@ def fill_pits(
                                     xj_n >= raster_x_size or
                                     yj_n > raster_y_size):
                                 continue
-                            j_value = flag_managed_raster.get(xj_n, yj_n)
+                            j_value = dem_filled_managed_raster.get(xj_n, yj_n)
                             # check for nodata
                             if isclose(j_value, dem_nodata):
                                 continue
