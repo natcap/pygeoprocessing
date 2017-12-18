@@ -684,3 +684,26 @@ def fill_pits(
     del flag_managed_raster
 
     shutil.rmtree(temp_dir_path)
+
+def flow_accmulation(
+        flow_direction_raster_band_path,
+        target_flow_accumulation_raster_path):
+    """Calculate flow accumulation given flow direction.
+
+    Parameters:
+        flow_direction_raster_band_path (tuple): a path, band number tuple
+            indicating the D8 flow direction raster with direction convention:
+
+            # 321
+            # 4 0
+            # 567
+            # each flow direction is encoded as 1 << n, n in [0, 7]
+
+        target_flow_accmulation_raster_path (string): path to single band
+            raster to be created. Each pixel value will indicate the number
+            of upstream pixels that feed it including the current pixel.
+
+    Returns:
+        None.
+    """
+    pass

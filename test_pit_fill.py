@@ -13,7 +13,7 @@ def main():
     #raster_path = r"C:\Users\Rich\Dropbox\big_dems_for_testing_routing\DEM_SRTM_90m_my_fill_v2.tif"
     target_filled_dem_raster_path = 'dem_with_pits_filled.tif'
     target_flow_direction_raster_path = 'flow_direction.tif'
-    base_test_dem_path = 'for_testing_dem_with_pits_filled.tif'
+    target_flow_accumulation_raster_path = 'flow_accmulation.tif'
 
     start_time = time.time()
     pygeoprocessing.routing.fill_pits(
@@ -21,6 +21,11 @@ def main():
         target_flow_direction_raster_path)
     print 'total time: %f' % (time.time() - start_time)
 
+    pygeoprocessing.routing.flow_accmulation(
+        (target_flow_direction_raster_path, 1),
+        target_flow_accumulation_raster_path)
+
+    base_test_dem_path = 'for_testing_dem_with_pits_filled.tif'
     pygeoprocessing.testing.assert_rasters_equal(
         target_filled_dem_raster_path, base_test_dem_path)
 
