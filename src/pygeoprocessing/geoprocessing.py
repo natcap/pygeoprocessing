@@ -1949,7 +1949,7 @@ def iterblocks(
     last_col_block_width = None
 
     if astype is not None:
-        block_type_list = [astype] * len(band_index_list)
+        block_type_list = astype
     else:
         block_type_list = [
             _gdal_to_numpy_type(ds_band) for ds_band in band_index_list]
