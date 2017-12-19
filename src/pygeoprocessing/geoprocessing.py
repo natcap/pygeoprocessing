@@ -1691,7 +1691,7 @@ def convolve_2d(
 
     for signal_data, signal_block in iterblocks(
             s_path_band[0], band_index_list=[s_path_band[1]],
-            astype=_gdal_type_to_numpy_lookup[target_datatype]):
+            astype=[_gdal_type_to_numpy_lookup[target_datatype]]):
         last_time = _invoke_timed_callback(
             last_time, lambda: LOGGER.info(
                 "convolution operating on signal pixel (%d, %d)",
@@ -1705,7 +1705,7 @@ def convolve_2d(
 
         for kernel_data, kernel_block in iterblocks(
                 k_path_band[0], band_index_list=[k_path_band[1]],
-                astype=_gdal_type_to_numpy_lookup[target_datatype]):
+                astype=[_gdal_type_to_numpy_lookup[target_datatype]]):
             left_index_raster = (
                 signal_data['xoff'] - n_cols_kernel / 2 + kernel_data['xoff'])
             right_index_raster = (
@@ -1834,7 +1834,7 @@ def convolve_2d(
         mask_raster.FlushCache()
         for target_data, target_block in iterblocks(
                 target_path, band_index_list=[1],
-                astype=_gdal_type_to_numpy_lookup[target_datatype]):
+                astype=[_gdal_type_to_numpy_lookup[target_datatype]]):
             mask_block = mask_band.ReadAsArray(**target_data)
             if base_signal_nodata is not None and mask_nodata:
                 valid_mask = target_block != target_nodata
