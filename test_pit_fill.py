@@ -10,17 +10,17 @@ logging.basicConfig(
 
 def main():
     raster_path = r"C:\Users\Rich\Dropbox\big_dems_for_testing_routing\dem_with_pits.tif"
+    raster_path = r"D:\dataplatformdata\dem_globe_CGIAR_STRMv41_3arcseconds\srtm_66_20.tif"
     #raster_path = r"C:\Users\Rich\Dropbox\big_dems_for_testing_routing\DEM_SRTM_90m_my_fill_v2.tif"
     target_filled_dem_raster_path = 'dem_with_pits_filled.tif'
     target_flow_direction_raster_path = 'flow_direction.tif'
     target_flow_accumulation_raster_path = 'flow_accmulation.tif'
 
-    """start_time = time.time()
+    start_time = time.time()
     pygeoprocessing.routing.fill_pits(
         (raster_path, 1), target_filled_dem_raster_path,
         target_flow_direction_raster_path)
     print 'fill_pits total time: %f' % (time.time() - start_time)
-    """
 
     start_time = time.time()
     pygeoprocessing.routing.flow_accmulation(
