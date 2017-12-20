@@ -362,7 +362,7 @@ def fill_pits(
     cdef int raster_x_size, raster_y_size
     cdef int win_ysize, win_xsize
     cdef int xoff, yoff
-    cdef numpy.float64_t dem_nodata
+    cdef numpy.float64_t dem_nodata, n_value
     cdef priority_queue[Pixel, vector[Pixel], GreaterPixel] p_queue
     cdef Pixel p
     cdef queue[CoordinatePair] q, sq
@@ -539,6 +539,10 @@ def fill_pits(
                             Pixel(
                                 center_value, xi-1+xoff, yi-1+yoff))
                         flag_managed_raster.set(xi-1+xoff, yi-1+yoff, 1)
+                        # set it to flow off the edge, this might get changed
+                        # later if it's caught in a flow
+                        flow_direction_managed_raster.set(
+                            xi-1+xoff, yi-1+yoff, i)
                         break
     logger.info("edges detected in %fs", time.time()-start_edge_time)
     start_pit_time = time.time()
@@ -573,11 +577,10 @@ def fill_pits(
             flag_managed_raster.set(xi_n, yi_n, 1)
             n_value = dem_filled_managed_raster.get(xi_n, yi_n)
             # loop invariant, n_value != nodata because flag is not set
+            flow_direction_managed_raster.set(xi_n, yi_n, REVERSE_FLOW_DIR[i])
             if n_value <= center_value:
                 # neighbor is less than current cell so we grow the region
                 dem_filled_managed_raster.set(xi_n, yi_n, center_value)
-                flow_direction_managed_raster.set(
-                    xi_n, yi_n, REVERSE_FLOW_DIR[i])
                 q.push(CoordinatePair(xi_n, yi_n))
                 while not q.empty():
                     xi_q = q.front().first
@@ -686,9 +689,7 @@ def fill_pits(
                             # USE i_n in MFD for i_s
                             isProcessed = 0
     logger.info("pits filled in %fs", time.time()-start_pit_time)
-
     del flag_managed_raster
-
     shutil.rmtree(temp_dir_path)
 
 def flow_accmulation(
@@ -815,6 +816,7 @@ def flow_accmulation(
         buffer_array = numpy.empty(
             (offset_dict['win_ysize']+2, offset_dict['win_xsize']+2),
             dtype=numpy.uint8)
+        buffer_array[:] = flow_direction_nodata
 
         # default numpy array boundaries
         buffer_off = {
@@ -865,7 +867,6 @@ def flow_accmulation(
                         xi-1+xoff, yi-1+yoff, -100)
 
     logger.info("drains detected in %fs", time.time()-start_drain_time)
-    i = 0
     while not flow_stack.empty():
         fp = flow_stack.top()
         flow_stack.pop()
@@ -888,7 +889,7 @@ def flow_accmulation(
             if flow_direction_managed_raster.get(
                     xi_n, yi_n) == REVERSE_FLOW_DIR[i]:
                 flow_accum = flow_accumulation_managed_raster.get(xi_n, yi_n)
-                if  flow_accum == FLOW_ACCMULATION_NODATA:
+                if flow_accum == FLOW_ACCMULATION_NODATA:
                     flow_stack.push(FlowPixel(i, fp.xi, fp.yi, fp.flow_val))
                     flow_stack.push(FlowPixel(0, xi_n, yi_n, 1))
                     all_checked = 0  # indicate failure
