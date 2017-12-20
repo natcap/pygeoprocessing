@@ -55,7 +55,7 @@ cdef struct FlowPixel:
     int n_i
     int xi
     int yi
-    int flow_val
+    double flow_val
 
 cdef extern from "LRUCache.h" nogil:
     cdef cppclass LRUCache[KEY_T, VAL_T]:
@@ -714,14 +714,17 @@ def flow_accmulation(
     Returns:
         None.
     """
-    cdef numpy.ndarray[numpy.int8_t, ndim=2] buffer_array
+    cdef numpy.ndarray[numpy.uint8_t, ndim=2] buffer_array
     cdef int raster_x_size, raster_y_size
-    cdef int xi, yi
-    cdef int win_ysize, win_xsize
+    cdef int xi_n, yi_n, i
+    cdef int xi, yi, win_ysize, win_xsize
     cdef int xoff, yoff
+    cdef int flow_direction_nodata, n_dir
+    cdef double flow_accum
     cdef stack[FlowPixel] flow_stack
-    #cdef ManagedRaster flow_accumulation_managed_raster
-    #cdef ManagedRaster flow_direction_managed_raster
+    cdef FlowPixel fp
+    cdef ManagedRaster flow_accumulation_managed_raster
+    cdef ManagedRaster flow_direction_managed_raster
 
     logger = logging.getLogger('pygeoprocessing.routing.flow_accumulation')
     logger.addHandler(logging.NullHandler())  # silence logging by default
@@ -786,12 +789,12 @@ def flow_accmulation(
         flow_direction_raster_band_path[1]-1]
     raster_x_size, raster_y_size = flow_direction_raster_info['raster_size']
     # used to set flow directions
-    #flow_direction_managed_raster = ManagedRaster(
-    #    flow_direction_raster_band_path[0], 2**10, 0)
+    flow_direction_managed_raster = ManagedRaster(
+        flow_direction_raster_band_path[0], 2**10, 0)
 
-    # used to set and read flags
-    #flow_accumulation_managed_raster = ManagedRaster(
-    #    target_flow_accumulation_raster_path, 2**10, 1)
+    # the flow accumulation result
+    flow_accumulation_managed_raster = ManagedRaster(
+        target_flow_accumulation_raster_path, 2**10, 1)
 
     flow_direction_raster = gdal.Open(flow_direction_raster_band_path[0])
     flow_direction_band = flow_direction_raster.GetRasterBand(
@@ -811,7 +814,7 @@ def flow_accmulation(
         # make a buffer big enough to capture block and boundaries around it
         buffer_array = numpy.empty(
             (offset_dict['win_ysize']+2, offset_dict['win_xsize']+2),
-            dtype=numpy.int8)
+            dtype=numpy.uint8)
 
         # default numpy array boundaries
         buffer_off = {
@@ -860,8 +863,40 @@ def flow_accmulation(
                     if n_dir == REVERSE_FLOW_DIR[i]:
                         # current pixel is nodata and neighbor flows into it,
                         # that's a sink
-                        flow_stack.push(FlowPixel(0, xi-1+xoff, yi-1+yoff, 0))
+                        flow_stack.push(FlowPixel(0, xi-1+xoff, yi-1+yoff, 1))
                         break
     logger.info("drains detected in %fs", time.time()-start_drain_time)
+    i = 0
+    while not flow_stack.empty():
+        fp = flow_stack.top()
+        flow_stack.pop()
+
+        if (fp.xi == 0 or fp.xi == (raster_x_size-1) or
+                fp.yi == 0 or fp.yi == (raster_y_size-1)):
+            check_bounds_top = 1
+        else:
+            check_bounds_top = 0
+
+        all_checked = 1
+        for i in xrange(fp.n_i, 8):
+            # neighbor x,y indexes
+            xi_n = fp.xi+OFFSET_ARRAY[2*i]
+            yi_n = fp.yi+OFFSET_ARRAY[2*i+1]
+            if check_bounds_top:
+                if (xi_n < 0 or yi_n < 0 or
+                        xi_n >= raster_x_size or yi_n >= raster_y_size):
+                    continue
+            if flow_direction_managed_raster.get(
+                    xi_n, yi_n) == REVERSE_FLOW_DIR[i]:
+                flow_accum = flow_accumulation_managed_raster.get(xi_n, yi_n)
+                if  flow_accum == FLOW_ACCMULATION_NODATA:
+                    flow_stack.push(FlowPixel(i, fp.xi, fp.yi, fp.flow_val))
+                    flow_stack.push(FlowPixel(0, xi_n, yi_n, 1))
+                    all_checked = 0  # indicate failure
+                    break
+                else:
+                    fp.flow_val += flow_accum
+        if all_checked:
+            flow_accumulation_managed_raster.set(fp.xi, fp.yi, fp.flow_val)
 
     shutil.rmtree(temp_dir_path)
