@@ -15,15 +15,18 @@ def main():
     target_flow_direction_raster_path = 'flow_direction.tif'
     target_flow_accumulation_raster_path = 'flow_accmulation.tif'
 
-    start_time = time.time()
+    """start_time = time.time()
     pygeoprocessing.routing.fill_pits(
         (raster_path, 1), target_filled_dem_raster_path,
         target_flow_direction_raster_path)
-    print 'total time: %f' % (time.time() - start_time)
+    print 'fill_pits total time: %f' % (time.time() - start_time)
+    """
 
+    start_time = time.time()
     pygeoprocessing.routing.flow_accmulation(
         (target_flow_direction_raster_path, 1),
         target_flow_accumulation_raster_path)
+    print 'flow_accmulation total time: %f' % (time.time() - start_time)
 
     base_test_dem_path = 'for_testing_dem_with_pits_filled.tif'
     pygeoprocessing.testing.assert_rasters_equal(

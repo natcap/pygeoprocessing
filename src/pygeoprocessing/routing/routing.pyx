@@ -18,16 +18,16 @@ from cython.operator cimport dereference as deref
 from cython.operator cimport preincrement as inc
 from libc.stdlib cimport malloc
 from libc.stdlib cimport free
-from libcpp.vector cimport vector
 from libcpp.list cimport list
-from libcpp.queue cimport queue
 from libcpp.map cimport map
-from libcpp.unordered_map cimport unordered_map
-from libcpp.list cimport list
 from libcpp.pair cimport pair
+from libcpp.queue cimport queue
+from libcpp.stack cimport stack
+from libcpp.vector cimport vector
 
 # This module expects rasters with a memory xy block size of 2**BLOCK_BITS
 cdef int BLOCK_BITS = 8
+cdef int FLOW_ACCMULATION_NODATA = -1
 
 cdef bint isclose(double a, double b):
     return abs(a - b) <= (1e-5 + 1e-7 * abs(b))
@@ -50,6 +50,12 @@ cdef struct Pixel:
     double value
     int xi
     int yi
+
+cdef struct FlowPixel:
+    int n_i
+    int xi
+    int yi
+    int flow_val
 
 cdef extern from "LRUCache.h" nogil:
     cdef cppclass LRUCache[KEY_T, VAL_T]:
@@ -687,7 +693,7 @@ def fill_pits(
 
 def flow_accmulation(
         flow_direction_raster_band_path,
-        target_flow_accumulation_raster_path):
+        target_flow_accumulation_raster_path, temp_dir_path=None):
     """Calculate flow accumulation given flow direction.
 
     Parameters:
@@ -702,24 +708,22 @@ def flow_accmulation(
         target_flow_accmulation_raster_path (string): path to single band
             raster to be created. Each pixel value will indicate the number
             of upstream pixels that feed it including the current pixel.
+        temp_dir_path (string): if not None, path to a directory where we can
+            create temporary files
 
     Returns:
         None.
     """
-    cdef numpy.ndarray[numpy.float64_t, ndim=2] buffer_array
-    cdef numpy.float64_t center_value, s_center_value
-    cdef int i, j, yi, xi, xi_q, yi_q, xi_s, yi_s, xi_n, yi_n, xj_n, yj_n
+    cdef numpy.ndarray[numpy.int8_t, ndim=2] buffer_array
     cdef int raster_x_size, raster_y_size
+    cdef int xi, yi
     cdef int win_ysize, win_xsize
     cdef int xoff, yoff
-    cdef numpy.float64_t dem_nodata
-    cdef priority_queue[Pixel, vector[Pixel], GreaterPixel] p_queue
-    cdef Pixel p
-    cdef queue[CoordinatePair] q, sq
-    cdef ManagedRaster flag_managed_raster, dem_filled_managed_raster
-    cdef int check_bounds
+    cdef stack[FlowPixel] flow_stack
+    #cdef ManagedRaster flow_accumulation_managed_raster
+    #cdef ManagedRaster flow_direction_managed_raster
 
-    logger = logging.getLogger('pygeoprocessing.routing.fill_pits')
+    logger = logging.getLogger('pygeoprocessing.routing.flow_accumulation')
     logger.addHandler(logging.NullHandler())  # silence logging by default
 
     # flow direction scheme is
@@ -755,19 +759,17 @@ def flow_accmulation(
     ]
 
     # make an interesting temporary directory that has the time/date and
-    # 'fill_pits' on it so we can figure out what's going on if we ever run
-    # across it again.
+    # 'flow_accumulation' on it so we can figure out what's going on if we
+    # ever run across it in a temp dir.
     temp_dir_path = tempfile.mkdtemp(
-        dir=temp_dir_path, prefix='fill_pits', suffix=time.strftime(
+        dir=temp_dir_path, prefix='flow_accumulation', suffix=time.strftime(
         '%Y-%m-%d_%H_%M_%S', time.gmtime()))
-    flag_raster_path = os.path.join(temp_dir_path, 'flag_raster.tif')
 
     # make a byte flag raster, no need for a nodata value but initialize to 0
-    flow_accmulation_nodata = -1
     pygeoprocessing.new_raster_from_base(
         flow_direction_raster_band_path[0],
-        target_flow_accumulation_raster_path, gdal.GDT_Int64,
-        [flow_accmulation_nodata], fill_value_list=[flow_accmulation_nodata],
+        target_flow_accumulation_raster_path, gdal.GDT_Int32,
+        [FLOW_ACCMULATION_NODATA], fill_value_list=[FLOW_ACCMULATION_NODATA],
         gtiff_creation_options=(
             'TILED=YES', 'BIGTIFF=IF_SAFER', 'COMPRESS=LZW',
             'BLOCKXSIZE=%d' % (1<<BLOCK_BITS),
@@ -780,20 +782,19 @@ def flow_accmulation(
     # these are used to determine if a sample is within the raster
     flow_direction_raster_info = pygeoprocessing.get_raster_info(
         flow_direction_raster_band_path[0])
+    flow_direction_nodata = flow_direction_raster_info['nodata'][
+        flow_direction_raster_band_path[1]-1]
     raster_x_size, raster_y_size = flow_direction_raster_info['raster_size']
-    flow_direction_nodata = (
-        flow_direction_raster_info['nodata'][
-            flow_direction_raster_band_path[1]-1])
     # used to set flow directions
-    flow_direction_managed_raster = ManagedRaster(
-        flow_direction_raster_band_path[0], 2**10, 0)
+    #flow_direction_managed_raster = ManagedRaster(
+    #    flow_direction_raster_band_path[0], 2**10, 0)
 
     # used to set and read flags
-    flow_accumulation_managed_raster = ManagedRaster(
-        target_flow_accumulation_raster_path, 2**10, 1)
+    #flow_accumulation_managed_raster = ManagedRaster(
+    #    target_flow_accumulation_raster_path, 2**10, 1)
 
     flow_direction_raster = gdal.Open(flow_direction_raster_band_path[0])
-    flow_direction_band = dem_raster.GetRasterBand(
+    flow_direction_band = flow_direction_raster.GetRasterBand(
         flow_direction_raster_band_path[1])
 
     logger.info('finding drains')
@@ -801,7 +802,6 @@ def flow_accmulation(
     for offset_dict in pygeoprocessing.iterblocks(
             flow_direction_raster_band_path[0], offset_only=True,
             largest_block=0):
-        ######## LEFT OFF HERE
         # statically type these for later
         win_xsize = offset_dict['win_xsize']
         win_ysize = offset_dict['win_ysize']
@@ -812,7 +812,6 @@ def flow_accmulation(
         buffer_array = numpy.empty(
             (offset_dict['win_ysize']+2, offset_dict['win_xsize']+2),
             dtype=numpy.int8)
-        buffer_array[:] = flow
 
         # default numpy array boundaries
         buffer_off = {
@@ -842,29 +841,27 @@ def flow_accmulation(
         # read in the valid memory block
         buffer_array[
             buffer_off['ya']:buffer_off['yb'],
-            buffer_off['xa']:buffer_off['xb']] = dem_band.ReadAsArray(
-                **offset_dict).astype(numpy.float64)
+            buffer_off['xa']:buffer_off['xb']] = (
+                flow_direction_band.ReadAsArray(
+                    **offset_dict).astype(numpy.int8))
 
         # irrespective of how we sampled the DEM only look at the block in
         # the middle for valid
         for yi in xrange(1, win_ysize+1):
             for xi in xrange(1, win_xsize+1):
-                center_value = buffer_array[yi, xi]
-                if isclose(center_value, dem_nodata):
-                    # if nodata, mark done
-                    flag_managed_raster.set(xi-1+xoff, yi-1+yoff, 1)
+                if not isclose(buffer_array[yi, xi], flow_direction_nodata):
                     continue
 
                 # this uses the offset array to visit the neighbors rather
                 # than 8 identical if statements.
                 for i in xrange(8):
-                    if isclose(buffer_array[
-                            yi+OFFSET_ARRAY[2*i+1],
-                            xi+OFFSET_ARRAY[2*i]], dem_nodata):
-                        p_queue.push(
-                            Pixel(
-                                center_value, xi-1+xoff, yi-1+yoff))
-                        flag_managed_raster.set(xi-1+xoff, yi-1+yoff, 1)
+                    n_dir = buffer_array[
+                        yi+OFFSET_ARRAY[2*i+1], xi+OFFSET_ARRAY[2*i]]
+                    if n_dir == REVERSE_FLOW_DIR[i]:
+                        # current pixel is nodata and neighbor flows into it,
+                        # that's a sink
+                        flow_stack.push(FlowPixel(0, xi-1+xoff, yi-1+yoff, 0))
                         break
     logger.info("drains detected in %fs", time.time()-start_drain_time)
 
+    shutil.rmtree(temp_dir_path)
