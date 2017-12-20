@@ -394,14 +394,14 @@ def fill_pits(
     # this is used to set flow direction on a neighbor by indicating which
     # neighbor it flows to
     cdef int* REVERSE_FLOW_DIR = [
-        1 << 4, # 0
-        1 << 5, # 1
-        1 << 6, # 2
-        1 << 7, # 3
-        1 << 0, # 4
-        1 << 1, # 5
-        1 << 2, # 6
-        1 << 3 # 7
+        4, # 0
+        5, # 1
+        6, # 2
+        7, # 3
+        0, # 4
+        1, # 5
+        2, # 6
+        3 # 7
     ]
 
     # make an interesting temporary directory that has the time/date and
@@ -751,14 +751,14 @@ def flow_accmulation(
     # this is used to set flow direction on a neighbor by indicating which
     # neighbor it flows to
     cdef int* REVERSE_FLOW_DIR = [
-        1 << 4, # 0
-        1 << 5, # 1
-        1 << 6, # 2
-        1 << 7, # 3
-        1 << 0, # 4
-        1 << 1, # 5
-        1 << 2, # 6
-        1 << 3 # 7
+        4, # 0
+        5, # 1
+        6, # 2
+        7, # 3
+        0, # 4
+        1, # 5
+        2, # 6
+        3 # 7
     ]
 
     # make an interesting temporary directory that has the time/date and
