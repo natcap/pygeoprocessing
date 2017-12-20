@@ -719,7 +719,7 @@ def flow_accmulation(
     cdef int xi_n, yi_n, i
     cdef int xi, yi, win_ysize, win_xsize
     cdef int xoff, yoff
-    cdef int flow_direction_nodata, n_dir
+    cdef int flow_direction_nodata, n_dir, flow_dir
     cdef double flow_accum
     cdef stack[FlowPixel] flow_stack
     cdef FlowPixel fp
@@ -852,19 +852,18 @@ def flow_accmulation(
         # the middle for valid
         for yi in xrange(1, win_ysize+1):
             for xi in xrange(1, win_xsize+1):
-                if not isclose(buffer_array[yi, xi], flow_direction_nodata):
+                flow_dir = (buffer_array[yi, xi])
+                if isclose(flow_dir, flow_direction_nodata):
                     continue
+                n_dir = buffer_array[
+                    yi+OFFSET_ARRAY[2*flow_dir+1],
+                    xi+OFFSET_ARRAY[2*flow_dir]]
+                if isclose(n_dir, flow_direction_nodata):
+                    # it flows to nodata (or edge) so it's a seed
+                    flow_stack.push(FlowPixel(0, xi-1+xoff, yi-1+yoff, 1))
+                    flow_accumulation_managed_raster.set(
+                        xi-1+xoff, yi-1+yoff, -100)
 
-                # this uses the offset array to visit the neighbors rather
-                # than 8 identical if statements.
-                for i in xrange(8):
-                    n_dir = buffer_array[
-                        yi+OFFSET_ARRAY[2*i+1], xi+OFFSET_ARRAY[2*i]]
-                    if n_dir == REVERSE_FLOW_DIR[i]:
-                        # current pixel is nodata and neighbor flows into it,
-                        # that's a sink
-                        flow_stack.push(FlowPixel(0, xi-1+xoff, yi-1+yoff, 1))
-                        break
     logger.info("drains detected in %fs", time.time()-start_drain_time)
     i = 0
     while not flow_stack.empty():
