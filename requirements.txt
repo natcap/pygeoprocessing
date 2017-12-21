@@ -5,6 +5,6 @@
 
 osgeo>=2.3,<2.4
 natcap.versioner>=0.4.2
-numpy>=1.11.0
+numpy>=1.13.0<1.14
 scipy>=0.14.0
 shapely
