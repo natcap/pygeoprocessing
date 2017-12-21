@@ -2056,6 +2056,29 @@ def transform_bounding_box(
     return transformed_bounding_box
 
 
+def merge_rasters(raster_path_list, target_path):
+    """Merge the given rasters into a single raster.
+
+    This operation calculates the bounding box of all the rasters in
+    `raster_path_list`, generates a new file of that size with the same pixel
+    band, and projection and copies the contents of each raster into the
+    target.
+
+    Note the input rasters must be in the same projection, same pixel size,
+    same number of bands, and same datatype. If any of these are not true,
+    the operation raises a ValueError with an appropriate error message.
+
+    Parameters:
+        raster_path_list (list): list of file paths to rasters
+        target_path (string): path to the geotiff file that will be created
+            by this operation.
+
+    Returns:
+        None.
+    """
+    pass
+
+
 def _invoke_timed_callback(
         reference_time, callback_lambda, callback_period):
     """Invoke callback if a certain amount of time has passed.
