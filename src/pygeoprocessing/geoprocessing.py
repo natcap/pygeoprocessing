@@ -43,6 +43,7 @@ _RESAMPLE_DICT = {
     "cubic_spline": gdal.GRA_CubicSpline,
     "lanczos": gdal.GRA_Lanczos,
     'mode': gdal.GRA_Mode,
+    "average": gdal.GRA_Average
     }
 
 
@@ -1200,7 +1201,7 @@ def warp_raster(
         target_raster_path (string): the location of the resized and
             resampled raster.
         resample_method (string): the resampling technique, one of
-            "nearest|bilinear|cubic|cubic_spline|lanczos|mode"
+            "nearest|bilinear|cubic|cubic_spline|lanczos|average|mode"
         target_bb (list): if None, target bounding box is the same as the
             source bounding box.  Otherwise it's a list of float describing
             target bounding box in target coordinate system as
