@@ -2076,7 +2076,37 @@ def merge_rasters(raster_path_list, target_path):
     Returns:
         None.
     """
-    pass
+    raster_info_list = [
+        get_raster_info(path) for path in raster_path_list]
+    pixel_size_set = set([
+        x['pixel_size'] for x in raster_info_list])
+    if len(pixel_size_set) != 1:
+        raise ValueError(
+            "Pixel sizes of all rasters are not the same. "
+            "Here's the sizes: %s" % str([
+                (path, x['pixel_size']) for path, x in zip(
+                    raster_path_list, raster_info_list)]))
+    n_bands_set = set([x['n_bands'] for x in raster_info_list])
+    if len(n_bands_set) != 1:
+        raise ValueError(
+            "Number of bands per raster are not the same. "
+            "Here's the band counts: %s" % str([
+                (path, x['n_bands']) for path, x in zip(
+                    raster_path_list, raster_info_list)]))
+
+    datatype_set = set([x['datatype'] for x in raster_info_list])
+    if len(datatype_set) != 1:
+        raise ValueError(
+            "Datatype per raster are not the same. "
+            "Here's the datatypes: %s" % str([
+                (path, x['datatype']) for path, x in zip(
+                    raster_path_list, raster_info_list)]))
+
+    target_bounding_box = reduce(
+        functools.partial(_merge_bounding_boxes, mode='union'),
+        [x['bounding_box'] for x in raster_info_list])
+
+    print target_bounding_box
 
 
 def _invoke_timed_callback(
