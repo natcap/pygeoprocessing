@@ -2056,7 +2056,9 @@ def transform_bounding_box(
     return transformed_bounding_box
 
 
-def merge_rasters(raster_path_list, target_path):
+def merge_rasters(
+        raster_path_list, target_path,
+        gtiff_creation_options=_DEFAULT_GTIFF_CREATION_OPTIONS):
     """Merge the given rasters into a single raster.
 
     This operation calculates the bounding box of all the rasters in
@@ -2072,6 +2074,9 @@ def merge_rasters(raster_path_list, target_path):
         raster_path_list (list): list of file paths to rasters
         target_path (string): path to the geotiff file that will be created
             by this operation.
+        gtiff_creation_options (list): this is an argument list that will be
+            passed to the GTiff driver.  Useful for blocksizes, compression,
+            and more.
 
     Returns:
         None.
@@ -2102,11 +2107,97 @@ def merge_rasters(raster_path_list, target_path):
                 (path, x['datatype']) for path, x in zip(
                     raster_path_list, raster_info_list)]))
 
+    # TODO: this is single band, fix later.
+    nodata_set = set([x['nodata'][0] for x in raster_info_list])
+    if len(nodata_set) != 1:
+        raise ValueError(
+            "Nodata per raster are not the same. "
+            "Here's the datatypes: %s" % str([
+                (path, x['nodata']) for path, x in zip(
+                    raster_path_list, raster_info_list)]))
+
+    projection_set = set([x['projection'] for x in raster_info_list])
+    if len(projection_set) != 1:
+        raise ValueError(
+            "Projections are not identical. Here's the projections: %s" % str(
+                [(path, x['projection']) for path, x in zip(
+                    raster_path_list, raster_info_list)]))
+
+    pixeltype_set = set()
+    for path in raster_path_list:
+        raster = gdal.Open(path)
+        band = raster.GetRasterBand(1)
+        metadata = band.GetMetadata('IMAGE_STRUCTURE')
+        band = None
+        if 'PIXELTYPE' in metadata:
+            pixeltype_set.add('PIXELTYPE=' + metadata['PIXELTYPE'])
+        else:
+            pixeltype_set.add(None)
+    if len(pixeltype_set) != 1:
+        raise ValueError(
+            "PIXELTYPE different between rasters."
+            "Here is the set of types (should only have 1): %s" % str(
+                pixeltype_set))
+
     target_bounding_box = reduce(
         functools.partial(_merge_bounding_boxes, mode='union'),
         [x['bounding_box'] for x in raster_info_list])
 
-    print target_bounding_box
+    driver = gdal.GetDriverByName('GTiff')
+    target_pixel_size = pixel_size_set.pop()
+    n_cols = int(math.ceil(abs(
+        (target_bounding_box[2]-target_bounding_box[0]) / target_pixel_size[0])))
+    n_rows = int(math.ceil(abs(
+        (target_bounding_box[3]-target_bounding_box[1]) / target_pixel_size[1])))
+
+    target_geotransform = [
+        target_bounding_box[0],
+        target_pixel_size[0],
+        0,
+        target_bounding_box[1],
+        0,
+        target_pixel_size[1]]
+
+    # sometimes we have negative pixel sizes so geotransform starts from the
+    # other side
+    if target_pixel_size[0] < 0:
+        target_geotransform[0] = target_bounding_box[2]
+    if target_pixel_size[1] < 0:
+        target_geotransform[3] = target_bounding_box[3]
+
+    # there's only one element in the sets so okay to pop right in the call,
+    # we won't need it after anyway
+    target_raster = driver.Create(
+        target_path.encode('utf-8'), n_cols, n_rows, n_bands_set.pop(),
+        datatype_set.pop(), options=gtiff_creation_options)
+    target_band = target_raster.GetRasterBand(1)
+    nodata = nodata_set.pop()
+    # consider what to do if rasters have nodata defined, but do not fill
+    # up the mosaic.
+    if nodata is not None:
+        target_band.SetNoDataValue(nodata)
+        target_band.Fill(nodata)
+
+    # the raster was left over from checking pixel types, remove it after
+    target_raster.SetProjection(raster.GetProjection())
+    target_raster.SetGeoTransform(target_geotransform)
+    raster = None
+
+    for raster_info, raster_path in zip(raster_info_list, raster_path_list):
+        # figure out where raster_path starts w/r/t target_raster
+        raster_start_x = int((
+            raster_info['geotransform'][0] -
+            target_geotransform[0]) / target_pixel_size[0])
+        raster_start_y = int((
+            raster_info['geotransform'][3] -
+            target_geotransform[3]) / target_pixel_size[1])
+        for offset_info, data_block in iterblocks(raster_path):
+            target_band.WriteArray(
+                data_block,
+                xoff=offset_info['xoff']+raster_start_x,
+                yoff=offset_info['yoff']+raster_start_y)
+
+    target_raster = None
 
 
 def _invoke_timed_callback(
