@@ -10,6 +10,7 @@ import time
 import numpy
 import scipy.signal
 import pygeoprocessing
+from .. import geoprocessing
 from osgeo import gdal
 
 cimport numpy
@@ -904,7 +905,7 @@ def flow_accmulation(
 
 def calculate_slope(
         base_elevation_raster_path_band, target_slope_path,
-        gtiff_creation_options=pygeoprocessing._DEFAULT_GTIFF_CREATION_OPTIONS):
+        gtiff_creation_options=geoprocessing._DEFAULT_GTIFF_CREATION_OPTIONS):
     """Create a percent slope raster from DEM raster.
 
     Base algorithm is from Zevenbergen & Thorne "Quantitative Analysis of Land
