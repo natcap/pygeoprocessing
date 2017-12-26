@@ -408,7 +408,7 @@ def fill_pits(
     # 'fill_pits' on it so we can figure out what's going on if we ever run
     # across it again.
     temp_dir_path = tempfile.mkdtemp(
-        dir=temp_dir_path, prefix='fill_pits', suffix=time.strftime(
+        dir=temp_dir_path, prefix='fill_pits_', suffix=time.strftime(
         '%Y-%m-%d_%H_%M_%S', time.gmtime()))
     flag_raster_path = os.path.join(temp_dir_path, 'flag_raster.tif')
 
@@ -766,7 +766,7 @@ def flow_accmulation(
     # 'flow_accumulation' on it so we can figure out what's going on if we
     # ever run across it in a temp dir.
     temp_dir_path = tempfile.mkdtemp(
-        dir=temp_dir_path, prefix='flow_accumulation', suffix=time.strftime(
+        dir=temp_dir_path, prefix='flow_accumulation_', suffix=time.strftime(
         '%Y-%m-%d_%H_%M_%S', time.gmtime()))
 
     # make a byte flag raster, no need for a nodata value but initialize to 0
