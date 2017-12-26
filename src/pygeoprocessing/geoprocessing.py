@@ -2057,7 +2057,7 @@ def transform_bounding_box(
 
 
 def merge_rasters(
-        raster_path_list, target_path,
+        raster_path_list, target_path, bounding_box=None,
         gtiff_creation_options=_DEFAULT_GTIFF_CREATION_OPTIONS):
     """Merge the given rasters into a single raster.
 
@@ -2074,6 +2074,8 @@ def merge_rasters(
         raster_path_list (list): list of file paths to rasters
         target_path (string): path to the geotiff file that will be created
             by this operation.
+        bounding_box (list): if not None, clip target path to be within these
+            bounds.
         gtiff_creation_options (list): this is an argument list that will be
             passed to the GTiff driver.  Useful for blocksizes, compression,
             and more.
@@ -2139,9 +2141,16 @@ def merge_rasters(
             "Here is the set of types (should only have 1): %s" % str(
                 pixeltype_set))
 
+    bounding_box_list = [x['bounding_box'] for x in raster_info_list]
     target_bounding_box = reduce(
         functools.partial(_merge_bounding_boxes, mode='union'),
-        [x['bounding_box'] for x in raster_info_list])
+        bounding_box_list)
+    LOGGER.debug('target bounding box %s', target_bounding_box)
+    if bounding_box is not None:
+        target_bounding_box = reduce(
+            functools.partial(_merge_bounding_boxes, mode='intersection'),
+            [target_bounding_box, bounding_box])
+    LOGGER.debug('intersected target bounding box %s', target_bounding_box)
 
     driver = gdal.GetDriverByName('GTiff')
     target_pixel_size = pixel_size_set.pop()
@@ -2192,10 +2201,70 @@ def merge_rasters(
             raster_info['geotransform'][3] -
             target_geotransform[3]) / target_pixel_size[1])
         for offset_info, data_block in iterblocks(raster_path):
-            target_band.WriteArray(
-                data_block,
-                xoff=offset_info['xoff']+raster_start_x,
-                yoff=offset_info['yoff']+raster_start_y)
+            # its possible the block reads in coverage that is outside the
+            # target bounds entirely. nothing to do but skip
+            if offset_info['yoff'] + raster_start_y > n_rows:
+                continue
+            if offset_info['xoff'] + raster_start_x > n_cols:
+                continue
+            if (offset_info['xoff'] + raster_start_x +
+                    offset_info['win_xsize'] < 0):
+                continue
+            if (offset_info['yoff'] + raster_start_y +
+                    offset_info['win_ysize'] < 0):
+                continue
+
+            # invariant: the window described in `offset_info` intersects
+            # with the target raster.
+
+            # raster_start_x and _y could be negative
+            x_clip_min = 0
+            if raster_start_x < 0:
+                x_clip_min = abs(raster_start_x)
+            y_clip_min = 0
+            if raster_start_y < 0:
+                y_clip_min = abs(raster_start_y)
+            x_clip_max = 0
+            if (offset_info['xoff'] + raster_start_x +
+                    offset_info['win_xsize'] >= n_cols):
+                x_clip_max = (
+                    offset_info['xoff'] + raster_start_x +
+                    offset_info['win_xsize'] - n_cols)
+            y_clip_max = 0
+
+            if (offset_info['yoff'] + raster_start_y +
+                    offset_info['win_ysize'] >= n_rows):
+                y_clip_max = (
+                    offset_info['yoff'] + raster_start_y +
+                    offset_info['win_ysize'] - n_rows)
+
+            try:
+                target_band.WriteArray(
+                    data_block[
+                        y_clip_min:offset_info['win_ysize']-y_clip_max,
+                        x_clip_min:offset_info['win_xsize']-x_clip_max],
+                    xoff=offset_info['xoff']+raster_start_x+x_clip_min,
+                    yoff=offset_info['yoff']+raster_start_y+y_clip_min)
+            except:
+                LOGGER.debug(
+                    "raster_start_x/y: %d, %d\n"
+                    "n_cols/rows: %d, %d\n"
+                    "x_clip_min/max: %d, %d\n"
+                    "y_clip_min/max: %d, %d\n"
+                    "offset_info: %s\n"
+                    "xoff=%d, yoff=%d\n"
+                    "data_block.shape=%s",
+                    raster_start_x, raster_start_y,
+                    n_cols, n_rows,
+                    x_clip_min, x_clip_max,
+                    y_clip_min, y_clip_max,
+                    offset_info,
+                    offset_info['xoff']+raster_start_x+x_clip_min,
+                    offset_info['yoff']+raster_start_y+y_clip_min,
+                    data_block[
+                        y_clip_min:offset_info['win_ysize']-y_clip_max,
+                        x_clip_min:offset_info['win_xsize']-x_clip_max].shape)
+                raise
 
     target_raster = None
 
