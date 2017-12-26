@@ -266,7 +266,7 @@ cdef class ManagedRaster:
         block_array = raster_band.ReadAsArray(
             xoff=xoff, yoff=yoff, win_xsize=win_xsize,
             win_ysize=win_ysize).astype(
-            numpy.float32)
+            numpy.float64)
         raster_band = None
         raster = None
         double_buffer = <double*>malloc(
@@ -357,7 +357,7 @@ def fill_pits(
     Returns:
         None.
     """
-    cdef numpy.ndarray[numpy.float32_t, ndim=2] buffer_array
+    cdef numpy.ndarray[numpy.float64_t, ndim=2] buffer_array
     cdef numpy.float64_t center_value, s_center_value
     cdef int i, j, yi, xi, xi_q, yi_q, xi_s, yi_s, xi_n, yi_n, xj_n, yj_n
     cdef int raster_x_size, raster_y_size
@@ -943,15 +943,15 @@ def calculate_slope(
     Returns:
         None
     """
-    cdef numpy.npy_float32 a, b, c, d, e, f, g, h, i, dem_nodata, z
-    cdef numpy.npy_float32 x_cell_size, y_cell_size,
-    cdef numpy.npy_float32 dzdx_accumulator, dzdy_accumulator
+    cdef numpy.npy_float64 a, b, c, d, e, f, g, h, i, dem_nodata, z
+    cdef numpy.npy_float64 x_cell_size, y_cell_size,
+    cdef numpy.npy_float64 dzdx_accumulator, dzdy_accumulator
     cdef int row_index, col_index, n_rows, n_cols,
     cdef int x_denom_factor, y_denom_factor, win_xsize, win_ysize
-    cdef numpy.ndarray[numpy.npy_float32, ndim=2] dem_array
-    cdef numpy.ndarray[numpy.npy_float32, ndim=2] slope_array
-    cdef numpy.ndarray[numpy.npy_float32, ndim=2] dzdx_array
-    cdef numpy.ndarray[numpy.npy_float32, ndim=2] dzdy_array
+    cdef numpy.ndarray[numpy.npy_float64, ndim=2] dem_array
+    cdef numpy.ndarray[numpy.npy_float64, ndim=2] slope_array
+    cdef numpy.ndarray[numpy.npy_float64, ndim=2] dzdx_array
+    cdef numpy.ndarray[numpy.npy_float64, ndim=2] dzdy_array
 
     dem_raster = gdal.Open(base_elevation_raster_path_band[0])
     dem_band = dem_raster.GetRasterBand(base_elevation_raster_path_band[1])
@@ -959,7 +959,7 @@ def calculate_slope(
     dem_nodata = dem_info['nodata'][0]
     x_cell_size, y_cell_size = dem_info['pixel_size']
     n_cols, n_rows = dem_info['raster_size']
-    cdef numpy.npy_float32 slope_nodata = numpy.finfo(numpy.float32).min
+    cdef numpy.npy_float64 slope_nodata = numpy.finfo(numpy.float64).min
     pygeoprocessing.new_raster_from_base(
         base_elevation_raster_path_band[0], target_slope_path, gdal.GDT_Float32,
         [slope_nodata], fill_value_list=[float(slope_nodata)],
@@ -995,17 +995,17 @@ def calculate_slope(
 
         dem_array = numpy.empty(
             (win_ysize+2, win_xsize+2),
-            dtype=numpy.float32)
+            dtype=numpy.float64)
         dem_array[:] = dem_nodata
         slope_array = numpy.empty(
             (win_ysize, win_xsize),
-            dtype=numpy.float32)
+            dtype=numpy.float64)
         dzdx_array = numpy.empty(
             (win_ysize, win_xsize),
-            dtype=numpy.float32)
+            dtype=numpy.float64)
         dzdy_array = numpy.empty(
             (win_ysize, win_xsize),
-            dtype=numpy.float32)
+            dtype=numpy.float64)
 
         dem_band.ReadAsArray(
             buf_obj=dem_array[y_start:y_end, x_start:x_end],
@@ -1047,21 +1047,21 @@ def calculate_slope(
                     dzdx_accumulator += b - c
                     x_denom_factor += 1
                 elif a != dem_nodata:
-                    dzdx_accumulator += (a - e) * <float>(1.4142135)
+                    dzdx_accumulator += (a - e) * 1.4142135
                     x_denom_factor += 1
                 elif c != dem_nodata:
-                    dzdx_accumulator += (e - c) * <float>(1.4142135)
+                    dzdx_accumulator += (e - c) * 1.4142135
                     x_denom_factor += 1
 
                 # d - f direction
                 if d != dem_nodata and f != dem_nodata:
-                    dzdx_accumulator += <float>(2) * (d - f)
+                    dzdx_accumulator += 2 * (d - f)
                     x_denom_factor += 4
                 elif d != dem_nodata:
-                    dzdx_accumulator += <float>(2) * (d - e)
+                    dzdx_accumulator += 2 * (d - e)
                     x_denom_factor += 2
                 elif f != dem_nodata:
-                    dzdx_accumulator += <float>(2) * (e - f)
+                    dzdx_accumulator += 2 * (e - f)
                     x_denom_factor += 2
 
                 # g - i direction
@@ -1075,10 +1075,10 @@ def calculate_slope(
                     dzdx_accumulator += h - i
                     x_denom_factor += 1
                 elif g != dem_nodata:
-                    dzdx_accumulator += (g - e) * <float>(1.4142135)
+                    dzdx_accumulator += (g - e) * 1.4142135
                     x_denom_factor += 1
                 elif i != dem_nodata:
-                    dzdx_accumulator += (e - i) * <float>(1.4142135)
+                    dzdx_accumulator += (e - i) * 1.4142135
                     x_denom_factor += 1
 
                 # a - g direction
@@ -1092,21 +1092,21 @@ def calculate_slope(
                     dzdy_accumulator += d - g
                     y_denom_factor += 1
                 elif a != dem_nodata:
-                    dzdy_accumulator += (a - e) * <float>(1.4142135)
+                    dzdy_accumulator += (a - e) * 1.4142135
                     y_denom_factor += 1
                 elif g != dem_nodata:
-                    dzdy_accumulator += (e - g) * <float>(1.4142135)
+                    dzdy_accumulator += (e - g) * 1.4142135
                     y_denom_factor += 1
 
                 # b - h direction
                 if b != dem_nodata and h != dem_nodata:
-                    dzdy_accumulator += <float>(2) * (b - h)
+                    dzdy_accumulator += 2 * (b - h)
                     y_denom_factor += 4
                 elif b != dem_nodata:
-                    dzdy_accumulator += <float>(2) * (b - e)
+                    dzdy_accumulator += 2 * (b - e)
                     y_denom_factor += 2
                 elif h != dem_nodata:
-                    dzdy_accumulator += <float>(2) * (e - h)
+                    dzdy_accumulator += 2 * (e - h)
                     y_denom_factor += 2
 
                 # c - i direction
@@ -1120,10 +1120,10 @@ def calculate_slope(
                     dzdy_accumulator += f - i
                     y_denom_factor += 1
                 elif c != dem_nodata:
-                    dzdy_accumulator += (c - e) * <float>(1.4142135)
+                    dzdy_accumulator += (c - e) * 1.4142135
                     y_denom_factor += 1
                 elif i != dem_nodata:
-                    dzdy_accumulator += (e - i) * <float>(1.4142135)
+                    dzdy_accumulator += (e - i) * 1.4142135
                     y_denom_factor += 1
 
                 if x_denom_factor != 0:
