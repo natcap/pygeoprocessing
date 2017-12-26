@@ -2217,14 +2217,17 @@ def merge_rasters(
             # invariant: the window described in `offset_info` intersects
             # with the target raster.
 
-            # raster_start_x and _y could be negative
+            # check to see if window hangs off the left/top part of raster
+            # and determine how far to adjust down
             x_clip_min = 0
-            if raster_start_x < 0:
-                x_clip_min = abs(raster_start_x)
+            if raster_start_x + offset_info['xoff'] < 0:
+                x_clip_min = abs(raster_start_x + offset_info['xoff'])
             y_clip_min = 0
-            if raster_start_y < 0:
-                y_clip_min = abs(raster_start_y)
+            if raster_start_y + offset_info['yoff'] < 0:
+                y_clip_min = abs(raster_start_y + offset_info['yoff'])
             x_clip_max = 0
+
+            # check if window hangs off right/bottom part of target raster
             if (offset_info['xoff'] + raster_start_x +
                     offset_info['win_xsize'] >= n_cols):
                 x_clip_max = (
@@ -2238,33 +2241,12 @@ def merge_rasters(
                     offset_info['yoff'] + raster_start_y +
                     offset_info['win_ysize'] - n_rows)
 
-            try:
-                target_band.WriteArray(
-                    data_block[
-                        y_clip_min:offset_info['win_ysize']-y_clip_max,
-                        x_clip_min:offset_info['win_xsize']-x_clip_max],
-                    xoff=offset_info['xoff']+raster_start_x+x_clip_min,
-                    yoff=offset_info['yoff']+raster_start_y+y_clip_min)
-            except:
-                LOGGER.debug(
-                    "raster_start_x/y: %d, %d\n"
-                    "n_cols/rows: %d, %d\n"
-                    "x_clip_min/max: %d, %d\n"
-                    "y_clip_min/max: %d, %d\n"
-                    "offset_info: %s\n"
-                    "xoff=%d, yoff=%d\n"
-                    "data_block.shape=%s",
-                    raster_start_x, raster_start_y,
-                    n_cols, n_rows,
-                    x_clip_min, x_clip_max,
-                    y_clip_min, y_clip_max,
-                    offset_info,
-                    offset_info['xoff']+raster_start_x+x_clip_min,
-                    offset_info['yoff']+raster_start_y+y_clip_min,
-                    data_block[
-                        y_clip_min:offset_info['win_ysize']-y_clip_max,
-                        x_clip_min:offset_info['win_xsize']-x_clip_max].shape)
-                raise
+            target_band.WriteArray(
+                data_block[
+                    y_clip_min:offset_info['win_ysize']-y_clip_max,
+                    x_clip_min:offset_info['win_xsize']-x_clip_max],
+                xoff=offset_info['xoff']+raster_start_x+x_clip_min,
+                yoff=offset_info['yoff']+raster_start_y+y_clip_min)
 
     target_raster = None
 
