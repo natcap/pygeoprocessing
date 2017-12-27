@@ -690,8 +690,8 @@ def fill_pits(
                             # USE i_n in MFD for i_s
                             isProcessed = 0
     logger.info("pits filled in %fs", time.time()-start_pit_time)
-    del flag_managed_raster
     shutil.rmtree(temp_dir_path)
+
 
 def flow_accmulation(
         flow_direction_raster_band_path,
@@ -780,7 +780,7 @@ def flow_accmulation(
     # make a byte flag raster, no need for a nodata value but initialize to 0
     pygeoprocessing.new_raster_from_base(
         flow_direction_raster_band_path[0],
-        target_flow_accumulation_raster_path, gdal.GDT_Int32,
+        target_flow_accumulation_raster_path, gdal.GDT_Float64,
         [FLOW_ACCMULATION_NODATA], fill_value_list=[FLOW_ACCMULATION_NODATA],
         gtiff_creation_options=(
             'TILED=YES', 'BIGTIFF=IF_SAFER', 'COMPRESS=LZW',
