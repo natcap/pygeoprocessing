@@ -962,6 +962,8 @@ def calculate_slope(
         None
     """
     cdef numpy.npy_float64 a, b, c, d, e, f, g, h, i, dem_nodata
+    cdef int a_is_valid, b_is_valid, c_is_valid, d_is_valid, e_is_valid
+    cdef int f_is_valid, g_is_valid, h_is_valid, i_is_valid
     cdef numpy.npy_float64 x_cell_size, y_cell_size,
     cdef numpy.npy_float64 dzdx_accumulator, dzdy_accumulator
     cdef int row_index, col_index, n_rows, n_cols,
@@ -979,8 +981,8 @@ def calculate_slope(
     n_cols, n_rows = dem_info['raster_size']
     cdef numpy.npy_float64 slope_nodata = numpy.finfo(numpy.float64).min
     pygeoprocessing.new_raster_from_base(
-        base_elevation_raster_path_band[0], target_slope_path, gdal.GDT_Float32,
-        [slope_nodata], fill_value_list=[float(slope_nodata)],
+        base_elevation_raster_path_band[0], target_slope_path,
+        gdal.GDT_Float64, [slope_nodata], fill_value_list=[float(slope_nodata)],
         gtiff_creation_options=gtiff_creation_options)
     target_slope_raster = gdal.Open(target_slope_path, gdal.GA_Update)
     target_slope_band = target_slope_raster.GetRasterBand(1)
@@ -1053,94 +1055,104 @@ def calculate_slope(
                 g = dem_array[row_index+1, col_index-1]
                 h = dem_array[row_index+1, col_index]
                 i = dem_array[row_index+1, col_index+1]
+                a_valid = not isclose(a, dem_nodata)
+                b_valid = not isclose(b, dem_nodata)
+                c_valid = not isclose(c, dem_nodata)
+                d_valid = not isclose(d, dem_nodata)
+                e_valid = not isclose(e, dem_nodata)
+                f_valid = not isclose(f, dem_nodata)
+                g_valid = not isclose(g, dem_nodata)
+                h_valid = not isclose(h, dem_nodata)
+                i_valid = not isclose(i, dem_nodata)
+
 
                 # a - c direction
-                if a != dem_nodata and c != dem_nodata:
+                if a_valid and c_valid:
                     dzdx_accumulator += a - c
                     x_denom_factor += 2
-                elif a != dem_nodata and b != dem_nodata:
+                elif a_valid and b_valid:
                     dzdx_accumulator += a - b
                     x_denom_factor += 1
-                elif b != dem_nodata and c != dem_nodata:
+                elif b_valid and c_valid:
                     dzdx_accumulator += b - c
                     x_denom_factor += 1
-                elif a != dem_nodata:
+                elif a_valid:
                     dzdx_accumulator += (a - e) * 1.4142135
                     x_denom_factor += 1
-                elif c != dem_nodata:
+                elif c_valid:
                     dzdx_accumulator += (e - c) * 1.4142135
                     x_denom_factor += 1
 
                 # d - f direction
-                if d != dem_nodata and f != dem_nodata:
+                if d_valid and f_valid:
                     dzdx_accumulator += 2 * (d - f)
                     x_denom_factor += 4
-                elif d != dem_nodata:
+                elif d_valid:
                     dzdx_accumulator += 2 * (d - e)
                     x_denom_factor += 2
-                elif f != dem_nodata:
+                elif f_valid:
                     dzdx_accumulator += 2 * (e - f)
                     x_denom_factor += 2
 
                 # g - i direction
-                if g != dem_nodata and i != dem_nodata:
+                if g_valid and i_valid:
                     dzdx_accumulator += g - i
                     x_denom_factor += 2
-                elif g != dem_nodata and h != dem_nodata:
+                elif g_valid and h_valid:
                     dzdx_accumulator += g - h
                     x_denom_factor += 1
-                elif h != dem_nodata and i != dem_nodata:
+                elif h_valid and i_valid:
                     dzdx_accumulator += h - i
                     x_denom_factor += 1
-                elif g != dem_nodata:
+                elif g_valid:
                     dzdx_accumulator += (g - e) * 1.4142135
                     x_denom_factor += 1
-                elif i != dem_nodata:
+                elif i_valid:
                     dzdx_accumulator += (e - i) * 1.4142135
                     x_denom_factor += 1
 
                 # a - g direction
-                if a != dem_nodata and g != dem_nodata:
+                if a_valid and g_valid:
                     dzdy_accumulator += a - g
                     y_denom_factor += 2
-                elif a != dem_nodata and d != dem_nodata:
+                elif a_valid and d_valid:
                     dzdy_accumulator += a - d
                     y_denom_factor += 1
-                elif d != dem_nodata and g != dem_nodata:
+                elif d_valid and g_valid:
                     dzdy_accumulator += d - g
                     y_denom_factor += 1
-                elif a != dem_nodata:
+                elif a_valid:
                     dzdy_accumulator += (a - e) * 1.4142135
                     y_denom_factor += 1
-                elif g != dem_nodata:
+                elif g_valid:
                     dzdy_accumulator += (e - g) * 1.4142135
                     y_denom_factor += 1
 
                 # b - h direction
-                if b != dem_nodata and h != dem_nodata:
+                if b_valid and h_valid:
                     dzdy_accumulator += 2 * (b - h)
                     y_denom_factor += 4
-                elif b != dem_nodata:
+                elif b_valid:
                     dzdy_accumulator += 2 * (b - e)
                     y_denom_factor += 2
-                elif h != dem_nodata:
+                elif h_valid:
                     dzdy_accumulator += 2 * (e - h)
                     y_denom_factor += 2
 
                 # c - i direction
-                if c != dem_nodata and i != dem_nodata:
+                if c_valid and i_valid:
                     dzdy_accumulator += c - i
                     y_denom_factor += 2
-                elif c != dem_nodata and f != dem_nodata:
+                elif c_valid and f_valid:
                     dzdy_accumulator += c - f
                     y_denom_factor += 1
-                elif f != dem_nodata and i != dem_nodata:
+                elif f_valid and i_valid:
                     dzdy_accumulator += f - i
                     y_denom_factor += 1
-                elif c != dem_nodata:
+                elif c_valid:
                     dzdy_accumulator += (c - e) * 1.4142135
                     y_denom_factor += 1
-                elif i != dem_nodata:
+                elif i_valid:
                     dzdy_accumulator += (e - i) * 1.4142135
                     y_denom_factor += 1
 
