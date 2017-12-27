@@ -962,8 +962,8 @@ def calculate_slope(
         None
     """
     cdef numpy.npy_float64 a, b, c, d, e, f, g, h, i, dem_nodata
-    cdef int a_is_valid, b_is_valid, c_is_valid, d_is_valid, e_is_valid
-    cdef int f_is_valid, g_is_valid, h_is_valid, i_is_valid
+    cdef int a_valid, b_valid, c_valid, d_valid
+    cdef int f_valid, g_valid, h_valid, i_valid
     cdef numpy.npy_float64 x_cell_size, y_cell_size,
     cdef numpy.npy_float64 dzdx_accumulator, dzdy_accumulator
     cdef int row_index, col_index, n_rows, n_cols,
@@ -1039,7 +1039,7 @@ def calculate_slope(
                 # def
                 # ghi
                 e = dem_array[row_index, col_index]
-                if e == dem_nodata:
+                if isclose(e, dem_nodata):
                     # we use dzdx as a guard below, no need to set dzdy
                     dzdx_array[row_index-1, col_index-1] = slope_nodata
                     continue
@@ -1059,7 +1059,6 @@ def calculate_slope(
                 b_valid = not isclose(b, dem_nodata)
                 c_valid = not isclose(c, dem_nodata)
                 d_valid = not isclose(d, dem_nodata)
-                e_valid = not isclose(e, dem_nodata)
                 f_valid = not isclose(f, dem_nodata)
                 g_valid = not isclose(g, dem_nodata)
                 h_valid = not isclose(h, dem_nodata)
