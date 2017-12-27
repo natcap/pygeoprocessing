@@ -978,13 +978,6 @@ def calculate_slope(
     x_cell_size, y_cell_size = dem_info['pixel_size']
     n_cols, n_rows = dem_info['raster_size']
     cdef numpy.npy_float64 slope_nodata = numpy.finfo(numpy.float64).min
-
-    # make target directory if it doesn't exist
-    try:
-        os.makedirs(os.path.dirname(target_slope_path))
-    except OSError:
-        pass
-
     pygeoprocessing.new_raster_from_base(
         base_elevation_raster_path_band[0], target_slope_path, gdal.GDT_Float32,
         [slope_nodata], fill_value_list=[float(slope_nodata)],

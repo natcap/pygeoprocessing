@@ -505,8 +505,13 @@ def new_raster_from_base(
             'BLOCKXSIZE=%d' % block_size[0],
             'BLOCKYSIZE=%d' % block_size[1]])
 
-    base_band = None
+    # make target directory if it doesn't exist
+    try:
+        os.makedirs(os.path.dirname(target_path))
+    except OSError:
+        pass
 
+    base_band = None
     n_bands = len(band_nodata_list)
     target_raster = driver.Create(
         target_path.encode('utf-8'), n_cols, n_rows, n_bands, datatype,
@@ -1163,10 +1168,6 @@ def reclassify_raster(
         raise ValueError(
             "Expected a (path, band_id) tuple, instead got '%s'" %
             base_raster_path_band)
-    try:
-        os.makedirs(os.path.dirname(target_raster_path))
-    except OSError:
-        pass
     raster_info = get_raster_info(base_raster_path_band[0])
     nodata = raster_info['nodata'][base_raster_path_band[1]-1]
     value_map_copy = value_map.copy()
