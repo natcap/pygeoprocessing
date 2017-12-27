@@ -1163,6 +1163,10 @@ def reclassify_raster(
         raise ValueError(
             "Expected a (path, band_id) tuple, instead got '%s'" %
             base_raster_path_band)
+    try:
+        os.makedirs(os.path.dirname(target_raster_path))
+    except OSError:
+        pass
     raster_info = get_raster_info(base_raster_path_band[0])
     nodata = raster_info['nodata'][base_raster_path_band[1]-1]
     value_map_copy = value_map.copy()
