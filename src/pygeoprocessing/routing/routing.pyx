@@ -695,7 +695,8 @@ def fill_pits(
 
 def flow_accmulation(
         flow_direction_raster_band_path,
-        target_flow_accumulation_raster_path, temp_dir_path=None):
+        target_flow_accumulation_raster_path, weight_raster_band_path=None,
+        temp_dir_path=None):
     """Calculate flow accumulation given flow direction.
 
     Parameters:
@@ -707,6 +708,10 @@ def flow_accmulation(
             # 567
             # each flow direction is encoded as 1 << n, n in [0, 7]
 
+        weight_raster_band_path (tuple): if not None, path to  a raster that
+            is of the same dimensions as `flow_direction_raster_band_path`
+            that is to be used in place of "1" for flow accumulation per
+            pixel.
         target_flow_accmulation_raster_path (string): path to single band
             raster to be created. Each pixel value will indicate the number
             of upstream pixels that feed it including the current pixel.
@@ -722,11 +727,13 @@ def flow_accmulation(
     cdef int xi, yi, win_ysize, win_xsize
     cdef int xoff, yoff
     cdef int flow_direction_nodata, n_dir, flow_dir
+    cdef int use_weights
     cdef double flow_accum
     cdef stack[FlowPixel] flow_stack
     cdef FlowPixel fp
     cdef ManagedRaster flow_accumulation_managed_raster
     cdef ManagedRaster flow_direction_managed_raster
+    cdef ManagedRaster weight_raster_path_raster = None
 
     logger = logging.getLogger('pygeoprocessing.routing.flow_accumulation')
     logger.addHandler(logging.NullHandler())  # silence logging by default
@@ -797,6 +804,12 @@ def flow_accmulation(
     # the flow accumulation result
     flow_accumulation_managed_raster = ManagedRaster(
         target_flow_accumulation_raster_path, 2**9, 1)
+
+    use_weights = 0
+    if weight_raster_band_path is not None:
+        weight_raster_path_raster = ManagedRaster(
+            weight_raster_band_path[0], 2**9, 0)
+        use_weights = 1
 
     flow_direction_raster = gdal.Open(flow_direction_raster_band_path[0])
     flow_direction_band = flow_direction_raster.GetRasterBand(
@@ -892,7 +905,12 @@ def flow_accmulation(
                 flow_accum = flow_accumulation_managed_raster.get(xi_n, yi_n)
                 if flow_accum == FLOW_ACCMULATION_NODATA:
                     flow_stack.push(FlowPixel(i, fp.xi, fp.yi, fp.flow_val))
-                    flow_stack.push(FlowPixel(0, xi_n, yi_n, 1))
+                    if use_weights:
+                        flow_stack.push(FlowPixel(
+                            0, xi_n, yi_n, weight_raster_path_raster.get(
+                                xi_n, yi_n)))
+                    else:
+                        flow_stack.push(FlowPixel(0, xi_n, yi_n, 1))
                     all_checked = 0  # indicate failure
                     break
                 else:
@@ -943,7 +961,7 @@ def calculate_slope(
     Returns:
         None
     """
-    cdef numpy.npy_float64 a, b, c, d, e, f, g, h, i, dem_nodata, z
+    cdef numpy.npy_float64 a, b, c, d, e, f, g, h, i, dem_nodata
     cdef numpy.npy_float64 x_cell_size, y_cell_size,
     cdef numpy.npy_float64 dzdx_accumulator, dzdy_accumulator
     cdef int row_index, col_index, n_rows, n_cols,
