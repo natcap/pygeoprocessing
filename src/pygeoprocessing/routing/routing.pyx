@@ -953,7 +953,7 @@ def calculate_slope(
             raster of height values. (path_to_raster, band_index)
         target_slope_path (string): path to target slope raster; will be a
             32 bit float GeoTIFF of same size/projection as calculate slope
-            with units of percent slope.
+            with units of slope rate (m/m) (not percent).
         gtiff_creation_options (list or tuple): list of strings that will be
             passed as GDAL "dataset" creation options to the GTIFF driver.
 
@@ -978,10 +978,11 @@ def calculate_slope(
     dem_nodata = dem_info['nodata'][0]
     x_cell_size, y_cell_size = dem_info['pixel_size']
     n_cols, n_rows = dem_info['raster_size']
-    cdef numpy.npy_float64 slope_nodata = numpy.finfo(numpy.float64).min
+    cdef numpy.npy_float64 SLOPE_NODATA = -1
     pygeoprocessing.new_raster_from_base(
         base_elevation_raster_path_band[0], target_slope_path,
-        gdal.GDT_Float64, [slope_nodata], fill_value_list=[float(slope_nodata)],
+        gdal.GDT_Float64, [SLOPE_NODATA],
+        fill_value_list=[float(SLOPE_NODATA)],
         gtiff_creation_options=gtiff_creation_options)
     target_slope_raster = gdal.Open(target_slope_path, gdal.GA_Update)
     target_slope_band = target_slope_raster.GetRasterBand(1)
@@ -1040,7 +1041,7 @@ def calculate_slope(
                 e = dem_array[row_index, col_index]
                 if isclose(e, dem_nodata):
                     # we use dzdx as a guard below, no need to set dzdy
-                    dzdx_array[row_index-1, col_index-1] = slope_nodata
+                    dzdx_array[row_index-1, col_index-1] = SLOPE_NODATA
                     continue
                 dzdx_accumulator = 0.0
                 dzdy_accumulator = 0.0
@@ -1164,10 +1165,9 @@ def calculate_slope(
                         dzdy_accumulator / (y_denom_factor * y_cell_size))
                 else:
                     dzdy_array[row_index-1, col_index-1] = 0.0
-        valid_mask = dzdx_array != slope_nodata
-        slope_array[:] = slope_nodata
-        # multiply by 100 for percent output
-        slope_array[valid_mask] = 100.0 * numpy.sqrt(
+        valid_mask = dzdx_array != SLOPE_NODATA
+        slope_array[:] = SLOPE_NODATA
+        slope_array[valid_mask] = numpy.sqrt(
             dzdx_array[valid_mask]**2 + dzdy_array[valid_mask]**2)
         target_slope_band.WriteArray(
             slope_array, xoff=block_offset['xoff'],
