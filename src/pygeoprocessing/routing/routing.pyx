@@ -28,7 +28,7 @@ from libcpp.vector cimport vector
 
 # This module expects rasters with a memory xy block size of 2**BLOCK_BITS
 cdef int BLOCK_BITS = 8
-cdef int NODATA = -1
+cpdef int NODATA = -1
 
 cdef bint isclose(double a, double b):
     return abs(a - b) <= (1e-5 + 1e-7 * abs(b))
