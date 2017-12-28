@@ -28,8 +28,7 @@ from libcpp.vector cimport vector
 
 # This module expects rasters with a memory xy block size of 2**BLOCK_BITS
 cdef int BLOCK_BITS = 8
-cdef int FLOW_NODATA = -1
-
+cdef int NODATA = -1
 
 cdef bint isclose(double a, double b):
     return abs(a - b) <= (1e-5 + 1e-7 * abs(b))
@@ -782,7 +781,7 @@ def flow_accmulation(
     pygeoprocessing.new_raster_from_base(
         flow_dir_raster_path_band[0],
         target_flow_accumulation_raster_path, gdal.GDT_Float64,
-        [FLOW_NODATA], fill_value_list=[FLOW_NODATA],
+        [NODATA], fill_value_list=[NODATA],
         gtiff_creation_options=(
             'TILED=YES', 'BIGTIFF=IF_SAFER', 'COMPRESS=LZW',
             'BLOCKXSIZE=%d' % (1<<BLOCK_BITS),
@@ -904,7 +903,7 @@ def flow_accmulation(
             if flow_dir_managed_raster.get(
                     xi_n, yi_n) == REVERSE_FLOW_DIR[i]:
                 flow_accum = flow_accumulation_managed_raster.get(xi_n, yi_n)
-                if flow_accum == FLOW_NODATA:
+                if flow_accum == NODATA:
                     flow_stack.push(FlowPixel(i, fp.xi, fp.yi, fp.flow_val))
                     if use_weights:
                         flow_stack.push(FlowPixel(
@@ -980,11 +979,10 @@ def calculate_slope(
     dem_nodata = dem_info['nodata'][0]
     x_cell_size, y_cell_size = dem_info['pixel_size']
     n_cols, n_rows = dem_info['raster_size']
-    cdef numpy.npy_float64 SLOPE_NODATA = -1
     pygeoprocessing.new_raster_from_base(
         base_elevation_raster_path_band[0], target_slope_path,
-        gdal.GDT_Float64, [SLOPE_NODATA],
-        fill_value_list=[float(SLOPE_NODATA)],
+        gdal.GDT_Float64, [NODATA],
+        fill_value_list=[float(NODATA)],
         gtiff_creation_options=gtiff_creation_options)
     target_slope_raster = gdal.Open(target_slope_path, gdal.GA_Update)
     target_slope_band = target_slope_raster.GetRasterBand(1)
@@ -1043,7 +1041,7 @@ def calculate_slope(
                 e = dem_array[row_index, col_index]
                 if isclose(e, dem_nodata):
                     # we use dzdx as a guard below, no need to set dzdy
-                    dzdx_array[row_index-1, col_index-1] = SLOPE_NODATA
+                    dzdx_array[row_index-1, col_index-1] = NODATA
                     continue
                 dzdx_accumulator = 0.0
                 dzdy_accumulator = 0.0
@@ -1167,8 +1165,8 @@ def calculate_slope(
                         dzdy_accumulator / (y_denom_factor * y_cell_size))
                 else:
                     dzdy_array[row_index-1, col_index-1] = 0.0
-        valid_mask = dzdx_array != SLOPE_NODATA
-        slope_array[:] = SLOPE_NODATA
+        valid_mask = dzdx_array != NODATA
+        slope_array[:] = NODATA
         slope_array[valid_mask] = numpy.sqrt(
             dzdx_array[valid_mask]**2 + dzdy_array[valid_mask]**2)
         target_slope_band.WriteArray(
@@ -1280,7 +1278,7 @@ def downstream_flow_length(
     pygeoprocessing.new_raster_from_base(
         flow_dir_raster_path_band[0],
         target_flow_length_raster_path, gdal.GDT_Float64,
-        [FLOW_NODATA], fill_value_list=[FLOW_NODATA],
+        [NODATA], fill_value_list=[NODATA],
         gtiff_creation_options=(
             'TILED=YES', 'BIGTIFF=IF_SAFER', 'COMPRESS=LZW',
             'BLOCKXSIZE=%d' % (1<<BLOCK_BITS),
@@ -1418,7 +1416,7 @@ def downstream_flow_length(
             if flow_dir_managed_raster.get(
                     xi_n, yi_n) == REVERSE_FLOW_DIR[i]:
                 flow_length = flow_length_managed_raster.get(xi_n, yi_n)
-                if flow_length == FLOW_NODATA:
+                if flow_length == NODATA:
                     flow_stack.push(FlowPixel(i, fp.xi, fp.yi, fp.flow_val))
                     if use_weights:
                         weight_val = weight_raster_path_raster.get(xi_n, yi_n)
