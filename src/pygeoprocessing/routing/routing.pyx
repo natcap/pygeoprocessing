@@ -690,6 +690,8 @@ def fill_pits(
                             # USE i_n in MFD for i_s
                             isProcessed = 0
     logger.info("pits filled in %fs", time.time()-start_pit_time)
+    # clean up flag managed raster before it is deleted
+    del flag_managed_raster
     shutil.rmtree(temp_dir_path)
 
 
