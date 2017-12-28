@@ -778,7 +778,6 @@ def flow_accmulation(
         dir=temp_dir_path, prefix='flow_accumulation_', suffix=time.strftime(
         '%Y-%m-%d_%H_%M_%S', time.gmtime()))
 
-    # make a byte flag raster, no need for a nodata value but initialize to 0
     pygeoprocessing.new_raster_from_base(
         flow_dir_raster_path_band[0],
         target_flow_accumulation_raster_path, gdal.GDT_Float64,
@@ -1275,7 +1274,6 @@ def downstream_flow_length(
         dir=temp_dir_path, prefix='downstream_flow_length_',
         suffix=time.strftime('%Y-%m-%d_%H_%M_%S', time.gmtime()))
 
-    # make a byte flag raster, no need for a nodata value but initialize to 0
     pygeoprocessing.new_raster_from_base(
         flow_dir_raster_path_band[0],
         target_flow_length_raster_path, gdal.GDT_Float64,
