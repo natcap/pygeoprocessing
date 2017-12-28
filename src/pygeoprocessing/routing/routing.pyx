@@ -1207,7 +1207,8 @@ def downstream_flow_length(
         weight_raster_path_band (tuple): if not None, path to  a raster that
             is of the same dimensions as `flow_dir_raster_path_band`
             that is to be used in place of "1" for flow accumulation per
-            pixel.
+            pixel. If pixel is nodata but otherwise a valid flow path,
+            this function treats it as 0.
         temp_dir_path (string): if not None, a path to a directory where
             temporary files can be constructed. Otherwise uses system tempdir.
 
@@ -1223,6 +1224,7 @@ def downstream_flow_length(
     cdef int use_weights
     cdef double flow_length
     cdef double weight_val
+    cdef double weight_nodata = 0  # fill in with something for compiler
     cdef stack[FlowPixel] flow_stack
     cdef FlowPixel fp
     cdef ManagedRaster flow_accum_managed_raster
@@ -1307,8 +1309,10 @@ def downstream_flow_length(
     if weight_raster_path_band is not None:
         weight_raster_path_raster = ManagedRaster(
             weight_raster_path_band[0], 2**9, 0)
+        weight_nodata = pygeoprocessing.get_raster_info(
+            weight_raster_path_band[0])['nodata'][
+                weight_raster_path_band[1]-1]
         use_weights = 1
-
 
     flow_direction_raster = gdal.Open(flow_dir_raster_path_band[0])
     flow_direction_band = flow_direction_raster.GetRasterBand(
@@ -1380,6 +1384,8 @@ def downstream_flow_length(
                     if use_weights:
                         weight_val = weight_raster_path_raster.get(
                             xi-1+xoff, yi-1+yoff)
+                        if isclose(weight_val, weight_nodata):
+                            weight_val = 0
                     else:
                         weight_val = 1
                     flow_stack.push(
@@ -1414,6 +1420,8 @@ def downstream_flow_length(
                     flow_stack.push(FlowPixel(i, fp.xi, fp.yi, fp.flow_val))
                     if use_weights:
                         weight_val = weight_raster_path_raster.get(xi_n, yi_n)
+                        if isclose(weight_val, weight_nodata):
+                            weight_val = 0
                     else:
                         # add either straight line or diagonal direction
                         weight_val = 1.0 if i % 2 == 0 else 1.4142135
