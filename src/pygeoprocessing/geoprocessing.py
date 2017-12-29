@@ -49,7 +49,8 @@ def raster_calculator(
         base_raster_path_band_list, local_op, target_raster_path,
         datatype_target, nodata_target,
         gtiff_creation_options=_DEFAULT_GTIFF_CREATION_OPTIONS,
-        calc_raster_stats=True):
+        calc_raster_stats=True,
+        largest_block=_LARGEST_ITERBLOCK):
     """Apply local a raster operation on a stack of rasters.
 
     This function applies a user defined function across a stack of
@@ -80,6 +81,12 @@ def raster_calculator(
             and more.
         calculate_raster_stats (boolean): If True, calculates and sets raster
             statistics (min, max, mean, and stdev) for target raster.
+        largest_block (int): Attempts to internally iterate over raster blocks
+            with this many elements.  Useful in cases where the blocksize is
+            relatively small, memory is available, and the function call
+            overhead dominates the iteration.  Defaults to 2**20.  A value of
+            anything less than the original blocksize of the raster will
+            result in blocksizes equal to the original size.
 
     Returns:
         None
@@ -161,7 +168,8 @@ def raster_calculator(
         target_mean = None
         target_stddev = None
         for block_offset in iterblocks(
-                base_raster_path_band_list[0][0], offset_only=True):
+                base_raster_path_band_list[0][0], offset_only=True,
+                largest_block=largest_block):
             xoff, yoff = block_offset['xoff'], block_offset['yoff']
             last_time = _invoke_timed_callback(
                 last_time, lambda: LOGGER.info(
@@ -210,7 +218,8 @@ def raster_calculator(
         if calc_raster_stats and target_min is not None:
             target_mean = target_sum / float(target_n)
             stdev_sum = 0.0
-            for block_offset, target_block in iterblocks(target_raster_path):
+            for block_offset, target_block in iterblocks(
+                    target_raster_path, largest_block=largest_block):
                 # guard against an undefined nodata target
                 valid_mask = numpy.ones(target_block.shape, dtype=bool)
                 if nodata_target is not None:
