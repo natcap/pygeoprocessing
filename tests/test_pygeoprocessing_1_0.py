@@ -992,7 +992,7 @@ class PyGeoprocessing10(unittest.TestCase):
         target_path = os.path.join(self.workspace_dir, 'target.tif')
         # 255 should convert to -1 with signed bytes
         pygeoprocessing.new_raster_from_base(
-            base_path, target_path, gdal.GDT_Byte, [-1],
+            base_path, target_path, gdal.GDT_Byte, [0],
             fill_value_list=[255],
             gtiff_creation_options=[
                 'PIXELTYPE=SIGNEDBYTE',
