@@ -430,11 +430,11 @@ def fill_pits(
         'copying %s dem to %s', dem_raster_path_band,
         target_filled_dem_raster_path)
     dem_raster_info = pygeoprocessing.get_raster_info(dem_raster_path_band[0])
-    dem_nodata = numpy.float64(
+    dem_nodata = numpy.float32(
         dem_raster_info['nodata'][dem_raster_path_band[1]-1])
     pygeoprocessing.new_raster_from_base(
         dem_raster_path_band[0], target_filled_dem_raster_path,
-        gdal.GDT_Float64, [dem_nodata], fill_value_list=[dem_nodata],
+        gdal.GDT_Float32, [dem_nodata], fill_value_list=[dem_nodata],
         gtiff_creation_options=(
             'TILED=YES', 'BIGTIFF=IF_SAFER', 'COMPRESS=LZW',
             'BLOCKXSIZE=%d' % (1<<BLOCK_BITS),
@@ -780,7 +780,7 @@ def flow_accmulation(
 
     pygeoprocessing.new_raster_from_base(
         flow_dir_raster_path_band[0],
-        target_flow_accumulation_raster_path, gdal.GDT_Float64,
+        target_flow_accumulation_raster_path, gdal.GDT_Float32,
         [_NODATA], fill_value_list=[_NODATA],
         gtiff_creation_options=(
             'TILED=YES', 'BIGTIFF=IF_SAFER', 'COMPRESS=LZW',
@@ -981,7 +981,7 @@ def calculate_slope(
     n_cols, n_rows = dem_info['raster_size']
     pygeoprocessing.new_raster_from_base(
         base_elevation_raster_path_band[0], target_slope_path,
-        gdal.GDT_Float64, [_NODATA],
+        gdal.GDT_Float32, [_NODATA],
         fill_value_list=[float(_NODATA)],
         gtiff_creation_options=gtiff_creation_options)
     target_slope_raster = gdal.Open(target_slope_path, gdal.GA_Update)
@@ -1276,7 +1276,7 @@ def downstream_flow_length(
 
     pygeoprocessing.new_raster_from_base(
         flow_dir_raster_path_band[0],
-        target_flow_length_raster_path, gdal.GDT_Float64,
+        target_flow_length_raster_path, gdal.GDT_Float32,
         [_NODATA], fill_value_list=[_NODATA],
         gtiff_creation_options=(
             'TILED=YES', 'BIGTIFF=IF_SAFER', 'COMPRESS=LZW',
