@@ -2067,6 +2067,7 @@ def transform_bounding_box(
 
 def merge_rasters(
         raster_path_list, target_path, bounding_box=None,
+        expected_nodata=None,
         gtiff_creation_options=_DEFAULT_GTIFF_CREATION_OPTIONS):
     """Merge the given rasters into a single raster.
 
@@ -2085,6 +2086,8 @@ def merge_rasters(
             by this operation.
         bounding_box (list): if not None, clip target path to be within these
             bounds.
+        expected_nodata (float): if not None, use this as the nodata value
+            in case multiple rasters have different values.
         gtiff_creation_options (list): this is an argument list that will be
             passed to the GTiff driver.  Useful for blocksizes, compression,
             and more.
@@ -2119,13 +2122,14 @@ def merge_rasters(
                     raster_path_list, raster_info_list)]))
 
     # TODO: this is single band, fix later.
-    nodata_set = set([x['nodata'][0] for x in raster_info_list])
-    if len(nodata_set) != 1:
-        raise ValueError(
-            "Nodata per raster are not the same. "
-            "Here's the datatypes: %s" % str([
-                (path, x['nodata']) for path, x in zip(
-                    raster_path_list, raster_info_list)]))
+    if expected_nodata is None:
+        nodata_set = set([x['nodata'][0] for x in raster_info_list])
+        if len(nodata_set) != 1:
+            raise ValueError(
+                "Nodata per raster are not the same. "
+                "Here's the datatypes: %s" % str([
+                    (path, x['nodata']) for path, x in zip(
+                        raster_path_list, raster_info_list)]))
 
     projection_set = set([x['projection'] for x in raster_info_list])
     if len(projection_set) != 1:
@@ -2189,7 +2193,10 @@ def merge_rasters(
         target_path.encode('utf-8'), n_cols, n_rows, n_bands_set.pop(),
         datatype_set.pop(), options=gtiff_creation_options)
     target_band = target_raster.GetRasterBand(1)
-    nodata = nodata_set.pop()
+    if expected_nodata is None:
+        nodata = nodata_set.pop()
+    else:
+        nodata = expected_nodata
     # consider what to do if rasters have nodata defined, but do not fill
     # up the mosaic.
     if nodata is not None:
