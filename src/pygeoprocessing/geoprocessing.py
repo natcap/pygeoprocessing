@@ -567,9 +567,10 @@ def create_raster_from_vector_extents(
     """
     # Determine the width and height of the tiff in pixels based on the
     # maximum size of the combined envelope of all the features
-    vector = ogr.Open(base_vector_path)
+    vector = gdal.OpenEx(base_vector_path)
     shp_extent = None
-    for layer in vector:
+    for layer_index in xrange(vector.GetLayerCount()):
+        layer = vector.GetLayer(layer_index)
         for feature in layer:
             try:
                 # envelope is [xmin, xmax, ymin, ymax]
@@ -652,10 +653,11 @@ def interpolate_points(
     Returns:
        None
     """
-    source_vector = ogr.Open(base_vector_path)
+    source_vector = gdal.OpenEx(base_vector_path)
     point_list = []
     value_list = []
-    for layer in source_vector:
+    for layer_index in xrange(source_vector.GetLayerCount()):
+        layer = source_vector.GetLayer(layer_index)
         for point_feature in layer:
             value = point_feature.GetField(vector_attribute_field)
             # Add in the numpy notation which is row, col
@@ -741,7 +743,7 @@ def zonal_statistics(
         raise ValueError(
             "`base_raster_path_band` not formatted as expected.  Expects "
             "(path, band_index), recieved %s" + base_raster_path_band)
-    aggregate_vector = ogr.Open(aggregate_vector_path)
+    aggregate_vector = gdal.OpenEx(aggregate_vector_path)
     if aggregate_layer_name is not None:
         aggregate_layer = aggregate_vector.GetLayerByName(
             aggregate_layer_name)
@@ -941,7 +943,7 @@ def get_vector_info(vector_path, layer_index=0):
             'bounding_box' (list): list of floats representing the bounding
                 box in projected coordinates as [minx, miny, maxx, maxy].
     """
-    vector = ogr.Open(vector_path)
+    vector = gdal.OpenEx(vector_path)
     vector_properties = {}
     layer = vector.GetLayer(iLayer=layer_index)
     # projection is same for all layers, so just use the first one
@@ -1045,7 +1047,7 @@ def reproject_vector(
     Returns:
         None
     """
-    base_vector = ogr.Open(base_vector_path)
+    base_vector = gdal.OpenEx(base_vector_path)
 
     # if this file already exists, then remove it
     if os.path.isfile(target_path):
@@ -1373,7 +1375,7 @@ def rasterize(
     gdal.PopErrorHandler()
     if raster is None:
         raise ValueError("%s doesn't exist, but needed to rasterize.")
-    vector = ogr.Open(vector_path)
+    vector = gdal.OpenEx(vector_path)
     layer = vector.GetLayer(layer_index)
 
     rasterize_callback = _make_logger_callback(
@@ -1405,7 +1407,7 @@ def calculate_disjoint_polygon_set(vector_path, layer_index=0):
     Returns:
         subset_list (list): list of sets of FIDs from vector_path
     """
-    vector = ogr.Open(vector_path)
+    vector = gdal.OpenEx(vector_path)
     vector_layer = vector.GetLayer()
 
     poly_intersect_lookup = {}
