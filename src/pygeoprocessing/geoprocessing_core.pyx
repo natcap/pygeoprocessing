@@ -69,7 +69,7 @@ def distance_transform_edt(base_mask_raster_path_band, target_distance_path):
         [base_mask_raster_path_band], _mask_op, base_mask_path,
         gdal.GDT_Byte, g_nodata, calc_raster_stats=False)
 
-    base_mask_raster = gdal.Open(base_mask_path)
+    base_mask_raster = gdal.OpenEx(base_mask_path)
     base_mask_band = base_mask_raster.GetRasterBand(1)
 
     n_cols = base_mask_raster.RasterXSize
@@ -84,7 +84,7 @@ def distance_transform_edt(base_mask_raster_path_band, target_distance_path):
     pygeoprocessing.new_raster_from_base(
         base_mask_raster_path_band[0], g_path, gdal.GDT_Int32, [-1],
         fill_value_list=None)
-    g_raster = gdal.Open(g_path, gdal.GA_Update)
+    g_raster = gdal.OpenEx(g_path, gdal.GA_Update)
     g_band = g_raster.GetRasterBand(1)
     g_band_blocksize = g_band.GetBlockSize()
 
@@ -129,7 +129,7 @@ def distance_transform_edt(base_mask_raster_path_band, target_distance_path):
     pygeoprocessing.new_raster_from_base(
         base_mask_raster_path_band[0], target_distance_path.encode('utf-8'),
         gdal.GDT_Float32, [output_nodata], fill_value_list=None)
-    target_distance_raster = gdal.Open(target_distance_path, gdal.GA_Update)
+    target_distance_raster = gdal.OpenEx(target_distance_path, gdal.GA_Update)
     target_distance_band = target_distance_raster.GetRasterBand(1)
 
     LOGGER.info('Distance Transform Phase 2')
@@ -263,7 +263,7 @@ def calculate_slope(
     cdef numpy.ndarray[numpy.npy_float64, ndim=2] dzdx_array
     cdef numpy.ndarray[numpy.npy_float64, ndim=2] dzdy_array
 
-    dem_raster = gdal.Open(base_elevation_raster_path_band[0])
+    dem_raster = gdal.OpenEx(base_elevation_raster_path_band[0])
     dem_band = dem_raster.GetRasterBand(base_elevation_raster_path_band[1])
     dem_info = pygeoprocessing.get_raster_info(base_elevation_raster_path_band[0])
     dem_nodata = dem_info['nodata'][0]
@@ -274,7 +274,7 @@ def calculate_slope(
         base_elevation_raster_path_band[0], target_slope_path, gdal.GDT_Float32,
         [slope_nodata], fill_value_list=[float(slope_nodata)],
         gtiff_creation_options=gtiff_creation_options)
-    target_slope_raster = gdal.Open(target_slope_path, gdal.GA_Update)
+    target_slope_raster = gdal.OpenEx(target_slope_path, gdal.GA_Update)
     target_slope_band = target_slope_raster.GetRasterBand(1)
 
     for block_offset in pygeoprocessing.iterblocks(
