@@ -120,7 +120,7 @@ def raster_calculator(
     not_found_paths = []
     gdal.PushErrorHandler('CPLQuietErrorHandler')
     for path, _ in base_raster_path_band_list:
-        if gdal.Open(path) is None:
+        if gdal.OpenEx(path) is None:
             not_found_paths.append(path)
     gdal.PopErrorHandler()
 
@@ -148,7 +148,7 @@ def raster_calculator(
                 geospatial_info_set))
 
     base_raster_list = [
-        gdal.Open(path_band[0]) for path_band in base_raster_path_band_list]
+        gdal.OpenEx(path_band[0]) for path_band in base_raster_path_band_list]
     base_band_list = [
         raster.GetRasterBand(index) for raster, (_, index) in zip(
             base_raster_list, base_raster_path_band_list)]
@@ -158,7 +158,7 @@ def raster_calculator(
     new_raster_from_base(
         base_raster_path_band_list[0][0], target_raster_path, datatype_target,
         [nodata_target], gtiff_creation_options=gtiff_creation_options)
-    target_raster = gdal.Open(target_raster_path, gdal.GA_Update)
+    target_raster = gdal.OpenEx(target_raster_path, gdal.GA_Update)
     target_band = target_raster.GetRasterBand(1)
 
     try:
@@ -389,7 +389,7 @@ def calculate_raster_stats(raster_path):
     Returns:
         None
     """
-    raster = gdal.Open(raster_path, gdal.GA_Update)
+    raster = gdal.OpenEx(raster_path, gdal.GA_Update)
     raster_properties = get_raster_info(raster_path)
     for band_index in xrange(raster.RasterCount):
         target_min = None
@@ -474,7 +474,7 @@ def new_raster_from_base(
     Returns:
         None
     """
-    base_raster = gdal.Open(base_path)
+    base_raster = gdal.OpenEx(base_path)
     if n_rows is None:
         n_rows = base_raster.RasterYSize
     if n_cols is None:
@@ -579,9 +579,10 @@ def create_raster_from_vector_extents(
     """
     # Determine the width and height of the tiff in pixels based on the
     # maximum size of the combined envelope of all the features
-    vector = ogr.Open(base_vector_path)
+    vector = gdal.OpenEx(base_vector_path)
     shp_extent = None
-    for layer in vector:
+    for layer_index in xrange(vector.GetLayerCount()):
+        layer = vector.GetLayer(layer_index)
         for feature in layer:
             try:
                 # envelope is [xmin, xmax, ymin, ymax]
@@ -664,10 +665,11 @@ def interpolate_points(
     Returns:
        None
     """
-    source_vector = ogr.Open(base_vector_path)
+    source_vector = gdal.OpenEx(base_vector_path)
     point_list = []
     value_list = []
-    for layer in source_vector:
+    for layer_index in xrange(source_vector.GetLayerCount()):
+        layer = source_vector.GetLayer(layer_index)
         for point_feature in layer:
             value = point_feature.GetField(vector_attribute_field)
             # Add in the numpy notation which is row, col
@@ -680,7 +682,7 @@ def interpolate_points(
     point_array = numpy.array(point_list)
     value_array = numpy.array(value_list)
 
-    target_raster = gdal.Open(target_raster_path_band[0], gdal.GA_Update)
+    target_raster = gdal.OpenEx(target_raster_path_band[0], gdal.GA_Update)
     band = target_raster.GetRasterBand(target_raster_path_band[1])
     nodata = band.GetNoDataValue()
     geotransform = target_raster.GetGeoTransform()
@@ -753,7 +755,7 @@ def zonal_statistics(
         raise ValueError(
             "`base_raster_path_band` not formatted as expected.  Expects "
             "(path, band_index), recieved %s" + base_raster_path_band)
-    aggregate_vector = ogr.Open(aggregate_vector_path)
+    aggregate_vector = gdal.OpenEx(aggregate_vector_path)
     if aggregate_layer_name is not None:
         aggregate_layer = aggregate_vector.GetLayerByName(
             aggregate_layer_name)
@@ -795,7 +797,7 @@ def zonal_statistics(
         [base_raster_path_band[0]], [clipped_raster_path], ['nearest'],
         raster_info['pixel_size'], 'intersection',
         base_vector_path_list=[aggregate_vector_path], raster_align_index=0)
-    clipped_raster = gdal.Open(clipped_raster_path)
+    clipped_raster = gdal.OpenEx(clipped_raster_path)
 
     # make a shapefile that non-overlapping layers can be added to
     driver = ogr.GetDriverByName('ESRI Shapefile')
@@ -834,7 +836,7 @@ def zonal_statistics(
     new_raster_from_base(
         clipped_raster_path, aggregate_id_raster_path, gdal.GDT_Int32,
         [aggregate_id_nodata])
-    aggregate_id_raster = gdal.Open(aggregate_id_raster_path, gdal.GA_Update)
+    aggregate_id_raster = gdal.OpenEx(aggregate_id_raster_path, gdal.GA_Update)
     aggregate_stats = {}
 
     for polygon_set in minimal_polygon_sets:
@@ -953,7 +955,7 @@ def get_vector_info(vector_path, layer_index=0):
             'bounding_box' (list): list of floats representing the bounding
                 box in projected coordinates as [minx, miny, maxx, maxy].
     """
-    vector = ogr.Open(vector_path)
+    vector = gdal.OpenEx(vector_path)
     vector_properties = {}
     layer = vector.GetLayer(iLayer=layer_index)
     # projection is same for all layers, so just use the first one
@@ -998,7 +1000,7 @@ def get_raster_info(raster_path):
                 efficient reading.
     """
     raster_properties = {}
-    raster = gdal.Open(raster_path)
+    raster = gdal.OpenEx(raster_path)
     raster_properties['projection'] = raster.GetProjection()
     geo_transform = raster.GetGeoTransform()
     raster_properties['geotransform'] = geo_transform
@@ -1057,7 +1059,7 @@ def reproject_vector(
     Returns:
         None
     """
-    base_vector = ogr.Open(base_vector_path)
+    base_vector = gdal.OpenEx(base_vector_path)
 
     # if this file already exists, then remove it
     if os.path.isfile(target_path):
@@ -1234,7 +1236,7 @@ def warp_raster(
     Returns:
         None
     """
-    base_raster = gdal.Open(base_raster_path)
+    base_raster = gdal.OpenEx(base_raster_path)
     base_sr = osr.SpatialReference()
     base_sr.ImportFromWkt(base_raster.GetProjection())
 
@@ -1382,11 +1384,11 @@ def rasterize(
         None
     """
     gdal.PushErrorHandler('CPLQuietErrorHandler')
-    raster = gdal.Open(target_raster_path, gdal.GA_Update)
+    raster = gdal.OpenEx(target_raster_path, gdal.GA_Update)
     gdal.PopErrorHandler()
     if raster is None:
         raise ValueError("%s doesn't exist, but needed to rasterize.")
-    vector = ogr.Open(vector_path)
+    vector = gdal.OpenEx(vector_path)
     layer = vector.GetLayer(layer_index)
 
     rasterize_callback = _make_logger_callback(
@@ -1418,7 +1420,7 @@ def calculate_disjoint_polygon_set(vector_path, layer_index=0):
     Returns:
         subset_list (list): list of sets of FIDs from vector_path
     """
-    vector = ogr.Open(vector_path)
+    vector = gdal.OpenEx(vector_path)
     vector_layer = vector.GetLayer()
 
     poly_intersect_lookup = {}
@@ -1651,9 +1653,9 @@ def convolve_2d(
     # we need the original signal raster info because we want the output to
     # be clipped and NODATA masked to it
     base_signal_nodata = signal_raster_info['nodata']
-    signal_raster = gdal.Open(signal_path_band[0])
+    signal_raster = gdal.OpenEx(signal_path_band[0])
     signal_band = signal_raster.GetRasterBand(signal_path_band[1])
-    target_raster = gdal.Open(target_path, gdal.GA_Update)
+    target_raster = gdal.OpenEx(target_path, gdal.GA_Update)
     target_band = target_raster.GetRasterBand(1)
 
     # if we're ignoring nodata, we need to make a parallel convolved signal
@@ -1666,7 +1668,7 @@ def convolve_2d(
             signal_path_band[0], mask_raster_path, gdal.GDT_Float32,
             [mask_nodata], fill_value_list=[0],
             gtiff_creation_options=gtiff_creation_options)
-        mask_raster = gdal.Open(mask_raster_path, gdal.GA_Update)
+        mask_raster = gdal.OpenEx(mask_raster_path, gdal.GA_Update)
         mask_band = mask_raster.GetRasterBand(1)
 
     def _make_cache():
@@ -1932,7 +1934,7 @@ def iterblocks(
         If `offset_only` is True, the function returns only the block offset
             data and does not attempt to read binary data from the raster.
     """
-    raster = gdal.Open(raster_path)
+    raster = gdal.OpenEx(raster_path)
 
     if band_index_list is None:
         band_index_list = range(1, raster.RasterCount + 1)
