@@ -417,7 +417,7 @@ def fill_pits(
     pygeoprocessing.new_raster_from_base(
         dem_raster_path_band[0], flag_raster_path, gdal.GDT_Byte,
         [None], fill_value_list=[0], gtiff_creation_options=(
-            'TILED=YES', 'BIGTIFF=IF_SAFER', 'COMPRESS=LZW',
+            'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
             'BLOCKXSIZE=%d' % (1<<BLOCK_BITS),
             'BLOCKYSIZE=%d' % (1<<BLOCK_BITS)))
 
@@ -436,7 +436,7 @@ def fill_pits(
         dem_raster_path_band[0], target_filled_dem_raster_path,
         gdal.GDT_Float32, [dem_nodata], fill_value_list=[dem_nodata],
         gtiff_creation_options=(
-            'TILED=YES', 'BIGTIFF=IF_SAFER', 'COMPRESS=LZW',
+            'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
             'BLOCKXSIZE=%d' % (1<<BLOCK_BITS),
             'BLOCKYSIZE=%d' % (1<<BLOCK_BITS)))
     target_filled_dem_raster = gdal.Open(
@@ -452,7 +452,7 @@ def fill_pits(
     pygeoprocessing.new_raster_from_base(
         dem_raster_path_band[0], target_flow_direction_path, gdal.GDT_Byte,
         [255], fill_value_list=[255], gtiff_creation_options=(
-            'TILED=YES', 'BIGTIFF=IF_SAFER', 'COMPRESS=LZW',
+            'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
             'BLOCKXSIZE=%d' % (1<<BLOCK_BITS),
             'BLOCKYSIZE=%d' % (1<<BLOCK_BITS)))
 
@@ -783,7 +783,7 @@ def flow_accmulation(
         target_flow_accumulation_raster_path, gdal.GDT_Float32,
         [_NODATA], fill_value_list=[_NODATA],
         gtiff_creation_options=(
-            'TILED=YES', 'BIGTIFF=IF_SAFER', 'COMPRESS=LZW',
+            'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
             'BLOCKXSIZE=%d' % (1<<BLOCK_BITS),
             'BLOCKYSIZE=%d' % (1<<BLOCK_BITS)))
 
@@ -1279,7 +1279,7 @@ def downstream_flow_length(
         target_flow_length_raster_path, gdal.GDT_Float32,
         [_NODATA], fill_value_list=[_NODATA],
         gtiff_creation_options=(
-            'TILED=YES', 'BIGTIFF=IF_SAFER', 'COMPRESS=LZW',
+            'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
             'BLOCKXSIZE=%d' % (1<<BLOCK_BITS),
             'BLOCKYSIZE=%d' % (1<<BLOCK_BITS)))
 

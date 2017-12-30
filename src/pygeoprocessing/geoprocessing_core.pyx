@@ -19,7 +19,7 @@ import pygeoprocessing
 
 # TODO: Would it make sense to import these from pygeoprocessing.geoprocessing
 # instead of redefining here?
-_DEFAULT_GTIFF_CREATION_OPTIONS = ('TILED=YES', 'BIGTIFF=IF_SAFER')
+_DEFAULT_GTIFF_CREATION_OPTIONS = ('TILED=YES', 'BIGTIFF=YES')
 
 LOGGER = logging.getLogger('geoprocessing_core')
 
