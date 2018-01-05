@@ -691,7 +691,8 @@ def interpolate_points(
 def zonal_statistics(
         base_raster_path_band, aggregate_vector_path,
         aggregate_field_name, aggregate_layer_name=None,
-        ignore_nodata=True, all_touched=False, polygons_might_overlap=True):
+        ignore_nodata=True, all_touched=False, polygons_might_overlap=True,
+        working_dir=None):
     """Collect stats on pixel values which lie within polygons.
 
     This function summarizes raster statistics including min, max,
@@ -733,6 +734,8 @@ def zonal_statistics(
             computationally expensive for cases where there are many polygons.
             Setting this flag to False directs the function rasterize in one
             step.
+        working_dir (string): If not None, indicates where temporary files
+            should be created during this run.
 
     Returns:
         nested dictionary indexed by aggregating feature id, and then by one
@@ -779,7 +782,8 @@ def zonal_statistics(
     # -1 here because bands are 1 indexed
     raster_nodata = raster_info['nodata'][base_raster_path_band[1]-1]
     with tempfile.NamedTemporaryFile(
-            prefix='clipped_raster', delete=False) as clipped_raster_file:
+            prefix='clipped_raster', delete=False,
+            dir=working_dir) as clipped_raster_file:
         clipped_raster_path = clipped_raster_file.name
     align_and_resize_raster_stack(
         [base_raster_path_band[0]], [clipped_raster_path], ['nearest'],
@@ -789,7 +793,7 @@ def zonal_statistics(
 
     # make a shapefile that non-overlapping layers can be added to
     driver = ogr.GetDriverByName('ESRI Shapefile')
-    disjoint_vector_dir = tempfile.mkdtemp()
+    disjoint_vector_dir = tempfile.mkdtemp(dir=working_dir)
     disjoint_vector = driver.CreateDataSource(
         os.path.join(disjoint_vector_dir, 'disjoint_vector.shp'))
     spat_ref = aggregate_layer.GetSpatialRef()
@@ -817,7 +821,7 @@ def zonal_statistics(
 
     with tempfile.NamedTemporaryFile(
             prefix='aggregate_id_raster',
-            delete=False) as aggregate_id_raster_file:
+            delete=False, dir=working_dir) as aggregate_id_raster_file:
         aggregate_id_raster_path = aggregate_id_raster_file.name
 
     aggregate_id_nodata = len(base_to_local_aggregate_value)
