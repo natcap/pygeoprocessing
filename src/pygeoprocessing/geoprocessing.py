@@ -1469,7 +1469,8 @@ def calculate_disjoint_polygon_set(vector_path, layer_index=0):
 
 
 def distance_transform_edt(
-        base_mask_raster_path_band, target_distance_raster_path):
+        base_mask_raster_path_band, target_distance_raster_path,
+        working_dir=None):
     """Calculate the euclidean distance transform on base raster.
 
     Calculates the euclidean distance transform on the base raster in units of
@@ -1483,12 +1484,14 @@ def distance_transform_edt(
             zero values of base_mask_raster_path_band are equal to the
             euclidean distance to the
             closest non-zero pixel.
+         working_dir (string): If not None, indicates where temporary files
+            should be created during this run.
 
     Returns:
         None
     """
     with tempfile.NamedTemporaryFile(
-            prefix='dt_mask', delete=False) as dt_mask_file:
+            prefix='dt_mask', delete=False, dir=working_dir) as dt_mask_file:
         dt_mask_path = dt_mask_file.name
     raster_info = get_raster_info(base_mask_raster_path_band[0])
     nodata = raster_info['nodata'][base_mask_raster_path_band[1]-1]
@@ -1573,7 +1576,8 @@ def convolve_2d(
         ignore_nodata=False, mask_nodata=True, normalize_kernel=False,
         target_datatype=gdal.GDT_Float64,
         target_nodata=None,
-        gtiff_creation_options=_DEFAULT_GTIFF_CREATION_OPTIONS):
+        gtiff_creation_options=_DEFAULT_GTIFF_CREATION_OPTIONS,
+        working_dir=None):
     """Convolve 2D kernel over 2D signal.
 
     Convolves the raster in `kernel_path_band` over `signal_path_band`.
@@ -1606,6 +1610,8 @@ def convolve_2d(
         gtiff_creation_options (list): an argument list that will be
             passed to the GTiff driver for creating `target_path`.  Useful for
             blocksizes, compression, and more.
+         working_dir (string): If not None, indicates where temporary files
+            should be created during this run.
 
     Returns:
         None
@@ -1652,7 +1658,7 @@ def convolve_2d(
     # if we're ignoring nodata, we need to make a parallel convolved signal
     # of the nodata mask
     if s_nodata is not None and ignore_nodata:
-        mask_dir = tempfile.mkdtemp()
+        mask_dir = tempfile.mkdtemp(dir=working_dir)
         mask_raster_path = os.path.join(mask_dir, 'convolved_mask.tif')
         mask_nodata = -1.0
         new_raster_from_base(
