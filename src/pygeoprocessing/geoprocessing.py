@@ -42,6 +42,12 @@ _RESAMPLE_DICT = {
     "cubic_spline": gdal.GRA_CubicSpline,
     "lanczos": gdal.GRA_Lanczos,
     'mode': gdal.GRA_Mode,
+    'average': gdal.GRA_Average,
+    'max': gdal.GRA_Max,
+    'min': gdal.GRA_Min,
+    'med': gdal.GRA_Med,
+    'q1': gdal.GRA_Q1,
+    'q3': gdal.GRA_Q3,
     }
 
 
