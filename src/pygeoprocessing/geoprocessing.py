@@ -697,7 +697,8 @@ def interpolate_points(
 def zonal_statistics(
         base_raster_path_band, aggregate_vector_path,
         aggregate_field_name, aggregate_layer_name=None,
-        ignore_nodata=True, all_touched=False, polygons_might_overlap=True):
+        ignore_nodata=True, all_touched=False, polygons_might_overlap=True,
+        working_dir=None):
     """Collect stats on pixel values which lie within polygons.
 
     This function summarizes raster statistics including min, max,
@@ -739,6 +740,8 @@ def zonal_statistics(
             computationally expensive for cases where there are many polygons.
             Setting this flag to False directs the function rasterize in one
             step.
+        working_dir (string): If not None, indicates where temporary files
+            should be created during this run.
 
     Returns:
         nested dictionary indexed by aggregating feature id, and then by one
@@ -785,7 +788,8 @@ def zonal_statistics(
     # -1 here because bands are 1 indexed
     raster_nodata = raster_info['nodata'][base_raster_path_band[1]-1]
     with tempfile.NamedTemporaryFile(
-            prefix='clipped_raster', delete=False) as clipped_raster_file:
+            prefix='clipped_raster', delete=False,
+            dir=working_dir) as clipped_raster_file:
         clipped_raster_path = clipped_raster_file.name
     align_and_resize_raster_stack(
         [base_raster_path_band[0]], [clipped_raster_path], ['nearest'],
@@ -795,7 +799,7 @@ def zonal_statistics(
 
     # make a shapefile that non-overlapping layers can be added to
     driver = ogr.GetDriverByName('ESRI Shapefile')
-    disjoint_vector_dir = tempfile.mkdtemp()
+    disjoint_vector_dir = tempfile.mkdtemp(dir=working_dir)
     disjoint_vector = driver.CreateDataSource(
         os.path.join(disjoint_vector_dir, 'disjoint_vector.shp'))
     spat_ref = aggregate_layer.GetSpatialRef()
@@ -823,7 +827,7 @@ def zonal_statistics(
 
     with tempfile.NamedTemporaryFile(
             prefix='aggregate_id_raster',
-            delete=False) as aggregate_id_raster_file:
+            delete=False, dir=working_dir) as aggregate_id_raster_file:
         aggregate_id_raster_path = aggregate_id_raster_file.name
 
     aggregate_id_nodata = len(base_to_local_aggregate_value)
@@ -1471,7 +1475,8 @@ def calculate_disjoint_polygon_set(vector_path, layer_index=0):
 
 
 def distance_transform_edt(
-        base_mask_raster_path_band, target_distance_raster_path):
+        base_mask_raster_path_band, target_distance_raster_path,
+        working_dir=None):
     """Calculate the euclidean distance transform on base raster.
 
     Calculates the euclidean distance transform on the base raster in units of
@@ -1485,12 +1490,14 @@ def distance_transform_edt(
             zero values of base_mask_raster_path_band are equal to the
             euclidean distance to the
             closest non-zero pixel.
+         working_dir (string): If not None, indicates where temporary files
+            should be created during this run.
 
     Returns:
         None
     """
     with tempfile.NamedTemporaryFile(
-            prefix='dt_mask', delete=False) as dt_mask_file:
+            prefix='dt_mask', delete=False, dir=working_dir) as dt_mask_file:
         dt_mask_path = dt_mask_file.name
     raster_info = get_raster_info(base_mask_raster_path_band[0])
     nodata = raster_info['nodata'][base_mask_raster_path_band[1]-1]
@@ -1575,7 +1582,8 @@ def convolve_2d(
         ignore_nodata=False, mask_nodata=True, normalize_kernel=False,
         target_datatype=gdal.GDT_Float64,
         target_nodata=None,
-        gtiff_creation_options=_DEFAULT_GTIFF_CREATION_OPTIONS):
+        gtiff_creation_options=_DEFAULT_GTIFF_CREATION_OPTIONS,
+        working_dir=None):
     """Convolve 2D kernel over 2D signal.
 
     Convolves the raster in `kernel_path_band` over `signal_path_band`.
@@ -1608,6 +1616,8 @@ def convolve_2d(
         gtiff_creation_options (list): an argument list that will be
             passed to the GTiff driver for creating `target_path`.  Useful for
             blocksizes, compression, and more.
+         working_dir (string): If not None, indicates where temporary files
+            should be created during this run.
 
     Returns:
         None
@@ -1654,7 +1664,7 @@ def convolve_2d(
     # if we're ignoring nodata, we need to make a parallel convolved signal
     # of the nodata mask
     if s_nodata is not None and ignore_nodata:
-        mask_dir = tempfile.mkdtemp()
+        mask_dir = tempfile.mkdtemp(dir=working_dir)
         mask_raster_path = os.path.join(mask_dir, 'convolved_mask.tif')
         mask_nodata = -1.0
         new_raster_from_base(
