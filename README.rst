@@ -43,3 +43,8 @@ The solution is to recompile pygeoprocessing on your computer:
 
     $ pip uninstall -y pygeoprocessing
     $ pip install pygeoprocessing --no-deps --no-binary :all:
+
+Requirements
+------------
+
+Note the pip-installable requirements in `requirements.txt` are for best results, but older package versions may also work. If necessary, PyGeoprocessing can be installed without dependencies with `pip install --no-deps`.
