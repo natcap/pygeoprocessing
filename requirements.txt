@@ -3,7 +3,7 @@
 # This file records the packages and requirements needed in order for
 # pygeoprocessing to work as expected.
 
-osgeo>=1.11.2,<2.0
+osgeo>=2.0,<3.0
 natcap.versioner>=0.4.2
 numpy>=1.11.0
 scipy>=0.14.0

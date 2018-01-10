@@ -7,6 +7,7 @@ Unreleased Changes
   be set something other than the PyGeoprocessing default. This in turn
   allows the `largest_block` parameter in `raster_calculator` to be passed
   through to `iterblocks`.
+* Upgraded PyGeoprocessing GDAL dependency to >=2.0.
 
 0.5.0 (9/14/2017)
 -----------------
