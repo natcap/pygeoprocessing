@@ -1,8 +1,8 @@
 Release History
 ===============
 
-Unreleased Changes
-------------------
+0.6.0 (1/10/2017)
+-----------------
 * Added an optional parameter to `iterblocks` to allow the `largest_block` to
   be set something other than the PyGeoprocessing default. This in turn
   allows the `largest_block` parameter in `raster_calculator` to be passed
