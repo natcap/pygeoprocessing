@@ -1,6 +1,16 @@
 Release History
 ===============
 
+Unreleased Changes
+------------------
+* Raster creation defaults now set "COMPRESS=LZW" for all rasters created in
+  PyGeoprocessing, including internal temporary rasters. This option was
+  chosen after profiling large raster creation runs on platter hard drives.
+  In many cases processing time was dominated by several orders of magnitude
+  as a write-to-disk. When compression is turned on overall runtime of very
+  large rasters is significantly reduced. Note this otherwise increases the
+  runtime small raster creation and processing by a small amount.
+
 0.6.0 (1/10/2017)
 -----------------
 * Added an optional parameter to `iterblocks` to allow the `largest_block` to

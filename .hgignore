@@ -1,6 +1,7 @@
 Syntax: regexp
 \.hgignore
 
+
 ^src/pygeoprocessing/version\.py
 ^dist/
 ^data/
@@ -12,3 +13,4 @@ Syntax: regexp
 \.pyc$
 \.cpp$
 ^dev_env
+^pgp_venv
