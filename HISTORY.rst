@@ -3,11 +3,26 @@ Release History
 
 Unreleased Changes
 ------------------
+* Raster creation defaults now set "COMPRESS=LZW" for all rasters created in
+  PyGeoprocessing, including internal temporary rasters. This option was
+  chosen after profiling large raster creation runs on platter hard drives.
+  In many cases processing time was dominated by several orders of magnitude
+  as a write-to-disk. When compression is turned on overall runtime of very
+  large rasters is significantly reduced. Note this otherwise increases the
+  runtime small raster creation and processing by a small amount.
+
+0.6.0 (1/10/2017)
+-----------------
 * Added an optional parameter to `iterblocks` to allow the `largest_block` to
   be set something other than the PyGeoprocessing default. This in turn
   allows the `largest_block` parameter in `raster_calculator` to be passed
   through to `iterblocks`.
 * Upgraded PyGeoprocessing GDAL dependency to >=2.0.
+* Added a `working_dir` optional parameter to `zonal_statistics`,
+  `distance_transform_edt`, and `convolve_2d` which specifies a directory in
+  which temporary files will be created during execution of the function.
+  If set to `None` files are created in the default system temporary
+  directory.
 
 0.5.0 (9/14/2017)
 -----------------
