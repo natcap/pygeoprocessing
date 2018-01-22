@@ -33,7 +33,7 @@ LOGGER.addHandler(logging.NullHandler())  # silence logging by default
 _LOGGING_PERIOD = 5.0  # min 5.0 seconds per update log message for the module
 _DEFAULT_GTIFF_CREATION_OPTIONS = (
     'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW')
-_LARGEST_ITERBLOCK = 2**20  # largest block for iterblocks to read in cells
+_LARGEST_ITERBLOCK = 2**16  # largest block for iterblocks to read in cells
 
 # A dictionary to map the resampling method input string to the gdal type
 _RESAMPLE_DICT = {
