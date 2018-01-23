@@ -318,7 +318,6 @@ cdef class ManagedRaster:
             removed_value_list.pop_front()
 
         if self.write_mode:
-            raster_band.FlushCache()
             raster_band = None
             raster = None
 
