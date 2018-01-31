@@ -19,6 +19,7 @@ from cython.operator cimport dereference as deref
 from cython.operator cimport preincrement as inc
 from libc.stdlib cimport malloc
 from libc.stdlib cimport free
+from libc.math cimport isnan
 from libcpp.list cimport list
 from libcpp.map cimport map
 from libcpp.pair cimport pair
@@ -409,7 +410,7 @@ def fill_pits(
     # across it again.
     temp_dir_path = tempfile.mkdtemp(
         dir=temp_dir_path, prefix='fill_pits_', suffix=time.strftime(
-        '%Y-%m-%d_%H_%M_%S', time.gmtime()))
+            '%Y-%m-%d_%H_%M_%S', time.gmtime()))
     flag_raster_path = os.path.join(temp_dir_path, 'flag_raster.tif')
 
     # make a byte flag raster, no need for a nodata value but initialize to 0
@@ -429,15 +430,19 @@ def fill_pits(
         'copying %s dem to %s', dem_raster_path_band,
         target_filled_dem_raster_path)
     dem_raster_info = pygeoprocessing.get_raster_info(dem_raster_path_band[0])
-    dem_nodata = numpy.float32(
-        dem_raster_info['nodata'][dem_raster_path_band[1]-1])
+    base_nodata = dem_raster_info['nodata'][dem_raster_path_band[1]-1]
+    if base_nodata is not None:
+        dem_nodata = numpy.float32(base_nodata)
+    else:
+        # pick some very improbable value since it's hard to deal with NaNs
+        dem_nodata = -1.23789789e29
     pygeoprocessing.new_raster_from_base(
         dem_raster_path_band[0], target_filled_dem_raster_path,
         gdal.GDT_Float32, [dem_nodata], fill_value_list=[dem_nodata],
         gtiff_creation_options=(
             'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
-            'BLOCKXSIZE=%d' % (1<<BLOCK_BITS),
-            'BLOCKYSIZE=%d' % (1<<BLOCK_BITS)))
+            'BLOCKXSIZE=%d' % (1 << BLOCK_BITS),
+            'BLOCKYSIZE=%d' % (1 << BLOCK_BITS)))
     target_filled_dem_raster = gdal.Open(
         target_filled_dem_raster_path, gdal.GA_Update)
     target_filled_dem_band = target_filled_dem_raster.GetRasterBand(1)
@@ -546,7 +551,7 @@ def fill_pits(
                         break
     logger.info("edges detected in %fs", time.time()-start_edge_time)
     start_pit_time = time.time()
-    logger.info('filling pits')
+    logger.info('filling pits, queue size %d', p_queue.size())
     while not p_queue.empty():
         p = p_queue.top()
         xi = p.xi

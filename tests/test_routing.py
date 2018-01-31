@@ -2,9 +2,11 @@
 import tempfile
 import unittest
 import shutil
+import os
 
 from osgeo import gdal
 import numpy
+import numpy.testing
 
 
 class TestRouting(unittest.TestCase):
@@ -21,10 +23,8 @@ class TestRouting(unittest.TestCase):
     def test_pit_filling(self):
         """PGP.routing: test pitfilling."""
         import pygeoprocessing.routing
-        pygeoprocessing.routing.fill_pits
-
         driver = gdal.GetDriverByName('GTiff')
-        base_path = 'base.tif'#os.path.join(self.workspace_dir, 'base.tif')
+        base_path = os.path.join(self.workspace_dir, 'base.tif')
         dem_array = numpy.zeros((11, 11))
         dem_array[3:8, 3:8] = -1.0
         dem_array[0, 0] = -1.0
@@ -34,9 +34,20 @@ class TestRouting(unittest.TestCase):
         band = raster.GetRasterBand(1)
         band.WriteArray(dem_array)
         band.FlushCache()
-        fill_path = 'filled.tif'
-        flow_dir_path = 'flow_dir.tif'
+        band = None
+        raster = None
+        fill_path = os.path.join(self.workspace_dir, 'filled.tif')
+        flow_dir_path = os.path.join(self.workspace_dir, 'flow_dir.tif')
 
         pygeoprocessing.routing.fill_pits(
             (base_path, 1), fill_path, flow_dir_path,
             temp_dir_path=self.workspace_dir)
+
+        result_raster = gdal.OpenEx(fill_path, gdal.OF_RASTER)
+        result_band = result_raster.GetRasterBand(1)
+        result_array = result_band.ReadAsArray()
+        result_band = None
+        result_raster = None
+        # the expected result is that the pit is filled in
+        dem_array[3:8, 3:8] = 0.0
+        numpy.testing.assert_almost_equal(result_array, dem_array)
