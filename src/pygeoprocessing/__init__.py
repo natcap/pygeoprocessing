@@ -2,15 +2,21 @@
     into the pygeoprocessing namespace"""
 from __future__ import absolute_import
 
-import natcap.versioner
-__version__ = natcap.versioner.get_version('pygeoprocessing')
-
 import logging
 import types
 import sys
 
+import pkg_resources
+
 from . import geoprocessing
 from .geoprocessing_core import calculate_slope
+
+
+try:
+    __version__ = pkg_resources.get_distribution(__name__).version
+except pkg_resources.DistributionNotFound:
+    # package is not installed.
+    pass
 
 LOGGER = logging.getLogger('pygeoprocessing')
 LOGGER.setLevel(logging.DEBUG)
