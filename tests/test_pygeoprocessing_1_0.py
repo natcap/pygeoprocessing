@@ -68,7 +68,6 @@ class PyGeoprocessing10(unittest.TestCase):
                 # reload it to retrigger the metadata load.
                 pygeoprocessing = reload(pygeoprocessing)
 
-
     def test_reclassify_raster_missing_pixel_value(self):
         """PGP.geoprocessing: test reclassify raster with missing value."""
         reference = sampledata.SRS_COLOMBIA
