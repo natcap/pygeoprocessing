@@ -17,6 +17,7 @@ import pygeoprocessing.testing
 from pygeoprocessing.testing import sampledata
 import pygeoprocessing.routing
 import shapely.geometry
+import mock
 
 
 class PyGeoprocessing10(unittest.TestCase):
@@ -45,6 +46,28 @@ class PyGeoprocessing10(unittest.TestCase):
             except AttributeError:
                 self.fail(('Function %s is in pygeoprocessing.__all__ but '
                            'is not exposed at the package level') % attrname)
+
+    def test_version_loaded(self):
+        """PGP: verify we can load the version."""
+        try:
+            import pygeoprocessing
+            # Verifies that there's a version attribute and it has a value.
+            self.assertTrue(len(pygeoprocessing.__version__) > 0)
+        except Exception as error:
+            self.fail('Could not load pygeoprocessing version.')
+
+    def test_version_not_loaded(self):
+        """PGP: verify exception when not installed."""
+        from pkg_resources import DistributionNotFound
+        import pygeoprocessing
+
+        with mock.patch('pygeoprocessing.pkg_resources.get_distribution',
+                        side_effect=DistributionNotFound('pygeoprocessing')):
+            with self.assertRaises(RuntimeError):
+                # RuntimeError is a side effect of `import taskgraph`, so we
+                # reload it to retrigger the metadata load.
+                pygeoprocessing = reload(pygeoprocessing)
+
 
     def test_reclassify_raster_missing_pixel_value(self):
         """PGP.geoprocessing: test reclassify raster with missing value."""
