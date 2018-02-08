@@ -2,8 +2,14 @@
 """
 Provides PyGeprocessing Routing functionality.
 
-Where each flow direction is encoded as 1 << n, n in [0, 7] in the orientation
-convention of TauDEM:
+All internal computation of DEMs are done in a float64 space since it is
+very difficult to dynamically template based on incoming gdal types. The
+only possible loss of precision could occur when an incoming DEM type is
+an int64 type and values in that dem exceed 2^52. Otherwise no precision
+loss in the 32 bit space and float64 is the native type obviously.
+
+D8 float direction conventions follow TauDEM where each flow direction
+is encoded as 1 << n, n in [0, 7] in the orientation:
     # 321
     # 4 0
     # 567
@@ -434,7 +440,7 @@ def fill_pits(
     dem_raster_info = pygeoprocessing.get_raster_info(dem_raster_path_band[0])
     base_nodata = dem_raster_info['nodata'][dem_raster_path_band[1]-1]
     if base_nodata is not None:
-        # TODO: cast to
+        # cast to a float64 since that's our operating array type
         dem_nodata = numpy.float64(base_nodata)
     else:
         # pick some very improbable value since it's hard to deal with NaNs
