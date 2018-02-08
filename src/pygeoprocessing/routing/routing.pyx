@@ -428,7 +428,7 @@ def fill_pits(
     pygeoprocessing.new_raster_from_base(
         dem_raster_path_band[0], flag_raster_path, gdal.GDT_Byte,
         [None], fill_value_list=[0], gtiff_creation_options=(
-            'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=DEFLATE',
+            'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
             'BLOCKXSIZE=%d' % (1 << BLOCK_BITS),
             'BLOCKYSIZE=%d' % (1 << BLOCK_BITS)))
 
@@ -453,14 +453,14 @@ def fill_pits(
     gtiff_driver.CreateCopy(
         target_filled_dem_raster_path, dem_raster,
         options=(
-            'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=DEFLATE',
+            'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
             'BLOCKXSIZE=%d' % (1 << BLOCK_BITS),
             'BLOCKYSIZE=%d' % (1 << BLOCK_BITS)))
 
     pygeoprocessing.new_raster_from_base(
         dem_raster_path_band[0], target_flow_direction_path, gdal.GDT_Byte,
         [255], fill_value_list=[255], gtiff_creation_options=(
-            'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=DEFLATE',
+            'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
             'BLOCKXSIZE=%d' % (1 << BLOCK_BITS),
             'BLOCKYSIZE=%d' % (1 << BLOCK_BITS)))
 
@@ -797,7 +797,7 @@ def flow_accmulation(
         target_flow_accumulation_raster_path, GDAL_INTERNAL_RASTER_TYPE,
         [_NODATA], fill_value_list=[_NODATA],
         gtiff_creation_options=(
-            'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=DEFLATE',
+            'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
             'BLOCKXSIZE=%d' % (1 << BLOCK_BITS),
             'BLOCKYSIZE=%d' % (1 << BLOCK_BITS)))
 
@@ -1062,7 +1062,7 @@ def downstream_flow_length(
         target_flow_length_raster_path, GDAL_INTERNAL_RASTER_TYPE,
         [_NODATA], fill_value_list=[_NODATA],
         gtiff_creation_options=(
-            'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=DEFLATE',
+            'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
             'BLOCKXSIZE=%d' % (1 << BLOCK_BITS),
             'BLOCKYSIZE=%d' % (1 << BLOCK_BITS)))
 
