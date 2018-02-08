@@ -119,3 +119,53 @@ class TestRouting(unittest.TestCase):
         self.assertEqual(result_array.dtype, numpy.float64)
         # the expected result is that the pit is filled in
         self.assertEqual(result_array[-1, -1], 11*11)
+
+
+    def test_downstream(self):
+        """PGP.routing: test distance to downstream."""
+        import pygeoprocessing.routing
+
+        driver = gdal.GetDriverByName('GTiff')
+        flow_dir_path = os.path.join(self.workspace_dir, 'flow_dir.tif')
+        # everything flows to the right
+        flow_dir_array = numpy.zeros((11, 11), dtype=numpy.int32)
+        flow_dir_array[:, -1] = 6 # last col flows down
+        raster = driver.Create(
+            flow_dir_path, flow_dir_array.shape[1], flow_dir_array.shape[0], 1,
+            gdal.GDT_Byte)
+        band = raster.GetRasterBand(1)
+        band.WriteArray(flow_dir_array)
+        band.FlushCache()
+
+        flow_accum_path = os.path.join(self.workspace_dir, 'flow_accum.tif')
+        # everything flows to the right
+        flow_accum_array = numpy.zeros((11, 11), dtype=numpy.int32)
+        flow_accum_array[:, -1] = 1  # last col is stream
+        raster = driver.Create(
+            flow_accum_path, flow_accum_array.shape[1],
+            flow_accum_array.shape[0], 1, gdal.GDT_Byte)
+        band = raster.GetRasterBand(1)
+        band.WriteArray(flow_accum_array)
+        band.FlushCache()
+
+        band = None
+        raster = None
+
+        target_flow_length_raster_path = os.path.join(
+            self.workspace_dir, 'flow_dist.tif')
+
+        pygeoprocessing.routing.downstream_flow_length(
+            (flow_dir_path, 1), (flow_accum_path, 1),
+            1.0, target_flow_length_raster_path)
+
+        result_raster = gdal.OpenEx(
+            target_flow_length_raster_path, gdal.OF_RASTER)
+        result_band = result_raster.GetRasterBand(1)
+        result_array = result_band.ReadAsArray()
+        result_band = None
+        result_raster = None
+        self.assertEqual(result_array.dtype, numpy.float64)
+        # the expected result is that the pit is filled in
+        flow_dist_expected_array = numpy.empty((11, 11))
+        flow_dist_expected_array[:] = numpy.array(list(reversed(range(11))))
+        numpy.testing.assert_almost_equal(result_array, flow_dist_expected_array)

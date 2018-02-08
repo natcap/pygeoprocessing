@@ -963,15 +963,19 @@ def downstream_flow_length(
         flow_accum_raster_path_band (tuple): a path/band tuple to a raster
             of same dimensions as the flow_dir_raster indicating values where
             flow flow length should terminate/start.
-        flow_threshold (float): value in flow_accum_raster to indicate a
-            sink for flow length if value is >= `flow_threshold`.
+        flow_threshold (float): Flow accumulation values in
+            `flow_accum_raster_` that are >= `flow_threshol` are classified
+            as streams.
         target_flow_length_raster_path (string): path to output raster for
             flow length to the drains.
-        weight_raster_path_band (tuple): if not None, path to  a raster that
+        weight_raster_path_band (tuple): if not None, path to a raster that
             is of the same dimensions as `flow_dir_raster_path_band`
-            that is to be used in place of "1" for flow accumulation per
-            pixel. If pixel is nodata but otherwise a valid flow path,
-            this function treats it as 0.
+            that is to be used in place of accumulating downstream distance.
+            Without this raster the value of each pixel is "1" (or sqrt(2)
+            for diagonal lengths). If this raster is not None, the pixel
+            values are used in lieu of "1". If the weight happens to be
+            nodata in an otherwise defined flow path, a value of 0 is used
+            for the weight.
         temp_dir_path (string): if not None, a path to a directory where
             temporary files can be constructed. Otherwise uses system tempdir.
 
@@ -1039,7 +1043,7 @@ def downstream_flow_length(
 
     pygeoprocessing.new_raster_from_base(
         flow_dir_raster_path_band[0],
-        target_flow_length_raster_path, gdal.GDT_Float32,
+        target_flow_length_raster_path, GDAL_INTERNAL_RASTER_TYPE,
         [_NODATA], fill_value_list=[_NODATA],
         gtiff_creation_options=(
             'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=DEFLATE',
@@ -1053,8 +1057,16 @@ def downstream_flow_length(
     # these are used to determine if a sample is within the raster
     flow_direction_raster_info = pygeoprocessing.get_raster_info(
         flow_dir_raster_path_band[0])
-    flow_direction_nodata = flow_direction_raster_info['nodata'][
+    base_flow_direction_nodata = flow_direction_raster_info['nodata'][
         flow_dir_raster_path_band[1]-1]
+
+    if base_flow_direction_nodata is not None:
+        # cast to a float64 since that's our operating array type
+        flow_direction_nodata = base_flow_direction_nodata
+    else:
+        # pick some very impossible value given routing conventions
+        flow_direction_nodata = 99
+
     raster_x_size, raster_y_size = flow_direction_raster_info['raster_size']
     # used to set flow directions
     flow_dir_managed_raster = ManagedRaster(
@@ -1142,18 +1154,12 @@ def downstream_flow_length(
                 if (isclose(n_dir, flow_direction_nodata) or
                         flow_accum_managed_raster.get(
                             xi-1+xoff, yi-1+yoff) >= flow_threshold):
-                    # it flows to nodata (or edge) so it's a seed
-                    if use_weights:
-                        weight_val = weight_raster_path_raster.get(
-                            xi-1+xoff, yi-1+yoff)
-                        if isclose(weight_val, weight_nodata):
-                            weight_val = 0
-                    else:
-                        weight_val = 1
+                    # it hit a stream threshold, so it's a seed
+                    # initial distance on stream is 0
                     flow_stack.push(
-                        FlowPixel(0, xi-1+xoff, yi-1+yoff, weight_val))
+                        FlowPixel(0, xi-1+xoff, yi-1+yoff, 0))
                     flow_length_managed_raster.set(
-                        xi-1+xoff, yi-1+yoff, weight_val)
+                        xi-1+xoff, yi-1+yoff, 0)
 
     logger.info("drains detected in %fs", time.time()-start_drain_time)
     while not flow_stack.empty():
