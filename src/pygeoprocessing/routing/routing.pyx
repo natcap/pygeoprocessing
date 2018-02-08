@@ -44,6 +44,9 @@ from libcpp.vector cimport vector
 cdef int BLOCK_BITS = 8
 cdef int MANAGED_RASTER_N_BLOCKS = 2**6
 NODATA = -1
+# if nodata is not defined for a float, it's a difficult choice. this number
+# probably won't collide
+IMPROBABLE_FLOAT_NOATA = -1.23789789e29
 cdef int _NODATA = NODATA
 GDAL_INTERNAL_RASTER_TYPE = gdal.GDT_Float64
 
@@ -444,7 +447,7 @@ def fill_pits(
         dem_nodata = numpy.float64(base_nodata)
     else:
         # pick some very improbable value since it's hard to deal with NaNs
-        dem_nodata = -1.23789789e29
+        dem_nodata = IMPROBABLE_FLOAT_NOATA
     gtiff_driver = gdal.GetDriverByName('GTiff')
     dem_raster = gdal.OpenEx(dem_raster_path_band[0], gdal.OF_RASTER)
     gtiff_driver.CreateCopy(
@@ -1083,9 +1086,13 @@ def downstream_flow_length(
     if weight_raster_path_band is not None:
         weight_raster_path_raster = ManagedRaster(
             weight_raster_path_band[0], MANAGED_RASTER_N_BLOCKS, 0)
-        weight_nodata = pygeoprocessing.get_raster_info(
+        base_weight_nodata = pygeoprocessing.get_raster_info(
             weight_raster_path_band[0])['nodata'][
                 weight_raster_path_band[1]-1]
+        if base_weight_nodata is not None:
+            weight_nodata = base_weight_nodata
+        else:
+            weight_nodata = IMPROBABLE_FLOAT_NOATA
         use_weights = 1
 
     flow_direction_raster = gdal.Open(flow_dir_raster_path_band[0])
