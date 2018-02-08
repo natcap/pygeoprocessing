@@ -37,6 +37,7 @@ from libcpp.vector cimport vector
 
 # This module expects rasters with a memory xy block size of 2**BLOCK_BITS
 cdef int BLOCK_BITS = 8
+cdef int MANAGED_RASTER_N_BLOCKS = 2**6
 NODATA = -1
 cdef int _NODATA = NODATA
 
@@ -418,7 +419,7 @@ def fill_pits(
     pygeoprocessing.new_raster_from_base(
         dem_raster_path_band[0], flag_raster_path, gdal.GDT_Byte,
         [None], fill_value_list=[0], gtiff_creation_options=(
-            'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
+            'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=DEFLATE',
             'BLOCKXSIZE=%d' % (1<<BLOCK_BITS),
             'BLOCKYSIZE=%d' % (1<<BLOCK_BITS)))
 
@@ -433,46 +434,40 @@ def fill_pits(
     dem_raster_info = pygeoprocessing.get_raster_info(dem_raster_path_band[0])
     base_nodata = dem_raster_info['nodata'][dem_raster_path_band[1]-1]
     if base_nodata is not None:
-        dem_nodata = numpy.float32(base_nodata)
+        # TODO: cast to
+        dem_nodata = numpy.float64(base_nodata)
     else:
         # pick some very improbable value since it's hard to deal with NaNs
         dem_nodata = -1.23789789e29
-    pygeoprocessing.new_raster_from_base(
-        dem_raster_path_band[0], target_filled_dem_raster_path,
-        gdal.GDT_Float32, [dem_nodata], fill_value_list=[dem_nodata],
-        gtiff_creation_options=(
-            'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
+    gtiff_driver = gdal.GetDriverByName('GTiff')
+    dem_raster = gdal.OpenEx(dem_raster_path_band[0], gdal.OF_RASTER)
+    gtiff_driver.CreateCopy(
+        target_filled_dem_raster_path, dem_raster,
+        options=(
+            'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=DEFLATE',
             'BLOCKXSIZE=%d' % (1 << BLOCK_BITS),
             'BLOCKYSIZE=%d' % (1 << BLOCK_BITS)))
-    target_filled_dem_raster = gdal.Open(
-        target_filled_dem_raster_path, gdal.GA_Update)
-    target_filled_dem_band = target_filled_dem_raster.GetRasterBand(1)
-    for block_offset, block_data in pygeoprocessing.iterblocks(
-            dem_raster_path_band[0], astype=[numpy.float64]):
-        target_filled_dem_band.WriteArray(
-            block_data, xoff=block_offset['xoff'], yoff=block_offset['yoff'])
-    target_filled_dem_band = None
-    target_filled_dem_raster = None
 
     pygeoprocessing.new_raster_from_base(
         dem_raster_path_band[0], target_flow_direction_path, gdal.GDT_Byte,
         [255], fill_value_list=[255], gtiff_creation_options=(
-            'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
-            'BLOCKXSIZE=%d' % (1<<BLOCK_BITS),
-            'BLOCKYSIZE=%d' % (1<<BLOCK_BITS)))
+            'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=DEFLATE',
+            'BLOCKXSIZE=%d' % (1 << BLOCK_BITS),
+            'BLOCKYSIZE=%d' % (1 << BLOCK_BITS)))
 
     # these are used to determine if a sample is within the raster
     raster_x_size, raster_y_size = dem_raster_info['raster_size']
 
     # used to set flow directions
     flow_dir_managed_raster = ManagedRaster(
-        target_flow_direction_path, 2**6, 1)
+        target_flow_direction_path, MANAGED_RASTER_N_BLOCKS, 1)
 
     # used to set and read flags
-    flag_managed_raster = ManagedRaster(flag_raster_path, 2**6, 1)
+    flag_managed_raster = ManagedRaster(
+        flag_raster_path, MANAGED_RASTER_N_BLOCKS, 1)
     # used to set filled DEM and read current DEM.
     dem_filled_managed_raster = ManagedRaster(
-        target_filled_dem_raster_path, 2**6, 1)
+        target_filled_dem_raster_path, MANAGED_RASTER_N_BLOCKS, 1)
 
     dem_raster = gdal.Open(dem_raster_path_band[0])
     dem_band = dem_raster.GetRasterBand(dem_raster_path_band[1])
@@ -547,8 +542,7 @@ def fill_pits(
                         flag_managed_raster.set(xi-1+xoff, yi-1+yoff, 1)
                         # set it to flow off the edge, this might get changed
                         # later if it's caught in a flow
-                        flow_dir_managed_raster.set(
-                            xi-1+xoff, yi-1+yoff, i)
+                        flow_dir_managed_raster.set(xi-1+xoff, yi-1+yoff, i)
                         break
     logger.info("edges detected in %fs", time.time()-start_edge_time)
     start_pit_time = time.time()
@@ -558,7 +552,7 @@ def fill_pits(
         xi = p.xi
         yi = p.yi
         center_value = p.value
-        # loop invariant, center_value != nodata because it wouldn't have been pushed
+        # loop invariant, center_value != nodata
         p_queue.pop()
 
         if (xi == 0 or xi == (raster_x_size-1) or
@@ -619,7 +613,8 @@ def fill_pits(
 
                         # check for <= center value
                         if n_value <= center_value:
-                            flag_managed_raster.set(xi_n, yi_n, 1) # filled as neighbor
+                            # filled as neighbor
+                            flag_managed_raster.set(xi_n, yi_n, 1)
                             q.push(CoordinatePair(xi_n, yi_n))
                             # raise neighbor dem to center value
                             if n_value < center_value:
@@ -628,7 +623,8 @@ def fill_pits(
                         else:
                             # not flat so must be a slope pixel,
                             # push to slope queue
-                            flag_managed_raster.set(xi_n, yi_n, 1) # filled as upslope
+                            # filled as upslope
+                            flag_managed_raster.set(xi_n, yi_n, 1)
                             sq.push(CoordinatePair(xi_n, yi_n))
             else:
                 # otherwise it's a slope pixel, push to slope queue
@@ -666,7 +662,7 @@ def fill_pits(
                         flag_managed_raster.set(xi_n, yi_n, 1)
                     elif not isProcessed:
                         isProcessed = 1
-                        # nonRegionCell call
+                        # nonRegionCell call from pseudocode
                         isBoundary = 1
                         for j in xrange(8):
                             # check neighbors of neighbor
@@ -790,7 +786,7 @@ def flow_accmulation(
         target_flow_accumulation_raster_path, gdal.GDT_Float32,
         [_NODATA], fill_value_list=[_NODATA],
         gtiff_creation_options=(
-            'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
+            'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=DEFLATE',
             'BLOCKXSIZE=%d' % (1<<BLOCK_BITS),
             'BLOCKYSIZE=%d' % (1<<BLOCK_BITS)))
 
@@ -806,16 +802,16 @@ def flow_accmulation(
     raster_x_size, raster_y_size = flow_direction_raster_info['raster_size']
     # used to set flow directions
     flow_dir_managed_raster = ManagedRaster(
-        flow_dir_raster_path_band[0], 2**6, 0)
+        flow_dir_raster_path_band[0], MANAGED_RASTER_N_BLOCKS, 0)
 
     # the flow accumulation result
     flow_accumulation_managed_raster = ManagedRaster(
-        target_flow_accumulation_raster_path, 2**6, 1)
+        target_flow_accumulation_raster_path, MANAGED_RASTER_N_BLOCKS, 1)
 
     use_weights = 0
     if weight_raster_path_band is not None:
         weight_raster_path_raster = ManagedRaster(
-            weight_raster_path_band[0], 2**6, 0)
+            weight_raster_path_band[0], MANAGED_RASTER_N_BLOCKS, 0)
         weight_nodata = pygeoprocessing.get_raster_info(
             weight_raster_path_band[0])['nodata'][
                 weight_raster_path_band[1]-1]
@@ -1290,7 +1286,7 @@ def downstream_flow_length(
         target_flow_length_raster_path, gdal.GDT_Float32,
         [_NODATA], fill_value_list=[_NODATA],
         gtiff_creation_options=(
-            'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
+            'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=DEFLATE',
             'BLOCKXSIZE=%d' % (1<<BLOCK_BITS),
             'BLOCKYSIZE=%d' % (1<<BLOCK_BITS)))
 
@@ -1306,19 +1302,19 @@ def downstream_flow_length(
     raster_x_size, raster_y_size = flow_direction_raster_info['raster_size']
     # used to set flow directions
     flow_dir_managed_raster = ManagedRaster(
-        flow_dir_raster_path_band[0], 2**6, 0)
+        flow_dir_raster_path_band[0], MANAGED_RASTER_N_BLOCKS, 0)
 
     # the flow accumulation result
     flow_length_managed_raster = ManagedRaster(
-        target_flow_length_raster_path, 2**6, 1)
+        target_flow_length_raster_path, MANAGED_RASTER_N_BLOCKS, 1)
 
     flow_accum_managed_raster = ManagedRaster(
-        flow_accum_raster_path_band[0], 2**6, 0)
+        flow_accum_raster_path_band[0], MANAGED_RASTER_N_BLOCKS, 0)
 
     use_weights = 0
     if weight_raster_path_band is not None:
         weight_raster_path_raster = ManagedRaster(
-            weight_raster_path_band[0], 2**6, 0)
+            weight_raster_path_band[0], MANAGED_RASTER_N_BLOCKS, 0)
         weight_nodata = pygeoprocessing.get_raster_info(
             weight_raster_path_band[0])['nodata'][
                 weight_raster_path_band[1]-1]
