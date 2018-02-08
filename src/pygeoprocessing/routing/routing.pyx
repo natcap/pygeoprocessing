@@ -2,14 +2,13 @@
 """
 Provides PyGeprocessing Routing functionality.
 
-All internal computation of DEMs are done in a float64 space since it is
-very difficult to dynamically template based on incoming gdal types. The
-only possible loss of precision could occur when an incoming DEM type is
-an int64 type and values in that dem exceed 2^52. Otherwise no precision
-loss in the 32 bit space and float64 is the native type obviously.
+Unless otherwise specified, all internal computation of rasters are done in
+a float64 space. The only possible loss of precision could occur when an incoming DEM type is
+an int64 type and values in that dem exceed 2^52 but GDAL does not support
+int64 rasters so no precision loss is possible with a float64.
 
 D8 float direction conventions follow TauDEM where each flow direction
-is encoded as 1 << n, n in [0, 7] in the orientation:
+is encoded as:
     # 321
     # 4 0
     # 567
@@ -46,6 +45,7 @@ cdef int BLOCK_BITS = 8
 cdef int MANAGED_RASTER_N_BLOCKS = 2**6
 NODATA = -1
 cdef int _NODATA = NODATA
+GDAL_INTERNAL_RASTER_TYPE = gdal.GDT_Float64
 
 cdef bint isclose(double a, double b):
     return abs(a - b) <= (1e-5 + 1e-7 * abs(b))
@@ -426,8 +426,8 @@ def fill_pits(
         dem_raster_path_band[0], flag_raster_path, gdal.GDT_Byte,
         [None], fill_value_list=[0], gtiff_creation_options=(
             'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=DEFLATE',
-            'BLOCKXSIZE=%d' % (1<<BLOCK_BITS),
-            'BLOCKYSIZE=%d' % (1<<BLOCK_BITS)))
+            'BLOCKXSIZE=%d' % (1 << BLOCK_BITS),
+            'BLOCKYSIZE=%d' % (1 << BLOCK_BITS)))
 
     logger.info('flag raster created at %s', flag_raster_path)
 
@@ -716,6 +716,8 @@ def flow_accmulation(
             # 4 0
             # 567
 
+            where the value in each cell is is encoded as 1 << n, n in [0, 7]
+
         target_flow_accmulation_raster_path (string): path to single band
             raster to be created. Each pixel value will indicate the number
             of upstream pixels that feed it including the current pixel.
@@ -789,12 +791,12 @@ def flow_accmulation(
 
     pygeoprocessing.new_raster_from_base(
         flow_dir_raster_path_band[0],
-        target_flow_accumulation_raster_path, gdal.GDT_Float32,
+        target_flow_accumulation_raster_path, GDAL_INTERNAL_RASTER_TYPE,
         [_NODATA], fill_value_list=[_NODATA],
         gtiff_creation_options=(
             'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=DEFLATE',
-            'BLOCKXSIZE=%d' % (1<<BLOCK_BITS),
-            'BLOCKYSIZE=%d' % (1<<BLOCK_BITS)))
+            'BLOCKXSIZE=%d' % (1 << BLOCK_BITS),
+            'BLOCKYSIZE=%d' % (1 << BLOCK_BITS)))
 
     logger.info(
         'flow accumulation raster created at %s',
@@ -803,8 +805,17 @@ def flow_accmulation(
     # these are used to determine if a sample is within the raster
     flow_direction_raster_info = pygeoprocessing.get_raster_info(
         flow_dir_raster_path_band[0])
-    flow_direction_nodata = flow_direction_raster_info['nodata'][
+
+    base_flow_direction_nodata = flow_direction_raster_info['nodata'][
         flow_dir_raster_path_band[1]-1]
+
+    if base_flow_direction_nodata is not None:
+        # cast to a float64 since that's our operating array type
+        flow_direction_nodata = base_flow_direction_nodata
+    else:
+        # pick some impossible value given our conventions
+        flow_direction_nodata = 99
+
     raster_x_size, raster_y_size = flow_direction_raster_info['raster_size']
     # used to set flow directions
     flow_dir_managed_raster = ManagedRaster(
@@ -840,8 +851,7 @@ def flow_accmulation(
 
         # make a buffer big enough to capture block and boundaries around it
         buffer_array = numpy.empty(
-            (offset_dict['win_ysize']+2, offset_dict['win_xsize']+2),
-            dtype=numpy.uint8)
+            (win_ysize+2, win_xsize+2), dtype=numpy.uint8)
         buffer_array[:] = flow_direction_nodata
 
         # default numpy array boundaries
@@ -857,7 +867,7 @@ def flow_accmulation(
                 ('xa', 'xb', 'xoff', 'win_xsize', raster_x_size),
                 ('ya', 'yb', 'yoff', 'win_ysize', raster_y_size)]:
             if offset_dict[off_id] > 0:
-                # in thise case we have valid data to the left (or up)
+                # in this case we have valid data to the left (or up)
                 # grow the window and buffer slice in that direction
                 buffer_off[a_buffer_id] = None
                 offset_dict[off_id] -= 1
@@ -1293,8 +1303,8 @@ def downstream_flow_length(
         [_NODATA], fill_value_list=[_NODATA],
         gtiff_creation_options=(
             'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=DEFLATE',
-            'BLOCKXSIZE=%d' % (1<<BLOCK_BITS),
-            'BLOCKYSIZE=%d' % (1<<BLOCK_BITS)))
+            'BLOCKXSIZE=%d' % (1 << BLOCK_BITS),
+            'BLOCKYSIZE=%d' % (1 << BLOCK_BITS)))
 
     logger.info(
         'flow accumulation raster created at %s',
