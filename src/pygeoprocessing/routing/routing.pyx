@@ -832,9 +832,14 @@ def flow_accmulation(
     if weight_raster_path_band is not None:
         weight_raster_path_raster = ManagedRaster(
             weight_raster_path_band[0], MANAGED_RASTER_N_BLOCKS, 0)
-        weight_nodata = pygeoprocessing.get_raster_info(
+        base_weight_nodata = pygeoprocessing.get_raster_info(
             weight_raster_path_band[0])['nodata'][
                 weight_raster_path_band[1]-1]
+        if base_weight_nodata is not None:
+            weight_nodata = base_weight_nodata
+        else:
+            weight_nodata = IMPROBABLE_FLOAT_NOATA
+
         use_weights = 1
 
     flow_direction_raster = gdal.Open(flow_dir_raster_path_band[0])
@@ -901,7 +906,15 @@ def flow_accmulation(
                     xi+OFFSET_ARRAY[2*flow_dir]]
                 if isclose(n_dir, flow_direction_nodata):
                     # it flows to nodata (or edge) so it's a seed
-                    flow_stack.push(FlowPixel(0, xi-1+xoff, yi-1+yoff, 1))
+                    if use_weights:
+                        weight_val = weight_raster_path_raster.get(
+                            xi-1+xoff, yi-1+yoff)
+                        if isclose(weight_val, weight_nodata):
+                            weight_val = 0
+                    else:
+                        weight_val = 1
+                    flow_stack.push(
+                        FlowPixel(0, xi-1+xoff, yi-1+yoff, weight_val))
                     flow_accumulation_managed_raster.set(
                         xi-1+xoff, yi-1+yoff, -100)
 
