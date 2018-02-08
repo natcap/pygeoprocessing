@@ -1,5 +1,13 @@
 # distutils: language=c++
-"""Pitfilling module."""
+"""
+Provides PyGeprocessing Routing functionality.
+
+Where each flow direction is encoded as 1 << n, n in [0, 7] in the orientation
+convention of TauDEM:
+    # 321
+    # 4 0
+    # 567
+"""
 import errno
 import os
 import logging
@@ -89,15 +97,8 @@ cdef class ManagedRaster:
         self.raster_x_size, self.raster_y_size = raster_info['raster_size']
         self.block_xsize, self.block_ysize = raster_info['block_size']
         self.block_bits = BLOCK_BITS
-        self.block_xsize = 1<<self.block_bits
-        self.block_ysize = 1<<self.block_bits
-        """if (self.block_xsize != (1 << self.block_bits) or
-                self.block_ysize != (1 << self.block_bits)):
-            error_string = (
-                "Expected block size that was %d bits wide, got %s" % (
-                    self.block_bits, raster_info['block_size']))
-            raise ValueError(error_string)
-        """
+        self.block_xsize = 1 << self.block_bits
+        self.block_ysize = 1 << self.block_bits
         self.block_nx = (
             self.raster_x_size + (self.block_xsize) - 1) / self.block_xsize
         self.block_ny = (
