@@ -117,6 +117,5 @@ class TestRouting(unittest.TestCase):
         result_band = None
         result_raster = None
         self.assertEqual(result_array.dtype, numpy.float64)
-        print result_array
         # the expected result is that the pit is filled in
         self.assertEqual(result_array[-1, -1], 11*11)
