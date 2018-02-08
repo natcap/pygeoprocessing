@@ -10,6 +10,7 @@ import heapq
 import time
 import tempfile
 import uuid
+import distutils.version
 
 from osgeo import gdal
 from osgeo import osr
@@ -43,13 +44,20 @@ _RESAMPLE_DICT = {
     "cubic_spline": gdal.GRA_CubicSpline,
     "lanczos": gdal.GRA_Lanczos,
     'mode': gdal.GRA_Mode,
-    "average": gdal.GRA_Average,
-    "max": gdal.GRA_Max,
-    "min": gdal.GRA_Min,
-    "med": gdal.GRA_Med,
-    "q1": gdal.GRA_Q1,
-    "q3": gdal.GRA_Q3,
-    }
+    'average': gdal.GRA_Average,
+}
+
+
+# GDAL 2.2.3 added a couple of useful interpolation values.
+if (distutils.version.LooseVersion(gdal.__version__) >=
+        distutils.version.LooseVersion('2.2.3')):
+    _RESAMPLE_DICT.update({
+        'max': gdal.GRA_Max,
+        'min': gdal.GRA_Min,
+        'med': gdal.GRA_Med,
+        'q1': gdal.GRA_Q1,
+        'q3': gdal.GRA_Q3,
+    })
 
 
 def raster_calculator(
