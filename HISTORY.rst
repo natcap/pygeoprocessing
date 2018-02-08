@@ -10,6 +10,30 @@ Unreleased Changes
   as a write-to-disk. When compression is turned on overall runtime of very
   large rasters is significantly reduced. Note this otherwise increases the
   runtime small raster creation and processing by a small amount.
+* `pygeoprocessing.routing` module now has the following functions:
+  * `pygeoprocessing.routing.fill_pits`, this fills a DEM using the algorithm
+    described in Implementation of the algorithm described in "An efficient
+    variant of the Priority-Flood algorithm for filling depressions in raster
+    digital elevation models. Zhou, Sun, and Fu." An additional output of this
+    function is a D8 flow direction raster whose pixel values indicate flow
+    in the following convention:
+
+        321
+        4 0
+        567
+  * `pygeoprocessing.routing.flow_accumulation_d8`, this function creates a
+    flow accumulation raster from a given D8 flow direction raster with the
+    same convention as the one produced by
+    `pygeoprocessing.routing.fill_pits`. It can additionally take a weight
+    raster to use in lieu of a constant "1" per cell.
+  * `pygeoprocessing.routing.downstream_flow_length_d8`, this function creates
+    a distance to stream raster from a given D8 flow direction raster with the
+    same convention as the one produced by
+    `pygeoprocessing.routing.fill_pits` as well as a flow accumulation/stream
+    raster that is used in conjuction with a threshold value to identify
+    streams. It can additionally take a weight raster to use in lieu of a
+    constant "1" distance per cell.
+
 
 0.6.0 (1/10/2017)
 -----------------

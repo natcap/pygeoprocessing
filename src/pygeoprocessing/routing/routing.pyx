@@ -350,8 +350,8 @@ def fill_pits(
     """Fill hydrological pits in input DEM.
 
     Implementation of the algorithm described in "An efficient variant of the
-    Priority-Flood alogirhtm for filling depressions in raster digital
-    elevation models. Zhou, Sun, and Fu.
+    Priority-Flood algorithm for filling depressions in raster digital
+    elevation models. Zhou, Sun, and Fu."
 
     Parameters:
         dem_raster_path_band (tuple): a path, band number tuple indicating the
@@ -705,11 +705,11 @@ def fill_pits(
     shutil.rmtree(temp_dir_path)
 
 
-def flow_accmulation(
+def flow_accumulation_d8(
         flow_dir_raster_path_band,
         target_flow_accumulation_raster_path, weight_raster_path_band=None,
         temp_dir_path=None):
-    """Calculate flow accumulation given flow direction.
+    """Calculate flow accumulation given D8 flow direction.
 
     Parameters:
         flow_dir_raster_path_band (tuple): a path, band number tuple
@@ -719,7 +719,8 @@ def flow_accmulation(
             # 4 0
             # 567
 
-            where the value in each cell is is encoded as 1 << n, n in [0, 7]
+            This raster can be created from a call to
+            `pygeoprocessing.routing.fill_pits`,
 
         target_flow_accmulation_raster_path (string): path to single band
             raster to be created. Each pixel value will indicate the number
@@ -960,7 +961,7 @@ def flow_accmulation(
     shutil.rmtree(temp_dir_path)
 
 
-def downstream_flow_length(
+def downstream_flow_length_d8(
         flow_dir_raster_path_band, flow_accum_raster_path_band,
         double flow_threshold, target_flow_length_raster_path,
         weight_raster_path_band=None, temp_dir_path=None):

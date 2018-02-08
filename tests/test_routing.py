@@ -88,8 +88,8 @@ class TestRouting(unittest.TestCase):
         dem_array[3:8, 3:8] = 0.0
         numpy.testing.assert_almost_equal(result_array, dem_array)
 
-    def test_flow_accumulation(self):
-        """PGP.routing: test flow accumulation."""
+    def test_flow_accumulation_d8(self):
+        """PGP.routing: test D8 flow accumulation."""
         import pygeoprocessing.routing
 
         driver = gdal.GetDriverByName('GTiff')
@@ -107,7 +107,7 @@ class TestRouting(unittest.TestCase):
         raster = None
         flow_accum_path = os.path.join(self.workspace_dir, 'flow_accum.tif')
 
-        pygeoprocessing.routing.flow_accmulation(
+        pygeoprocessing.routing.flow_accumulation_d8(
             (flow_path, 1), flow_accum_path,
             weight_raster_path_band=None, temp_dir_path=None)
 
@@ -120,8 +120,8 @@ class TestRouting(unittest.TestCase):
         # the expected result is that the pit is filled in
         self.assertEqual(result_array[-1, -1], 11*11)
 
-    def test_flow_accumulation_with_weights(self):
-        """PGP.routing: test flow accumulation."""
+    def test_flow_accumulation_with_weights_d8(self):
+        """PGP.routing: test D8 flow accumulation with weights."""
         import pygeoprocessing.routing
 
         driver = gdal.GetDriverByName('GTiff')
@@ -148,7 +148,7 @@ class TestRouting(unittest.TestCase):
         raster = None
         flow_accum_path = os.path.join(self.workspace_dir, 'flow_accum.tif')
 
-        pygeoprocessing.routing.flow_accmulation(
+        pygeoprocessing.routing.flow_accumulation_d8(
             (flow_path, 1), flow_accum_path,
             weight_raster_path_band=(weight_path, 1),
             temp_dir_path=self.workspace_dir)
@@ -163,8 +163,8 @@ class TestRouting(unittest.TestCase):
         # because of the weight raster
         self.assertEqual(result_array[-1, -1], 2.0 * 11*11)
 
-    def test_downstream(self):
-        """PGP.routing: test distance to downstream."""
+    def test_downstream_d8(self):
+        """PGP.routing: test D8 distance to downstream."""
         import pygeoprocessing.routing
 
         driver = gdal.GetDriverByName('GTiff')
@@ -196,7 +196,7 @@ class TestRouting(unittest.TestCase):
         target_flow_length_raster_path = os.path.join(
             self.workspace_dir, 'flow_dist.tif')
 
-        pygeoprocessing.routing.downstream_flow_length(
+        pygeoprocessing.routing.downstream_flow_length_d8(
             (flow_dir_path, 1), (flow_accum_path, 1),
             1.0, target_flow_length_raster_path)
 
@@ -213,8 +213,8 @@ class TestRouting(unittest.TestCase):
         numpy.testing.assert_almost_equal(
             result_array, flow_dist_expected_array)
 
-    def test_downstream_with_weights(self):
-        """PGP.routing: test distance to downstream with weights."""
+    def test_downstream_with_weights_d8(self):
+        """PGP.routing: test D8 distance to downstream with weights."""
         import pygeoprocessing.routing
 
         driver = gdal.GetDriverByName('GTiff')
@@ -254,7 +254,7 @@ class TestRouting(unittest.TestCase):
         target_flow_length_raster_path = os.path.join(
             self.workspace_dir, 'flow_dist.tif')
 
-        pygeoprocessing.routing.downstream_flow_length(
+        pygeoprocessing.routing.downstream_flow_length_d8(
             (flow_dir_path, 1), (flow_accum_path, 1),
             1.0, target_flow_length_raster_path,
             weight_raster_path_band=(weight_path, 1),
