@@ -1666,30 +1666,42 @@ class PyGeoprocessing10(unittest.TestCase):
     def test_merge_rasters(self):
         driver = gdal.GetDriverByName('GTiff')
 
+        wgs84_ref = osr.SpatialReference()
+        wgs84_ref.ImportFromEPSG(4326)  # WGS84 EPSG
+
+        # the following creates a checkerboard of upper left square raster
+        # defined, lower right, and equal sized nodata chunks on the other
+        # blocks.
+
         raster_a_path = os.path.join('merg_test', 'raster_a.tif')
         # everything flows to the right
         raster_a_array = numpy.zeros((11, 11), dtype=numpy.int32)
         raster_a_array[:] = 10
-        raster = driver.Create(
+        raster_a = driver.Create(
             raster_a_path, raster_a_array.shape[1], raster_a_array.shape[0],
             1, gdal.GDT_Int32)
-        raster_a_geotransform = [10, 1, 0, 10, 0, -1]
-        raster.SetGeoTransform(raster_a_geotransform)
-        band = raster.GetRasterBand(1)
+        raster_a_geotransform = [0.1, 1., 0., 0., 0., -1.]
+        raster_a.SetGeoTransform(raster_a_geotransform)
+        raster_a.SetProjection(wgs84_ref.ExportToWkt())
+        band = raster_a.GetRasterBand(1)
         band.WriteArray(raster_a_array)
         band.FlushCache()
+        band = None
+        raster_a = None
 
         raster_b_path = os.path.join('merg_test', 'raster_b.tif')
         raster_b_array = numpy.zeros((11, 11), dtype=numpy.int32)
         raster_b_array[:] = 20
-        raster = driver.Create(
+        raster_b = driver.Create(
             raster_b_path, raster_b_array.shape[1], raster_b_array.shape[0],
             1, gdal.GDT_Int32)
-        raster_b_geotransform = [21, 1, 0, 10, 0, -1]
-        raster.SetGeoTransform(raster_b_geotransform)
-        band = raster.GetRasterBand(1)
+        raster_b.SetProjection(wgs84_ref.ExportToWkt())
+        raster_b_geotransform = [11.1, 1, 0, -11, 0, -1]
+        raster_b.SetGeoTransform(raster_b_geotransform)
+        band = raster_b.GetRasterBand(1)
         band.WriteArray(raster_b_array)
         band.FlushCache()
+        raster_b = None
 
         target_path = os.path.join('merg_test', 'merged.tif')
         pygeoprocessing.merge_rasters(
@@ -1700,8 +1712,8 @@ class PyGeoprocessing10(unittest.TestCase):
         target_array = target_band.ReadAsArray()
         target_band = None
         target_raster = None
-        expected_array = numpy.zeros((11, 22))
-        expected_array[:, 0:11] = 10
-        expected_array[:, 11:] = 20
+        expected_array = numpy.zeros((22, 22))
+        expected_array[0:11, 0:11] = 10
+        expected_array[11:, 11:] = 20
 
         numpy.testing.assert_almost_equal(target_array, expected_array)
