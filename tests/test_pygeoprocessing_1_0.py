@@ -1674,7 +1674,7 @@ class PyGeoprocessing10(unittest.TestCase):
         # defined, lower right, and equal sized nodata chunks on the other
         # blocks.
 
-        raster_a_path = os.path.join('merg_test', 'raster_a.tif')
+        raster_a_path = os.path.join(self.workspace_dir, 'raster_a.tif')
         # everything flows to the right
         raster_a_array = numpy.zeros((11, 11), dtype=numpy.int32)
         raster_a_array[:] = 10
@@ -1690,7 +1690,7 @@ class PyGeoprocessing10(unittest.TestCase):
         band = None
         raster_a = None
 
-        raster_b_path = os.path.join('merg_test', 'raster_b.tif')
+        raster_b_path = os.path.join(self.workspace_dir, 'raster_b.tif')
         raster_b_array = numpy.zeros((11, 11), dtype=numpy.int32)
         raster_b_array[:] = 20
         raster_b = driver.Create(
@@ -1704,7 +1704,7 @@ class PyGeoprocessing10(unittest.TestCase):
         band.FlushCache()
         raster_b = None
 
-        target_path = os.path.join('merg_test', 'merged.tif')
+        target_path = os.path.join(self.workspace_dir, 'merged.tif')
         pygeoprocessing.merge_rasters(
             [raster_a_path, raster_b_path], target_path)
 
