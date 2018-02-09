@@ -1679,7 +1679,7 @@ class PyGeoprocessing10(unittest.TestCase):
         raster_a_array[:] = 10
         raster_a = driver.Create(
             raster_a_path, raster_a_array.shape[1], raster_a_array.shape[0],
-            1, gdal.GDT_Int32)
+            2, gdal.GDT_Int32)
         raster_a_geotransform = [0.1, 1., 0., 0., 0., -1.]
         raster_a.SetGeoTransform(raster_a_geotransform)
         raster_a.SetProjection(wgs84_ref.ExportToWkt())
@@ -1694,7 +1694,7 @@ class PyGeoprocessing10(unittest.TestCase):
         raster_b_array[:] = 20
         raster_b = driver.Create(
             raster_b_path, raster_b_array.shape[1], raster_b_array.shape[0],
-            1, gdal.GDT_Int32)
+            2, gdal.GDT_Int32)
         raster_b.SetProjection(wgs84_ref.ExportToWkt())
         raster_b_geotransform = [11.1, 1, 0, -11, 0, -1]
         raster_b.SetGeoTransform(raster_b_geotransform)
@@ -1709,11 +1709,26 @@ class PyGeoprocessing10(unittest.TestCase):
 
         target_raster = gdal.OpenEx(target_path)
         target_band = target_raster.GetRasterBand(1)
+        self.assertEqual(target_band.GetNoDataValue(), None)
         target_array = target_band.ReadAsArray()
         target_band = None
-        target_raster = None
         expected_array = numpy.zeros((22, 22))
         expected_array[0:11, 0:11] = 10
         expected_array[11:, 11:] = 20
 
         numpy.testing.assert_almost_equal(target_array, expected_array)
+
+        target_band = target_raster.GetRasterBand(2)
+        target_array = target_band.ReadAsArray()
+        target_band = None
+        expected_array = numpy.zeros((22, 22))
+
+        numpy.testing.assert_almost_equal(target_array, expected_array)
+        target_raster = None
+
+        pygeoprocessing.merge_rasters(
+            [raster_a_path, raster_b_path], target_path, expected_nodata=0)
+
+        target_raster = gdal.OpenEx(target_path)
+        target_band = target_raster.GetRasterBand(1)
+        self.assertEqual(target_band.GetNoDataValue(), 0)

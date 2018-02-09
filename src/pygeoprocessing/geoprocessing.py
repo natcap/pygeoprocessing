@@ -2120,7 +2120,7 @@ def merge_rasters(
         bounding_box (list): if not None, clip target path to be within these
             bounds.
         expected_nodata (float): if not None, use this as the nodata value
-            in case multiple rasters have different values.
+            in case multiple rasters have different nodata values.
         gtiff_creation_options (list): this is an argument list that will be
             passed to the GTiff driver.  Useful for blocksizes, compression,
             and more.
@@ -2190,12 +2190,10 @@ def merge_rasters(
     target_bounding_box = reduce(
         functools.partial(_merge_bounding_boxes, mode='union'),
         bounding_box_list)
-    LOGGER.debug('target bounding box %s', target_bounding_box)
     if bounding_box is not None:
         target_bounding_box = reduce(
             functools.partial(_merge_bounding_boxes, mode='intersection'),
             [target_bounding_box, bounding_box])
-    LOGGER.debug('intersected target bounding box %s', target_bounding_box)
 
     driver = gdal.GetDriverByName('GTiff')
     target_pixel_size = pixel_size_set.pop()
