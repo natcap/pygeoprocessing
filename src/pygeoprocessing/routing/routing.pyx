@@ -3,9 +3,10 @@
 Provides PyGeprocessing Routing functionality.
 
 Unless otherwise specified, all internal computation of rasters are done in
-a float64 space. The only possible loss of precision could occur when an incoming DEM type is
-an int64 type and values in that dem exceed 2^52 but GDAL does not support
-int64 rasters so no precision loss is possible with a float64.
+a float64 space. The only possible loss of precision could occur when an
+incoming DEM type is an int64 type and values in that dem exceed 2^52 but GDAL
+does not support int64 rasters so no precision loss is possible with a
+float64.
 
 D8 float direction conventions follow TauDEM where each flow direction
 is encoded as:
@@ -155,7 +156,8 @@ cdef class ManagedRaster:
                 block_xi = block_index % self.block_nx
                 block_yi = block_index / self.block_nx
 
-                # we need the offsets to subtract from global indexes for cached array
+                # we need the offsets to subtract from global indexes for
+                # cached array
                 xoff = block_xi * self.block_xsize
                 yoff = block_yi * self.block_ysize
 
@@ -164,9 +166,11 @@ cdef class ManagedRaster:
 
                 # load a new block
                 if xoff+win_xsize > self.raster_x_size:
-                    win_xsize = win_xsize - (xoff+win_xsize - self.raster_x_size)
+                    win_xsize = win_xsize - (
+                        xoff+win_xsize - self.raster_x_size)
                 if yoff+win_ysize > self.raster_y_size:
-                    win_ysize = win_ysize - (yoff+win_ysize - self.raster_y_size)
+                    win_ysize = win_ysize - (
+                        yoff+win_ysize - self.raster_y_size)
 
                 for xi_copy in xrange(win_xsize):
                     for yi_copy in xrange(win_ysize):
@@ -206,7 +210,8 @@ cdef class ManagedRaster:
         return self.lru_cache.get(
             block_index)[(yi-yoff)*self.block_xsize+xi-xoff]
 
-    cdef void get_block(self, int xc, int yc, double* block, int border) except *:
+    cdef void get_block(
+            self, int xc, int yc, double* block, int border) except *:
         """Load a block from the raster into `block`.
 
         Parameters:
@@ -315,14 +320,16 @@ cdef class ManagedRaster:
 
                 # load a new block
                 if xoff+win_xsize > self.raster_x_size:
-                    win_xsize = win_xsize - (xoff+win_xsize - self.raster_x_size)
+                    win_xsize = win_xsize - (
+                        xoff+win_xsize - self.raster_x_size)
                 if yoff+win_ysize > self.raster_y_size:
-                    win_ysize = win_ysize - (yoff+win_ysize - self.raster_y_size)
+                    win_ysize = win_ysize - (
+                        yoff+win_ysize - self.raster_y_size)
 
                 for xi_copy in xrange(win_xsize):
                     for yi_copy in xrange(win_ysize):
-                        block_array[yi_copy, xi_copy] = (
-                            double_buffer[yi_copy * self.block_xsize + xi_copy])
+                        block_array[yi_copy, xi_copy] = double_buffer[
+                            yi_copy * self.block_xsize + xi_copy]
                 raster_band.WriteArray(
                     block_array[0:win_ysize, 0:win_xsize],
                     xoff=xoff, yoff=yoff)
@@ -406,14 +413,14 @@ def fill_pits(
     # this is used to set flow direction on a neighbor by indicating which
     # neighbor it flows to
     cdef int* REVERSE_FLOW_DIR = [
-        4, # 0
-        5, # 1
-        6, # 2
-        7, # 3
-        0, # 4
-        1, # 5
-        2, # 6
-        3 # 7
+        4,  # 0
+        5,  # 1
+        6,  # 2
+        7,  # 3
+        0,  # 4
+        1,  # 5
+        2,  # 6
+        3  # 7
     ]
 
     # make an interesting temporary directory that has the time/date and
@@ -776,14 +783,14 @@ def flow_accumulation_d8(
     # this is used to set flow direction on a neighbor by indicating which
     # neighbor it flows to
     cdef int* REVERSE_FLOW_DIR = [
-        4, # 0
-        5, # 1
-        6, # 2
-        7, # 3
-        0, # 4
-        1, # 5
-        2, # 6
-        3 # 7
+        4,  # 0
+        5,  # 1
+        6,  # 2
+        7,  # 3
+        0,  # 4
+        1,  # 5
+        2,  # 6
+        3  # 7
     ]
 
     # make an interesting temporary directory that has the time/date and
@@ -791,7 +798,7 @@ def flow_accumulation_d8(
     # ever run across it in a temp dir.
     temp_dir_path = tempfile.mkdtemp(
         dir=temp_dir_path, prefix='flow_accumulation_', suffix=time.strftime(
-        '%Y-%m-%d_%H_%M_%S', time.gmtime()))
+            '%Y-%m-%d_%H_%M_%S', time.gmtime()))
 
     pygeoprocessing.new_raster_from_base(
         flow_dir_raster_path_band[0],
@@ -1041,14 +1048,14 @@ def downstream_flow_length_d8(
     # this is used to set flow direction on a neighbor by indicating which
     # neighbor it flows to
     cdef int* REVERSE_FLOW_DIR = [
-        4, # 0
-        5, # 1
-        6, # 2
-        7, # 3
-        0, # 4
-        1, # 5
-        2, # 6
-        3 # 7
+        4,  # 0
+        5,  # 1
+        6,  # 2
+        7,  # 3
+        0,  # 4
+        1,  # 5
+        2,  # 6
+        3  # 7
     ]
 
     # make an interesting temporary directory that has the time/date and
