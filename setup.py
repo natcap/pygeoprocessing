@@ -30,8 +30,7 @@ setup(
     },
     natcap_version='src/pygeoprocessing/version.py',
     include_package_data=True,
-    install_requires=[
-        'gdal', 'natcap.versioner', 'numpy', 'scipy', 'shapely'],
+    install_requires=['gdal', 'numpy', 'scipy', 'shapely'],
     setup_requires=['cython', 'numpy'],
     license='BSD',
     zip_safe=False,

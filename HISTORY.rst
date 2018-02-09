@@ -3,6 +3,9 @@ Release History
 
 Unreleased Changes
 ------------------
+* Versioning is now handled by ``setuptools_scm`` rather than
+  ``natcap.versioner``.  ``pygeoprocessing.__version__`` is now fetched from
+  the package metadata.
 * Raster creation defaults now set "COMPRESS=LZW" for all rasters created in
   PyGeoprocessing, including internal temporary rasters. This option was
   chosen after profiling large raster creation runs on platter hard drives.
