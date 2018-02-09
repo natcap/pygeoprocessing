@@ -145,7 +145,7 @@ def requirements(*pkgnames):
     return found_pkgnames.values()
 
 
-BUILD_REQUIREMENTS = ['cython', 'numpy'] + requirements('natcap.versioner')
+BUILD_REQUIREMENTS = ['cython', 'numpy']
 
 setup(
     name='pygeoprocessing',
@@ -162,10 +162,11 @@ setup(
     package_dir={
         'pygeoprocessing': 'src/pygeoprocessing'
     },
-    natcap_version='src/pygeoprocessing/version.py',
     include_package_data=True,
     install_requires=BUILD_REQUIREMENTS,
-    setup_requires=requirements('natcap.versioner'),
+    use_scm_version={'version_scheme': 'post-release',
+                     'local_scheme': 'node-and-date'},
+    setup_requires=['setuptools_scm'],
     license='BSD',
     zip_safe=False,
     keywords='gis pygeoprocessing',
