@@ -1662,3 +1662,46 @@ class PyGeoprocessing10(unittest.TestCase):
             # with other tests.
             sys.modules['osgeo.gdal'] = reload(sys.modules['osgeo.gdal'])
             geoprocessing = reload(geoprocessing)
+
+    def test_merge_rasters(self):
+        driver = gdal.GetDriverByName('GTiff')
+
+        raster_a_path = os.path.join('merg_test', 'raster_a.tif')
+        # everything flows to the right
+        raster_a_array = numpy.zeros((11, 11), dtype=numpy.int32)
+        raster_a_array[:] = 10
+        raster = driver.Create(
+            raster_a_path, raster_a_array.shape[1], raster_a_array.shape[0],
+            1, gdal.GDT_Int32)
+        raster_a_geotransform = [10, 1, 0, 10, 0, -1]
+        raster.SetGeoTransform(raster_a_geotransform)
+        band = raster.GetRasterBand(1)
+        band.WriteArray(raster_a_array)
+        band.FlushCache()
+
+        raster_b_path = os.path.join('merg_test', 'raster_b.tif')
+        raster_b_array = numpy.zeros((11, 11), dtype=numpy.int32)
+        raster_b_array[:] = 20
+        raster = driver.Create(
+            raster_b_path, raster_b_array.shape[1], raster_b_array.shape[0],
+            1, gdal.GDT_Int32)
+        raster_b_geotransform = [21, 1, 0, 10, 0, -1]
+        raster.SetGeoTransform(raster_b_geotransform)
+        band = raster.GetRasterBand(1)
+        band.WriteArray(raster_b_array)
+        band.FlushCache()
+
+        target_path = os.path.join('merg_test', 'merged.tif')
+        pygeoprocessing.merge_rasters(
+            [raster_a_path, raster_b_path], target_path)
+
+        target_raster = gdal.OpenEx(target_path)
+        target_band = target_raster.GetRasterBand(1)
+        target_array = target_band.ReadAsArray()
+        target_band = None
+        target_raster = None
+        expected_array = numpy.zeros((11, 22))
+        expected_array[:, 0:11] = 10
+        expected_array[:, 11:] = 20
+
+        numpy.testing.assert_almost_equal(target_array, expected_array)
