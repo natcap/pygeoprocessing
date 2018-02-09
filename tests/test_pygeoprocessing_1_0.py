@@ -1664,6 +1664,7 @@ class PyGeoprocessing10(unittest.TestCase):
             geoprocessing = reload(geoprocessing)
 
     def test_merge_rasters(self):
+        """PGP.geoprocessing: test merge_rasters."""
         driver = gdal.GetDriverByName('GTiff')
 
         wgs84_ref = osr.SpatialReference()
