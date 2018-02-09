@@ -33,6 +33,8 @@ Unreleased Changes
     raster that is used in conjuction with a threshold value to identify
     streams. It can additionally take a weight raster to use in lieu of a
     constant "1" distance per cell.
+* Added a `merge_rasters` function to `pygeoprocessing` that will mosaic a
+  set of rasters in the same projection, pixel size, and band count.
 
 
 0.6.0 (1/10/2017)
