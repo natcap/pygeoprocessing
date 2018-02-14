@@ -209,49 +209,6 @@ cdef class ManagedRaster:
         return self.lru_cache.get(
             block_index)[(yi-yoff)*self.block_xsize+xi-xoff]
 
-    cdef void get_block(
-            self, int xc, int yc, double* block, int border) except *:
-        """Load a block from the raster into `block`.
-
-        Parameters:
-            xc (int): x coordinate at center of block
-            yy (int): y coordinate at center of block
-            block (double*): pre-allocated block of size `(1+2*border)**2`
-                after the call this array will contain either random pixels
-                if the block lies outside of the raster, or the pixel values
-                that overlap the block.
-            border (int): number of pixels around `xc`, `yc` to load into
-                `block`.
-
-        Returns:
-            None
-        """
-        cdef int block_xi
-        cdef int block_yi
-        cdef int block_index
-        cdef int xi, yi
-        cdef int xoff
-        cdef int yoff
-
-        for xi in xrange(xc-border, xc+border+1):
-            if xi < 0 or xi >= self.raster_x_size:
-                continue
-            for yi in xrange(yc-border, yc+border+1):
-                if yi < 0 or yi >= self.raster_y_size:
-                    continue
-
-                block_xi = xi >> self.block_bits
-                block_yi = yi >> self.block_bits
-                block_index = block_yi * self.block_nx + block_xi
-                # this is the flat index for the block
-                if not self.lru_cache.exist(block_index):
-                    self.load_block(block_index)
-                xoff = block_xi << self.block_bits
-                yoff = block_yi << self.block_bits
-                block[(yi-(yc-border))*(1+border*2)+xi-(xc-border)] = (
-                    self.lru_cache.get(
-                        block_index)[(yi-yoff)*self.block_xsize+xi-xoff])
-
     cdef void load_block(self, int block_index) except *:
         cdef int block_xi = block_index % self.block_nx
         cdef int block_yi = block_index / self.block_nx
