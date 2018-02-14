@@ -90,7 +90,6 @@ cdef extern from "LRUCache.h" nogil:
 
 ctypedef pair[int, double*] BlockBufferPair
 
-# TODO: make managed raster band aware
 cdef class ManagedRaster:
     cdef LRUCache[int, double*]* lru_cache
     cdef int block_xsize
