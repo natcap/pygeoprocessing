@@ -28,7 +28,10 @@ setup(
     package_dir={
         'pygeoprocessing': 'src/pygeoprocessing'
     },
-    natcap_version='src/pygeoprocessing/version.py',
+    use_scm_version={
+        'version_scheme': 'post-release',
+        'local_scheme': 'node-and-date'},
+    setup_requires=['setuptools_scm'],
     include_package_data=True,
     install_requires=_REQUIREMENTS,
     setup_requires=['cython', 'numpy'],
