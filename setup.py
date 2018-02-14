@@ -31,10 +31,9 @@ setup(
     use_scm_version={
         'version_scheme': 'post-release',
         'local_scheme': 'node-and-date'},
-    setup_requires=['setuptools_scm'],
+    setup_requires=['setuptools_scm', 'cython', 'numpy'],
     include_package_data=True,
     install_requires=_REQUIREMENTS,
-    setup_requires=['cython', 'numpy'],
     license='BSD',
     zip_safe=False,
     keywords='gis pygeoprocessing',
