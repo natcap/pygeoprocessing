@@ -31,11 +31,13 @@ cimport numpy
 cimport cython
 from cython.operator cimport dereference as deref
 from cython.operator cimport preincrement as inc
+from libc.time cimport time, time_t
 from libc.stdlib cimport malloc
 from libc.stdlib cimport free
 from libc.math cimport isnan
 from libcpp.list cimport list
 from libcpp.map cimport map
+from libcpp.set cimport set
 from libcpp.pair cimport pair
 from libcpp.queue cimport queue
 from libcpp.stack cimport stack
@@ -92,6 +94,7 @@ ctypedef pair[int, double*] BlockBufferPair
 
 cdef class ManagedRaster:
     cdef LRUCache[int, double*]* lru_cache
+    cdef set[int] dirty_blocks
     cdef int block_xsize
     cdef int block_ysize
     cdef int raster_x_size
@@ -102,7 +105,21 @@ cdef class ManagedRaster:
     cdef int block_bits
     cdef char* raster_path
 
+
     def __cinit__(self, char* raster_path, n_blocks, write_mode):
+        """Create new instance of Managed Raster.
+
+        Parameters:
+            raster_path (char*): path to raster
+            n_blocks (int): number of raster memory blocks to store in the
+                cache.
+            write_mode (boolean): if true, this raster is writable and dirty
+                memory blocks will be written back to the raster as blocks
+                are swapped out of the cache or when the object deconstructs.
+
+        Returns:
+            None.
+        """
         raster_info = pygeoprocessing.get_raster_info(raster_path)
         self.raster_x_size, self.raster_y_size = raster_info['raster_size']
         self.block_xsize, self.block_ysize = raster_info['block_size']
@@ -119,6 +136,11 @@ cdef class ManagedRaster:
         self.write_mode = write_mode
 
     def __dealloc__(self):
+        """Deallocate ManagedRaster.
+
+        This operation manually frees memory from the LRUCache and writes any
+        dirty memory blocks back to the raster if `self.write_mode` is True.
+        """
         cdef int xi_copy, yi_copy
         cdef numpy.ndarray[double, ndim=2] block_array = numpy.empty(
             (self.block_ysize, self.block_xsize))
@@ -146,12 +168,16 @@ cdef class ManagedRaster:
         raster = gdal.Open(self.raster_path, gdal.GA_Update)
         raster_band = raster.GetRasterBand(1)
 
+        # if we get here, we're in write_mode
+        cdef set[int].iterator dirty_itr
         while it != end:
-            # write the changed value back if desired
             double_buffer = deref(it).second
+            block_index = deref(it).first
 
-            if self.write_mode:
-                block_index = deref(it).first
+            # write to disk if block is dirty
+            dirty_itr = self.dirty_blocks.find(block_index)
+            if dirty_itr != self.dirty_blocks.end():
+                self.dirty_blocks.erase(dirty_itr)
                 block_xi = block_index % self.block_nx
                 block_yi = block_index / self.block_nx
 
@@ -163,7 +189,7 @@ cdef class ManagedRaster:
                 win_xsize = self.block_xsize
                 win_ysize = self.block_ysize
 
-                # load a new block
+                # clip window sizes if necessary
                 if xoff+win_xsize > self.raster_x_size:
                     win_xsize = win_xsize - (
                         xoff+win_xsize - self.raster_x_size)
@@ -196,6 +222,10 @@ cdef class ManagedRaster:
         cdef int yoff = block_yi << self.block_bits
         self.lru_cache.get(
             block_index)[(yi-yoff)*self.block_xsize+xi-xoff] = value
+        if self.write_mode:
+            dirty_itr = self.dirty_blocks.find(block_index)
+            if dirty_itr == self.dirty_blocks.end():
+                self.dirty_blocks.insert(block_index)
 
     cdef double get(self, int xi, int yi):
         cdef int block_xi = xi >> self.block_bits
@@ -264,31 +294,35 @@ cdef class ManagedRaster:
 
             if self.write_mode:
                 block_index = removed_value_list.front().first
-                block_xi = block_index % self.block_nx
-                block_yi = block_index / self.block_nx
 
-                # we need the offsets to subtract from global indexes for cached array
-                xoff = block_xi * self.block_xsize
-                yoff = block_yi * self.block_ysize
+                # write back the block if it's dirty
+                dirty_itr = self.dirty_blocks.find(block_index)
+                if dirty_itr != self.dirty_blocks.end():
+                    self.dirty_blocks.erase(dirty_itr)
 
-                win_xsize = self.block_xsize
-                win_ysize = self.block_ysize
+                    block_xi = block_index % self.block_nx
+                    block_yi = block_index / self.block_nx
 
-                # load a new block
-                if xoff+win_xsize > self.raster_x_size:
-                    win_xsize = win_xsize - (
-                        xoff+win_xsize - self.raster_x_size)
-                if yoff+win_ysize > self.raster_y_size:
-                    win_ysize = win_ysize - (
-                        yoff+win_ysize - self.raster_y_size)
+                    xoff = block_xi * self.block_xsize
+                    yoff = block_yi * self.block_ysize
 
-                for xi_copy in xrange(win_xsize):
-                    for yi_copy in xrange(win_ysize):
-                        block_array[yi_copy, xi_copy] = double_buffer[
-                            yi_copy * self.block_xsize + xi_copy]
-                raster_band.WriteArray(
-                    block_array[0:win_ysize, 0:win_xsize],
-                    xoff=xoff, yoff=yoff)
+                    win_xsize = self.block_xsize
+                    win_ysize = self.block_ysize
+
+                    if xoff+win_xsize > self.raster_x_size:
+                        win_xsize = win_xsize - (
+                            xoff+win_xsize - self.raster_x_size)
+                    if yoff+win_ysize > self.raster_y_size:
+                        win_ysize = win_ysize - (
+                            yoff+win_ysize - self.raster_y_size)
+
+                    for xi_copy in xrange(win_xsize):
+                        for yi_copy in xrange(win_ysize):
+                            block_array[yi_copy, xi_copy] = double_buffer[
+                                yi_copy * self.block_xsize + xi_copy]
+                    raster_band.WriteArray(
+                        block_array[0:win_ysize, 0:win_xsize],
+                        xoff=xoff, yoff=yoff)
             free(double_buffer)
             removed_value_list.pop_front()
 
