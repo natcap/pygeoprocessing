@@ -269,9 +269,8 @@ class TestRouting(unittest.TestCase):
         result_band = None
         result_raster = None
         self.assertEqual(result_array.dtype, numpy.float64)
-        # the expected result is that the pit is filled in
         flow_dist_expected_array = numpy.empty((11, 11))
-        # multiply by 2 because that's the weight
+        # expected result is 2 times the distance to the right hand column
         flow_dist_expected_array[:] = 2 * numpy.array(
             list(reversed(range(11))))
         numpy.testing.assert_almost_equal(
