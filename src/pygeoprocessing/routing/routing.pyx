@@ -14,12 +14,12 @@ is encoded as:
     # 4 0
     # 567
 """
+import time
 import errno
 import os
 import logging
 import shutil
 import tempfile
-import time
 
 import numpy
 import scipy.signal
@@ -31,7 +31,7 @@ cimport numpy
 cimport cython
 from cython.operator cimport dereference as deref
 from cython.operator cimport preincrement as inc
-from libc.time cimport time, time_t
+from libc.time cimport time as ctime
 from libc.stdlib cimport malloc
 from libc.stdlib cimport free
 from libc.math cimport isnan
@@ -371,6 +371,7 @@ def fill_pits(
     cdef int raster_x_size, raster_y_size
     cdef int win_ysize, win_xsize
     cdef int xoff, yoff
+    cdef long pixels_to_process = 0
     cdef numpy.float64_t dem_nodata, n_value
     cdef priority_queue[Pixel, vector[Pixel], GreaterPixel] p_queue
     cdef Pixel p
@@ -463,6 +464,7 @@ def fill_pits(
 
     # these are used to determine if a sample is within the raster
     raster_x_size, raster_y_size = dem_raster_info['raster_size']
+    pixels_to_process = raster_x_size * raster_y_size
 
     # used to set flow directions
     flow_dir_managed_raster = ManagedRaster(
@@ -479,7 +481,7 @@ def fill_pits(
     dem_band = dem_raster.GetRasterBand(dem_raster_path_band[1])
 
     logger.info('detecting building edges')
-    start_edge_time = time.time()
+    start_edge_time = ctime(NULL)
     for offset_dict in pygeoprocessing.iterblocks(
             dem_raster_path_band[0], offset_only=True, largest_block=0):
 
@@ -534,6 +536,7 @@ def fill_pits(
                 if isclose(center_value, dem_nodata):
                     # if nodata, mark done
                     flag_managed_raster.set(xi-1+xoff, yi-1+yoff, 1)
+                    pixels_to_process -= 1
                     continue
 
                 # this uses the offset array to visit the neighbors rather
@@ -549,11 +552,15 @@ def fill_pits(
                         # set it to flow off the edge, this might get changed
                         # later if it's caught in a flow
                         flow_dir_managed_raster.set(xi-1+xoff, yi-1+yoff, i)
+                        pixels_to_process -= 1
                         break
-    logger.info("edges detected in %fs", time.time()-start_edge_time)
-    start_pit_time = time.time()
+    logger.info("edges detected in %fs", ctime(NULL)-start_edge_time)
+    start_pit_time = ctime(NULL)
     logger.info('filling pits, queue size %d', p_queue.size())
     while not p_queue.empty():
+        if ctime(NULL) - start_pit_time > 5.0:
+            logger.info("pixels to process: %d", pixels_to_process)
+            start_pit_time = ctime(NULL)
         p = p_queue.top()
         xi = p.xi
         yi = p.yi
@@ -584,6 +591,7 @@ def fill_pits(
             n_value = dem_filled_managed_raster.get(xi_n, yi_n)
             # loop invariant, n_value != nodata because flag is not set
             flow_dir_managed_raster.set(xi_n, yi_n, REVERSE_FLOW_DIR[i])
+            pixels_to_process -= 1
             if n_value <= center_value:
                 # neighbor is less than current cell so we grow the region
                 dem_filled_managed_raster.set(xi_n, yi_n, center_value)
@@ -616,6 +624,7 @@ def fill_pits(
                         n_value = dem_filled_managed_raster.get(xi_n, yi_n)
                         flow_dir_managed_raster.set(
                             xi_n, yi_n, REVERSE_FLOW_DIR[i])
+                        pixels_to_process -= 1
 
                         # check for <= center value
                         if n_value <= center_value:
@@ -664,6 +673,7 @@ def fill_pits(
                     if n_value > s_center_value:
                         flow_dir_managed_raster.set(
                             xi_n, yi_n, REVERSE_FLOW_DIR[i])
+                        pixels_to_process -= 1
                         sq.push(CoordinatePair(xi_n, yi_n))
                         flag_managed_raster.set(xi_n, yi_n, 1)
                     elif not isProcessed:
@@ -696,7 +706,8 @@ def fill_pits(
                         else:
                             # USE i_n in MFD for i_s
                             isProcessed = 0
-    logger.info("pits filled in %fs", time.time()-start_pit_time)
+    logger.info("pits filled in %fs", ctime(NULL)-start_pit_time)
+    logger.info("pixels left to process: %d", pixels_to_process)
     # clean up flag managed raster before it is deleted
     del flag_managed_raster
     shutil.rmtree(temp_dir_path)
@@ -845,7 +856,7 @@ def flow_accumulation_d8(
         flow_dir_raster_path_band[1])
 
     logger.info('finding drains')
-    start_drain_time = time.time()
+    start_drain_time = ctime(NULL)
     for offset_dict in pygeoprocessing.iterblocks(
             flow_dir_raster_path_band[0], offset_only=True,
             largest_block=0):
@@ -916,7 +927,7 @@ def flow_accumulation_d8(
                     flow_accumulation_managed_raster.set(
                         xi-1+xoff, yi-1+yoff, -100)
 
-    logger.info("drains detected in %fs", time.time()-start_drain_time)
+    logger.info("drains detected in %fs", ctime(NULL)-start_drain_time)
     while not flow_stack.empty():
         fp = flow_stack.top()
         flow_stack.pop()
@@ -1111,7 +1122,7 @@ def downstream_flow_length_d8(
         flow_dir_raster_path_band[1])
 
     logger.info('finding drains')
-    start_drain_time = time.time()
+    start_drain_time = ctime(NULL)
     for offset_dict in pygeoprocessing.iterblocks(
             flow_dir_raster_path_band[0], offset_only=True,
             largest_block=0):
@@ -1179,7 +1190,7 @@ def downstream_flow_length_d8(
                     flow_length_managed_raster.set(
                         xi-1+xoff, yi-1+yoff, 0)
 
-    logger.info("drains detected in %fs", time.time()-start_drain_time)
+    logger.info("drains detected in %fs", ctime(NULL)-start_drain_time)
     while not flow_stack.empty():
         fp = flow_stack.top()
         flow_stack.pop()
