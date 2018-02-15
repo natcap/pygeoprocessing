@@ -117,7 +117,8 @@ class TestRouting(unittest.TestCase):
         result_band = None
         result_raster = None
         self.assertEqual(result_array.dtype, numpy.float64)
-        # the expected result is that the pit is filled in
+        # the expected result is that value at the lower right corner is the
+        # sum of the number of pixels in the raster
         self.assertEqual(result_array[-1, -1], 11*11)
 
     def test_flow_accumulation_with_weights_d8(self):
