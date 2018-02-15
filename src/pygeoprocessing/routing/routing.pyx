@@ -927,8 +927,6 @@ def flow_accumulation_d8(
                         weight_val = 1
                     flow_stack.push(
                         FlowPixel(0, xi-1+xoff, yi-1+yoff, weight_val))
-                    flow_accumulation_managed_raster.set(
-                        xi-1+xoff, yi-1+yoff, -100)
 
     logger.info("drains detected in %fs", ctime(NULL)-start_drain_time)
     while not flow_stack.empty():
