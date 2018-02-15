@@ -372,6 +372,7 @@ def fill_pits(
     cdef int win_ysize, win_xsize
     cdef int xoff, yoff
     cdef long pixels_to_process = 0
+    cdef long last_pixels_to_process
     cdef numpy.float64_t dem_nodata, n_value
     cdef priority_queue[Pixel, vector[Pixel], GreaterPixel] p_queue
     cdef Pixel p
@@ -556,10 +557,14 @@ def fill_pits(
                         break
     logger.info("edges detected in %fs", ctime(NULL)-start_edge_time)
     start_pit_time = ctime(NULL)
-    logger.info('filling pits, queue size %d', p_queue.size())
+    logger.info("filling pits, pixels to process: %d", pixels_to_process)
+    last_pixels_to_process = pixels_to_process
     while not p_queue.empty():
         if ctime(NULL) - start_pit_time > 5.0:
-            logger.info("pixels to process: %d", pixels_to_process)
+            logger.info(
+                "pixels to process: %d; pixels processed since last log %d",
+                pixels_to_process, last_pixels_to_process - pixels_to_process)
+            last_pixels_to_process = pixels_to_process
             start_pit_time = ctime(NULL)
         p = p_queue.top()
         xi = p.xi
