@@ -990,7 +990,9 @@ def downstream_flow_length_d8(
             flow flow length should terminate/start.
         flow_threshold (float): Flow accumulation values in
             `flow_accum_raster_` that are >= `flow_threshold` are classified
-            as streams.
+            as streams for the context of determining the distance to streams
+            in this function. i.e. any flow accumulation value >=
+            `flow_threshold` will have a distance of 0 to this pixel.
         target_flow_length_raster_path (string): path to output raster for
             flow length to the drains.
         weight_raster_path_band (tuple): if not None, path to a raster/band
