@@ -71,15 +71,15 @@ cdef extern from "<queue>" namespace "std" nogil:
 
 # this is the class type that'll get stored in the priority queue
 cdef struct Pixel:
-    double value
-    int xi
-    int yi
+    double value # pixel value
+    int xi  # pixel x coordinate in the raster
+    int yi # pixel y coordinate in the raster
 
 cdef struct FlowPixel:
-    int n_i
-    int xi
-    int yi
-    double flow_val
+    int n_i  # flow direction of pixel
+    int xi # pixel x coordinate in the raster
+    int yi # pixel y coordinate in the raster
+    double flow_val  # flow accumulation value
 
 cdef extern from "LRUCache.h" nogil:
     cdef cppclass LRUCache[KEY_T, VAL_T]:
