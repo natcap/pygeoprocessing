@@ -908,8 +908,6 @@ def flow_accumulation_d8(
                 flow_direction_band.ReadAsArray(
                     **offset_dict).astype(numpy.int8))
 
-        # irrespective of how we sampled the DEM only look at the block in
-        # the middle for valid
         for yi in xrange(1, win_ysize+1):
             for xi in xrange(1, win_xsize+1):
                 flow_dir = (buffer_array[yi, xi])
