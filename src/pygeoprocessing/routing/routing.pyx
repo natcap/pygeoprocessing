@@ -996,14 +996,14 @@ def downstream_flow_length_d8(
             as streams.
         target_flow_length_raster_path (string): path to output raster for
             flow length to the drains.
-        weight_raster_path_band (tuple): if not None, path to a raster that
-            is of the same dimensions as `flow_dir_raster_path_band`
-            that is to be used in place of accumulating downstream distance.
-            Without this raster the value of each pixel is "1" (or sqrt(2)
-            for diagonal lengths). If this raster is not None, the pixel
-            values are used in lieu of "1". If the weight happens to be
-            nodata in an otherwise defined flow path, a value of 0 is used
-            for the weight.
+        weight_raster_path_band (tuple): if not None, path to a raster/band
+            tuple where the raster  is of the same dimensions as
+            `flow_dir_raster_path_band` that is to be used in place of
+            accumulating downstream distance. Without this raster the value
+            of each pixel is "1" (or sqrt(2) for diagonal lengths). If this
+            raster is not None, the pixel values are used in lieu of "1". If
+            the weight is nodata in an otherwise defined flow path, a value
+            of 0 is used for the weight.
         temp_dir_path (string): if not None, a path to a directory where
             temporary files can be constructed. Otherwise uses system tempdir.
 
