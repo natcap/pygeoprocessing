@@ -208,7 +208,8 @@ class TestRouting(unittest.TestCase):
         result_band = None
         result_raster = None
         self.assertEqual(result_array.dtype, numpy.float64)
-        # the expected result is that the pit is filled in
+        # the expected result is that the distance to the stream is the
+        # distance in pixels to the right hand column of the raster
         flow_dist_expected_array = numpy.empty((11, 11))
         flow_dist_expected_array[:] = numpy.array(list(reversed(range(11))))
         numpy.testing.assert_almost_equal(
