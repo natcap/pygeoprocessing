@@ -990,7 +990,7 @@ def downstream_flow_length_d8(
             of same dimensions as the flow_dir_raster indicating values where
             flow flow length should terminate/start.
         flow_threshold (float): Flow accumulation values in
-            `flow_accum_raster_` that are >= `flow_threshol` are classified
+            `flow_accum_raster_` that are >= `flow_threshold` are classified
             as streams.
         target_flow_length_raster_path (string): path to output raster for
             flow length to the drains.
