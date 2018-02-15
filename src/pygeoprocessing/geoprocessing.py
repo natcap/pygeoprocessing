@@ -2106,8 +2106,8 @@ def merge_rasters(
 
     This operation creates a mosaic of the rasters in `raster_path_list`.
     The result is a raster of the size of the union of the bounding box of
-    the inputs where the contents of each raster are copied into the correct
-    georeferenced target.
+    the inputs where the contents of each raster's bands are copied into the
+    correct georeferenced target's bands.
 
     Note the input rasters must be in the same projection, same pixel size,
     same number of bands, and same datatype. If any of these are not true,
