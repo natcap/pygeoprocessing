@@ -827,7 +827,6 @@ def flow_accumulation_d8(
         flow_dir_raster_path_band[1]-1]
 
     if base_flow_direction_nodata is not None:
-        # cast to a float64 since that's our operating array type
         flow_direction_nodata = base_flow_direction_nodata
     else:
         # pick some impossible value given our conventions
