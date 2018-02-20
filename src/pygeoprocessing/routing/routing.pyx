@@ -111,6 +111,8 @@ cdef class ManagedRaster:
     cdef int block_bits
     cdef char* raster_path
     cdef long int cache_misses
+    cdef long int gets
+    cdef long int sets
 
 
     def __cinit__(self, char* raster_path, n_blocks, write_mode):
@@ -142,6 +144,8 @@ cdef class ManagedRaster:
         self.raster_path = raster_path
         self.write_mode = write_mode
         self.cache_misses = 0
+        self.sets = 0
+        self.gets = 0
 
     def __dealloc__(self):
         """Deallocate ManagedRaster.
@@ -214,12 +218,15 @@ cdef class ManagedRaster:
                     xoff=xoff, yoff=yoff)
             PyMem_Free(double_buffer)
             inc(it)
+        print 'gets: ', self.gets
+        print 'sets: ', self.sets
         print 'block cache misses ', self.cache_misses, self.raster_path
         raster_band.FlushCache()
         raster_band = None
         raster = None
 
     cdef void set(self, int xi, int yi, double value):
+        self.sets += 1
         cdef int block_xi = xi >> self.block_bits
         cdef int block_yi = yi >> self.block_bits
         # this is the flat index for the block
@@ -236,6 +243,7 @@ cdef class ManagedRaster:
                 self.dirty_blocks.insert(block_index)
 
     cdef double get(self, int xi, int yi):
+        self.gets += 1
         cdef int block_xi = xi >> self.block_bits
         cdef int block_yi = yi >> self.block_bits
         # this is the flat index for the block
