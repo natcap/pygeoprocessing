@@ -110,6 +110,7 @@ cdef class ManagedRaster:
     cdef int write_mode
     cdef int block_bits
     cdef char* raster_path
+    cdef long int cache_misses
 
 
     def __cinit__(self, char* raster_path, n_blocks, write_mode):
@@ -140,6 +141,7 @@ cdef class ManagedRaster:
         self.lru_cache = new LRUCache[int, double*](n_blocks)
         self.raster_path = raster_path
         self.write_mode = write_mode
+        self.cache_misses = 0
 
     def __dealloc__(self):
         """Deallocate ManagedRaster.
@@ -212,7 +214,7 @@ cdef class ManagedRaster:
                     xoff=xoff, yoff=yoff)
             PyMem_Free(double_buffer)
             inc(it)
-
+        print 'block cache misses ', self.cache_misses, self.raster_path
         raster_band.FlushCache()
         raster_band = None
         raster = None
@@ -335,6 +337,7 @@ cdef class ManagedRaster:
         if self.write_mode:
             raster_band = None
             raster = None
+        self.cache_misses += 1
 
 ctypedef pair[int, int] CoordinatePair
 
@@ -346,7 +349,7 @@ cdef cppclass GreaterPixel nogil:
 
 ctypedef double[:, :] FloatMemView
 
-@cython.profile(True)
+#@cython.profile(True)
 def fill_pits(
         dem_raster_path_band, target_filled_dem_raster_path,
         target_flow_direction_path, temp_dir_path=None):
