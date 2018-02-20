@@ -56,11 +56,17 @@ setup(
             include_dirs=[
                 numpy.get_include(),
                 'src/pygeoprocessing/routing'],
-            language="c++"),
+            language="c++",
+            define_macros=[('CYTHON_TRACE', '1')],
+        ),
          Extension(
              "pygeoprocessing.geoprocessing_core",
              sources=[
                  'src/pygeoprocessing/geoprocessing_core.pyx'],
              include_dirs=[numpy.get_include()],
-             language="c++")]),
+             language="c++")],
+        compiler_directives={
+            'linetrace': True,
+            'binding': True},
+        )
 )

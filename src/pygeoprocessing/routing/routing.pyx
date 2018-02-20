@@ -1,3 +1,5 @@
+# cython: linetrace=True
+# distutils: define_macros=CYTHON_TRACE_NOGIL=1
 # distutils: language=c++
 """
 Provides PyGeprocessing Routing functionality.
@@ -29,8 +31,10 @@ from osgeo import gdal
 
 cimport numpy
 cimport cython
+from cpython.mem cimport PyMem_Malloc, PyMem_Free
 from cython.operator cimport dereference as deref
 from cython.operator cimport preincrement as inc
+from libc.time cimport time_t
 from libc.time cimport time as ctime
 from libc.stdlib cimport malloc
 from libc.stdlib cimport free
@@ -41,7 +45,7 @@ from libcpp.set cimport set
 from libcpp.pair cimport pair
 from libcpp.queue cimport queue
 from libcpp.stack cimport stack
-from libcpp.vector cimport vector
+from libcpp.deque cimport deque
 
 # This module expects rasters with a memory xy block size of 2**BLOCK_BITS
 cdef int BLOCK_BITS = 8
@@ -71,9 +75,11 @@ cdef extern from "<queue>" namespace "std" nogil:
 
 # this is the class type that'll get stored in the priority queue
 cdef struct Pixel:
-    double value # pixel value
+    double value  # pixel value
     int xi  # pixel x coordinate in the raster
-    int yi # pixel y coordinate in the raster
+    int yi  # pixel y coordinate in the raster
+
+ctypedef (Pixel*) PixelPtr
 
 cdef struct FlowPixel:
     int n_i  # flow direction of pixel
@@ -161,7 +167,7 @@ cdef class ManagedRaster:
         if not self.write_mode:
             while it != end:
                 # write the changed value back if desired
-                free(deref(it).second)
+                PyMem_Free(deref(it).second)
                 inc(it)
             return
 
@@ -204,7 +210,7 @@ cdef class ManagedRaster:
                 raster_band.WriteArray(
                     block_array[0:win_ysize, 0:win_xsize],
                     xoff=xoff, yoff=yoff)
-            free(double_buffer)
+            PyMem_Free(double_buffer)
             inc(it)
 
         raster_band.FlushCache()
@@ -273,7 +279,7 @@ cdef class ManagedRaster:
             numpy.float64)
         raster_band = None
         raster = None
-        double_buffer = <double*>malloc(
+        double_buffer = <double*>PyMem_Malloc(
             sizeof(double) * self.block_xsize * win_ysize)
         for xi_copy in xrange(win_xsize):
             for yi_copy in xrange(win_ysize):
@@ -323,7 +329,7 @@ cdef class ManagedRaster:
                     raster_band.WriteArray(
                         block_array[0:win_ysize, 0:win_xsize],
                         xoff=xoff, yoff=yoff)
-            free(double_buffer)
+            PyMem_Free(double_buffer)
             removed_value_list.pop_front()
 
         if self.write_mode:
@@ -335,12 +341,12 @@ ctypedef pair[int, int] CoordinatePair
 # This functor is used to determine order in the priority queue by comparing
 # value only.
 cdef cppclass GreaterPixel nogil:
-    bint get "operator()"(Pixel& lhs, Pixel& rhs):
-        return lhs.value > rhs.value
+    bint get "operator()"(PixelPtr& lhs, PixelPtr& rhs):
+        return deref(lhs).value > deref(rhs).value
 
 ctypedef double[:, :] FloatMemView
 
-
+@cython.profile(True)
 def fill_pits(
         dem_raster_path_band, target_filled_dem_raster_path,
         target_flow_direction_path, temp_dir_path=None):
@@ -373,12 +379,17 @@ def fill_pits(
     cdef int xoff, yoff
     cdef long pixels_to_process = 0
     cdef long last_pixels_to_process
+    cdef time_t start_pit_time
+    cdef time_t last_pit_time
     cdef numpy.float64_t dem_nodata, n_value
-    cdef priority_queue[Pixel, vector[Pixel], GreaterPixel] p_queue
-    cdef Pixel p
+    cdef PixelPtr p
+    cdef priority_queue[PixelPtr, deque[PixelPtr], GreaterPixel] p_queue
     cdef queue[CoordinatePair] q, sq
     cdef ManagedRaster flag_managed_raster, dem_filled_managed_raster
     cdef int check_bounds
+    cdef int p_queue_pixels = 0
+    cdef int q_pixels = 0
+    cdef int sq_pixels = 0
 
     logger = logging.getLogger('pygeoprocessing.routing.fill_pits')
     logger.addHandler(logging.NullHandler())  # silence logging by default
@@ -546,30 +557,47 @@ def fill_pits(
                     if isclose(buffer_array[
                             yi+OFFSET_ARRAY[2*i+1],
                             xi+OFFSET_ARRAY[2*i]], dem_nodata):
-                        p_queue.push(
-                            Pixel(
-                                center_value, xi-1+xoff, yi-1+yoff))
+                        p = <Pixel*>PyMem_Malloc(sizeof(Pixel))
+                        deref(p).value = center_value
+                        deref(p).xi = xi-1+xoff
+                        deref(p).yi = yi-1+yoff
+                        p_queue.push(p)
                         flag_managed_raster.set(xi-1+xoff, yi-1+yoff, 1)
                         # set it to flow off the edge, this might get changed
                         # later if it's caught in a flow
                         flow_dir_managed_raster.set(xi-1+xoff, yi-1+yoff, i)
                         pixels_to_process -= 1
                         break
-    logger.info("edges detected in %fs", ctime(NULL)-start_edge_time)
+    logger.info("edges detected in %ds", ctime(NULL)-start_edge_time)
     start_pit_time = ctime(NULL)
+    last_pit_time = start_pit_time
     logger.info("filling pits, pixels to process: %d", pixels_to_process)
     last_pixels_to_process = pixels_to_process
     while not p_queue.empty():
-        if ctime(NULL) - start_pit_time > 5.0:
+        p_queue_pixels += 1
+        if ctime(NULL) - last_pit_time > 5.0:
+            total = float(p_queue_pixels + q_pixels + sq_pixels)
             logger.info(
-                "pixels to process: %d; pixels processed since last log %d",
-                pixels_to_process, last_pixels_to_process - pixels_to_process)
+                "pixels to process: %d;"
+                "\n\tpixels processed since last log %d"
+                "\n\tp_queue_pixels processed since last log %.2f%%"
+                "\n\tq_pixels processed since last log       %.2f%%"
+                "\n\tsq_pixels processed since last log      %.2f%%",
+                pixels_to_process,
+                last_pixels_to_process - pixels_to_process,
+                p_queue_pixels / total * 100.0,
+                q_pixels / total * 100.0,
+                sq_pixels / total * 100.0)
+            p_queue_pixels = 0
+            q_pixels = 0
+            sq_pixels = 0
             last_pixels_to_process = pixels_to_process
-            start_pit_time = ctime(NULL)
+            last_pit_time = ctime(NULL)
         p = p_queue.top()
-        xi = p.xi
-        yi = p.yi
-        center_value = p.value
+        xi = deref(p).xi
+        yi = deref(p).yi
+        center_value = deref(p).value
+        PyMem_Free(p)
         # loop invariant, center_value != nodata
         p_queue.pop()
 
@@ -602,6 +630,7 @@ def fill_pits(
                 dem_filled_managed_raster.set(xi_n, yi_n, center_value)
                 q.push(CoordinatePair(xi_n, yi_n))
                 while not q.empty():
+                    q_pixels += 1
                     xi_q = q.front().first
                     yi_q = q.front().second
                     if (xi_q == 0 or yi_q == 0 or xi_q == (raster_x_size-1) or
@@ -652,6 +681,7 @@ def fill_pits(
 
             # grow up the slopes
             while not sq.empty():
+                sq_pixels += 1
                 isProcessed = 0
                 xi_s = sq.front().first
                 yi_s = sq.front().second
@@ -707,11 +737,15 @@ def fill_pits(
                                 isBoundary = 0
                                 break
                         if isBoundary:
-                            p_queue.push(Pixel(s_center_value, xi_s, yi_s))
+                            p = <Pixel*>PyMem_Malloc(sizeof(Pixel))
+                            deref(p).value = s_center_value
+                            deref(p).xi = xi_s
+                            deref(p).yi = yi_s
+                            p_queue.push(p)
                         else:
                             # USE i_n in MFD for i_s
                             isProcessed = 0
-    logger.info("pits filled in %fs", ctime(NULL)-start_pit_time)
+    logger.info("pits filled in %ds", ctime(NULL)-start_pit_time)
     logger.info("pixels left to process: %d", pixels_to_process)
     # clean up flag managed raster before it is deleted
     del flag_managed_raster
