@@ -242,6 +242,53 @@ cdef class ManagedRaster:
             if dirty_itr == self.dirty_blocks.end():
                 self.dirty_blocks.insert(block_index)
 
+    cdef void addSquare(self, int xi, int yi, double* value_array):
+        """Add a 3x3 square to the raster.
+
+        This function adds the value in `value_array` to the existing values
+        in the raster.
+
+        Parameters:
+            xi/yi (int): center of square
+            value_array (double*): a 1D array representing a 3x3 square
+                indexed as:
+                    012
+                    345
+                    678
+        """
+        cdef int block_xi
+        cdef int block_yi
+        cdef int block_index
+        cdef int xoff
+        cdef int yoff
+        cdef int square_index = -1
+        self.sets += 1
+        for yi_local in xrange(yi-1, yi+2):
+            if yi_local < 0 or yi_local >= self.raster_y_size:
+                square_index += 3
+                continue
+            for xi_local in xrange(xi-1, xi+2):
+                square_index += 1  # works because we go row by row
+                if xi_local < 0 or xi_local > self.raster_x_size:
+                    continue
+                block_xi = (xi_local) >> self.block_bits
+                block_yi = (yi_local) >> self.block_bits
+                block_index = block_yi * self.block_nx + block_xi
+
+                if not self.lru_cache.exist(block_index):
+                    self.load_block(block_index)
+                xoff = block_xi << self.block_bits
+                yoff = block_yi << self.block_bits
+
+                self.lru_cache.get(block_index)[
+                    (yi_local-yoff)*self.block_xsize+xi_local-xoff] = (
+                        value_array[square_index])
+
+                if self.write_mode:
+                    dirty_itr = self.dirty_blocks.find(block_index)
+                    if dirty_itr == self.dirty_blocks.end():
+                        self.dirty_blocks.insert(block_index)
+
     cdef double get(self, int xi, int yi):
         self.gets += 1
         cdef int block_xi = xi >> self.block_bits
@@ -390,6 +437,10 @@ def fill_pits(
     cdef int xoff, yoff
     cdef long pixels_to_process = 0
     cdef long last_pixels_to_process
+    cdef int neighbor_flags = 0
+    cdef int neighbor_flags_j = 0
+    cdef int neighbor_flags_q = 0
+    cdef int neighbor_flags_s = 0
     cdef time_t start_pit_time
     cdef time_t last_pit_time
     cdef numpy.float64_t dem_nodata, n_value
@@ -437,6 +488,10 @@ def fill_pits(
         3  # 7
     ]
 
+    # this is the square that's added to the flag raster whenever a pixel
+    # is flagged so the neighbors know which direction is ready
+    cdef int * NEIGHBOR_FLAG_SQUARE = [128, 64, 32, 1, 0, 16, 2, 4, 8]
+
     # make an interesting temporary directory that has the time/date and
     # 'fill_pits' on it so we can figure out what's going on if we ever run
     # across it again.
@@ -452,6 +507,8 @@ def fill_pits(
             'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
             'BLOCKXSIZE=%d' % (1 << BLOCK_BITS),
             'BLOCKYSIZE=%d' % (1 << BLOCK_BITS)))
+
+
 
     logger.info('flag raster created at %s', flag_raster_path)
 
@@ -558,7 +615,10 @@ def fill_pits(
                 center_value = buffer_array[yi, xi]
                 if isclose(center_value, dem_nodata):
                     # if nodata, mark done
-                    flag_managed_raster.set(xi-1+xoff, yi-1+yoff, 1)
+                    # TODO: remove this later
+                    # flag_managed_raster.set(xi-1+xoff, yi-1+yoff, 1)
+                    flag_managed_raster.addSquare(
+                        xi-1+xoff, yi-1+yoff, NEIGHBOR_FLAG_SQUARE)
                     pixels_to_process -= 1
                     continue
 
@@ -573,7 +633,10 @@ def fill_pits(
                         deref(p).xi = xi-1+xoff
                         deref(p).yi = yi-1+yoff
                         p_queue.push(p)
-                        flag_managed_raster.set(xi-1+xoff, yi-1+yoff, 1)
+                        # TODO: remove later
+                        # flag_managed_raster.set(xi-1+xoff, yi-1+yoff, 1)
+                        flag_managed_raster.addSquare(
+                            xi-1+xoff, yi-1+yoff, NEIGHBOR_FLAG_SQUARE)
                         # set it to flow off the edge, this might get changed
                         # later if it's caught in a flow
                         flow_dir_managed_raster.set(xi-1+xoff, yi-1+yoff, i)
@@ -618,20 +681,25 @@ def fill_pits(
         else:
             check_bounds_top = 0
 
+        neighbor_flags = flag_managed_raster.get(xi, yi)
+        next_index = 0
         for i in xrange(8):
-            # neighbor x,y indexes
+            # if neighbor flag is on
+            if (neighbor_flags & (1 << i)):
+                continue
+
             xi_n = xi+OFFSET_ARRAY[2*i]
             yi_n = yi+OFFSET_ARRAY[2*i+1]
+
             if check_bounds_top:
                 if (xi_n < 0 or yi_n < 0 or
                         xi_n >= raster_x_size or yi_n >= raster_y_size):
                     continue
 
-            if flag_managed_raster.get(xi_n, yi_n):
-                # if flag is set, cell is processed, so skip
-                continue
             # we're about to process, so set its flag
-            flag_managed_raster.set(xi_n, yi_n, 1)
+            # TODO: Remove later
+            #flag_managed_raster.set(xi_n, yi_n, 1)
+            flag_managed_raster.addSquare(xi_n, yi_n, NEIGHBOR_FLAG_SQUARE)
             n_value = dem_filled_managed_raster.get(xi_n, yi_n)
             # loop invariant, n_value != nodata because flag is not set
             flow_dir_managed_raster.set(xi_n, yi_n, REVERSE_FLOW_DIR[i])
@@ -650,7 +718,11 @@ def fill_pits(
                     else:
                         check_bounds = 0
                     q.pop()
+                    neighbor_flags_q = flag_managed_raster.get(xi_q, yi_q)
                     for i in xrange(8):
+                        # if neighbor flag is on
+                        if (neighbor_flags_q & (1<<i)):
+                            continue
                         # neighbor x,y indexes
                         xi_n = xi_q+OFFSET_ARRAY[2*i]
                         yi_n = yi_q+OFFSET_ARRAY[2*i+1]
@@ -659,11 +731,6 @@ def fill_pits(
                                     xi_n >= raster_x_size or
                                     yi_n >= raster_y_size):
                                 continue
-                        # if flag is set, then skip
-                        if flag_managed_raster.get(xi_n, yi_n):
-                            continue
-                        # it's about to be filled or pushed to slope queue
-                        # so okay to set flag here
 
                         # li: n_value is not nodata because flag was not set
                         n_value = dem_filled_managed_raster.get(xi_n, yi_n)
@@ -672,9 +739,12 @@ def fill_pits(
                         pixels_to_process -= 1
 
                         # check for <= center value
+                        flag_managed_raster.addSquare(
+                            xi_n, yi_n, NEIGHBOR_FLAG_SQUARE)
                         if n_value <= center_value:
                             # filled as neighbor
-                            flag_managed_raster.set(xi_n, yi_n, 1)
+                            #TODO: remove later
+                            #flag_managed_raster.set(xi_n, yi_n, 1)
                             q.push(CoordinatePair(xi_n, yi_n))
                             # raise neighbor dem to center value
                             if n_value < center_value:
@@ -684,7 +754,8 @@ def fill_pits(
                             # not flat so must be a slope pixel,
                             # push to slope queue
                             # filled as upslope
-                            flag_managed_raster.set(xi_n, yi_n, 1)
+                            # TODO remove later
+                            #flag_managed_raster.set(xi_n, yi_n, 1)
                             sq.push(CoordinatePair(xi_n, yi_n))
             else:
                 # otherwise it's a slope pixel, push to slope queue
@@ -703,7 +774,11 @@ def fill_pits(
                     check_bounds = 0
                 sq.pop()
                 s_center_value = dem_filled_managed_raster.get(xi_s, yi_s)
+                neighbor_flags_s = flag_managed_raster.get(xi_s, yi_s)
                 for i in xrange(8):
+                    # if neighbor flag is on
+                    if (neighbor_flags_s & (1<<i)):
+                        continue
                     xi_n = xi_s+OFFSET_ARRAY[2*i]
                     yi_n = yi_s+OFFSET_ARRAY[2*i+1]
                     if check_bounds:
@@ -711,8 +786,6 @@ def fill_pits(
                                 xi_n >= raster_x_size or
                                 yi_n >= raster_y_size):
                             continue
-                    if flag_managed_raster.get(xi_n, yi_n):
-                        continue
                     n_value = dem_filled_managed_raster.get(xi_n, yi_n)
                     # loop invariant: n_value not nodata because flag not set
                     # if neighbor is higher than center, grow slope
@@ -721,11 +794,16 @@ def fill_pits(
                             xi_n, yi_n, REVERSE_FLOW_DIR[i])
                         pixels_to_process -= 1
                         sq.push(CoordinatePair(xi_n, yi_n))
-                        flag_managed_raster.set(xi_n, yi_n, 1)
+                        #TODO: remove later
+                        #flag_managed_raster.set(xi_n, yi_n, 1)
+                        flag_managed_raster.addSquare(
+                            xi_n, yi_n, NEIGHBOR_FLAG_SQUARE)
                     elif not isProcessed:
                         isProcessed = 1
                         # nonRegionCell call from pseudocode
                         isBoundary = 1
+
+                        neighbor_flags_j = <int>flag_managed_raster.get(xi_n, yi_n)
                         for j in xrange(8):
                             # check neighbors of neighbor
                             xj_n = xi_n+OFFSET_ARRAY[2*j]
@@ -740,8 +818,8 @@ def fill_pits(
                             # check for nodata
                             if isclose(j_value, dem_nodata):
                                 continue
-                            if ((j_value < n_value) and
-                                    flag_managed_raster.get(xj_n, yj_n)):
+                            if ((j_value < n_value) and (
+                                    neighbor_flags_j & (1<<j))):
                                 # if flag(j) && DEM(j) < DEM(n) it's not a
                                 # boundary because downhill neighbor has been
                                 # processed
