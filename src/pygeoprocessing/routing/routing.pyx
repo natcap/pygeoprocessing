@@ -838,7 +838,10 @@ def fill_pits(
                         isBoundary = 1
 
                         neighbor_flags_j = <int>flag_managed_raster.get(xi_n, yi_n)
-                        for k in xrange(8):
+                        for k in xrange(
+                                offset_array[neighbor_flags_j*2],
+                                offset_array[neighbor_flags_j*2+1]):
+                            k = values_array[j]
                             # check neighbors of neighbor
                             xj_n = xi_n+OFFSET_ARRAY[2*k]
                             yj_n = yi_n+OFFSET_ARRAY[2*k+1]
@@ -852,8 +855,7 @@ def fill_pits(
                             # check for nodata
                             if isclose(j_value, dem_nodata):
                                 continue
-                            if ((j_value < n_value) and (
-                                    neighbor_flags_j & (1<<k))):
+                            if (j_value < n_value):
                                 # if flag(j) && DEM(j) < DEM(n) it's not a
                                 # boundary because downhill neighbor has been
                                 # processed
