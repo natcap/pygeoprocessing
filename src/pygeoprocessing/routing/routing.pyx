@@ -808,10 +808,11 @@ def fill_pits(
                 sq.pop()
                 s_center_value = dem_filled_managed_raster.get(xi_s, yi_s)
                 neighbor_flags_s = <int>flag_managed_raster.get(xi_s, yi_s)
-                for j in xrange(8):
-                    # if neighbor flag is on
-                    if (neighbor_flags_s & (1<<j)):
-                        continue
+                for j in xrange(
+                        offset_array[neighbor_flags_s*2],
+                        offset_array[neighbor_flags_s*2+1]):
+                    j = values_array[j]
+
                     xi_n = xi_s+OFFSET_ARRAY[2*j]
                     yi_n = yi_s+OFFSET_ARRAY[2*j+1]
                     if check_bounds:
