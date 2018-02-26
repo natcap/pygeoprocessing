@@ -396,20 +396,22 @@ cdef class ManagedRaster:
         self.cache_misses += 1
 
 cdef void build_value_count_array(
-        int *direction_offset_array, int *direction_index_array):
+        int *direction_offset_array, int *direction_index_array, int bit_val):
     """Create lookup arrays for 0 bits in direction array.
 
     Parameters:
         direction_offset_array (int*): an array of length 256 * 2 that will
             hold the start/end (non-inclusive) index at index [n*2] for the
             sub array in `direction_index_array` that has the indexes for the
-            '0' bits of the number `n`, int *direction_index_array
+            'bit_val' bits of the number `n`, int *direction_index_array
         direction_index_array (int*): an array of length 256 * 4 that holds
-            consecutive sub arrays indicating indexes of '0' bits in an
+            consecutive sub arrays indicating indexes of 'bit_val' bits in an
             arbitrary 8 bit number.
+        bit_val (int): if 1, count the 1 bits, if 0 count the 0 bits.
 
     Example:
         n = 61 #00111101
+        bit_val = 0
         direction_index_array[
             direction_offset_array[2*n]:
             direction_offset_array[2*n+1]] = [1, 6, 7]
@@ -419,8 +421,9 @@ cdef void build_value_count_array(
         direction_offset_array[2*i] = value_index
         current_value = 0
         remaining_i = i
-        while remaining_i != 0:
-            if not (remaining_i & 1):
+        for _ in xrange(8):
+            if (not (remaining_i & 1) and bit_val == 0) or (
+                    (remaining_i & 1) and bit_val == 1):
                 direction_index_array[value_index] = current_value
                 value_index += 1
             current_value += 1
@@ -489,10 +492,16 @@ def fill_pits(
     cdef int q_pixels = 0
     cdef int sq_pixels = 0
 
+    cdef int* inv_direction_offset_array = <int*>PyMem_Malloc(256*2*sizeof(int))
+    cdef int* inv_direction_index_array = <int*>PyMem_Malloc(256*4*sizeof(int))
+
     cdef int* direction_offset_array = <int*>PyMem_Malloc(256*2*sizeof(int))
     cdef int* direction_index_array = <int*>PyMem_Malloc(256*4*sizeof(int))
 
-    build_value_count_array(direction_offset_array, direction_index_array)
+    build_value_count_array(
+        inv_direction_offset_array, inv_direction_index_array, 0)
+    build_value_count_array(
+        direction_offset_array, direction_index_array, 1)
 
     logger = logging.getLogger('pygeoprocessing.routing.fill_pits')
     logger.addHandler(logging.NullHandler())  # silence logging by default
@@ -724,9 +733,9 @@ def fill_pits(
 
         neighbor_flags = <int>flag_managed_raster.get(xi, yi)
         for i in xrange(
-                direction_offset_array[neighbor_flags*2],
-                direction_offset_array[neighbor_flags*2+1]):
-            d_i = direction_index_array[i]
+                inv_direction_offset_array[neighbor_flags*2],
+                inv_direction_offset_array[neighbor_flags*2+1]):
+            d_i = inv_direction_index_array[i]
 
             xi_n = xi+OFFSET_ARRAY[2*d_i]
             yi_n = yi+OFFSET_ARRAY[2*d_i+1]
@@ -762,9 +771,9 @@ def fill_pits(
                     q.pop()
                     neighbor_flags_q = <int>flag_managed_raster.get(xi_q, yi_q)
                     for j in xrange(
-                            direction_offset_array[neighbor_flags_q*2],
-                            direction_offset_array[neighbor_flags_q*2+1]):
-                        d_j = direction_index_array[j]
+                            inv_direction_offset_array[neighbor_flags_q*2],
+                            inv_direction_offset_array[neighbor_flags_q*2+1]):
+                        d_j = inv_direction_index_array[j]
 
                         # neighbor x,y indexes
                         xi_n = xi_q+OFFSET_ARRAY[2*d_j]
@@ -821,9 +830,9 @@ def fill_pits(
                 s_center_value = dem_filled_managed_raster.get(xi_s, yi_s)
                 neighbor_flags_s = <int>flag_managed_raster.get(xi_s, yi_s)
                 for j in xrange(
-                        direction_offset_array[neighbor_flags_s*2],
-                        direction_offset_array[neighbor_flags_s*2+1]):
-                    d_j = direction_index_array[j]
+                        inv_direction_offset_array[neighbor_flags_s*2],
+                        inv_direction_offset_array[neighbor_flags_s*2+1]):
+                    d_j = inv_direction_index_array[j]
 
                     xi_n = xi_s+OFFSET_ARRAY[2*d_j]
                     yi_n = yi_s+OFFSET_ARRAY[2*d_j+1]
@@ -856,7 +865,7 @@ def fill_pits(
                         for k in xrange(
                                 direction_offset_array[neighbor_flags_j*2],
                                 direction_offset_array[neighbor_flags_j*2+1]):
-                            d_k = direction_index_array[j]
+                            d_k = direction_index_array[k]
                             # check neighbors of neighbor
                             xj_n = xi_n+OFFSET_ARRAY[2*d_k]
                             yj_n = yi_n+OFFSET_ARRAY[2*d_k+1]
@@ -885,6 +894,8 @@ def fill_pits(
                         else:
                             # USE i_n in MFD for i_s
                             isProcessed = 0
+    PyMem_Free(inv_direction_index_array)
+    PyMem_Free(inv_direction_offset_array)
     PyMem_Free(direction_index_array)
     PyMem_Free(direction_offset_array)
     logger.info("pits filled in %ds", ctime(NULL)-start_pit_time)
