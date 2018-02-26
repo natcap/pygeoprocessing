@@ -741,6 +741,8 @@ def fill_pits(
             #flag_managed_raster.set(xi_n, yi_n, 1)
             flag_managed_raster.addSquare(xi_n, yi_n, NEIGHBOR_FLAG_SQUARE)
             n_value = dem_filled_managed_raster.get(xi_n, yi_n)
+            if isclose(n_value, dem_nodata):
+                continue
             # loop invariant, n_value != nodata because flag is not set
             flow_dir_managed_raster.set(xi_n, yi_n, REVERSE_FLOW_DIR[d_i])
             pixels_to_process -= 1
@@ -775,6 +777,8 @@ def fill_pits(
 
                         # li: n_value is not nodata because flag was not set
                         n_value = dem_filled_managed_raster.get(xi_n, yi_n)
+                        if isclose(n_value, dem_nodata):
+                            continue
                         flow_dir_managed_raster.set(
                             xi_n, yi_n, REVERSE_FLOW_DIR[d_j])
                         pixels_to_process -= 1
@@ -829,6 +833,8 @@ def fill_pits(
                                 yi_n >= raster_y_size):
                             continue
                     n_value = dem_filled_managed_raster.get(xi_n, yi_n)
+                    if isclose(n_value, dem_nodata):
+                        continue
                     # loop invariant: n_value not nodata because flag not set
                     # if neighbor is higher than center, grow slope
                     if n_value > s_center_value:
