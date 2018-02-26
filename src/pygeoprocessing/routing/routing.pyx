@@ -395,6 +395,33 @@ cdef class ManagedRaster:
             raster = None
         self.cache_misses += 1
 
+cdef void build_value_count_array(int *offset_array, int *values_array):
+    """Count the index of the bits that are turned off.
+
+    Parameters:
+        n (int): positive integer less than 256.
+
+    Returns:
+        List of bit positions that are turned off.
+    """
+    #offset_array = [-1] * 256 * 2
+    #values_array = [-1] * 256 * 4
+
+    value_index = 0
+    for i in xrange(256):
+        offset_array[2*i] = value_index
+        current_value = 0
+        remaining_i = i
+        while remaining_i != 0:
+            if not (remaining_i & 1):
+                values_array[value_index] = current_value
+                value_index += 1
+            current_value += 1
+            remaining_i >>= 1
+        offset_array[2*i+1] = value_index
+    print value_index
+
+
 ctypedef pair[int, int] CoordinatePair
 
 # This functor is used to determine order in the priority queue by comparing
@@ -453,6 +480,11 @@ def fill_pits(
     cdef int p_queue_pixels = 0
     cdef int q_pixels = 0
     cdef int sq_pixels = 0
+
+    cdef int* offset_array = <int*>PyMem_Malloc(256*2*sizeof(int))
+    cdef int* values_array = <int*>PyMem_Malloc(256*4*sizeof(int))
+
+    build_value_count_array(offset_array, values_array)
 
     logger = logging.getLogger('pygeoprocessing.routing.fill_pits')
     logger.addHandler(logging.NullHandler())  # silence logging by default
@@ -683,10 +715,10 @@ def fill_pits(
             check_bounds_top = 0
 
         neighbor_flags = <int>flag_managed_raster.get(xi, yi)
-        for i in xrange(8):
-            # if neighbor flag is on
-            if (neighbor_flags & (1 << i)):
-                continue
+        for i in xrange(
+                offset_array[neighbor_flags*2],
+                offset_array[neighbor_flags*2+1]):
+            i = values_array[i]
 
             xi_n = xi+OFFSET_ARRAY[2*i]
             yi_n = yi+OFFSET_ARRAY[2*i+1]
@@ -719,10 +751,11 @@ def fill_pits(
                         check_bounds = 0
                     q.pop()
                     neighbor_flags_q = <int>flag_managed_raster.get(xi_q, yi_q)
-                    for j in xrange(8):
-                        # if neighbor flag is on
-                        if (neighbor_flags_q & (1<<j)):
-                            continue
+                    for j in xrange(
+                            offset_array[neighbor_flags_q*2],
+                            offset_array[neighbor_flags_q*2+1]):
+                        j = values_array[j]
+
                         # neighbor x,y indexes
                         xi_n = xi_q+OFFSET_ARRAY[2*j]
                         yi_n = yi_q+OFFSET_ARRAY[2*j+1]
@@ -834,6 +867,8 @@ def fill_pits(
                         else:
                             # USE i_n in MFD for i_s
                             isProcessed = 0
+    PyMem_Free(values_array)
+    PyMem_Free(offset_array)
     logger.info("pits filled in %ds", ctime(NULL)-start_pit_time)
     logger.info("pixels left to process: %d", pixels_to_process)
     # clean up flag managed raster before it is deleted
