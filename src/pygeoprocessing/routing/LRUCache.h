@@ -8,7 +8,7 @@
 using namespace std;
 
 template <class KEY_T, class VAL_T,
-    typename ListIter = typename list< typename pair<KEY_T,VAL_T> >::iterator,
+    typename ListIter = typename list< pair<KEY_T,VAL_T> >::iterator,
     typename MapIter = typename map<KEY_T, ListIter>::iterator > class LRUCache{
 private:
     // item_list keeps track of the order of which elements have been accessed
@@ -20,7 +20,7 @@ private:
     map<KEY_T, ListIter> item_map;
     size_t cache_size;
 private:
-    void clean(list< typename pair<KEY_T, VAL_T> > &removed_value_list){
+    void clean(list< pair<KEY_T, VAL_T> > &removed_value_list){
         while(item_map.size()>cache_size){
             ListIter last_it = item_list.end(); last_it --;
             MapIter map_it = item_map.find(last_it->first);
@@ -45,7 +45,7 @@ public:
 
     void put(
             const KEY_T &key, const VAL_T &val,
-            list< typedef pair<KEY_T, VAL_T> > &removed_value_list) {
+            list< pair<KEY_T, VAL_T> > &removed_value_list) {
         MapIter it = item_map.find(key);
         if(it != item_map.end()){
             // it's already in the cache, delete the location in the item

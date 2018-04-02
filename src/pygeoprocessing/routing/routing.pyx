@@ -1,5 +1,5 @@
-# cython: linetrace=True
-# distutils: define_macros=CYTHON_TRACE_NOGIL=1
+# xxxxcython: linetrace=True
+# xxxxdistutils: define_macros=CYTHON_TRACE_NOGIL=1
 # distutils: language=c++
 """
 Provides PyGeprocessing Routing functionality.
@@ -602,7 +602,7 @@ def fill_pits(
 
     # used to set and read flags
     flag_managed_raster = ManagedRaster(
-        flag_raster_path, MANAGED_RASTER_N_BLOCKS, 1)
+        flag_raster_path, MANAGED_RASTER_N_BLOCKS * 128, 1)
     # used to set filled DEM and read current DEM.
     dem_filled_managed_raster = ManagedRaster(
         target_filled_dem_raster_path, MANAGED_RASTER_N_BLOCKS, 1)
