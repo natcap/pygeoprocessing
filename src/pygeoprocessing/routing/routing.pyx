@@ -600,6 +600,10 @@ def drain_plateus_d8(
     cdef int blob_nodata
     cdef queue[CoordinatePair] fill_queue, drain_queue
 
+    logger = logging.getLogger('pygeoprocessing.routing.drain_plateus_d8')
+    logger.addHandler(logging.NullHandler())  # silence logging by default
+
+
     dem_raster_info = pygeoprocessing.get_raster_info(dem_raster_path_band[0])
     base_nodata = dem_raster_info['nodata'][dem_raster_path_band[1]-1]
     if base_nodata is not None:
@@ -713,13 +717,14 @@ def drain_plateus_d8(
                     continue
 
                 # we're visiting a new blob
-                fill_queue.push(CoordinatePair(xi-1+xoff, yi-1+yoff))
                 blob_id += 1
+                fill_queue.push(CoordinatePair(xi-1+xoff, yi-1+yoff))
+                blob_managed_raster.set(xi-1+xoff, yi-1+yoff, blob_id)
                 while not fill_queue.empty():
                     xi_q = fill_queue.front().first
                     yi_q = fill_queue.front().second
                     fill_queue.pop()
-                    blob_managed_raster.set(xi_q, yi_q, blob_id)
+                    drain_pushed = 0
 
                     for i in xrange(8):
                         n_x_off = xi_q+OFFSET_ARRAY[2*i]
@@ -727,40 +732,50 @@ def drain_plateus_d8(
                         if (n_x_off < 0 or n_x_off >= raster_x_size or
                                 n_y_off < 0 or n_y_off >= raster_y_size):
                             continue
+                        if isclose(dem_nodata, dem_managed_raster.get(
+                                n_x_off, n_y_off)):
+                            continue
                         if isclose(
                                 flow_dir_nodata,
                                 flow_dir_managed_raster.get(
-                                    n_x_off, n_y_off)) and isclose(
-                                blob_nodata,
-                                blob_managed_raster.get(
-                                    n_x_off, n_y_off)) and not isclose(
-                                dem_nodata,
-                                dem_managed_raster.get(
                                     n_x_off, n_y_off)):
-                            fill_queue.push(CoordinatePair(n_x_off, n_y_off))
-                            blob_managed_raster.set(n_x_off, n_y_off, blob_id)
+                            if isclose(
+                                    blob_nodata,
+                                    blob_managed_raster.get(
+                                        n_x_off, n_y_off)):
+                                fill_queue.push(CoordinatePair(
+                                    n_x_off, n_y_off))
+                                blob_managed_raster.set(
+                                    n_x_off, n_y_off, blob_id)
+                        elif dem_managed_raster.get(n_x_off, n_y_off) == center_val and not drain_pushed:
+                            drain_queue.push(CoordinatePair(xi_q, yi_q))
+                            drain_pushed = 1
 
                 while not drain_queue.empty():
                     xi_q = drain_queue.front().first
                     yi_q = drain_queue.front().second
                     drain_queue.pop()
+
+                    if not isclose(
+                            flow_dir_nodata,
+                            flow_dir_managed_raster.get(xi_q, yi_q)):
+                        continue
+
                     # search for defined neighbors
                     for i in xrange(8):
+                        n_x_off = xi_q+OFFSET_ARRAY[2*i]
+                        n_y_off = yi_q+OFFSET_ARRAY[2*i+1]
                         if not isclose(
                             flow_dir_nodata,
                             flow_dir_managed_raster.get(
-                                xi_q+OFFSET_ARRAY[2*i],
-                                yi_q+OFFSET_ARRAY[2*i+1])):
-                            flow_dir_managed_raster.set(
-                                xi-1+xoff, yi-1+yoff, i)
-                        elif not isclose(
-                            dem_nodata,
-                            dem_managed_raster.get(
-                                xi_q+OFFSET_ARRAY[2*i],
-                                yi_q+OFFSET_ARRAY[2*i+1])):
-                            # dem is defined but flow is not, push to queue
-                            drain_queue.push(CoordinatePair(
-                                xi+OFFSET_ARRAY[2*i], yi+OFFSET_ARRAY[2*i+1]))
+                                n_x_off, n_y_off)) and dem_managed_raster.get(
+                                    n_x_off, n_y_off) == center_val:
+                            # if the neighbor has a defined flow direction and is same height as plateau, it drains the current cell
+                            flow_dir_managed_raster.set(xi_q, yi_q, i)
+                        elif dem_managed_raster.get(n_x_off, n_y_off) == center_val:
+                            # if neighbor is same height (we know its flow is undefined) push to queue
+                            # TODO: don't push if its direction is already set or in queue?
+                            drain_queue.push(CoordinatePair(n_x_off, n_y_off))
 
 
 #@cython.profile(True)
