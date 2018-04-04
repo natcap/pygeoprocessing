@@ -442,8 +442,142 @@ cdef cppclass GreaterPixel nogil:
 
 ctypedef double[:, :] FloatMemView
 
+def simple_d8(
+        dem_raster_path_band, target_flow_direction_path, temp_dir_path=None):
+    """Calculate D8 flow directions on simple grid.
+
+    Parameters:
+        dem_raster_path_band (tuple): a path, band number tuple indicating the
+            DEM calculate flow direction.
+        target_flow_direction_path (string): path to a int8 single band raster
+            that will be created as a flow direction output
+        temp_dir_path (string): if not None, indicates where algorithm can
+            construct intermediate files for bookkeeping during algorithm
+            processing.
+
+    Returns:
+        None.
+    """
+    cdef numpy.ndarray[numpy.float64_t, ndim=2] buffer_array
+    cdef int win_ysize, win_xsize
+    cdef int xoff, yoff, i, xi, yi
+    cdef int raster_x_size, raster_y_size
+    cdef double c_min, center_val, n_val, dem_nodata
+    cdef int c_min_index
+
+    dem_raster_info = pygeoprocessing.get_raster_info(dem_raster_path_band[0])
+    base_nodata = dem_raster_info['nodata'][dem_raster_path_band[1]-1]
+    if base_nodata is not None:
+        # cast to a float64 since that's our operating array type
+        dem_nodata = numpy.float64(base_nodata)
+    else:
+        # pick some very improbable value since it's hard to deal with NaNs
+        dem_nodata = IMPROBABLE_FLOAT_NOATA
+    dem_raster = gdal.OpenEx(dem_raster_path_band[0], gdal.OF_RASTER)
+    dem_band = dem_raster.GetRasterBand(dem_raster_path_band[1])
+
+    raster_x_size, raster_y_size = dem_raster_info['raster_size']
+
+    cdef int* OFFSET_ARRAY = [
+        1, 0,  # 0
+        1, -1,  # 1
+        0, -1,  # 2
+        -1, -1,  # 3
+        -1, 0,  # 4
+        -1, 1,  # 5
+        0, 1,  # 6
+        1, 1  # 7
+        ]
+
+
+    pygeoprocessing.new_raster_from_base(
+        dem_raster_path_band[0], target_flow_direction_path, gdal.GDT_Byte,
+        [255], fill_value_list=[255], gtiff_creation_options=(
+            'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
+            'BLOCKXSIZE=%d' % (1 << BLOCK_BITS),
+            'BLOCKYSIZE=%d' % (1 << BLOCK_BITS)))
+
+    # these are used to determine if a sample is within the raster
+    raster_x_size, raster_y_size = dem_raster_info['raster_size']
+
+    # used to set flow directions
+    flow_dir_managed_raster = ManagedRaster(
+        target_flow_direction_path, MANAGED_RASTER_N_BLOCKS, 1)
+
+    for offset_dict in pygeoprocessing.iterblocks(
+        dem_raster_path_band[0], offset_only=True, largest_block=0):
+
+        # statically type these for later
+        win_xsize = offset_dict['win_xsize']
+        win_ysize = offset_dict['win_ysize']
+        xoff = offset_dict['xoff']
+        yoff = offset_dict['yoff']
+
+        # make a buffer big enough to capture block and boundaries around it
+        buffer_array = numpy.empty(
+            (offset_dict['win_ysize']+2, offset_dict['win_xsize']+2),
+            dtype=numpy.float64)
+        buffer_array[:] = dem_nodata
+
+        # default numpy array boundaries
+        buffer_off = {
+            'xa': 1,
+            'xb': -1,
+            'ya': 1,
+            'yb': -1
+        }
+        # check if we can widen the border to include real data from the
+        # raster
+        for a_buffer_id, b_buffer_id, off_id, win_size_id, raster_size in [
+                ('xa', 'xb', 'xoff', 'win_xsize', raster_x_size),
+                ('ya', 'yb', 'yoff', 'win_ysize', raster_y_size)]:
+            if offset_dict[off_id] > 0:
+                # in this case we have valid data to the left (or up)
+                # grow the window and buffer slice in that direction
+                buffer_off[a_buffer_id] = None
+                offset_dict[off_id] -= 1
+                offset_dict[win_size_id] += 1
+
+            if offset_dict[off_id] + offset_dict[win_size_id] < raster_size:
+                # here we have valid data to the right (or bottom)
+                # grow the right buffer and add 1 to window
+                buffer_off[b_buffer_id] = None
+                offset_dict[win_size_id] += 1
+
+        # read in the valid memory block
+        buffer_array[
+            buffer_off['ya']:buffer_off['yb'],
+            buffer_off['xa']:buffer_off['xb']] = dem_band.ReadAsArray(
+                **offset_dict).astype(numpy.float64)
+
+        # irrespective of how we sampled the DEM only look at the block in
+        # the middle for valid
+        for yi in xrange(1, win_ysize+1):
+            for xi in xrange(1, win_xsize+1):
+                center_val = buffer_array[yi, xi]
+                if isclose(center_val, dem_nodata):
+                    continue
+
+                # this uses the offset array to visit the neighbors rather
+                # than 8 identical if statements.
+                c_min = center_val
+                c_min_index = -1
+                for i in xrange(8):
+                    n_val = buffer_array[
+                        yi+OFFSET_ARRAY[2*i+1], xi+OFFSET_ARRAY[2*i]]
+                    if isclose(n_val, dem_nodata):
+                        continue
+                    if n_val < c_min:
+                        c_min = n_val
+                        c_min_index = i
+
+                if c_min_index > -1:
+                    flow_dir_managed_raster.set(
+                        xi-1+xoff, yi-1+yoff, c_min_index)
+
+
 #@cython.profile(True)
-def fill_pits(
+def fill_pits_old(
         dem_raster_path_band, target_filled_dem_raster_path,
         target_flow_direction_path, temp_dir_path=None):
     """Fill hydrological pits in input DEM.
