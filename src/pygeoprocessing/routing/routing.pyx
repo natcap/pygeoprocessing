@@ -443,7 +443,7 @@ cdef cppclass GreaterPixel nogil:
 ctypedef double[:, :] FloatMemView
 
 def simple_d8(
-        dem_raster_path_band, target_flow_direction_path, temp_dir_path=None):
+        dem_raster_path_band, target_flow_direction_path):
     """Calculate D8 flow directions on simple grid.
 
     Parameters:
@@ -574,6 +574,193 @@ def simple_d8(
                 if c_min_index > -1:
                     flow_dir_managed_raster.set(
                         xi-1+xoff, yi-1+yoff, c_min_index)
+
+
+def drain_plateus_d8(
+        dem_raster_path_band, flow_dir_path):
+    """Drain the plateaus from a trivially routed flow direction raster.
+
+    Parameters:
+        dem_raster_path_band (tuple): a path, band number tuple indicating the
+            DEM calculate flow direction.
+        flow_dir_path (tuple): a path to a single band
+            int8 raster that has flow directions trivially
+            defined.
+
+    Returns:
+        None.
+    """
+    cdef numpy.ndarray[numpy.float64_t, ndim=2] dem_buffer_array
+    cdef int win_ysize, win_xsize
+    cdef int xoff, yoff, i, xi, yi, xi_q, yi_q
+    cdef int n_x_off, n_y_off
+    cdef int raster_x_size, raster_y_size
+    cdef double center_val, dem_nodata
+    cdef int flow_dir_nodata
+    cdef int blob_nodata
+    cdef queue[CoordinatePair] fill_queue, drain_queue
+
+    dem_raster_info = pygeoprocessing.get_raster_info(dem_raster_path_band[0])
+    base_nodata = dem_raster_info['nodata'][dem_raster_path_band[1]-1]
+    if base_nodata is not None:
+        # cast to a float64 since that's our operating array type
+        dem_nodata = numpy.float64(base_nodata)
+    else:
+        # pick some very improbable value since it's hard to deal with NaNs
+        dem_nodata = IMPROBABLE_FLOAT_NOATA
+    dem_raster = gdal.OpenEx(dem_raster_path_band[0], gdal.OF_RASTER)
+    dem_band = dem_raster.GetRasterBand(dem_raster_path_band[1])
+
+    flow_dir_raster_info = pygeoprocessing.get_raster_info(flow_dir_path)
+    flow_dir_nodata = flow_dir_raster_info['nodata'][0]
+
+    cdef int* OFFSET_ARRAY = [
+        1, 0,  # 0
+        1, -1,  # 1
+        0, -1,  # 2
+        -1, -1,  # 3
+        -1, 0,  # 4
+        -1, 1,  # 5
+        0, 1,  # 6
+        1, 1  # 7
+        ]
+
+    # these are used to determine if a sample is within the raster
+    raster_x_size, raster_y_size = dem_raster_info['raster_size']
+
+    blob_nodata = -1
+    blob_raster_path = 'blob_raster.tif'
+    pygeoprocessing.new_raster_from_base(
+        dem_raster_path_band[0], blob_raster_path, gdal.GDT_Int32,
+        [blob_nodata], fill_value_list=[blob_nodata], gtiff_creation_options=(
+            'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
+            'BLOCKXSIZE=%d' % (1 << BLOCK_BITS),
+            'BLOCKYSIZE=%d' % (1 << BLOCK_BITS)))
+
+    # used to set flow directions
+    flow_dir_managed_raster = ManagedRaster(
+        flow_dir_path, MANAGED_RASTER_N_BLOCKS, 1)
+
+    blob_managed_raster = ManagedRaster(
+        blob_raster_path, MANAGED_RASTER_N_BLOCKS, 1)
+
+    dem_managed_raster = ManagedRaster(
+        dem_raster_path_band[0], MANAGED_RASTER_N_BLOCKS, 0)
+
+    blob_id = -1
+    for offset_dict in pygeoprocessing.iterblocks(
+            dem_raster_path_band[0], offset_only=True, largest_block=0):
+        # statically type these for later
+        win_xsize = offset_dict['win_xsize']
+        win_ysize = offset_dict['win_ysize']
+        xoff = offset_dict['xoff']
+        yoff = offset_dict['yoff']
+
+        # make a buffer big enough to capture block and boundaries around it
+        dem_buffer_array = numpy.empty(
+            (offset_dict['win_ysize']+2, offset_dict['win_xsize']+2),
+            dtype=numpy.float64)
+        dem_buffer_array[:] = dem_nodata
+
+        # default numpy array boundaries
+        buffer_off = {
+            'xa': 1,
+            'xb': -1,
+            'ya': 1,
+            'yb': -1
+        }
+        # check if we can widen the border to include real data from the
+        # raster
+        for a_buffer_id, b_buffer_id, off_id, win_size_id, raster_size in [
+                ('xa', 'xb', 'xoff', 'win_xsize', raster_x_size),
+                ('ya', 'yb', 'yoff', 'win_ysize', raster_y_size)]:
+            if offset_dict[off_id] > 0:
+                # in this case we have valid data to the left (or up)
+                # grow the window and buffer slice in that direction
+                buffer_off[a_buffer_id] = None
+                offset_dict[off_id] -= 1
+                offset_dict[win_size_id] += 1
+
+            if offset_dict[off_id] + offset_dict[win_size_id] < raster_size:
+                # here we have valid data to the right (or bottom)
+                # grow the right buffer and add 1 to window
+                buffer_off[b_buffer_id] = None
+                offset_dict[win_size_id] += 1
+
+        # read in the valid memory block
+        dem_buffer_array[
+            buffer_off['ya']:buffer_off['yb'],
+            buffer_off['xa']:buffer_off['xb']] = dem_band.ReadAsArray(
+                **offset_dict).astype(numpy.float64)
+
+        # irrespective of how we sampled the DEM only look at the block in
+        # the middle for valid
+        for yi in xrange(1, win_ysize+1):
+            for xi in xrange(1, win_xsize+1):
+                center_val = dem_buffer_array[yi, xi]
+                if isclose(center_val, dem_nodata):
+                    continue
+                if not isclose(
+                    flow_dir_nodata,
+                    flow_dir_managed_raster.get(xi-1+xoff, yi-1+yoff)):
+                    # if the flow direction is defined it wont' be a plateau
+                    continue
+
+                if not isclose(
+                        blob_nodata,
+                        blob_managed_raster.get(xi-1+xoff, yi-1+yoff)):
+                    # we've visited this pixel before, it might be a pit
+                    continue
+
+                # we're visiting a new blob
+                fill_queue.push(CoordinatePair(xi-1+xoff, yi-1+yoff))
+                blob_id += 1
+                while not fill_queue.empty():
+                    xi_q = fill_queue.front().first
+                    yi_q = fill_queue.front().second
+                    fill_queue.pop()
+                    blob_managed_raster.set(xi_q, yi_q, blob_id)
+
+                    for i in xrange(8):
+                        n_x_off = xi_q+OFFSET_ARRAY[2*i]
+                        n_y_off = yi_q+OFFSET_ARRAY[2*i+1]
+                        if (n_x_off < 0 or n_x_off >= raster_x_size or
+                                n_y_off < 0 or n_y_off >= raster_y_size):
+                            continue
+                        if isclose(
+                                flow_dir_nodata,
+                                flow_dir_managed_raster.get(
+                                    n_x_off, n_y_off)) and isclose(
+                                blob_nodata,
+                                blob_managed_raster.get(
+                                    n_x_off, n_y_off)) and not isclose(
+                                dem_nodata,
+                                dem_managed_raster.get(
+                                    n_x_off, n_y_off)):
+                            fill_queue.push(CoordinatePair(n_x_off, n_y_off))
+                            blob_managed_raster.set(n_x_off, n_y_off, blob_id)
+
+                while not drain_queue.empty():
+                    xi_q = drain_queue.front().first
+                    yi_q = drain_queue.front().second
+                    drain_queue.pop()
+                    # search for defined neighbors
+                    for i in xrange(8):
+                        if not isclose(
+                            flow_dir_nodata,
+                            flow_dir_managed_raster.get(
+                                xi_q+OFFSET_ARRAY[2*i],
+                                yi_q+OFFSET_ARRAY[2*i+1])):
+                            flow_dir_managed_raster.set(
+                                xi-1+xoff, yi-1+yoff, i)
+                        elif not isclose(
+                            dem_nodata,
+                            dem_managed_raster.get(
+                                xi_q+OFFSET_ARRAY[2*i],
+                                yi_q+OFFSET_ARRAY[2*i+1])):
+                            # dem is defined but flow is not, push to queue
+                            drain_queue.push(CoordinatePair(
+                                xi+OFFSET_ARRAY[2*i], yi+OFFSET_ARRAY[2*i+1]))
 
 
 #@cython.profile(True)
