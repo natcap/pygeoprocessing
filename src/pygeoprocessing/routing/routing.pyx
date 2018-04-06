@@ -601,7 +601,7 @@ def drain_plateus_d8(
     cdef int raster_x_size, raster_y_size
     cdef double center_val, dem_nodata
     cdef int flow_dir_nodata
-    cdef int blob_nodata
+    cdef int blob_nodata, blob_id
     cdef queue[CoordinatePair] fill_queue, drain_queue
 
     logger = logging.getLogger('pygeoprocessing.routing.drain_plateus_d8')
@@ -728,8 +728,8 @@ def drain_plateus_d8(
                     xi_q = fill_queue.front().first
                     yi_q = fill_queue.front().second
                     fill_queue.pop()
-                    drain_pushed = 0
 
+                    drain_pushed = 0
                     for i in xrange(8):
                         n_x_off = xi_q+OFFSET_ARRAY[2*i]
                         n_y_off = yi_q+OFFSET_ARRAY[2*i+1]
@@ -751,9 +751,11 @@ def drain_plateus_d8(
                                     n_x_off, n_y_off))
                                 blob_managed_raster.set(
                                     n_x_off, n_y_off, blob_id)
-                        elif dem_managed_raster.get(n_x_off, n_y_off) == center_val and not drain_pushed:
-                            drain_queue.push(CoordinatePair(xi_q, yi_q))
+                        elif dem_managed_raster.get(n_x_off, n_y_off) < center_val and not drain_pushed:
                             drain_pushed = 1
+                            drain_queue.push(CoordinatePair(xi_q, yi_q))
+                            blob_id += 1
+                            blob_managed_raster.set(n_x_off, n_y_off, blob_id)
 
                 while not drain_queue.empty():
                     xi_q = drain_queue.front().first
@@ -769,16 +771,23 @@ def drain_plateus_d8(
                     for i in xrange(8):
                         n_x_off = xi_q+OFFSET_ARRAY[2*i]
                         n_y_off = yi_q+OFFSET_ARRAY[2*i+1]
+                        if (n_x_off < 0 or n_x_off >= raster_x_size or
+                                n_y_off < 0 or n_y_off >= raster_y_size):
+                            continue
+                        n_height = dem_managed_raster.get(n_x_off, n_y_off)
                         if not isclose(
                             flow_dir_nodata,
                             flow_dir_managed_raster.get(
-                                n_x_off, n_y_off)) and dem_managed_raster.get(
-                                    n_x_off, n_y_off) == center_val:
+                                n_x_off, n_y_off)) and n_height <= center_val:
                             # if the neighbor has a defined flow direction and is same height as plateau, it drains the current cell
                             flow_dir_managed_raster.set(xi_q, yi_q, i)
-                        elif dem_managed_raster.get(n_x_off, n_y_off) == center_val:
-                            # if neighbor is same height (we know its flow is undefined) push to queue
+                        elif n_height == center_val and not isclose(
+                                blob_managed_raster.get(
+                                    n_x_off, n_y_off), blob_id):
+                            # if neighbor is same height (we know its flow is
+                            # undefined) push to queue
                             drain_queue.push(CoordinatePair(n_x_off, n_y_off))
+                            blob_managed_raster.set(n_x_off, n_y_off, blob_id)
 
 def detect_plateus_d8(
         dem_raster_path_band, flow_dir_path, target_plateau_mask_path):
