@@ -1010,15 +1010,19 @@ def detect_plateus_d8(
 
 
 def fill_pits_d8(
-        dem_raster_path_band, flow_dir_path, target_filled_dem_path):
+        dem_raster_path_band, flow_dir_band_path, plateau_mask_band_path, target_filled_dem_path):
     """Fill the pits from an otherwise flow defined raster.
 
     Parameters:
         dem_raster_path_band (tuple): a path, band number tuple indicating the
             DEM calculate flow direction.
-        flow_dir_path (tuple): a path to a single band
-            int8 raster that has flow directions trivially
-            defined.
+        flow_dir_band_path (tuple): a path band number tuple indicating the
+            defined flow direction so far. If a pit is filled up to the edge
+            of a defined flow direction, its flow direction will be nodata-ed
+            out for recalculation with the new plateau.
+        plateau_mask_band_path (tuple): a path to a single band
+            raster that has values defined if the pixel is part of a drainable
+            plateau.
         target_filled_dem_path (string): path to target filled dem which is
             a copy of `dem_raster_path_band` with pits filled in.
 
@@ -1030,8 +1034,10 @@ def fill_pits_d8(
     cdef int xoff, yoff, i, xi, yi, xi_n, yi_n, xi_q, yi_q
     cdef int raster_x_size, raster_y_size
     cdef double center_val, dem_nodata, fill_height
+    cdef int plateau_mask_nodata
+    cdef int blob_nodata, blob_id
+    # TODO: is this the right type for all flow direction algorithms?
     cdef int flow_dir_nodata
-    cdef int blob_nodata
     cdef priority_queue[PixelPtr, deque[PixelPtr], GreaterPixel] p_queue, fill_queue
 
     logger = logging.getLogger('pygeoprocessing.routing.fill_pits_d8')
@@ -1046,8 +1052,15 @@ def fill_pits_d8(
         # pick some very improbable value since it's hard to deal with NaNs
         dem_nodata = IMPROBABLE_FLOAT_NOATA
 
-    flow_dir_raster_info = pygeoprocessing.get_raster_info(flow_dir_path)
-    flow_dir_nodata = flow_dir_raster_info['nodata'][0]
+    plateau_mask_raster_info = pygeoprocessing.get_raster_info(
+        plateau_mask_band_path[0])
+    plateau_mask_nodata = plateau_mask_raster_info['nodata'][
+        plateau_mask_band_path[1]-1]
+
+    flow_dir_raster_info = pygeoprocessing.get_raster_info(
+        flow_dir_band_path[0])
+    flow_dir_nodata = flow_dir_raster_info['nodata'][
+        flow_dir_band_path[1]-1]
 
     cdef int* OFFSET_ARRAY = [
         1, 0,  # 0
@@ -1086,9 +1099,8 @@ def fill_pits_d8(
             'BLOCKXSIZE=%d' % (1 << BLOCK_BITS),
             'BLOCKYSIZE=%d' % (1 << BLOCK_BITS)))
 
-    # used to set flow directions
-    flow_dir_managed_raster = ManagedRaster(
-        flow_dir_path, MANAGED_RASTER_N_BLOCKS, 1)
+    plateau_mask_managed_raster = ManagedRaster(
+        plateau_mask_band_path[0], MANAGED_RASTER_N_BLOCKS, 0)
 
     blob_managed_raster = ManagedRaster(
         blob_raster_path, MANAGED_RASTER_N_BLOCKS, 1)
@@ -1096,6 +1108,10 @@ def fill_pits_d8(
     # TODO: we need to get the band # correct here and not assume it's 1
     dem_managed_raster = ManagedRaster(
         target_filled_dem_path, MANAGED_RASTER_N_BLOCKS, 1)
+
+    flow_dir_managed_raster = ManagedRaster(
+        flow_dir_band_path[0], MANAGED_RASTER_N_BLOCKS, 1)
+
 
     blob_id = -1
     for offset_dict in pygeoprocessing.iterblocks(
@@ -1151,15 +1167,21 @@ def fill_pits_d8(
                 if isclose(center_val, dem_nodata):
                     continue
                 if not isclose(
-                    flow_dir_nodata,
-                    flow_dir_managed_raster.get(xi-1+xoff, yi-1+yoff)):
-                    # if the flow direction is defined it wont' be a pit
+                    plateau_mask_nodata,
+                    plateau_mask_managed_raster.get(xi-1+xoff, yi-1+yoff)):
+                    # if the pixel is a plateau it won't be a pit
                     continue
 
                 if not isclose(
                         blob_nodata,
                         blob_managed_raster.get(xi-1+xoff, yi-1+yoff)):
-                    # we've visited this pixel before, it might be a pit
+                    # we've visited this pixel before, skip
+                    continue
+
+                if not isclose(
+                        flow_dir_nodata,
+                        flow_dir_managed_raster.get(xi-1+xoff, yi-1+yoff)):
+                    # if the flow direction is defined, it can't start a pit
                     continue
 
                 # initialize just in case
@@ -1198,7 +1220,7 @@ def fill_pits_d8(
                             break
                         if isclose(blob_id, blob_managed_raster.get(
                                 xi_n, yi_n)):
-                            # we already visisted so skip
+                            # we already visited so skip
                             continue
                         n_height = dem_managed_raster.get(xi_n, yi_n)
                         if n_height < fill_height or isclose(
@@ -1259,8 +1281,15 @@ def fill_pits_d8(
                         n_height = dem_managed_raster.get(xi_n, yi_n)
                         if isclose(dem_nodata, n_height):
                             continue
-                        if n_height >= fill_height:
+                        if n_height > fill_height:
                             # we reached the edge of the pit
+                            continue
+                        if n_height == fill_height:
+                            # brought fill to an existing plateau, the edge
+                            # of the flow direction may need to be
+                            # recalculated
+                            flow_dir_managed_raster.set(
+                                xi_n, yi_n, flow_dir_nodata)
                             continue
 
                         # otherwise neighbor is < fill_height and part of
