@@ -562,18 +562,22 @@ def simple_d8(
                 # than 8 identical if statements.
                 c_min = center_val
                 c_min_index = -1
+                nodata_index = -1
                 for i in xrange(8):
                     n_val = buffer_array[
                         yi+OFFSET_ARRAY[2*i+1], xi+OFFSET_ARRAY[2*i]]
                     if isclose(n_val, dem_nodata):
-                        continue
-                    if n_val < c_min:
+                        nodata_index = i
+                    elif n_val < c_min:
                         c_min = n_val
                         c_min_index = i
 
                 if c_min_index > -1:
                     flow_dir_managed_raster.set(
                         xi-1+xoff, yi-1+yoff, c_min_index)
+                elif nodata_index > -1:
+                    flow_dir_managed_raster.set(
+                        xi-1+xoff, yi-1+yoff, nodata_index)
 
 
 def drain_plateus_d8(
@@ -774,8 +778,262 @@ def drain_plateus_d8(
                             flow_dir_managed_raster.set(xi_q, yi_q, i)
                         elif dem_managed_raster.get(n_x_off, n_y_off) == center_val:
                             # if neighbor is same height (we know its flow is undefined) push to queue
-                            # TODO: don't push if its direction is already set or in queue?
                             drain_queue.push(CoordinatePair(n_x_off, n_y_off))
+
+def fill_pits_d8(
+        dem_raster_path_band, flow_dir_path, target_filled_dem_path):
+    """Fill the pits from an otherwise flow defined raster.
+
+    Parameters:
+        dem_raster_path_band (tuple): a path, band number tuple indicating the
+            DEM calculate flow direction.
+        flow_dir_path (tuple): a path to a single band
+            int8 raster that has flow directions trivially
+            defined.
+        target_filled_dem_path (string): path to target filled dem which is
+            a copy of `dem_raster_path_band` with pits filled in.
+
+    Returns:
+        None.
+    """
+    cdef numpy.ndarray[numpy.float64_t, ndim=2] dem_buffer_array
+    cdef int win_ysize, win_xsize
+    cdef int xoff, yoff, i, xi, yi, xi_n, yi_n, xi_q, yi_q
+    cdef int raster_x_size, raster_y_size
+    cdef double center_val, dem_nodata, fill_height
+    cdef int flow_dir_nodata
+    cdef int blob_nodata
+    cdef priority_queue[PixelPtr, deque[PixelPtr], GreaterPixel] p_queue, fill_queue
+
+    logger = logging.getLogger('pygeoprocessing.routing.fill_pits_d8')
+    logger.addHandler(logging.NullHandler())  # silence logging by default
+
+    dem_raster_info = pygeoprocessing.get_raster_info(dem_raster_path_band[0])
+    base_nodata = dem_raster_info['nodata'][dem_raster_path_band[1]-1]
+    if base_nodata is not None:
+        # cast to a float64 since that's our operating array type
+        dem_nodata = numpy.float64(base_nodata)
+    else:
+        # pick some very improbable value since it's hard to deal with NaNs
+        dem_nodata = IMPROBABLE_FLOAT_NOATA
+
+    flow_dir_raster_info = pygeoprocessing.get_raster_info(flow_dir_path)
+    flow_dir_nodata = flow_dir_raster_info['nodata'][0]
+
+    cdef int* OFFSET_ARRAY = [
+        1, 0,  # 0
+        1, -1,  # 1
+        0, -1,  # 2
+        -1, -1,  # 3
+        -1, 0,  # 4
+        -1, 1,  # 5
+        0, 1,  # 6
+        1, 1  # 7
+        ]
+
+    # these are used to determine if a sample is within the raster
+    raster_x_size, raster_y_size = dem_raster_info['raster_size']
+
+    blob_nodata = -1
+    blob_raster_path = 'pit_blob_raster.tif'
+    pygeoprocessing.new_raster_from_base(
+        dem_raster_path_band[0], blob_raster_path, gdal.GDT_Int32,
+        [blob_nodata], fill_value_list=[blob_nodata], gtiff_creation_options=(
+            'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
+            'BLOCKXSIZE=%d' % (1 << BLOCK_BITS),
+            'BLOCKYSIZE=%d' % (1 << BLOCK_BITS)))
+
+    gdal_driver = gdal.GetDriverByName('GTiff')
+    dem_raster = gdal.Open(dem_raster_path_band[0])
+    gdal_driver.CreateCopy(target_filled_dem_path, dem_raster)
+
+    dem_raster = gdal.OpenEx(target_filled_dem_path, gdal.OF_RASTER)
+    dem_band = dem_raster.GetRasterBand(dem_raster_path_band[1])
+
+    pygeoprocessing.new_raster_from_base(
+        dem_raster_path_band[0], blob_raster_path, gdal.GDT_Int32,
+        [blob_nodata], fill_value_list=[blob_nodata], gtiff_creation_options=(
+            'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
+            'BLOCKXSIZE=%d' % (1 << BLOCK_BITS),
+            'BLOCKYSIZE=%d' % (1 << BLOCK_BITS)))
+
+    # used to set flow directions
+    flow_dir_managed_raster = ManagedRaster(
+        flow_dir_path, MANAGED_RASTER_N_BLOCKS, 1)
+
+    blob_managed_raster = ManagedRaster(
+        blob_raster_path, MANAGED_RASTER_N_BLOCKS, 1)
+
+    # TODO: we need to get the band # correct here and not assume it's 1
+    dem_managed_raster = ManagedRaster(
+        target_filled_dem_path, MANAGED_RASTER_N_BLOCKS, 1)
+
+    blob_id = -1
+    for offset_dict in pygeoprocessing.iterblocks(
+            dem_raster_path_band[0], offset_only=True, largest_block=0):
+        # statically type these for later
+        win_xsize = offset_dict['win_xsize']
+        win_ysize = offset_dict['win_ysize']
+        xoff = offset_dict['xoff']
+        yoff = offset_dict['yoff']
+
+        # make a buffer big enough to capture block and boundaries around it
+        dem_buffer_array = numpy.empty(
+            (offset_dict['win_ysize']+2, offset_dict['win_xsize']+2),
+            dtype=numpy.float64)
+        dem_buffer_array[:] = dem_nodata
+
+        # default numpy array boundaries
+        buffer_off = {
+            'xa': 1,
+            'xb': -1,
+            'ya': 1,
+            'yb': -1
+        }
+        # check if we can widen the border to include real data from the
+        # raster
+        for a_buffer_id, b_buffer_id, off_id, win_size_id, raster_size in [
+                ('xa', 'xb', 'xoff', 'win_xsize', raster_x_size),
+                ('ya', 'yb', 'yoff', 'win_ysize', raster_y_size)]:
+            if offset_dict[off_id] > 0:
+                # in this case we have valid data to the left (or up)
+                # grow the window and buffer slice in that direction
+                buffer_off[a_buffer_id] = None
+                offset_dict[off_id] -= 1
+                offset_dict[win_size_id] += 1
+
+            if offset_dict[off_id] + offset_dict[win_size_id] < raster_size:
+                # here we have valid data to the right (or bottom)
+                # grow the right buffer and add 1 to window
+                buffer_off[b_buffer_id] = None
+                offset_dict[win_size_id] += 1
+
+        # read in the valid memory block
+        dem_buffer_array[
+            buffer_off['ya']:buffer_off['yb'],
+            buffer_off['xa']:buffer_off['xb']] = dem_band.ReadAsArray(
+                **offset_dict).astype(numpy.float64)
+
+        # irrespective of how we sampled the DEM only look at the block in
+        # the middle for valid
+        for yi in xrange(1, win_ysize+1):
+            for xi in xrange(1, win_xsize+1):
+                center_val = dem_buffer_array[yi, xi]
+                if isclose(center_val, dem_nodata):
+                    continue
+                if not isclose(
+                    flow_dir_nodata,
+                    flow_dir_managed_raster.get(xi-1+xoff, yi-1+yoff)):
+                    # if the flow direction is defined it wont' be a pit
+                    continue
+
+                if not isclose(
+                        blob_nodata,
+                        blob_managed_raster.get(xi-1+xoff, yi-1+yoff)):
+                    # we've visited this pixel before, it might be a pit
+                    continue
+
+                # initialize just in case
+                fill_height = dem_nodata
+                # we're visiting a new pit
+                blob_id += 1
+                logger.debug("starting a new pit %d", blob_id)
+                blob_managed_raster.set(xi-1+xoff, yi-1+yoff, blob_id)
+                #push coordinate on priority queue
+                # while queue isn't empty
+                # check neighbors to see if one of them drains away
+                p = <Pixel*>PyMem_Malloc(sizeof(Pixel))
+                deref(p).value = center_val
+                deref(p).xi = xi-1+xoff
+                deref(p).yi = yi-1+yoff
+                p_queue.push(p)
+                while not p_queue.empty():
+                    p = p_queue.top()
+                    xi_q = deref(p).xi
+                    yi_q = deref(p).yi
+                    # this is the potential fill height
+                    fill_height = deref(p).value
+                    PyMem_Free(p)
+                    p_queue.pop()
+
+                    for i in xrange(8):
+                        xi_n = xi_q+OFFSET_ARRAY[2*i]
+                        yi_n = yi_q+OFFSET_ARRAY[2*i+1]
+                        if (xi_n < 0 or xi_n >= raster_x_size or
+                                yi_n < 0 or yi_n >= raster_y_size):
+                            continue
+                        n_height = dem_managed_raster.get(xi_n, yi_n)
+                        if isclose(dem_nodata, n_height):
+                            continue
+                        if isclose(blob_id, blob_managed_raster.get(
+                                xi_n, yi_n)):
+                            continue
+
+                        if n_height < fill_height:
+                            # we haven't visited this pixel and it's lower
+                            # than the current pixel, it must be a pour point
+                            while not p_queue.empty():
+                                PyMem_Free(p_queue.top())
+                                p_queue.pop()
+
+                            # set a new blob id to track the fill from the
+                            # origin pixel
+                            blob_id += 1
+                            blob_managed_raster.set(
+                                xi-1+xoff, yi-1+yoff, blob_id)
+
+                            p = <Pixel*>PyMem_Malloc(sizeof(Pixel))
+                            deref(p).value = center_val
+                            deref(p).xi = xi-1+xoff
+                            deref(p).yi = yi-1+yoff
+                            fill_queue.push(p)
+                            break
+                        else:
+                            blob_managed_raster.set(xi_n, yi_n, blob_id)
+                            p = <Pixel*>PyMem_Malloc(sizeof(Pixel))
+                            deref(p).value = n_height
+                            deref(p).xi = xi_n
+                            deref(p).yi = yi_n
+                            p_queue.push(p)
+
+                logger.debug("filling pit %d to %f", blob_id, fill_height)
+                # fill the pit to fill_height
+                while not fill_queue.empty():
+                    p = fill_queue.top()
+                    xi_q = deref(p).xi
+                    yi_q = deref(p).yi
+                    center_val = deref(p).value
+                    PyMem_Free(p)
+                    fill_queue.pop()
+                    #logger.debug('blob_id center val, nodata %d %f %f', blob_id, center_val, dem_nodata)
+
+                    dem_managed_raster.set(xi_q, yi_q, fill_height)
+
+                    # search for neighbors that might need a fill
+                    for i in xrange(8):
+                        xi_n = xi_q+OFFSET_ARRAY[2*i]
+                        yi_n = yi_q+OFFSET_ARRAY[2*i+1]
+                        if (xi_n < 0 or xi_n >= raster_x_size or
+                                yi_n < 0 or yi_n >= raster_y_size):
+                            continue
+                        if isclose(blob_id,
+                                   blob_managed_raster.get(xi_n, yi_n)):
+                            continue
+                        n_height = dem_managed_raster.get(xi_n, yi_n)
+                        if isclose(dem_nodata, n_height):
+                            continue
+                        if n_height >= fill_height:
+                            # we reached the edge of the pit
+                            continue
+
+                        # otherwise neighbor is < fill_height and part of
+                        # the pit
+                        blob_managed_raster.set(xi_n, yi_n, blob_id)
+                        p = <Pixel*>PyMem_Malloc(sizeof(Pixel))
+                        deref(p).value = n_height
+                        deref(p).xi = xi_n
+                        deref(p).yi = yi_n
+                        fill_queue.push(p)
 
 
 #@cython.profile(True)
