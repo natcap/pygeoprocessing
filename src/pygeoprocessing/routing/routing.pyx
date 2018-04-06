@@ -463,7 +463,7 @@ def simple_d8(
     cdef int xoff, yoff, i, xi, yi
     cdef int raster_x_size, raster_y_size
     cdef double c_min, center_val, n_val, dem_nodata
-    cdef int c_min_index
+    cdef int c_min_index, nodata_index
 
     dem_raster_info = pygeoprocessing.get_raster_info(dem_raster_path_band[0])
     base_nodata = dem_raster_info['nodata'][dem_raster_path_band[1]-1]
@@ -711,7 +711,7 @@ def drain_plateus_d8(
                 if not isclose(
                     flow_dir_nodata,
                     flow_dir_managed_raster.get(xi-1+xoff, yi-1+yoff)):
-                    # if the flow direction is defined it wont' be a plateau
+                    # if the flow direction is defined it won't be a plateau
                     continue
 
                 if not isclose(
@@ -956,37 +956,27 @@ def fill_pits_d8(
                     PyMem_Free(p)
                     p_queue.pop()
 
+                    pour_point = 0
+
                     for i in xrange(8):
                         xi_n = xi_q+OFFSET_ARRAY[2*i]
                         yi_n = yi_q+OFFSET_ARRAY[2*i+1]
                         if (xi_n < 0 or xi_n >= raster_x_size or
                                 yi_n < 0 or yi_n >= raster_y_size):
-                            continue
-                        n_height = dem_managed_raster.get(xi_n, yi_n)
-                        if isclose(dem_nodata, n_height):
-                            continue
+                            # if we get to the edge of the raster, that should
+                            # drain
+                            pour_point = 1
+                            break
                         if isclose(blob_id, blob_managed_raster.get(
                                 xi_n, yi_n)):
+                            # we already visisted so skip
                             continue
-
-                        if n_height < fill_height:
+                        n_height = dem_managed_raster.get(xi_n, yi_n)
+                        if n_height < fill_height or isclose(
+                                dem_nodata, n_height):
                             # we haven't visited this pixel and it's lower
                             # than the current pixel, it must be a pour point
-                            while not p_queue.empty():
-                                PyMem_Free(p_queue.top())
-                                p_queue.pop()
-
-                            # set a new blob id to track the fill from the
-                            # origin pixel
-                            blob_id += 1
-                            blob_managed_raster.set(
-                                xi-1+xoff, yi-1+yoff, blob_id)
-
-                            p = <Pixel*>PyMem_Malloc(sizeof(Pixel))
-                            deref(p).value = center_val
-                            deref(p).xi = xi-1+xoff
-                            deref(p).yi = yi-1+yoff
-                            fill_queue.push(p)
+                            pour_point = 1
                             break
                         else:
                             blob_managed_raster.set(xi_n, yi_n, blob_id)
@@ -995,6 +985,24 @@ def fill_pits_d8(
                             deref(p).xi = xi_n
                             deref(p).yi = yi_n
                             p_queue.push(p)
+
+                    if pour_point:
+                        # something triggered a pour point at fill_height
+                        while not p_queue.empty():
+                            PyMem_Free(p_queue.top())
+                            p_queue.pop()
+
+                        # set a new blob id to track the fill from the
+                        # origin pixel
+                        blob_id += 1
+                        blob_managed_raster.set(
+                            xi-1+xoff, yi-1+yoff, blob_id)
+
+                        p = <Pixel*>PyMem_Malloc(sizeof(Pixel))
+                        deref(p).value = center_val
+                        deref(p).xi = xi-1+xoff
+                        deref(p).yi = yi-1+yoff
+                        fill_queue.push(p)
 
                 logger.debug("filling pit %d to %f", blob_id, fill_height)
                 # fill the pit to fill_height
