@@ -633,6 +633,17 @@ def drain_plateus_d8(
         1, 1  # 7
         ]
 
+    cdef int* REVERSE_FLOW_DIR = [
+        4,  # 0
+        5,  # 1
+        6,  # 2
+        7,  # 3
+        0,  # 4
+        1,  # 5
+        2,  # 6
+        3  # 7
+    ]
+
     # these are used to determine if a sample is within the raster
     raster_x_size, raster_y_size = dem_raster_info['raster_size']
 
@@ -717,10 +728,11 @@ def drain_plateus_d8(
                 if not isclose(
                         blob_nodata,
                         blob_managed_raster.get(xi-1+xoff, yi-1+yoff)):
-                    # we've visited this pixel before, it might be a pit
+                    # we've visited this pixel before, we'll get to it
                     continue
 
-                # we're visiting a new blob
+                # flow direction is undefined and we haven't visited anymore
+                # we're visiting a new plateau
                 blob_id += 1
                 fill_queue.push(CoordinatePair(xi-1+xoff, yi-1+yoff))
                 blob_managed_raster.set(xi-1+xoff, yi-1+yoff, blob_id)
@@ -729,43 +741,47 @@ def drain_plateus_d8(
                     yi_q = fill_queue.front().second
                     fill_queue.pop()
 
+                    # this is a pixel in a plateau
+
                     drain_pushed = 0
                     for i in xrange(8):
                         n_x_off = xi_q+OFFSET_ARRAY[2*i]
                         n_y_off = yi_q+OFFSET_ARRAY[2*i+1]
                         if (n_x_off < 0 or n_x_off >= raster_x_size or
                                 n_y_off < 0 or n_y_off >= raster_y_size):
+                            # don't visit neighbors that run off the edge
                             continue
                         if isclose(dem_nodata, dem_managed_raster.get(
                                 n_x_off, n_y_off)):
+                            # if neighbor is undefined dem, skip
                             continue
                         if isclose(
                                 flow_dir_nodata,
                                 flow_dir_managed_raster.get(
-                                    n_x_off, n_y_off)):
-                            if isclose(
+                                    n_x_off, n_y_off)) and (
+                                isclose(
                                     blob_nodata,
                                     blob_managed_raster.get(
-                                        n_x_off, n_y_off)):
-                                fill_queue.push(CoordinatePair(
-                                    n_x_off, n_y_off))
-                                blob_managed_raster.set(
-                                    n_x_off, n_y_off, blob_id)
-                        elif dem_managed_raster.get(n_x_off, n_y_off) < center_val and not drain_pushed:
-                            drain_pushed = 1
+                                        n_x_off, n_y_off))):
+                            # if neighbor flow dir is undefined and we haven't
+                            # visisted before, expand fill to that pixel
+                            fill_queue.push(CoordinatePair(
+                                n_x_off, n_y_off))
+                            blob_managed_raster.set(
+                                n_x_off, n_y_off, blob_id)
+                        elif dem_managed_raster.get(
+                                n_x_off, n_y_off) <= center_val and not drain_pushed:
+                            # the neighbor is flow dir defined and at correct
+                            # height to be a drain, push this pixel to drain
+                            # queue
+                            flow_dir_managed_raster.set(xi_q, yi_q, i)
                             drain_queue.push(CoordinatePair(xi_q, yi_q))
-                            blob_id += 1
-                            blob_managed_raster.set(n_x_off, n_y_off, blob_id)
+                            drain_pushed = 1
 
                 while not drain_queue.empty():
                     xi_q = drain_queue.front().first
                     yi_q = drain_queue.front().second
                     drain_queue.pop()
-
-                    if not isclose(
-                            flow_dir_nodata,
-                            flow_dir_managed_raster.get(xi_q, yi_q)):
-                        continue
 
                     # search for defined neighbors
                     for i in xrange(8):
@@ -775,19 +791,14 @@ def drain_plateus_d8(
                                 n_y_off < 0 or n_y_off >= raster_y_size):
                             continue
                         n_height = dem_managed_raster.get(n_x_off, n_y_off)
-                        if not isclose(
+                        if isclose(
                             flow_dir_nodata,
                             flow_dir_managed_raster.get(
-                                n_x_off, n_y_off)) and n_height <= center_val:
+                                n_x_off, n_y_off)) and n_height == center_val:
                             # if the neighbor has a defined flow direction and is same height as plateau, it drains the current cell
-                            flow_dir_managed_raster.set(xi_q, yi_q, i)
-                        elif n_height == center_val and not isclose(
-                                blob_managed_raster.get(
-                                    n_x_off, n_y_off), blob_id):
-                            # if neighbor is same height (we know its flow is
-                            # undefined) push to queue
+                            flow_dir_managed_raster.set(
+                                n_x_off, n_y_off, REVERSE_FLOW_DIR[i])
                             drain_queue.push(CoordinatePair(n_x_off, n_y_off))
-                            blob_managed_raster.set(n_x_off, n_y_off, blob_id)
 
 def detect_plateus_d8(
         dem_raster_path_band, flow_dir_path, target_plateau_mask_path):
@@ -1197,7 +1208,6 @@ def fill_pits_d8(
                 fill_height = dem_nodata
                 # we're visiting a new pit
                 blob_id += 1
-                logger.debug("starting a new pit %d", blob_id)
                 blob_managed_raster.set(xi-1+xoff, yi-1+yoff, blob_id)
                 #push coordinate on priority queue
                 # while queue isn't empty
@@ -1264,7 +1274,6 @@ def fill_pits_d8(
                         deref(p).yi = yi-1+yoff
                         fill_queue.push(p)
 
-                logger.debug("filling pit %d to %f", blob_id, fill_height)
                 # fill the pit to fill_height
                 while not fill_queue.empty():
                     p = fill_queue.top()
@@ -1273,7 +1282,6 @@ def fill_pits_d8(
                     center_val = deref(p).value
                     PyMem_Free(p)
                     fill_queue.pop()
-                    #logger.debug('blob_id center val, nodata %d %f %f', blob_id, center_val, dem_nodata)
 
                     dem_managed_raster.set(xi_q, yi_q, fill_height)
 
