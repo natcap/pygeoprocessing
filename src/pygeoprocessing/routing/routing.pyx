@@ -742,7 +742,6 @@ def drain_plateus_d8(
                     fill_queue.pop()
 
                     # this is a pixel in a plateau
-
                     drain_pushed = 0
                     for i in xrange(8):
                         n_x_off = xi_q+OFFSET_ARRAY[2*i]
@@ -755,22 +754,26 @@ def drain_plateus_d8(
                                 n_x_off, n_y_off)):
                             # if neighbor is undefined dem, skip
                             continue
-                        if isclose(
-                                flow_dir_nodata,
-                                flow_dir_managed_raster.get(
-                                    n_x_off, n_y_off)) and (
+                        neighbor_flow_dir = flow_dir_managed_raster.get(
+                            n_x_off, n_y_off)
+                        if isclose(flow_dir_nodata, neighbor_flow_dir) and (
                                 isclose(
                                     blob_nodata,
                                     blob_managed_raster.get(
-                                        n_x_off, n_y_off))):
-                            # if neighbor flow dir is undefined and we haven't
-                            # visisted before, expand fill to that pixel
-                            fill_queue.push(CoordinatePair(
-                                n_x_off, n_y_off))
-                            blob_managed_raster.set(
-                                n_x_off, n_y_off, blob_id)
-                        elif dem_managed_raster.get(
-                                n_x_off, n_y_off) <= center_val and not drain_pushed:
+                                        n_x_off, n_y_off))) and (
+                                dem_managed_raster.get(
+                                    n_x_off, n_y_off) == center_val):
+                            # if neighbor flow dir is undefined and at the
+                            # same height and we haven't visited before,
+                            # expand fill to that pixel
+                            fill_queue.push(CoordinatePair(n_x_off, n_y_off))
+                            blob_managed_raster.set(n_x_off, n_y_off, blob_id)
+                            continue
+                        if not isclose(
+                                flow_dir_nodata, neighbor_flow_dir) and (
+                                    dem_managed_raster.get(
+                                        n_x_off, n_y_off) <= center_val and
+                                    not drain_pushed):
                             # the neighbor is flow dir defined and at correct
                             # height to be a drain, push this pixel to drain
                             # queue
