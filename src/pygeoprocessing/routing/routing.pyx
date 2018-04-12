@@ -1266,114 +1266,84 @@ def detect_plateus_and_drains(
                                 n_x_off, n_y_off, feature_id)
 
                 if not downhill_drain and not nodata_drain:
-                    drain_set.insert(feature_id)
                     pitseed = <PitSeed*>PyMem_Malloc(sizeof(PitSeed))
                     deref(pitseed).xoff = xoff
                     deref(pitseed).yoff = yoff
                     deref(pitseed).xi = xi-1+xoff
                     deref(pitseed).yi = yi-1+yoff
+                    pit_mask_managed_raster.set(xi-1+xoff, yi-1+yoff, 1)
                     pit_queue.push(pitseed)
+                    # initalize fill height to something that's in the pit
+                    fill_height = center_val
 
-    logger.info('iterating over pits')
+                logger.info('iterating over pits')
 
-    while not pit_queue.empty():
-        pitseed = pit_queue.top()
-        pit_queue.pop()
-        xi = deref(pitseed).xi
-        yi = deref(pitseed).yi
-
-        # the fill height must be no less than this
-        fill_height = dem_managed_raster.get(xi, yi)
-
-        logger.debug('visiting block %d %d', deref(pitseed).xoff, deref(pitseed).yoff)
-        PyMem_Free(pitseed)
-
-        # this pixel has already been filled
-        if pit_mask_managed_raster.set(xi, yi, 1) == 2:
-            continue
-        # set mask 1 to indicate searching path
-        pit_mask_managed_raster.set(xi, yi, 1)
-
-        p = <Pixel*>PyMem_Malloc(sizeof(Pixel))
-        deref(p).value = fill_height
-        deref(p).xi = xi
-        deref(p).yi = yi
-        pit_queue.push(p)
-
-        while not pit_queue.empty():
-            p = pit_queue.top()
-            xi_q = deref(p).xi
-            yi_q = deref(p).yi
-            pit_queue.pop()
-            PyMem_Free(p)
-
-            for i in xrange(8):
-                n_x_off = xi_q+OFFSET_ARRAY[2*i]
-                n_y_off = yi_q+OFFSET_ARRAY[2*i+1]
-                if (n_x_off < 0 or n_x_off >= raster_x_size or
-                        n_y_off < 0 or n_y_off >= raster_y_size):
-                    nodata_drain = 1
-                    break
-
-                if pit_mask_managed_raster.get(n_x_off, n_y_off) == 1:
-                    # this cell has already been processed
-                    continue
-                pit_mask_managed_raster.set(n_x_off, n_y_off, 1)
-
-                n_height = dem_managed_raster.get(n_x_off, n_y_off)
-                if isclose(dem_nodata, n_height):
-                    nodata_drain = 1
-                    break
-
-                if n_neight < fill_height AND NOT A PIT:
-                    pour_point = 1
-                    break
-
-                # otherwise, keep searching
-                p = <Pixel*>PyMem_Malloc(sizeof(Pixel))
-                deref(p).value = n_height
-                deref(p).xi = n_x_off
-                deref(p).yi = n_y_off
-                pit_queue.push(p)
-
-            if nodata_drain or pour_point:
                 while not pit_queue.empty():
-                    p = pit_queue.top()
-                    xi_q = deref(p).xi
-                    yi_q = deref(p).yi
+                    pitseed = pit_queue.top()
                     pit_queue.pop()
-                    PyMem_Free(p)
+                    xi = deref(pitseed).xi
+                    yi = deref(pitseed).yi
 
-                if n_height != base_height:
-                    fill_height = n_height
-                    fill_queue.push(
-                        CoordinatePair(n_x_off, n_y_off))
-                    pit_mask_managed_raster.set(n_x_off, n_y_off, 2)
+                    # the fill height must be no less than this
+                    fill_height = dem_managed_raster.get(xi, yi)
 
-        while not fill_queue.empty():
-            xi_q = fill_queue.top().first
-            yi_q = fill_queue.top().second
-            fill_queue.pop()
-            dem_managed_raster.set(xi_q, yi_q, fill_height)
+                    logger.debug(
+                        'visiting block %d %d', deref(pitseed).xoff, deref(pitseed).yoff)
+                    PyMem_Free(pitseed)
 
-            for i in xrange(8):
-                n_x_off = xi_q+OFFSET_ARRAY[2*i]
-                n_y_off = yi_q+OFFSET_ARRAY[2*i+1]
-                if (n_x_off < 0 or n_x_off >= raster_x_size or
-                        n_y_off < 0 or n_y_off >= raster_y_size):
-                    continue
+                    for i in xrange(8):
+                        n_x_off = xi+OFFSET_ARRAY[2*i]
+                        n_y_off = yi+OFFSET_ARRAY[2*i+1]
+                        if (n_x_off < 0 or n_x_off >= raster_x_size or
+                                n_y_off < 0 or n_y_off >= raster_y_size):
+                            nodata_drain = 1
+                            break
 
-                if pit_mask_managed_raster.get(n_x_off, n_y_off) == 2:
-                    # this cell has already been processed
-                    continue
+                        if pit_mask_managed_raster.get(n_x_off, n_y_off) >= 1:
+                            # this cell has already been processed
+                            continue
+                        pit_mask_managed_raster.set(n_x_off, n_y_off, 1)
 
-                if dem_managed_raster.set(xi_q, yi_q, fill_height) < fill_height:
-                    fill_queue.push(
-                        CoordinatePair(n_x_off, n_y_off))
-                    pit_mask_managed_raster.set(n_x_off, n_y_off, 2)
+                        n_height = dem_managed_raster.get(n_x_off, n_y_off)
+                        if isclose(n_height, dem_nodata) or n_neight < fill_height:
+                            # we encounter a pixel not processed that is less than the
+                            # neighbor's height or nodata, it is a drain
+                            pour_point = 1
+                            break
 
+                    if pour_point:
+                        # clear the queue
+                        while not pit_queue.empty():
+                            p = pit_queue.top()
+                            xi_q = deref(p).xi
+                            yi_q = deref(p).yi
+                            pit_queue.pop()
+                            PyMem_Free(p)
 
-            # TODO: I"M NOT DONE HERE I NEED OT FILL THE DEM
+                        fill_queue.push(CoordinatePair(xi, yi))
+                        pit_mask_managed_raster.set(xi, yi, 2)
+
+                    while not fill_queue.empty():
+                        xi_q = fill_queue.top().first
+                        yi_q = fill_queue.top().second
+                        fill_queue.pop()
+                        dem_managed_raster.set(xi_q, yi_q, fill_height)
+
+                        for i in xrange(8):
+                            n_x_off = xi_q+OFFSET_ARRAY[2*i]
+                            n_y_off = yi_q+OFFSET_ARRAY[2*i+1]
+                            if (n_x_off < 0 or n_x_off >= raster_x_size or
+                                    n_y_off < 0 or n_y_off >= raster_y_size):
+                                continue
+
+                            if pit_mask_managed_raster.get(n_x_off, n_y_off) != 1:
+                                # this cell has already been processed or is not part
+                                # of the pit
+                                continue
+
+                            if dem_managed_raster.get(n_x_off, n_y_off) < fill_height:
+                                pit_mask_managed_raster.set(n_x_off, n_y_off, 2)
+                                fill_queue.push(CoordinatePair(n_x_off, n_y_off))
 
 
 def fill_pits_d8(
