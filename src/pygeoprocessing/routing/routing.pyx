@@ -1032,6 +1032,197 @@ def detect_plateus_d8(
                             fill_queue.push(CoordinatePair(n_x_off, n_y_off))
 
 
+def detect_plateus_and_drains(
+        dem_raster_path_band, target_mask_path):
+    """Drain the plateaus from a trivially routed flow direction raster.
+
+    Parameters:
+        dem_raster_path_band (tuple): a path, band number tuple indicating the
+            DEM calculate flow direction.
+        target_mask_path (string): path to output raster that will
+            have a non-nodata value when a pixel is part of a plateau or pit.
+
+    Returns:
+        None.
+    """
+    cdef numpy.ndarray[numpy.float64_t, ndim=2] dem_buffer_array
+    cdef int win_ysize, win_xsize
+    cdef int xoff, yoff, i, xi, yi, xi_q, yi_q
+    cdef int n_x_off, n_y_off
+    cdef int raster_x_size, raster_y_size
+    cdef double center_val, dem_nodata
+    cdef int feature_id
+    cdef int downhill_neighbor, nodata_neighbor, downhill_drain, nodata_drain
+    cdef queue[CoordinatePair] search_queue
+
+    logger = logging.getLogger(
+        'pygeoprocessing.routing.detect_plateus_and_drains')
+    logger.addHandler(logging.NullHandler())  # silence logging by default
+
+    dem_raster_info = pygeoprocessing.get_raster_info(dem_raster_path_band[0])
+    base_nodata = dem_raster_info['nodata'][dem_raster_path_band[1]-1]
+    if base_nodata is not None:
+        # cast to a float64 since that's our operating array type
+        dem_nodata = numpy.float64(base_nodata)
+    else:
+        # pick some very improbable value since it's hard to deal with NaNs
+        dem_nodata = IMPROBABLE_FLOAT_NOATA
+    dem_raster = gdal.OpenEx(dem_raster_path_band[0], gdal.OF_RASTER)
+    dem_band = dem_raster.GetRasterBand(dem_raster_path_band[1])
+
+    cdef int* OFFSET_ARRAY = [
+        1, 0,  # 0
+        1, -1,  # 1
+        0, -1,  # 2
+        -1, -1,  # 3
+        -1, 0,  # 4
+        -1, 1,  # 5
+        0, 1,  # 6
+        1, 1  # 7
+        ]
+
+    # these are used to determine if a sample is within the raster
+    raster_x_size, raster_y_size = dem_raster_info['raster_size']
+
+    mask_nodata = -1
+    pygeoprocessing.new_raster_from_base(
+        dem_raster_path_band[0], target_mask_path, gdal.GDT_Int32,
+        [mask_nodata], fill_value_list=[mask_nodata],
+        gtiff_creation_options=(
+            'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
+            'BLOCKXSIZE=%d' % (1 << BLOCK_BITS),
+            'BLOCKYSIZE=%d' % (1 << BLOCK_BITS)))
+
+    mask_managed_raster = ManagedRaster(
+        target_mask_path, MANAGED_RASTER_N_BLOCKS, 1)
+
+    dem_managed_raster = ManagedRaster(
+        dem_raster_path_band[0], MANAGED_RASTER_N_BLOCKS, 0)
+
+    feature_id = -1
+    for offset_dict in pygeoprocessing.iterblocks(
+            dem_raster_path_band[0], offset_only=True, largest_block=0):
+        # statically type these for later
+        win_xsize = offset_dict['win_xsize']
+        win_ysize = offset_dict['win_ysize']
+        xoff = offset_dict['xoff']
+        yoff = offset_dict['yoff']
+
+        # make a buffer big enough to capture block and boundaries around it
+        dem_buffer_array = numpy.empty(
+            (offset_dict['win_ysize']+2, offset_dict['win_xsize']+2),
+            dtype=numpy.float64)
+        dem_buffer_array[:] = dem_nodata
+
+        # default numpy array boundaries
+        buffer_off = {
+            'xa': 1,
+            'xb': -1,
+            'ya': 1,
+            'yb': -1
+        }
+        # check if we can widen the border to include real data from the
+        # raster
+        for a_buffer_id, b_buffer_id, off_id, win_size_id, raster_size in [
+                ('xa', 'xb', 'xoff', 'win_xsize', raster_x_size),
+                ('ya', 'yb', 'yoff', 'win_ysize', raster_y_size)]:
+            if offset_dict[off_id] > 0:
+                # in this case we have valid data to the left (or up)
+                # grow the window and buffer slice in that direction
+                buffer_off[a_buffer_id] = None
+                offset_dict[off_id] -= 1
+                offset_dict[win_size_id] += 1
+
+            if offset_dict[off_id] + offset_dict[win_size_id] < raster_size:
+                # here we have valid data to the right (or bottom)
+                # grow the right buffer and add 1 to window
+                buffer_off[b_buffer_id] = None
+                offset_dict[win_size_id] += 1
+
+        # read in the valid memory block
+        dem_buffer_array[
+            buffer_off['ya']:buffer_off['yb'],
+            buffer_off['xa']:buffer_off['xb']] = dem_band.ReadAsArray(
+                **offset_dict).astype(numpy.float64)
+
+        # irrespective of how we sampled the DEM only look at the block in
+        # the middle for valid
+        for yi in xrange(1, win_ysize+1):
+            for xi in xrange(1, win_xsize+1):
+                center_val = dem_buffer_array[yi, xi]
+                if isclose(center_val, dem_nodata):
+                    continue
+
+                if not isclose(
+                        mask_nodata,
+                        mask_managed_raster.get(
+                            xi-1+xoff, yi-1+yoff)):
+                    # already been marked as a plateau
+                    continue
+
+                # search neighbors for downhill or nodata
+                downhill_neighbor = 0
+                nodata_neighbor = 0
+
+                for i in xrange(8):
+                    n_x_off = xi-1+xoff+OFFSET_ARRAY[2*i]
+                    n_y_off = yi-1+yoff+OFFSET_ARRAY[2*i+1]
+                    if (n_x_off < 0 or n_x_off >= raster_x_size or
+                            n_y_off < 0 or n_y_off >= raster_y_size):
+                        # it'll drain off the edge of the raster
+                        nodata_neighbor = 1
+                        break
+                    if isclose(dem_nodata, dem_managed_raster.get(
+                            n_x_off, n_y_off)):
+                        # it'll drain to nodata
+                        nodata_neighbor = 1
+                        break
+                    n_height = dem_managed_raster.get(n_x_off, n_y_off)
+                    if n_height < center_val:
+                        # it'll drain downhill
+                        downhill_neighbor = 1
+                        break
+
+                if downhill_neighbor or nodata_neighbor:
+                    continue
+
+                feature_id += 1
+                search_queue.push(CoordinatePair(xi-1+xoff, yi-1+yoff))
+                mask_managed_raster.set(xi-1+xoff, yi-1+yoff, feature_id)
+                downhill_drain = 0
+                nodata_drain = 0
+                while not search_queue.empty():
+                    xi_q = search_queue.front().first
+                    yi_q = search_queue.front().second
+                    search_queue.pop()
+
+                    for i in xrange(8):
+                        n_x_off = xi_q+OFFSET_ARRAY[2*i]
+                        n_y_off = yi_q+OFFSET_ARRAY[2*i+1]
+                        if (n_x_off < 0 or n_x_off >= raster_x_size or
+                                n_y_off < 0 or n_y_off >= raster_y_size):
+                            nodata_drain = 1
+                            break
+                        if isclose(dem_nodata, dem_managed_raster.get(
+                                n_x_off, n_y_off)):
+                            nodata_drain = 1
+                            break
+                        n_height = dem_managed_raster.get(n_x_off, n_y_off)
+                        if n_height < center_val:
+                            downhill_drain = 1
+                            break
+                        if n_height == center_val and isclose(
+                                mask_nodata, mask_managed_raster.get(
+                                    n_x_off, n_y_off)):
+                            search_queue.push(
+                                CoordinatePair(n_x_off, n_y_off))
+                            mask_managed_raster.set(
+                                n_x_off, n_y_off, feature_id)
+
+                if not downhill_drain and not nodata_drain:
+                    logger.debug("feature %d is a pit", feature_id)
+
+
 def fill_pits_d8(
         dem_raster_path_band, flow_dir_band_path, plateau_mask_band_path, target_filled_dem_path):
     """Fill the pits from an otherwise flow defined raster.
