@@ -46,6 +46,7 @@ from libcpp.pair cimport pair
 from libcpp.queue cimport queue
 from libcpp.stack cimport stack
 from libcpp.deque cimport deque
+from libcpp.set cimport set
 
 # This module expects rasters with a memory xy block size of 2**BLOCK_BITS
 cdef int BLOCK_BITS = 8
@@ -72,6 +73,15 @@ cdef extern from "<queue>" namespace "std" nogil:
         void push(T&)
         size_t size()
         T& top()
+
+cdef struct PitSeed:
+    int xoff
+    int yoff
+    int win_xsize
+    int win_ysize
+    int pit_id
+
+ctypedef (PitSeed*) PitSeedPtr
 
 # this is the class type that'll get stored in the priority queue
 cdef struct Pixel:
@@ -440,7 +450,15 @@ cdef cppclass GreaterPixel nogil:
     bint get "operator()"(PixelPtr& lhs, PixelPtr& rhs):
         return deref(lhs).value > deref(rhs).value
 
+# This is used to identify pit pixels to prioritize
+cdef cppclass GreaterPitSeed nogil:
+    bint get "operator()"(PitSeedPtr& lhs, PitSeedPtr& rhs):
+        return deref(lhs).xoff > deref(rhs).xoff or (
+            deref(lhs).xoff == deref(rhs).xoff and
+            deref(lhs).yoff > deref(rhs).yoff)
+
 ctypedef double[:, :] FloatMemView
+
 
 def simple_d8(
         dem_raster_path_band, target_flow_direction_path):
@@ -1054,6 +1072,10 @@ def detect_plateus_and_drains(
     cdef int feature_id
     cdef int downhill_neighbor, nodata_neighbor, downhill_drain, nodata_drain
     cdef queue[CoordinatePair] search_queue
+    cdef priority_queue[PitSeedPtr, deque[PitSeedPtr], GreaterPitSeed] pit_queue
+    cdef PitSeedPtr pitseed
+
+    cdef set[int] drain_set
 
     logger = logging.getLogger(
         'pygeoprocessing.routing.detect_plateus_and_drains')
@@ -1220,7 +1242,18 @@ def detect_plateus_and_drains(
                                 n_x_off, n_y_off, feature_id)
 
                 if not downhill_drain and not nodata_drain:
-                    logger.debug("feature %d is a pit", feature_id)
+                    drain_set.insert(feature_id)
+                    pitseed = <PitSeed*>PyMem_Malloc(sizeof(PitSeed))
+                    deref(pitseed).xoff = xoff
+                    deref(pitseed).yoff = yoff
+                    deref(pitseed).win_xsize = win_xsize
+                    deref(pitseed).win_ysize = win_ysize
+                    pit_queue.push(pitseed)
+
+    while not pit_queue.empty():
+        pitseed = pit_queue.top()
+        pit_queue.pop()
+        PyMem_Free(pitseed)
 
 
 def fill_pits_d8(
