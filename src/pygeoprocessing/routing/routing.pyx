@@ -77,8 +77,8 @@ cdef extern from "<queue>" namespace "std" nogil:
 cdef struct PitSeed:
     int xoff
     int yoff
-    int win_xsize
-    int win_ysize
+    int xi
+    int yi
     int pit_id
 
 ctypedef (PitSeed*) PitSeedPtr
@@ -450,7 +450,8 @@ cdef cppclass GreaterPixel nogil:
     bint get "operator()"(PixelPtr& lhs, PixelPtr& rhs):
         return deref(lhs).value > deref(rhs).value
 
-# This is used to identify pit pixels to prioritize
+# This is used to identify pit pixels to prioritize and group them by local
+# block
 cdef cppclass GreaterPitSeed nogil:
     bint get "operator()"(PitSeedPtr& lhs, PitSeedPtr& rhs):
         return deref(lhs).xoff > deref(rhs).xoff or (
@@ -1246,14 +1247,26 @@ def detect_plateus_and_drains(
                     pitseed = <PitSeed*>PyMem_Malloc(sizeof(PitSeed))
                     deref(pitseed).xoff = xoff
                     deref(pitseed).yoff = yoff
-                    deref(pitseed).win_xsize = win_xsize
-                    deref(pitseed).win_ysize = win_ysize
+                    deref(pitseed).xi = xi-1+xoff
+                    deref(pitseed).yi = yi-1+yoff
                     pit_queue.push(pitseed)
+
+    logger.info('iterating over pits')
 
     while not pit_queue.empty():
         pitseed = pit_queue.top()
         pit_queue.pop()
+        xi = deref(pitseed).xi
+        yi = deref(pitseed).yi
+
+        logger.debug('visiting block %d %d', deref(pitseed).xoff, deref(pitseed).yoff)
         PyMem_Free(pitseed)
+
+        search_queue.push(CoordinatePair(xi, yi))
+        while not search_queue.empty():
+            xi_q = search_queue.front().first
+            yi_q = search_queue.front().second
+            search_queue.pop()
 
 
 def fill_pits_d8(
