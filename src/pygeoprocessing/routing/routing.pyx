@@ -1052,14 +1052,13 @@ def detect_plateus_d8(
 
 
 def detect_plateus_and_drains(
-        dem_raster_path_band, target_mask_path):
+        dem_raster_path_band, target_filled_dem_raster_path):
     """Drain the plateaus from a trivially routed flow direction raster.
 
     Parameters:
         dem_raster_path_band (tuple): a path, band number tuple indicating the
             DEM calculate flow direction.
-        target_mask_path (string): path to output raster that will
-            have a non-nodata value when a pixel is part of a plateau or pit.
+        target_filled_dem_raster_path (string): path to pit filled dem.
 
     Returns:
         None.
@@ -1069,10 +1068,10 @@ def detect_plateus_and_drains(
     cdef int xoff, yoff, i, xi, yi, xi_q, yi_q
     cdef int n_x_off, n_y_off
     cdef int raster_x_size, raster_y_size
-    cdef double center_val, dem_nodata
+    cdef double center_val, dem_nodata, fill_height
     cdef int feature_id
     cdef int downhill_neighbor, nodata_neighbor, downhill_drain, nodata_drain
-    cdef queue[CoordinatePair] search_queue
+    cdef queue[CoordinatePair] search_queue, fill_queue
     cdef priority_queue[PitSeedPtr, deque[PitSeedPtr], GreaterPitSeed] pit_queue
     cdef PitSeedPtr pitseed
 
@@ -1107,9 +1106,20 @@ def detect_plateus_and_drains(
     # these are used to determine if a sample is within the raster
     raster_x_size, raster_y_size = dem_raster_info['raster_size']
 
+    mask_path = 'mask.tif'
     mask_nodata = -1
     pygeoprocessing.new_raster_from_base(
-        dem_raster_path_band[0], target_mask_path, gdal.GDT_Int32,
+        dem_raster_path_band[0], mask_path, gdal.GDT_Int64,
+        [mask_nodata], fill_value_list=[mask_nodata],
+        gtiff_creation_options=(
+            'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
+            'BLOCKXSIZE=%d' % (1 << BLOCK_BITS),
+            'BLOCKYSIZE=%d' % (1 << BLOCK_BITS)))
+
+    pit_mask_path = 'pit_mask.tif'
+
+    pygeoprocessing.new_raster_from_base(
+        dem_raster_path_band[0], pit_mask_path, gdal.GDT_Int64,
         [mask_nodata], fill_value_list=[mask_nodata],
         gtiff_creation_options=(
             'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
@@ -1117,10 +1127,23 @@ def detect_plateus_and_drains(
             'BLOCKYSIZE=%d' % (1 << BLOCK_BITS)))
 
     mask_managed_raster = ManagedRaster(
-        target_mask_path, MANAGED_RASTER_N_BLOCKS, 1)
+        mask_path, MANAGED_RASTER_N_BLOCKS, 1)
+
+    pit_mask_managed_raster = ManagedRaster(
+        pit_mask_path, MANAGED_RASTER_N_BLOCKS, 1)
 
     dem_managed_raster = ManagedRaster(
         dem_raster_path_band[0], MANAGED_RASTER_N_BLOCKS, 0)
+
+    gdal_driver = gdal.GetDriverByName('GTiff')
+    dem_raster = gdal.Open(dem_raster_path_band[0])
+    gdal_driver.CreateCopy(target_filled_dem_raster_path, dem_raster)
+
+    dem_raster = gdal.OpenEx(target_filled_dem_raster_path, gdal.OF_RASTER)
+    dem_band = dem_raster.GetRasterBand(dem_raster_path_band[1])
+
+    filled_dem_managed_raster = ManagedRaster(
+        target_filled_dem_raster_path, MANAGED_RASTER_N_BLOCKS, 1)
 
     feature_id = -1
     for offset_dict in pygeoprocessing.iterblocks(
@@ -1259,14 +1282,98 @@ def detect_plateus_and_drains(
         xi = deref(pitseed).xi
         yi = deref(pitseed).yi
 
+        # the fill height must be no less than this
+        fill_height = dem_managed_raster.get(xi, yi)
+
         logger.debug('visiting block %d %d', deref(pitseed).xoff, deref(pitseed).yoff)
         PyMem_Free(pitseed)
 
-        search_queue.push(CoordinatePair(xi, yi))
-        while not search_queue.empty():
-            xi_q = search_queue.front().first
-            yi_q = search_queue.front().second
-            search_queue.pop()
+        # this pixel has already been filled
+        if pit_mask_managed_raster.set(xi, yi, 1) == 2:
+            continue
+        # set mask 1 to indicate searching path
+        pit_mask_managed_raster.set(xi, yi, 1)
+
+        p = <Pixel*>PyMem_Malloc(sizeof(Pixel))
+        deref(p).value = fill_height
+        deref(p).xi = xi
+        deref(p).yi = yi
+        pit_queue.push(p)
+
+        while not pit_queue.empty():
+            p = pit_queue.top()
+            xi_q = deref(p).xi
+            yi_q = deref(p).yi
+            pit_queue.pop()
+            PyMem_Free(p)
+
+            for i in xrange(8):
+                n_x_off = xi_q+OFFSET_ARRAY[2*i]
+                n_y_off = yi_q+OFFSET_ARRAY[2*i+1]
+                if (n_x_off < 0 or n_x_off >= raster_x_size or
+                        n_y_off < 0 or n_y_off >= raster_y_size):
+                    nodata_drain = 1
+                    break
+
+                if pit_mask_managed_raster.get(n_x_off, n_y_off) == 1:
+                    # this cell has already been processed
+                    continue
+                pit_mask_managed_raster.set(n_x_off, n_y_off, 1)
+
+                n_height = dem_managed_raster.get(n_x_off, n_y_off)
+                if isclose(dem_nodata, n_height):
+                    nodata_drain = 1
+                    break
+
+                if n_neight < fill_height AND NOT A PIT:
+                    pour_point = 1
+                    break
+
+                # otherwise, keep searching
+                p = <Pixel*>PyMem_Malloc(sizeof(Pixel))
+                deref(p).value = n_height
+                deref(p).xi = n_x_off
+                deref(p).yi = n_y_off
+                pit_queue.push(p)
+
+            if nodata_drain or pour_point:
+                while not pit_queue.empty():
+                    p = pit_queue.top()
+                    xi_q = deref(p).xi
+                    yi_q = deref(p).yi
+                    pit_queue.pop()
+                    PyMem_Free(p)
+
+                if n_height != base_height:
+                    fill_height = n_height
+                    fill_queue.push(
+                        CoordinatePair(n_x_off, n_y_off))
+                    pit_mask_managed_raster.set(n_x_off, n_y_off, 2)
+
+        while not fill_queue.empty():
+            xi_q = fill_queue.top().first
+            yi_q = fill_queue.top().second
+            fill_queue.pop()
+            dem_managed_raster.set(xi_q, yi_q, fill_height)
+
+            for i in xrange(8):
+                n_x_off = xi_q+OFFSET_ARRAY[2*i]
+                n_y_off = yi_q+OFFSET_ARRAY[2*i+1]
+                if (n_x_off < 0 or n_x_off >= raster_x_size or
+                        n_y_off < 0 or n_y_off >= raster_y_size):
+                    continue
+
+                if pit_mask_managed_raster.get(n_x_off, n_y_off) == 2:
+                    # this cell has already been processed
+                    continue
+
+                if dem_managed_raster.set(xi_q, yi_q, fill_height) < fill_height:
+                    fill_queue.push(
+                        CoordinatePair(n_x_off, n_y_off))
+                    pit_mask_managed_raster.set(n_x_off, n_y_off, 2)
+
+
+            # TODO: I"M NOT DONE HERE I NEED OT FILL THE DEM
 
 
 def fill_pits_d8(
@@ -1371,7 +1478,6 @@ def fill_pits_d8(
 
     flow_dir_managed_raster = ManagedRaster(
         flow_dir_band_path[0], MANAGED_RASTER_N_BLOCKS, 1)
-
 
     blob_id = -1
     for offset_dict in pygeoprocessing.iterblocks(
