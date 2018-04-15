@@ -1082,6 +1082,7 @@ def fill_pits(
         None.
     """
     # TODO: review these variable names and make sure they make sense
+    # TODO: should working directory exist beforehand?
     cdef numpy.ndarray[numpy.float64_t, ndim=2] dem_buffer_array
     cdef int win_ysize, win_xsize
     cdef int xoff, yoff, i, xi, yi, xi_q, yi_q
