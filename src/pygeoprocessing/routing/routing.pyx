@@ -1271,7 +1271,8 @@ def detect_plateus_and_drains(
                                 n_x_off, n_y_off)):
                             nodata_drain = 1
                             continue
-                        n_height = filled_dem_managed_raster.get(n_x_off, n_y_off)
+                        n_height = filled_dem_managed_raster.get(
+                            n_x_off, n_y_off)
                         if n_height < center_val:
                             downhill_drain = 1
                             continue
@@ -1325,8 +1326,6 @@ def detect_plateus_and_drains(
                             nodata_drain = 1
                             break
 
-                        # TODO: should check that we aren't on current pit
-                        # just in case a pit overflows
                         if pit_mask_managed_raster.get(
                                 n_x_off, n_y_off) == feature_id:
                             # this cell has already been processed
@@ -1347,11 +1346,13 @@ def detect_plateus_and_drains(
 
                         # push onto queue
                         pitseed = <PitSeed*>PyMem_Malloc(sizeof(PitSeed))
+                        # TODO: get correct xoff/yoff or remove entirely
                         deref(pitseed).xoff = xoff
                         deref(pitseed).yoff = yoff
                         deref(pitseed).xi = n_x_off
                         deref(pitseed).yi = n_y_off
                         deref(pitseed).height = n_height
+                        pit_queue.push(pitseed)
 
                     if pour_point:
                         # clear the queue
