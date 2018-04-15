@@ -428,6 +428,9 @@ def fill_pits(
     # have already been processed
     cdef int feature_id
 
+    # used for time-delayed logging
+    cdef time_t last_log_time
+
     try:
         os.makedirs(working_dir)
     except OSError:
@@ -514,6 +517,8 @@ def fill_pits(
     filled_dem_managed_raster = ManagedRaster(
         target_filled_dem_raster_path, MANAGED_RASTER_N_BLOCKS, 1)
 
+    last_log_time = ctime(NULL)
+
     # feature_id will start at 1 since the mask nodata is 0.
     feature_id = 0
     for offset_dict in pygeoprocessing.iterblocks(
@@ -523,6 +528,12 @@ def fill_pits(
         win_ysize = offset_dict['win_ysize']
         xoff = offset_dict['xoff']
         yoff = offset_dict['yoff']
+
+        if ctime(NULL) - last_log_time > 5.0:
+            last_log_time = ctime(NULL)
+            current_pixel = xoff + yoff * raster_x_size
+            logger.info('%.2f%% complete', 100.0 * current_pixel / <float>(
+                raster_x_size * raster_y_size))
 
         # make a buffer big enough to capture block and boundaries around it
         dem_buffer_array = numpy.empty(
@@ -748,6 +759,7 @@ def fill_pits(
     pit_mask_managed_raster.close()
     flat_region_mask_managed_raster.close()
     shutil.rmtree(working_dir_path)
+    logger.info('%.2f%% complete', 100.0)
 
 
 def simple_d8(
