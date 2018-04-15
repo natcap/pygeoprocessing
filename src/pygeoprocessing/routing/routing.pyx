@@ -123,6 +123,7 @@ cdef class ManagedRaster:
     cdef long int cache_misses
     cdef long int gets
     cdef long int sets
+    cdef int closed
 
 
     def __cinit__(self, char* raster_path, n_blocks, write_mode):
@@ -156,6 +157,7 @@ cdef class ManagedRaster:
         self.cache_misses = 0
         self.sets = 0
         self.gets = 0
+        self.closed = 0
 
     def __dealloc__(self):
         """Deallocate ManagedRaster.
@@ -163,6 +165,12 @@ cdef class ManagedRaster:
         This operation manually frees memory from the LRUCache and writes any
         dirty memory blocks back to the raster if `self.write_mode` is True.
         """
+        self.close()
+
+    def close(self):
+        if self.closed:
+            return
+        self.closed = 1
         cdef int xi_copy, yi_copy
         cdef numpy.ndarray[double, ndim=2] block_array = numpy.empty(
             (self.block_ysize, self.block_xsize))
@@ -1058,17 +1066,22 @@ def detect_plateus_d8(
 
 
 def fill_pits(
-        dem_raster_path_band, target_filled_dem_raster_path):
+        dem_raster_path_band, target_filled_dem_raster_path,
+        working_dir=None):
     """Drain the plateaus from a trivially routed flow direction raster.
 
     Parameters:
         dem_raster_path_band (tuple): a path, band number tuple indicating the
             DEM calculate flow direction.
         target_filled_dem_raster_path (string): path to pit filled dem.
+        working_dir (string): If not None, indicates where temporary files
+            should be created during this run.
+
 
     Returns:
         None.
     """
+    # TODO: review these variable names and make sure they make sense
     cdef numpy.ndarray[numpy.float64_t, ndim=2] dem_buffer_array
     cdef int win_ysize, win_xsize
     cdef int xoff, yoff, i, xi, yi, xi_q, yi_q
@@ -1081,6 +1094,15 @@ def fill_pits(
     cdef queue[CoordinatePair] search_queue, fill_queue
     cdef priority_queue[PitSeedPtr, deque[PitSeedPtr], GreaterPitSeed] pit_queue
     cdef PitSeedPtr pitseed
+
+    try:
+        os.makedirs(working_dir)
+    except OSError:
+        pass
+
+    working_dir_path = tempfile.mkdtemp(
+        dir=working_dir, prefix='fill_pits_%s_' % time.strftime(
+            '%Y-%m-%d_%H_%M_%S', time.gmtime()))
 
     logger = logging.getLogger(
         'pygeoprocessing.routing.detect_plateus_and_drains')
@@ -1111,7 +1133,7 @@ def fill_pits(
     # these are used to determine if a sample is within the raster
     raster_x_size, raster_y_size = dem_raster_info['raster_size']
 
-    mask_path = 'mask.tif'
+    mask_path = os.path.join(working_dir_path, 'mask.tif')
     mask_nodata = -1
     pygeoprocessing.new_raster_from_base(
         dem_raster_path_band[0], mask_path, gdal.GDT_Int32,
@@ -1121,7 +1143,7 @@ def fill_pits(
             'BLOCKXSIZE=%d' % (1 << BLOCK_BITS),
             'BLOCKYSIZE=%d' % (1 << BLOCK_BITS)))
 
-    pit_mask_path = 'pit_mask.tif'
+    pit_mask_path = os.path.join(working_dir_path, 'pit_mask.tif')
 
     pygeoprocessing.new_raster_from_base(
         dem_raster_path_band[0], pit_mask_path, gdal.GDT_Int32,
@@ -1386,6 +1408,9 @@ def fill_pits(
                                 n_x_off, n_y_off, fill_height)
                             fill_queue.push(
                                 CoordinatePair(n_x_off, n_y_off))
+    pit_mask_managed_raster.close()
+    mask_managed_raster.close()
+    shutil.rmtree(working_dir_path)
 
 
 def flow_accumulation_d8(
