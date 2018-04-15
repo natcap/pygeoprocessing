@@ -79,7 +79,7 @@ cdef struct PitSeed:
     int yoff
     int xi
     int yi
-    int pit_id
+    double height
 
 ctypedef (PitSeed*) PitSeedPtr
 
@@ -454,9 +454,15 @@ cdef cppclass GreaterPixel nogil:
 # block
 cdef cppclass GreaterPitSeed nogil:
     bint get "operator()"(PitSeedPtr& lhs, PitSeedPtr& rhs):
-        return deref(lhs).xoff > deref(rhs).xoff or (
-            deref(lhs).xoff == deref(rhs).xoff and
-            deref(lhs).yoff > deref(rhs).yoff)
+        if deref(lhs).height > deref(rhs).height:
+            return 1
+        if deref(lhs).height == deref(rhs).height:
+            if deref(lhs).xoff > deref(rhs).xoff:
+                return 1
+            if deref(lhs).xoff == deref(rhs).xoff and (
+                    deref(lhs).yoff > deref(rhs).yoff):
+                return 1
+        return 0
 
 ctypedef double[:, :] FloatMemView
 
@@ -1067,6 +1073,7 @@ def detect_plateus_and_drains(
     cdef int win_ysize, win_xsize
     cdef int xoff, yoff, i, xi, yi, xi_q, yi_q
     cdef int n_x_off, n_y_off
+    cdef int xi_root, yi_root
     cdef int raster_x_size, raster_y_size
     cdef double center_val, dem_nodata, fill_height
     cdef int feature_id
@@ -1074,8 +1081,6 @@ def detect_plateus_and_drains(
     cdef queue[CoordinatePair] search_queue, fill_queue
     cdef priority_queue[PitSeedPtr, deque[PitSeedPtr], GreaterPitSeed] pit_queue
     cdef PitSeedPtr pitseed
-
-    cdef set[int] drain_set
 
     logger = logging.getLogger(
         'pygeoprocessing.routing.detect_plateus_and_drains')
@@ -1126,14 +1131,18 @@ def detect_plateus_and_drains(
             'BLOCKXSIZE=%d' % (1 << BLOCK_BITS),
             'BLOCKYSIZE=%d' % (1 << BLOCK_BITS)))
 
+    # this raster is used to keep track of what pixels have been searched for
+    # a plateau or pit. if a pixel is set, it means it is connected to a
+    # plateau or pit whose value is equal to the ID associated with that
+    # region
     mask_managed_raster = ManagedRaster(
         mask_path, MANAGED_RASTER_N_BLOCKS, 1)
 
+    # this raster will have the value of 'feature_id' set to it if it has
+    # been searched as part of the search for a pour point for freature
+    # `feature_id`
     pit_mask_managed_raster = ManagedRaster(
         pit_mask_path, MANAGED_RASTER_N_BLOCKS, 1)
-
-    dem_managed_raster = ManagedRaster(
-        dem_raster_path_band[0], MANAGED_RASTER_N_BLOCKS, 0)
 
     gdal_driver = gdal.GetDriverByName('GTiff')
     dem_raster = gdal.Open(dem_raster_path_band[0])
@@ -1191,19 +1200,22 @@ def detect_plateus_and_drains(
             buffer_off['xa']:buffer_off['xb']] = dem_band.ReadAsArray(
                 **offset_dict).astype(numpy.float64)
 
-        # irrespective of how we sampled the DEM only look at the block in
-        # the middle for valid
+        # search block for undrained pixels
         for yi in xrange(1, win_ysize+1):
             for xi in xrange(1, win_xsize+1):
                 center_val = dem_buffer_array[yi, xi]
                 if isclose(center_val, dem_nodata):
                     continue
 
+                # this value is set in case it turns out to be the root of a
+                # pit, the fill will start from this pixel outward
+                xi_root = xi-1+xoff
+                yi_root = yi-1+yoff
+
                 if not isclose(
                         mask_nodata,
-                        mask_managed_raster.get(
-                            xi-1+xoff, yi-1+yoff)):
-                    # already been marked as a plateau
+                        mask_managed_raster.get(xi_root, yi_root)):
+                    # already been searched
                     continue
 
                 # search neighbors for downhill or nodata
@@ -1211,19 +1223,19 @@ def detect_plateus_and_drains(
                 nodata_neighbor = 0
 
                 for i in xrange(8):
-                    n_x_off = xi-1+xoff+OFFSET_ARRAY[2*i]
-                    n_y_off = yi-1+yoff+OFFSET_ARRAY[2*i+1]
+                    n_x_off = xi_root+OFFSET_ARRAY[2*i]
+                    n_y_off = yi_root+OFFSET_ARRAY[2*i+1]
                     if (n_x_off < 0 or n_x_off >= raster_x_size or
                             n_y_off < 0 or n_y_off >= raster_y_size):
                         # it'll drain off the edge of the raster
                         nodata_neighbor = 1
                         break
-                    if isclose(dem_nodata, dem_managed_raster.get(
+                    if isclose(dem_nodata, filled_dem_managed_raster.get(
                             n_x_off, n_y_off)):
                         # it'll drain to nodata
                         nodata_neighbor = 1
                         break
-                    n_height = dem_managed_raster.get(n_x_off, n_y_off)
+                    n_height = filled_dem_managed_raster.get(n_x_off, n_y_off)
                     if n_height < center_val:
                         # it'll drain downhill
                         downhill_neighbor = 1
@@ -1232,11 +1244,17 @@ def detect_plateus_and_drains(
                 if downhill_neighbor or nodata_neighbor:
                     continue
 
+                # otherwise, this pixel doesn't drain locally, search to see
+                # if it's a pit or plateau
                 feature_id += 1
-                search_queue.push(CoordinatePair(xi-1+xoff, yi-1+yoff))
-                mask_managed_raster.set(xi-1+xoff, yi-1+yoff, feature_id)
+                search_queue.push(CoordinatePair(xi_root, yi_root))
+                mask_managed_raster.set(xi_root, yi_root, feature_id)
                 downhill_drain = 0
                 nodata_drain = 0
+
+                # this loop does a BFS starting at this pixel to all pixels
+                # of the same height. at the end it'll remember if it drained
+                # or not
                 while not search_queue.empty():
                     xi_q = search_queue.front().first
                     yi_q = search_queue.front().second
@@ -1248,102 +1266,119 @@ def detect_plateus_and_drains(
                         if (n_x_off < 0 or n_x_off >= raster_x_size or
                                 n_y_off < 0 or n_y_off >= raster_y_size):
                             nodata_drain = 1
-                            break
-                        if isclose(dem_nodata, dem_managed_raster.get(
+                            continue
+                        if isclose(dem_nodata, filled_dem_managed_raster.get(
                                 n_x_off, n_y_off)):
                             nodata_drain = 1
-                            break
-                        n_height = dem_managed_raster.get(n_x_off, n_y_off)
+                            continue
+                        n_height = filled_dem_managed_raster.get(n_x_off, n_y_off)
                         if n_height < center_val:
                             downhill_drain = 1
-                            break
+                            continue
                         if n_height == center_val and isclose(
                                 mask_nodata, mask_managed_raster.get(
                                     n_x_off, n_y_off)):
+                            # only grow if it's at the same level and not
+                            # previously visited
                             search_queue.push(
                                 CoordinatePair(n_x_off, n_y_off))
                             mask_managed_raster.set(
                                 n_x_off, n_y_off, feature_id)
 
                 if not downhill_drain and not nodata_drain:
+                    # entire region was searched with no drain, do a fill
+                    # and prioritize visit by block defined by xoff/yoff
                     pitseed = <PitSeed*>PyMem_Malloc(sizeof(PitSeed))
                     deref(pitseed).xoff = xoff
                     deref(pitseed).yoff = yoff
-                    deref(pitseed).xi = xi-1+xoff
-                    deref(pitseed).yi = yi-1+yoff
-                    pit_mask_managed_raster.set(xi-1+xoff, yi-1+yoff, 1)
+                    deref(pitseed).xi = xi_root
+                    deref(pitseed).yi = yi_root
+                    deref(pitseed).height = center_val
+                    pit_mask_managed_raster.set(
+                        xi_root, yi-1+yoff, feature_id)
                     pit_queue.push(pitseed)
-                    # initalize fill height to something that's in the pit
-                    fill_height = center_val
 
-                logger.info('iterating over pits')
+                logger.info('iterating over pit pixels')
 
+                # this loop visits pixels in increasing height order, so the
+                # first non-processed pixel that's < pitseed.height or nodata
+                # will be the lowest pour point
+                pour_point = 0
+                fill_height = dem_nodata
                 while not pit_queue.empty():
                     pitseed = pit_queue.top()
                     pit_queue.pop()
-                    xi = deref(pitseed).xi
-                    yi = deref(pitseed).yi
+                    xi_q = deref(pitseed).xi
+                    yi_q = deref(pitseed).yi
 
-                    # the fill height must be no less than this
-                    fill_height = dem_managed_raster.get(xi, yi)
+                    # this is the potential fill height if pixel is pour point
+                    fill_height = deref(pitseed).height
 
                     logger.debug(
-                        'visiting block %d %d', deref(pitseed).xoff, deref(pitseed).yoff)
+                        'visiting block %d %d',
+                        deref(pitseed).xoff, deref(pitseed).yoff)
                     PyMem_Free(pitseed)
 
                     for i in xrange(8):
-                        n_x_off = xi+OFFSET_ARRAY[2*i]
-                        n_y_off = yi+OFFSET_ARRAY[2*i+1]
+                        n_x_off = xi_q+OFFSET_ARRAY[2*i]
+                        n_y_off = yi_q+OFFSET_ARRAY[2*i+1]
                         if (n_x_off < 0 or n_x_off >= raster_x_size or
                                 n_y_off < 0 or n_y_off >= raster_y_size):
                             nodata_drain = 1
                             break
 
-                        if pit_mask_managed_raster.get(n_x_off, n_y_off) >= 1:
+                        # TODO: should check that we aren't on current pit
+                        # just in case a pit overflows
+                        if pit_mask_managed_raster.get(
+                                n_x_off, n_y_off) == feature_id:
                             # this cell has already been processed
                             continue
-                        pit_mask_managed_raster.set(n_x_off, n_y_off, 1)
+                        # mark as visited in the search for pour point
+                        pit_mask_managed_raster.set(
+                            n_x_off, n_y_off, feature_id)
 
-                        n_height = dem_managed_raster.get(n_x_off, n_y_off)
-                        if isclose(n_height, dem_nodata) or n_neight < fill_height:
-                            # we encounter a pixel not processed that is less than the
-                            # neighbor's height or nodata, it is a drain
+                        n_height = filled_dem_managed_raster.get(
+                            n_x_off, n_y_off)
+                        if isclose(n_height, dem_nodata) or (
+                                n_height < fill_height):
+                            # we encounter a pixel not processed that is less
+                            # than the neighbor's height or nodata, it is a
+                            # pour point
                             pour_point = 1
                             break
 
                     if pour_point:
                         # clear the queue
                         while not pit_queue.empty():
-                            p = pit_queue.top()
-                            xi_q = deref(p).xi
-                            yi_q = deref(p).yi
+                            PyMem_Free(pit_queue.top())
                             pit_queue.pop()
-                            PyMem_Free(p)
 
-                        fill_queue.push(CoordinatePair(xi, yi))
-                        pit_mask_managed_raster.set(xi, yi, 2)
+                        # start from original pit seed rather than pour point
+                        # this way we can stop filling when we reach a height
+                        # equal to fill_height
+                        fill_queue.push(CoordinatePair(xi_root, yi_root))
 
-                    while not fill_queue.empty():
-                        xi_q = fill_queue.top().first
-                        yi_q = fill_queue.top().second
-                        fill_queue.pop()
-                        dem_managed_raster.set(xi_q, yi_q, fill_height)
+                # TODO: assert pour_point == 1?
+                # TODO: assert fill-height != nodata?
+                while not fill_queue.empty():
+                    xi_q = fill_queue.front().first
+                    yi_q = fill_queue.front().second
+                    fill_queue.pop()
+                    filled_dem_managed_raster.set(xi_q, yi_q, fill_height)
 
-                        for i in xrange(8):
-                            n_x_off = xi_q+OFFSET_ARRAY[2*i]
-                            n_y_off = yi_q+OFFSET_ARRAY[2*i+1]
-                            if (n_x_off < 0 or n_x_off >= raster_x_size or
-                                    n_y_off < 0 or n_y_off >= raster_y_size):
-                                continue
+                    for i in xrange(8):
+                        n_x_off = xi_q+OFFSET_ARRAY[2*i]
+                        n_y_off = yi_q+OFFSET_ARRAY[2*i+1]
+                        if (n_x_off < 0 or n_x_off >= raster_x_size or
+                                n_y_off < 0 or n_y_off >= raster_y_size):
+                            continue
 
-                            if pit_mask_managed_raster.get(n_x_off, n_y_off) != 1:
-                                # this cell has already been processed or is not part
-                                # of the pit
-                                continue
-
-                            if dem_managed_raster.get(n_x_off, n_y_off) < fill_height:
-                                pit_mask_managed_raster.set(n_x_off, n_y_off, 2)
-                                fill_queue.push(CoordinatePair(n_x_off, n_y_off))
+                        if filled_dem_managed_raster.get(
+                                n_x_off, n_y_off) < fill_height:
+                            filled_dem_managed_raster.set(
+                                n_x_off, n_y_off, fill_height)
+                            fill_queue.push(
+                                CoordinatePair(n_x_off, n_y_off))
 
 
 def fill_pits_d8(
