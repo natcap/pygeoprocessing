@@ -417,8 +417,15 @@ def fill_pits(
     # height, to search for the lowest pour point.
     cdef priority_queue[PixelPtr, deque[PixelPtr], GreaterPixel] pit_queue
 
-    cdef int raster_x_size, raster_y_size, n_x_blocks
+    # properties of the parallel rasters
+    cdef int raster_x_size, raster_y_size, n_x_blocks, block_size
+
+    # variables to remember heights of DEM
     cdef double center_val, dem_nodata, fill_height
+
+    # used to uniquely identify each flat/pit region encountered in the
+    # algorithm, it's written into the mask rasters to indicate which pixels
+    # have already been processed
     cdef int feature_id
 
     try:
@@ -442,10 +449,12 @@ def fill_pits(
     else:
         # pick some very improbable value since it's hard to deal with NaNs
         dem_nodata = IMPROBABLE_FLOAT_NOATA
+
     dem_raster = gdal.OpenEx(dem_raster_path_band[0], gdal.OF_RASTER)
     dem_band = dem_raster.GetRasterBand(dem_raster_path_band[1])
 
-    cdef int* OFFSET_ARRAY = [
+    # used to loop over neighbors and offset the x/y values as defined below
+    cdef int* NEIGHBOR_OFFSET_ARRAY = [
         1, 0,  # 0
         1, -1,  # 1
         0, -1,  # 2
@@ -459,12 +468,15 @@ def fill_pits(
     # these are used to determine if a sample is within the raster
     raster_x_size, raster_y_size = dem_raster_info['raster_size']
 
-    mask_path = os.path.join(working_dir_path, 'mask.tif')
-    mask_nodata = -1
+    # this is the nodata value for all the masks in this function
+    mask_nodata = 0
+
+    flat_region_mask_path = os.path.join(
+        working_dir_path, 'flat_region_mask.tif')
     block_size = 1 << BLOCK_BITS
     n_x_blocks = raster_x_size // block_size + 1
     pygeoprocessing.new_raster_from_base(
-        dem_raster_path_band[0], mask_path, gdal.GDT_Int32,
+        dem_raster_path_band[0], flat_region_mask_path, gdal.GDT_Byte,
         [mask_nodata], fill_value_list=[mask_nodata],
         gtiff_creation_options=(
             'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
@@ -472,7 +484,6 @@ def fill_pits(
             'BLOCKYSIZE=%d' % block_size))
 
     pit_mask_path = os.path.join(working_dir_path, 'pit_mask.tif')
-
     pygeoprocessing.new_raster_from_base(
         dem_raster_path_band[0], pit_mask_path, gdal.GDT_Int32,
         [mask_nodata], fill_value_list=[mask_nodata],
@@ -482,14 +493,13 @@ def fill_pits(
             'BLOCKYSIZE=%d' % block_size))
 
     # this raster is used to keep track of what pixels have been searched for
-    # a plateau or pit. if a pixel is set, it means it is connected to a
-    # plateau or pit whose value is equal to the ID associated with that
-    # region
-    mask_managed_raster = ManagedRaster(
-        mask_path, MANAGED_RASTER_N_BLOCKS, 1)
+    # a plateau or pit. if a pixel is set, it means it is part of a locally
+    # undrained area
+    flat_region_mask_managed_raster = ManagedRaster(
+        flat_region_mask_path, MANAGED_RASTER_N_BLOCKS, 1)
 
     # this raster will have the value of 'feature_id' set to it if it has
-    # been searched as part of the search for a pour point for feature
+    # been searched as part of the search for a pour point for pit number
     # `feature_id`
     pit_mask_managed_raster = ManagedRaster(
         pit_mask_path, MANAGED_RASTER_N_BLOCKS, 1)
@@ -504,7 +514,8 @@ def fill_pits(
     filled_dem_managed_raster = ManagedRaster(
         target_filled_dem_raster_path, MANAGED_RASTER_N_BLOCKS, 1)
 
-    feature_id = -1
+    # feature_id will start at 1 since the mask nodata is 0.
+    feature_id = 0
     for offset_dict in pygeoprocessing.iterblocks(
             dem_raster_path_band[0], offset_only=True, largest_block=0):
         # statically type these for later
@@ -564,7 +575,8 @@ def fill_pits(
 
                 if not isclose(
                         mask_nodata,
-                        mask_managed_raster.get(xi_root, yi_root)):
+                        flat_region_mask_managed_raster.get(
+                            xi_root, yi_root)):
                     # already been searched
                     continue
 
@@ -573,8 +585,8 @@ def fill_pits(
                 nodata_neighbor = 0
 
                 for i_n in xrange(8):
-                    xi_n = xi_root+OFFSET_ARRAY[2*i_n]
-                    yi_n = yi_root+OFFSET_ARRAY[2*i_n+1]
+                    xi_n = xi_root+NEIGHBOR_OFFSET_ARRAY[2*i_n]
+                    yi_n = yi_root+NEIGHBOR_OFFSET_ARRAY[2*i_n+1]
                     if (xi_n < 0 or xi_n >= raster_x_size or
                             yi_n < 0 or yi_n >= raster_y_size):
                         # it'll drain off the edge of the raster
@@ -598,7 +610,8 @@ def fill_pits(
                 # if it's a pit or plateau
                 feature_id += 1
                 search_queue.push(CoordinatePair(xi_root, yi_root))
-                mask_managed_raster.set(xi_root, yi_root, feature_id)
+                flat_region_mask_managed_raster.set(
+                    xi_root, yi_root, 1)
                 downhill_drain = 0
                 nodata_drain = 0
 
@@ -611,8 +624,8 @@ def fill_pits(
                     search_queue.pop()
 
                     for i_n in xrange(8):
-                        xi_n = xi_q+OFFSET_ARRAY[2*i_n]
-                        yi_n = yi_q+OFFSET_ARRAY[2*i_n+1]
+                        xi_n = xi_q+NEIGHBOR_OFFSET_ARRAY[2*i_n]
+                        yi_n = yi_q+NEIGHBOR_OFFSET_ARRAY[2*i_n+1]
                         if (xi_n < 0 or xi_n >= raster_x_size or
                                 yi_n < 0 or yi_n >= raster_y_size):
                             nodata_drain = 1
@@ -627,22 +640,23 @@ def fill_pits(
                             downhill_drain = 1
                             continue
                         if n_height == center_val and isclose(
-                                mask_nodata, mask_managed_raster.get(
+                                mask_nodata,
+                                flat_region_mask_managed_raster.get(
                                     xi_n, yi_n)):
                             # only grow if it's at the same level and not
                             # previously visited
                             search_queue.push(
                                 CoordinatePair(xi_n, yi_n))
-                            mask_managed_raster.set(
-                                xi_n, yi_n, feature_id)
+                            flat_region_mask_managed_raster.set(
+                                xi_n, yi_n, 1)
 
                 if not downhill_drain and not nodata_drain:
                     # entire region was searched with no drain, do a fill
-                    # and prioritize visit by block defined by xoff/yoff
                     pixel = <Pixel*>PyMem_Malloc(sizeof(Pixel))
                     deref(pixel).xi = xi_root
                     deref(pixel).yi = yi_root
                     deref(pixel).value = center_val
+                    # set the priority to be the block index
                     deref(pixel).priority = (
                         n_x_blocks * (yi_root // block_size) +
                         xi_root // block_size)
@@ -660,15 +674,13 @@ def fill_pits(
                     pit_queue.pop()
                     xi_q = deref(pixel).xi
                     yi_q = deref(pixel).yi
-
                     # this is the potential fill height if pixel is pour point
                     fill_height = deref(pixel).value
-
                     PyMem_Free(pixel)
 
                     for i_n in xrange(8):
-                        xi_n = xi_q+OFFSET_ARRAY[2*i_n]
-                        yi_n = yi_q+OFFSET_ARRAY[2*i_n+1]
+                        xi_n = xi_q+NEIGHBOR_OFFSET_ARRAY[2*i_n]
+                        yi_n = yi_q+NEIGHBOR_OFFSET_ARRAY[2*i_n+1]
                         if (xi_n < 0 or xi_n >= raster_x_size or
                                 yi_n < 0 or yi_n >= raster_y_size):
                             nodata_drain = 1
@@ -697,13 +709,14 @@ def fill_pits(
                         deref(pixel).xi = xi_n
                         deref(pixel).yi = yi_n
                         deref(pixel).value = n_height
+                        # set the priority to be the block index
                         deref(pixel).priority = (
                             n_x_blocks * (yi_n // block_size) +
                             xi_n // block_size)
                         pit_queue.push(pixel)
 
                     if pour_point:
-                        # clear the queue
+                        # found a pour point, clear the queue
                         while not pit_queue.empty():
                             PyMem_Free(pit_queue.top())
                             pit_queue.pop()
@@ -720,8 +733,8 @@ def fill_pits(
                     filled_dem_managed_raster.set(xi_q, yi_q, fill_height)
 
                     for i_n in xrange(8):
-                        xi_n = xi_q+OFFSET_ARRAY[2*i_n]
-                        yi_n = yi_q+OFFSET_ARRAY[2*i_n+1]
+                        xi_n = xi_q+NEIGHBOR_OFFSET_ARRAY[2*i_n]
+                        yi_n = yi_q+NEIGHBOR_OFFSET_ARRAY[2*i_n+1]
                         if (xi_n < 0 or xi_n >= raster_x_size or
                                 yi_n < 0 or yi_n >= raster_y_size):
                             continue
@@ -733,7 +746,7 @@ def fill_pits(
                             fill_queue.push(
                                 CoordinatePair(xi_n, yi_n))
     pit_mask_managed_raster.close()
-    mask_managed_raster.close()
+    flat_region_mask_managed_raster.close()
     shutil.rmtree(working_dir_path)
 
 
