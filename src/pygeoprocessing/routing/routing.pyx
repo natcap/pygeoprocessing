@@ -1114,7 +1114,7 @@ def detect_plateus_and_drains(
     mask_path = 'mask.tif'
     mask_nodata = -1
     pygeoprocessing.new_raster_from_base(
-        dem_raster_path_band[0], mask_path, gdal.GDT_Int64,
+        dem_raster_path_band[0], mask_path, gdal.GDT_Int32,
         [mask_nodata], fill_value_list=[mask_nodata],
         gtiff_creation_options=(
             'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
@@ -1124,7 +1124,7 @@ def detect_plateus_and_drains(
     pit_mask_path = 'pit_mask.tif'
 
     pygeoprocessing.new_raster_from_base(
-        dem_raster_path_band[0], pit_mask_path, gdal.GDT_Int64,
+        dem_raster_path_band[0], pit_mask_path, gdal.GDT_Int32,
         [mask_nodata], fill_value_list=[mask_nodata],
         gtiff_creation_options=(
             'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
@@ -1139,7 +1139,7 @@ def detect_plateus_and_drains(
         mask_path, MANAGED_RASTER_N_BLOCKS, 1)
 
     # this raster will have the value of 'feature_id' set to it if it has
-    # been searched as part of the search for a pour point for freature
+    # been searched as part of the search for a pour point for feature
     # `feature_id`
     pit_mask_managed_raster = ManagedRaster(
         pit_mask_path, MANAGED_RASTER_N_BLOCKS, 1)
@@ -1295,10 +1295,8 @@ def detect_plateus_and_drains(
                     deref(pitseed).yi = yi_root
                     deref(pitseed).height = center_val
                     pit_mask_managed_raster.set(
-                        xi_root, yi-1+yoff, feature_id)
+                        xi_root, yi_root, feature_id)
                     pit_queue.push(pitseed)
-
-                logger.info('iterating over pit pixels')
 
                 # this loop visits pixels in increasing height order, so the
                 # first non-processed pixel that's < pitseed.height or nodata
@@ -1346,6 +1344,14 @@ def detect_plateus_and_drains(
                             # pour point
                             pour_point = 1
                             break
+
+                        # push onto queue
+                        pitseed = <PitSeed*>PyMem_Malloc(sizeof(PitSeed))
+                        deref(pitseed).xoff = xoff
+                        deref(pitseed).yoff = yoff
+                        deref(pitseed).xi = n_x_off
+                        deref(pitseed).yi = n_y_off
+                        deref(pitseed).height = n_height
 
                     if pour_point:
                         # clear the queue
