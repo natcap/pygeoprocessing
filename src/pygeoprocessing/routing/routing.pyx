@@ -236,9 +236,6 @@ cdef class ManagedRaster:
                     xoff=xoff, yoff=yoff)
             PyMem_Free(double_buffer)
             inc(it)
-        print 'gets: ', self.gets
-        print 'sets: ', self.sets
-        print 'block cache misses ', self.cache_misses, self.raster_path
         raster_band.FlushCache()
         raster_band = None
         raster = None

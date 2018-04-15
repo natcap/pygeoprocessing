@@ -40,8 +40,7 @@ class TestRouting(unittest.TestCase):
         flow_dir_path = os.path.join(self.workspace_dir, 'flow_dir.tif')
 
         pygeoprocessing.routing.fill_pits(
-            (base_path, 1), fill_path, flow_dir_path,
-            temp_dir_path=self.workspace_dir)
+            (base_path, 1), fill_path, working_dir=self.workspace_dir)
 
         result_raster = gdal.OpenEx(fill_path, gdal.OF_RASTER)
         result_band = result_raster.GetRasterBand(1)
@@ -75,8 +74,7 @@ class TestRouting(unittest.TestCase):
         flow_dir_path = os.path.join(self.workspace_dir, 'flow_dir.tif')
 
         pygeoprocessing.routing.fill_pits(
-            (base_path, 1), fill_path, flow_dir_path,
-            temp_dir_path=self.workspace_dir)
+            (base_path, 1), fill_path, working_dir=self.workspace_dir)
 
         result_raster = gdal.OpenEx(fill_path, gdal.OF_RASTER)
         result_band = result_raster.GetRasterBand(1)
