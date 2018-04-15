@@ -74,20 +74,12 @@ cdef extern from "<queue>" namespace "std" nogil:
         size_t size()
         T& top()
 
-cdef struct PitSeed:
-    int xoff
-    int yoff
-    int xi
-    int yi
-    double height
-
-ctypedef (PitSeed*) PitSeedPtr
-
 # this is the class type that'll get stored in the priority queue
 cdef struct Pixel:
     double value  # pixel value
     int xi  # pixel x coordinate in the raster
     int yi  # pixel y coordinate in the raster
+    int priority # for breaking ties if two `value`s are equal.
 
 ctypedef (Pixel*) PixelPtr
 
@@ -124,7 +116,6 @@ cdef class ManagedRaster:
     cdef long int gets
     cdef long int sets
     cdef int closed
-
 
     def __cinit__(self, char* raster_path, n_blocks, write_mode):
         """Create new instance of Managed Raster.
@@ -364,23 +355,14 @@ cdef class ManagedRaster:
 
 ctypedef pair[int, int] CoordinatePair
 
-# This functor is used to determine order in the priority queue by comparing
-# value only.
 cdef cppclass GreaterPixel nogil:
     bint get "operator()"(PixelPtr& lhs, PixelPtr& rhs):
-        return deref(lhs).value > deref(rhs).value
-
-# This is used to identify pit pixels to prioritize and group them by local
-# block
-cdef cppclass GreaterPitSeed nogil:
-    bint get "operator()"(PitSeedPtr& lhs, PitSeedPtr& rhs):
-        if deref(lhs).height > deref(rhs).height:
+        # lhs is > than rhs if its value is greater or if it's equal if
+        # the priority is >.
+        if deref(lhs).value > deref(rhs).value:
             return 1
-        if deref(lhs).height == deref(rhs).height:
-            if deref(lhs).xoff > deref(rhs).xoff:
-                return 1
-            if deref(lhs).xoff == deref(rhs).xoff and (
-                    deref(lhs).yoff > deref(rhs).yoff):
+        if deref(lhs).value == deref(rhs).value:
+            if deref(lhs).priority > deref(rhs).priority:
                 return 1
         return 0
 
@@ -403,17 +385,41 @@ def fill_pits(
     """
     # TODO: review these variable names and make sure they make sense
     # TODO: should working directory exist beforehand?
+
+    # These variables are used to iterate over the DEM using `iterblock`
+    # indexes
     cdef numpy.ndarray[numpy.float64_t, ndim=2] dem_buffer_array
-    cdef int win_ysize, win_xsize
-    cdef int xoff, yoff, i, xi, yi, xi_q, yi_q, xi_n, yi_n
+    cdef int win_ysize, win_xsize, xoff, yoff
+
+    # the _root variables remembers the pixel index where the plateau/pit
+    # region was first detected when iterating over the DEM.
     cdef int xi_root, yi_root
-    cdef int raster_x_size, raster_y_size
+    cdef int i_n, xi, yi, xi_q, yi_q, xi_n, yi_n
+
+    # these are booleans used to remember the condition that caused a loop
+    # to terminate
+    cdef int downhill_neighbor, nodata_neighbor, downhill_drain, nodata_drain
+
+    # `search_queue` is used to grow a flat region searching for a pour point
+    # to determine if region is plateau or ni the absence of a pour point,
+    # a pit.
+    cdef queue[CoordinatePair] search_queue
+    # `fill_queue` is used after a region is identified as a pit and its pour
+    # height is determined to fill the pit up to the pour height
+    cdef queue[CoordinatePair] fill_queue
+
+    # a pixel pointer is used to push to a priority queue. it remembers its
+    # pixel value, x/y index, and an optional priority value to order if
+    # heights are equal.
+    cdef PixelPtr pixel
+
+    # this priority queue is used to iterate over pit pixels in increasing
+    # height, to search for the lowest pour point.
+    cdef priority_queue[PixelPtr, deque[PixelPtr], GreaterPixel] pit_queue
+
+    cdef int raster_x_size, raster_y_size, n_x_blocks
     cdef double center_val, dem_nodata, fill_height
     cdef int feature_id
-    cdef int downhill_neighbor, nodata_neighbor, downhill_drain, nodata_drain
-    cdef queue[CoordinatePair] search_queue, fill_queue
-    cdef priority_queue[PitSeedPtr, deque[PitSeedPtr], GreaterPitSeed] pit_queue
-    cdef PitSeedPtr pitseed
 
     try:
         os.makedirs(working_dir)
@@ -455,13 +461,15 @@ def fill_pits(
 
     mask_path = os.path.join(working_dir_path, 'mask.tif')
     mask_nodata = -1
+    block_size = 1 << BLOCK_BITS
+    n_x_blocks = raster_x_size // block_size + 1
     pygeoprocessing.new_raster_from_base(
         dem_raster_path_band[0], mask_path, gdal.GDT_Int32,
         [mask_nodata], fill_value_list=[mask_nodata],
         gtiff_creation_options=(
             'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
-            'BLOCKXSIZE=%d' % (1 << BLOCK_BITS),
-            'BLOCKYSIZE=%d' % (1 << BLOCK_BITS)))
+            'BLOCKXSIZE=%d' % block_size,
+            'BLOCKYSIZE=%d' % block_size))
 
     pit_mask_path = os.path.join(working_dir_path, 'pit_mask.tif')
 
@@ -470,8 +478,8 @@ def fill_pits(
         [mask_nodata], fill_value_list=[mask_nodata],
         gtiff_creation_options=(
             'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
-            'BLOCKXSIZE=%d' % (1 << BLOCK_BITS),
-            'BLOCKYSIZE=%d' % (1 << BLOCK_BITS)))
+            'BLOCKXSIZE=%d' % block_size,
+            'BLOCKYSIZE=%d' % block_size))
 
     # this raster is used to keep track of what pixels have been searched for
     # a plateau or pit. if a pixel is set, it means it is connected to a
@@ -564,9 +572,9 @@ def fill_pits(
                 downhill_neighbor = 0
                 nodata_neighbor = 0
 
-                for i in xrange(8):
-                    xi_n = xi_root+OFFSET_ARRAY[2*i]
-                    yi_n = yi_root+OFFSET_ARRAY[2*i+1]
+                for i_n in xrange(8):
+                    xi_n = xi_root+OFFSET_ARRAY[2*i_n]
+                    yi_n = yi_root+OFFSET_ARRAY[2*i_n+1]
                     if (xi_n < 0 or xi_n >= raster_x_size or
                             yi_n < 0 or yi_n >= raster_y_size):
                         # it'll drain off the edge of the raster
@@ -602,9 +610,9 @@ def fill_pits(
                     yi_q = search_queue.front().second
                     search_queue.pop()
 
-                    for i in xrange(8):
-                        xi_n = xi_q+OFFSET_ARRAY[2*i]
-                        yi_n = yi_q+OFFSET_ARRAY[2*i+1]
+                    for i_n in xrange(8):
+                        xi_n = xi_q+OFFSET_ARRAY[2*i_n]
+                        yi_n = yi_q+OFFSET_ARRAY[2*i_n+1]
                         if (xi_n < 0 or xi_n >= raster_x_size or
                                 yi_n < 0 or yi_n >= raster_y_size):
                             nodata_drain = 1
@@ -631,38 +639,36 @@ def fill_pits(
                 if not downhill_drain and not nodata_drain:
                     # entire region was searched with no drain, do a fill
                     # and prioritize visit by block defined by xoff/yoff
-                    pitseed = <PitSeed*>PyMem_Malloc(sizeof(PitSeed))
-                    deref(pitseed).xoff = xoff
-                    deref(pitseed).yoff = yoff
-                    deref(pitseed).xi = xi_root
-                    deref(pitseed).yi = yi_root
-                    deref(pitseed).height = center_val
+                    pixel = <Pixel*>PyMem_Malloc(sizeof(Pixel))
+                    deref(pixel).xi = xi_root
+                    deref(pixel).yi = yi_root
+                    deref(pixel).value = center_val
+                    deref(pixel).priority = (
+                        n_x_blocks * (yi_root // block_size) +
+                        xi_root // block_size)
                     pit_mask_managed_raster.set(
                         xi_root, yi_root, feature_id)
-                    pit_queue.push(pitseed)
+                    pit_queue.push(pixel)
 
                 # this loop visits pixels in increasing height order, so the
-                # first non-processed pixel that's < pitseed.height or nodata
+                # first non-processed pixel that's < pixel.height or nodata
                 # will be the lowest pour point
                 pour_point = 0
                 fill_height = dem_nodata
                 while not pit_queue.empty():
-                    pitseed = pit_queue.top()
+                    pixel = pit_queue.top()
                     pit_queue.pop()
-                    xi_q = deref(pitseed).xi
-                    yi_q = deref(pitseed).yi
+                    xi_q = deref(pixel).xi
+                    yi_q = deref(pixel).yi
 
                     # this is the potential fill height if pixel is pour point
-                    fill_height = deref(pitseed).height
+                    fill_height = deref(pixel).value
 
-                    logger.debug(
-                        'visiting block %d %d',
-                        deref(pitseed).xoff, deref(pitseed).yoff)
-                    PyMem_Free(pitseed)
+                    PyMem_Free(pixel)
 
-                    for i in xrange(8):
-                        xi_n = xi_q+OFFSET_ARRAY[2*i]
-                        yi_n = yi_q+OFFSET_ARRAY[2*i+1]
+                    for i_n in xrange(8):
+                        xi_n = xi_q+OFFSET_ARRAY[2*i_n]
+                        yi_n = yi_q+OFFSET_ARRAY[2*i_n+1]
                         if (xi_n < 0 or xi_n >= raster_x_size or
                                 yi_n < 0 or yi_n >= raster_y_size):
                             nodata_drain = 1
@@ -687,14 +693,14 @@ def fill_pits(
                             break
 
                         # push onto queue
-                        pitseed = <PitSeed*>PyMem_Malloc(sizeof(PitSeed))
-                        # TODO: get correct xoff/yoff or remove entirely
-                        deref(pitseed).xoff = xoff
-                        deref(pitseed).yoff = yoff
-                        deref(pitseed).xi = xi_n
-                        deref(pitseed).yi = yi_n
-                        deref(pitseed).height = n_height
-                        pit_queue.push(pitseed)
+                        pixel = <Pixel*>PyMem_Malloc(sizeof(Pixel))
+                        deref(pixel).xi = xi_n
+                        deref(pixel).yi = yi_n
+                        deref(pixel).value = n_height
+                        deref(pixel).priority = (
+                            n_x_blocks * (yi_n // block_size) +
+                            xi_n // block_size)
+                        pit_queue.push(pixel)
 
                     if pour_point:
                         # clear the queue
@@ -707,17 +713,15 @@ def fill_pits(
                         # equal to fill_height
                         fill_queue.push(CoordinatePair(xi_root, yi_root))
 
-                # TODO: assert pour_point == 1?
-                # TODO: assert fill-height != nodata?
                 while not fill_queue.empty():
                     xi_q = fill_queue.front().first
                     yi_q = fill_queue.front().second
                     fill_queue.pop()
                     filled_dem_managed_raster.set(xi_q, yi_q, fill_height)
 
-                    for i in xrange(8):
-                        xi_n = xi_q+OFFSET_ARRAY[2*i]
-                        yi_n = yi_q+OFFSET_ARRAY[2*i+1]
+                    for i_n in xrange(8):
+                        xi_n = xi_q+OFFSET_ARRAY[2*i_n]
+                        yi_n = yi_q+OFFSET_ARRAY[2*i_n+1]
                         if (xi_n < 0 or xi_n >= raster_x_size or
                                 yi_n < 0 or yi_n >= raster_y_size):
                             continue
