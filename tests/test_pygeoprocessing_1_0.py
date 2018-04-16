@@ -40,7 +40,6 @@ class PyGeoprocessing10(unittest.TestCase):
         import pygeoprocessing
         import inspect
         for attrname in pygeoprocessing.__all__:
-            print attrname
             try:
                 func = getattr(pygeoprocessing, attrname)
                 self.assertTrue(
