@@ -119,18 +119,14 @@ cdef class ManagedRaster:
         print '%d %d %s' % (
             self.block_xsize, self.block_ysize, raster_path)
 
-        if self.block_xsize & (self.block_xsize - 1) != 0:
-            print "Block xsize is not a power of two: block_xsize: %d, %s" % (
-                self.block_xsize, raster_path)
-            raise ValueError(
-                "Block xsize is not a power of two: block_xsize: %d, %s",
-                self.block_xsize, raster_path)
-        if self.block_ysize & (self.block_ysize - 1) != 0:
-            print "Block ysize is not a power of two: block_ysize: %d, %s" % (
+        if (self.block_xsize & (self.block_xsize - 1) != 0) or (
+                self.block_ysize & (self.block_ysize - 1) != 0):
+            err_msg = (
+                "Error: Block size is not a power of two: "
+                "block_xsize: %d, %d, %s" % self.block_xsize,
                 self.block_ysize, raster_path)
-            raise ValueError(
-                "Block ysize is not a power of two: block_ysize: %d, %s",
-                self.block_ysize, raster_path)
+            print err_msg
+            raise ValueError(err_msg)
 
         self.block_xbits = numpy.log2(self.block_xsize)
         self.block_ybits = numpy.log2(self.block_ysize)
