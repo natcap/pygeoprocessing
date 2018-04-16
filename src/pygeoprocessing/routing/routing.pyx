@@ -39,8 +39,10 @@ from libcpp.stack cimport stack
 from libcpp.deque cimport deque
 from libcpp.set cimport set as cset
 
-# This module expects rasters with a memory xy block size of 2**BLOCK_BITS
+# This module creates rasters with a memory xy block size of 2**BLOCK_BITS
 cdef int BLOCK_BITS = 8
+
+# Number of raster blocks to hold in memory at once per Managed Raster
 cdef int MANAGED_RASTER_N_BLOCKS = 2**6
 
 # these are the creation options that'll be used for all the rasters
@@ -85,6 +87,8 @@ cdef extern from "LRUCache.h" nogil:
 # inside Managed Raster
 ctypedef pair[int, double*] BlockBufferPair
 
+# a class to allow fast random per-pixel access to a raster for both setting
+# and reading pixels.
 cdef class ManagedRaster:
     cdef LRUCache[int, double*]* lru_cache
     cdef cset[int] dirty_blocks
@@ -101,7 +105,7 @@ cdef class ManagedRaster:
     cdef int band_id
     cdef int closed
 
-    def __cinit__(self, char* raster_path, int band_id, n_blocks, write_mode):
+    def __cinit__(self, char* raster_path, int band_id, write_mode):
         """Create new instance of Managed Raster.
 
         Parameters:
@@ -109,8 +113,6 @@ cdef class ManagedRaster:
                 powers of 2. If not, an exception is raised.
             band_id (int): which band in `raster_path` to index. Uses GDAL
                 notation that starts at 1.
-            n_blocks (int): number of raster memory blocks to store in the
-                cache.
             write_mode (boolean): if true, this raster is writable and dirty
                 memory blocks will be written back to the raster as blocks
                 are swapped out of the cache or when the object deconstructs.
@@ -121,9 +123,6 @@ cdef class ManagedRaster:
         raster_info = pygeoprocessing.get_raster_info(raster_path)
         self.raster_x_size, self.raster_y_size = raster_info['raster_size']
         self.block_xsize, self.block_ysize = raster_info['block_size']
-
-        print '%d %d %s' % (
-            self.block_xsize, self.block_ysize, raster_path)
 
         if (self.block_xsize & (self.block_xsize - 1) != 0) or (
                 self.block_ysize & (self.block_ysize - 1) != 0):
@@ -145,7 +144,7 @@ cdef class ManagedRaster:
         self.block_ny = (
             self.raster_y_size + (self.block_ysize) - 1) / self.block_ysize
 
-        self.lru_cache = new LRUCache[int, double*](n_blocks)
+        self.lru_cache = new LRUCache[int, double*](MANAGED_RASTER_N_BLOCKS)
         self.raster_path = raster_path
         self.band_id = band_id
         self.write_mode = write_mode
@@ -242,6 +241,7 @@ cdef class ManagedRaster:
         raster = None
 
     cdef void set(self, int xi, int yi, double value):
+        """Set the pixel at `xi,yi` to `value`."""
         cdef int block_xi = xi >> self.block_xbits
         cdef int block_yi = yi >> self.block_ybits
         # this is the flat index for the block
@@ -258,6 +258,7 @@ cdef class ManagedRaster:
                 self.dirty_blocks.insert(block_index)
 
     cdef double get(self, int xi, int yi):
+        """Return the value of the pixel at `xi,yi`."""
         cdef int block_xi = xi >> self.block_xbits
         cdef int block_yi = yi >> self.block_ybits
         # this is the flat index for the block
@@ -519,7 +520,7 @@ def fill_pits(
         [mask_nodata], fill_value_list=[mask_nodata],
         gtiff_creation_options=GTIFF_CREATION_OPTIONS)
     flat_region_mask_managed_raster = ManagedRaster(
-        flat_region_mask_path, 1, MANAGED_RASTER_N_BLOCKS, 1)
+        flat_region_mask_path, 1, 1)
 
     # this raster will have the value of 'feature_id' set to it if it has
     # been searched as part of the search for a pour point for pit number
@@ -530,7 +531,7 @@ def fill_pits(
         [mask_nodata], fill_value_list=[mask_nodata],
         gtiff_creation_options=GTIFF_CREATION_OPTIONS)
     pit_mask_managed_raster = ManagedRaster(
-        pit_mask_path, 1, MANAGED_RASTER_N_BLOCKS, 1)
+        pit_mask_path, 1, 1)
 
     # copy the base DEM to the target and set up for writing
     gdal_driver = gdal.GetDriverByName('GTiff')
@@ -542,8 +543,7 @@ def fill_pits(
         target_filled_dem_raster_path, gdal.OF_RASTER)
     target_dem_band = target_dem_raster.GetRasterBand(dem_raster_path_band[1])
     filled_dem_managed_raster = ManagedRaster(
-        target_filled_dem_raster_path, dem_raster_path_band[1],
-        MANAGED_RASTER_N_BLOCKS, 1)
+        target_filled_dem_raster_path, dem_raster_path_band[1], 1)
 
     # feature_id will start at 1 since the mask nodata is 0.
     feature_id = 0

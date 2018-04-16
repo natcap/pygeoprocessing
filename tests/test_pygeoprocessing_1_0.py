@@ -38,11 +38,15 @@ class PyGeoprocessing10(unittest.TestCase):
         # attribute in pygeoprocessing.__all__ is a function that is available
         # at the pygeoprocessing level.
         import pygeoprocessing
+        import inspect
         for attrname in pygeoprocessing.__all__:
+            print attrname
             try:
                 func = getattr(pygeoprocessing, attrname)
-                self.assertTrue(isinstance(func, (
-                    types.FunctionType, types.BuiltinFunctionType)))
+                self.assertTrue(
+                    isinstance(func, (
+                        types.FunctionType, types.BuiltinFunctionType)) or
+                    inspect.isroutine(func))
             except AttributeError:
                 self.fail(('Function %s is in pygeoprocessing.__all__ but '
                            'is not exposed at the package level') % attrname)
