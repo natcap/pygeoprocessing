@@ -73,7 +73,7 @@ cdef extern from "<queue>" namespace "std" nogil:
         T& top()
 
 # this is a least recently used cache written in C++ in an external file,
-# exposing here so ManagedRaster can use it
+# exposing here so _ManagedRaster can use it
 cdef extern from "LRUCache.h" nogil:
     cdef cppclass LRUCache[KEY_T, VAL_T]:
         LRUCache(int)
@@ -89,7 +89,7 @@ ctypedef pair[int, double*] BlockBufferPair
 
 # a class to allow fast random per-pixel access to a raster for both setting
 # and reading pixels.
-cdef class ManagedRaster:
+cdef class _ManagedRaster:
     cdef LRUCache[int, double*]* lru_cache
     cdef cset[int] dirty_blocks
     cdef int block_xsize
@@ -151,7 +151,7 @@ cdef class ManagedRaster:
         self.closed = 0
 
     def __dealloc__(self):
-        """Deallocate ManagedRaster.
+        """Deallocate _ManagedRaster.
 
         This operation manually frees memory from the LRUCache and writes any
         dirty memory blocks back to the raster if `self.write_mode` is True.
@@ -159,12 +159,12 @@ cdef class ManagedRaster:
         self.close()
 
     def close(self):
-        """Close the ManagedRaster and free up resources.
+        """Close the _ManagedRaster and free up resources.
 
             This call writes any dirty blocks to disk, frees up the memory
             allocated as part of the cache, and frees all GDAL references.
 
-            Any subsequent calls to any other functions in ManagedRaster will
+            Any subsequent calls to any other functions in _ManagedRaster will
             have undefined behavior.
         """
         if self.closed:
@@ -519,7 +519,7 @@ def fill_pits(
         dem_raster_path_band[0], flat_region_mask_path, gdal.GDT_Byte,
         [mask_nodata], fill_value_list=[mask_nodata],
         gtiff_creation_options=GTIFF_CREATION_OPTIONS)
-    flat_region_mask_managed_raster = ManagedRaster(
+    flat_region_mask_managed_raster = _ManagedRaster(
         flat_region_mask_path, 1, 1)
 
     # this raster will have the value of 'feature_id' set to it if it has
@@ -530,7 +530,7 @@ def fill_pits(
         dem_raster_path_band[0], pit_mask_path, gdal.GDT_Int32,
         [mask_nodata], fill_value_list=[mask_nodata],
         gtiff_creation_options=GTIFF_CREATION_OPTIONS)
-    pit_mask_managed_raster = ManagedRaster(
+    pit_mask_managed_raster = _ManagedRaster(
         pit_mask_path, 1, 1)
 
     # copy the base DEM to the target and set up for writing
@@ -542,7 +542,7 @@ def fill_pits(
     target_dem_raster = gdal.OpenEx(
         target_filled_dem_raster_path, gdal.OF_RASTER)
     target_dem_band = target_dem_raster.GetRasterBand(dem_raster_path_band[1])
-    filled_dem_managed_raster = ManagedRaster(
+    filled_dem_managed_raster = _ManagedRaster(
         target_filled_dem_raster_path, dem_raster_path_band[1], 1)
 
     # feature_id will start at 1 since the mask nodata is 0.
