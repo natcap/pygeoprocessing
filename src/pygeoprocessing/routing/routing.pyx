@@ -43,8 +43,14 @@ from libcpp.set cimport set as cset
 cdef int BLOCK_BITS = 8
 cdef int MANAGED_RASTER_N_BLOCKS = 2**6
 
+# these are the creation options that'll be used for all the rasters
+GTIFF_CREATION_OPTIONS = (
+    'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
+    'BLOCKXSIZE=%d' % (1 << BLOCK_BITS),
+    'BLOCKYSIZE=%d' % (1 << BLOCK_BITS))
+
 # if nodata is not defined for a float, it's a difficult choice. this number
-# probably won't collide
+# probably won't collide with anything ever created by humans
 IMPROBABLE_FLOAT_NOATA = -1.23789789e29
 
 # this is a fast C function to determine if two doubles are almost equal
@@ -121,10 +127,14 @@ cdef class ManagedRaster:
 
         if (self.block_xsize & (self.block_xsize - 1) != 0) or (
                 self.block_ysize & (self.block_ysize - 1) != 0):
+            # If inputs are not a power of two, this will at least print
+            # an error message. Unfortunately with Cython, the exception will
+            # present itself as a hard seg-fault, but I'm leaving the
+            # ValueError in here at least for readability.
             err_msg = (
                 "Error: Block size is not a power of two: "
-                "block_xsize: %d, %d, %s" % self.block_xsize,
-                self.block_ysize, raster_path)
+                "block_xsize: %d, %d, %s" % (
+                    self.block_xsize, self.block_ysize, raster_path))
             print err_msg
             raise ValueError(err_msg)
 
@@ -203,8 +213,8 @@ cdef class ManagedRaster:
 
                 # we need the offsets to subtract from global indexes for
                 # cached array
-                xoff = block_xi * self.block_xsize
-                yoff = block_yi * self.block_ysize
+                xoff = block_xi << self.block_xbits
+                yoff = block_yi << self.block_ybits
 
                 win_xsize = self.block_xsize
                 win_ysize = self.block_ysize
@@ -221,7 +231,7 @@ cdef class ManagedRaster:
                     for yi_copy in xrange(win_ysize):
                         block_array[yi_copy, xi_copy] = (
                             double_buffer[
-                                yi_copy * self.block_xsize + xi_copy])
+                                (yi_copy << self.block_xbits) + xi_copy])
                 raster_band.WriteArray(
                     block_array[0:win_ysize, 0:win_xsize],
                     xoff=xoff, yoff=yoff)
@@ -241,7 +251,7 @@ cdef class ManagedRaster:
         cdef int xoff = block_xi << self.block_xbits
         cdef int yoff = block_yi << self.block_ybits
         self.lru_cache.get(
-            block_index)[(yi-yoff)*self.block_xsize+xi-xoff] = value
+            block_index)[((yi-yoff)<<self.block_xbits)+xi-xoff] = value
         if self.write_mode:
             dirty_itr = self.dirty_blocks.find(block_index)
             if dirty_itr == self.dirty_blocks.end():
@@ -257,15 +267,15 @@ cdef class ManagedRaster:
         cdef int xoff = block_xi << self.block_xbits
         cdef int yoff = block_yi << self.block_ybits
         return self.lru_cache.get(
-            block_index)[(yi-yoff)*self.block_xsize+xi-xoff]
+            block_index)[((yi-yoff)<<self.block_xbits)+xi-xoff]
 
     cdef void _load_block(self, int block_index) except *:
         cdef int block_xi = block_index % self.block_nx
         cdef int block_yi = block_index / self.block_nx
 
         # we need the offsets to subtract from global indexes for cached array
-        cdef int xoff = block_xi * self.block_xsize
-        cdef int yoff = block_yi * self.block_ysize
+        cdef int xoff = block_xi << self.block_xbits
+        cdef int yoff = block_yi << self.block_ybits
 
         cdef int xi_copy, yi_copy
         cdef numpy.ndarray[double, ndim=2] block_array
@@ -294,10 +304,10 @@ cdef class ManagedRaster:
         raster_band = None
         raster = None
         double_buffer = <double*>PyMem_Malloc(
-            sizeof(double) * self.block_xsize * win_ysize)
+            (sizeof(double) << self.block_xbits) * win_ysize)
         for xi_copy in xrange(win_xsize):
             for yi_copy in xrange(win_ysize):
-                double_buffer[yi_copy*self.block_xsize+xi_copy] = (
+                double_buffer[(yi_copy<<self.block_xbits)+xi_copy] = (
                     block_array[yi_copy, xi_copy])
         self.lru_cache.put(
             <int>block_index, <double*>double_buffer, removed_value_list)
@@ -323,8 +333,8 @@ cdef class ManagedRaster:
                     block_xi = block_index % self.block_nx
                     block_yi = block_index / self.block_nx
 
-                    xoff = block_xi * self.block_xsize
-                    yoff = block_yi * self.block_ysize
+                    xoff = block_xi << self.block_xbits
+                    yoff = block_yi << self.block_ybits
 
                     win_xsize = self.block_xsize
                     win_ysize = self.block_ysize
@@ -339,7 +349,7 @@ cdef class ManagedRaster:
                     for xi_copy in xrange(win_xsize):
                         for yi_copy in xrange(win_ysize):
                             block_array[yi_copy, xi_copy] = double_buffer[
-                                yi_copy * self.block_xsize + xi_copy]
+                                (yi_copy << self.block_xbits) + xi_copy]
                     raster_band.WriteArray(
                         block_array[0:win_ysize, 0:win_xsize],
                         xoff=xoff, yoff=yoff)
@@ -388,7 +398,10 @@ def fill_pits(
             DEM calculate flow direction.
         target_filled_dem_raster_path (string): path to pit filled dem, that's
             functionally a copy of `dem_raster_path_band[0]` with the pit
-            pixels raised to the pour point.
+            pixels raised to the pour point. For runtime efficiency, this
+            raster is tiled and its blocksize is set to
+            (1<<BLOCK_BITS, 1<<BLOCK_BITS) even if `dem_raster_path_band[0]`
+            was not tiled or a different block size.
         working_dir (string): If not None, indicates where temporary files
             should be created during this run. If this directory doesn't exist
             it is created by this call.
@@ -436,7 +449,7 @@ def fill_pits(
     cdef priority_queue[PixelPtr, deque[PixelPtr], GreaterPixel] pit_queue
 
     # properties of the parallel rasters
-    cdef int raster_x_size, raster_y_size, n_x_blocks, block_size
+    cdef int raster_x_size, raster_y_size, n_x_blocks
 
     # variables to remember heights of DEM
     cdef double center_val, dem_nodata, fill_height
@@ -465,8 +478,7 @@ def fill_pits(
     cdef time_t last_log_time
     last_log_time = ctime(NULL)
 
-    logger = logging.getLogger(
-        'pygeoprocessing.routing.detect_plateus_and_drains')
+    logger = logging.getLogger('pygeoprocessing.routing.fill_pits')
     logger.addHandler(logging.NullHandler())  # silence logging by default
 
     # determine dem nodata in the working type, or set an improbable value
@@ -500,15 +512,12 @@ def fill_pits(
     # undrained area
     flat_region_mask_path = os.path.join(
         working_dir_path, 'flat_region_mask.tif')
-    block_size = 1 << BLOCK_BITS
-    n_x_blocks = raster_x_size // block_size + 1
+    n_x_blocks = raster_x_size >> BLOCK_BITS + 1
+
     pygeoprocessing.new_raster_from_base(
         dem_raster_path_band[0], flat_region_mask_path, gdal.GDT_Byte,
         [mask_nodata], fill_value_list=[mask_nodata],
-        gtiff_creation_options=(
-            'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
-            'BLOCKXSIZE=%d' % block_size,
-            'BLOCKYSIZE=%d' % block_size))
+        gtiff_creation_options=GTIFF_CREATION_OPTIONS)
     flat_region_mask_managed_raster = ManagedRaster(
         flat_region_mask_path, 1, MANAGED_RASTER_N_BLOCKS, 1)
 
@@ -519,10 +528,7 @@ def fill_pits(
     pygeoprocessing.new_raster_from_base(
         dem_raster_path_band[0], pit_mask_path, gdal.GDT_Int32,
         [mask_nodata], fill_value_list=[mask_nodata],
-        gtiff_creation_options=(
-            'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
-            'BLOCKXSIZE=%d' % block_size,
-            'BLOCKYSIZE=%d' % block_size))
+        gtiff_creation_options=GTIFF_CREATION_OPTIONS)
     pit_mask_managed_raster = ManagedRaster(
         pit_mask_path, 1, MANAGED_RASTER_N_BLOCKS, 1)
 
@@ -530,10 +536,8 @@ def fill_pits(
     gdal_driver = gdal.GetDriverByName('GTiff')
     base_dem_raster = gdal.Open(dem_raster_path_band[0])
     gdal_driver.CreateCopy(
-        target_filled_dem_raster_path, base_dem_raster, options=(
-            'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
-            'BLOCKXSIZE=%d' % block_size,
-            'BLOCKYSIZE=%d' % block_size))
+        target_filled_dem_raster_path, base_dem_raster,
+        options=GTIFF_CREATION_OPTIONS)
     target_dem_raster = gdal.OpenEx(
         target_filled_dem_raster_path, gdal.OF_RASTER)
     target_dem_band = target_dem_raster.GetRasterBand(dem_raster_path_band[1])
@@ -696,8 +700,8 @@ def fill_pits(
                     deref(pixel).value = center_val
                     # set the priority to be the block index
                     deref(pixel).priority = (
-                        n_x_blocks * (yi_root // block_size) +
-                        xi_root // block_size)
+                        n_x_blocks * (yi_root >> BLOCK_BITS) +
+                        xi_root >> BLOCK_BITS)
                     feature_id += 1
                     pit_mask_managed_raster.set(
                         xi_root, yi_root, feature_id)
@@ -750,8 +754,8 @@ def fill_pits(
                         deref(pixel).value = n_height
                         # set the priority to be the block index
                         deref(pixel).priority = (
-                            n_x_blocks * (yi_n // block_size) +
-                            xi_n // block_size)
+                            n_x_blocks * (yi_n >> BLOCK_BITS) +
+                            xi_n >> BLOCK_BITS)
                         pit_queue.push(pixel)
 
                     if pour_point:
