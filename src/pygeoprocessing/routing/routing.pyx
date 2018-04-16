@@ -1,5 +1,3 @@
-# xxxxcython: linetrace=True
-# xxxxdistutils: define_macros=CYTHON_TRACE_NOGIL=1
 # distutils: language=c++
 """
 Provides PyGeprocessing Routing functionality.
@@ -17,14 +15,12 @@ is encoded as:
     # 567
 """
 import time
-import errno
 import os
 import logging
 import shutil
 import tempfile
 
 import numpy
-import scipy.signal
 import pygeoprocessing
 from .. import geoprocessing
 from osgeo import gdal
@@ -36,26 +32,22 @@ from cython.operator cimport dereference as deref
 from cython.operator cimport preincrement as inc
 from libc.time cimport time_t
 from libc.time cimport time as ctime
-from libc.stdlib cimport malloc
-from libc.stdlib cimport free
-from libc.math cimport isnan
-from libcpp.list cimport list
-from libcpp.map cimport map
-from libcpp.set cimport set
+from libcpp.list cimport list as clist
 from libcpp.pair cimport pair
 from libcpp.queue cimport queue
 from libcpp.stack cimport stack
 from libcpp.deque cimport deque
-from libcpp.set cimport set
+from libcpp.set cimport set as cset
 
 # This module expects rasters with a memory xy block size of 2**BLOCK_BITS
 cdef int BLOCK_BITS = 8
 cdef int MANAGED_RASTER_N_BLOCKS = 2**6
+
 # if nodata is not defined for a float, it's a difficult choice. this number
 # probably won't collide
 IMPROBABLE_FLOAT_NOATA = -1.23789789e29
-GDAL_INTERNAL_RASTER_TYPE = gdal.GDT_Float64
 
+# this is a fast C function to determine if two doubles are almost equal
 cdef bint isclose(double a, double b):
     return abs(a - b) <= (1e-5 + 1e-7 * abs(b))
 
@@ -72,54 +64,45 @@ cdef extern from "<queue>" namespace "std" nogil:
         size_t size()
         T& top()
 
-# this is the class type that'll get stored in the priority queue
-cdef struct Pixel:
-    double value  # pixel value
-    int xi  # pixel x coordinate in the raster
-    int yi  # pixel y coordinate in the raster
-    int priority # for breaking ties if two `value`s are equal.
-
-ctypedef (Pixel*) PixelPtr
-
-cdef struct FlowPixel:
-    int n_i  # flow direction of pixel
-    int xi # pixel x coordinate in the raster
-    int yi # pixel y coordinate in the raster
-    double flow_val  # flow accumulation value
-
+# this is a least recently used cache written in C++ in an external file,
+# exposing here so ManagedRaster can use it
 cdef extern from "LRUCache.h" nogil:
     cdef cppclass LRUCache[KEY_T, VAL_T]:
         LRUCache(int)
-        void put(KEY_T&, VAL_T&, list[pair[KEY_T,VAL_T]]&)
-        list[pair[KEY_T,VAL_T]].iterator begin()
-        list[pair[KEY_T,VAL_T]].iterator end()
+        void put(KEY_T&, VAL_T&, clist[pair[KEY_T,VAL_T]]&)
+        clist[pair[KEY_T,VAL_T]].iterator begin()
+        clist[pair[KEY_T,VAL_T]].iterator end()
         bint exist(KEY_T &)
         VAL_T get(KEY_T &)
 
+# this ctype is used to store the block ID and the block buffer as one object
+# inside Managed Raster
 ctypedef pair[int, double*] BlockBufferPair
 
 cdef class ManagedRaster:
     cdef LRUCache[int, double*]* lru_cache
-    cdef set[int] dirty_blocks
+    cdef cset[int] dirty_blocks
     cdef int block_xsize
     cdef int block_ysize
+    cdef int block_xbits
+    cdef int block_ybits
     cdef int raster_x_size
     cdef int raster_y_size
     cdef int block_nx
     cdef int block_ny
     cdef int write_mode
-    cdef int block_bits
     cdef char* raster_path
-    cdef long int cache_misses
-    cdef long int gets
-    cdef long int sets
+    cdef int band_id
     cdef int closed
 
-    def __cinit__(self, char* raster_path, n_blocks, write_mode):
+    def __cinit__(self, char* raster_path, int band_id, n_blocks, write_mode):
         """Create new instance of Managed Raster.
 
         Parameters:
-            raster_path (char*): path to raster
+            raster_path (char*): path to raster that has block sizes that are
+                powers of 2. If not, an exception is raised.
+            band_id (int): which band in `raster_path` to index. Uses GDAL
+                notation that starts at 1.
             n_blocks (int): number of raster memory blocks to store in the
                 cache.
             write_mode (boolean): if true, this raster is writable and dirty
@@ -132,9 +115,25 @@ cdef class ManagedRaster:
         raster_info = pygeoprocessing.get_raster_info(raster_path)
         self.raster_x_size, self.raster_y_size = raster_info['raster_size']
         self.block_xsize, self.block_ysize = raster_info['block_size']
-        self.block_bits = BLOCK_BITS
-        self.block_xsize = 1 << self.block_bits
-        self.block_ysize = 1 << self.block_bits
+
+        print '%d %d %s' % (
+            self.block_xsize, self.block_ysize, raster_path)
+
+        if self.block_xsize & (self.block_xsize - 1) != 0:
+            print "Block xsize is not a power of two: block_xsize: %d, %s" % (
+                self.block_xsize, raster_path)
+            raise ValueError(
+                "Block xsize is not a power of two: block_xsize: %d, %s",
+                self.block_xsize, raster_path)
+        if self.block_ysize & (self.block_ysize - 1) != 0:
+            print "Block ysize is not a power of two: block_ysize: %d, %s" % (
+                self.block_ysize, raster_path)
+            raise ValueError(
+                "Block ysize is not a power of two: block_ysize: %d, %s",
+                self.block_ysize, raster_path)
+
+        self.block_xbits = numpy.log2(self.block_xsize)
+        self.block_ybits = numpy.log2(self.block_ysize)
         self.block_nx = (
             self.raster_x_size + (self.block_xsize) - 1) / self.block_xsize
         self.block_ny = (
@@ -142,10 +141,8 @@ cdef class ManagedRaster:
 
         self.lru_cache = new LRUCache[int, double*](n_blocks)
         self.raster_path = raster_path
+        self.band_id = band_id
         self.write_mode = write_mode
-        self.cache_misses = 0
-        self.sets = 0
-        self.gets = 0
         self.closed = 0
 
     def __dealloc__(self):
@@ -157,6 +154,14 @@ cdef class ManagedRaster:
         self.close()
 
     def close(self):
+        """Close the ManagedRaster and free up resources.
+
+            This call writes any dirty blocks to disk, frees up the memory
+            allocated as part of the cache, and frees all GDAL references.
+
+            Any subsequent calls to any other functions in ManagedRaster will
+            have undefined behavior.
+        """
         if self.closed:
             return
         self.closed = 1
@@ -175,8 +180,8 @@ cdef class ManagedRaster:
         cdef int xoff
         cdef int yoff
 
-        cdef list[BlockBufferPair].iterator it = self.lru_cache.begin()
-        cdef list[BlockBufferPair].iterator end = self.lru_cache.end()
+        cdef clist[BlockBufferPair].iterator it = self.lru_cache.begin()
+        cdef clist[BlockBufferPair].iterator end = self.lru_cache.end()
         if not self.write_mode:
             while it != end:
                 # write the changed value back if desired
@@ -185,10 +190,10 @@ cdef class ManagedRaster:
             return
 
         raster = gdal.Open(self.raster_path, gdal.GA_Update)
-        raster_band = raster.GetRasterBand(1)
+        raster_band = raster.GetRasterBand(self.band_id)
 
         # if we get here, we're in write_mode
-        cdef set[int].iterator dirty_itr
+        cdef cset[int].iterator dirty_itr
         while it != end:
             double_buffer = deref(it).second
             block_index = deref(it).first
@@ -219,7 +224,8 @@ cdef class ManagedRaster:
                 for xi_copy in xrange(win_xsize):
                     for yi_copy in xrange(win_ysize):
                         block_array[yi_copy, xi_copy] = (
-                            double_buffer[yi_copy * self.block_xsize + xi_copy])
+                            double_buffer[
+                                yi_copy * self.block_xsize + xi_copy])
                 raster_band.WriteArray(
                     block_array[0:win_ysize, 0:win_xsize],
                     xoff=xoff, yoff=yoff)
@@ -230,15 +236,14 @@ cdef class ManagedRaster:
         raster = None
 
     cdef void set(self, int xi, int yi, double value):
-        self.sets += 1
-        cdef int block_xi = xi >> self.block_bits
-        cdef int block_yi = yi >> self.block_bits
+        cdef int block_xi = xi >> self.block_xbits
+        cdef int block_yi = yi >> self.block_ybits
         # this is the flat index for the block
         cdef int block_index = block_yi * self.block_nx + block_xi
         if not self.lru_cache.exist(block_index):
             self._load_block(block_index)
-        cdef int xoff = block_xi << self.block_bits
-        cdef int yoff = block_yi << self.block_bits
+        cdef int xoff = block_xi << self.block_xbits
+        cdef int yoff = block_yi << self.block_ybits
         self.lru_cache.get(
             block_index)[(yi-yoff)*self.block_xsize+xi-xoff] = value
         if self.write_mode:
@@ -247,15 +252,14 @@ cdef class ManagedRaster:
                 self.dirty_blocks.insert(block_index)
 
     cdef double get(self, int xi, int yi):
-        self.gets += 1
-        cdef int block_xi = xi >> self.block_bits
-        cdef int block_yi = yi >> self.block_bits
+        cdef int block_xi = xi >> self.block_xbits
+        cdef int block_yi = yi >> self.block_ybits
         # this is the flat index for the block
         cdef int block_index = block_yi * self.block_nx + block_xi
         if not self.lru_cache.exist(block_index):
             self._load_block(block_index)
-        cdef int xoff = block_xi << self.block_bits
-        cdef int yoff = block_yi << self.block_bits
+        cdef int xoff = block_xi << self.block_xbits
+        cdef int yoff = block_yi << self.block_ybits
         return self.lru_cache.get(
             block_index)[(yi-yoff)*self.block_xsize+xi-xoff]
 
@@ -270,7 +274,7 @@ cdef class ManagedRaster:
         cdef int xi_copy, yi_copy
         cdef numpy.ndarray[double, ndim=2] block_array
         cdef double *double_buffer
-        cdef list[BlockBufferPair] removed_value_list
+        cdef clist[BlockBufferPair] removed_value_list
 
         # determine the block aligned xoffset for read as array
 
@@ -286,7 +290,7 @@ cdef class ManagedRaster:
             win_ysize = win_ysize - (yoff+win_ysize - self.raster_y_size)
 
         raster = gdal.Open(self.raster_path)
-        raster_band = raster.GetRasterBand(1)
+        raster_band = raster.GetRasterBand(self.band_id)
         block_array = raster_band.ReadAsArray(
             xoff=xoff, yoff=yoff, win_xsize=win_xsize,
             win_ysize=win_ysize).astype(
@@ -304,7 +308,7 @@ cdef class ManagedRaster:
 
         if self.write_mode:
             raster = gdal.Open(self.raster_path, gdal.GA_Update)
-            raster_band = raster.GetRasterBand(1)
+            raster_band = raster.GetRasterBand(self.band_id)
 
         block_array = numpy.empty(
             (self.block_ysize, self.block_xsize), dtype=numpy.double)
@@ -349,10 +353,19 @@ cdef class ManagedRaster:
         if self.write_mode:
             raster_band = None
             raster = None
-        self.cache_misses += 1
 
+# type used to store x/y coordinates
 ctypedef pair[int, int] CoordinatePair
 
+# this is the class type that'll get stored in the priority queue
+cdef struct Pixel:
+    double value  # pixel value
+    int xi  # pixel x coordinate in the raster
+    int yi  # pixel y coordinate in the raster
+    int priority # for breaking ties if two `value`s are equal.
+ctypedef (Pixel*) PixelPtr
+
+# functor for priority queue of pixels
 cdef cppclass GreaterPixel nogil:
     bint get "operator()"(PixelPtr& lhs, PixelPtr& rhs):
         # lhs is > than rhs if its value is greater or if it's equal if
@@ -501,7 +514,7 @@ def fill_pits(
             'BLOCKXSIZE=%d' % block_size,
             'BLOCKYSIZE=%d' % block_size))
     flat_region_mask_managed_raster = ManagedRaster(
-        flat_region_mask_path, MANAGED_RASTER_N_BLOCKS, 1)
+        flat_region_mask_path, 1, MANAGED_RASTER_N_BLOCKS, 1)
 
     # this raster will have the value of 'feature_id' set to it if it has
     # been searched as part of the search for a pour point for pit number
@@ -515,16 +528,22 @@ def fill_pits(
             'BLOCKXSIZE=%d' % block_size,
             'BLOCKYSIZE=%d' % block_size))
     pit_mask_managed_raster = ManagedRaster(
-        pit_mask_path, MANAGED_RASTER_N_BLOCKS, 1)
+        pit_mask_path, 1, MANAGED_RASTER_N_BLOCKS, 1)
 
     # copy the base DEM to the target and set up for writing
     gdal_driver = gdal.GetDriverByName('GTiff')
     base_dem_raster = gdal.Open(dem_raster_path_band[0])
-    gdal_driver.CreateCopy(target_filled_dem_raster_path, base_dem_raster)
-    target_dem_raster = gdal.OpenEx(target_filled_dem_raster_path, gdal.OF_RASTER)
+    gdal_driver.CreateCopy(
+        target_filled_dem_raster_path, base_dem_raster, options=(
+            'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
+            'BLOCKXSIZE=%d' % block_size,
+            'BLOCKYSIZE=%d' % block_size))
+    target_dem_raster = gdal.OpenEx(
+        target_filled_dem_raster_path, gdal.OF_RASTER)
     target_dem_band = target_dem_raster.GetRasterBand(dem_raster_path_band[1])
     filled_dem_managed_raster = ManagedRaster(
-        target_filled_dem_raster_path, MANAGED_RASTER_N_BLOCKS, 1)
+        target_filled_dem_raster_path, dem_raster_path_band[1],
+        MANAGED_RASTER_N_BLOCKS, 1)
 
     # feature_id will start at 1 since the mask nodata is 0.
     feature_id = 0
