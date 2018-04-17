@@ -1057,23 +1057,25 @@ def flow_dir_d8(
                     yi_q = search_queue.front().second
                     search_queue.pop()
 
+                    lowest_n_height = dem_managed_raster.get(xi_q, yi_q)
                     local_flow_dir = -1
                     for i_n in xrange(8):
                         xi_n = xi_q+NEIGHBOR_OFFSET_ARRAY[2*i_n]
                         yi_n = yi_q+NEIGHBOR_OFFSET_ARRAY[2*i_n+1]
                         if (xi_n < 0 or xi_n >= raster_x_size or
-                                yi_n < 0 or yi_n >= raster_y_size):
-                            local_flow_dir = i_n
-                            continue
-                        if isclose(dem_nodata, dem_managed_raster.get(
-                                xi_n, yi_n)):
-                            # TODO: consider if we want to drain to nodata
-                            # before we see if there are other options
+                                yi_n < 0 or yi_n >= raster_y_size) and (
+                                    local_flow_dir == -1):
                             local_flow_dir = i_n
                             continue
                         n_height = dem_managed_raster.get(xi_n, yi_n)
-                        if n_height < root_height:
+                        if isclose(n_height, dem_nodata) and (
+                                local_flow_dir == -1):
                             local_flow_dir = i_n
+                            continue
+                        if n_height < root_height and (
+                                n_height < lowest_n_height):
+                            local_flow_dir = i_n
+                            lowest_n_height = n_height
                             continue
                         if n_height == root_height and (
                                 flat_region_mask_managed_raster.get(
