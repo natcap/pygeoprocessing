@@ -840,6 +840,9 @@ def flow_dir_d8(
     # represents a value out of a queue, and _n is related to a neighbor pixel
     cdef int i_n, xi, yi, xi_q, yi_q, xi_n, yi_n
 
+    # these are used to recall the local and neighbor heights of pixels
+    cdef double root_height, n_height, dem_nodata
+
     # to remember where the local pixel flowed to
     cdef int local_flow_dir
 
@@ -853,6 +856,7 @@ def flow_dir_d8(
 
     # properties of the parallel rasters
     cdef int raster_x_size, raster_y_size
+
 
     # used to loop over neighbors and offset the x/y values as defined below
     # 321
@@ -962,6 +966,7 @@ def flow_dir_d8(
         for a_buffer_id, b_buffer_id, off_id, win_size_id, raster_size in [
                 ('xa', 'xb', 'xoff', 'win_xsize', raster_x_size),
                 ('ya', 'yb', 'yoff', 'win_ysize', raster_y_size)]:
+
             if offset_dict[off_id] > 0:
                 # in this case we have valid data to the left (or up)
                 # grow the window and buffer slice in that direction
@@ -988,8 +993,8 @@ def flow_dir_d8(
         # search block for to set flow direction
         for yi in xrange(1, win_ysize+1):
             for xi in xrange(1, win_xsize+1):
-                center_val = dem_buffer_array[yi, xi]
-                if isclose(center_val, dem_nodata):
+                root_height = dem_buffer_array[yi, xi]
+                if isclose(root_height, dem_nodata):
                     continue
 
                 # this value is set in case it turns out to be the root of a
@@ -1015,22 +1020,23 @@ def flow_dir_d8(
                         # it'll drain off the edge of the raster
                         local_flow_dir = i_n
                         break
-                    if isclose(flow_nodata, flow_dir_managed_raster.get(
+                    if isclose(dem_nodata, dem_managed_raster.get(
                             xi_n, yi_n)):
                         # it'll drain to nodata
                         # TODO: consider if we want to drain to nodata
                         # before we see if there are other options
                         local_flow_dir = i_n
                         break
-                    n_height = flow_dir_managed_raster.get(xi_n, yi_n)
-                    if n_height < center_val:
+                    n_height = dem_managed_raster.get(xi_n, yi_n)
+                    if n_height < root_height:
                         # it'll drain downhill
                         local_flow_dir = i_n
                         break
 
-                if local_flow_dir >= 0:
+                if local_flow_dir > 0:
                     # define flow dir and move on
-                    flow_dir_managed_raster.set(xi_n, yi_n, local_flow_dir)
+                    flow_dir_managed_raster.set(
+                        xi_root, yi_root, local_flow_dir)
                     continue
 
                 # otherwise, this pixel doesn't drain locally, so it must
@@ -1061,10 +1067,10 @@ def flow_dir_d8(
                             local_flow_dir = i_n
                             continue
                         n_height = dem_managed_raster.get(xi_n, yi_n)
-                        if n_height < center_val:
+                        if n_height < root_height:
                             local_flow_dir = i_n
                             continue
-                        if n_height == center_val and isclose(
+                        if n_height == root_height and isclose(
                                 mask_nodata,
                                 flat_region_mask_managed_raster.get(
                                     xi_n, yi_n)):
@@ -1078,9 +1084,10 @@ def flow_dir_d8(
                     if local_flow_dir >= 0:
                         flow_dir_managed_raster.set(
                             xi_q, yi_q, local_flow_dir)
-                        drain_queue.push(CoordinatePair(xi_n, yi_n))
+                        drain_queue.push(CoordinatePair(xi_q, yi_q))
 
-                # this loop does a BFS to set all DEM pixels to `fill_height`
+                # this loop does a BFS from the plateau drain to any other
+                # neighboring undefined pixels
                 while not drain_queue.empty():
                     xi_q = drain_queue.front().first
                     yi_q = drain_queue.front().second
@@ -1095,8 +1102,10 @@ def flow_dir_d8(
 
                         if isclose(
                             flow_nodata, flow_dir_managed_raster.get(
-                                xi_n, yi_n)):
-                            # TODO: set to reverse direction
+                                xi_n, yi_n)) and dem_managed_raster.get(
+                                xi_n, yi_n) == root_height:
+                            # neighbor is at same level and undefined so
+                            # it can flow here
                             flow_dir_managed_raster.set(
                                 xi_n, yi_n, REVERSE_DIRECTION[i_n])
                             drain_queue.push(CoordinatePair(xi_n, yi_n))
@@ -1106,5 +1115,3 @@ def flow_dir_d8(
     dem_managed_raster.close()
     shutil.rmtree(working_dir_path)
     logger.info('%.2f%% complete', 100.0)
-
-
