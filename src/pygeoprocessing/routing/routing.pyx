@@ -841,7 +841,7 @@ def flow_dir_d8(
     cdef int i_n, xi, yi, xi_q, yi_q, xi_n, yi_n
 
     # these are used to recall the local and neighbor heights of pixels
-    cdef double root_height, n_height, dem_nodata
+    cdef double root_height, n_height, lowest_n_height, dem_nodata
 
     # to remember where the local pixel flowed to
     cdef int local_flow_dir
@@ -1003,37 +1003,36 @@ def flow_dir_d8(
                 xi_root = xi-1+xoff
                 yi_root = yi-1+yoff
 
-                if not isclose(
-                        flow_nodata,
-                        flow_dir_managed_raster.get(xi_root, yi_root)):
+                if flow_dir_managed_raster.get(
+                        xi_root, yi_root) != flow_nodata:
                     # already been defined
                     continue
 
                 # search neighbors for downhill or nodata
                 local_flow_dir = -1
+                lowest_n_height = root_height
 
                 for i_n in xrange(8):
-                    xi_n = xi_root+NEIGHBOR_OFFSET_ARRAY[2*i_n]
-                    yi_n = yi_root+NEIGHBOR_OFFSET_ARRAY[2*i_n+1]
+                    xi_n = xi+NEIGHBOR_OFFSET_ARRAY[2*i_n]
+                    yi_n = yi+NEIGHBOR_OFFSET_ARRAY[2*i_n+1]
                     if (xi_n < 0 or xi_n >= raster_x_size or
-                            yi_n < 0 or yi_n >= raster_y_size):
+                            yi_n < 0 or yi_n >= raster_y_size) and (
+                            local_flow_dir == -1):
                         # it'll drain off the edge of the raster
                         local_flow_dir = i_n
-                        break
-                    if isclose(dem_nodata, dem_managed_raster.get(
-                            xi_n, yi_n)):
+                        continue
+                    n_height = dem_buffer_array[yi_n, xi_n]
+                    if isclose(dem_nodata, n_height) and local_flow_dir == -1:
                         # it'll drain to nodata
-                        # TODO: consider if we want to drain to nodata
-                        # before we see if there are other options
                         local_flow_dir = i_n
-                        break
-                    n_height = dem_managed_raster.get(xi_n, yi_n)
-                    if n_height < root_height:
+                        continue
+                    if n_height < root_height and n_height < lowest_n_height:
                         # it'll drain downhill
                         local_flow_dir = i_n
-                        break
+                        lowest_n_height = n_height
+                        continue
 
-                if local_flow_dir > 0:
+                if local_flow_dir >= 0:
                     # define flow dir and move on
                     flow_dir_managed_raster.set(
                         xi_root, yi_root, local_flow_dir)
@@ -1070,16 +1069,13 @@ def flow_dir_d8(
                         if n_height < root_height:
                             local_flow_dir = i_n
                             continue
-                        if n_height == root_height and isclose(
-                                mask_nodata,
+                        if n_height == root_height and (
                                 flat_region_mask_managed_raster.get(
-                                    xi_n, yi_n)):
+                                    xi_n, yi_n) == mask_nodata):
                             # only grow if it's at the same level and not
                             # previously visited
-                            search_queue.push(
-                                CoordinatePair(xi_n, yi_n))
-                            flat_region_mask_managed_raster.set(
-                                xi_n, yi_n, 1)
+                            search_queue.push(CoordinatePair(xi_n, yi_n))
+                            flat_region_mask_managed_raster.set(xi_n, yi_n, 1)
 
                     if local_flow_dir >= 0:
                         flow_dir_managed_raster.set(
@@ -1100,10 +1096,10 @@ def flow_dir_d8(
                                 yi_n < 0 or yi_n >= raster_y_size):
                             continue
 
-                        if isclose(
-                            flow_nodata, flow_dir_managed_raster.get(
-                                xi_n, yi_n)) and dem_managed_raster.get(
-                                xi_n, yi_n) == root_height:
+                        if flow_dir_managed_raster.get(
+                                xi_n, yi_n) == flow_nodata and (
+                                    dem_managed_raster.get(
+                                        xi_n, yi_n) == root_height):
                             # neighbor is at same level and undefined so
                             # it can flow here
                             flow_dir_managed_raster.set(
