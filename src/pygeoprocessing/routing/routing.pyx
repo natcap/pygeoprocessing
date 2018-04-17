@@ -94,6 +94,8 @@ cdef class _ManagedRaster:
     cdef cset[int] dirty_blocks
     cdef int block_xsize
     cdef int block_ysize
+    cdef int block_xmod
+    cdef int block_ymod
     cdef int block_xbits
     cdef int block_ybits
     cdef int raster_x_size
@@ -123,6 +125,8 @@ cdef class _ManagedRaster:
         raster_info = pygeoprocessing.get_raster_info(raster_path)
         self.raster_x_size, self.raster_y_size = raster_info['raster_size']
         self.block_xsize, self.block_ysize = raster_info['block_size']
+        self.block_xmod = self.block_xsize-1
+        self.block_ymod = self.block_ysize-1
 
         if (self.block_xsize & (self.block_xsize - 1) != 0) or (
                 self.block_ysize & (self.block_ysize - 1) != 0):
@@ -240,7 +244,7 @@ cdef class _ManagedRaster:
         raster_band = None
         raster = None
 
-    cdef void set(self, int xi, int yi, double value):
+    cdef inline void set(self, int xi, int yi, double value):
         """Set the pixel at `xi,yi` to `value`."""
         cdef int block_xi = xi >> self.block_xbits
         cdef int block_yi = yi >> self.block_ybits
@@ -248,16 +252,16 @@ cdef class _ManagedRaster:
         cdef int block_index = block_yi * self.block_nx + block_xi
         if not self.lru_cache.exist(block_index):
             self._load_block(block_index)
-        cdef int xoff = block_xi << self.block_xbits
-        cdef int yoff = block_yi << self.block_ybits
         self.lru_cache.get(
-            block_index)[((yi-yoff)<<self.block_xbits)+xi-xoff] = value
+            block_index)[
+                ((yi & (self.block_ymod))<<self.block_xbits) +
+                (xi & (self.block_xmod))] = value
         if self.write_mode:
             dirty_itr = self.dirty_blocks.find(block_index)
             if dirty_itr == self.dirty_blocks.end():
                 self.dirty_blocks.insert(block_index)
 
-    cdef double get(self, int xi, int yi):
+    cdef inline double get(self, int xi, int yi):
         """Return the value of the pixel at `xi,yi`."""
         cdef int block_xi = xi >> self.block_xbits
         cdef int block_yi = yi >> self.block_ybits
@@ -265,10 +269,10 @@ cdef class _ManagedRaster:
         cdef int block_index = block_yi * self.block_nx + block_xi
         if not self.lru_cache.exist(block_index):
             self._load_block(block_index)
-        cdef int xoff = block_xi << self.block_xbits
-        cdef int yoff = block_yi << self.block_ybits
         return self.lru_cache.get(
-            block_index)[((yi-yoff)<<self.block_xbits)+xi-xoff]
+            block_index)[
+                ((yi & (self.block_ymod))<<self.block_xbits) +
+                (xi & (self.block_xmod))]
 
     cdef void _load_block(self, int block_index) except *:
         cdef int block_xi = block_index % self.block_nx
@@ -385,6 +389,7 @@ cdef cppclass GreaterPixel nogil:
         return 0
 
 
+@cython.boundscheck(False)
 def fill_pits(
         dem_raster_path_band, target_filled_dem_raster_path,
         working_dir=None):
@@ -799,6 +804,7 @@ def fill_pits(
     logger.info('%.2f%% complete', 100.0)
 
 
+@cython.boundscheck(False)
 def flow_dir_d8(
         dem_raster_path_band, target_flow_dir_path,
         working_dir=None):
