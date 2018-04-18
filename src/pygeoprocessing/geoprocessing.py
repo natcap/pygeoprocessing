@@ -2159,7 +2159,7 @@ def merge_rasters(
         if len(nodata_set) != 1:
             raise ValueError(
                 "Nodata per raster are not the same. "
-                "Here's the datatypes: %s" % str([
+                "Path and nodata values: %s" % str([
                     (path, x['nodata']) for path, x in zip(
                         raster_path_list, raster_info_list)]))
 

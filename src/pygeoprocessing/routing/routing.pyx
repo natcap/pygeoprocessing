@@ -22,7 +22,6 @@ import tempfile
 
 import numpy
 import pygeoprocessing
-from .. import geoprocessing
 from osgeo import gdal
 
 cimport numpy
@@ -410,7 +409,9 @@ def fill_pits(
             was not tiled or a different block size.
         working_dir (string): If not None, indicates where temporary files
             should be created during this run. If this directory doesn't exist
-            it is created by this call.
+            it is created by this call. If None, a temporary directory is
+            created by tempdir.mkdtemp which is removed after the function
+            call completes successfully.
 
     Returns:
         None.
