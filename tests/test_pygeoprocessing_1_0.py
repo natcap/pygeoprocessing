@@ -5,6 +5,7 @@ import os
 import unittest
 import shutil
 import types
+import sys
 
 from osgeo import gdal
 from osgeo import ogr
@@ -16,6 +17,7 @@ import pygeoprocessing.testing
 from pygeoprocessing.testing import sampledata
 import pygeoprocessing.routing
 import shapely.geometry
+import mock
 
 
 class PyGeoprocessing10(unittest.TestCase):
@@ -36,14 +38,38 @@ class PyGeoprocessing10(unittest.TestCase):
         # attribute in pygeoprocessing.__all__ is a function that is available
         # at the pygeoprocessing level.
         import pygeoprocessing
+        import inspect
         for attrname in pygeoprocessing.__all__:
             try:
                 func = getattr(pygeoprocessing, attrname)
-                self.assertTrue(isinstance(func, (
-                    types.FunctionType, types.BuiltinFunctionType)))
+                self.assertTrue(
+                    isinstance(func, (
+                        types.FunctionType, types.BuiltinFunctionType)) or
+                    inspect.isroutine(func))
             except AttributeError:
                 self.fail(('Function %s is in pygeoprocessing.__all__ but '
                            'is not exposed at the package level') % attrname)
+
+    def test_version_loaded(self):
+        """PGP: verify we can load the version."""
+        try:
+            import pygeoprocessing
+            # Verifies that there's a version attribute and it has a value.
+            self.assertTrue(len(pygeoprocessing.__version__) > 0)
+        except Exception as error:
+            self.fail('Could not load pygeoprocessing version.')
+
+    def test_version_not_loaded(self):
+        """PGP: verify exception when not installed."""
+        from pkg_resources import DistributionNotFound
+        import pygeoprocessing
+
+        with mock.patch('pygeoprocessing.pkg_resources.get_distribution',
+                        side_effect=DistributionNotFound('pygeoprocessing')):
+            with self.assertRaises(RuntimeError):
+                # RuntimeError is a side effect of `import taskgraph`, so we
+                # reload it to retrigger the metadata load.
+                pygeoprocessing = reload(pygeoprocessing)
 
     def test_reclassify_raster_missing_pixel_value(self):
         """PGP.geoprocessing: test reclassify raster with missing value."""
@@ -1618,3 +1644,167 @@ class PyGeoprocessing10(unittest.TestCase):
         for regular_int in regular_ints:
             next_int = pygeoprocessing.geoprocessing._next_regular(next_int+1)
             self.assertEqual(next_int, regular_int)
+
+    def test_available_interpolation_values_gdal223(self):
+        """PGP.geoprocessing: available interpolation values: gdal 2.2.3."""
+        try:
+            from pygeoprocessing import geoprocessing
+            # artificially set the interpolation values
+            sys.modules['osgeo.gdal'].__version__ = '2.2.3'
+
+            # if our local installation of GDAL is below 2.2.3, we need to
+            # manually define these attributes.
+            for interpolation_mode in ('GRA_Max', 'GRA_Min', 'GRA_Med',
+                                       'GRA_Q1', 'GRA_Q3'):
+                setattr(sys.modules['osgeo.gdal'], interpolation_mode, None)
+
+            # Now that we've updated the GDAL module, reload pygeoprocessing
+            # and ensure that the right interpolation options are there.
+            geoprocessing = reload(geoprocessing)
+            self.assertEqual(sorted(geoprocessing._RESAMPLE_DICT.keys()),
+                             ['average', 'bilinear', 'cubic', 'cubic_spline',
+                              'lanczos', 'max', 'med', 'min', 'mode',
+                              'nearest', 'q1', 'q3'])
+        finally:
+            # Regardless of test outcome, reload the modules so we don't mess
+            # with other tests.
+            sys.modules['osgeo.gdal'] = reload(sys.modules['osgeo.gdal'])
+            geoprocessing = reload(geoprocessing)
+
+    def test_available_interpolation_values_gdal200(self):
+        """PGP.geoprocessing: available interpolation values: gdal 2.0.0."""
+        try:
+            from pygeoprocessing import geoprocessing
+            # artificially set the interpolation values
+            sys.modules['osgeo.gdal'].__version__ = '2.0.0'
+            geoprocessing = reload(geoprocessing)
+
+            self.assertEqual(sorted(geoprocessing._RESAMPLE_DICT.keys()),
+                             ['average', 'bilinear', 'cubic', 'cubic_spline',
+                              'lanczos', 'mode', 'nearest'])
+        finally:
+            # Regardless of test outcome, reload the modules so we don't mess
+            # with other tests.
+            sys.modules['osgeo.gdal'] = reload(sys.modules['osgeo.gdal'])
+            geoprocessing = reload(geoprocessing)
+
+    def test_merge_rasters(self):
+        """PGP.geoprocessing: test merge_rasters."""
+        driver = gdal.GetDriverByName('GTiff')
+
+        wgs84_ref = osr.SpatialReference()
+        wgs84_ref.ImportFromEPSG(4326)  # WGS84 EPSG
+
+        # the following creates a checkerboard of upper left square raster
+        # defined, lower right, and equal sized nodata chunks on the other
+        # blocks.
+
+        raster_a_path = os.path.join(self.workspace_dir, 'raster_a.tif')
+        # everything flows to the right
+        raster_a_array = numpy.zeros((11, 11), dtype=numpy.int32)
+        raster_a_array[:] = 10
+        raster_a = driver.Create(
+            raster_a_path, raster_a_array.shape[1], raster_a_array.shape[0],
+            2, gdal.GDT_Int32)
+        raster_a_geotransform = [0.1, 1., 0., 0., 0., -1.]
+        raster_a.SetGeoTransform(raster_a_geotransform)
+        raster_a.SetProjection(wgs84_ref.ExportToWkt())
+        band = raster_a.GetRasterBand(1)
+        band.WriteArray(raster_a_array)
+        band.FlushCache()
+        band = None
+        raster_a = None
+
+        raster_b_path = os.path.join(self.workspace_dir, 'raster_b.tif')
+        raster_b_array = numpy.zeros((11, 11), dtype=numpy.int32)
+        raster_b_array[:] = 20
+        raster_b = driver.Create(
+            raster_b_path, raster_b_array.shape[1], raster_b_array.shape[0],
+            2, gdal.GDT_Int32)
+        raster_b.SetProjection(wgs84_ref.ExportToWkt())
+        raster_b_geotransform = [11.1, 1, 0, -11, 0, -1]
+        raster_b.SetGeoTransform(raster_b_geotransform)
+        band = raster_b.GetRasterBand(1)
+        band.WriteArray(raster_b_array)
+        band.FlushCache()
+        raster_b = None
+
+        target_path = os.path.join(self.workspace_dir, 'merged.tif')
+        pygeoprocessing.merge_rasters(
+            [raster_a_path, raster_b_path], target_path)
+
+        target_raster = gdal.OpenEx(target_path)
+        target_band = target_raster.GetRasterBand(1)
+        self.assertEqual(target_band.GetNoDataValue(), None)
+        target_array = target_band.ReadAsArray()
+        target_band = None
+        expected_array = numpy.zeros((22, 22))
+        expected_array[0:11, 0:11] = 10
+        expected_array[11:, 11:] = 20
+
+        numpy.testing.assert_almost_equal(target_array, expected_array)
+
+        target_band = target_raster.GetRasterBand(2)
+        target_array = target_band.ReadAsArray()
+        target_band = None
+        target_raster = None
+        expected_array = numpy.zeros((22, 22))
+
+        numpy.testing.assert_almost_equal(target_array, expected_array)
+
+    def test_merge_rasters_expected_nodata(self):
+        """PGP.geoprocessing: test merge_rasters with defined nodata."""
+        driver = gdal.GetDriverByName('GTiff')
+
+        wgs84_ref = osr.SpatialReference()
+        wgs84_ref.ImportFromEPSG(4326)  # WGS84 EPSG
+
+        # the following creates a checkerboard of upper left square raster
+        # defined, lower right, and equal sized nodata chunks on the other
+        # blocks.
+
+        raster_a_path = os.path.join(self.workspace_dir, 'raster_a.tif')
+        # everything flows to the right
+        raster_a_array = numpy.zeros((11, 11), dtype=numpy.int32)
+        raster_a_array[:] = 10
+        raster_a = driver.Create(
+            raster_a_path, raster_a_array.shape[1], raster_a_array.shape[0],
+            2, gdal.GDT_Int32)
+        raster_a_geotransform = [0.1, 1., 0., 0., 0., -1.]
+        raster_a.SetGeoTransform(raster_a_geotransform)
+        raster_a.SetProjection(wgs84_ref.ExportToWkt())
+        band = raster_a.GetRasterBand(1)
+        band.WriteArray(raster_a_array)
+        band.FlushCache()
+        band = None
+        raster_a = None
+
+        raster_b_path = os.path.join(self.workspace_dir, 'raster_b.tif')
+        raster_b_array = numpy.zeros((11, 11), dtype=numpy.int32)
+        raster_b_array[:] = 20
+        raster_b = driver.Create(
+            raster_b_path, raster_b_array.shape[1], raster_b_array.shape[0],
+            2, gdal.GDT_Int32)
+        raster_b.SetProjection(wgs84_ref.ExportToWkt())
+        raster_b_geotransform = [11.1, 1, 0, -11, 0, -1]
+        raster_b.SetGeoTransform(raster_b_geotransform)
+        band = raster_b.GetRasterBand(1)
+        band.WriteArray(raster_b_array)
+        band.FlushCache()
+        raster_b = None
+
+        target_path = os.path.join(self.workspace_dir, 'merged.tif')
+        pygeoprocessing.merge_rasters(
+            [raster_a_path, raster_b_path], target_path, expected_nodata=0)
+
+        target_raster = gdal.OpenEx(target_path)
+        target_band = target_raster.GetRasterBand(1)
+        target_array = target_band.ReadAsArray()
+        nodata_value = target_raster.GetRasterBand(2).GetNoDataValue()
+        target_band = None
+        expected_array = numpy.zeros((22, 22))
+        expected_array[0:11, 0:11] = 10
+        expected_array[11:, 11:] = 20
+
+        numpy.testing.assert_almost_equal(target_array, expected_array)
+        self.assertEqual(nodata_value, 0)

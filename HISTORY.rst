@@ -1,6 +1,27 @@
 Release History
 ===============
 
+.. Unreleased Changes
+
+0.7.0 (4/18/2018)
+-----------------
+* Versioning is now handled by ``setuptools_scm`` rather than
+  ``natcap.versioner``.  ``pygeoprocessing.__version__`` is now fetched from
+  the package metadata.
+* Raster creation defaults now set "COMPRESS=LZW" for all rasters created in
+  PyGeoprocessing, including internal temporary rasters. This option was
+  chosen after profiling large raster creation runs on platter hard drives.
+  In many cases processing time was dominated by several orders of magnitude
+  as a write-to-disk. When compression is turned on overall runtime of very
+  large rasters is significantly reduced. Note this otherwise increases the
+  runtime small raster creation and processing by a small amount.
+* `pygeoprocessing.routing` module now has a `fill_pits`, function which
+   fills hydrological pits with a focus on runtime efficiency, memory space
+   efficiency, and cache locality.
+* Added a `merge_rasters` function to `pygeoprocessing` that will mosaic a
+  set of rasters in the same projection, pixel size, and band count.
+
+
 0.6.0 (1/10/2017)
 -----------------
 * Added an optional parameter to `iterblocks` to allow the `largest_block` to
