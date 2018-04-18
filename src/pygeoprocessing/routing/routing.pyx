@@ -853,6 +853,10 @@ def flow_dir_d8(
     # to remember where the local pixel flowed to
     cdef int local_flow_dir
 
+    # this remembers is flow was diagonal in case there is a straight
+    # flow that could trump it
+    cdef int diagonal_flow
+
     # `search_queue` is used to grow a flat region searching for a drain
     # of a plateau
     cdef queue[CoordinatePair] search_queue
@@ -1018,26 +1022,39 @@ def flow_dir_d8(
                 # search neighbors for downhill or nodata
                 local_flow_dir = -1
                 lowest_n_height = root_height
+                diagonal = 0
 
                 for i_n in xrange(8):
                     xi_n = xi+NEIGHBOR_OFFSET_ARRAY[2*i_n]
                     yi_n = yi+NEIGHBOR_OFFSET_ARRAY[2*i_n+1]
                     if (xi_n < 0 or xi_n >= raster_x_size or
-                            yi_n < 0 or yi_n >= raster_y_size) and (
-                            local_flow_dir == -1):
-                        # it'll drain off the edge of the raster
-                        local_flow_dir = i_n
+                            yi_n < 0 or yi_n >= raster_y_size):
+                        if local_flow_dir == -1 or (
+                                diagonal and (i_n&1) == 0):
+                            # it'll drain off the edge of the raster
+                            local_flow_dir = i_n
+                            diagonal = i_n & 1
                         continue
                     n_height = dem_buffer_array[yi_n, xi_n]
-                    if isclose(dem_nodata, n_height) and local_flow_dir == -1:
-                        # it'll drain to nodata
-                        local_flow_dir = i_n
+                    if isclose(dem_nodata, n_height):
+                        if local_flow_dir == -1 or (
+                                diagonal and (i_n&1) == 0):
+                            # it'll drain to nodata
+                            local_flow_dir = i_n
+                            diagonal = i_n & 1
                         continue
-                    if n_height < root_height and n_height < lowest_n_height:
-                        # it'll drain downhill
-                        local_flow_dir = i_n
-                        lowest_n_height = n_height
-                        continue
+                    if n_height < root_height:
+                        if n_height < lowest_n_height:
+                            # it'll drain downhill
+                            local_flow_dir = i_n
+                            lowest_n_height = n_height
+                            diagonal = i_n & 1
+                            continue
+                        if (n_height == lowest_n_height and diagonal and
+                                (i_n&1) == 0):
+                            local_flow_dir = i_n
+                            diagonal = 0
+
 
                 if local_flow_dir >= 0:
                     # define flow dir and move on
