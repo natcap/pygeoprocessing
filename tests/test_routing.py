@@ -85,3 +85,38 @@ class TestRouting(unittest.TestCase):
         # the expected result is that the pit is filled in
         dem_array[3:8, 3:8] = 0.0
         numpy.testing.assert_almost_equal(result_array, dem_array)
+
+    def test_d8_flow_dir(self):
+        """PGP.routing: test pitfilling."""
+        import pygeoprocessing.routing
+
+        driver = gdal.GetDriverByName('GTiff')
+        dem_path = os.path.join(self.workspace_dir, 'dem.tif')
+        dem_array = numpy.zeros((11, 11))
+        dem_raster = driver.Create(
+            dem_path, dem_array.shape[1], dem_array.shape[0], 1,
+            gdal.GDT_Float32, options=(
+                'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
+                'BLOCKXSIZE=32', 'BLOCKYSIZE=32'))
+
+        dem_band = dem_raster.GetRasterBand(1)
+        dem_band.WriteArray(dem_array)
+        dem_band.FlushCache()
+        dem_band = None
+        dem_raster = None
+
+        target_flow_dir_path = 'flow_dir.tif' # os.path.join(self.workspace_dir, 'flow_dir.tif')
+
+        pygeoprocessing.routing.flow_dir_d8(
+            (dem_path, 1), target_flow_dir_path,
+            working_dir=self.workspace_dir)
+
+        flow_dir_raster = gdal.OpenEx(target_flow_dir_path, gdal.OF_RASTER)
+        flow_dir_band = flow_dir_raster.GetRasterBand(1)
+        flow_array = flow_dir_band.ReadAsArray()
+        flow_dir_band = None
+        flow_dir_raster = None
+        self.assertEqual(flow_array.dtype, numpy.float32)
+        # the expected result is that the pit is filled in
+        dem_array[3:8, 3:8] = 0.0
+        numpy.testing.assert_almost_equal(flow_array, dem_array)

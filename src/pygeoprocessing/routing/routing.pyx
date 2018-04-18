@@ -1064,9 +1064,9 @@ def flow_dir_d8(
                         xi_n = xi_q+NEIGHBOR_OFFSET_ARRAY[2*i_n]
                         yi_n = yi_q+NEIGHBOR_OFFSET_ARRAY[2*i_n+1]
                         if (xi_n < 0 or xi_n >= raster_x_size or
-                                yi_n < 0 or yi_n >= raster_y_size) and (
-                                    local_flow_dir == -1):
-                            local_flow_dir = i_n
+                                yi_n < 0 or yi_n >= raster_y_size):
+                            if local_flow_dir == -1:
+                                local_flow_dir = i_n
                             continue
                         n_height = dem_managed_raster.get(xi_n, yi_n)
                         if isclose(n_height, dem_nodata) and (
