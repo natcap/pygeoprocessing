@@ -13,6 +13,12 @@ Unreleased Changes
   as a write-to-disk. When compression is turned on overall runtime of very
   large rasters is significantly reduced. Note this otherwise increases the
   runtime small raster creation and processing by a small amount.
+* `pygeoprocessing.routing` module now has a `fill_pits`, function which
+   fills hydrological pits with a focus on runtime efficiency, memory space
+   efficiency, and cache locality.
+* Added a `merge_rasters` function to `pygeoprocessing` that will mosaic a
+  set of rasters in the same projection, pixel size, and band count.
+
 
 0.6.0 (1/10/2017)
 -----------------

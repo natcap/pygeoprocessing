@@ -33,8 +33,8 @@ LOGGER = logging.getLogger('pygeoprocessing.geoprocessing')
 LOGGER.addHandler(logging.NullHandler())  # silence logging by default
 _LOGGING_PERIOD = 5.0  # min 5.0 seconds per update log message for the module
 _DEFAULT_GTIFF_CREATION_OPTIONS = (
-    'TILED=YES', 'BIGTIFF=IF_SAFER', 'COMPRESS=LZW')
-_LARGEST_ITERBLOCK = 2**20  # largest block for iterblocks to read in cells
+    'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW')
+_LARGEST_ITERBLOCK = 2**16  # largest block for iterblocks to read in cells
 
 # A dictionary to map the resampling method input string to the gdal type
 _RESAMPLE_DICT = {
@@ -49,8 +49,8 @@ _RESAMPLE_DICT = {
 
 
 # GDAL 2.2.3 added a couple of useful interpolation values.
-if (distutils.version.LooseVersion(gdal.__version__)
-        >= distutils.version.LooseVersion('2.2.3')):
+if (distutils.version.LooseVersion(gdal.__version__) >=
+        distutils.version.LooseVersion('2.2.3')):
     _RESAMPLE_DICT.update({
         'max': gdal.GRA_Max,
         'min': gdal.GRA_Min,
@@ -522,8 +522,13 @@ def new_raster_from_base(
             'BLOCKXSIZE=%d' % block_size[0],
             'BLOCKYSIZE=%d' % block_size[1]])
 
-    base_band = None
+    # make target directory if it doesn't exist
+    try:
+        os.makedirs(os.path.dirname(target_path))
+    except OSError:
+        pass
 
+    base_band = None
     n_bands = len(band_nodata_list)
     target_raster = driver.Create(
         target_path.encode('utf-8'), n_cols, n_rows, n_bands, datatype,
@@ -1229,7 +1234,8 @@ def warp_raster(
         target_raster_path (string): the location of the resized and
             resampled raster.
         resample_method (string): the resampling technique, one of
-            "nearest|bilinear|cubic|cubic_spline|lanczos|mode"
+            "nearest|bilinear|cubic|cubic_spline|lanczos|average|mode|max"
+            "min|med|q1|q3"
         target_bb (list): if None, target bounding box is the same as the
             source bounding box.  Otherwise it's a list of float describing
             target bounding box in target coordinate system as
@@ -1726,7 +1732,7 @@ def convolve_2d(
 
     for signal_data, signal_block in iterblocks(
             s_path_band[0], band_index_list=[s_path_band[1]],
-            astype=_gdal_type_to_numpy_lookup[target_datatype]):
+            astype_list=[_gdal_type_to_numpy_lookup[target_datatype]]):
         last_time = _invoke_timed_callback(
             last_time, lambda: LOGGER.info(
                 "convolution operating on signal pixel (%d, %d)",
@@ -1740,7 +1746,7 @@ def convolve_2d(
 
         for kernel_data, kernel_block in iterblocks(
                 k_path_band[0], band_index_list=[k_path_band[1]],
-                astype=_gdal_type_to_numpy_lookup[target_datatype]):
+                astype_list=[_gdal_type_to_numpy_lookup[target_datatype]]):
             left_index_raster = (
                 signal_data['xoff'] - n_cols_kernel / 2 + kernel_data['xoff'])
             right_index_raster = (
@@ -1869,7 +1875,7 @@ def convolve_2d(
         mask_raster.FlushCache()
         for target_data, target_block in iterblocks(
                 target_path, band_index_list=[1],
-                astype=_gdal_type_to_numpy_lookup[target_datatype]):
+                astype_list=[_gdal_type_to_numpy_lookup[target_datatype]]):
             mask_block = mask_band.ReadAsArray(**target_data)
             if base_signal_nodata is not None and mask_nodata:
                 valid_mask = target_block != target_nodata
@@ -1893,7 +1899,7 @@ def convolve_2d(
 
 def iterblocks(
         raster_path, band_index_list=None, largest_block=_LARGEST_ITERBLOCK,
-        astype=None, offset_only=False):
+        astype_list=None, offset_only=False):
     """Iterate across all the memory blocks in the input raster.
 
     Result is a generator of block location information and numpy arrays.
@@ -1909,22 +1915,22 @@ def iterblocks(
 
     Parameters:
         raster_path (string): Path to raster file to iterate over.
-        band_index_list (list of ints or None): A list of the bands for which
-            the matrices should be returned. The band number to operate on.
-            Defaults to None, which will return all bands.  Bands may be
-            specified in any order, and band indexes may be specified multiple
-            times.  The blocks returned on each iteration will be in the order
-            specified in this list.
+        band_index_list (list of ints or None): A list of band indexes for
+            which the data blocks should be returned; band indexes start at 1.
+            Defaults to None, which will return all bands.  Band indexes may
+            be specified in any order, and band indexes may be specified
+            multiple times.  The blocks returned on each iteration will be in
+            the order specified in this list.
         largest_block (int): Attempts to iterate over raster blocks with
             this many elements.  Useful in cases where the blocksize is
             relatively small, memory is available, and the function call
             overhead dominates the iteration.  Defaults to 2**20.  A value of
             anything less than the original blocksize of the raster will
             result in blocksizes equal to the original size.
-        astype (list of numpy types): If none, output blocks are in the native
-            type of the raster bands.  Otherwise this parameter is a list
-            of len(band_index_list) length that contains the desired output
-            types that iterblock generates for each band.
+        astype_list (list of numpy types): If none, output blocks are in the
+            native type of the raster bands.  Otherwise this parameter is a
+            list of len(band_index_list) length that contains the desired
+            output types that iterblock generates for each band.
         offset_only (boolean): defaults to False, if True `iterblocks` only
             returns offset dictionary and doesn't read any binary data from
             the raster.  This can be useful when iterating over writing to
@@ -1983,8 +1989,8 @@ def iterblocks(
     last_row_block_width = None
     last_col_block_width = None
 
-    if astype is not None:
-        block_type_list = [astype] * len(band_index_list)
+    if astype_list is not None:
+        block_type_list = astype_list
     else:
         block_type_list = [
             _gdal_to_numpy_type(ds_band) for ds_band in band_index_list]
@@ -2090,6 +2096,215 @@ def transform_bounding_box(
             (p_2, p_3, lambda p_list: max([p[0] for p in p_list])),
             (p_3, p_0, lambda p_list: max([p[1] for p in p_list]))]]
     return transformed_bounding_box
+
+
+def merge_rasters(
+        raster_path_list, target_path, bounding_box=None,
+        expected_nodata=None,
+        gtiff_creation_options=_DEFAULT_GTIFF_CREATION_OPTIONS):
+    """Merge the given rasters into a single raster.
+
+    This operation creates a mosaic of the rasters in `raster_path_list`.
+    The result is a raster of the size of the union of the bounding box of
+    the inputs where the contents of each raster's bands are copied into the
+    correct georeferenced target's bands.
+
+    Note the input rasters must be in the same projection, same pixel size,
+    same number of bands, and same datatype. If any of these are not true,
+    the operation raises a ValueError with an appropriate error message.
+
+    Parameters:
+        raster_path_list (list): list of file paths to rasters
+        target_path (string): path to the geotiff file that will be created
+            by this operation.
+        bounding_box (list): if not None, clip target path to be within these
+            bounds.
+        expected_nodata (float): if not None, use this as the nodata value
+            in case multiple rasters have different nodata values.
+        gtiff_creation_options (list): this is an argument list that will be
+            passed to the GTiff driver.  Useful for blocksizes, compression,
+            and more.
+
+    Returns:
+        None.
+    """
+    raster_info_list = [
+        get_raster_info(path) for path in raster_path_list]
+    pixel_size_set = set([
+        x['pixel_size'] for x in raster_info_list])
+    if len(pixel_size_set) != 1:
+        raise ValueError(
+            "Pixel sizes of all rasters are not the same. "
+            "Here's the sizes: %s" % str([
+                (path, x['pixel_size']) for path, x in zip(
+                    raster_path_list, raster_info_list)]))
+    n_bands_set = set([x['n_bands'] for x in raster_info_list])
+    if len(n_bands_set) != 1:
+        raise ValueError(
+            "Number of bands per raster are not the same. "
+            "Here's the band counts: %s" % str([
+                (path, x['n_bands']) for path, x in zip(
+                    raster_path_list, raster_info_list)]))
+
+    datatype_set = set([x['datatype'] for x in raster_info_list])
+    if len(datatype_set) != 1:
+        raise ValueError(
+            "Datatype per raster are not the same. "
+            "Here's the datatypes: %s" % str([
+                (path, x['datatype']) for path, x in zip(
+                    raster_path_list, raster_info_list)]))
+
+    if expected_nodata is None:
+        nodata_set = set([x['nodata'][0] for x in raster_info_list])
+        if len(nodata_set) != 1:
+            raise ValueError(
+                "Nodata per raster are not the same. "
+                "Path and nodata values: %s" % str([
+                    (path, x['nodata']) for path, x in zip(
+                        raster_path_list, raster_info_list)]))
+
+    projection_set = set([x['projection'] for x in raster_info_list])
+    if len(projection_set) != 1:
+        raise ValueError(
+            "Projections are not identical. Here's the projections: %s" % str(
+                [(path, x['projection']) for path, x in zip(
+                    raster_path_list, raster_info_list)]))
+
+    pixeltype_set = set()
+    for path in raster_path_list:
+        raster = gdal.Open(path)
+        band = raster.GetRasterBand(1)
+        metadata = band.GetMetadata('IMAGE_STRUCTURE')
+        band = None
+        if 'PIXELTYPE' in metadata:
+            pixeltype_set.add('PIXELTYPE=' + metadata['PIXELTYPE'])
+        else:
+            pixeltype_set.add(None)
+    if len(pixeltype_set) != 1:
+        raise ValueError(
+            "PIXELTYPE different between rasters."
+            "Here is the set of types (should only have 1): %s" % str(
+                pixeltype_set))
+
+    bounding_box_list = [x['bounding_box'] for x in raster_info_list]
+    target_bounding_box = reduce(
+        functools.partial(_merge_bounding_boxes, mode='union'),
+        bounding_box_list)
+    if bounding_box is not None:
+        target_bounding_box = reduce(
+            functools.partial(_merge_bounding_boxes, mode='intersection'),
+            [target_bounding_box, bounding_box])
+
+    driver = gdal.GetDriverByName('GTiff')
+    target_pixel_size = pixel_size_set.pop()
+    n_cols = int(math.ceil(abs(
+        (target_bounding_box[2]-target_bounding_box[0]) / target_pixel_size[0])))
+    n_rows = int(math.ceil(abs(
+        (target_bounding_box[3]-target_bounding_box[1]) / target_pixel_size[1])))
+
+    target_geotransform = [
+        target_bounding_box[0],
+        target_pixel_size[0],
+        0,
+        target_bounding_box[1],
+        0,
+        target_pixel_size[1]]
+
+    # sometimes we have negative pixel sizes so geotransform starts from the
+    # other side
+    if target_pixel_size[0] < 0:
+        target_geotransform[0] = target_bounding_box[2]
+    if target_pixel_size[1] < 0:
+        target_geotransform[3] = target_bounding_box[3]
+
+    # there's only one element in the sets so okay to pop right in the call,
+    # we won't need it after anyway
+    n_bands = n_bands_set.pop()
+    target_raster = driver.Create(
+        target_path.encode('utf-8'), n_cols, n_rows, n_bands,
+        datatype_set.pop(), options=gtiff_creation_options)
+    target_raster.SetProjection(raster.GetProjection())
+    target_raster.SetGeoTransform(target_geotransform)
+    if expected_nodata is None:
+        nodata = nodata_set.pop()
+    else:
+        nodata = expected_nodata
+    # consider what to do if rasters have nodata defined, but do not fill
+    # up the mosaic.
+    if nodata is not None:
+        # geotiffs only have 1 nodata value set through the band
+        target_raster.GetRasterBand(1).SetNoDataValue(nodata)
+        for band_index in xrange(n_bands):
+            target_raster.GetRasterBand(band_index+1).Fill(nodata)
+    target_band_list = [
+        target_raster.GetRasterBand(band_index) for band_index in xrange(
+            1, n_bands+1)]
+
+    # the raster was left over from checking pixel types, remove it after
+    raster = None
+
+    for raster_info, raster_path in zip(raster_info_list, raster_path_list):
+        # figure out where raster_path starts w/r/t target_raster
+        raster_start_x = int((
+            raster_info['geotransform'][0] -
+            target_geotransform[0]) / target_pixel_size[0])
+        raster_start_y = int((
+            raster_info['geotransform'][3] -
+            target_geotransform[3]) / target_pixel_size[1])
+        for iter_result in iterblocks(raster_path):
+            offset_info = iter_result[0]
+            # its possible the block reads in coverage that is outside the
+            # target bounds entirely. nothing to do but skip
+            if offset_info['yoff'] + raster_start_y > n_rows:
+                continue
+            if offset_info['xoff'] + raster_start_x > n_cols:
+                continue
+            if (offset_info['xoff'] + raster_start_x +
+                    offset_info['win_xsize'] < 0):
+                continue
+            if (offset_info['yoff'] + raster_start_y +
+                    offset_info['win_ysize'] < 0):
+                continue
+
+            # invariant: the window described in `offset_info` intersects
+            # with the target raster.
+
+            # check to see if window hangs off the left/top part of raster
+            # and determine how far to adjust down
+            x_clip_min = 0
+            if raster_start_x + offset_info['xoff'] < 0:
+                x_clip_min = abs(raster_start_x + offset_info['xoff'])
+            y_clip_min = 0
+            if raster_start_y + offset_info['yoff'] < 0:
+                y_clip_min = abs(raster_start_y + offset_info['yoff'])
+            x_clip_max = 0
+
+            # check if window hangs off right/bottom part of target raster
+            if (offset_info['xoff'] + raster_start_x +
+                    offset_info['win_xsize'] >= n_cols):
+                x_clip_max = (
+                    offset_info['xoff'] + raster_start_x +
+                    offset_info['win_xsize'] - n_cols)
+            y_clip_max = 0
+
+            if (offset_info['yoff'] + raster_start_y +
+                    offset_info['win_ysize'] >= n_rows):
+                y_clip_max = (
+                    offset_info['yoff'] + raster_start_y +
+                    offset_info['win_ysize'] - n_rows)
+
+            data_block_list = iter_result[1:]
+            for target_band, data_block in zip(
+                    target_band_list, data_block_list):
+                target_band.WriteArray(
+                    data_block[
+                        y_clip_min:offset_info['win_ysize']-y_clip_max,
+                        x_clip_min:offset_info['win_xsize']-x_clip_max],
+                    xoff=offset_info['xoff']+raster_start_x+x_clip_min,
+                    yoff=offset_info['yoff']+raster_start_y+y_clip_min)
+
+    del target_band_list[:]
+    target_raster = None
 
 
 def _invoke_timed_callback(
