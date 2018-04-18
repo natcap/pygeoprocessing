@@ -22,7 +22,6 @@ import tempfile
 
 import numpy
 import pygeoprocessing
-from .. import geoprocessing
 from osgeo import gdal
 
 cimport numpy
