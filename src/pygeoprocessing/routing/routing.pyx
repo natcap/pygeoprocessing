@@ -58,6 +58,23 @@ cdef double IMPROBABLE_FLOAT_NOATA = -1.23789789e29
 cdef double SQRT2 = 1.4142135623730951
 cdef double SQRT2_INV = 1.0 / 1.4142135623730951
 
+# used to loop over neighbors and offset the x/y values as defined below
+    # 321
+    # 4x0
+    # 567
+cdef int* NEIGHBOR_OFFSET_ARRAY = [
+        1, 0,  # 0
+        1, -1,  # 1
+        0, -1,  # 2
+        -1, -1,  # 3
+        -1, 0,  # 4
+        -1, 1,  # 5
+        0, 1,  # 6
+        1, 1  # 7
+        ]
+
+cdef int* REVERSE_DIRECTION = [4, 5, 6, 7, 0, 1, 2, 3]
+
 # this is a fast C function to determine if two doubles are almost equal
 cdef bint isclose(double a, double b):
     return abs(a - b) <= (1e-5 + 1e-7 * abs(b))
@@ -470,21 +487,6 @@ def fill_pits(
     # have already been processed
     cdef int feature_id
 
-    # used to loop over neighbors and offset the x/y values as defined below
-    # 321
-    # 4x0
-    # 567
-    cdef int* NEIGHBOR_OFFSET_ARRAY = [
-        1, 0,  # 0
-        1, -1,  # 1
-        0, -1,  # 2
-        -1, -1,  # 3
-        -1, 0,  # 4
-        -1, 1,  # 5
-        0, 1,  # 6
-        1, 1  # 7
-        ]
-
     # used for time-delayed logging
     cdef time_t last_log_time
     last_log_time = ctime(NULL)
@@ -511,7 +513,8 @@ def fill_pits(
 
     # set up the working dir for the mask rasters
     try:
-        os.makedirs(working_dir)
+        if working_dir is not None:
+            os.makedirs(working_dir)
     except OSError:
         pass
     working_dir_path = tempfile.mkdtemp(
@@ -878,24 +881,6 @@ def flow_dir_d8(
     # properties of the parallel rasters
     cdef int raster_x_size, raster_y_size
 
-
-    # used to loop over neighbors and offset the x/y values as defined below
-    # 321
-    # 4x0
-    # 567
-    cdef int* NEIGHBOR_OFFSET_ARRAY = [
-        1, 0,  # 0
-        1, -1,  # 1
-        0, -1,  # 2
-        -1, -1,  # 3
-        -1, 0,  # 4
-        -1, 1,  # 5
-        0, 1,  # 6
-        1, 1  # 7
-        ]
-
-    cdef int* REVERSE_DIRECTION = [4, 5, 6, 7, 0, 1, 2, 3]
-
     # used for time-delayed logging
     cdef time_t last_log_time
     last_log_time = ctime(NULL)
@@ -922,7 +907,8 @@ def flow_dir_d8(
 
     # set up the working dir for the mask rasters
     try:
-        os.makedirs(working_dir)
+        if working_dir is not None:
+            os.makedirs(working_dir)
     except OSError:
         pass
     working_dir_path = tempfile.mkdtemp(
@@ -1194,7 +1180,7 @@ def flow_dir_d8(
 
 
 def flow_accumulation_d8(
-        flow_dir_raster_path_band, target_flow_accumulation,
+        flow_dir_raster_path_band, target_flow_accum_raster_path,
         working_dir=None):
     """D8 flow accumulation.
 
@@ -1206,7 +1192,7 @@ def flow_accumulation_d8(
                 321
                 4x0
                 567
-        target_flow_accumulation_path (string): path to desired flow
+        target_flow_accum_raster_path (string): path to created flow
             accumulation raster. After this call, the value of each pixel will
             be 1 plus the number of upstream pixels that drain to that pixel.
         working_dir (string): If not None, indicates where temporary files
@@ -1216,4 +1202,152 @@ def flow_accumulation_d8(
     Returns:
         None.
     """
-    pass
+    # set up the working dir for the mask rasters
+    try:
+        if working_dir is not None:
+            os.makedirs(working_dir)
+    except OSError:
+        pass
+    working_dir_path = tempfile.mkdtemp(
+        dir=working_dir, prefix='fill_pits_%s_' % time.strftime(
+            '%Y-%m-%d_%H_%M_%S', time.gmtime()))
+
+    # These variables are used to iterate over the DEM using `iterblock`
+    # indexes, a numpy.float64 type is used since we need to statically cast
+    # and it's the most complex numerical type and will be compatible without
+    # data loss for any lower type that might be used in
+    # `dem_raster_path_band[0]`.
+    cdef numpy.ndarray[numpy.uint8_t, ndim=2] flow_dir_buffer_array
+    cdef int win_ysize, win_xsize, xoff, yoff
+
+    # the _root variables remembers the pixel index where the plateau/pit
+    # region was first detected when iterating over the DEM.
+    cdef int xi_root, yi_root
+
+    # these variables are used as pixel or neighbor indexes. where _q
+    # represents a value out of a queue, and _n is related to a neighbor pixel
+    cdef int i_n, xi, yi, xi_q, yi_q, xi_n, yi_n
+
+    # used to hold flow direction values
+    cdef int flow_dir, flow_dir_nodata
+
+    # `search_queue` is used to grow a flat region searching for a drain
+    # of a plateau
+    cdef queue[CoordinatePair] search_queue
+
+    # `drain_queue` is used after a plateau drain is defined and iterates
+    # until the entire plateau is drained, `nodata_drain_queue` are for
+    # the case where the plateau is only drained by nodata pixels
+    cdef queue[CoordinatePair] drain_queue, nodata_drain_queue
+
+    # this queue is used to remember the flow directions of nodata pixels in
+    # a plateau in case no other valid drain was found
+    cdef queue[int] nodata_flow_dir_queue
+
+    # properties of the parallel rasters
+    cdef int raster_x_size, raster_y_size
+
+    # used for time-delayed logging
+    cdef time_t last_log_time
+    last_log_time = ctime(NULL)
+
+    logger = logging.getLogger('pygeoprocessing.routing.flow_dir_d8')
+    logger.addHandler(logging.NullHandler())  # silence logging by default
+    flat_region_mask_path = os.path.join(
+        working_dir_path, 'flat_region_mask.tif')
+    flow_accum_nodata = -1
+    pygeoprocessing.new_raster_from_base(
+        flow_dir_raster_path_band[0], target_flow_accum_raster_path,
+        gdal.GDT_Int32, [flow_accum_nodata],
+        fill_value_list=[flow_accum_nodata],
+        gtiff_creation_options=GTIFF_CREATION_OPTIONS)
+    flow_accum_managed_raster = _ManagedRaster(
+        target_flow_accum_raster_path, 1, 1)
+
+    flow_dir_managed_raster = _ManagedRaster(
+        flow_dir_raster_path_band[0], flow_dir_raster_path_band[1], 0)
+    flow_dir_raster = gdal.Open(flow_dir_raster_path_band[0], gdal.OF_RASTER)
+    flow_dir_band = flow_dir_raster.GetRasterBand(
+        flow_dir_raster_path_band[1])
+
+    flow_dir_raster_info = pygeoprocessing.get_raster_info(
+        flow_dir_raster_path_band[0])
+
+    raster_x_size, raster_y_size = flow_dir_raster_info['raster_size']
+
+    flow_dir_nodata = flow_dir_raster_info['nodata'][
+        flow_dir_raster_path_band[1]-1]
+
+    # this outer loop searches for a pixel that is locally undrained
+    for offset_dict in pygeoprocessing.iterblocks(
+            flow_dir_raster_path_band[0], offset_only=True, largest_block=0):
+        win_xsize = offset_dict['win_xsize']
+        win_ysize = offset_dict['win_ysize']
+        xoff = offset_dict['xoff']
+        yoff = offset_dict['yoff']
+
+        if ctime(NULL) - last_log_time > 5.0:
+            last_log_time = ctime(NULL)
+            current_pixel = xoff + yoff * raster_x_size
+            logger.info('%.2f%% complete', 100.0 * current_pixel / <float>(
+                raster_x_size * raster_y_size))
+
+        # make a buffer big enough to capture block and boundaries around it
+        flow_dir_buffer_array = numpy.empty(
+            (offset_dict['win_ysize']+2, offset_dict['win_xsize']+2),
+            dtype=numpy.uint8)
+        flow_dir_buffer_array[:] = flow_dir_nodata
+
+        # default numpy array boundaries
+        buffer_off = {
+            'xa': 1,
+            'xb': -1,
+            'ya': 1,
+            'yb': -1
+        }
+        # check if we can widen the border to include real data from the
+        # raster
+        for a_buffer_id, b_buffer_id, off_id, win_size_id, raster_size in [
+                ('xa', 'xb', 'xoff', 'win_xsize', raster_x_size),
+                ('ya', 'yb', 'yoff', 'win_ysize', raster_y_size)]:
+
+            if offset_dict[off_id] > 0:
+                # in this case we have valid data to the left (or up)
+                # grow the window and buffer slice in that direction
+                buffer_off[a_buffer_id] = None
+                offset_dict[off_id] -= 1
+                offset_dict[win_size_id] += 1
+
+            if offset_dict[off_id] + offset_dict[win_size_id] < raster_size:
+                # here we have valid data to the right (or bottom)
+                # grow the right buffer and add 1 to window
+                buffer_off[b_buffer_id] = None
+                offset_dict[win_size_id] += 1
+
+        # read in the valid memory block
+        flow_dir_buffer_array[
+            buffer_off['ya']:buffer_off['yb'],
+            buffer_off['xa']:buffer_off['xb']] = flow_dir_band.ReadAsArray(
+                **offset_dict).astype(numpy.uint8)
+
+        # ensure these are set for the complier
+        xi_n = -1
+        yi_n = -1
+
+        # search block for to set flow direction
+        for yi in xrange(1, win_ysize+1):
+            for xi in xrange(1, win_xsize+1):
+                flow_dir = flow_dir_buffer_array[yi, xi]
+                if flow_dir == flow_dir_nodata:
+                    continue
+
+    # search for drains
+    #   any pixel that drains to the edge or nodata pixel is a drain
+    #   push that on a stack/queue for processing
+
+    # process drains
+    #   get pixel and flow direction to check
+    #   if neighbor flows in:
+    #       if neighbor has flow accum defined:
+    #           add flow accum to pixel
+    #       else push pixel & flow dir on stack and process neighbor
