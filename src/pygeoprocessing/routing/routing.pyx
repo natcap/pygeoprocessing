@@ -52,7 +52,10 @@ GTIFF_CREATION_OPTIONS = (
 
 # if nodata is not defined for a float, it's a difficult choice. this number
 # probably won't collide with anything ever created by humans
-IMPROBABLE_FLOAT_NOATA = -1.23789789e29
+cdef double IMPROBABLE_FLOAT_NOATA = -1.23789789e29
+
+# a pre-computed square root of 2 constant
+cdef double SQRT2_INV = 1.0 / 1.4142135623730951
 
 # this is a fast C function to determine if two doubles are almost equal
 cdef bint isclose(double a, double b):
@@ -848,22 +851,24 @@ def flow_dir_d8(
     cdef int i_n, xi, yi, xi_q, yi_q, xi_n, yi_n
 
     # these are used to recall the local and neighbor heights of pixels
-    cdef double root_height, n_height, lowest_n_height, dem_nodata
-
-    # to remember where the local pixel flowed to
-    cdef int local_flow_dir
+    cdef double root_height, n_height, dem_nodata
 
     # this remembers is flow was diagonal in case there is a straight
     # flow that could trump it
-    cdef int diagonal_flow
+    cdef int diagonal_nodata
 
     # `search_queue` is used to grow a flat region searching for a drain
     # of a plateau
     cdef queue[CoordinatePair] search_queue
 
     # `drain_queue` is used after a plateau drain is defined and iterates
-    # until the entire plateau is drained
-    cdef queue[CoordinatePair] drain_queue
+    # until the entire plateau is drained, `nodata_drain_queue` are for
+    # the case where the plateau is only drained by nodata pixels
+    cdef queue[CoordinatePair] drain_queue, nodata_drain_queue
+
+    # this queue is used to remember the flow directions of nodata pixels in
+    # a plateau in case no other valid drain was found
+    cdef queue[int] nodata_flow_dir_queue
 
     # properties of the parallel rasters
     cdef int raster_x_size, raster_y_size
@@ -997,6 +1002,9 @@ def flow_dir_d8(
             buffer_off['xa']:buffer_off['xb']] = dem_band.ReadAsArray(
                 **offset_dict).astype(numpy.float64)
 
+        logger.debug(dem_buffer_array)
+        logger.debug(offset_dict)
+
         # ensure these are set for the complier
         xi_n = -1
         yi_n = -1
@@ -1019,47 +1027,31 @@ def flow_dir_d8(
                     # already been defined
                     continue
 
-                # search neighbors for downhill or nodata
-                local_flow_dir = -1
-                lowest_n_height = root_height
-                diagonal = 0
+                # initialize variables to indicate the largest slope_dir is
+                # undefined, the largest slope seen so far is flat, and the
+                # largest nodata is at least a diagonal away
+                largest_slope_dir = -1
+                largest_slope = 0.0
 
                 for i_n in xrange(8):
                     xi_n = xi+NEIGHBOR_OFFSET_ARRAY[2*i_n]
                     yi_n = yi+NEIGHBOR_OFFSET_ARRAY[2*i_n+1]
-                    if (xi_n < 0 or xi_n >= raster_x_size or
-                            yi_n < 0 or yi_n >= raster_y_size):
-                        if local_flow_dir == -1 or (
-                                diagonal and (i_n&1) == 0):
-                            # it'll drain off the edge of the raster
-                            local_flow_dir = i_n
-                            diagonal = i_n & 1
-                        continue
                     n_height = dem_buffer_array[yi_n, xi_n]
-                    if isclose(dem_nodata, n_height):
-                        if local_flow_dir == -1 or (
-                                diagonal and (i_n&1) == 0):
-                            # it'll drain to nodata
-                            local_flow_dir = i_n
-                            diagonal = i_n & 1
+                    # TODO: check the original pit fill to ensure on the early pass we aren't checking raster bounds
+                    if isclose(n_height, dem_nodata):
                         continue
-                    if n_height < root_height:
-                        if n_height < lowest_n_height:
-                            # it'll drain downhill
-                            local_flow_dir = i_n
-                            lowest_n_height = n_height
-                            diagonal = i_n & 1
-                            continue
-                        if (n_height == lowest_n_height and diagonal and
-                                (i_n&1) == 0):
-                            local_flow_dir = i_n
-                            diagonal = 0
+                    n_slope = root_height - n_height
+                    if i_n & 1:
+                        # if diagonal, adjust the slope
+                        n_slope *= SQRT2_INV
+                    if n_slope > largest_slope:
+                        largest_slope_dir = i_n
+                        largest_slope = n_slope
 
-
-                if local_flow_dir >= 0:
+                if largest_slope_dir >= 0:
                     # define flow dir and move on
                     flow_dir_managed_raster.set(
-                        xi_root, yi_root, local_flow_dir)
+                        xi_root, yi_root, largest_slope_dir)
                     continue
 
                 # otherwise, this pixel doesn't drain locally, so it must
@@ -1075,38 +1067,76 @@ def flow_dir_d8(
                     yi_q = search_queue.front().second
                     search_queue.pop()
 
-                    lowest_n_height = dem_managed_raster.get(xi_q, yi_q)
-                    local_flow_dir = -1
+                    largest_slope_dir = -1
+                    largest_slope = 0.0
+                    diagonal_nodata = 1
                     for i_n in xrange(8):
                         xi_n = xi_q+NEIGHBOR_OFFSET_ARRAY[2*i_n]
                         yi_n = yi_q+NEIGHBOR_OFFSET_ARRAY[2*i_n+1]
+
+                        # TODO: this flow direction drain for plateaus doesn't
+                        #       consider diagonal vs. straight flows
                         if (xi_n < 0 or xi_n >= raster_x_size or
                                 yi_n < 0 or yi_n >= raster_y_size):
-                            if local_flow_dir == -1:
-                                local_flow_dir = i_n
+                            n_height = dem_nodata
+                        else:
+                            n_height = dem_buffer_array[yi_n, xi_n]
+                        if isclose(n_height, dem_nodata):
+                            if diagonal_nodata and largest_slope == 0.0:
+                                largest_slope_dir = i_n
+                                diagonal_nodata = i_n & 1
+                                continue
+                        n_slope = root_height - n_height
+                        if n_slope < 0:
                             continue
-                        n_height = dem_managed_raster.get(xi_n, yi_n)
-                        if isclose(n_height, dem_nodata) and (
-                                local_flow_dir == -1):
-                            local_flow_dir = i_n
-                            continue
-                        if n_height < root_height and (
-                                n_height < lowest_n_height):
-                            local_flow_dir = i_n
-                            lowest_n_height = n_height
-                            continue
-                        if n_height == root_height and (
+                        if n_slope == 0.0 and (
                                 flat_region_mask_managed_raster.get(
                                     xi_n, yi_n) == mask_nodata):
                             # only grow if it's at the same level and not
                             # previously visited
                             search_queue.push(CoordinatePair(xi_n, yi_n))
                             flat_region_mask_managed_raster.set(xi_n, yi_n, 1)
+                        if i_n & 1:
+                            n_slope *= SQRT2_INV
+                        if n_slope > largest_slope:
+                            largest_slope = n_slope
+                            largest_slope_dir = i_n
+                            continue
 
-                    if local_flow_dir >= 0:
+                    if largest_slope_dir >= 0:
+                        if largest_slope > 0.0:
+                            # regular downhill pixel
+                            flow_dir_managed_raster.set(
+                                xi_q, yi_q, largest_slope_dir)
+                            drain_queue.push(CoordinatePair(xi_q, yi_q))
+                        else:
+                            # must be a nodata drain, save on queue for later
+                            nodata_drain_queue.push(
+                                CoordinatePair(xi_q, yi_q))
+                            nodata_flow_dir_queue.push(largest_slope_dir)
+
+                # if there's no downhill drains, try the nodata drains
+                if drain_queue.empty():
+                    # push the nodata drain queue over to the drain queue
+                    # and set all the flow directions on the nodata drain
+                    # pixels
+                    while not nodata_drain_queue.empty():
+                        xi_q = drain_queue.front().first
+                        yi_q = drain_queue.front().second
                         flow_dir_managed_raster.set(
-                            xi_q, yi_q, local_flow_dir)
-                        drain_queue.push(CoordinatePair(xi_q, yi_q))
+                            xi_q, yi_q, nodata_flow_dir_queue.front())
+                        drain_queue.push(nodata_drain_queue.front())
+                        nodata_flow_dir_queue.pop()
+                        nodata_drain_queue.pop()
+                else:
+                    # drain the nodata drain queues
+                    while not nodata_drain_queue.empty():
+                        nodata_flow_dir_queue.pop()
+                        nodata_drain_queue.pop()
+
+                # TODO: for debugging
+                while not drain_queue.empty():
+                    drain_queue.pop()
 
                 # this loop does a BFS from the plateau drain to any other
                 # neighboring undefined pixels

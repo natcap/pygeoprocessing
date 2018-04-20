@@ -91,7 +91,7 @@ class TestRouting(unittest.TestCase):
         import pygeoprocessing.routing
 
         driver = gdal.GetDriverByName('GTiff')
-        dem_path = os.path.join(self.workspace_dir, 'dem.tif')
+        dem_path = 'dem.tif' #os.path.join(self.workspace_dir, 'dem.tif')
         dem_array = numpy.zeros((11, 11))
         dem_raster = driver.Create(
             dem_path, dem_array.shape[1], dem_array.shape[0], 1,
