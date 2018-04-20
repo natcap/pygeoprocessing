@@ -91,7 +91,7 @@ class TestRouting(unittest.TestCase):
         import pygeoprocessing.routing
 
         driver = gdal.GetDriverByName('GTiff')
-        dem_path = 'dem.tif' #os.path.join(self.workspace_dir, 'dem.tif')
+        dem_path = os.path.join(self.workspace_dir, 'dem.tif')
         dem_array = numpy.zeros((11, 11))
         dem_raster = driver.Create(
             dem_path, dem_array.shape[1], dem_array.shape[0], 1,
@@ -105,7 +105,8 @@ class TestRouting(unittest.TestCase):
         dem_band = None
         dem_raster = None
 
-        target_flow_dir_path = 'flow_dir.tif' # os.path.join(self.workspace_dir, 'flow_dir.tif')
+        target_flow_dir_path = os.path.join(
+            self.workspace_dir, 'flow_dir.tif')
 
         pygeoprocessing.routing.flow_dir_d8(
             (dem_path, 1), target_flow_dir_path,
@@ -117,6 +118,16 @@ class TestRouting(unittest.TestCase):
         flow_dir_band = None
         flow_dir_raster = None
         self.assertEqual(flow_array.dtype, numpy.uint8)
-        # the expected result is that the pit is filled in
-        dem_array[3:8, 3:8] = 0.0
-        numpy.testing.assert_almost_equal(flow_array, dem_array)
+        expected_result = numpy.array([
+            [2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 0],
+            [4, 2, 2, 2, 2, 2, 2, 2, 2, 2, 0],
+            [4, 4, 2, 2, 2, 2, 2, 2, 2, 0, 0],
+            [4, 4, 4, 2, 2, 2, 2, 2, 0, 0, 0],
+            [4, 4, 4, 4, 2, 2, 2, 0, 0, 0, 0],
+            [4, 4, 4, 4, 4, 2, 0, 0, 0, 0, 0],
+            [4, 4, 4, 4, 4, 6, 0, 0, 0, 0, 0],
+            [4, 4, 4, 4, 6, 6, 6, 0, 0, 0, 0],
+            [4, 4, 4, 6, 6, 6, 6, 6, 0, 0, 0],
+            [4, 4, 6, 6, 6, 6, 6, 6, 6, 0, 0],
+            [4, 6, 6, 6, 6, 6, 6, 6, 6, 6, 0]])
+        numpy.testing.assert_almost_equal(flow_array, expected_result)
