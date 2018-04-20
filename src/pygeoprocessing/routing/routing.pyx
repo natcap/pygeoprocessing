@@ -1,4 +1,5 @@
 # distutils: language=c++
+# TODO: see if I can use constructors instead of dynamic mem allocation
 """
 Provides PyGeprocessing Routing functionality.
 
@@ -395,6 +396,12 @@ cdef struct Pixel:
     int yi  # pixel y coordinate in the raster
     int priority # for breaking ties if two `value`s are equal.
 ctypedef (Pixel*) PixelPtr
+
+cdef struct FlowPixel:
+    int xi
+    int yi
+    int flow_dir
+    int flow_accum
 
 # functor for priority queue of pixels
 cdef cppclass GreaterPixel nogil:
@@ -1180,8 +1187,7 @@ def flow_dir_d8(
 
 
 def flow_accumulation_d8(
-        flow_dir_raster_path_band, target_flow_accum_raster_path,
-        working_dir=None):
+        flow_dir_raster_path_band, target_flow_accum_raster_path):
     """D8 flow accumulation.
 
     Parameters:
@@ -1195,23 +1201,10 @@ def flow_accumulation_d8(
         target_flow_accum_raster_path (string): path to created flow
             accumulation raster. After this call, the value of each pixel will
             be 1 plus the number of upstream pixels that drain to that pixel.
-        working_dir (string): If not None, indicates where temporary files
-            should be created during this run. If this directory doesn't exist
-            it is created by this call.
 
     Returns:
         None.
     """
-    # set up the working dir for the mask rasters
-    try:
-        if working_dir is not None:
-            os.makedirs(working_dir)
-    except OSError:
-        pass
-    working_dir_path = tempfile.mkdtemp(
-        dir=working_dir, prefix='fill_pits_%s_' % time.strftime(
-            '%Y-%m-%d_%H_%M_%S', time.gmtime()))
-
     # These variables are used to iterate over the DEM using `iterblock`
     # indexes, a numpy.float64 type is used since we need to statically cast
     # and it's the most complex numerical type and will be compatible without
@@ -1224,25 +1217,20 @@ def flow_accumulation_d8(
     # region was first detected when iterating over the DEM.
     cdef int xi_root, yi_root
 
-    # these variables are used as pixel or neighbor indexes. where _q
-    # represents a value out of a queue, and _n is related to a neighbor pixel
-    cdef int i_n, xi, yi, xi_q, yi_q, xi_n, yi_n
+    # these variables are used as pixel or neighbor indexes.
+    # _n is related to a neighbor pixel
+    cdef int i_n, xi, yi, xi_n, yi_n
 
     # used to hold flow direction values
-    cdef int flow_dir, flow_dir_nodata
+    cdef int flow_dir, upstream_flow_dir, flow_dir_nodata
 
-    # `search_queue` is used to grow a flat region searching for a drain
-    # of a plateau
-    cdef queue[CoordinatePair] search_queue
+    # used as a holder variable to account for upstream flow
+    cdef int upstream_flow_accum
 
-    # `drain_queue` is used after a plateau drain is defined and iterates
-    # until the entire plateau is drained, `nodata_drain_queue` are for
-    # the case where the plateau is only drained by nodata pixels
-    cdef queue[CoordinatePair] drain_queue, nodata_drain_queue
-
-    # this queue is used to remember the flow directions of nodata pixels in
-    # a plateau in case no other valid drain was found
-    cdef queue[int] nodata_flow_dir_queue
+    # `search_stack` is used to walk upstream to calculate flow accumulation
+    # values
+    cdef stack[FlowPixel] search_stack
+    cdef FlowPixel flow_pixel
 
     # properties of the parallel rasters
     cdef int raster_x_size, raster_y_size
@@ -1253,8 +1241,6 @@ def flow_accumulation_d8(
 
     logger = logging.getLogger('pygeoprocessing.routing.flow_dir_d8')
     logger.addHandler(logging.NullHandler())  # silence logging by default
-    flat_region_mask_path = os.path.join(
-        working_dir_path, 'flat_region_mask.tif')
     flow_accum_nodata = -1
     pygeoprocessing.new_raster_from_base(
         flow_dir_raster_path_band[0], target_flow_accum_raster_path,
@@ -1272,9 +1258,7 @@ def flow_accumulation_d8(
 
     flow_dir_raster_info = pygeoprocessing.get_raster_info(
         flow_dir_raster_path_band[0])
-
     raster_x_size, raster_y_size = flow_dir_raster_info['raster_size']
-
     flow_dir_nodata = flow_dir_raster_info['nodata'][
         flow_dir_raster_path_band[1]-1]
 
@@ -1341,13 +1325,46 @@ def flow_accumulation_d8(
                 if flow_dir == flow_dir_nodata:
                     continue
 
-    # search for drains
-    #   any pixel that drains to the edge or nodata pixel is a drain
-    #   push that on a stack/queue for processing
+                xi_n = xi+NEIGHBOR_OFFSET_ARRAY[2*flow_dir]
+                yi_n = yi+NEIGHBOR_OFFSET_ARRAY[2*flow_dir+1]
 
-    # process drains
-    #   get pixel and flow direction to check
-    #   if neighbor flows in:
-    #       if neighbor has flow accum defined:
-    #           add flow accum to pixel
-    #       else push pixel & flow dir on stack and process neighbor
+                if flow_dir_buffer_array[yi_n, xi_n] == flow_dir_nodata:
+                    xi_root = xi-1+xoff
+                    yi_root = yi-1+yoff
+
+                    search_stack.push(
+                        FlowPixel(xi_root, yi_root, 0, 1))
+
+                while not search_stack.empty():
+                    flow_pixel = search_stack.top()
+                    search_stack.pop()
+
+                    preempted = 0
+                    for i_n in xrange(flow_pixel.flow_dir, 8):
+                        xi_n = flow_pixel.xi+NEIGHBOR_OFFSET_ARRAY[2*i_n]
+                        yi_n = flow_pixel.yi+NEIGHBOR_OFFSET_ARRAY[2*i_n+1]
+                        if (xi_n < 0 or xi_n >= raster_x_size or
+                                yi_n < 0 or yi_n >= raster_y_size):
+                            # no upstream here
+                            continue
+                        upstream_flow_dir = <int>flow_dir_managed_raster.get(
+                            xi_n, yi_n)
+                        if upstream_flow_dir == flow_dir_nodata or (
+                                upstream_flow_dir != REVERSE_DIRECTION[i_n]):
+                            # no upstream here
+                            continue
+                        upstream_flow_accum = <int>flow_accum_managed_raster.get(
+                            xi_n, yi_n)
+                        if upstream_flow_accum == flow_accum_nodata:
+                            # process upstream before this one
+                            flow_pixel.flow_dir = i_n
+                            search_stack.push(flow_pixel)
+                            search_stack.push(FlowPixel(xi_n, yi_n, 0, 1))
+                            preempted = 1
+                            break
+                        flow_pixel.flow_accum += upstream_flow_accum
+                    if not preempted:
+                        flow_accum_managed_raster.set(
+                            flow_pixel.xi, flow_pixel.yi,
+                            flow_pixel.flow_accum)
+    logger.info('%.2f%% complete', 100.0)
