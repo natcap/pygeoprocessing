@@ -1191,3 +1191,29 @@ def flow_dir_d8(
     plateau_distance_managed_raster.close()
     shutil.rmtree(working_dir_path)
     logger.info('%.2f%% complete', 100.0)
+
+
+def flow_accumulation_d8(
+        flow_dir_raster_path_band, target_flow_accumulation,
+        working_dir=None):
+    """D8 flow accumulation.
+
+    Parameters:
+        flow_dir_raster_path_band (tuple): a path, band number tuple
+            for a flow accumulation raster whose pixels indicate the flow
+            out of a pixel in one of 8 directions in the following
+            configuration:
+                321
+                4x0
+                567
+        target_flow_accumulation_path (string): path to desired flow
+            accumulation raster. After this call, the value of each pixel will
+            be 1 plus the number of upstream pixels that drain to that pixel.
+        working_dir (string): If not None, indicates where temporary files
+            should be created during this run. If this directory doesn't exist
+            it is created by this call.
+
+    Returns:
+        None.
+    """
+    pass
