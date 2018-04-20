@@ -1259,8 +1259,13 @@ def flow_accumulation_d8(
     flow_dir_raster_info = pygeoprocessing.get_raster_info(
         flow_dir_raster_path_band[0])
     raster_x_size, raster_y_size = flow_dir_raster_info['raster_size']
-    flow_dir_nodata = flow_dir_raster_info['nodata'][
+
+    tmp_flow_dir_nodata = flow_dir_raster_info['nodata'][
         flow_dir_raster_path_band[1]-1]
+    if tmp_flow_dir_nodata is None:
+        flow_dir_nodata = 128
+    else:
+        flow_dir_nodata = tmp_flow_dir_nodata
 
     # this outer loop searches for a pixel that is locally undrained
     for offset_dict in pygeoprocessing.iterblocks(
