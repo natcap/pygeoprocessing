@@ -55,6 +55,7 @@ GTIFF_CREATION_OPTIONS = (
 cdef double IMPROBABLE_FLOAT_NOATA = -1.23789789e29
 
 # a pre-computed square root of 2 constant
+cdef double SQRT2 = 1.4142135623730951
 cdef double SQRT2_INV = 1.0 / 1.4142135623730951
 
 # this is a fast C function to determine if two doubles are almost equal
@@ -853,6 +854,10 @@ def flow_dir_d8(
     # these are used to recall the local and neighbor heights of pixels
     cdef double root_height, n_height, dem_nodata
 
+    # these are used to track the distance to the drain when we encounter a
+    # plateau to route to the shortest path to the drain
+    cdef double drain_distance, n_drain_distance
+
     # this remembers is flow was diagonal in case there is a straight
     # flow that could trump it
     cdef int diagonal_nodata
@@ -929,7 +934,6 @@ def flow_dir_d8(
     # undrained area
     flat_region_mask_path = os.path.join(
         working_dir_path, 'flat_region_mask.tif')
-
     pygeoprocessing.new_raster_from_base(
         dem_raster_path_band[0], flat_region_mask_path, gdal.GDT_Byte,
         [mask_nodata], fill_value_list=[mask_nodata],
@@ -944,9 +948,24 @@ def flow_dir_d8(
         gtiff_creation_options=GTIFF_CREATION_OPTIONS)
     flow_dir_managed_raster = _ManagedRaster(target_flow_dir_path, 1, 1)
 
+    # this creates a raster that's used for a dynamic programming solution to
+    # shortest path to the drain for plateaus. the raster is filled with
+    # raster_x_size * raster_y_size as a distance that's greater than the
+    # longest plateau drain distance possible for this raster.
+    plateau_distance_path = os.path.join(
+        working_dir_path, 'plateau_distance.tif')
+    pygeoprocessing.new_raster_from_base(
+        dem_raster_path_band[0], plateau_distance_path, gdal.GDT_Float64,
+        [-1], fill_value_list=[raster_x_size * raster_y_size],
+        gtiff_creation_options=GTIFF_CREATION_OPTIONS)
+    plateau_distance_managed_raster = _ManagedRaster(
+        plateau_distance_path, 1, 1)
+
+    # this raster is for random access of the DEM
     dem_managed_raster = _ManagedRaster(
         dem_raster_path_band[0], dem_raster_path_band[1], 0)
 
+    # and this raster is for efficient block-by-block reading of the dem
     dem_raster = gdal.Open(dem_raster_path_band[0])
     dem_band = dem_raster.GetRasterBand(1)
 
@@ -1001,9 +1020,6 @@ def flow_dir_d8(
             buffer_off['ya']:buffer_off['yb'],
             buffer_off['xa']:buffer_off['xb']] = dem_band.ReadAsArray(
                 **offset_dict).astype(numpy.float64)
-
-        logger.debug(dem_buffer_array)
-        logger.debug(offset_dict)
 
         # ensure these are set for the complier
         xi_n = -1
@@ -1062,6 +1078,7 @@ def flow_dir_d8(
                 # this loop does a BFS starting at this pixel to all pixels
                 # of the same height. if a drain is encountered, it is pushed
                 # on a queue for later processing.
+
                 while not search_queue.empty():
                     xi_q = search_queue.front().first
                     yi_q = search_queue.front().second
@@ -1107,6 +1124,8 @@ def flow_dir_d8(
                             # regular downhill pixel
                             flow_dir_managed_raster.set(
                                 xi_q, yi_q, largest_slope_dir)
+                            plateau_distance_managed_raster.set(
+                                xi_q, yi_q, 0.0)
                             drain_queue.push(CoordinatePair(xi_q, yi_q))
                         else:
                             # must be a nodata drain, save on queue for later
@@ -1120,10 +1139,11 @@ def flow_dir_d8(
                     # and set all the flow directions on the nodata drain
                     # pixels
                     while not nodata_drain_queue.empty():
-                        xi_q = drain_queue.front().first
-                        yi_q = drain_queue.front().second
+                        xi_q = nodata_drain_queue.front().first
+                        yi_q = nodata_drain_queue.front().second
                         flow_dir_managed_raster.set(
                             xi_q, yi_q, nodata_flow_dir_queue.front())
+                        plateau_distance_managed_raster.set(xi_q, yi_q, 0.0)
                         drain_queue.push(nodata_drain_queue.front())
                         nodata_flow_dir_queue.pop()
                         nodata_drain_queue.pop()
@@ -1133,16 +1153,15 @@ def flow_dir_d8(
                         nodata_flow_dir_queue.pop()
                         nodata_drain_queue.pop()
 
-                # TODO: for debugging
-                while not drain_queue.empty():
-                    drain_queue.pop()
-
                 # this loop does a BFS from the plateau drain to any other
                 # neighboring undefined pixels
                 while not drain_queue.empty():
                     xi_q = drain_queue.front().first
                     yi_q = drain_queue.front().second
                     drain_queue.pop()
+
+                    drain_distance = plateau_distance_managed_raster.get(
+                        xi_q, yi_q)
 
                     for i_n in xrange(8):
                         xi_n = xi_q+NEIGHBOR_OFFSET_ARRAY[2*i_n]
@@ -1151,18 +1170,24 @@ def flow_dir_d8(
                                 yi_n < 0 or yi_n >= raster_y_size):
                             continue
 
-                        if flow_dir_managed_raster.get(
-                                xi_n, yi_n) == flow_nodata and (
-                                    dem_managed_raster.get(
-                                        xi_n, yi_n) == root_height):
-                            # neighbor is at same level and undefined so
-                            # it can flow here
+                        n_drain_distance = drain_distance + (
+                            SQRT2 if i_n&1 else 1.0)
+
+                        if dem_managed_raster.get(
+                                xi_n, yi_n) == root_height and (
+                                plateau_distance_managed_raster.get(
+                                    xi_n, yi_n) > n_drain_distance):
+                            # neighbor is at same level and has longer drain
+                            # flow path than current
                             flow_dir_managed_raster.set(
                                 xi_n, yi_n, REVERSE_DIRECTION[i_n])
+                            plateau_distance_managed_raster.set(
+                                xi_n, yi_n, n_drain_distance)
                             drain_queue.push(CoordinatePair(xi_n, yi_n))
 
     flow_dir_managed_raster.close()
     flat_region_mask_managed_raster.close()
     dem_managed_raster.close()
+    plateau_distance_managed_raster.close()
     shutil.rmtree(working_dir_path)
     logger.info('%.2f%% complete', 100.0)
