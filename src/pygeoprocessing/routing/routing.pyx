@@ -1074,34 +1074,33 @@ def flow_dir_d8(
                         xi_n = xi_q+NEIGHBOR_OFFSET_ARRAY[2*i_n]
                         yi_n = yi_q+NEIGHBOR_OFFSET_ARRAY[2*i_n+1]
 
-                        # TODO: this flow direction drain for plateaus doesn't
-                        #       consider diagonal vs. straight flows
                         if (xi_n < 0 or xi_n >= raster_x_size or
                                 yi_n < 0 or yi_n >= raster_y_size):
                             n_height = dem_nodata
                         else:
-                            n_height = dem_buffer_array[yi_n, xi_n]
+                            n_height = dem_managed_raster.get(xi_n, yi_n)
                         if isclose(n_height, dem_nodata):
                             if diagonal_nodata and largest_slope == 0.0:
                                 largest_slope_dir = i_n
                                 diagonal_nodata = i_n & 1
-                                continue
+                            continue
                         n_slope = root_height - n_height
                         if n_slope < 0:
                             continue
-                        if n_slope == 0.0 and (
-                                flat_region_mask_managed_raster.get(
-                                    xi_n, yi_n) == mask_nodata):
-                            # only grow if it's at the same level and not
-                            # previously visited
-                            search_queue.push(CoordinatePair(xi_n, yi_n))
-                            flat_region_mask_managed_raster.set(xi_n, yi_n, 1)
+                        if n_slope == 0.0:
+                            if flat_region_mask_managed_raster.get(
+                                    xi_n, yi_n) == mask_nodata:
+                                # only grow if it's at the same level and not
+                                # previously visited
+                                search_queue.push(CoordinatePair(xi_n, yi_n))
+                                flat_region_mask_managed_raster.set(
+                                    xi_n, yi_n, 1)
+                            continue
                         if i_n & 1:
                             n_slope *= SQRT2_INV
                         if n_slope > largest_slope:
                             largest_slope = n_slope
                             largest_slope_dir = i_n
-                            continue
 
                     if largest_slope_dir >= 0:
                         if largest_slope > 0.0:
