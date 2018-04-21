@@ -64,21 +64,19 @@ cdef double SQRT2_INV = 1.0 / 1.4142135623730951
     # 4x0
     # 567
 cdef int* NEIGHBOR_OFFSET_ARRAY = [
-        1, 0,  # 0
-        1, -1,  # 1
-        0, -1,  # 2
-        -1, -1,  # 3
-        -1, 0,  # 4
-        -1, 1,  # 5
-        0, 1,  # 6
-        1, 1  # 7
-        ]
+    1, 0,  # 0
+    1, -1,  # 1
+    0, -1,  # 2
+    -1, -1,  # 3
+    -1, 0,  # 4
+    -1, 1,  # 5
+    0, 1,  # 6
+    1, 1  # 7
+    ]
 
-cdef int* REVERSE_DIRECTION = [4, 5, 6, 7, 0, 1, 2, 3]
-
-# this is a fast C function to determine if two doubles are almost equal
-cdef bint isclose(double a, double b):
-    return abs(a - b) <= (1e-5 + 1e-7 * abs(b))
+# this is used to calculate the opposite D8 direction interpreting the index
+# as a D8 direction
+cdef int* D8_REVERSE_DIRECTION = [4, 5, 6, 7, 0, 1, 2, 3]
 
 # exposing stl::priority_queue so we can have all 3 template arguments so
 # we can pass a different Compare functor
@@ -395,7 +393,6 @@ cdef struct Pixel:
     int xi  # pixel x coordinate in the raster
     int yi  # pixel y coordinate in the raster
     int priority # for breaking ties if two `value`s are equal.
-ctypedef (Pixel*) PixelPtr
 
 cdef struct FlowPixel:
     int xi
@@ -405,13 +402,13 @@ cdef struct FlowPixel:
 
 # functor for priority queue of pixels
 cdef cppclass GreaterPixel nogil:
-    bint get "operator()"(PixelPtr& lhs, PixelPtr& rhs):
+    bint get "operator()"(Pixel& lhs, Pixel& rhs):
         # lhs is > than rhs if its value is greater or if it's equal if
         # the priority is >.
-        if deref(lhs).value > deref(rhs).value:
+        if lhs.value > rhs.value:
             return 1
-        if deref(lhs).value == deref(rhs).value:
-            if deref(lhs).priority > deref(rhs).priority:
+        if lhs.value == rhs.value:
+            if lhs.priority > rhs.priority:
                 return 1
         return 0
 
@@ -477,11 +474,11 @@ def fill_pits(
     # a pixel pointer is used to push to a priority queue. it remembers its
     # pixel value, x/y index, and an optional priority value to order if
     # heights are equal.
-    cdef PixelPtr pixel
+    cdef Pixel pixel
 
     # this priority queue is used to iterate over pit pixels in increasing
     # height, to search for the lowest pour point.
-    cdef priority_queue[PixelPtr, deque[PixelPtr], GreaterPixel] pit_queue
+    cdef priority_queue[Pixel, deque[Pixel], GreaterPixel] pit_queue
 
     # properties of the parallel rasters
     cdef int raster_x_size, raster_y_size, n_x_blocks
@@ -623,7 +620,7 @@ def fill_pits(
         for yi in xrange(1, win_ysize+1):
             for xi in xrange(1, win_xsize+1):
                 center_val = dem_buffer_array[yi, xi]
-                if isclose(center_val, dem_nodata):
+                if center_val == dem_nodata:
                     continue
 
                 # this value is set in case it turns out to be the root of a
@@ -632,10 +629,8 @@ def fill_pits(
                 xi_root = xi-1+xoff
                 yi_root = yi-1+yoff
 
-                if not isclose(
-                        mask_nodata,
-                        flat_region_mask_managed_raster.get(
-                            xi_root, yi_root)):
+                if flat_region_mask_managed_raster.get(
+                        xi_root, yi_root) != mask_nodata:
                     # already been searched
                     continue
 
@@ -651,12 +646,11 @@ def fill_pits(
                         # it'll drain off the edge of the raster
                         nodata_neighbor = 1
                         break
-                    if isclose(dem_nodata, filled_dem_managed_raster.get(
-                            xi_n, yi_n)):
+                    n_height = filled_dem_managed_raster.get(xi_n, yi_n)
+                    if n_height == dem_nodata:
                         # it'll drain to nodata
                         nodata_neighbor = 1
                         break
-                    n_height = filled_dem_managed_raster.get(xi_n, yi_n)
                     if n_height < center_val:
                         # it'll drain downhill
                         downhill_neighbor = 1
@@ -692,19 +686,17 @@ def fill_pits(
                                 yi_n < 0 or yi_n >= raster_y_size):
                             nodata_drain = 1
                             continue
-                        if isclose(dem_nodata, filled_dem_managed_raster.get(
-                                xi_n, yi_n)):
-                            nodata_drain = 1
-                            continue
                         n_height = filled_dem_managed_raster.get(
                             xi_n, yi_n)
+                        if n_height == dem_nodata:
+                            nodata_drain = 1
+                            continue
                         if n_height < center_val:
                             downhill_drain = 1
                             continue
-                        if n_height == center_val and isclose(
-                                mask_nodata,
+                        if n_height == center_val and (
                                 flat_region_mask_managed_raster.get(
-                                    xi_n, yi_n)):
+                                    xi_n, yi_n) == mask_nodata):
                             # only grow if it's at the same level and not
                             # previously visited
                             search_queue.push(
@@ -714,14 +706,10 @@ def fill_pits(
 
                 if not downhill_drain and not nodata_drain:
                     # entire region was searched with no drain, do a fill
-                    pixel = <Pixel*>PyMem_Malloc(sizeof(Pixel))
-                    deref(pixel).xi = xi_root
-                    deref(pixel).yi = yi_root
-                    deref(pixel).value = center_val
-                    # set the priority to be the block index
-                    deref(pixel).priority = (
-                        n_x_blocks * (yi_root >> BLOCK_BITS) +
-                        xi_root >> BLOCK_BITS)
+                    pixel = Pixel(
+                        center_val, xi, yi, (
+                            n_x_blocks * (yi_root >> BLOCK_BITS) +
+                            xi_root >> BLOCK_BITS))
                     feature_id += 1
                     pit_mask_managed_raster.set(
                         xi_root, yi_root, feature_id)
@@ -735,11 +723,10 @@ def fill_pits(
                 while not pit_queue.empty():
                     pixel = pit_queue.top()
                     pit_queue.pop()
-                    xi_q = deref(pixel).xi
-                    yi_q = deref(pixel).yi
+                    xi_q = pixel.xi
+                    yi_q = pixel.yi
                     # this is the potential fill height if pixel is pour point
-                    fill_height = deref(pixel).value
-                    PyMem_Free(pixel)
+                    fill_height = pixel.value
 
                     for i_n in xrange(8):
                         xi_n = xi_q+NEIGHBOR_OFFSET_ARRAY[2*i_n]
@@ -760,28 +747,23 @@ def fill_pits(
                             xi_n, yi_n, feature_id)
 
                         n_height = filled_dem_managed_raster.get(xi_n, yi_n)
-                        if isclose(n_height, dem_nodata) or (
-                                n_height < fill_height):
+                        if n_height == dem_nodata or n_height < fill_height:
                             # we encounter a neighbor not processed that is
                             # lower than the current pixel or nodata
                             pour_point = 1
                             break
 
-                        # push onto queue
-                        pixel = <Pixel*>PyMem_Malloc(sizeof(Pixel))
-                        deref(pixel).xi = xi_n
-                        deref(pixel).yi = yi_n
-                        deref(pixel).value = n_height
-                        # set the priority to be the block index
-                        deref(pixel).priority = (
-                            n_x_blocks * (yi_n >> BLOCK_BITS) +
-                            xi_n >> BLOCK_BITS)
+                        # push onto queue, set the priority to be the block
+                        # index
+                        pixel = Pixel(
+                            n_height, xi_n, yi_n, (
+                                n_x_blocks * (yi_n >> BLOCK_BITS) +
+                                xi_n >> BLOCK_BITS))
                         pit_queue.push(pixel)
 
                     if pour_point:
                         # found a pour point, clear the queue
                         while not pit_queue.empty():
-                            PyMem_Free(pit_queue.top())
                             pit_queue.pop()
 
                         # start from original pit seed rather than pour point
@@ -1022,7 +1004,7 @@ def flow_dir_d8(
         for yi in xrange(1, win_ysize+1):
             for xi in xrange(1, win_xsize+1):
                 root_height = dem_buffer_array[yi, xi]
-                if isclose(root_height, dem_nodata):
+                if root_height == dem_nodata:
                     continue
 
                 # this value is set in case it turns out to be the root of a
@@ -1047,7 +1029,7 @@ def flow_dir_d8(
                     yi_n = yi+NEIGHBOR_OFFSET_ARRAY[2*i_n+1]
                     n_height = dem_buffer_array[yi_n, xi_n]
                     # TODO: check the original pit fill to ensure on the early pass we aren't checking raster bounds
-                    if isclose(n_height, dem_nodata):
+                    if n_height == dem_nodata:
                         continue
                     n_slope = root_height - n_height
                     if i_n & 1:
@@ -1089,7 +1071,7 @@ def flow_dir_d8(
                             n_height = dem_nodata
                         else:
                             n_height = dem_managed_raster.get(xi_n, yi_n)
-                        if isclose(n_height, dem_nodata):
+                        if n_height == dem_nodata:
                             if diagonal_nodata and largest_slope == 0.0:
                                 largest_slope_dir = i_n
                                 diagonal_nodata = i_n & 1
@@ -1173,7 +1155,7 @@ def flow_dir_d8(
                             # neighbor is at same level and has longer drain
                             # flow path than current
                             flow_dir_managed_raster.set(
-                                xi_n, yi_n, REVERSE_DIRECTION[i_n])
+                                xi_n, yi_n, D8_REVERSE_DIRECTION[i_n])
                             plateau_distance_managed_raster.set(
                                 xi_n, yi_n, n_drain_distance)
                             drain_queue.push(CoordinatePair(xi_n, yi_n))
@@ -1355,7 +1337,7 @@ def flow_accumulation_d8(
                         upstream_flow_dir = <int>flow_dir_managed_raster.get(
                             xi_n, yi_n)
                         if upstream_flow_dir == flow_dir_nodata or (
-                                upstream_flow_dir != REVERSE_DIRECTION[i_n]):
+                                upstream_flow_dir != D8_REVERSE_DIRECTION[i_n]):
                             # no upstream here
                             continue
                         upstream_flow_accum = <int>flow_accum_managed_raster.get(
