@@ -109,12 +109,15 @@ cdef struct PixelType:
     int yi  # pixel y coordinate in the raster
     int priority # for breaking ties if two `value`s are equal.
 
+# this struct is used to record an intermediate flow pixel's last calculated
+# direction and the flow accumulation value so far
 cdef struct FlowPixelType:
     int xi
     int yi
     int flow_dir
     int flow_accum
 
+# used to record x/y locations as needed
 cdef struct CoordinateType:
     int xi
     int yi
@@ -1346,11 +1349,12 @@ def flow_accumulation_d8(
                         upstream_flow_dir = <int>flow_dir_managed_raster.get(
                             xi_n, yi_n)
                         if upstream_flow_dir == flow_dir_nodata or (
-                                upstream_flow_dir != D8_REVERSE_DIRECTION[i_n]):
+                                upstream_flow_dir !=
+                                D8_REVERSE_DIRECTION[i_n]):
                             # no upstream here
                             continue
-                        upstream_flow_accum = <int>flow_accum_managed_raster.get(
-                            xi_n, yi_n)
+                        upstream_flow_accum = (
+                            <int>flow_accum_managed_raster.get(xi_n, yi_n))
                         if upstream_flow_accum == flow_accum_nodata:
                             # process upstream before this one
                             flow_pixel.flow_dir = i_n
