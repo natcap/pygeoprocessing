@@ -132,7 +132,6 @@ class TestRouting(unittest.TestCase):
             [4, 6, 6, 6, 6, 6, 6, 6, 6, 6, 0]])
         numpy.testing.assert_almost_equal(flow_array, expected_result)
 
-
     def test_d8_flow_accum(self):
         """PGP.routing: test D8 flow accum."""
         import pygeoprocessing.routing
