@@ -16,6 +16,11 @@ Unreleased Changes
 * `pygeoprocessing.routing` module now has a `fill_pits`, function which
    fills hydrological pits with a focus on runtime efficiency, memory space
    efficiency, and cache locality.
+* `pygeoprocessing.routing` module has a `flow_dir_d8` that uses largest
+  slope to determine the downhill flow direction.
+* `pygeoprocessing.routing` module has a `flow_accumulation_d8` that uses
+  a pygeoprocessing D8 flow direction raster to calculate per-pixel flow
+  accumulation.
 * Added a `merge_rasters` function to `pygeoprocessing` that will mosaic a
   set of rasters in the same projection, pixel size, and band count.
 
