@@ -663,8 +663,7 @@ def fill_pits(
                 # otherwise, this pixel doesn't drain locally, search to see
                 # if it's a pit or plateau
                 search_queue.push(CoordinatePair(xi_root, yi_root))
-                flat_region_mask_managed_raster.set(
-                    xi_root, yi_root, 1)
+                flat_region_mask_managed_raster.set(xi_root, yi_root, 1)
                 downhill_drain = 0
                 nodata_drain = 0
 
@@ -707,7 +706,7 @@ def fill_pits(
                 if not downhill_drain and not nodata_drain:
                     # entire region was searched with no drain, do a fill
                     pixel = Pixel(
-                        center_val, xi, yi, (
+                        center_val, xi_root, yi_root, (
                             n_x_blocks * (yi_root >> BLOCK_BITS) +
                             xi_root >> BLOCK_BITS))
                     feature_id += 1
