@@ -1,5 +1,4 @@
 # distutils: language=c++
-# TODO: see if I can use constructors instead of dynamic mem allocation
 """
 Provides PyGeprocessing Routing functionality.
 
@@ -1041,7 +1040,6 @@ def flow_dir_d8(
                     xi_n = xi+NEIGHBOR_OFFSET_ARRAY[2*i_n]
                     yi_n = yi+NEIGHBOR_OFFSET_ARRAY[2*i_n+1]
                     n_height = dem_buffer_array[yi_n, xi_n]
-                    # TODO: check the original pit fill to ensure on the early pass we aren't checking raster bounds
                     if n_height == dem_nodata:
                         continue
                     n_slope = root_height - n_height
@@ -1180,6 +1178,7 @@ def flow_dir_d8(
     logger.info('%.2f%% complete', 100.0)
 
 
+@cython.boundscheck(False)
 def flow_accumulation_d8(
         flow_dir_raster_path_band, target_flow_accum_raster_path):
     """D8 flow accumulation.
