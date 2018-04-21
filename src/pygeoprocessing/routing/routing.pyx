@@ -10,9 +10,9 @@ float64.
 
 D8 float direction conventions follow TauDEM where each flow direction
 is encoded as:
-    # 321
-    # 4 0
-    # 567
+     321
+     4x0
+     567
 """
 import time
 import os
@@ -59,9 +59,9 @@ cdef double SQRT2 = 1.4142135623730951
 cdef double SQRT2_INV = 1.0 / 1.4142135623730951
 
 # used to loop over neighbors and offset the x/y values as defined below
-    # 321
-    # 4x0
-    # 567
+#  321
+#  4x0
+#  567
 cdef int* NEIGHBOR_OFFSET_ARRAY = [
     1, 0,  # 0
     1, -1,  # 1
@@ -126,7 +126,8 @@ cdef struct CoordinateType:
 ctypedef pair[int, double*] BlockBufferPair
 
 # this type is used to create a priority queue on the custom Pixel tpye
-ctypedef priority_queue[PixelType, deque[PixelType], GreaterPixel] PitPriorityQueueType
+ctypedef priority_queue[
+    PixelType, deque[PixelType], GreaterPixel] PitPriorityQueueType
 
 # this queue is used to record flow directions
 ctypedef queue[int] IntQueueType
