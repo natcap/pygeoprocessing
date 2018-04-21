@@ -102,9 +102,49 @@ cdef extern from "LRUCache.h" nogil:
         bint exist(KEY_T &)
         VAL_T get(KEY_T &)
 
+# this is the class type that'll get stored in the priority queue
+cdef struct PixelType:
+    double value  # pixel value
+    int xi  # pixel x coordinate in the raster
+    int yi  # pixel y coordinate in the raster
+    int priority # for breaking ties if two `value`s are equal.
+
+cdef struct FlowPixelType:
+    int xi
+    int yi
+    int flow_dir
+    int flow_accum
+
+cdef struct CoordinateType:
+    int xi
+    int yi
+
 # this ctype is used to store the block ID and the block buffer as one object
 # inside Managed Raster
 ctypedef pair[int, double*] BlockBufferPair
+
+# this type is used to create a priority queue on the custom Pixel tpye
+ctypedef priority_queue[PixelType, deque[PixelType], GreaterPixel] PitPriorityQueueType
+
+# this queue is used to record flow directions
+ctypedef queue[int] IntQueueType
+
+# type used to store x/y coordinates and a queue to put them in
+ctypedef queue[CoordinateType] CoordinateQueueType
+
+
+# functor for priority queue of pixels
+cdef cppclass GreaterPixel nogil:
+    bint get "operator()"(PixelType& lhs, PixelType& rhs):
+        # lhs is > than rhs if its value is greater or if it's equal if
+        # the priority is >.
+        if lhs.value > rhs.value:
+            return 1
+        if lhs.value == rhs.value:
+            if lhs.priority > rhs.priority:
+                return 1
+        return 0
+
 
 # a class to allow fast random per-pixel access to a raster for both setting
 # and reading pixels.
@@ -384,34 +424,6 @@ cdef class _ManagedRaster:
             raster_band = None
             raster = None
 
-# type used to store x/y coordinates
-ctypedef pair[int, int] CoordinatePair
-
-# this is the class type that'll get stored in the priority queue
-cdef struct Pixel:
-    double value  # pixel value
-    int xi  # pixel x coordinate in the raster
-    int yi  # pixel y coordinate in the raster
-    int priority # for breaking ties if two `value`s are equal.
-
-cdef struct FlowPixel:
-    int xi
-    int yi
-    int flow_dir
-    int flow_accum
-
-# functor for priority queue of pixels
-cdef cppclass GreaterPixel nogil:
-    bint get "operator()"(Pixel& lhs, Pixel& rhs):
-        # lhs is > than rhs if its value is greater or if it's equal if
-        # the priority is >.
-        if lhs.value > rhs.value:
-            return 1
-        if lhs.value == rhs.value:
-            if lhs.priority > rhs.priority:
-                return 1
-        return 0
-
 
 @cython.boundscheck(False)
 def fill_pits(
@@ -465,20 +477,20 @@ def fill_pits(
     # `search_queue` is used to grow a flat region searching for a pour point
     # to determine if region is plateau or, in the absence of a pour point,
     # a pit.
-    cdef queue[CoordinatePair] search_queue
+    cdef queue[CoordinateType] search_queue
 
     # `fill_queue` is used after a region is identified as a pit and its pour
     # height is determined to fill the pit up to the pour height
-    cdef queue[CoordinatePair] fill_queue
+    cdef queue[CoordinateType] fill_queue
 
     # a pixel pointer is used to push to a priority queue. it remembers its
     # pixel value, x/y index, and an optional priority value to order if
     # heights are equal.
-    cdef Pixel pixel
+    cdef PixelType pixel
 
     # this priority queue is used to iterate over pit pixels in increasing
     # height, to search for the lowest pour point.
-    cdef priority_queue[Pixel, deque[Pixel], GreaterPixel] pit_queue
+    cdef PitPriorityQueueType pit_queue
 
     # properties of the parallel rasters
     cdef int raster_x_size, raster_y_size, n_x_blocks
@@ -662,7 +674,7 @@ def fill_pits(
 
                 # otherwise, this pixel doesn't drain locally, search to see
                 # if it's a pit or plateau
-                search_queue.push(CoordinatePair(xi_root, yi_root))
+                search_queue.push(CoordinateType(xi_root, yi_root))
                 flat_region_mask_managed_raster.set(xi_root, yi_root, 1)
                 downhill_drain = 0
                 nodata_drain = 0
@@ -674,8 +686,8 @@ def fill_pits(
                 # it can be entirely marked as processed and not re-accessed
                 # on later iterations
                 while not search_queue.empty():
-                    xi_q = search_queue.front().first
-                    yi_q = search_queue.front().second
+                    xi_q = search_queue.front().xi
+                    yi_q = search_queue.front().yi
                     search_queue.pop()
 
                     for i_n in xrange(8):
@@ -699,13 +711,13 @@ def fill_pits(
                             # only grow if it's at the same level and not
                             # previously visited
                             search_queue.push(
-                                CoordinatePair(xi_n, yi_n))
+                                CoordinateType(xi_n, yi_n))
                             flat_region_mask_managed_raster.set(
                                 xi_n, yi_n, 1)
 
                 if not downhill_drain and not nodata_drain:
                     # entire region was searched with no drain, do a fill
-                    pixel = Pixel(
+                    pixel = PixelType(
                         center_val, xi_root, yi_root, (
                             n_x_blocks * (yi_root >> BLOCK_BITS) +
                             xi_root >> BLOCK_BITS))
@@ -754,7 +766,7 @@ def fill_pits(
 
                         # push onto queue, set the priority to be the block
                         # index
-                        pixel = Pixel(
+                        pixel = PixelType(
                             n_height, xi_n, yi_n, (
                                 n_x_blocks * (yi_n >> BLOCK_BITS) +
                                 xi_n >> BLOCK_BITS))
@@ -762,8 +774,7 @@ def fill_pits(
 
                     if pour_point:
                         # found a pour point, clear the queue
-                        while not pit_queue.empty():
-                            pit_queue.pop()
+                        pit_queue = PitPriorityQueueType()
 
                         # start from original pit seed rather than pour point
                         # this way we can stop filling when we reach a height
@@ -771,14 +782,14 @@ def fill_pits(
                         # traversing a plateau area and needing to
                         # differentiate the pixels on the inside of the pit
                         # and the outside.
-                        fill_queue.push(CoordinatePair(xi_root, yi_root))
+                        fill_queue.push(CoordinateType(xi_root, yi_root))
                         filled_dem_managed_raster.set(
                             xi_root, yi_root, fill_height)
 
                 # this loop does a BFS to set all DEM pixels to `fill_height`
                 while not fill_queue.empty():
-                    xi_q = fill_queue.front().first
-                    yi_q = fill_queue.front().second
+                    xi_q = fill_queue.front().xi
+                    yi_q = fill_queue.front().yi
                     fill_queue.pop()
 
                     for i_n in xrange(8):
@@ -792,7 +803,7 @@ def fill_pits(
                                 xi_n, yi_n) < fill_height:
                             filled_dem_managed_raster.set(
                                 xi_n, yi_n, fill_height)
-                            fill_queue.push(CoordinatePair(xi_n, yi_n))
+                            fill_queue.push(CoordinateType(xi_n, yi_n))
 
     pit_mask_managed_raster.close()
     flat_region_mask_managed_raster.close()
@@ -855,12 +866,12 @@ def flow_dir_d8(
 
     # `search_queue` is used to grow a flat region searching for a drain
     # of a plateau
-    cdef queue[CoordinatePair] search_queue
+    cdef queue[CoordinateType] search_queue
 
     # `drain_queue` is used after a plateau drain is defined and iterates
     # until the entire plateau is drained, `nodata_drain_queue` are for
     # the case where the plateau is only drained by nodata pixels
-    cdef queue[CoordinatePair] drain_queue, nodata_drain_queue
+    cdef CoordinateQueueType drain_queue, nodata_drain_queue
 
     # this queue is used to remember the flow directions of nodata pixels in
     # a plateau in case no other valid drain was found
@@ -1046,7 +1057,7 @@ def flow_dir_d8(
 
                 # otherwise, this pixel doesn't drain locally, so it must
                 # be a plateau, search for the drains of the plateau
-                search_queue.push(CoordinatePair(xi_root, yi_root))
+                search_queue.push(CoordinateType(xi_root, yi_root))
                 flat_region_mask_managed_raster.set(xi_root, yi_root, 1)
 
                 # this loop does a BFS starting at this pixel to all pixels
@@ -1054,8 +1065,8 @@ def flow_dir_d8(
                 # on a queue for later processing.
 
                 while not search_queue.empty():
-                    xi_q = search_queue.front().first
-                    yi_q = search_queue.front().second
+                    xi_q = search_queue.front().xi
+                    yi_q = search_queue.front().yi
                     search_queue.pop()
 
                     largest_slope_dir = -1
@@ -1083,7 +1094,7 @@ def flow_dir_d8(
                                     xi_n, yi_n) == mask_nodata:
                                 # only grow if it's at the same level and not
                                 # previously visited
-                                search_queue.push(CoordinatePair(xi_n, yi_n))
+                                search_queue.push(CoordinateType(xi_n, yi_n))
                                 flat_region_mask_managed_raster.set(
                                     xi_n, yi_n, 1)
                             continue
@@ -1100,11 +1111,11 @@ def flow_dir_d8(
                                 xi_q, yi_q, largest_slope_dir)
                             plateau_distance_managed_raster.set(
                                 xi_q, yi_q, 0.0)
-                            drain_queue.push(CoordinatePair(xi_q, yi_q))
+                            drain_queue.push(CoordinateType(xi_q, yi_q))
                         else:
                             # must be a nodata drain, save on queue for later
                             nodata_drain_queue.push(
-                                CoordinatePair(xi_q, yi_q))
+                                CoordinateType(xi_q, yi_q))
                             nodata_flow_dir_queue.push(largest_slope_dir)
 
                 # if there's no downhill drains, try the nodata drains
@@ -1113,8 +1124,8 @@ def flow_dir_d8(
                     # and set all the flow directions on the nodata drain
                     # pixels
                     while not nodata_drain_queue.empty():
-                        xi_q = nodata_drain_queue.front().first
-                        yi_q = nodata_drain_queue.front().second
+                        xi_q = nodata_drain_queue.front().xi
+                        yi_q = nodata_drain_queue.front().yi
                         flow_dir_managed_raster.set(
                             xi_q, yi_q, nodata_flow_dir_queue.front())
                         plateau_distance_managed_raster.set(xi_q, yi_q, 0.0)
@@ -1122,16 +1133,15 @@ def flow_dir_d8(
                         nodata_flow_dir_queue.pop()
                         nodata_drain_queue.pop()
                 else:
-                    # drain the nodata drain queues
-                    while not nodata_drain_queue.empty():
-                        nodata_flow_dir_queue.pop()
-                        nodata_drain_queue.pop()
+                    # clear the nodata drain queues
+                    nodata_flow_dir_queue = IntQueueType()
+                    nodata_drain_queue = CoordinateQueueType()
 
                 # this loop does a BFS from the plateau drain to any other
                 # neighboring undefined pixels
                 while not drain_queue.empty():
-                    xi_q = drain_queue.front().first
-                    yi_q = drain_queue.front().second
+                    xi_q = drain_queue.front().xi
+                    yi_q = drain_queue.front().yi
                     drain_queue.pop()
 
                     drain_distance = plateau_distance_managed_raster.get(
@@ -1157,7 +1167,7 @@ def flow_dir_d8(
                                 xi_n, yi_n, D8_REVERSE_DIRECTION[i_n])
                             plateau_distance_managed_raster.set(
                                 xi_n, yi_n, n_drain_distance)
-                            drain_queue.push(CoordinatePair(xi_n, yi_n))
+                            drain_queue.push(CoordinateType(xi_n, yi_n))
 
     flow_dir_managed_raster.close()
     flat_region_mask_managed_raster.close()
@@ -1210,8 +1220,8 @@ def flow_accumulation_d8(
 
     # `search_stack` is used to walk upstream to calculate flow accumulation
     # values
-    cdef stack[FlowPixel] search_stack
-    cdef FlowPixel flow_pixel
+    cdef stack[FlowPixelType] search_stack
+    cdef FlowPixelType flow_pixel
 
     # properties of the parallel rasters
     cdef int raster_x_size, raster_y_size
@@ -1319,7 +1329,7 @@ def flow_accumulation_d8(
                     yi_root = yi-1+yoff
 
                     search_stack.push(
-                        FlowPixel(xi_root, yi_root, 0, 1))
+                        FlowPixelType(xi_root, yi_root, 0, 1))
 
                 while not search_stack.empty():
                     flow_pixel = search_stack.top()
@@ -1345,7 +1355,7 @@ def flow_accumulation_d8(
                             # process upstream before this one
                             flow_pixel.flow_dir = i_n
                             search_stack.push(flow_pixel)
-                            search_stack.push(FlowPixel(xi_n, yi_n, 0, 1))
+                            search_stack.push(FlowPixelType(xi_n, yi_n, 0, 1))
                             preempted = 1
                             break
                         flow_pixel.flow_accum += upstream_flow_accum
