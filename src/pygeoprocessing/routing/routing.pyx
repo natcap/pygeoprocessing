@@ -1368,3 +1368,31 @@ def flow_accumulation_d8(
                             flow_pixel.xi, flow_pixel.yi,
                             flow_pixel.flow_accum)
     logger.info('%.2f%% complete', 100.0)
+
+
+def flow_dir_multiple_flow(
+        dem_raster_path_band, target_flow_dir_path,
+        working_dir=None):
+    """Multiple flow direction.
+
+    Parameters:
+        dem_raster_path_band (tuple): a path, band number tuple indicating the
+            DEM calculate flow direction. This DEM must not have hydrological
+            pits or else the target flow direction is undefined.
+        target_flow_dir_path (string): TODO: define raster
+
+        working_dir (string): If not None, indicates where temporary files
+            should be created during this run. If this directory doesn't exist
+            it is created by this call.
+
+    Returns:
+        None.
+    """
+    cdef double direction = 0.0
+    print direction >> 8
+    direction = direction | 1
+    print direction
+    direction = direction | (1 << (8*7))
+    print direction
+    print direction & 1
+    print (direction >> (8*7)) & 1
