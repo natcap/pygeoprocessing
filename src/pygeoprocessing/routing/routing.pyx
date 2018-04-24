@@ -1439,6 +1439,7 @@ def flow_dir_multiple_flow(
     # until the entire plateau is drained, `nodata_drain_queue` are for
     # the case where the plateau is only drained by nodata pixels
     cdef CoordinateQueueType drain_queue, nodata_drain_queue
+    cdef CoordinateQueueType direction_drain_queue
 
     # this queue is used to remember the flow directions of nodata pixels in
     # a plateau in case no other valid drain was found
@@ -1743,6 +1744,12 @@ def flow_dir_multiple_flow(
                     nodata_flow_dir_queue = IntQueueType()
                     nodata_drain_queue = CoordinateQueueType()
 
+                # copy the drain queue to another queue
+                for _ in xrange(drain_queue.size()):
+                    direction_drain_queue.push(drain_queue.front())
+                    drain_queue.push(drain_queue.front())
+                    drain_queue.pop()
+
                 # this loop does a BFS from the plateau drain to any other
                 # neighboring undefined pixels
                 while not drain_queue.empty():
@@ -1766,22 +1773,47 @@ def flow_dir_multiple_flow(
                         if dem_managed_raster.get(
                                 xi_n, yi_n) == root_height and (
                                 plateau_distance_managed_raster.get(
-                                    xi_n, yi_n) >= n_drain_distance):
+                                    xi_n, yi_n) > n_drain_distance):
+                            # neighbor is at same level and has longer drain
+                            # flow path than current
+                            plateau_distance_managed_raster.set(
+                                xi_n, yi_n, n_drain_distance)
+                            drain_queue.push(CoordinateType(xi_n, yi_n))
+
+                # this one is to set the flow direction
+                while not direction_drain_queue.empty():
+                    xi_q = direction_drain_queue.front().xi
+                    yi_q = direction_drain_queue.front().yi
+                    direction_drain_queue.pop()
+
+                    drain_distance = plateau_distance_managed_raster.get(
+                        xi_q, yi_q)
+
+                    for i_n in xrange(8):
+                        xi_n = xi_q+NEIGHBOR_OFFSET_ARRAY[2*i_n]
+                        yi_n = yi_q+NEIGHBOR_OFFSET_ARRAY[2*i_n+1]
+                        if (xi_n < 0 or xi_n >= raster_x_size or
+                                yi_n < 0 or yi_n >= raster_y_size):
+                            continue
+
+                        if dem_managed_raster.get(
+                                xi_n, yi_n) == root_height and (
+                                plateau_distance_managed_raster.get(
+                                    xi_n, yi_n) > drain_distance):
                             # neighbor is at same level and has longer drain
                             # flow path than current
                             neighbor_flow_dir = (
                                 <int>flow_dir_managed_raster.get(xi_n, yi_n))
                             if neighbor_flow_dir >> (
-                                    D8_REVERSE_DIRECTION[i_n] * 8):
+                                    D8_REVERSE_DIRECTION[i_n] * 4):
                                 # already set once, no need to do again
                                 continue
                             neighbor_flow_dir |= 1 << (
-                                D8_REVERSE_DIRECTION[i_n] * 8)
+                                D8_REVERSE_DIRECTION[i_n] * 4)
                             flow_dir_managed_raster.set(
                                 xi_n, yi_n, neighbor_flow_dir)
-                            plateau_distance_managed_raster.set(
-                                xi_n, yi_n, n_drain_distance)
-                            drain_queue.push(CoordinateType(xi_n, yi_n))
+                            direction_drain_queue.push(
+                                CoordinateType(xi_n, yi_n))
 
     flow_dir_managed_raster.close()
     flat_region_mask_managed_raster.close()
@@ -1979,7 +2011,7 @@ def flow_accumulation_multiple_flow(
                                 compressed_upstream_flow >> (
                                     4 * i_upstream_flow)) & 0xF
 
-                        print upstream_flow_accum, upstream_flow_direction, upstream_flow_sum, flow_pixel.xi, flow_pixel.yi, xi_n, yi_n
+                        #print upstream_flow_accum, upstream_flow_direction, upstream_flow_sum, flow_pixel.xi, flow_pixel.yi, xi_n, yi_n
                         flow_pixel.flow_accum += (
                             upstream_flow_accum *
                             upstream_flow_direction / <float>upstream_flow_sum)
