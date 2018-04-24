@@ -1233,7 +1233,7 @@ def flow_accumulation_d8(
     cdef time_t last_log_time
     last_log_time = ctime(NULL)
 
-    logger = logging.getLogger('pygeoprocessing.routing.flow_dir_d8')
+    logger = logging.getLogger('pygeoprocessing.routing.flow_accumulation_d8')
     logger.addHandler(logging.NullHandler())  # silence logging by default
     flow_accum_nodata = -1
     pygeoprocessing.new_raster_from_base(
