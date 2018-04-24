@@ -1371,8 +1371,7 @@ def flow_accumulation_d8(
 
 
 def flow_dir_multiple_flow(
-        dem_raster_path_band, target_flow_dir_path,
-        working_dir=None):
+        dem_raster_path_band, target_flow_dir_path, working_dir=None):
     """Multiple flow direction.
 
     Parameters:
@@ -1388,11 +1387,369 @@ def flow_dir_multiple_flow(
     Returns:
         None.
     """
-    cdef double direction = 0.0
-    print direction >> 8
-    direction = direction | 1
-    print direction
-    direction = direction | (1 << (8*7))
-    print direction
-    print direction & 1
-    print (direction >> (8*7)) & 1
+    # These variables are used to iterate over the DEM using `iterblock`
+    # indexes, a numpy.float64 type is used since we need to statically cast
+    # and it's the most complex numerical type and will be compatible without
+    # data loss for any lower type that might be used in
+    # `dem_raster_path_band[0]`.
+    cdef numpy.ndarray[numpy.float64_t, ndim=2] dem_buffer_array
+    cdef int win_ysize, win_xsize, xoff, yoff
+
+    # the _root variables remembers the pixel index where the plateau/pit
+    # region was first detected when iterating over the DEM.
+    cdef int xi_root, yi_root
+
+    # these variables are used as pixel or neighbor indexes. where _q
+    # represents a value out of a queue, and _n is related to a neighbor pixel
+    cdef int i_n, xi, yi, xi_q, yi_q, xi_n, yi_n
+
+    # these are used to recall the local and neighbor heights of pixels
+    cdef double root_height, n_height, dem_nodata
+
+    # these are used to track the distance to the drain when we encounter a
+    # plateau to route to the shortest path to the drain
+    cdef double drain_distance, n_drain_distance
+
+    # this remembers is flow was diagonal in case there is a straight
+    # flow that could trump it
+    #TODO: cdef int diagonal_nodata
+
+    # `search_queue` is used to grow a flat region searching for a drain
+    # of a plateau
+    cdef queue[CoordinateType] search_queue
+
+    # downhill_slopes array will keep track of the floating point value of
+    # the downhill slopes in a pixel
+    cdef double downhill_slopes[8]
+
+    # as the neighbor slopes are calculated, this variable gathers them
+    # together to calculate the final contribution of neighbor slopes to
+    # fraction of flow
+    cdef double sum_of_slope_powers
+
+    # this variable will be used to pack the neighbor slopes into a single
+    # value to write to the raster or read from neighbors
+    cdef int compressed_integer_slopes, neighbor_flow_dir
+
+    # `drain_queue` is used after a plateau drain is defined and iterates
+    # until the entire plateau is drained, `nodata_drain_queue` are for
+    # the case where the plateau is only drained by nodata pixels
+    cdef CoordinateQueueType drain_queue, nodata_drain_queue
+
+    # this queue is used to remember the flow directions of nodata pixels in
+    # a plateau in case no other valid drain was found
+    cdef queue[int] nodata_flow_dir_queue
+
+    # properties of the parallel rasters
+    cdef int raster_x_size, raster_y_size
+
+    # used for time-delayed logging
+    cdef time_t last_log_time
+    last_log_time = ctime(NULL)
+
+    logger = logging.getLogger(
+        'pygeoprocessing.routing.flow_dir_multiple_flow')
+    logger.addHandler(logging.NullHandler())  # silence logging by default
+
+    # determine dem nodata in the working type, or set an improbable value
+    # if one can't be determined
+    dem_raster_info = pygeoprocessing.get_raster_info(dem_raster_path_band[0])
+    base_nodata = dem_raster_info['nodata'][dem_raster_path_band[1]-1]
+    if base_nodata is not None:
+        # cast to a float64 since that's our operating array type
+        dem_nodata = numpy.float64(base_nodata)
+    else:
+        # pick some very improbable value since it's hard to deal with NaNs
+        dem_nodata = IMPROBABLE_FLOAT_NOATA
+
+    # these are used to determine if a sample is within the raster
+    raster_x_size, raster_y_size = dem_raster_info['raster_size']
+
+    # this is the nodata value for all the flat region and pit masks
+    mask_nodata = 0
+
+    # set up the working dir for the mask rasters
+    try:
+        if working_dir is not None:
+            os.makedirs(working_dir)
+    except OSError:
+        pass
+    working_dir_path = tempfile.mkdtemp(
+        dir=working_dir,
+        prefix='flow_dir_multiple_flow_dir_%s_' % time.strftime(
+            '%Y-%m-%d_%H_%M_%S', time.gmtime()))
+
+    # this raster is used to keep track of what pixels have been searched for
+    # a plateau. if a pixel is set, it means it is part of a locally
+    # undrained area
+    flat_region_mask_path = os.path.join(
+        working_dir_path, 'flat_region_mask.tif')
+    pygeoprocessing.new_raster_from_base(
+        dem_raster_path_band[0], flat_region_mask_path, gdal.GDT_Byte,
+        [mask_nodata], fill_value_list=[mask_nodata],
+        gtiff_creation_options=GTIFF_CREATION_OPTIONS)
+    flat_region_mask_managed_raster = _ManagedRaster(
+        flat_region_mask_path, 1, 1)
+
+    flow_nodata = 0
+    pygeoprocessing.new_raster_from_base(
+        dem_raster_path_band[0], target_flow_dir_path, gdal.GDT_Int32,
+        [flow_nodata], fill_value_list=[flow_nodata],
+        gtiff_creation_options=GTIFF_CREATION_OPTIONS)
+    flow_dir_managed_raster = _ManagedRaster(target_flow_dir_path, 1, 1)
+
+    # this creates a raster that's used for a dynamic programming solution to
+    # shortest path to the drain for plateaus. the raster is filled with
+    # raster_x_size * raster_y_size as a distance that's greater than the
+    # longest plateau drain distance possible for this raster.
+    plateau_distance_path = os.path.join(
+        working_dir_path, 'plateau_distance.tif')
+    pygeoprocessing.new_raster_from_base(
+        dem_raster_path_band[0], plateau_distance_path, gdal.GDT_Float64,
+        [-1], fill_value_list=[raster_x_size * raster_y_size],
+        gtiff_creation_options=GTIFF_CREATION_OPTIONS)
+    plateau_distance_managed_raster = _ManagedRaster(
+        plateau_distance_path, 1, 1)
+
+    # this raster is for random access of the DEM
+    dem_managed_raster = _ManagedRaster(
+        dem_raster_path_band[0], dem_raster_path_band[1], 0)
+
+    # and this raster is for efficient block-by-block reading of the dem
+    dem_raster = gdal.Open(dem_raster_path_band[0])
+    dem_band = dem_raster.GetRasterBand(1)
+
+    # this outer loop searches for a pixel that is locally undrained
+    for offset_dict in pygeoprocessing.iterblocks(
+            dem_raster_path_band[0], offset_only=True, largest_block=0):
+        win_xsize = offset_dict['win_xsize']
+        win_ysize = offset_dict['win_ysize']
+        xoff = offset_dict['xoff']
+        yoff = offset_dict['yoff']
+
+        if ctime(NULL) - last_log_time > 5.0:
+            last_log_time = ctime(NULL)
+            current_pixel = xoff + yoff * raster_x_size
+            logger.info('%.2f%% complete', 100.0 * current_pixel / <float>(
+                raster_x_size * raster_y_size))
+
+        # make a buffer big enough to capture block and boundaries around it
+        dem_buffer_array = numpy.empty(
+            (offset_dict['win_ysize']+2, offset_dict['win_xsize']+2),
+            dtype=numpy.float64)
+        dem_buffer_array[:] = dem_nodata
+
+        # default numpy array boundaries
+        buffer_off = {
+            'xa': 1,
+            'xb': -1,
+            'ya': 1,
+            'yb': -1
+        }
+        # check if we can widen the border to include real data from the
+        # raster
+        for a_buffer_id, b_buffer_id, off_id, win_size_id, raster_size in [
+                ('xa', 'xb', 'xoff', 'win_xsize', raster_x_size),
+                ('ya', 'yb', 'yoff', 'win_ysize', raster_y_size)]:
+
+            if offset_dict[off_id] > 0:
+                # in this case we have valid data to the left (or up)
+                # grow the window and buffer slice in that direction
+                buffer_off[a_buffer_id] = None
+                offset_dict[off_id] -= 1
+                offset_dict[win_size_id] += 1
+
+            if offset_dict[off_id] + offset_dict[win_size_id] < raster_size:
+                # here we have valid data to the right (or bottom)
+                # grow the right buffer and add 1 to window
+                buffer_off[b_buffer_id] = None
+                offset_dict[win_size_id] += 1
+
+        # read in the valid memory block
+        dem_buffer_array[
+            buffer_off['ya']:buffer_off['yb'],
+            buffer_off['xa']:buffer_off['xb']] = dem_band.ReadAsArray(
+                **offset_dict).astype(numpy.float64)
+
+        # ensure these are set for the complier
+        xi_n = -1
+        yi_n = -1
+
+        # search block for to set flow direction
+        for yi in xrange(1, win_ysize+1):
+            for xi in xrange(1, win_xsize+1):
+                root_height = dem_buffer_array[yi, xi]
+                if root_height == dem_nodata:
+                    continue
+
+                # this value is set in case it turns out to be the root of a
+                # pit, we'll start the fill from this pixel in the last phase
+                # of the algorithm
+                xi_root = xi-1+xoff
+                yi_root = yi-1+yoff
+
+                if flow_dir_managed_raster.get(
+                        xi_root, yi_root) != flow_nodata:
+                    # already been defined
+                    continue
+
+                # initialize downhill slopes to 0.0
+                for i_n in xrange(8):
+                    downhill_slopes[i_n] = 0.0
+                # initialize variables to indicate the largest slope_dir is
+                # undefined, the largest slope seen so far is flat, and the
+                # largest nodata is at least a diagonal away
+                sum_of_slope_powers = 0.0
+
+                for i_n in xrange(8):
+                    xi_n = xi+NEIGHBOR_OFFSET_ARRAY[2*i_n]
+                    yi_n = yi+NEIGHBOR_OFFSET_ARRAY[2*i_n+1]
+                    n_height = dem_buffer_array[yi_n, xi_n]
+                    if n_height == dem_nodata:
+                        # TODO: what do do about nodata flow?
+                        continue
+                    n_slope = root_height - n_height
+                    if n_slope > 0.0:
+                        if i_n & 1:
+                            # if diagonal, adjust the slope
+                            n_slope *= SQRT2_INV
+                        n_slope = n_slope ** 1.1
+                        downhill_slopes[i_n] = n_slope
+                        sum_of_slope_powers += n_slope
+
+                # if there's a downhill slope, set it and visit the next pixel
+                if sum_of_slope_powers > 0.0:
+                    compressed_integer_slopes = 0
+                    for i_n in xrange(8):
+                        compressed_integer_slopes |= (<int>(
+                            0.5 + downhill_slopes[i_n] /
+                            sum_of_slope_powers * 0xF)) << (i_n * 4)
+
+                    flow_dir_managed_raster.set(
+                        xi_root, yi_root, compressed_integer_slopes)
+                    continue
+
+                # otherwise, this pixel doesn't drain locally, so it must
+                # be a plateau, search for the drains of the plateau
+                search_queue.push(CoordinateType(xi_root, yi_root))
+                flat_region_mask_managed_raster.set(xi_root, yi_root, 1)
+
+                # this loop does a BFS starting at this pixel to all pixels
+                # of the same height. if a drain is encountered, it is pushed
+                # on a queue for later processing.
+
+                while not search_queue.empty():
+                    xi_q = search_queue.front().xi
+                    yi_q = search_queue.front().yi
+                    search_queue.pop()
+
+                    sum_of_slope_powers = 0.0
+                    for i_n in xrange(8):
+                        # initialize downhill slopes to 0.0
+                        downhill_slopes[i_n] = 0.0
+                        xi_n = xi_q+NEIGHBOR_OFFSET_ARRAY[2*i_n]
+                        yi_n = yi_q+NEIGHBOR_OFFSET_ARRAY[2*i_n+1]
+
+                        if (xi_n < 0 or xi_n >= raster_x_size or
+                                yi_n < 0 or yi_n >= raster_y_size):
+                            n_height = dem_nodata
+                        else:
+                            n_height = dem_managed_raster.get(xi_n, yi_n)
+                        if n_height == dem_nodata:
+                            continue
+                        n_slope = root_height - n_height
+                        if n_slope < 0:
+                            continue
+                        if n_slope == 0.0:
+                            if flat_region_mask_managed_raster.get(
+                                    xi_n, yi_n) == mask_nodata:
+                                # only grow if it's at the same level and not
+                                # previously visited
+                                search_queue.push(CoordinateType(xi_n, yi_n))
+                                flat_region_mask_managed_raster.set(
+                                    xi_n, yi_n, 1)
+                            continue
+                        if i_n & 1:
+                            n_slope *= SQRT2_INV
+                        # raise to the 1.1 because that's our algorithm
+                        downhill_slopes[i_n] = n_slope ** 1.1
+                        sum_of_slope_powers += downhill_slopes[i_n]
+
+                    if sum_of_slope_powers > 0:
+                        compressed_integer_slopes = 0
+                        for i_n in xrange(8):
+                            compressed_integer_slopes |= (<int>(
+                                0.5 + downhill_slopes[i_n] /
+                                sum_of_slope_powers * 0xF)) << (i_n * 4)
+                        # regular downhill pixel
+                        flow_dir_managed_raster.set(
+                            xi_q, yi_q, compressed_integer_slopes)
+                        plateau_distance_managed_raster.set(
+                            xi_q, yi_q, 0.0)
+                        drain_queue.push(CoordinateType(xi_q, yi_q))
+                        # TODO: what do do about nodata flow?
+
+                # if there's no downhill drains, try the nodata drains
+                if drain_queue.empty():
+                    # push the nodata drain queue over to the drain queue
+                    # and set all the flow directions on the nodata drain
+                    # pixels
+                    while not nodata_drain_queue.empty():
+                        xi_q = nodata_drain_queue.front().xi
+                        yi_q = nodata_drain_queue.front().yi
+                        flow_dir_managed_raster.set(
+                            xi_q, yi_q, nodata_flow_dir_queue.front())
+                        plateau_distance_managed_raster.set(xi_q, yi_q, 0.0)
+                        drain_queue.push(nodata_drain_queue.front())
+                        nodata_flow_dir_queue.pop()
+                        nodata_drain_queue.pop()
+                else:
+                    # clear the nodata drain queues
+                    nodata_flow_dir_queue = IntQueueType()
+                    nodata_drain_queue = CoordinateQueueType()
+
+                # this loop does a BFS from the plateau drain to any other
+                # neighboring undefined pixels
+                while not drain_queue.empty():
+                    xi_q = drain_queue.front().xi
+                    yi_q = drain_queue.front().yi
+                    drain_queue.pop()
+
+                    drain_distance = plateau_distance_managed_raster.get(
+                        xi_q, yi_q)
+
+                    for i_n in xrange(8):
+                        xi_n = xi_q+NEIGHBOR_OFFSET_ARRAY[2*i_n]
+                        yi_n = yi_q+NEIGHBOR_OFFSET_ARRAY[2*i_n+1]
+                        if (xi_n < 0 or xi_n >= raster_x_size or
+                                yi_n < 0 or yi_n >= raster_y_size):
+                            continue
+
+                        n_drain_distance = drain_distance + (
+                            SQRT2 if i_n&1 else 1.0)
+
+                        if dem_managed_raster.get(
+                                xi_n, yi_n) == root_height and (
+                                plateau_distance_managed_raster.get(
+                                    xi_n, yi_n) >= n_drain_distance):
+                            # neighbor is at same level and has longer drain
+                            # flow path than current
+                            neighbor_flow_dir = (
+                                <int>flow_dir_managed_raster.get(xi_n, yi_n))
+                            if neighbor_flow_dir >> (D8_REVERSE_DIRECTION[i_n] * 8):
+                                # already set once, no need to do again
+                                continue
+                            neighbor_flow_dir |= 1 << (
+                                D8_REVERSE_DIRECTION[i_n] * 8)
+                            flow_dir_managed_raster.set(
+                                xi_n, yi_n, neighbor_flow_dir)
+                            plateau_distance_managed_raster.set(
+                                xi_n, yi_n, n_drain_distance)
+                            drain_queue.push(CoordinateType(xi_n, yi_n))
+
+    flow_dir_managed_raster.close()
+    flat_region_mask_managed_raster.close()
+    dem_managed_raster.close()
+    plateau_distance_managed_raster.close()
+    shutil.rmtree(working_dir_path)
+    logger.info('%.2f%% complete', 100.0)
