@@ -1519,27 +1519,9 @@ def flow_dir_mfd(
         }
         # check if we can widen the border to include real data from the
         # raster
-        for a_buffer_id, b_buffer_id, off_id, win_size_id, raster_size in [
-                ('xa', 'xb', 'xoff', 'win_xsize', raster_x_size),
-                ('ya', 'yb', 'yoff', 'win_ysize', raster_y_size)]:
-
-            if offset_dict[off_id] > 0:
-                # in this case we have valid data to the left (or up)
-                # grow the window and buffer slice in that direction
-                buffer_off[a_buffer_id] = None
-                offset_dict[off_id] -= 1
-                offset_dict[win_size_id] += 1
-
-            if offset_dict[off_id] + offset_dict[win_size_id] < raster_size:
-                # here we have valid data to the right (or bottom)
-                # grow the right buffer and add 1 to window
-                buffer_off[b_buffer_id] = None
-                offset_dict[win_size_id] += 1
-
-        # read in the valid memory block
-        dem_buffer_array[
-            buffer_off['ya']:buffer_off['yb'],
-            buffer_off['xa']:buffer_off['xb']] = dem_band.ReadAsArray(
+        (xa, xb, ya, yb), modified_offset_dict = _generate_read_bounds(
+            offset_dict, raster_x_size, raster_y_size)
+        dem_buffer_array[ya:yb, xa:xb] = dem_band.ReadAsArray(
                 **offset_dict).astype(numpy.float64)
 
         # ensure these are set for the complier
@@ -1892,27 +1874,9 @@ def flow_accumulation_mfd(
         }
         # check if we can widen the border to include real data from the
         # raster
-        for a_buffer_id, b_buffer_id, off_id, win_size_id, raster_size in [
-                ('xa', 'xb', 'xoff', 'win_xsize', raster_x_size),
-                ('ya', 'yb', 'yoff', 'win_ysize', raster_y_size)]:
-
-            if offset_dict[off_id] > 0:
-                # in this case we have valid data to the left (or up)
-                # grow the window and buffer slice in that direction
-                buffer_off[a_buffer_id] = None
-                offset_dict[off_id] -= 1
-                offset_dict[win_size_id] += 1
-
-            if offset_dict[off_id] + offset_dict[win_size_id] < raster_size:
-                # here we have valid data to the right (or bottom)
-                # grow the right buffer and add 1 to window
-                buffer_off[b_buffer_id] = None
-                offset_dict[win_size_id] += 1
-
-        # read in the valid memory block
-        flow_dir_buffer_array[
-            buffer_off['ya']:buffer_off['yb'],
-            buffer_off['xa']:buffer_off['xb']] = flow_dir_band.ReadAsArray(
+        (xa, xb, ya, yb), modified_offset_dict = _generate_read_bounds(
+            offset_dict, raster_x_size, raster_y_size)
+        flow_dir_buffer_array[ya:yb, xa:xb] = flow_dir_band.ReadAsArray(
                 **offset_dict).astype(numpy.int32)
 
         # ensure these are set for the complier
