@@ -162,7 +162,8 @@ class TestRouting(unittest.TestCase):
         flow_dir_band = None
         flow_dir_raster = None
 
-        target_flow_accum_path = 'flow_accum.tif' #os.path.join(self.workspace_dir, 'flow_accum.tif')
+        target_flow_accum_path = os.path.join(
+            self.workspace_dir, 'flow_accum.tif')
 
         pygeoprocessing.routing.flow_accumulation_d8(
             (flow_dir_path, 1), target_flow_accum_path)
