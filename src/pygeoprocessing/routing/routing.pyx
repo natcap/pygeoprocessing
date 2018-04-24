@@ -1421,11 +1421,15 @@ def flow_dir_multiple_flow(
     # downhill_slopes array will keep track of the floating point value of
     # the downhill slopes in a pixel
     cdef double downhill_slopes[8]
+    cdef double nodata_downhill_slopes[8]
+
+    # a pointer reference to whatever kind of slope we're considering
+    cdef double *working_downhill_slopes
 
     # as the neighbor slopes are calculated, this variable gathers them
     # together to calculate the final contribution of neighbor slopes to
     # fraction of flow
-    cdef double sum_of_slope_powers
+    cdef double sum_of_slope_powers, sum_of_nodata_slope_powers
 
     # this variable will be used to pack the neighbor slopes into a single
     # value to write to the raster or read from neighbors
@@ -1596,17 +1600,20 @@ def flow_dir_multiple_flow(
                 # initialize downhill slopes to 0.0
                 for i_n in xrange(8):
                     downhill_slopes[i_n] = 0.0
+                    nodata_downhill_slopes[i_n] = 0.0
                 # initialize variables to indicate the largest slope_dir is
                 # undefined, the largest slope seen so far is flat, and the
                 # largest nodata is at least a diagonal away
                 sum_of_slope_powers = 0.0
+                sum_of_nodata_slope_powers = 0.0
 
                 for i_n in xrange(8):
                     xi_n = xi+NEIGHBOR_OFFSET_ARRAY[2*i_n]
                     yi_n = yi+NEIGHBOR_OFFSET_ARRAY[2*i_n+1]
                     n_height = dem_buffer_array[yi_n, xi_n]
                     if n_height == dem_nodata:
-                        # TODO: what do do about nodata flow?
+                        sum_of_nodata_slope_powers += 1
+                        nodata_downhill_slopes[i_n] = 1.0
                         continue
                     n_slope = root_height - n_height
                     if n_slope > 0.0:
@@ -1618,12 +1625,21 @@ def flow_dir_multiple_flow(
                         sum_of_slope_powers += n_slope
 
                 # if there's a downhill slope, set it and visit the next pixel
+                working_downhill_slope_sum = 0.0
+                working_downhill_slopes = NULL
                 if sum_of_slope_powers > 0.0:
+                    working_downhill_slopes = downhill_slopes
+                    working_downhill_slope_sum = sum_of_slope_powers
+                elif sum_of_nodata_slope_powers > 0.0:
+                    working_downhill_slopes = nodata_downhill_slopes
+                    working_downhill_slope_sum = sum_of_nodata_slope_powers
+
+                if working_downhill_slopes != NULL:
                     compressed_integer_slopes = 0
                     for i_n in xrange(8):
                         compressed_integer_slopes |= (<int>(
-                            0.5 + downhill_slopes[i_n] /
-                            sum_of_slope_powers * 0xF)) << (i_n * 4)
+                            0.5 + working_downhill_slopes[i_n] /
+                            working_downhill_slope_sum * 0xF)) << (i_n * 4)
 
                     flow_dir_managed_raster.set(
                         xi_root, yi_root, compressed_integer_slopes)
@@ -1644,9 +1660,11 @@ def flow_dir_multiple_flow(
                     search_queue.pop()
 
                     sum_of_slope_powers = 0.0
+                    sum_of_nodata_slope_powers = 0.0
                     for i_n in xrange(8):
                         # initialize downhill slopes to 0.0
                         downhill_slopes[i_n] = 0.0
+                        nodata_downhill_slopes[i_n] = 0.0
                         xi_n = xi_q+NEIGHBOR_OFFSET_ARRAY[2*i_n]
                         yi_n = yi_q+NEIGHBOR_OFFSET_ARRAY[2*i_n+1]
 
@@ -1656,6 +1674,8 @@ def flow_dir_multiple_flow(
                         else:
                             n_height = dem_managed_raster.get(xi_n, yi_n)
                         if n_height == dem_nodata:
+                            sum_of_nodata_slope_powers += 1
+                            nodata_downhill_slopes[i_n] = 1.0
                             continue
                         n_slope = root_height - n_height
                         if n_slope < 0:
@@ -1675,18 +1695,33 @@ def flow_dir_multiple_flow(
                         downhill_slopes[i_n] = n_slope ** 1.1
                         sum_of_slope_powers += downhill_slopes[i_n]
 
-                    if sum_of_slope_powers > 0:
+                    working_downhill_slope_sum = 0.0
+                    working_downhill_slopes = NULL
+                    if sum_of_slope_powers > 0.0:
+                        working_downhill_slopes = downhill_slopes
+                        working_downhill_slope_sum = sum_of_slope_powers
+                    elif sum_of_nodata_slope_powers > 0.0:
+                        working_downhill_slopes = nodata_downhill_slopes
+                        working_downhill_slope_sum = sum_of_nodata_slope_powers
+
+                    if working_downhill_slopes != NULL:
                         compressed_integer_slopes = 0
                         for i_n in xrange(8):
                             compressed_integer_slopes |= (<int>(
-                                0.5 + downhill_slopes[i_n] /
-                                sum_of_slope_powers * 0xF)) << (i_n * 4)
+                                0.5 + working_downhill_slopes[i_n] /
+                                working_downhill_slope_sum * 0xF)) << (i_n * 4)
                         # regular downhill pixel
-                        flow_dir_managed_raster.set(
-                            xi_q, yi_q, compressed_integer_slopes)
-                        plateau_distance_managed_raster.set(
-                            xi_q, yi_q, 0.0)
-                        drain_queue.push(CoordinateType(xi_q, yi_q))
+                        if sum_of_slope_powers > 0.0:
+                            flow_dir_managed_raster.set(
+                                xi_q, yi_q, compressed_integer_slopes)
+                            plateau_distance_managed_raster.set(
+                                xi_q, yi_q, 0.0)
+                            drain_queue.push(CoordinateType(xi_q, yi_q))
+                        else:
+                            nodata_drain_queue.push(
+                                CoordinateType(xi_q, yi_q))
+                            nodata_flow_dir_queue.push(
+                                compressed_integer_slopes)
                         # TODO: what do do about nodata flow?
 
                 # if there's no downhill drains, try the nodata drains
@@ -1736,7 +1771,8 @@ def flow_dir_multiple_flow(
                             # flow path than current
                             neighbor_flow_dir = (
                                 <int>flow_dir_managed_raster.get(xi_n, yi_n))
-                            if neighbor_flow_dir >> (D8_REVERSE_DIRECTION[i_n] * 8):
+                            if neighbor_flow_dir >> (
+                                    D8_REVERSE_DIRECTION[i_n] * 8):
                                 # already set once, no need to do again
                                 continue
                             neighbor_flow_dir |= 1 << (
