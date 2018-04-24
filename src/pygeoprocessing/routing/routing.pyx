@@ -428,7 +428,6 @@ cdef class _ManagedRaster:
             raster = None
 
 
-@cython.boundscheck(False)
 def fill_pits(
         dem_raster_path_band, target_filled_dem_raster_path,
         working_dir=None):
@@ -814,7 +813,6 @@ def fill_pits(
     logger.info('%.2f%% complete', 100.0)
 
 
-@cython.boundscheck(False)
 def flow_dir_d8(
         dem_raster_path_band, target_flow_dir_path,
         working_dir=None):
