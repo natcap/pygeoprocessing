@@ -824,10 +824,11 @@ def flow_dir_d8(
         dem_raster_path_band (tuple): a path, band number tuple indicating the
             DEM calculate flow direction. This DEM must not have hydrological
             pits or else the target flow direction is undefined.
-        target_flow_dir_path (string): path to a Byte raster of same
-            dimensions as `dem_raster_path_band` that has a value indicating
-            the direction of downhill flow. Values are defined as pointing
-            to one of the eight neighbors with the following convention:
+        target_flow_dir_path (string): path to a byte raster created by this
+            call of same dimensions as `dem_raster_path_band` that has a value
+            indicating the direction of downhill flow. Values are defined as
+            pointing to one of the eight neighbors with the following
+            convention:
 
                 321
                 4x0
@@ -1192,9 +1193,10 @@ def flow_accumulation_d8(
                 321
                 4x0
                 567
-        target_flow_accum_raster_path (string): path to created flow
-            accumulation raster. After this call, the value of each pixel will
-            be 1 plus the number of upstream pixels that drain to that pixel.
+        target_flow_accum_raster_path (string): path to flow
+            accumulation raster created by this call. After this call, the
+            value of each pixel will be 1 plus the number of upstream pixels
+            that drain to that pixel.
 
     Returns:
         None.
