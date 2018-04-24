@@ -1179,7 +1179,6 @@ def flow_dir_d8(
     logger.info('%.2f%% complete', 100.0)
 
 
-@cython.boundscheck(False)
 def flow_accumulation_d8(
         flow_dir_raster_path_band, target_flow_accum_raster_path):
     """D8 flow accumulation.
@@ -1233,7 +1232,7 @@ def flow_accumulation_d8(
     cdef time_t last_log_time
     last_log_time = ctime(NULL)
 
-    logger = logging.getLogger('pygeoprocessing.routing.flow_dir_d8')
+    logger = logging.getLogger('pygeoprocessing.routing.flow_accum_d8')
     logger.addHandler(logging.NullHandler())  # silence logging by default
     flow_accum_nodata = -1
     pygeoprocessing.new_raster_from_base(
@@ -1370,7 +1369,7 @@ def flow_accumulation_d8(
     logger.info('%.2f%% complete', 100.0)
 
 
-def flow_dir_multiple_flow(
+def flow_dir_mfd(
         dem_raster_path_band, target_flow_dir_path, working_dir=None):
     """Multiple flow direction.
 
@@ -1453,7 +1452,7 @@ def flow_dir_multiple_flow(
     last_log_time = ctime(NULL)
 
     logger = logging.getLogger(
-        'pygeoprocessing.routing.flow_dir_multiple_flow')
+        'pygeoprocessing.routing.flow_dir_mfd')
     logger.addHandler(logging.NullHandler())  # silence logging by default
 
     # determine dem nodata in the working type, or set an improbable value
@@ -1823,7 +1822,7 @@ def flow_dir_multiple_flow(
     logger.info('%.2f%% complete', 100.0)
 
 
-def flow_accumulation_multiple_flow(
+def flow_accumulation_mfd(
         flow_dir_raster_path_band, target_flow_accum_raster_path):
     """Multiple flow direction accumulation.
 
@@ -1869,7 +1868,7 @@ def flow_accumulation_multiple_flow(
     cdef time_t last_log_time
     last_log_time = ctime(NULL)
 
-    logger = logging.getLogger('pygeoprocessing.routing.flow_dir_d8')
+    logger = logging.getLogger('pygeoprocessing.routing.flow_accumulation_mfd')
     logger.addHandler(logging.NullHandler())  # silence logging by default
     flow_accum_nodata = -1
     pygeoprocessing.new_raster_from_base(
