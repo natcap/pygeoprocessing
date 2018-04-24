@@ -485,12 +485,12 @@ def fill_pits(
     Parameters:
         dem_raster_path_band (tuple): a path, band number tuple indicating the
             DEM calculate flow direction.
-        target_filled_dem_raster_path (string): path to pit filled dem, that's
-            functionally a copy of `dem_raster_path_band[0]` with the pit
-            pixels raised to the pour point. For runtime efficiency, this
-            raster is tiled and its blocksize is set to
-            (1<<BLOCK_BITS, 1<<BLOCK_BITS) even if `dem_raster_path_band[0]`
-            was not tiled or a different block size.
+        target_filled_dem_raster_path (string): path the pit filled dem,
+            that's created by a call to this function. It is functionally a
+            copy of `dem_raster_path_band[0]` with the pit pixels raised to
+            the pour point. For runtime efficiency, this raster is tiled and
+            its blocksize is set to (1<<BLOCK_BITS, 1<<BLOCK_BITS) even if
+            `dem_raster_path_band[0]` was not tiled or a different block size.
         working_dir (string): If not None, indicates where temporary files
             should be created during this run. If this directory doesn't exist
             it is created by this call. If None, a temporary directory is
