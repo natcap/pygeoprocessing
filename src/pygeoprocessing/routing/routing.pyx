@@ -428,6 +428,50 @@ cdef class _ManagedRaster:
             raster = None
 
 
+def _generate_read_bounds(offset_dict, raster_x_size, raster_y_size):
+    """Helper function to expand GDAL memory block read bound by 1 pixel.
+
+    This function is used in the context of reading a memory block on a GDAL
+    raster plus an additional 1 pixel boundary if it fits into an existing
+    numpy array of size (2+offset_dict['y_size'], 2+offset_dict['x_size']).
+
+    Parameters:
+        offset_dict (dict): dictionary that has values for 'win_xsize',
+            'win_ysize', 'xoff', and 'yoff' to describe the bounding box
+            to read from the raster.
+        raster_x_size, raster_y_size (int): these are the global x/y sizes
+            of the raster that's being read.
+
+    Returns:
+        (xa, xb, ya, yb) (tuple of int): bounds that can be used to slice a
+            numpy array of size
+                (2+offset_dict['y_size'], 2+offset_dict['x_size'])
+        modified_offset_dict (dict): a copy of `offset_dict` with the
+            `win_*size` keys expanded if the modified bounding box will still
+            fit on the array.
+    """
+    xa = 1
+    xb = -1
+    ya = 1
+    yb = -1
+    target_offset_dict = offset_dict.copy()
+    if offset_dict['xoff'] > 0:
+        xa = None
+        target_offset_dict['xoff'] -= 1
+        target_offset_dict['win_xsize'] += 1
+    if offset_dict['yoff'] > 0:
+        ya = None
+        target_offset_dict['yoff'] -= 1
+        target_offset_dict['win_ysize'] += 1
+    if (offset_dict['xoff'] + offset_dict['win_xsize'] < raster_x_size):
+        xb = None
+        target_offset_dict['win_xsize'] += 1
+    if (offset_dict['yoff'] + offset_dict['win_ysize'] < raster_y_size):
+        yb = None
+        target_offset_dict['win_ysize'] += 1
+    return (xa, xb, ya, yb), target_offset_dict
+
+
 def fill_pits(
         dem_raster_path_band, target_filled_dem_raster_path,
         working_dir=None):
@@ -440,12 +484,12 @@ def fill_pits(
     Parameters:
         dem_raster_path_band (tuple): a path, band number tuple indicating the
             DEM calculate flow direction.
-        target_filled_dem_raster_path (string): path to pit filled dem, that's
-            functionally a copy of `dem_raster_path_band[0]` with the pit
-            pixels raised to the pour point. For runtime efficiency, this
-            raster is tiled and its blocksize is set to
-            (1<<BLOCK_BITS, 1<<BLOCK_BITS) even if `dem_raster_path_band[0]`
-            was not tiled or a different block size.
+        target_filled_dem_raster_path (string): path the pit filled dem,
+            that's created by a call to this function. It is functionally a
+            copy of `dem_raster_path_band[0]` with the pit pixels raised to
+            the pour point. For runtime efficiency, this raster is tiled and
+            its blocksize is set to (1<<BLOCK_BITS, 1<<BLOCK_BITS) even if
+            `dem_raster_path_band[0]` was not tiled or a different block size.
         working_dir (string): If not None, indicates where temporary files
             should be created during this run. If this directory doesn't exist
             it is created by this call. If None, a temporary directory is
@@ -599,36 +643,11 @@ def fill_pits(
             dtype=numpy.float64)
         dem_buffer_array[:] = dem_nodata
 
-        # default numpy array boundaries
-        buffer_off = {
-            'xa': 1,
-            'xb': -1,
-            'ya': 1,
-            'yb': -1
-        }
-        # check if we can widen the border to include real data from the
-        # raster
-        for a_buffer_id, b_buffer_id, off_id, win_size_id, raster_size in [
-                ('xa', 'xb', 'xoff', 'win_xsize', raster_x_size),
-                ('ya', 'yb', 'yoff', 'win_ysize', raster_y_size)]:
-            if offset_dict[off_id] > 0:
-                # in this case we have valid data to the left (or up)
-                # grow the window and buffer slice in that direction
-                buffer_off[a_buffer_id] = None
-                offset_dict[off_id] -= 1
-                offset_dict[win_size_id] += 1
-
-            if offset_dict[off_id] + offset_dict[win_size_id] < raster_size:
-                # here we have valid data to the right (or bottom)
-                # grow the right buffer and add 1 to window
-                buffer_off[b_buffer_id] = None
-                offset_dict[win_size_id] += 1
-
-        # read in the valid memory block
-        dem_buffer_array[
-            buffer_off['ya']:buffer_off['yb'],
-            buffer_off['xa']:buffer_off['xb']] = target_dem_band.ReadAsArray(
-                **offset_dict).astype(numpy.float64)
+        # attempt to expand read block by a pixel boundary
+        (xa, xb, ya, yb), modified_offset_dict = _generate_read_bounds(
+            offset_dict, raster_x_size, raster_y_size)
+        dem_buffer_array[ya:yb,xa:xb] = target_dem_band.ReadAsArray(
+                **modified_offset_dict).astype(numpy.float64)
 
         # search block for locally undrained pixels
         for yi in xrange(1, win_ysize+1):
@@ -822,10 +841,11 @@ def flow_dir_d8(
         dem_raster_path_band (tuple): a path, band number tuple indicating the
             DEM calculate flow direction. This DEM must not have hydrological
             pits or else the target flow direction is undefined.
-        target_flow_dir_path (string): path to a Byte raster of same
-            dimensions as `dem_raster_path_band` that has a value indicating
-            the direction of downhill flow. Values are defined as pointing
-            to one of the eight neighbors with the following convention:
+        target_flow_dir_path (string): path to a byte raster created by this
+            call of same dimensions as `dem_raster_path_band` that has a value
+            indicating the direction of downhill flow. Values are defined as
+            pointing to one of the eight neighbors with the following
+            convention:
 
                 321
                 4x0
@@ -975,37 +995,11 @@ def flow_dir_d8(
             dtype=numpy.float64)
         dem_buffer_array[:] = dem_nodata
 
-        # default numpy array boundaries
-        buffer_off = {
-            'xa': 1,
-            'xb': -1,
-            'ya': 1,
-            'yb': -1
-        }
-        # check if we can widen the border to include real data from the
-        # raster
-        for a_buffer_id, b_buffer_id, off_id, win_size_id, raster_size in [
-                ('xa', 'xb', 'xoff', 'win_xsize', raster_x_size),
-                ('ya', 'yb', 'yoff', 'win_ysize', raster_y_size)]:
-
-            if offset_dict[off_id] > 0:
-                # in this case we have valid data to the left (or up)
-                # grow the window and buffer slice in that direction
-                buffer_off[a_buffer_id] = None
-                offset_dict[off_id] -= 1
-                offset_dict[win_size_id] += 1
-
-            if offset_dict[off_id] + offset_dict[win_size_id] < raster_size:
-                # here we have valid data to the right (or bottom)
-                # grow the right buffer and add 1 to window
-                buffer_off[b_buffer_id] = None
-                offset_dict[win_size_id] += 1
-
-        # read in the valid memory block
-        dem_buffer_array[
-            buffer_off['ya']:buffer_off['yb'],
-            buffer_off['xa']:buffer_off['xb']] = dem_band.ReadAsArray(
-                **offset_dict).astype(numpy.float64)
+        # attempt to expand read block by a pixel boundary
+        (xa, xb, ya, yb), modified_offset_dict = _generate_read_bounds(
+            offset_dict, raster_x_size, raster_y_size)
+        dem_buffer_array[xa:xb, ya:yb] = dem_band.ReadAsArray(
+                **modified_offset_dict).astype(numpy.float64)
 
         # ensure these are set for the complier
         xi_n = -1
@@ -1189,9 +1183,10 @@ def flow_accumulation_d8(
                 321
                 4x0
                 567
-        target_flow_accum_raster_path (string): path to created flow
-            accumulation raster. After this call, the value of each pixel will
-            be 1 plus the number of upstream pixels that drain to that pixel.
+        target_flow_accum_raster_path (string): path to flow
+            accumulation raster created by this call. After this call, the
+            value of each pixel will be 1 plus the number of upstream pixels
+            that drain to that pixel.
 
     Returns:
         None.
@@ -1230,7 +1225,7 @@ def flow_accumulation_d8(
     cdef time_t last_log_time
     last_log_time = ctime(NULL)
 
-    logger = logging.getLogger('pygeoprocessing.routing.flow_accum_d8')
+    logger = logging.getLogger('pygeoprocessing.routing.flow_accumulation_d8')
     logger.addHandler(logging.NullHandler())  # silence logging by default
     flow_accum_nodata = -1
     pygeoprocessing.new_raster_from_base(
@@ -1278,37 +1273,11 @@ def flow_accumulation_d8(
             dtype=numpy.uint8)
         flow_dir_buffer_array[:] = flow_dir_nodata
 
-        # default numpy array boundaries
-        buffer_off = {
-            'xa': 1,
-            'xb': -1,
-            'ya': 1,
-            'yb': -1
-        }
-        # check if we can widen the border to include real data from the
-        # raster
-        for a_buffer_id, b_buffer_id, off_id, win_size_id, raster_size in [
-                ('xa', 'xb', 'xoff', 'win_xsize', raster_x_size),
-                ('ya', 'yb', 'yoff', 'win_ysize', raster_y_size)]:
-
-            if offset_dict[off_id] > 0:
-                # in this case we have valid data to the left (or up)
-                # grow the window and buffer slice in that direction
-                buffer_off[a_buffer_id] = None
-                offset_dict[off_id] -= 1
-                offset_dict[win_size_id] += 1
-
-            if offset_dict[off_id] + offset_dict[win_size_id] < raster_size:
-                # here we have valid data to the right (or bottom)
-                # grow the right buffer and add 1 to window
-                buffer_off[b_buffer_id] = None
-                offset_dict[win_size_id] += 1
-
-        # read in the valid memory block
-        flow_dir_buffer_array[
-            buffer_off['ya']:buffer_off['yb'],
-            buffer_off['xa']:buffer_off['xb']] = flow_dir_band.ReadAsArray(
-                **offset_dict).astype(numpy.uint8)
+        # attempt to expand read block by a pixel boundary
+        (xa, xb, ya, yb), modified_offset_dict = _generate_read_bounds(
+            offset_dict, raster_x_size, raster_y_size)
+        flow_dir_buffer_array[ya:yb, xa:xb] = flow_dir_band.ReadAsArray(
+                **modified_offset_dict).astype(numpy.uint8)
 
         # ensure these are set for the complier
         xi_n = -1
