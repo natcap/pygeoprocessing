@@ -86,7 +86,7 @@ class TestRouting(unittest.TestCase):
         dem_array[3:8, 3:8] = 0.0
         numpy.testing.assert_almost_equal(result_array, dem_array)
 
-    def test_d8_flow_dir(self):
+    def test_flow_dir_d8(self):
         """PGP.routing: test D8 flow."""
         import pygeoprocessing.routing
 
@@ -132,7 +132,7 @@ class TestRouting(unittest.TestCase):
             [4, 6, 6, 6, 6, 6, 6, 6, 6, 6, 0]])
         numpy.testing.assert_almost_equal(flow_array, expected_result)
 
-    def test_d8_flow_accum(self):
+    def test_flow_accum_d8(self):
         """PGP.routing: test D8 flow accum."""
         import pygeoprocessing.routing
 
@@ -191,7 +191,7 @@ class TestRouting(unittest.TestCase):
         numpy.testing.assert_almost_equal(flow_accum_array, expected_result)
 
 
-    def test_multiple_flow_dir(self):
+    def test_flow_dir_mfd(self):
         """PGP.routing: test multiple flow dir."""
         import pygeoprocessing.routing
 
@@ -213,6 +213,50 @@ class TestRouting(unittest.TestCase):
         target_flow_dir_path = os.path.join(
             self.workspace_dir, 'flow_dir.tif')
 
-        pygeoprocessing.routing.flow_dir_multiple_flow(
+        pygeoprocessing.routing.flow_dir_mfd(
             (dem_path, 1), target_flow_dir_path,
             working_dir=self.workspace_dir)
+
+        flow_dir_raster = gdal.OpenEx(target_flow_dir_path, gdal.OF_RASTER)
+        flow_dir_band = flow_dir_raster.GetRasterBand(1)
+        flow_array = flow_dir_band.ReadAsArray()
+        flow_dir_band = None
+        flow_dir_raster = None
+        self.assertEqual(flow_array.dtype, numpy.int32)
+
+        expected_result = numpy.array([
+           [   3355440,      21840,      21840,      21840,      21840,
+                 21840,      21840,      21840,      21840,      21840,
+             805319475],
+           [   5591040,    1118480,       4352,       4096,       4096,
+                  4096,       4096,       4096,       4096,  268439552,
+            1342177365],
+           [   5591040,    1118208,    1118208,       4096,       4096,
+                  4096,       4096,       4096,  268439552,  268435472,
+            1342177365],
+           [   5591040,    1118208,    1118208,    1118208,       4096,
+                  4096,       4096,  268439552,  268435472,  268435472,
+            1342177365],
+           [   5591040,    1118208,    1118208,    1118208,    1118208,
+                  4096,  268439552,  268435472,  268435472,  268435472,
+            1342177365],
+           [   5591040,    1118208,    1118208,    1118208,    1118208,
+             269553664,  268435472,  268435472,  268435472,  268435472,
+            1342177365],
+           [   5591040,    1118208,    1118208,    1118208,  286330880,
+             286261248,  268435472,  268435472,  268435472,  268435472,
+            1342177365],
+           [   5591040,    1118208,    1118208,  286330880,  286261248,
+             286261248,  286261248,  268435472,  268435472,  268435472,
+            1342177365],
+           [   5591040,    1118208,  286330880,  286261248,  286261248,
+             286261248,  286261248,  286261248,  268435472,  268435472,
+            1342177365],
+           [   5591040,  286330880,  286261248,  286261248,  286261248,
+             286261248,  286261248,  286261248,  286261248,  286261264,
+            1342177365],
+           [ 858992640, 1431306240, 1431306240, 1431306240, 1431306240,
+            1431306240, 1431306240, 1431306240, 1431306240, 1431306240,
+             858783795]])
+
+        numpy.testing.assert_almost_equal(flow_array, expected_result)
