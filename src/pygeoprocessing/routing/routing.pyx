@@ -1838,12 +1838,14 @@ def flow_accumulation_mfd(
         flow_dir_raster_path_band[0])
     raster_x_size, raster_y_size = flow_dir_raster_info['raster_size']
 
-    flow_dir_nodata = flow_dir_raster_info['nodata'][
+    tmp_flow_dir_nodata = flow_dir_raster_info['nodata'][
         flow_dir_raster_path_band[1]-1]
-    if flow_dir_nodata != 0:
-        raise ValueError(
-            "The multiple flow direction nodata value should be 0, instead "
-            "it's %s" % flow_dir_nodata)
+    if tmp_flow_dir_nodata is None:
+        logger.warn(
+            "MFD Flow dir raster has undefined nodata value, assuming 0.")
+        flow_dir_nodata = 0
+    else:
+        flow_dir_nodata = tmp_flow_dir_nodata
 
     # this outer loop searches for a pixel that is locally undrained
     for offset_dict in pygeoprocessing.iterblocks(

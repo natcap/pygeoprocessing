@@ -260,3 +260,70 @@ class TestRouting(unittest.TestCase):
              858783795]])
 
         numpy.testing.assert_almost_equal(flow_array, expected_result)
+
+
+    def test_flow_accum_mfd(self):
+        """PGP.routing: test flow accuumulation for multiple flow."""
+        import pygeoprocessing.routing
+        driver = gdal.GetDriverByName('GTiff')
+
+        flow_dir_array = numpy.array([
+           [   3355440,      21840,      21840,      21840,      21840,
+                 21840,      21840,      21840,      21840,      21840,
+             805319475],
+           [   5591040,    1118480,       4352,       4096,       4096,
+                  4096,       4096,       4096,       4096,  268439552,
+            1342177365],
+           [   5591040,    1118208,    1118208,       4096,       4096,
+                  4096,       4096,       4096,  268439552,  268435472,
+            1342177365],
+           [   5591040,    1118208,    1118208,    1118208,       4096,
+                  4096,       4096,  268439552,  268435472,  268435472,
+            1342177365],
+           [   5591040,    1118208,    1118208,    1118208,    1118208,
+                  4096,  268439552,  268435472,  268435472,  268435472,
+            1342177365],
+           [   5591040,    1118208,    1118208,    1118208,    1118208,
+             269553664,  268435472,  268435472,  268435472,  268435472,
+            1342177365],
+           [   5591040,    1118208,    1118208,    1118208,  286330880,
+             286261248,  268435472,  268435472,  268435472,  268435472,
+            1342177365],
+           [   5591040,    1118208,    1118208,  286330880,  286261248,
+             286261248,  286261248,  268435472,  268435472,  268435472,
+            1342177365],
+           [   5591040,    1118208,  286330880,  286261248,  286261248,
+             286261248,  286261248,  286261248,  268435472,  268435472,
+            1342177365],
+           [   5591040,  286330880,  286261248,  286261248,  286261248,
+             286261248,  286261248,  286261248,  286261248,  286261264,
+            1342177365],
+           [ 858992640, 1431306240, 1431306240, 1431306240, 1431306240,
+            1431306240, 1431306240, 1431306240, 1431306240, 1431306240,
+             858783795]])
+        flow_dir_path = os.path.join(self.workspace_dir, 'flow_dir.tif')
+        flow_dir_raster = driver.Create(
+            flow_dir_path, flow_dir_array.shape[1], flow_dir_array.shape[0],
+            1, gdal.GDT_Float32, options=(
+                'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
+                'BLOCKXSIZE=32', 'BLOCKYSIZE=32'))
+
+        flow_dir_band = flow_dir_raster.GetRasterBand(1)
+        flow_dir_band.WriteArray(flow_dir_array)
+        flow_dir_band.FlushCache()
+        flow_dir_band = None
+        flow_dir_raster = None
+
+        target_flow_accum_path = 'flow_accum_mfd.tif' #os.path.join(self.workspace_dir, 'flow_accum_mfd.tif')
+
+        pygeoprocessing.routing.flow_accumulation_mfd(
+            (flow_dir_path, 1), target_flow_accum_path)
+
+        flow_accum_raster = gdal.OpenEx(target_flow_accum_path, gdal.OF_RASTER)
+        flow_accum_band = flow_accum_raster.GetRasterBand(1)
+        flow_array = flow_accum_band.ReadAsArray()
+        flow_accum_band = None
+        flow_accum_raster = None
+        self.assertEqual(flow_array.dtype, numpy.float64)
+
+        #numpy.testing.assert_almost_equal(flow_array, expected_result)
