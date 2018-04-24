@@ -190,7 +190,7 @@ class TestRouting(unittest.TestCase):
         numpy.testing.assert_almost_equal(flow_accum_array, expected_result)
 
 
-def test_multiple_flow_dir(self):
+    def test_multiple_flow_dir(self):
         """PGP.routing: test multiple flow dir."""
         import pygeoprocessing.routing
 
