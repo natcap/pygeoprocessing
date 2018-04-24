@@ -114,7 +114,7 @@ cdef struct FlowPixelType:
     int xi
     int yi
     int flow_dir
-    int flow_accum
+    double flow_accum
 
 # used to record x/y locations as needed
 cdef struct CoordinateType:
@@ -1788,4 +1788,203 @@ def flow_dir_multiple_flow(
     dem_managed_raster.close()
     plateau_distance_managed_raster.close()
     shutil.rmtree(working_dir_path)
+    logger.info('%.2f%% complete', 100.0)
+
+
+def flow_accumulation_multiple_flow(
+        flow_dir_raster_path_band, target_flow_accum_raster_path):
+    """Multiple flow direction accumulation.
+
+    Parameters:
+        flow_dir_raster_path_band (tuple): a path, band number tuple
+            for a multiple accumulation raster. TODO: describe this
+        target_flow_accum_raster_path (string): TODO: describe this
+
+    Returns:
+        None.
+    """
+    # These variables are used to iterate over the DEM using `iterblock`
+    # indexes, a numpy.float64 type is used since we need to statically cast
+    # and it's the most complex numerical type and will be compatible without
+    # data loss for any lower type that might be used in
+    # `dem_raster_path_band[0]`.
+    cdef numpy.ndarray[numpy.int32_t, ndim=2] flow_dir_buffer_array
+    cdef int win_ysize, win_xsize, xoff, yoff
+
+    # the _root variables remembers the pixel index where the plateau/pit
+    # region was first detected when iterating over the DEM.
+    cdef int xi_root, yi_root
+
+    # these variables are used as pixel or neighbor indexes.
+    # _n is related to a neighbor pixel
+    cdef int i_n, xi, yi, xi_n, yi_n, i_upstream_flow
+
+    # used to hold flow direction values
+    cdef int flow_dir, flow_dir_nodata, upstream_flow_direction
+
+    # used as a holder variable to account for upstream flow
+    cdef int upstream_flow_accum, compressed_upstream_flow, upstream_flow_sum
+
+    # `search_stack` is used to walk upstream to calculate flow accumulation
+    # values
+    cdef stack[FlowPixelType] search_stack
+    cdef FlowPixelType flow_pixel
+
+    # properties of the parallel rasters
+    cdef int raster_x_size, raster_y_size
+
+    # used for time-delayed logging
+    cdef time_t last_log_time
+    last_log_time = ctime(NULL)
+
+    logger = logging.getLogger('pygeoprocessing.routing.flow_dir_d8')
+    logger.addHandler(logging.NullHandler())  # silence logging by default
+    flow_accum_nodata = -1
+    pygeoprocessing.new_raster_from_base(
+        flow_dir_raster_path_band[0], target_flow_accum_raster_path,
+        gdal.GDT_Float64, [flow_accum_nodata],
+        fill_value_list=[flow_accum_nodata],
+        gtiff_creation_options=GTIFF_CREATION_OPTIONS)
+    flow_accum_managed_raster = _ManagedRaster(
+        target_flow_accum_raster_path, 1, 1)
+
+    flow_dir_managed_raster = _ManagedRaster(
+        flow_dir_raster_path_band[0], flow_dir_raster_path_band[1], 0)
+    flow_dir_raster = gdal.Open(flow_dir_raster_path_band[0], gdal.OF_RASTER)
+    flow_dir_band = flow_dir_raster.GetRasterBand(
+        flow_dir_raster_path_band[1])
+
+    flow_dir_raster_info = pygeoprocessing.get_raster_info(
+        flow_dir_raster_path_band[0])
+    raster_x_size, raster_y_size = flow_dir_raster_info['raster_size']
+
+    flow_dir_nodata = flow_dir_raster_info['nodata'][
+        flow_dir_raster_path_band[1]-1]
+    if flow_dir_nodata != 0:
+        raise ValueError(
+            "The multiple flow direction nodata value should be 0, instead "
+            "it's %s" % flow_dir_nodata)
+
+    # this outer loop searches for a pixel that is locally undrained
+    for offset_dict in pygeoprocessing.iterblocks(
+            flow_dir_raster_path_band[0], offset_only=True, largest_block=0):
+        win_xsize = offset_dict['win_xsize']
+        win_ysize = offset_dict['win_ysize']
+        xoff = offset_dict['xoff']
+        yoff = offset_dict['yoff']
+
+        if ctime(NULL) - last_log_time > 5.0:
+            last_log_time = ctime(NULL)
+            current_pixel = xoff + yoff * raster_x_size
+            logger.info('%.2f%% complete', 100.0 * current_pixel / <float>(
+                raster_x_size * raster_y_size))
+
+        # make a buffer big enough to capture block and boundaries around it
+        flow_dir_buffer_array = numpy.empty(
+            (offset_dict['win_ysize']+2, offset_dict['win_xsize']+2),
+            dtype=numpy.int32)
+        flow_dir_buffer_array[:] = flow_dir_nodata
+
+        # default numpy array boundaries
+        buffer_off = {
+            'xa': 1,
+            'xb': -1,
+            'ya': 1,
+            'yb': -1
+        }
+        # check if we can widen the border to include real data from the
+        # raster
+        for a_buffer_id, b_buffer_id, off_id, win_size_id, raster_size in [
+                ('xa', 'xb', 'xoff', 'win_xsize', raster_x_size),
+                ('ya', 'yb', 'yoff', 'win_ysize', raster_y_size)]:
+
+            if offset_dict[off_id] > 0:
+                # in this case we have valid data to the left (or up)
+                # grow the window and buffer slice in that direction
+                buffer_off[a_buffer_id] = None
+                offset_dict[off_id] -= 1
+                offset_dict[win_size_id] += 1
+
+            if offset_dict[off_id] + offset_dict[win_size_id] < raster_size:
+                # here we have valid data to the right (or bottom)
+                # grow the right buffer and add 1 to window
+                buffer_off[b_buffer_id] = None
+                offset_dict[win_size_id] += 1
+
+        # read in the valid memory block
+        flow_dir_buffer_array[
+            buffer_off['ya']:buffer_off['yb'],
+            buffer_off['xa']:buffer_off['xb']] = flow_dir_band.ReadAsArray(
+                **offset_dict).astype(numpy.int32)
+
+        # ensure these are set for the complier
+        xi_n = -1
+        yi_n = -1
+
+        # search block for to set flow accumulation
+        for yi in xrange(1, win_ysize+1):
+            for xi in xrange(1, win_xsize+1):
+                flow_dir = flow_dir_buffer_array[yi, xi]
+                if flow_dir == flow_dir_nodata:
+                    continue
+
+                for i_n in xrange(8):
+                    if ((flow_dir >> (4 * i_n)) & 0xF) == 0:
+                        continue
+                    xi_n = xi+NEIGHBOR_OFFSET_ARRAY[2*i_n]
+                    yi_n = yi+NEIGHBOR_OFFSET_ARRAY[2*i_n+1]
+
+                    if flow_dir_buffer_array[yi_n, xi_n] == flow_dir_nodata:
+                        # flows to a nodata pixel, must be a drain
+                        xi_root = xi-1+xoff
+                        yi_root = yi-1+yoff
+
+                        search_stack.push(
+                            FlowPixelType(xi_root, yi_root, 0, 1))
+                        break
+
+                while not search_stack.empty():
+                    flow_pixel = search_stack.top()
+                    search_stack.pop()
+
+                    preempted = 0
+                    # TODO: rename flow_pixel.flow_dir to last flow dir or something
+                    for i_n in xrange(flow_pixel.flow_dir, 8):
+                        xi_n = flow_pixel.xi+NEIGHBOR_OFFSET_ARRAY[2*i_n]
+                        yi_n = flow_pixel.yi+NEIGHBOR_OFFSET_ARRAY[2*i_n+1]
+                        if (xi_n < 0 or xi_n >= raster_x_size or
+                                yi_n < 0 or yi_n >= raster_y_size):
+                            # no upstream here
+                            continue
+                        compressed_upstream_flow = (
+                            <int>flow_dir_managed_raster.get(xi_n, yi_n))
+                        upstream_flow_direction = (
+                            compressed_upstream_flow >> (
+                                4 * D8_REVERSE_DIRECTION[i_n])) & 0xF
+                        if upstream_flow_direction == flow_dir_nodata:
+                            # no upstream flow to this pixel
+                            continue
+                        upstream_flow_accum = (
+                            <int>flow_accum_managed_raster.get(xi_n, yi_n))
+                        if upstream_flow_accum == flow_accum_nodata:
+                            # process upstream before this one
+                            flow_pixel.flow_dir = i_n
+                            search_stack.push(flow_pixel)
+                            search_stack.push(FlowPixelType(xi_n, yi_n, 0, 1))
+                            preempted = 1
+                            break
+                        upstream_flow_sum = 0
+                        for i_upstream_flow in xrange(8):
+                            upstream_flow_sum += (
+                                compressed_upstream_flow >> (
+                                    4 * i_upstream_flow)) & 0xF
+
+                        print upstream_flow_accum, upstream_flow_direction, upstream_flow_sum, flow_pixel.xi, flow_pixel.yi, xi_n, yi_n
+                        flow_pixel.flow_accum += (
+                            upstream_flow_accum *
+                            upstream_flow_direction / <float>upstream_flow_sum)
+                    if not preempted:
+                        flow_accum_managed_raster.set(
+                            flow_pixel.xi, flow_pixel.yi,
+                            flow_pixel.flow_accum)
     logger.info('%.2f%% complete', 100.0)
