@@ -648,7 +648,7 @@ def fill_pits(
         # attempt to expand read block by a pixel boundary
         (xa, xb, ya, yb), modified_offset_dict = _generate_read_bounds(
             offset_dict, raster_x_size, raster_y_size)
-        dem_buffer_array[ya:yb,xa:xb] = target_dem_band.ReadAsArray(
+        dem_buffer_array[ya:yb, xa:xb] = target_dem_band.ReadAsArray(
                 **modified_offset_dict).astype(numpy.float64)
 
         # search block for locally undrained pixels
@@ -1000,7 +1000,7 @@ def flow_dir_d8(
         # attempt to expand read block by a pixel boundary
         (xa, xb, ya, yb), modified_offset_dict = _generate_read_bounds(
             offset_dict, raster_x_size, raster_y_size)
-        dem_buffer_array[xa:xb, ya:yb] = dem_band.ReadAsArray(
+        dem_buffer_array[ya:yb, xa:xb] = dem_band.ReadAsArray(
                 **modified_offset_dict).astype(numpy.float64)
 
         # ensure these are set for the complier
@@ -1372,7 +1372,7 @@ def flow_dir_mfd(
     cdef int i_n, xi, yi, xi_q, yi_q, xi_n, yi_n
 
     # these are used to recall the local and neighbor heights of pixels
-    cdef double root_height, n_height, dem_nodata
+    cdef double root_height, n_height, dem_nodata, n_slope
 
     # these are used to track the distance to the drain when we encounter a
     # plateau to route to the shortest path to the drain
@@ -1484,11 +1484,13 @@ def flow_dir_mfd(
     # shortest path to the drain for plateaus. the raster is filled with
     # raster_x_size * raster_y_size as a distance that's greater than the
     # longest plateau drain distance possible for this raster.
-    plateau_distance_path = 'plateau_distance.tif' #os.path.join(working_dir_path, 'plateau_distance.tif')
-    plateau_distance_nodata = -1
+    plateau_distance_path = os.path.join(
+        working_dir_path, 'plateau_distance.tif')
+    plateau_distance_nodata = raster_x_size * raster_y_size
     pygeoprocessing.new_raster_from_base(
         dem_raster_path_band[0], plateau_distance_path, gdal.GDT_Float64,
-        [-1], fill_value_list=[raster_x_size * raster_y_size],
+        [plateau_distance_nodata], fill_value_list=[
+            raster_x_size * raster_y_size],
         gtiff_creation_options=GTIFF_CREATION_OPTIONS)
     plateau_distance_managed_raster = _ManagedRaster(
         plateau_distance_path, 1, 1)
@@ -1739,16 +1741,19 @@ def flow_dir_mfd(
                                 yi_n < 0 or yi_n >= raster_y_size):
                             continue
 
+                        if dem_managed_raster.get(xi_n, yi_n) != root_height:
+                            continue
+
                         n_distance = plateau_distance_managed_raster.get(
                             xi_n, yi_n)
-                        if (n_distance != plateau_distance_nodata and
-                                n_distance < drain_distance):
+                        if n_distance == plateau_distance_nodata:
+                            continue
+                        if n_distance < drain_distance:
                             n_slope = SQRT2_INV if i_n & 1 else 1.0
                             downhill_slopes[i_n] = n_slope
                             sum_of_slope_powers += n_slope
-                        elif (n_distance >= drain_distance and
-                                not plateau_drain_mask_managed_raster.get(
-                                    xi_n, yi_n)):
+                        elif not plateau_drain_mask_managed_raster.get(
+                                xi_n, yi_n):
                             direction_drain_queue.push(
                                 CoordinateType(xi_n, yi_n))
                             plateau_drain_mask_managed_raster.set(
