@@ -263,56 +263,29 @@ class TestRouting(unittest.TestCase):
 
 
     def test_flow_accum_mfd(self):
-        """PGP.routing: test flow accuumulation for multiple flow."""
+        """PGP.routing: test flow accumulation for multiple flow."""
         import pygeoprocessing.routing
         driver = gdal.GetDriverByName('GTiff')
 
-        flow_dir_array = numpy.array([
-           [   3355440,      21840,      21840,      21840,      21840,
-                 21840,      21840,      21840,      21840,      21840,
-             805319475],
-           [   5591040,    1118480,       4352,       4096,       4096,
-                  4096,       4096,       4096,       4096,  268439552,
-            1342177365],
-           [   5591040,    1118208,    1118208,       4096,       4096,
-                  4096,       4096,       4096,  268439552,  268435472,
-            1342177365],
-           [   5591040,    1118208,    1118208,    1118208,       4096,
-                  4096,       4096,  268439552,  268435472,  268435472,
-            1342177365],
-           [   5591040,    1118208,    1118208,    1118208,    1118208,
-                  4096,  268439552,  268435472,  268435472,  268435472,
-            1342177365],
-           [   5591040,    1118208,    1118208,    1118208,    1118208,
-             269553664,  268435472,  268435472,  268435472,  268435472,
-            1342177365],
-           [   5591040,    1118208,    1118208,    1118208,  286330880,
-             286261248,  268435472,  268435472,  268435472,  268435472,
-            1342177365],
-           [   5591040,    1118208,    1118208,  286330880,  286261248,
-             286261248,  286261248,  268435472,  268435472,  268435472,
-            1342177365],
-           [   5591040,    1118208,  286330880,  286261248,  286261248,
-             286261248,  286261248,  286261248,  268435472,  268435472,
-            1342177365],
-           [   5591040,  286330880,  286261248,  286261248,  286261248,
-             286261248,  286261248,  286261248,  286261248,  286261264,
-            1342177365],
-           [ 858992640, 1431306240, 1431306240, 1431306240, 1431306240,
-            1431306240, 1431306240, 1431306240, 1431306240, 1431306240,
-             858783795]])
-        flow_dir_path = os.path.join(self.workspace_dir, 'flow_dir.tif')
-        flow_dir_raster = driver.Create(
-            flow_dir_path, flow_dir_array.shape[1], flow_dir_array.shape[0],
-            1, gdal.GDT_Float32, options=(
+        dem_path = os.path.join(self.workspace_dir, 'dem.tif')
+        dem_array = numpy.zeros((11, 11))
+        dem_raster = driver.Create(
+            dem_path, dem_array.shape[1], dem_array.shape[0], 1,
+            gdal.GDT_Float32, options=(
                 'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
                 'BLOCKXSIZE=32', 'BLOCKYSIZE=32'))
 
-        flow_dir_band = flow_dir_raster.GetRasterBand(1)
-        flow_dir_band.WriteArray(flow_dir_array)
-        flow_dir_band.FlushCache()
-        flow_dir_band = None
-        flow_dir_raster = None
+        dem_band = dem_raster.GetRasterBand(1)
+        dem_band.WriteArray(dem_array)
+        dem_band.FlushCache()
+        dem_band = None
+        dem_raster = None
+
+        flow_dir_path = os.path.join(
+            self.workspace_dir, 'flow_dir.tif')
+        pygeoprocessing.routing.flow_dir_mfd(
+            (dem_path, 1), flow_dir_path,
+            working_dir=self.workspace_dir)
 
         target_flow_accum_path = 'flow_accum_mfd.tif' #os.path.join(self.workspace_dir, 'flow_accum_mfd.tif')
 

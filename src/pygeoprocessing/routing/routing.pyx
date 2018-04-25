@@ -1561,8 +1561,9 @@ def flow_dir_mfd(
                     yi_n = yi+NEIGHBOR_OFFSET_ARRAY[2*i_n+1]
                     n_height = dem_buffer_array[yi_n, xi_n]
                     if n_height == dem_nodata:
-                        sum_of_nodata_slope_powers += 1
-                        nodata_downhill_slopes[i_n] = 1.0
+                        n_slope = 1.0 if i_n % 1 else SQRT2_INV
+                        sum_of_nodata_slope_powers += n_slope
+                        nodata_downhill_slopes[i_n] = n_slope
                         continue
                     n_slope = root_height - n_height
                     if n_slope > 0.0:
@@ -1671,7 +1672,6 @@ def flow_dir_mfd(
                                 CoordinateType(xi_q, yi_q))
                             nodata_flow_dir_queue.push(
                                 compressed_integer_slopes)
-                        # TODO: what do do about nodata flow?
 
                 # if there's no downhill drains, try the nodata drains
                 if drain_queue.empty():
