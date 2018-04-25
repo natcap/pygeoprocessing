@@ -261,14 +261,13 @@ class TestRouting(unittest.TestCase):
 
         numpy.testing.assert_almost_equal(flow_array, expected_result)
 
-
     def test_flow_accum_mfd(self):
         """PGP.routing: test flow accumulation for multiple flow."""
         import pygeoprocessing.routing
         driver = gdal.GetDriverByName('GTiff')
 
         dem_path = os.path.join(self.workspace_dir, 'dem.tif')
-        dem_array = numpy.zeros((11, 11))
+        dem_array = numpy.zeros((3, 3))
         dem_raster = driver.Create(
             dem_path, dem_array.shape[1], dem_array.shape[0], 1,
             gdal.GDT_Float32, options=(
@@ -281,8 +280,7 @@ class TestRouting(unittest.TestCase):
         dem_band = None
         dem_raster = None
 
-        flow_dir_path = os.path.join(
-            self.workspace_dir, 'flow_dir.tif')
+        flow_dir_path = 'flow_dir.tif' #os.path.join(self.workspace_dir, 'flow_dir.tif')
         pygeoprocessing.routing.flow_dir_mfd(
             (dem_path, 1), flow_dir_path,
             working_dir=self.workspace_dir)
