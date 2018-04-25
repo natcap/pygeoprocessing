@@ -1826,7 +1826,7 @@ def flow_accumulation_mfd(
     cdef int i_n, xi, yi, xi_n, yi_n, i_upstream_flow
 
     # used to hold flow direction values
-    cdef int flow_dir_mfd, upstream_flow_direction
+    cdef int flow_dir_mfd, upstream_flow_weight
 
     # used as a holder variable to account for upstream flow
     cdef int compressed_upstream_flow_dir, upstream_flow_dir_sum
@@ -1911,7 +1911,7 @@ def flow_accumulation_mfd(
                     continue
 
                 for i_n in xrange(8):
-                    if ((flow_dir_mfd >> (i_n << 2)) & 0xF) == 0:
+                    if ((flow_dir_mfd >> (i_n * 4)) & 0xF) == 0:
                         # no flow in that direction
                         continue
                     xi_n = xi+NEIGHBOR_OFFSET_ARRAY[2*i_n]
@@ -1941,10 +1941,10 @@ def flow_accumulation_mfd(
                             continue
                         compressed_upstream_flow_dir = (
                             <int>flow_dir_managed_raster.get(xi_n, yi_n))
-                        upstream_flow_direction = (
+                        upstream_flow_weight = (
                             compressed_upstream_flow_dir >> (
-                                D8_REVERSE_DIRECTION[i_n] << 2)) & 0xF
-                        if upstream_flow_direction == 0:
+                                D8_REVERSE_DIRECTION[i_n] * 4)) & 0xF
+                        if upstream_flow_weight == 0:
                             # no upstream flow to this pixel
                             continue
                         upstream_flow_accum = (
@@ -1960,11 +1960,11 @@ def flow_accumulation_mfd(
                         for i_upstream_flow in xrange(8):
                             upstream_flow_dir_sum += (
                                 compressed_upstream_flow_dir >> (
-                                    i_upstream_flow << 2)) & 0xF
+                                    i_upstream_flow * 4)) & 0xF
 
                         flow_pixel.flow_accum += (
-                            upstream_flow_accum *
-                            upstream_flow_direction / <float>upstream_flow_dir_sum)
+                            upstream_flow_accum * upstream_flow_weight /
+                            <float>upstream_flow_dir_sum)
                     if not preempted:
                         flow_accum_managed_raster.set(
                             flow_pixel.xi, flow_pixel.yi,
