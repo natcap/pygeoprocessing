@@ -115,7 +115,7 @@ cdef struct PixelType:
 cdef struct FlowPixelType:
     int xi
     int yi
-    int flow_dir
+    int last_flow_dir
     double flow_accum
 
 # used to record x/y locations as needed
@@ -1307,7 +1307,7 @@ def flow_accumulation_d8(
                     search_stack.pop()
 
                     preempted = 0
-                    for i_n in xrange(flow_pixel.flow_dir, 8):
+                    for i_n in xrange(flow_pixel.last_flow_dir, 8):
                         xi_n = flow_pixel.xi+NEIGHBOR_OFFSET_ARRAY[2*i_n]
                         yi_n = flow_pixel.yi+NEIGHBOR_OFFSET_ARRAY[2*i_n+1]
                         if (xi_n < 0 or xi_n >= raster_x_size or
@@ -1325,7 +1325,7 @@ def flow_accumulation_d8(
                             <int>flow_accum_managed_raster.get(xi_n, yi_n))
                         if upstream_flow_accum == flow_accum_nodata:
                             # process upstream before this one
-                            flow_pixel.flow_dir = i_n
+                            flow_pixel.last_flow_dir = i_n
                             search_stack.push(flow_pixel)
                             search_stack.push(FlowPixelType(xi_n, yi_n, 0, 1))
                             preempted = 1
@@ -1345,8 +1345,22 @@ def flow_dir_mfd(
     Parameters:
         dem_raster_path_band (tuple): a path, band number tuple indicating the
             DEM calculate flow direction. This DEM must not have hydrological
-            pits or else the target flow direction is undefined.
-        target_flow_dir_path (string): TODO: define raster
+            pits or else the target flow direction will be undefined.
+        target_flow_dir_path (string): path to a raster created by this call
+            of a 32 bit int raster of the same dimensions and projections as
+            `dem_raster_path_band[0]`. The value of the pixel indicates the
+            proportion of flow from that pixel to its neighbors given these
+            indexes:
+
+                321
+                4x0
+                567
+
+            The pixel value is formatted as 8 separate 4 bit integers
+            compressed into a 32 bit int. To extract the proportion of flow
+            from a particular direction given the pixel value 'x' one can
+            shift and mask as follows 0xF & (x >> (4*dir)), where `dir` is
+            one of the 8 directions indicated above.
 
         working_dir (string): If not None, indicates where temporary files
             should be created during this run. If this directory doesn't exist
@@ -1377,10 +1391,6 @@ def flow_dir_mfd(
     # these are used to track the distance to the drain when we encounter a
     # plateau to route to the shortest path to the drain
     cdef double drain_distance, n_drain_distance
-
-    # this remembers is flow was diagonal in case there is a straight
-    # flow that could trump it
-    #TODO: cdef int diagonal_nodata
 
     # `search_queue` is used to grow a flat region searching for a drain
     # of a plateau
@@ -1779,13 +1789,22 @@ def flow_dir_mfd(
 
 
 def flow_accumulation_mfd(
-        flow_dir_raster_path_band, target_flow_accum_raster_path):
+        flow_dir_mfd_raster_path_band, target_flow_accum_raster_path):
     """Multiple flow direction accumulation.
 
     Parameters:
-        flow_dir_raster_path_band (tuple): a path, band number tuple
-            for a multiple accumulation raster. TODO: describe this
-        target_flow_accum_raster_path (string): TODO: describe this
+        flow_dir_mfd_raster_path_band (tuple): a path, band number tuple
+            for a multiple flow direction raster generated from a call to
+            `flow_dir_mfd`. The format of this raster is described in the
+            docstring of that function.
+        target_flow_accum_raster_path (string): a path to a raster created by
+            a call to this function that is the same dimensions and projection
+            as `flow_dir_mfd_raster_path_band[0]`. The value in each pixel is
+            1 plus the proportional contribution of all upstream pixels that
+            flow into it. The proportion is determined as the value of the
+            upstream flow dir pixel in the downslope direction pointing to
+            the current pixel divided by the sum of all the flow weights
+            exiting that pixel.
 
     Returns:
         None.
@@ -1795,7 +1814,7 @@ def flow_accumulation_mfd(
     # and it's the most complex numerical type and will be compatible without
     # data loss for any lower type that might be used in
     # `dem_raster_path_band[0]`.
-    cdef numpy.ndarray[numpy.int32_t, ndim=2] flow_dir_buffer_array
+    cdef numpy.ndarray[numpy.int32_t, ndim=2] flow_dir_mfd_buffer_array
     cdef int win_ysize, win_xsize, xoff, yoff
 
     # the _root variables remembers the pixel index where the plateau/pit
@@ -1807,15 +1826,18 @@ def flow_accumulation_mfd(
     cdef int i_n, xi, yi, xi_n, yi_n, i_upstream_flow
 
     # used to hold flow direction values
-    cdef int flow_dir, flow_dir_nodata, upstream_flow_direction
+    cdef int flow_dir_mfd, upstream_flow_direction
 
     # used as a holder variable to account for upstream flow
     cdef int compressed_upstream_flow_dir, upstream_flow_dir_sum
 
+    # used to determine if the upstream pixel has been processed, and if not
+    # to trigger a recursive uphill walk
     cdef double upstream_flow_accum
 
     # `search_stack` is used to walk upstream to calculate flow accumulation
-    # values
+    # values represented in a flow pixel which stores the x/y position,
+    # next direction to check, and running flow accumulation value.
     cdef stack[FlowPixelType] search_stack
     cdef FlowPixelType flow_pixel
 
@@ -1826,11 +1848,12 @@ def flow_accumulation_mfd(
     cdef time_t last_log_time
     last_log_time = ctime(NULL)
 
-    logger = logging.getLogger('pygeoprocessing.routing.flow_accumulation_mfd')
+    logger = logging.getLogger(
+        'pygeoprocessing.routing.flow_accumulation_mfd')
     logger.addHandler(logging.NullHandler())  # silence logging by default
     flow_accum_nodata = -1
     pygeoprocessing.new_raster_from_base(
-        flow_dir_raster_path_band[0], target_flow_accum_raster_path,
+        flow_dir_mfd_raster_path_band[0], target_flow_accum_raster_path,
         gdal.GDT_Float64, [flow_accum_nodata],
         fill_value_list=[flow_accum_nodata],
         gtiff_creation_options=GTIFF_CREATION_OPTIONS)
@@ -1838,27 +1861,19 @@ def flow_accumulation_mfd(
         target_flow_accum_raster_path, 1, 1)
 
     flow_dir_managed_raster = _ManagedRaster(
-        flow_dir_raster_path_band[0], flow_dir_raster_path_band[1], 0)
-    flow_dir_raster = gdal.Open(flow_dir_raster_path_band[0], gdal.OF_RASTER)
+        flow_dir_mfd_raster_path_band[0], flow_dir_mfd_raster_path_band[1], 0)
+    flow_dir_raster = gdal.Open(
+        flow_dir_mfd_raster_path_band[0], gdal.OF_RASTER)
     flow_dir_band = flow_dir_raster.GetRasterBand(
-        flow_dir_raster_path_band[1])
+        flow_dir_mfd_raster_path_band[1])
 
     flow_dir_raster_info = pygeoprocessing.get_raster_info(
-        flow_dir_raster_path_band[0])
+        flow_dir_mfd_raster_path_band[0])
     raster_x_size, raster_y_size = flow_dir_raster_info['raster_size']
-
-    tmp_flow_dir_nodata = flow_dir_raster_info['nodata'][
-        flow_dir_raster_path_band[1]-1]
-    if tmp_flow_dir_nodata is None:
-        logger.warn(
-            "MFD Flow dir raster has undefined nodata value, assuming 0.")
-        flow_dir_nodata = 0
-    else:
-        flow_dir_nodata = tmp_flow_dir_nodata
 
     # this outer loop searches for a pixel that is locally undrained
     for offset_dict in pygeoprocessing.iterblocks(
-            flow_dir_raster_path_band[0], offset_only=True, largest_block=0):
+            flow_dir_mfd_raster_path_band[0], offset_only=True, largest_block=0):
         win_xsize = offset_dict['win_xsize']
         win_ysize = offset_dict['win_ysize']
         xoff = offset_dict['xoff']
@@ -1871,16 +1886,16 @@ def flow_accumulation_mfd(
                 raster_x_size * raster_y_size))
 
         # make a buffer big enough to capture block and boundaries around it
-        flow_dir_buffer_array = numpy.empty(
+        flow_dir_mfd_buffer_array = numpy.empty(
             (offset_dict['win_ysize']+2, offset_dict['win_xsize']+2),
             dtype=numpy.int32)
-        flow_dir_buffer_array[:] = flow_dir_nodata
+        flow_dir_mfd_buffer_array[:] = 0  # 0 means no flow at all
 
         # check if we can widen the border to include real data from the
         # raster
         (xa, xb, ya, yb), modified_offset_dict = _generate_read_bounds(
             offset_dict, raster_x_size, raster_y_size)
-        flow_dir_buffer_array[ya:yb, xa:xb] = flow_dir_band.ReadAsArray(
+        flow_dir_mfd_buffer_array[ya:yb, xa:xb] = flow_dir_band.ReadAsArray(
                 **modified_offset_dict).astype(numpy.int32)
 
         # ensure these are set for the complier
@@ -1890,21 +1905,24 @@ def flow_accumulation_mfd(
         # search block for to set flow accumulation
         for yi in xrange(1, win_ysize+1):
             for xi in xrange(1, win_xsize+1):
-                flow_dir = flow_dir_buffer_array[yi, xi]
-                if flow_dir == flow_dir_nodata:
+                flow_dir_mfd = flow_dir_mfd_buffer_array[yi, xi]
+                if flow_dir_mfd == 0:
+                    # no flow in this pixel, so skip
                     continue
 
                 for i_n in xrange(8):
-                    if ((flow_dir >> (4 * i_n)) & 0xF) == 0:
+                    if ((flow_dir_mfd >> (i_n << 2)) & 0xF) == 0:
+                        # no flow in that direction
                         continue
                     xi_n = xi+NEIGHBOR_OFFSET_ARRAY[2*i_n]
                     yi_n = yi+NEIGHBOR_OFFSET_ARRAY[2*i_n+1]
 
-                    if flow_dir_buffer_array[yi_n, xi_n] == flow_dir_nodata:
-                        # flows to a nodata pixel, must be a drain
+                    if flow_dir_mfd_buffer_array[yi_n, xi_n] == 0:
+                        # if the entire value is zero, it flows nowhere
+                        # and the root pixel is draining to it, thus the
+                        # root must be a drain
                         xi_root = xi-1+xoff
                         yi_root = yi-1+yoff
-
                         search_stack.push(
                             FlowPixelType(xi_root, yi_root, 0, 1))
                         break
@@ -1914,8 +1932,7 @@ def flow_accumulation_mfd(
                     search_stack.pop()
 
                     preempted = 0
-                    # TODO: rename flow_pixel.flow_dir to last flow dir or something
-                    for i_n in xrange(flow_pixel.flow_dir, 8):
+                    for i_n in xrange(flow_pixel.last_flow_dir, 8):
                         xi_n = flow_pixel.xi+NEIGHBOR_OFFSET_ARRAY[2*i_n]
                         yi_n = flow_pixel.yi+NEIGHBOR_OFFSET_ARRAY[2*i_n+1]
                         if (xi_n < 0 or xi_n >= raster_x_size or
@@ -1926,7 +1943,7 @@ def flow_accumulation_mfd(
                             <int>flow_dir_managed_raster.get(xi_n, yi_n))
                         upstream_flow_direction = (
                             compressed_upstream_flow_dir >> (
-                                4 * D8_REVERSE_DIRECTION[i_n])) & 0xF
+                                D8_REVERSE_DIRECTION[i_n] << 2)) & 0xF
                         if upstream_flow_direction == 0:
                             # no upstream flow to this pixel
                             continue
@@ -1934,7 +1951,7 @@ def flow_accumulation_mfd(
                             flow_accum_managed_raster.get(xi_n, yi_n))
                         if upstream_flow_accum == flow_accum_nodata:
                             # process upstream before this one
-                            flow_pixel.flow_dir = i_n
+                            flow_pixel.last_flow_dir = i_n
                             search_stack.push(flow_pixel)
                             search_stack.push(FlowPixelType(xi_n, yi_n, 0, 1))
                             preempted = 1
@@ -1943,9 +1960,8 @@ def flow_accumulation_mfd(
                         for i_upstream_flow in xrange(8):
                             upstream_flow_dir_sum += (
                                 compressed_upstream_flow_dir >> (
-                                    4 * i_upstream_flow)) & 0xF
+                                    i_upstream_flow << 2)) & 0xF
 
-                        #print upstream_flow_accum, upstream_flow_direction, upstream_flow_dir_sum, flow_pixel.xi, flow_pixel.yi, xi_n, yi_n
                         flow_pixel.flow_accum += (
                             upstream_flow_accum *
                             upstream_flow_direction / <float>upstream_flow_dir_sum)
