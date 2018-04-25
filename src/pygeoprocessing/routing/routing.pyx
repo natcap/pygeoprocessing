@@ -1613,7 +1613,6 @@ def flow_dir_mfd(
                             n_slope = SQRT2_INV if i_n & 1 else 1.0
                             sum_of_nodata_slope_powers += n_slope
                             nodata_downhill_slopes[i_n] = n_slope
-                            print xi_q, yi_q, i_n, n_slope
                             continue
                         n_slope = root_height - n_height
                         if n_slope < 0:
@@ -1765,7 +1764,7 @@ def flow_dir_mfd(
                     flow_dir_managed_raster.set(
                         xi_q, yi_q, compressed_integer_slopes)
 
-
+    plateau_drain_mask_managed_raster.close()
     flow_dir_managed_raster.close()
     flat_region_mask_managed_raster.close()
     dem_managed_raster.close()
@@ -1806,7 +1805,9 @@ def flow_accumulation_mfd(
     cdef int flow_dir, flow_dir_nodata, upstream_flow_direction
 
     # used as a holder variable to account for upstream flow
-    cdef int upstream_flow_accum, compressed_upstream_flow, upstream_flow_sum
+    cdef int compressed_upstream_flow_dir, upstream_flow_dir_sum
+
+    cdef double upstream_flow_accum
 
     # `search_stack` is used to walk upstream to calculate flow accumulation
     # values
@@ -1916,16 +1917,16 @@ def flow_accumulation_mfd(
                                 yi_n < 0 or yi_n >= raster_y_size):
                             # no upstream here
                             continue
-                        compressed_upstream_flow = (
+                        compressed_upstream_flow_dir = (
                             <int>flow_dir_managed_raster.get(xi_n, yi_n))
                         upstream_flow_direction = (
-                            compressed_upstream_flow >> (
+                            compressed_upstream_flow_dir >> (
                                 4 * D8_REVERSE_DIRECTION[i_n])) & 0xF
-                        if upstream_flow_direction == flow_dir_nodata:
+                        if upstream_flow_direction == 0:
                             # no upstream flow to this pixel
                             continue
                         upstream_flow_accum = (
-                            <int>flow_accum_managed_raster.get(xi_n, yi_n))
+                            flow_accum_managed_raster.get(xi_n, yi_n))
                         if upstream_flow_accum == flow_accum_nodata:
                             # process upstream before this one
                             flow_pixel.flow_dir = i_n
@@ -1933,16 +1934,16 @@ def flow_accumulation_mfd(
                             search_stack.push(FlowPixelType(xi_n, yi_n, 0, 1))
                             preempted = 1
                             break
-                        upstream_flow_sum = 0
+                        upstream_flow_dir_sum = 0
                         for i_upstream_flow in xrange(8):
-                            upstream_flow_sum += (
-                                compressed_upstream_flow >> (
+                            upstream_flow_dir_sum += (
+                                compressed_upstream_flow_dir >> (
                                     4 * i_upstream_flow)) & 0xF
 
-                        #print upstream_flow_accum, upstream_flow_direction, upstream_flow_sum, flow_pixel.xi, flow_pixel.yi, xi_n, yi_n
+                        #print upstream_flow_accum, upstream_flow_direction, upstream_flow_dir_sum, flow_pixel.xi, flow_pixel.yi, xi_n, yi_n
                         flow_pixel.flow_accum += (
                             upstream_flow_accum *
-                            upstream_flow_direction / <float>upstream_flow_sum)
+                            upstream_flow_direction / <float>upstream_flow_dir_sum)
                     if not preempted:
                         flow_accum_managed_raster.set(
                             flow_pixel.xi, flow_pixel.yi,
