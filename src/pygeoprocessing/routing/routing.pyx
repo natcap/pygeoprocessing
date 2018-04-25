@@ -1,4 +1,6 @@
 # distutils: language=c++
+# TODO: use linked list style arrays so I don't have to search all 8 directions always
+# TODO: should I change downhill slopes to be negative instead of positive so it's easier to read?
 """
 Provides PyGeprocessing Routing functionality.
 
@@ -1399,7 +1401,7 @@ def flow_dir_mfd(
 
     # this variable will be used to pack the neighbor slopes into a single
     # value to write to the raster or read from neighbors
-    cdef int compressed_integer_slopes, neighbor_flow_dir
+    cdef int compressed_integer_slopes
 
     # `drain_queue` is used after a plateau drain is defined and iterates
     # until the entire plateau is drained, `nodata_drain_queue` are for
@@ -1510,19 +1512,12 @@ def flow_dir_mfd(
             dtype=numpy.float64)
         dem_buffer_array[:] = dem_nodata
 
-        # default numpy array boundaries
-        buffer_off = {
-            'xa': 1,
-            'xb': -1,
-            'ya': 1,
-            'yb': -1
-        }
         # check if we can widen the border to include real data from the
         # raster
         (xa, xb, ya, yb), modified_offset_dict = _generate_read_bounds(
             offset_dict, raster_x_size, raster_y_size)
         dem_buffer_array[ya:yb, xa:xb] = dem_band.ReadAsArray(
-                **offset_dict).astype(numpy.float64)
+                **modified_offset_dict).astype(numpy.float64)
 
         # ensure these are set for the complier
         xi_n = -1
@@ -1603,7 +1598,6 @@ def flow_dir_mfd(
                 # this loop does a BFS starting at this pixel to all pixels
                 # of the same height. if a drain is encountered, it is pushed
                 # on a queue for later processing.
-
                 while not search_queue.empty():
                     xi_q = search_queue.front().xi
                     yi_q = search_queue.front().yi
@@ -1624,8 +1618,9 @@ def flow_dir_mfd(
                         else:
                             n_height = dem_managed_raster.get(xi_n, yi_n)
                         if n_height == dem_nodata:
-                            sum_of_nodata_slope_powers += 1
-                            nodata_downhill_slopes[i_n] = 1.0
+                            n_slope = 1.0 if i_n % 1 else SQRT2_INV
+                            sum_of_nodata_slope_powers += n_slope
+                            nodata_downhill_slopes[i_n] = n_slope
                             continue
                         n_slope = root_height - n_height
                         if n_slope < 0:
@@ -1659,9 +1654,10 @@ def flow_dir_mfd(
                         for i_n in xrange(8):
                             compressed_integer_slopes |= (<int>(
                                 0.5 + working_downhill_slopes[i_n] /
-                                working_downhill_slope_sum * 0xF)) << (i_n * 4)
-                        # regular downhill pixel
+                                working_downhill_slope_sum * 0xF)) << (
+                                i_n * 4)
                         if sum_of_slope_powers > 0.0:
+                            # regular downhill pixel
                             flow_dir_managed_raster.set(
                                 xi_q, yi_q, compressed_integer_slopes)
                             plateau_distance_managed_raster.set(
@@ -1734,34 +1730,45 @@ def flow_dir_mfd(
                     yi_q = direction_drain_queue.front().yi
                     direction_drain_queue.pop()
 
+                    # TODO: compare to 0?
+                    if flow_dir_managed_raster.get(xi_q, yi_q):
+                        # already set and processed
+                        continue
+
                     drain_distance = plateau_distance_managed_raster.get(
                         xi_q, yi_q)
 
+                    sum_of_slope_powers = 0.0
                     for i_n in xrange(8):
                         xi_n = xi_q+NEIGHBOR_OFFSET_ARRAY[2*i_n]
                         yi_n = yi_q+NEIGHBOR_OFFSET_ARRAY[2*i_n+1]
+                        downhill_slopes[i_n] = 0.0
+
                         if (xi_n < 0 or xi_n >= raster_x_size or
                                 yi_n < 0 or yi_n >= raster_y_size):
                             continue
 
                         if dem_managed_raster.get(
-                                xi_n, yi_n) == root_height and (
-                                plateau_distance_managed_raster.get(
-                                    xi_n, yi_n) > drain_distance):
-                            # neighbor is at same level and has longer drain
-                            # flow path than current
-                            neighbor_flow_dir = (
-                                <int>flow_dir_managed_raster.get(xi_n, yi_n))
-                            if neighbor_flow_dir >> (
-                                    D8_REVERSE_DIRECTION[i_n] * 4):
-                                # already set once, no need to do again
-                                continue
-                            neighbor_flow_dir |= 1 << (
-                                D8_REVERSE_DIRECTION[i_n] * 4)
-                            flow_dir_managed_raster.set(
-                                xi_n, yi_n, neighbor_flow_dir)
-                            direction_drain_queue.push(
-                                CoordinateType(xi_n, yi_n))
+                                xi_n, yi_n) == root_height:
+                            if plateau_distance_managed_raster.get(
+                                    xi_n, yi_n) < drain_distance:
+                                n_slope = 1 if i_n % 2 else SQRT2
+                                downhill_slopes[i_n] = n_slope
+                                sum_of_slope_powers += n_slope
+                            elif plateau_distance_managed_raster.get(
+                                    xi_n, yi_n) > drain_distance:
+                                direction_drain_queue.push(
+                                    CoordinateType(xi_n, yi_n))
+
+                    if sum_of_slope_powers == 0:
+                        continue
+                    compressed_integer_slopes = 0
+                    for i_n in xrange(8):
+                        compressed_integer_slopes |= (<int>(
+                            0.5 + downhill_slopes[i_n] /
+                            sum_of_slope_powers * 0xF)) << (i_n * 4)
+                    flow_dir_managed_raster.set(
+                        xi_q, yi_q, compressed_integer_slopes)
 
     flow_dir_managed_raster.close()
     flat_region_mask_managed_raster.close()
@@ -1867,19 +1874,12 @@ def flow_accumulation_mfd(
             dtype=numpy.int32)
         flow_dir_buffer_array[:] = flow_dir_nodata
 
-        # default numpy array boundaries
-        buffer_off = {
-            'xa': 1,
-            'xb': -1,
-            'ya': 1,
-            'yb': -1
-        }
         # check if we can widen the border to include real data from the
         # raster
         (xa, xb, ya, yb), modified_offset_dict = _generate_read_bounds(
             offset_dict, raster_x_size, raster_y_size)
         flow_dir_buffer_array[ya:yb, xa:xb] = flow_dir_band.ReadAsArray(
-                **offset_dict).astype(numpy.int32)
+                **modified_offset_dict).astype(numpy.int32)
 
         # ensure these are set for the complier
         xi_n = -1
