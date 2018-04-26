@@ -1,6 +1,4 @@
 # distutils: language=c++
-# TODO: use linked list style arrays so I don't have to search all 8 directions always
-# TODO: should I change downhill slopes to be negative instead of positive so it's easier to read?
 """
 Provides PyGeprocessing Routing functionality.
 
