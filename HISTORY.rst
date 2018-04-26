@@ -1,7 +1,14 @@
 Release History
 ===============
 
-.. Unreleased Changes
+Unreleased Changes
+------------------
+* `pygeoprocessing.routing` module has a `flow_dir_mfd` that calculates a
+  32 bit multiple flow direction raster.
+* `pygeoprocessing.routing` module has a `flow_accumulation_mfd` that uses
+  the flow directoin raster from `pygeoprocessing.routing.flow_dir_mfd` to
+  calculate a per-pixel continuous flow accumulation raster.
+
 
 0.7.0 (4/18/2018)
 -----------------
