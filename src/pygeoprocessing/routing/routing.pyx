@@ -1996,6 +1996,136 @@ def distance_to_channel_d8(
     """Calculate distance to channel.
 
     Parameters:
+        flow_dir_d8_raster_path_band (tuple): a path/band index tuple
+            indicating the raster that defines the D8 flow accumulation
+            raster for this call. The pixel values are integers that
+            correspond to outflow in the following configuration:
+                321
+                4x0
+                567
+        channel_raster_path_band (tuple): a path/band tuple of the same
+            dimensions and projection as `flor_dir_d8_raster_path_band[0]`
+            that indicates where the channels in the problem space lie. A
+            channel is indicated if the value of the pixel is 1. Other values
+            are ignored.
+        target_distance_to_channel_raster_path (string): path to a raster
+            created by this call that has per-pixel distances from a given
+            pixel to the nearest downhill channel.
 
+    Returns:
+        None.
     """
-    pass
+    # These variables are used to iterate over the DEM using `iterblock`
+    # indexes
+    cdef numpy.ndarray[numpy.uint8_t, ndim=2] channel_buffer_array
+    cdef int win_ysize, win_xsize, xoff, yoff
+
+    # these variables are used as pixel or neighbor indexes.
+    # _n is related to a neighbor pixel
+    cdef int i_n, xi, yi, xi_q, yi_q, xi_n, yi_n
+
+    # `distance_to_channel_stack` is the datastructure that walks upstream
+    # from a defined flow distance pixel
+    cdef stack[PixelType] distance_to_channel_stack
+
+    # properties of the parallel rasters
+    cdef int raster_x_size, raster_y_size
+
+    # used for time-delayed logging
+    cdef time_t last_log_time
+    last_log_time = ctime(NULL)
+
+    logger = logging.getLogger(
+        'pygeoprocessing.routing.flow_accumulation_mfd')
+    logger.addHandler(logging.NullHandler())  # silence logging by default
+    distance_nodata = -1
+    pygeoprocessing.new_raster_from_base(
+        flow_dir_d8_raster_path_band[0],
+        target_distance_to_channel_raster_path,
+        gdal.GDT_Float64, [distance_nodata],
+        fill_value_list=[distance_nodata],
+        gtiff_creation_options=GTIFF_CREATION_OPTIONS)
+    distance_to_channel_managed_raster = _ManagedRaster(
+        target_distance_to_channel_raster_path, 1, 1)
+
+    channel_managed_raster = _ManagedRaster(
+        channel_raster_path_band[0], channel_raster_path_band[1], 0)
+
+    flow_dir_d8_managed_raster = _ManagedRaster(
+        flow_dir_d8_raster_path_band[0], flow_dir_d8_raster_path_band[1], 0)
+    channel_raster = gdal.Open(channel_raster_path_band[0], gdal.OF_RASTER)
+    channel_band = channel_raster.GetRasterBand(channel_raster_path_band[1])
+
+    flow_dir_raster_info = pygeoprocessing.get_raster_info(
+        flow_dir_d8_raster_path_band[0])
+    raster_x_size, raster_y_size = flow_dir_raster_info['raster_size']
+
+    # this outer loop searches for undefined channels
+    for offset_dict in pygeoprocessing.iterblocks(
+        channel_raster_path_band[0], offset_only=True,
+            largest_block=0):
+        win_xsize = offset_dict['win_xsize']
+        win_ysize = offset_dict['win_ysize']
+        xoff = offset_dict['xoff']
+        yoff = offset_dict['yoff']
+
+        if ctime(NULL) - last_log_time > 5.0:
+            last_log_time = ctime(NULL)
+            current_pixel = xoff + yoff * raster_x_size
+            logger.info('%.2f%% complete', 100.0 * current_pixel / <float>(
+                raster_x_size * raster_y_size))
+
+        # make a buffer big enough to capture block and boundaries around it
+        channel_buffer_array = numpy.empty(
+            (offset_dict['win_ysize']+2, offset_dict['win_xsize']+2),
+            dtype=numpy.uint8)
+        channel_buffer_array[:] = 0  # 0 means no channel
+
+        # check if we can widen the border to include real data from the
+        # raster
+        (xa, xb, ya, yb), modified_offset_dict = _generate_read_bounds(
+            offset_dict, raster_x_size, raster_y_size)
+        channel_buffer_array[ya:yb, xa:xb] = channel_band.ReadAsArray(
+            **modified_offset_dict).astype(numpy.int8)
+
+        # ensure these are set for the complier
+        xi_n = -1
+        yi_n = -1
+
+        # search block for to set flow accumulation
+        for yi in xrange(1, win_ysize+1):
+            for xi in xrange(1, win_xsize+1):
+                if channel_buffer_array[yi, xi] != 1:
+                    # no channel seed
+                    continue
+
+                distance_to_channel_stack.push(
+                    PixelType(0.0, xi+xoff-1, yi+yoff-1, 0.0))
+
+                while not distance_to_channel_stack.empty():
+                    xi_q = distance_to_channel_stack.top().xi
+                    yi_q = distance_to_channel_stack.top().yi
+                    dist_q = distance_to_channel_stack.top().value
+                    distance_to_channel_stack.pop()
+
+                    distance_to_channel_managed_raster.set(xi_q, yi_q, dist_q)
+
+                    for i_n in xrange(8):
+                        xi_n = xi+NEIGHBOR_OFFSET_ARRAY[2*i_n]
+                        yi_n = yi+NEIGHBOR_OFFSET_ARRAY[2*i_n+1]
+
+                        if (xi_n < 0 or xi_n >= raster_x_size or
+                                yi_n < 0 or yi_n >= raster_y_size):
+                            continue
+
+                        if channel_managed_raster.get(xi_n, yi_n) == 1:
+                            # it's a channel, it'll get picked up in the
+                            # outer loop
+                            continue
+
+                        if (flow_dir_d8_managed_raster.get(xi, yi) ==
+                                D8_REVERSE_DIRECTION[i_n]):
+                            distance_to_channel_stack.push(
+                                PixelType(
+                                    SQRT2 + dist_q if i_n % 2 else dist_q + 1,
+                                    xi_n, yi_n, 0.0))
