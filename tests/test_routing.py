@@ -37,7 +37,6 @@ class TestRouting(unittest.TestCase):
         band = None
         raster = None
         fill_path = os.path.join(self.workspace_dir, 'filled.tif')
-        flow_dir_path = os.path.join(self.workspace_dir, 'flow_dir.tif')
 
         pygeoprocessing.routing.fill_pits(
             (base_path, 1), fill_path, working_dir=self.workspace_dir)
@@ -71,7 +70,6 @@ class TestRouting(unittest.TestCase):
         band = None
         raster = None
         fill_path = os.path.join(self.workspace_dir, 'filled.tif')
-        flow_dir_path = os.path.join(self.workspace_dir, 'flow_dir.tif')
 
         pygeoprocessing.routing.fill_pits(
             (base_path, 1), fill_path, working_dir=self.workspace_dir)
@@ -199,7 +197,7 @@ class TestRouting(unittest.TestCase):
         dem_path = os.path.join(self.workspace_dir, 'dem.tif')
         # this makes a flat raster with a left-to-right central channel
         dem_array = numpy.zeros((11, 11))
-        dem_array[5,:] = -1
+        dem_array[5, :] = -1
         dem_raster = driver.Create(
             dem_path, dem_array.shape[1], dem_array.shape[0], 1,
             gdal.GDT_Float32, options=(
@@ -272,7 +270,7 @@ class TestRouting(unittest.TestCase):
                 'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
                 'BLOCKXSIZE=32', 'BLOCKYSIZE=32'))
 
-        dem_array[n/2,:] = -1
+        dem_array[n/2, :] = -1
 
         dem_band = dem_raster.GetRasterBand(1)
         dem_band.WriteArray(dem_array)
@@ -323,3 +321,87 @@ class TestRouting(unittest.TestCase):
             [1., 1., 1., 1., 1., 1., 1., 1., 1., 1., 1.]])
 
         numpy.testing.assert_almost_equal(flow_array, expected_result)
+
+    def test_distance_to_channel_d8(self):
+        """PGP.routing: test distance to channel D8."""
+        import pygeoprocessing.routing
+        driver = gdal.GetDriverByName('GTiff')
+        flow_dir_d8_path = os.path.join(self.workspace_dir, 'flow_dir.d8_tif')
+        flow_dir_d8_array = numpy.array([
+            [2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 0],
+            [4, 2, 2, 2, 2, 2, 2, 2, 2, 2, 0],
+            [4, 4, 2, 2, 2, 2, 2, 2, 2, 0, 0],
+            [4, 4, 4, 2, 2, 2, 2, 2, 0, 0, 0],
+            [4, 4, 4, 4, 2, 2, 2, 0, 0, 0, 0],
+            [4, 4, 4, 4, 4, 2, 0, 0, 0, 0, 0],
+            [4, 4, 4, 4, 4, 6, 0, 0, 0, 0, 0],
+            [4, 4, 4, 4, 6, 6, 6, 0, 0, 0, 0],
+            [4, 4, 4, 6, 6, 6, 6, 6, 0, 0, 0],
+            [4, 4, 6, 6, 6, 6, 6, 6, 6, 0, 0],
+            [4, 6, 6, 6, 6, 6, 6, 6, 6, 6, 0]])
+        flow_dir_d8_raster = driver.Create(
+            flow_dir_d8_path, flow_dir_d8_array.shape[1], flow_dir_d8_array.shape[0],
+            1, gdal.GDT_Byte, options=(
+                'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
+                'BLOCKXSIZE=32', 'BLOCKYSIZE=32'))
+        flow_dir_d8_band = flow_dir_d8_raster.GetRasterBand(1)
+        flow_dir_d8_band.WriteArray(flow_dir_d8_array)
+        flow_dir_d8_band.FlushCache()
+        flow_dir_d8_band = None
+        flow_dir_d8_raster = None
+
+        # taken from a manual inspection of a flow accumulation run
+        channel_path = os.path.join(self.workspace_dir, 'channel.tif')
+        channel_array = numpy.array(
+            [[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+             [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+             [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+             [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+             [1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 1],
+             [1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 1],
+             [1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 1],
+             [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+             [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+             [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+             [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]])
+
+        channel_raster = driver.Create(
+            channel_path, channel_array.shape[1],
+            channel_array.shape[0], 1, gdal.GDT_Byte, options=(
+                'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
+                'BLOCKXSIZE=32', 'BLOCKYSIZE=32'))
+        channel_band = channel_raster.GetRasterBand(1)
+        channel_band.WriteArray(channel_array)
+        channel_band.FlushCache()
+        channel_band = None
+        channel_raster = None
+
+        distance_to_channel_d8_path = os.path.join(
+            self.workspace_dir, 'distance_to_channel_d8.tif')
+        pygeoprocessing.routing.distance_to_channel_d8(
+            (flow_dir_d8_path, 1), (channel_path, 1),
+            distance_to_channel_d8_path)
+
+        distance_to_channel_d8_raster = gdal.Open(distance_to_channel_d8_path)
+        distance_to_channel_d8_band = (
+            distance_to_channel_d8_raster.GetRasterBand(1))
+        distance_to_channel_d8_array = (
+            distance_to_channel_d8_band.ReadAsArray())
+        distance_to_channel_d8_band = None
+        distance_to_channel_d8_raster = None
+
+        expected_result = numpy.array(
+            [[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+             [0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0],
+             [0, 1, 2, 2, 2, 2, 2, 2, 2, 1, 0],
+             [0, 1, 2, 3, 3, 3, 3, 3, 2, 1, 0],
+             [0, 0, 1, 2, 4, 4, 4, 2, 1, 0, 0],
+             [0, 0, 1, 2, 3, 5, 3, 2, 1, 0, 0],
+             [0, 0, 1, 2, 3, 4, 3, 2, 1, 0, 0],
+             [0, 1, 2, 3, 3, 3, 3, 3, 2, 1, 0],
+             [0, 1, 2, 2, 2, 2, 2, 2, 2, 1, 0],
+             [0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0],
+             [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]])
+
+        numpy.testing.assert_almost_equal(
+            distance_to_channel_d8_array, expected_result)

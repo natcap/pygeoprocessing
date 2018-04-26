@@ -2036,7 +2036,7 @@ def distance_to_channel_d8(
     last_log_time = ctime(NULL)
 
     logger = logging.getLogger(
-        'pygeoprocessing.routing.flow_accumulation_mfd')
+        'pygeoprocessing.routing.distance_to_channel_d8')
     logger.addHandler(logging.NullHandler())  # silence logging by default
     distance_nodata = -1
     pygeoprocessing.new_raster_from_base(
@@ -2111,8 +2111,8 @@ def distance_to_channel_d8(
                     distance_to_channel_managed_raster.set(xi_q, yi_q, dist_q)
 
                     for i_n in xrange(8):
-                        xi_n = xi+NEIGHBOR_OFFSET_ARRAY[2*i_n]
-                        yi_n = yi+NEIGHBOR_OFFSET_ARRAY[2*i_n+1]
+                        xi_n = xi_q+NEIGHBOR_OFFSET_ARRAY[2*i_n]
+                        yi_n = yi_q+NEIGHBOR_OFFSET_ARRAY[2*i_n+1]
 
                         if (xi_n < 0 or xi_n >= raster_x_size or
                                 yi_n < 0 or yi_n >= raster_y_size):
@@ -2123,9 +2123,11 @@ def distance_to_channel_d8(
                             # outer loop
                             continue
 
-                        if (flow_dir_d8_managed_raster.get(xi, yi) ==
+                        if (flow_dir_d8_managed_raster.get(xi_n, yi_n) ==
                                 D8_REVERSE_DIRECTION[i_n]):
                             distance_to_channel_stack.push(
                                 PixelType(
                                     SQRT2 + dist_q if i_n % 2 else dist_q + 1,
                                     xi_n, yi_n, 0.0))
+
+        #TODO: warn/error if some of the distance is not drained?
