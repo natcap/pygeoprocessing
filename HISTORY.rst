@@ -1,8 +1,10 @@
 Release History
 ===============
 
-Unreleased Changes
-------------------
+.. Unreleased Changes
+
+0.7.0 (4/18/2018)
+-----------------
 * Versioning is now handled by ``setuptools_scm`` rather than
   ``natcap.versioner``.  ``pygeoprocessing.__version__`` is now fetched from
   the package metadata.
