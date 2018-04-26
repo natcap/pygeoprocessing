@@ -405,3 +405,102 @@ class TestRouting(unittest.TestCase):
 
         numpy.testing.assert_almost_equal(
             distance_to_channel_d8_array, expected_result)
+
+    def test_distance_to_channel_mfd(self):
+        """PGP.routing: test distance to channel mfd."""
+        import pygeoprocessing.routing
+        driver = gdal.GetDriverByName('GTiff')
+        flow_dir_mfd_path = os.path.join(self.workspace_dir, 'flow_dir.mfd_tif')
+        flow_dir_mfd_array = numpy.array([
+            [1761607680, 1178599424, 1178599424, 1178599424, 1178599424,
+             1178599424, 1178599424, 1178599424, 1178599424, 1178599424,
+             157286400],
+            [1761607680, 1178599424, 1178599424, 1178599424, 1178599424,
+             1178599424, 1178599424, 1178599424, 1178599424, 1178599424,
+             157286400],
+            [1761607680, 1178599424, 1178599424, 1178599424, 1178599424,
+             1178599424, 1178599424, 1178599424, 1178599424, 1178599424,
+             157286400],
+            [1761607680, 1178599424, 1178599424, 1178599424, 1178599424,
+             1178599424, 1178599424, 1178599424, 1178599424, 1178599424,
+             157286400],
+            [1761607680, 1178599424, 1178599424, 1178599424, 1178599424,
+             1178599424, 1178599424, 1178599424, 1178599424, 1178599424,
+             157286400],
+            [4603904, 983040, 983040, 983040, 983040, 524296, 15, 15, 15, 15,
+             1073741894],
+            [2400, 17984, 17984, 17984, 17984, 17984, 17984, 17984, 17984,
+             17984, 26880],
+            [2400, 17984, 17984, 17984, 17984, 17984, 17984, 17984, 17984,
+             17984, 26880],
+            [2400, 17984, 17984, 17984, 17984, 17984, 17984, 17984, 17984,
+             17984, 26880],
+            [2400, 17984, 17984, 17984, 17984, 17984, 17984, 17984, 17984,
+             17984, 26880],
+            [2400, 17984, 17984, 17984, 17984, 17984, 17984, 17984, 17984,
+             17984, 26880]])
+        flow_dir_mfd_raster = driver.Create(
+            flow_dir_mfd_path, flow_dir_mfd_array.shape[1],
+            flow_dir_mfd_array.shape[0], 1, gdal.GDT_Int32, options=(
+                'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
+                'BLOCKXSIZE=32', 'BLOCKYSIZE=32'))
+        flow_dir_mfd_band = flow_dir_mfd_raster.GetRasterBand(1)
+        flow_dir_mfd_band.WriteArray(flow_dir_mfd_array)
+        flow_dir_mfd_band.FlushCache()
+        flow_dir_mfd_band = None
+        flow_dir_mfd_raster = None
+
+        # taken from a manual inspection of a flow accumulation run
+        channel_path = os.path.join(self.workspace_dir, 'channel.tif')
+        channel_array = numpy.array(
+            [[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+             [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+             [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+             [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+             [1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 1],
+             [1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 1],
+             [1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 1],
+             [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+             [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+             [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+             [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]])
+
+        channel_raster = driver.Create(
+            channel_path, channel_array.shape[1],
+            channel_array.shape[0], 1, gdal.GDT_Byte, options=(
+                'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
+                'BLOCKXSIZE=32', 'BLOCKYSIZE=32'))
+        channel_band = channel_raster.GetRasterBand(1)
+        channel_band.WriteArray(channel_array)
+        channel_band.FlushCache()
+        channel_band = None
+        channel_raster = None
+
+        distance_to_channel_mfd_path = 'distance_to_channel_mfd.tif' #os.path.join(self.workspace_dir, 'distance_to_channel_mfd.tif')
+        pygeoprocessing.routing.distance_to_channel_mfd(
+            (flow_dir_mfd_path, 1), (channel_path, 1),
+            distance_to_channel_mfd_path)
+
+        distance_to_channel_mfd_raster = gdal.Open(distance_to_channel_mfd_path)
+        distance_to_channel_mfd_band = (
+            distance_to_channel_mfd_raster.GetRasterBand(1))
+        distance_to_channel_mfd_array = (
+            distance_to_channel_mfd_band.ReadAsArray())
+        distance_to_channel_mfd_band = None
+        distance_to_channel_mfd_raster = None
+
+        expected_result = numpy.array(
+            [[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+             [0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0],
+             [0, 1, 2, 2, 2, 2, 2, 2, 2, 1, 0],
+             [0, 1, 2, 3, 3, 3, 3, 3, 2, 1, 0],
+             [0, 0, 1, 2, 4, 4, 4, 2, 1, 0, 0],
+             [0, 0, 1, 2, 3, 5, 3, 2, 1, 0, 0],
+             [0, 0, 1, 2, 3, 4, 3, 2, 1, 0, 0],
+             [0, 1, 2, 3, 3, 3, 3, 3, 2, 1, 0],
+             [0, 1, 2, 2, 2, 2, 2, 2, 2, 1, 0],
+             [0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0],
+             [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]])
+
+        numpy.testing.assert_almost_equal(
+            distance_to_channel_mfd_array, expected_result)
