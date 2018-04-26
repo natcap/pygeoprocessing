@@ -1988,3 +1988,14 @@ def flow_accumulation_mfd(
                             flow_pixel.xi, flow_pixel.yi,
                             flow_pixel.flow_accum)
     logger.info('%.2f%% complete', 100.0)
+
+
+def distance_to_channel_d8(
+        flow_dir_d8_raster_path_band, channel_raster_path_band,
+        target_distance_to_channel_raster_path):
+    """Calculate distance to channel.
+
+    Parameters:
+
+    """
+    pass
