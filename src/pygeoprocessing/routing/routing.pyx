@@ -1332,7 +1332,7 @@ def flow_accumulation_d8(
                     if not preempted:
                         flow_accum_managed_raster.set(
                             flow_pixel.xi, flow_pixel.yi,
-                            flow_pixel.flow_accum)
+                            flow_pixel.value)
     logger.info('%.2f%% complete', 100.0)
 
 
@@ -1986,7 +1986,7 @@ def flow_accumulation_mfd(
                     if not preempted:
                         flow_accum_managed_raster.set(
                             flow_pixel.xi, flow_pixel.yi,
-                            flow_pixel.flow_accum)
+                            flow_pixel.value)
     logger.info('%.2f%% complete', 100.0)
 
 
@@ -2157,13 +2157,18 @@ def distance_to_channel_mfd(
     # These variables are used to iterate over the DEM using `iterblock`
     # indexes
     cdef numpy.ndarray[numpy.uint8_t, ndim=2] channel_buffer_array
+    cdef numpy.ndarray[numpy.int32_t, ndim=2] flow_dir_buffer_array
     cdef int win_ysize, win_xsize, xoff, yoff
 
     # these variables are used as pixel or neighbor indexes.
     # _n is related to a neighbor pixel
     cdef int i_n, xi, yi, xi_n, yi_n
+    cdef int flow_dir_weight, sum_of_flow_weights, compressed_flow_dir
 
-    # `distance_to_channel_stack` is the data structure that walks upstream
+    # used to remember if the current pixel is a channel for routing
+    cdef int is_a_channel
+
+    # `distance_to_channel_queue` is the data structure that walks upstream
     # from a defined flow distance pixel
     cdef stack[FlowPixelType] distance_to_channel_stack
 
@@ -2187,6 +2192,17 @@ def distance_to_channel_mfd(
     distance_to_channel_managed_raster = _ManagedRaster(
         target_distance_to_channel_raster_path, 1, 1)
 
+    """
+    pixel_processed_managed_raster_path = 'processed_pixels.tif'
+    pygeoprocessing.new_raster_from_base(
+        flow_dir_mfd_raster_path_band[0],
+        pixel_processed_managed_raster_path,
+        gdal.GDT_Byte, [0], fill_value_list=[0],
+        gtiff_creation_options=GTIFF_CREATION_OPTIONS)
+    pixel_processed_managed_raster = _ManagedRaster(
+        pixel_processed_managed_raster_path, 1, 1)
+    """
+
     channel_managed_raster = _ManagedRaster(
         channel_raster_path_band[0], channel_raster_path_band[1], 0)
 
@@ -2194,6 +2210,11 @@ def distance_to_channel_mfd(
         flow_dir_mfd_raster_path_band[0], flow_dir_mfd_raster_path_band[1], 0)
     channel_raster = gdal.Open(channel_raster_path_band[0], gdal.OF_RASTER)
     channel_band = channel_raster.GetRasterBand(channel_raster_path_band[1])
+
+    flow_dir_mfd_raster = gdal.Open(
+        flow_dir_mfd_raster_path_band[0], gdal.OF_RASTER)
+    flow_dir_mfd_band = flow_dir_mfd_raster.GetRasterBand(
+        flow_dir_mfd_raster_path_band[1])
 
     flow_dir_raster_info = pygeoprocessing.get_raster_info(
         flow_dir_mfd_raster_path_band[0])
@@ -2218,13 +2239,20 @@ def distance_to_channel_mfd(
         channel_buffer_array = numpy.empty(
             (offset_dict['win_ysize']+2, offset_dict['win_xsize']+2),
             dtype=numpy.uint8)
+        flow_dir_buffer_array = numpy.empty(
+            (offset_dict['win_ysize']+2, offset_dict['win_xsize']+2),
+            dtype=numpy.int32)
         channel_buffer_array[:] = 0  # 0 means no channel
+        flow_dir_buffer_array[:] = 0  # 0 means no flow
 
         # check if we can widen the border to include real data from the
         # raster
         (xa, xb, ya, yb), modified_offset_dict = _generate_read_bounds(
             offset_dict, raster_x_size, raster_y_size)
         channel_buffer_array[ya:yb, xa:xb] = channel_band.ReadAsArray(
+            **modified_offset_dict).astype(numpy.int8)
+
+        flow_dir_buffer_array[ya:yb, xa:xb] = flow_dir_mfd_band.ReadAsArray(
             **modified_offset_dict).astype(numpy.int8)
 
         # ensure these are set for the complier
@@ -2234,24 +2262,42 @@ def distance_to_channel_mfd(
         # search block for to set flow accumulation
         for yi in xrange(1, win_ysize+1):
             for xi in xrange(1, win_xsize+1):
-                if channel_buffer_array[yi, xi] != 1:
-                    # no channel seed
-                    continue
+                xi_root = xi+xoff-1
+                yi_root = yi+yoff-1
 
-                distance_to_channel_stack.push(
-                    FlowPixelType(xi+xoff-1, yi+yoff-1, 0, 0.0))
+                no_drain = 1
+                for i_n in xrange(8):
+                    xi_n = xi+NEIGHBOR_OFFSET_ARRAY[2*i_n]
+                    yi_n = yi+NEIGHBOR_OFFSET_ARRAY[2*i_n+1]
+
+                    compressed_flow_dir = flow_dir_buffer_array[yi_n, xi_n]
+
+                    if 0xF & (compressed_flow_dir >> (
+                            D8_REVERSE_DIRECTION[i_n] * 4)) != 0:
+                        # this is a cell that has a drain to it
+                        no_drain = 0
+                        break
+
+                if no_drain:
+                    distance_to_channel_stack.push(
+                        FlowPixelType(xi_root, yi_root, 0, 0.0))
 
                 while not distance_to_channel_stack.empty():
                     pixel = distance_to_channel_stack.top()
                     distance_to_channel_stack.pop()
-
-                    distance_to_channel_managed_raster.set(
-                        pixel.xi, pixel.yi, pixel.value)
+                    is_a_channel = (
+                        channel_managed_raster.get(pixel.xi, pixel.yi) == 1)
+                    if is_a_channel:
+                        #print xi_n, yi_n, 0
+                        distance_to_channel_managed_raster.set(
+                            pixel.xi, pixel.yi, 0)
+                        continue
 
                     compressed_flow_dir = (
                         <int>flow_dir_mfd_managed_raster.get(
                             pixel.xi, pixel.yi))
 
+                    preempted = 0
                     for i_n in xrange(pixel.last_flow_dir, 8):
                         flow_dir_weight = 0xF & (
                             compressed_flow_dir >> (i_n * 4))
@@ -2265,23 +2311,11 @@ def distance_to_channel_mfd(
                                 yi_n < 0 or yi_n >= raster_y_size):
                             continue
 
-                        if flow_dir_mfd_managed_raster.get(xi_n, yi_n) == 0:
-                            # nodata in neighbor pixel so skip
-                            continue
-
-                        if channel_managed_raster.get(xi_n, yi_n) == 1:
-                            # there's no downstream distance in the pixel
-                            # so just add the distance to travel to it
-                            pixel.value += (
-                                SQRT2 if i_n % 2 else 1.0) * flow_dir_weight
-                            continue
-
                         n_distance = distance_to_channel_managed_raster.get(
                             xi_n, yi_n)
 
                         if n_distance == distance_nodata:
-                            # downstream pixel has not been calculated,
-                            # calculate that first
+                            preempted = 1
                             pixel.last_flow_dir = i_n
                             distance_to_channel_stack.push(pixel)
                             distance_to_channel_stack.push(
@@ -2289,12 +2323,20 @@ def distance_to_channel_mfd(
                             break
 
                         pixel.value += flow_dir_weight * (
-                            n_distance + (SQRT2 if i_n % 2 else 1.0))
+                            (SQRT2 if i_n % 2 else 1) + n_distance)
 
-                    sum_of_flow_weights = 0.0
+                    if preempted:
+                        continue
+
+                    sum_of_flow_weights = 0
                     for i_n in xrange(8):
                         sum_of_flow_weights += 0xF & (
                             compressed_flow_dir >> (i_n * 4))
 
+                    if sum_of_flow_weights != 0:
+                        pixel.value /= sum_of_flow_weights
+                    else:
+                        pixel.value = 0
+                    #print 'set', pixel.xi, pixel.yi, pixel.value
                     distance_to_channel_managed_raster.set(
-                        pixel.xi, pixel.yi, pixel.value / sum_of_flow_weights)
+                        pixel.xi, pixel.yi, pixel.value)
