@@ -2192,15 +2192,6 @@ def distance_to_channel_mfd(
     distance_to_channel_managed_raster = _ManagedRaster(
         target_distance_to_channel_raster_path, 1, 1)
 
-    pixel_processed_managed_raster_path = 'processed_pixels.tif'
-    pygeoprocessing.new_raster_from_base(
-        flow_dir_mfd_raster_path_band[0],
-        pixel_processed_managed_raster_path,
-        gdal.GDT_Int32, [0], fill_value_list=[0],
-        gtiff_creation_options=GTIFF_CREATION_OPTIONS)
-    pixel_processed_managed_raster = _ManagedRaster(
-        pixel_processed_managed_raster_path, 1, 1)
-
     channel_managed_raster = _ManagedRaster(
         channel_raster_path_band[0], channel_raster_path_band[1], 0)
 
@@ -2279,20 +2270,9 @@ def distance_to_channel_mfd(
 
                     compressed_flow_dir = flow_dir_buffer_array[yi_n, xi_n]
 
-                    """
-                    if 0xF & (compressed_flow_dir >> (
-                            D8_REVERSE_DIRECTION[i_n] * 4)) != 0:
-                        # this is a cell that has a drain to it
-                        pixel_processed_managed_raster.set(
-                            xi_root, yi_root, i_n)
-                        no_drain = 0
-                        break
-                    """
-
                 if no_drain:
                     distance_to_channel_stack.push(
                         FlowPixelType(xi_root, yi_root, 0, 0.0))
-                    pixel_processed_managed_raster.set(xi_root, yi_root, 9999)
 
                 while not distance_to_channel_stack.empty():
                     pixel = distance_to_channel_stack.top()
@@ -2330,14 +2310,8 @@ def distance_to_channel_mfd(
                             preempted = 1
                             pixel.last_flow_dir = i_n
                             distance_to_channel_stack.push(pixel)
-                            if pixel_processed_managed_raster.get(
-                                    xi_n, yi_n) != 0:
-                                print xi_n, yi_n, 'this pixel has already been pushed to the stack'
-
                             distance_to_channel_stack.push(
                                 FlowPixelType(xi_n, yi_n, 0, 0.0))
-                            pixel_processed_managed_raster.set(
-                                xi_n, yi_n, 9999)
                             break
 
                         pixel.value += flow_dir_weight * (
