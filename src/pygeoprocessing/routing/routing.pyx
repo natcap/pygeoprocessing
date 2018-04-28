@@ -2092,7 +2092,7 @@ def distance_to_channel_d8(
         xi_n = -1
         yi_n = -1
 
-        # search block for to set flow accumulation
+        # search block for to search for a channel seed
         for yi in xrange(1, win_ysize+1):
             for xi in xrange(1, win_xsize+1):
                 if channel_buffer_array[yi, xi] != 1:
