@@ -116,6 +116,7 @@ class TestRouting(unittest.TestCase):
         flow_dir_band = None
         flow_dir_raster = None
         self.assertEqual(flow_array.dtype, numpy.uint8)
+        # this is a regression result saved by hand
         expected_result = numpy.array([
             [2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 0],
             [4, 2, 2, 2, 2, 2, 2, 2, 2, 2, 0],
@@ -136,6 +137,7 @@ class TestRouting(unittest.TestCase):
 
         driver = gdal.GetDriverByName('GTiff')
         flow_dir_path = os.path.join(self.workspace_dir, 'flow_dir.tif')
+        # this was generated from a pre-calculated plateau drain dem
         flow_dir_array = numpy.array([
             [2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 0],
             [4, 2, 2, 2, 2, 2, 2, 2, 2, 2, 0],
@@ -174,6 +176,7 @@ class TestRouting(unittest.TestCase):
         flow_accum_raster = None
         self.assertEqual(flow_accum_array.dtype, numpy.int32)
 
+        # this is a regression result saved by hand
         expected_result = numpy.array(
             [[1, 2, 3, 4, 5, 6, 5, 4, 3, 2, 1],
              [1, 1, 2, 3, 4, 5, 4, 3, 2, 1, 1],
@@ -329,6 +332,8 @@ class TestRouting(unittest.TestCase):
         import pygeoprocessing.routing
         driver = gdal.GetDriverByName('GTiff')
         flow_dir_d8_path = os.path.join(self.workspace_dir, 'flow_dir.d8_tif')
+
+        # this is a flow direction raster that was created from a plateau drain
         flow_dir_d8_array = numpy.array([
             [2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 0],
             [4, 2, 2, 2, 2, 2, 2, 2, 2, 2, 0],
@@ -494,6 +499,7 @@ class TestRouting(unittest.TestCase):
         distance_to_channel_mfd_band = None
         distance_to_channel_mfd_raster = None
 
+        # this is a regression result copied by hand
         expected_result = numpy.array(
             [[5.98240137, 6.10285187, 6.15935357, 6.1786881, 6.18299413,
               6.18346732, 6.18299413, 6.1786881, 6.15935357, 6.10285187,
