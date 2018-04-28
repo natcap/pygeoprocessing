@@ -2332,3 +2332,4 @@ def distance_to_channel_mfd(
                     #print 'set', pixel.xi, pixel.yi, pixel.value
                     distance_to_channel_managed_raster.set(
                         pixel.xi, pixel.yi, pixel.value)
+    logger.info('%.2f%% complete', 100.0)
