@@ -1582,7 +1582,6 @@ def flow_dir_mfd(
                         if i_n & 1:
                             # if diagonal, adjust the slope
                             n_slope *= SQRT2_INV
-                        n_slope = n_slope ** 1.1
                         downhill_slope_array[i_n] = n_slope
                         sum_of_downhill_slopes += n_slope
 
@@ -1648,8 +1647,7 @@ def flow_dir_mfd(
                             continue
                         if i_n & 1:
                             n_slope *= SQRT2_INV
-                        # raise to the 1.1 because that's our algorithm
-                        downhill_slope_array[i_n] = n_slope ** 1.1
+                        downhill_slope_array[i_n] = n_slope
                         sum_of_slope_weights += downhill_slope_array[i_n]
 
                     working_downhill_slope_sum = 0.0
