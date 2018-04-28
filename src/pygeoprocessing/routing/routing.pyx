@@ -113,8 +113,8 @@ cdef struct PixelType:
 cdef struct FlowPixelType:
     int xi
     int yi
-    int flow_dir
-    int flow_accum
+    int last_flow_dir
+    double value
 
 # used to record x/y locations as needed
 cdef struct CoordinateType:
@@ -472,7 +472,6 @@ def _generate_read_bounds(offset_dict, raster_x_size, raster_y_size):
     return (xa, xb, ya, yb), target_offset_dict
 
 
-@cython.boundscheck(False)
 def fill_pits(
         dem_raster_path_band, target_filled_dem_raster_path,
         working_dir=None):
@@ -647,7 +646,7 @@ def fill_pits(
         # attempt to expand read block by a pixel boundary
         (xa, xb, ya, yb), modified_offset_dict = _generate_read_bounds(
             offset_dict, raster_x_size, raster_y_size)
-        dem_buffer_array[ya:yb,xa:xb] = target_dem_band.ReadAsArray(
+        dem_buffer_array[ya:yb, xa:xb] = target_dem_band.ReadAsArray(
                 **modified_offset_dict).astype(numpy.float64)
 
         # search block for locally undrained pixels
@@ -833,7 +832,6 @@ def fill_pits(
     logger.info('%.2f%% complete', 100.0)
 
 
-@cython.boundscheck(False)
 def flow_dir_d8(
         dem_raster_path_band, target_flow_dir_path,
         working_dir=None):
@@ -949,10 +947,10 @@ def flow_dir_d8(
     flat_region_mask_managed_raster = _ManagedRaster(
         flat_region_mask_path, 1, 1)
 
-    flow_nodata = 128
+    flow_dir_nodata = 128
     pygeoprocessing.new_raster_from_base(
         dem_raster_path_band[0], target_flow_dir_path, gdal.GDT_Byte,
-        [flow_nodata], fill_value_list=[flow_nodata],
+        [flow_dir_nodata], fill_value_list=[flow_dir_nodata],
         gtiff_creation_options=GTIFF_CREATION_OPTIONS)
     flow_dir_managed_raster = _ManagedRaster(target_flow_dir_path, 1, 1)
 
@@ -1000,7 +998,7 @@ def flow_dir_d8(
         # attempt to expand read block by a pixel boundary
         (xa, xb, ya, yb), modified_offset_dict = _generate_read_bounds(
             offset_dict, raster_x_size, raster_y_size)
-        dem_buffer_array[xa:xb, ya:yb] = dem_band.ReadAsArray(
+        dem_buffer_array[ya:yb, xa:xb] = dem_band.ReadAsArray(
                 **modified_offset_dict).astype(numpy.float64)
 
         # ensure these are set for the complier
@@ -1021,7 +1019,7 @@ def flow_dir_d8(
                 yi_root = yi-1+yoff
 
                 if flow_dir_managed_raster.get(
-                        xi_root, yi_root) != flow_nodata:
+                        xi_root, yi_root) != flow_dir_nodata:
                     # already been defined
                     continue
 
@@ -1173,7 +1171,6 @@ def flow_dir_d8(
     logger.info('%.2f%% complete', 100.0)
 
 
-@cython.boundscheck(False)
 def flow_accumulation_d8(
         flow_dir_raster_path_band, target_flow_accum_raster_path):
     """D8 flow accumulation.
@@ -1308,7 +1305,7 @@ def flow_accumulation_d8(
                     search_stack.pop()
 
                     preempted = 0
-                    for i_n in xrange(flow_pixel.flow_dir, 8):
+                    for i_n in xrange(flow_pixel.last_flow_dir, 8):
                         xi_n = flow_pixel.xi+NEIGHBOR_OFFSET_ARRAY[2*i_n]
                         yi_n = flow_pixel.yi+NEIGHBOR_OFFSET_ARRAY[2*i_n+1]
                         if (xi_n < 0 or xi_n >= raster_x_size or
@@ -1326,14 +1323,1008 @@ def flow_accumulation_d8(
                             <int>flow_accum_managed_raster.get(xi_n, yi_n))
                         if upstream_flow_accum == flow_accum_nodata:
                             # process upstream before this one
-                            flow_pixel.flow_dir = i_n
+                            flow_pixel.last_flow_dir = i_n
                             search_stack.push(flow_pixel)
                             search_stack.push(FlowPixelType(xi_n, yi_n, 0, 1))
                             preempted = 1
                             break
-                        flow_pixel.flow_accum += upstream_flow_accum
+                        flow_pixel.value += upstream_flow_accum
                     if not preempted:
                         flow_accum_managed_raster.set(
                             flow_pixel.xi, flow_pixel.yi,
-                            flow_pixel.flow_accum)
+                            flow_pixel.value)
+    logger.info('%.2f%% complete', 100.0)
+
+
+def flow_dir_mfd(
+        dem_raster_path_band, target_flow_dir_path, working_dir=None):
+    """Multiple flow direction.
+
+    Parameters:
+        dem_raster_path_band (tuple): a path, band number tuple indicating the
+            DEM calculate flow direction. This DEM must not have hydrological
+            pits or else the target flow direction will be undefined.
+        target_flow_dir_path (string): path to a raster created by this call
+            of a 32 bit int raster of the same dimensions and projections as
+            `dem_raster_path_band[0]`. The value of the pixel indicates the
+            proportion of flow from that pixel to its neighbors given these
+            indexes:
+
+                321
+                4x0
+                567
+
+            The pixel value is formatted as 8 separate 4 bit integers
+            compressed into a 32 bit int. To extract the proportion of flow
+            from a particular direction given the pixel value 'x' one can
+            shift and mask as follows 0xF & (x >> (4*dir)), where `dir` is
+            one of the 8 directions indicated above.
+
+        working_dir (string): If not None, indicates where temporary files
+            should be created during this run. If this directory doesn't exist
+            it is created by this call.
+
+    Returns:
+        None.
+    """
+    # These variables are used to iterate over the DEM using `iterblock`
+    # indexes, a numpy.float64 type is used since we need to statically cast
+    # and it's the most complex numerical type and will be compatible without
+    # data loss for any lower type that might be used in
+    # `dem_raster_path_band[0]`.
+    cdef numpy.ndarray[numpy.float64_t, ndim=2] dem_buffer_array
+    cdef int win_ysize, win_xsize, xoff, yoff
+
+    # the _root variables remembers the pixel index where the plateau/pit
+    # region was first detected when iterating over the DEM.
+    cdef int xi_root, yi_root
+
+    # these variables are used as pixel or neighbor indexes. where _q
+    # represents a value out of a queue, and _n is related to a neighbor pixel
+    cdef int i_n, xi, yi, xi_q, yi_q, xi_n, yi_n
+
+    # these are used to recall the local and neighbor heights of pixels
+    cdef double root_height, n_height, dem_nodata, n_slope
+
+    # these are used to track the distance to the drain when we encounter a
+    # plateau to route to the shortest path to the drain
+    cdef double drain_distance, n_drain_distance
+
+    # `drain_search_queue` is used to grow a flat region searching for a drain
+    # of a plateau
+    cdef queue[CoordinateType] drain_search_queue
+
+    # downhill_slope_array array will keep track of the floating point value of
+    # the downhill slopes in a pixel
+    cdef double downhill_slope_array[8]
+    cdef double nodata_downhill_slope_array[8]
+
+    # a pointer reference to whatever kind of slope we're considering
+    cdef double *working_downhill_slope_array
+
+    # as the neighbor slopes are calculated, this variable gathers them
+    # together to calculate the final contribution of neighbor slopes to
+    # fraction of flow
+    cdef double sum_of_slope_weights, sum_of_nodata_slope_weights
+
+    # this variable will be used to pack the neighbor slopes into a single
+    # value to write to the raster or read from neighbors
+    cdef int compressed_integer_slopes
+
+    # `distance_drain_queue` is used after a plateau drain is defined and
+    # iterates until the entire plateau is drained,
+    # `nodata_distance_drain_queue` is for
+    # the case where the plateau is only drained by nodata pixels
+    cdef CoordinateQueueType distance_drain_queue, nodata_distance_drain_queue
+
+    # direction drain queue is used in the last phase to set flow direction
+    # based on the distance to drain
+    cdef CoordinateQueueType direction_drain_queue
+
+    # this queue is used to remember the flow directions of nodata pixels in
+    # a plateau in case no other valid drain was found
+    cdef queue[int] nodata_flow_dir_queue
+
+    # properties of the parallel rasters
+    cdef int raster_x_size, raster_y_size
+
+    # used for time-delayed logging
+    cdef time_t last_log_time
+    last_log_time = ctime(NULL)
+
+    logger = logging.getLogger(
+        'pygeoprocessing.routing.flow_dir_mfd')
+    logger.addHandler(logging.NullHandler())  # silence logging by default
+
+    # determine dem nodata in the working type, or set an improbable value
+    # if one can't be determined
+    dem_raster_info = pygeoprocessing.get_raster_info(dem_raster_path_band[0])
+    base_nodata = dem_raster_info['nodata'][dem_raster_path_band[1]-1]
+    if base_nodata is not None:
+        # cast to a float64 since that's our operating array type
+        dem_nodata = numpy.float64(base_nodata)
+    else:
+        # pick some very improbable value since it's hard to deal with NaNs
+        dem_nodata = IMPROBABLE_FLOAT_NOATA
+
+    # these are used to determine if a sample is within the raster
+    raster_x_size, raster_y_size = dem_raster_info['raster_size']
+
+    # this is the nodata value for all the flat region and pit masks
+    mask_nodata = 0
+
+    # set up the working dir for the mask rasters
+    try:
+        if working_dir is not None:
+            os.makedirs(working_dir)
+    except OSError:
+        pass
+    working_dir_path = tempfile.mkdtemp(
+        dir=working_dir,
+        prefix='flow_dir_multiple_flow_dir_%s_' % time.strftime(
+            '%Y-%m-%d_%H_%M_%S', time.gmtime()))
+
+    # this raster is used to keep track of what pixels have been searched for
+    # a plateau. if a pixel is set, it means it is part of a locally
+    # undrained area
+    flat_region_mask_path = os.path.join(
+        working_dir_path, 'flat_region_mask.tif')
+    pygeoprocessing.new_raster_from_base(
+        dem_raster_path_band[0], flat_region_mask_path, gdal.GDT_Byte,
+        [mask_nodata], fill_value_list=[mask_nodata],
+        gtiff_creation_options=GTIFF_CREATION_OPTIONS)
+    flat_region_mask_managed_raster = _ManagedRaster(
+        flat_region_mask_path, 1, 1)
+
+    flow_dir_nodata = 0
+    pygeoprocessing.new_raster_from_base(
+        dem_raster_path_band[0], target_flow_dir_path, gdal.GDT_Int32,
+        [flow_dir_nodata], fill_value_list=[flow_dir_nodata],
+        gtiff_creation_options=GTIFF_CREATION_OPTIONS)
+    flow_dir_managed_raster = _ManagedRaster(target_flow_dir_path, 1, 1)
+
+    plateu_drain_mask_path = os.path.join(
+        working_dir_path, 'plateu_drain_mask.tif')
+    pygeoprocessing.new_raster_from_base(
+        dem_raster_path_band[0], plateu_drain_mask_path, gdal.GDT_Byte,
+        [mask_nodata], fill_value_list=[mask_nodata],
+        gtiff_creation_options=GTIFF_CREATION_OPTIONS)
+    plateau_drain_mask_managed_raster = _ManagedRaster(
+        plateu_drain_mask_path, 1, 1)
+
+    # this creates a raster that's used for a dynamic programming solution to
+    # shortest path to the drain for plateaus. the raster is filled with
+    # raster_x_size * raster_y_size as a distance that's greater than the
+    # longest plateau drain distance possible for this raster.
+    plateau_distance_path = os.path.join(
+        working_dir_path, 'plateau_distance.tif')
+    plateau_distance_nodata = raster_x_size * raster_y_size
+    pygeoprocessing.new_raster_from_base(
+        dem_raster_path_band[0], plateau_distance_path, gdal.GDT_Float64,
+        [plateau_distance_nodata], fill_value_list=[
+            raster_x_size * raster_y_size],
+        gtiff_creation_options=GTIFF_CREATION_OPTIONS)
+    plateau_distance_managed_raster = _ManagedRaster(
+        plateau_distance_path, 1, 1)
+
+    # this raster is for random access of the DEM
+    dem_managed_raster = _ManagedRaster(
+        dem_raster_path_band[0], dem_raster_path_band[1], 0)
+
+    # and this raster is for efficient block-by-block reading of the dem
+    dem_raster = gdal.Open(dem_raster_path_band[0])
+    dem_band = dem_raster.GetRasterBand(1)
+
+    # this outer loop searches for a pixel that is locally undrained
+    for offset_dict in pygeoprocessing.iterblocks(
+            dem_raster_path_band[0], offset_only=True, largest_block=0):
+        win_xsize = offset_dict['win_xsize']
+        win_ysize = offset_dict['win_ysize']
+        xoff = offset_dict['xoff']
+        yoff = offset_dict['yoff']
+
+        if ctime(NULL) - last_log_time > 5.0:
+            last_log_time = ctime(NULL)
+            current_pixel = xoff + yoff * raster_x_size
+            logger.info('%.2f%% complete', 100.0 * current_pixel / <float>(
+                raster_x_size * raster_y_size))
+
+        # make a buffer big enough to capture block and boundaries around it
+        dem_buffer_array = numpy.empty(
+            (offset_dict['win_ysize']+2, offset_dict['win_xsize']+2),
+            dtype=numpy.float64)
+        dem_buffer_array[:] = dem_nodata
+
+        # check if we can widen the border to include real data from the
+        # raster
+        (xa, xb, ya, yb), modified_offset_dict = _generate_read_bounds(
+            offset_dict, raster_x_size, raster_y_size)
+        dem_buffer_array[ya:yb, xa:xb] = dem_band.ReadAsArray(
+                **modified_offset_dict).astype(numpy.float64)
+
+        # ensure these are set for the complier
+        xi_n = -1
+        yi_n = -1
+
+        # search block for to set flow direction
+        for yi in xrange(1, win_ysize+1):
+            for xi in xrange(1, win_xsize+1):
+                root_height = dem_buffer_array[yi, xi]
+                if root_height == dem_nodata:
+                    continue
+
+                # this value is set in case it turns out to be the root of a
+                # pit, we'll start the fill from this pixel in the last phase
+                # of the algorithm
+                xi_root = xi-1+xoff
+                yi_root = yi-1+yoff
+
+                if flow_dir_managed_raster.get(
+                        xi_root, yi_root) != flow_dir_nodata:
+                    # already been defined
+                    continue
+
+                # PHASE 1 - try to set the direction based on local values
+                # initialize variables to indicate the largest slope_dir is
+                # undefined, the largest slope seen so far is flat, and the
+                # largest nodata is at least a diagonal away
+                sum_of_downhill_slopes = 0.0
+                for i_n in xrange(8):
+                    # initialize downhill slopes to 0.0
+                    downhill_slope_array[i_n] = 0.0
+                    xi_n = xi+NEIGHBOR_OFFSET_ARRAY[2*i_n]
+                    yi_n = yi+NEIGHBOR_OFFSET_ARRAY[2*i_n+1]
+                    n_height = dem_buffer_array[yi_n, xi_n]
+                    if n_height == dem_nodata:
+                        continue
+                    n_slope = root_height - n_height
+                    if n_slope > 0.0:
+                        if i_n & 1:
+                            # if diagonal, adjust the slope
+                            n_slope *= SQRT2_INV
+                        downhill_slope_array[i_n] = n_slope
+                        sum_of_downhill_slopes += n_slope
+
+                if sum_of_downhill_slopes > 0.0:
+                    compressed_integer_slopes = 0
+                    for i_n in xrange(8):
+                        compressed_integer_slopes |= (<int>(
+                            0.5 + downhill_slope_array[i_n] /
+                            sum_of_downhill_slopes * 0xF)) << (i_n * 4)
+
+                    flow_dir_managed_raster.set(
+                        xi_root, yi_root, compressed_integer_slopes)
+                    continue
+
+                # PHASE 2 - search for what drains the plateau, prefer
+                # downhill drains, but fall back if nodata pixels are the
+                # only drain
+
+                # otherwise, this pixel doesn't drain locally, so it must
+                # be a plateau, search for the drains of the plateau
+                drain_search_queue.push(CoordinateType(xi_root, yi_root))
+                flat_region_mask_managed_raster.set(xi_root, yi_root, 1)
+
+                # this loop does a BFS starting at this pixel to all pixels
+                # of the same height. if a drain is encountered, it is pushed
+                # on a queue for later processing.
+                while not drain_search_queue.empty():
+                    xi_q = drain_search_queue.front().xi
+                    yi_q = drain_search_queue.front().yi
+                    drain_search_queue.pop()
+
+                    sum_of_slope_weights = 0.0
+                    sum_of_nodata_slope_weights = 0.0
+                    for i_n in xrange(8):
+                        # initialize downhill slopes to 0.0
+                        downhill_slope_array[i_n] = 0.0
+                        nodata_downhill_slope_array[i_n] = 0.0
+                        xi_n = xi_q+NEIGHBOR_OFFSET_ARRAY[2*i_n]
+                        yi_n = yi_q+NEIGHBOR_OFFSET_ARRAY[2*i_n+1]
+
+                        if (xi_n < 0 or xi_n >= raster_x_size or
+                                yi_n < 0 or yi_n >= raster_y_size):
+                            n_height = dem_nodata
+                        else:
+                            n_height = dem_managed_raster.get(xi_n, yi_n)
+                        if n_height == dem_nodata:
+                            n_slope = SQRT2_INV if i_n & 1 else 1.0
+                            sum_of_nodata_slope_weights += n_slope
+                            nodata_downhill_slope_array[i_n] = n_slope
+                            continue
+                        n_slope = root_height - n_height
+                        if n_slope < 0:
+                            continue
+                        if n_slope == 0.0:
+                            if flat_region_mask_managed_raster.get(
+                                    xi_n, yi_n) == mask_nodata:
+                                # only grow if it's at the same level and not
+                                # previously visited
+                                drain_search_queue.push(
+                                    CoordinateType(xi_n, yi_n))
+                                flat_region_mask_managed_raster.set(
+                                    xi_n, yi_n, 1)
+                            continue
+                        if i_n & 1:
+                            n_slope *= SQRT2_INV
+                        downhill_slope_array[i_n] = n_slope
+                        sum_of_slope_weights += downhill_slope_array[i_n]
+
+                    working_downhill_slope_sum = 0.0
+                    working_downhill_slope_array = NULL
+                    if sum_of_slope_weights > 0.0:
+                        working_downhill_slope_array = downhill_slope_array
+                        working_downhill_slope_sum = sum_of_slope_weights
+                    elif sum_of_nodata_slope_weights > 0.0:
+                        working_downhill_slope_array = (
+                            nodata_downhill_slope_array)
+                        working_downhill_slope_sum = (
+                            sum_of_nodata_slope_weights)
+
+                    if working_downhill_slope_sum > 0.0:
+                        compressed_integer_slopes = 0
+                        for i_n in xrange(8):
+                            compressed_integer_slopes |= (<int>(
+                                0.5 + working_downhill_slope_array[i_n] /
+                                working_downhill_slope_sum * 0xF)) << (
+                                i_n * 4)
+                        if sum_of_slope_weights > 0.0:
+                            # regular downhill pixel
+                            flow_dir_managed_raster.set(
+                                xi_q, yi_q, compressed_integer_slopes)
+                            plateau_distance_managed_raster.set(
+                                xi_q, yi_q, 0.0)
+                            plateau_drain_mask_managed_raster.set(
+                                xi_q, yi_q, 1)
+                            distance_drain_queue.push(
+                                CoordinateType(xi_q, yi_q))
+                        else:
+                            nodata_distance_drain_queue.push(
+                                CoordinateType(xi_q, yi_q))
+                            nodata_flow_dir_queue.push(
+                                compressed_integer_slopes)
+
+                # if there's no downhill drains, try the nodata drains
+                if distance_drain_queue.empty():
+                    # push the nodata drain queue over to the drain queue
+                    # and set all the flow directions on the nodata drain
+                    # pixels
+                    while not nodata_distance_drain_queue.empty():
+                        xi_q = nodata_distance_drain_queue.front().xi
+                        yi_q = nodata_distance_drain_queue.front().yi
+                        flow_dir_managed_raster.set(
+                            xi_q, yi_q, nodata_flow_dir_queue.front())
+                        plateau_distance_managed_raster.set(xi_q, yi_q, 0.0)
+                        plateau_drain_mask_managed_raster.set(xi_q, yi_q, 1)
+                        distance_drain_queue.push(
+                            nodata_distance_drain_queue.front())
+                        nodata_flow_dir_queue.pop()
+                        nodata_distance_drain_queue.pop()
+                else:
+                    # clear the nodata drain queues
+                    nodata_flow_dir_queue = IntQueueType()
+                    nodata_distance_drain_queue = CoordinateQueueType()
+
+                # copy the drain queue to another queue
+                for _ in xrange(distance_drain_queue.size()):
+                    distance_drain_queue.push(
+                        distance_drain_queue.front())
+                    direction_drain_queue.push(distance_drain_queue.front())
+                    distance_drain_queue.pop()
+
+                # PHASE 3 - build up a distance raster for the plateau such
+                # that the pixel value indicates how far it is from the
+                # nearest drain
+
+                # this loop does a BFS from the plateau drain to any other
+                # neighboring undefined pixels
+                while not distance_drain_queue.empty():
+                    xi_q = distance_drain_queue.front().xi
+                    yi_q = distance_drain_queue.front().yi
+                    distance_drain_queue.pop()
+
+                    drain_distance = plateau_distance_managed_raster.get(
+                        xi_q, yi_q)
+
+                    for i_n in xrange(8):
+                        xi_n = xi_q+NEIGHBOR_OFFSET_ARRAY[2*i_n]
+                        yi_n = yi_q+NEIGHBOR_OFFSET_ARRAY[2*i_n+1]
+                        if (xi_n < 0 or xi_n >= raster_x_size or
+                                yi_n < 0 or yi_n >= raster_y_size):
+                            continue
+
+                        n_drain_distance = drain_distance + (
+                            SQRT2 if i_n&1 else 1.0)
+
+                        if dem_managed_raster.get(
+                                xi_n, yi_n) == root_height and (
+                                plateau_distance_managed_raster.get(
+                                    xi_n, yi_n) > n_drain_distance):
+                            # neighbor is at same level and has longer drain
+                            # flow path than current
+                            plateau_distance_managed_raster.set(
+                                xi_n, yi_n, n_drain_distance)
+                            distance_drain_queue.push(
+                                CoordinateType(xi_n, yi_n))
+
+                # PHASE 4 - set the plateau pixel flow direction based on the
+                # distance to the nearest drain
+                while not direction_drain_queue.empty():
+                    xi_q = direction_drain_queue.front().xi
+                    yi_q = direction_drain_queue.front().yi
+                    direction_drain_queue.pop()
+
+                    drain_distance = plateau_distance_managed_raster.get(
+                        xi_q, yi_q)
+
+                    sum_of_slope_weights = 0.0
+                    for i_n in xrange(8):
+                        xi_n = xi_q+NEIGHBOR_OFFSET_ARRAY[2*i_n]
+                        yi_n = yi_q+NEIGHBOR_OFFSET_ARRAY[2*i_n+1]
+                        downhill_slope_array[i_n] = 0.0
+
+                        if (xi_n < 0 or xi_n >= raster_x_size or
+                                yi_n < 0 or yi_n >= raster_y_size):
+                            continue
+
+                        if dem_managed_raster.get(xi_n, yi_n) != root_height:
+                            continue
+
+                        n_distance = plateau_distance_managed_raster.get(
+                            xi_n, yi_n)
+                        if n_distance == plateau_distance_nodata:
+                            continue
+                        if n_distance < drain_distance:
+                            n_slope = SQRT2_INV if i_n & 1 else 1.0
+                            downhill_slope_array[i_n] = n_slope
+                            sum_of_slope_weights += n_slope
+                        elif not plateau_drain_mask_managed_raster.get(
+                                xi_n, yi_n):
+                            direction_drain_queue.push(
+                                CoordinateType(xi_n, yi_n))
+                            plateau_drain_mask_managed_raster.set(
+                                xi_n, yi_n, 1)
+
+                    if sum_of_slope_weights == 0:
+                        continue
+                    compressed_integer_slopes = 0
+                    for i_n in xrange(8):
+                        compressed_integer_slopes |= (<int>(
+                            0.5 + downhill_slope_array[i_n] /
+                            sum_of_slope_weights * 0xF)) << (i_n * 4)
+                    flow_dir_managed_raster.set(
+                        xi_q, yi_q, compressed_integer_slopes)
+
+    plateau_drain_mask_managed_raster.close()
+    flow_dir_managed_raster.close()
+    flat_region_mask_managed_raster.close()
+    dem_managed_raster.close()
+    plateau_distance_managed_raster.close()
+    shutil.rmtree(working_dir_path)
+    logger.info('%.2f%% complete', 100.0)
+
+
+def flow_accumulation_mfd(
+        flow_dir_mfd_raster_path_band, target_flow_accum_raster_path):
+    """Multiple flow direction accumulation.
+
+    Parameters:
+        flow_dir_mfd_raster_path_band (tuple): a path, band number tuple
+            for a multiple flow direction raster generated from a call to
+            `flow_dir_mfd`. The format of this raster is described in the
+            docstring of that function.
+        target_flow_accum_raster_path (string): a path to a raster created by
+            a call to this function that is the same dimensions and projection
+            as `flow_dir_mfd_raster_path_band[0]`. The value in each pixel is
+            1 plus the proportional contribution of all upstream pixels that
+            flow into it. The proportion is determined as the value of the
+            upstream flow dir pixel in the downslope direction pointing to
+            the current pixel divided by the sum of all the flow weights
+            exiting that pixel.
+
+    Returns:
+        None.
+    """
+    # These variables are used to iterate over the DEM using `iterblock`
+    # indexes, a numpy.float64 type is used since we need to statically cast
+    # and it's the most complex numerical type and will be compatible without
+    # data loss for any lower type that might be used in
+    # `dem_raster_path_band[0]`.
+    cdef numpy.ndarray[numpy.int32_t, ndim=2] flow_dir_mfd_buffer_array
+    cdef int win_ysize, win_xsize, xoff, yoff
+
+    # the _root variables remembers the pixel index where the plateau/pit
+    # region was first detected when iterating over the DEM.
+    cdef int xi_root, yi_root
+
+    # these variables are used as pixel or neighbor indexes.
+    # _n is related to a neighbor pixel
+    cdef int i_n, xi, yi, xi_n, yi_n, i_upstream_flow
+
+    # used to hold flow direction values
+    cdef int flow_dir_mfd, upstream_flow_weight
+
+    # used as a holder variable to account for upstream flow
+    cdef int compressed_upstream_flow_dir, upstream_flow_dir_sum
+
+    # used to determine if the upstream pixel has been processed, and if not
+    # to trigger a recursive uphill walk
+    cdef double upstream_flow_accum
+
+    # `search_stack` is used to walk upstream to calculate flow accumulation
+    # values represented in a flow pixel which stores the x/y position,
+    # next direction to check, and running flow accumulation value.
+    cdef stack[FlowPixelType] search_stack
+    cdef FlowPixelType flow_pixel
+
+    # properties of the parallel rasters
+    cdef int raster_x_size, raster_y_size
+
+    # used for time-delayed logging
+    cdef time_t last_log_time
+    last_log_time = ctime(NULL)
+
+    logger = logging.getLogger(
+        'pygeoprocessing.routing.flow_accumulation_mfd')
+    logger.addHandler(logging.NullHandler())  # silence logging by default
+    flow_accum_nodata = -1
+    pygeoprocessing.new_raster_from_base(
+        flow_dir_mfd_raster_path_band[0], target_flow_accum_raster_path,
+        gdal.GDT_Float64, [flow_accum_nodata],
+        fill_value_list=[flow_accum_nodata],
+        gtiff_creation_options=GTIFF_CREATION_OPTIONS)
+    flow_accum_managed_raster = _ManagedRaster(
+        target_flow_accum_raster_path, 1, 1)
+
+    flow_dir_managed_raster = _ManagedRaster(
+        flow_dir_mfd_raster_path_band[0], flow_dir_mfd_raster_path_band[1], 0)
+    flow_dir_raster = gdal.Open(
+        flow_dir_mfd_raster_path_band[0], gdal.OF_RASTER)
+    flow_dir_band = flow_dir_raster.GetRasterBand(
+        flow_dir_mfd_raster_path_band[1])
+
+    flow_dir_raster_info = pygeoprocessing.get_raster_info(
+        flow_dir_mfd_raster_path_band[0])
+    raster_x_size, raster_y_size = flow_dir_raster_info['raster_size']
+
+    # this outer loop searches for a pixel that is locally undrained
+    for offset_dict in pygeoprocessing.iterblocks(
+            flow_dir_mfd_raster_path_band[0], offset_only=True, largest_block=0):
+        win_xsize = offset_dict['win_xsize']
+        win_ysize = offset_dict['win_ysize']
+        xoff = offset_dict['xoff']
+        yoff = offset_dict['yoff']
+
+        if ctime(NULL) - last_log_time > 5.0:
+            last_log_time = ctime(NULL)
+            current_pixel = xoff + yoff * raster_x_size
+            logger.info('%.2f%% complete', 100.0 * current_pixel / <float>(
+                raster_x_size * raster_y_size))
+
+        # make a buffer big enough to capture block and boundaries around it
+        flow_dir_mfd_buffer_array = numpy.empty(
+            (offset_dict['win_ysize']+2, offset_dict['win_xsize']+2),
+            dtype=numpy.int32)
+        flow_dir_mfd_buffer_array[:] = 0  # 0 means no flow at all
+
+        # check if we can widen the border to include real data from the
+        # raster
+        (xa, xb, ya, yb), modified_offset_dict = _generate_read_bounds(
+            offset_dict, raster_x_size, raster_y_size)
+        flow_dir_mfd_buffer_array[ya:yb, xa:xb] = flow_dir_band.ReadAsArray(
+                **modified_offset_dict).astype(numpy.int32)
+
+        # ensure these are set for the complier
+        xi_n = -1
+        yi_n = -1
+
+        # search block for to set flow accumulation
+        for yi in xrange(1, win_ysize+1):
+            for xi in xrange(1, win_xsize+1):
+                flow_dir_mfd = flow_dir_mfd_buffer_array[yi, xi]
+                if flow_dir_mfd == 0:
+                    # no flow in this pixel, so skip
+                    continue
+
+                for i_n in xrange(8):
+                    if ((flow_dir_mfd >> (i_n * 4)) & 0xF) == 0:
+                        # no flow in that direction
+                        continue
+                    xi_n = xi+NEIGHBOR_OFFSET_ARRAY[2*i_n]
+                    yi_n = yi+NEIGHBOR_OFFSET_ARRAY[2*i_n+1]
+
+                    if flow_dir_mfd_buffer_array[yi_n, xi_n] == 0:
+                        # if the entire value is zero, it flows nowhere
+                        # and the root pixel is draining to it, thus the
+                        # root must be a drain
+                        xi_root = xi-1+xoff
+                        yi_root = yi-1+yoff
+                        search_stack.push(
+                            FlowPixelType(xi_root, yi_root, 0, 1))
+                        break
+
+                while not search_stack.empty():
+                    flow_pixel = search_stack.top()
+                    search_stack.pop()
+
+                    preempted = 0
+                    for i_n in xrange(flow_pixel.last_flow_dir, 8):
+                        xi_n = flow_pixel.xi+NEIGHBOR_OFFSET_ARRAY[2*i_n]
+                        yi_n = flow_pixel.yi+NEIGHBOR_OFFSET_ARRAY[2*i_n+1]
+                        if (xi_n < 0 or xi_n >= raster_x_size or
+                                yi_n < 0 or yi_n >= raster_y_size):
+                            # no upstream here
+                            continue
+                        compressed_upstream_flow_dir = (
+                            <int>flow_dir_managed_raster.get(xi_n, yi_n))
+                        upstream_flow_weight = (
+                            compressed_upstream_flow_dir >> (
+                                D8_REVERSE_DIRECTION[i_n] * 4)) & 0xF
+                        if upstream_flow_weight == 0:
+                            # no upstream flow to this pixel
+                            continue
+                        upstream_flow_accum = (
+                            flow_accum_managed_raster.get(xi_n, yi_n))
+                        if upstream_flow_accum == flow_accum_nodata:
+                            # process upstream before this one
+                            flow_pixel.last_flow_dir = i_n
+                            search_stack.push(flow_pixel)
+                            search_stack.push(FlowPixelType(xi_n, yi_n, 0, 1))
+                            preempted = 1
+                            break
+                        upstream_flow_dir_sum = 0
+                        for i_upstream_flow in xrange(8):
+                            upstream_flow_dir_sum += (
+                                compressed_upstream_flow_dir >> (
+                                    i_upstream_flow * 4)) & 0xF
+
+                        flow_pixel.value += (
+                            upstream_flow_accum * upstream_flow_weight /
+                            <float>upstream_flow_dir_sum)
+                    if not preempted:
+                        flow_accum_managed_raster.set(
+                            flow_pixel.xi, flow_pixel.yi,
+                            flow_pixel.value)
+    logger.info('%.2f%% complete', 100.0)
+
+
+def distance_to_channel_d8(
+        flow_dir_d8_raster_path_band, channel_raster_path_band,
+        target_distance_to_channel_raster_path):
+    """Calculate distance to channel with D8 flow.
+
+    Parameters:
+        flow_dir_d8_raster_path_band (tuple): a path/band index tuple
+            indicating the raster that defines the D8 flow direction
+            raster for this call. The pixel values are integers that
+            correspond to outflow in the following configuration:
+                321
+                4x0
+                567
+        channel_raster_path_band (tuple): a path/band tuple of the same
+            dimensions and projection as `flow_dir_d8_raster_path_band[0]`
+            that indicates where the channels in the problem space lie. A
+            channel is indicated if the value of the pixel is 1. Other values
+            are ignored.
+        target_distance_to_channel_raster_path (string): path to a raster
+            created by this call that has per-pixel distances from a given
+            pixel to the nearest downhill channel.
+
+    Returns:
+        None.
+    """
+    # These variables are used to iterate over the DEM using `iterblock`
+    # indexes
+    cdef numpy.ndarray[numpy.uint8_t, ndim=2] channel_buffer_array
+    cdef int win_ysize, win_xsize, xoff, yoff
+
+    # these variables are used as pixel or neighbor indexes.
+    # _n is related to a neighbor pixel
+    cdef int i_n, xi, yi, xi_q, yi_q, xi_n, yi_n
+
+    # `distance_to_channel_stack` is the datastructure that walks upstream
+    # from a defined flow distance pixel
+    cdef stack[PixelType] distance_to_channel_stack
+
+    # properties of the parallel rasters
+    cdef int raster_x_size, raster_y_size
+
+    # used for time-delayed logging
+    cdef time_t last_log_time
+    last_log_time = ctime(NULL)
+
+    logger = logging.getLogger(
+        'pygeoprocessing.routing.distance_to_channel_d8')
+    logger.addHandler(logging.NullHandler())  # silence logging by default
+    distance_nodata = -1
+    pygeoprocessing.new_raster_from_base(
+        flow_dir_d8_raster_path_band[0],
+        target_distance_to_channel_raster_path,
+        gdal.GDT_Float64, [distance_nodata],
+        fill_value_list=[distance_nodata],
+        gtiff_creation_options=GTIFF_CREATION_OPTIONS)
+    distance_to_channel_managed_raster = _ManagedRaster(
+        target_distance_to_channel_raster_path, 1, 1)
+
+    channel_managed_raster = _ManagedRaster(
+        channel_raster_path_band[0], channel_raster_path_band[1], 0)
+
+    flow_dir_d8_managed_raster = _ManagedRaster(
+        flow_dir_d8_raster_path_band[0], flow_dir_d8_raster_path_band[1], 0)
+    channel_raster = gdal.Open(channel_raster_path_band[0], gdal.OF_RASTER)
+    channel_band = channel_raster.GetRasterBand(channel_raster_path_band[1])
+
+    flow_dir_raster_info = pygeoprocessing.get_raster_info(
+        flow_dir_d8_raster_path_band[0])
+    raster_x_size, raster_y_size = flow_dir_raster_info['raster_size']
+
+    # this outer loop searches for undefined channels
+    for offset_dict in pygeoprocessing.iterblocks(
+        channel_raster_path_band[0], offset_only=True,
+            largest_block=0):
+        win_xsize = offset_dict['win_xsize']
+        win_ysize = offset_dict['win_ysize']
+        xoff = offset_dict['xoff']
+        yoff = offset_dict['yoff']
+
+        if ctime(NULL) - last_log_time > 5.0:
+            last_log_time = ctime(NULL)
+            current_pixel = xoff + yoff * raster_x_size
+            logger.info('%.2f%% complete', 100.0 * current_pixel / <float>(
+                raster_x_size * raster_y_size))
+
+        # make a buffer big enough to capture block and boundaries around it
+        channel_buffer_array = numpy.empty(
+            (offset_dict['win_ysize']+2, offset_dict['win_xsize']+2),
+            dtype=numpy.uint8)
+        channel_buffer_array[:] = 0  # 0 means no channel
+
+        # check if we can widen the border to include real data from the
+        # raster
+        (xa, xb, ya, yb), modified_offset_dict = _generate_read_bounds(
+            offset_dict, raster_x_size, raster_y_size)
+        channel_buffer_array[ya:yb, xa:xb] = channel_band.ReadAsArray(
+            **modified_offset_dict).astype(numpy.int8)
+
+        # ensure these are set for the complier
+        xi_n = -1
+        yi_n = -1
+
+        # search block for to search for a channel seed
+        for yi in xrange(1, win_ysize+1):
+            for xi in xrange(1, win_xsize+1):
+                if channel_buffer_array[yi, xi] != 1:
+                    # no channel seed
+                    continue
+
+                distance_to_channel_stack.push(
+                    PixelType(0.0, xi+xoff-1, yi+yoff-1, 0.0))
+
+                while not distance_to_channel_stack.empty():
+                    xi_q = distance_to_channel_stack.top().xi
+                    yi_q = distance_to_channel_stack.top().yi
+                    dist_q = distance_to_channel_stack.top().value
+                    distance_to_channel_stack.pop()
+
+                    distance_to_channel_managed_raster.set(xi_q, yi_q, dist_q)
+
+                    for i_n in xrange(8):
+                        xi_n = xi_q+NEIGHBOR_OFFSET_ARRAY[2*i_n]
+                        yi_n = yi_q+NEIGHBOR_OFFSET_ARRAY[2*i_n+1]
+
+                        if (xi_n < 0 or xi_n >= raster_x_size or
+                                yi_n < 0 or yi_n >= raster_y_size):
+                            continue
+
+                        if channel_managed_raster.get(xi_n, yi_n) == 1:
+                            # it's a channel, it'll get picked up in the
+                            # outer loop
+                            continue
+
+                        if (flow_dir_d8_managed_raster.get(xi_n, yi_n) ==
+                                D8_REVERSE_DIRECTION[i_n]):
+                            distance_to_channel_stack.push(
+                                PixelType(
+                                    SQRT2 + dist_q if i_n % 2 else dist_q + 1,
+                                    xi_n, yi_n, 0.0))
+
+
+def distance_to_channel_mfd(
+        flow_dir_mfd_raster_path_band, channel_raster_path_band,
+        target_distance_to_channel_raster_path):
+    """Calculate distance to channel with multiple flow direction.
+
+    Parameters:
+        flow_dir_mfd_raster_path_band (tuple): a path/band index tuple
+            indicating the raster that defines the mfd flow accumulation
+            raster for this call. This raster should be generated by a call
+            to `pygeoprocessing.routing.flow_dir_mfd.
+
+        channel_raster_path_band (tuple): a path/band tuple of the same
+            dimensions and projection as `flow_dir_mfd_raster_path_band[0]`
+            that indicates where the channels in the problem space lie. A
+            channel is indicated if the value of the pixel is 1. Other values
+            are ignored.
+        target_distance_to_channel_raster_path (string): path to a raster
+            created by this call that has per-pixel distances from a given
+            pixel to the nearest downhill channel.
+
+    Returns:
+        None.
+    """
+    # These variables are used to iterate over the DEM using `iterblock`
+    # indexes
+    cdef numpy.ndarray[numpy.uint8_t, ndim=2] channel_buffer_array
+    cdef numpy.ndarray[numpy.int32_t, ndim=2] flow_dir_buffer_array
+    cdef int win_ysize, win_xsize, xoff, yoff
+
+    # these variables are used as pixel or neighbor indexes.
+    # _n is related to a neighbor pixel
+    cdef int i_n, xi, yi, xi_n, yi_n
+    cdef int flow_dir_weight, sum_of_flow_weights, compressed_flow_dir
+
+    # used to remember if the current pixel is a channel for routing
+    cdef int is_a_channel
+
+    # used when searching pixels to be fully upstream
+    cdef int inflow
+
+    # `distance_to_channel_queue` is the data structure that walks upstream
+    # from a defined flow distance pixel
+    cdef stack[FlowPixelType] distance_to_channel_stack
+
+    # properties of the parallel rasters
+    cdef int raster_x_size, raster_y_size
+
+    # used for time-delayed logging
+    cdef time_t last_log_time
+    last_log_time = ctime(NULL)
+
+    logger = logging.getLogger(
+        'pygeoprocessing.routing.distance_to_channel_mfd')
+    logger.addHandler(logging.NullHandler())  # silence logging by default
+    distance_nodata = -1
+    pygeoprocessing.new_raster_from_base(
+        flow_dir_mfd_raster_path_band[0],
+        target_distance_to_channel_raster_path,
+        gdal.GDT_Float64, [distance_nodata],
+        fill_value_list=[distance_nodata],
+        gtiff_creation_options=GTIFF_CREATION_OPTIONS)
+    distance_to_channel_managed_raster = _ManagedRaster(
+        target_distance_to_channel_raster_path, 1, 1)
+
+    channel_managed_raster = _ManagedRaster(
+        channel_raster_path_band[0], channel_raster_path_band[1], 0)
+
+    flow_dir_mfd_managed_raster = _ManagedRaster(
+        flow_dir_mfd_raster_path_band[0], flow_dir_mfd_raster_path_band[1], 0)
+    channel_raster = gdal.Open(channel_raster_path_band[0], gdal.OF_RASTER)
+    channel_band = channel_raster.GetRasterBand(channel_raster_path_band[1])
+
+    flow_dir_mfd_raster = gdal.Open(
+        flow_dir_mfd_raster_path_band[0], gdal.OF_RASTER)
+    flow_dir_mfd_band = flow_dir_mfd_raster.GetRasterBand(
+        flow_dir_mfd_raster_path_band[1])
+
+    flow_dir_raster_info = pygeoprocessing.get_raster_info(
+        flow_dir_mfd_raster_path_band[0])
+    raster_x_size, raster_y_size = flow_dir_raster_info['raster_size']
+
+    # this outer loop searches for undefined channels
+    for offset_dict in pygeoprocessing.iterblocks(
+        channel_raster_path_band[0], offset_only=True,
+            largest_block=0):
+        win_xsize = offset_dict['win_xsize']
+        win_ysize = offset_dict['win_ysize']
+        xoff = offset_dict['xoff']
+        yoff = offset_dict['yoff']
+
+        if ctime(NULL) - last_log_time > 5.0:
+            last_log_time = ctime(NULL)
+            current_pixel = xoff + yoff * raster_x_size
+            logger.info('%.2f%% complete', 100.0 * current_pixel / <float>(
+                raster_x_size * raster_y_size))
+
+        # make a buffer big enough to capture block and boundaries around it
+        channel_buffer_array = numpy.empty(
+            (offset_dict['win_ysize']+2, offset_dict['win_xsize']+2),
+            dtype=numpy.uint8)
+        flow_dir_buffer_array = numpy.empty(
+            (offset_dict['win_ysize']+2, offset_dict['win_xsize']+2),
+            dtype=numpy.int32)
+        channel_buffer_array[:] = 0  # 0 means no channel
+        flow_dir_buffer_array[:] = 0  # 0 means no flow
+
+        # check if we can widen the border to include real data from the
+        # raster
+        (xa, xb, ya, yb), modified_offset_dict = _generate_read_bounds(
+            offset_dict, raster_x_size, raster_y_size)
+        channel_buffer_array[ya:yb, xa:xb] = channel_band.ReadAsArray(
+            **modified_offset_dict).astype(numpy.int8)
+
+        flow_dir_buffer_array[ya:yb, xa:xb] = flow_dir_mfd_band.ReadAsArray(
+            **modified_offset_dict).astype(numpy.int32)
+
+        # ensure these are set for the complier
+        xi_n = -1
+        yi_n = -1
+
+        # search block for a pixel that has undefined distance to channel
+        for yi in xrange(1, win_ysize+1):
+            for xi in xrange(1, win_xsize+1):
+                xi_root = xi+xoff-1
+                yi_root = yi+yoff-1
+
+                if channel_buffer_array[yi, xi] == 1:
+                    distance_to_channel_managed_raster.set(
+                        xi_root, yi_root, 0)
+                    continue
+
+                if flow_dir_buffer_array[yi, xi] == 0:
+                    # nodata flow, so we skip
+                    continue
+
+                if distance_to_channel_managed_raster.get(
+                        xi_root, yi_root) == distance_nodata:
+                    distance_to_channel_stack.push(
+                        FlowPixelType(xi_root, yi_root, 0, 0.0))
+
+                while not distance_to_channel_stack.empty():
+                    pixel = distance_to_channel_stack.top()
+                    distance_to_channel_stack.pop()
+                    is_a_channel = (
+                        channel_managed_raster.get(pixel.xi, pixel.yi) == 1)
+                    if is_a_channel:
+                        #print xi_n, yi_n, 0
+                        distance_to_channel_managed_raster.set(
+                            pixel.xi, pixel.yi, 0)
+                        continue
+
+                    compressed_flow_dir = (
+                        <int>flow_dir_mfd_managed_raster.get(
+                            pixel.xi, pixel.yi))
+
+                    preempted = 0
+                    for i_n in xrange(pixel.last_flow_dir, 8):
+                        flow_dir_weight = 0xF & (
+                            compressed_flow_dir >> (i_n * 4))
+                        if flow_dir_weight == 0:
+                            continue
+
+                        xi_n = pixel.xi+NEIGHBOR_OFFSET_ARRAY[2*i_n]
+                        yi_n = pixel.yi+NEIGHBOR_OFFSET_ARRAY[2*i_n+1]
+
+                        if (xi_n < 0 or xi_n >= raster_x_size or
+                                yi_n < 0 or yi_n >= raster_y_size):
+                            continue
+
+                        n_distance = distance_to_channel_managed_raster.get(
+                            xi_n, yi_n)
+
+                        if n_distance == distance_nodata:
+                            preempted = 1
+                            pixel.last_flow_dir = i_n
+                            distance_to_channel_stack.push(pixel)
+                            distance_to_channel_stack.push(
+                                FlowPixelType(xi_n, yi_n, 0, 0.0))
+                            break
+
+                        pixel.value += flow_dir_weight * (
+                            (SQRT2 if i_n % 2 else 1) + n_distance)
+
+                    if preempted:
+                        continue
+
+                    sum_of_flow_weights = 0
+                    for i_n in xrange(8):
+                        sum_of_flow_weights += 0xF & (
+                            compressed_flow_dir >> (i_n * 4))
+
+                    if sum_of_flow_weights != 0:
+                        pixel.value = pixel.value / sum_of_flow_weights
+                    else:
+                        pixel.value = 0
+                    #print 'set', pixel.xi, pixel.yi, pixel.value
+                    distance_to_channel_managed_raster.set(
+                        pixel.xi, pixel.yi, pixel.value)
     logger.info('%.2f%% complete', 100.0)
