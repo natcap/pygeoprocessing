@@ -11,7 +11,7 @@ Unreleased Changes
 * `pygeoprocessing.routing` module has a `distance_to_channel_mfd` function
   that calculates distance to a channel raster given a pygeoprocessing MFD
   raster.
-* `pygeoprocessing.routing` module has a `distance_to_channel_D8` function
+* `pygeoprocessing.routing` module has a `distance_to_channel_d8` function
   that calculates distance to a channel raster given a pygeoprocessing D8
   raster.
 
