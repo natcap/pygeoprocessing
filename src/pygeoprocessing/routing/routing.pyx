@@ -2168,6 +2168,9 @@ def distance_to_channel_mfd(
     # used to remember if the current pixel is a channel for routing
     cdef int is_a_channel
 
+    # used when searching pixels to be fully upstream
+    cdef int inflow
+
     # `distance_to_channel_queue` is the data structure that walks upstream
     # from a defined flow distance pixel
     cdef stack[FlowPixelType] distance_to_channel_stack
@@ -2248,7 +2251,7 @@ def distance_to_channel_mfd(
         xi_n = -1
         yi_n = -1
 
-        # search block for to set flow accumulation
+        # search block for a pixel that has undefined distance to channel
         for yi in xrange(1, win_ysize+1):
             for xi in xrange(1, win_xsize+1):
                 xi_root = xi+xoff-1
@@ -2263,14 +2266,8 @@ def distance_to_channel_mfd(
                     # nodata flow, so we skip
                     continue
 
-                no_drain = 1
-                for i_n in xrange(8):
-                    xi_n = xi+NEIGHBOR_OFFSET_ARRAY[2*i_n]
-                    yi_n = yi+NEIGHBOR_OFFSET_ARRAY[2*i_n+1]
-
-                    compressed_flow_dir = flow_dir_buffer_array[yi_n, xi_n]
-
-                if no_drain:
+                if distance_to_channel_managed_raster.get(
+                        xi_root, yi_root) == distance_nodata:
                     distance_to_channel_stack.push(
                         FlowPixelType(xi_root, yi_root, 0, 0.0))
 
