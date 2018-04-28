@@ -56,7 +56,6 @@ setup(
             include_dirs=[
                 numpy.get_include(),
                 'src/pygeoprocessing/routing'],
-            define_macros=[('CYTHON_TRACE', '1')],
             language="c++",
         ),
          Extension(
