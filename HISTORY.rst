@@ -1,8 +1,13 @@
 Release History
 ===============
 
-Unreleased Changes
-------------------
+.. Unreleased Changes
+.. ------------------
+
+1.0.0 (4/29/2018)
+-----------------
+* This release marks a feature-complete version of PyGeoprocessing with a
+  full suite of routing and geoprocessing capabilities.
 * `pygeoprocessing.routing` module has a `flow_dir_mfd` function that
   calculates a 32 bit multiple flow direction raster.
 * `pygeoprocessing.routing` module has a `flow_accumulation_mfd` function that
