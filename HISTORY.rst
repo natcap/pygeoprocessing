@@ -2,6 +2,23 @@ Release History
 ===============
 
 .. Unreleased Changes
+.. ------------------
+
+1.0.0 (4/29/2018)
+-----------------
+* This release marks a feature-complete version of PyGeoprocessing with a
+  full suite of routing and geoprocessing capabilities.
+* `pygeoprocessing.routing` module has a `flow_dir_mfd` function that
+  calculates a 32 bit multiple flow direction raster.
+* `pygeoprocessing.routing` module has a `flow_accumulation_mfd` function that
+  uses the flow direction raster from `pygeoprocessing.routing.flow_dir_mfd`
+  to calculate a per-pixel continuous flow accumulation raster.
+* `pygeoprocessing.routing` module has a `distance_to_channel_mfd` function
+  that calculates distance to a channel raster given a pygeoprocessing MFD
+  raster.
+* `pygeoprocessing.routing` module has a `distance_to_channel_d8` function
+  that calculates distance to a channel raster given a pygeoprocessing D8
+  raster.
 
 0.7.0 (4/18/2018)
 -----------------
@@ -18,6 +35,11 @@ Release History
 * `pygeoprocessing.routing` module now has a `fill_pits`, function which
    fills hydrological pits with a focus on runtime efficiency, memory space
    efficiency, and cache locality.
+* `pygeoprocessing.routing` module has a `flow_dir_d8` that uses largest
+  slope to determine the downhill flow direction.
+* `pygeoprocessing.routing` module has a `flow_accumulation_d8` that uses
+  a pygeoprocessing D8 flow direction raster to calculate per-pixel flow
+  accumulation.
 * Added a `merge_rasters` function to `pygeoprocessing` that will mosaic a
   set of rasters in the same projection, pixel size, and band count.
 
