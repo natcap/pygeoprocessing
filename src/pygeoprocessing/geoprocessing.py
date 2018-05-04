@@ -38,7 +38,7 @@ _LARGEST_ITERBLOCK = 2**16  # largest block for iterblocks to read in cells
 
 # A dictionary to map the resampling method input string to the gdal type
 _RESAMPLE_DICT = {
-    "nearest": gdal.GRA_NearestNeighbour,
+    "near": gdal.GRA_NearestNeighbour,
     "bilinear": gdal.GRA_Bilinear,
     "cubic": gdal.GRA_Cubic,
     "cubic_spline": gdal.GRA_CubicSpline,
@@ -280,7 +280,7 @@ def align_and_resize_raster_stack(
         resample_method_list (list): a list of resampling methods which
             one to one map each path in `base_raster_path_list` during
             resizing.  Each element must be one of
-            "nearest|bilinear|cubic|cubic_spline|lanczos|mode".
+            "near|bilinear|cubic|cubic_spline|lanczos|mode".
         target_pixel_size (tuple): the target raster's x and y pixel size
             example: [30, -30].
         bounding_box_mode (string): one of "union", "intersection", or
@@ -668,7 +668,7 @@ def interpolate_points(
             vector. The band in this raster will take on the interpolated
             numerical values  provided at each point.
         interpolation_mode (string): the interpolation method to use for
-            scipy.interpolate.griddata, one of 'linear', nearest', or 'cubic'.
+            scipy.interpolate.griddata, one of 'linear', near', or 'cubic'.
 
     Returns:
        None
@@ -702,6 +702,10 @@ def interpolate_points(
         grid_y = grid_y * geotransform[5] + geotransform[3]
         grid_x = grid_x * geotransform[1] + geotransform[0]
 
+        # this is to be consistent with GDAL 2.0's change of 'nearest' to
+        # 'near' for an interpolation scheme that SciPy did not change.
+        if interpolation_mode == 'near':
+            interpolation_mode = 'nearest'
         raster_out_array = scipy.interpolate.griddata(
             point_array, value_array, (grid_y, grid_x), interpolation_mode,
             nodata)
@@ -806,7 +810,7 @@ def zonal_statistics(
             dir=working_dir) as clipped_raster_file:
         clipped_raster_path = clipped_raster_file.name
     align_and_resize_raster_stack(
-        [base_raster_path_band[0]], [clipped_raster_path], ['nearest'],
+        [base_raster_path_band[0]], [clipped_raster_path], ['near'],
         raster_info['pixel_size'], 'intersection',
         base_vector_path_list=[aggregate_vector_path], raster_align_index=0)
     clipped_raster = gdal.OpenEx(clipped_raster_path)
@@ -1234,7 +1238,7 @@ def warp_raster(
         target_raster_path (string): the location of the resized and
             resampled raster.
         resample_method (string): the resampling technique, one of
-            "nearest|bilinear|cubic|cubic_spline|lanczos|average|mode|max"
+            "near|bilinear|cubic|cubic_spline|lanczos|average|mode|max"
             "min|med|q1|q3"
         target_bb (list): if None, target bounding box is the same as the
             source bounding box.  Otherwise it's a list of float describing
@@ -1248,6 +1252,57 @@ def warp_raster(
     Returns:
         None
     """
+    if target_bb is None:
+        target_bb = get_raster_info(base_raster_path)['bounding_box']
+        # transform the target_bb if target_sr_wkt is not None
+        if target_sr_wkt is not None:
+            target_bb = transform_bounding_box(
+                get_raster_info(base_raster_path)['bounding_box'],
+                get_raster_info(base_raster_path)['projection'],
+                target_sr_wkt)
+
+    target_x_size = int(
+        abs((target_bb[2] - target_bb[0]) / target_pixel_size[0]))
+    target_y_size = int(
+        abs((target_bb[3] - target_bb[1]) / target_pixel_size[1]))
+
+    if target_x_size == 0:
+        LOGGER.warn(
+            "bounding_box is so small that x dimension rounds to 0; "
+            "clamping to 1.")
+        LOGGER.debug(target_bb)
+        target_bb[2] = target_bb[0] + abs(target_pixel_size[0])
+        LOGGER.debug(target_bb)
+        LOGGER.debug(target_pixel_size[0])
+    if target_y_size == 0:
+        LOGGER.warn(
+            "bounding_box is so small that y dimension rounds to 0; "
+            "clamping to 1.")
+        LOGGER.debug(target_bb)
+        target_bb[3] = target_bb[1] + abs(target_pixel_size[1])
+        LOGGER.debug(target_bb)
+        LOGGER.debug(target_pixel_size[1])
+
+    reproject_callback = _make_logger_callback(
+        "Warp %.1f%% complete %s, psz_message '%s'")
+
+    base_raster = gdal.Open(base_raster_path)
+    gdal.Warp(
+        target_raster_path, base_raster,
+        #width=target_x_size,
+        #height=target_y_size,
+        outputBounds=target_bb,
+        xRes=abs(target_pixel_size[0]),
+        yRes=abs(target_pixel_size[1]),
+        resampleAlg=resample_method,
+        outputBoundsSRS=target_sr_wkt,
+        multithread=True,
+        warpOptions=['NUM_THREADS=ALL_CPUS'],
+        creationOptions=gtiff_creation_options,
+        callback=reproject_callback,
+        callback_data=[target_raster_path])
+    return
+    ############
     base_raster = gdal.OpenEx(base_raster_path)
     base_sr = osr.SpatialReference()
     base_sr.ImportFromWkt(base_raster.GetProjection())

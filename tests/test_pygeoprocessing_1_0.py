@@ -455,7 +455,7 @@ class PyGeoprocessing10(unittest.TestCase):
 
         # interpolate
         pygeoprocessing.interpolate_points(
-            source_vector_path, 'value', (result_path, 1), 'nearest')
+            source_vector_path, 'value', (result_path, 1), 'near')
 
         # verify that result is expected
         result_raster = gdal.Open(result_path)
@@ -494,7 +494,7 @@ class PyGeoprocessing10(unittest.TestCase):
 
         pygeoprocessing.warp_raster(
             base_a_path, base_a_raster_info['pixel_size'], target_raster_path,
-            'nearest', target_sr_wkt=reference.projection)
+            'near', target_sr_wkt=reference.projection)
 
         pygeoprocessing.testing.assert_rasters_equal(
             base_a_path, target_raster_path)
@@ -515,7 +515,7 @@ class PyGeoprocessing10(unittest.TestCase):
         # convert 1x1 pixel to a 30x30m pixel
         pygeoprocessing.warp_raster(
             base_a_path, [-30, 30], target_raster_path,
-            'nearest', target_sr_wkt=reference.projection)
+            'near', target_sr_wkt=reference.projection)
 
         expected_raster_path = os.path.join(
             self.workspace_dir, 'expected.tif')
@@ -547,7 +547,7 @@ class PyGeoprocessing10(unittest.TestCase):
         target_bb[3] = target_bb[1]
         pygeoprocessing.warp_raster(
             base_a_path, base_a_raster_info['pixel_size'], target_raster_path,
-            'nearest', target_bb=target_bb,
+            'near', target_bb=target_bb,
             target_sr_wkt=reference.projection)
 
         expected_raster_path = os.path.join(
@@ -577,7 +577,7 @@ class PyGeoprocessing10(unittest.TestCase):
             os.path.join(self.workspace_dir, 'target_%s.tif' % char)
             for char in ['a', 'b']]
 
-        resample_method_list = ['nearest'] * 2
+        resample_method_list = ['near'] * 2
         bounding_box_mode = 'intersection'
 
         base_a_raster_info = pygeoprocessing.get_raster_info(base_a_path)
@@ -604,7 +604,7 @@ class PyGeoprocessing10(unittest.TestCase):
         target_raster_path_list = [
             os.path.join(self.workspace_dir, 'target_a.tif')]
 
-        resample_method_list = ['nearest']
+        resample_method_list = ['near']
         bounding_box_mode = 'bad_mode'
 
         base_a_raster_info = pygeoprocessing.get_raster_info(base_a_path)
@@ -631,7 +631,7 @@ class PyGeoprocessing10(unittest.TestCase):
         target_raster_path_list = [
             os.path.join(self.workspace_dir, 'target_a.tif')]
 
-        resample_method_list = ['nearest']
+        resample_method_list = ['near']
         bounding_box_mode = 'intersection'
 
         base_a_raster_info = pygeoprocessing.get_raster_info(base_a_path)
@@ -667,7 +667,7 @@ class PyGeoprocessing10(unittest.TestCase):
             os.path.join(self.workspace_dir, 'target_%s.tif' % char)
             for char in ['a', 'b']]
 
-        resample_method_list = ['nearest'] * 2
+        resample_method_list = ['near'] * 2
         bounding_box_mode = 'intersection'
 
         base_a_raster_info = pygeoprocessing.get_raster_info(base_a_path)
@@ -712,7 +712,7 @@ class PyGeoprocessing10(unittest.TestCase):
             os.path.join(self.workspace_dir, 'target_%s.tif' % char)
             for char in ['a', 'b']]
 
-        resample_method_list = ['nearest'] * 2
+        resample_method_list = ['near'] * 2
         bounding_box_mode = 'intersection'
 
         base_a_raster_info = pygeoprocessing.get_raster_info(base_a_path)
@@ -772,7 +772,7 @@ class PyGeoprocessing10(unittest.TestCase):
             os.path.join(self.workspace_dir, 'target_%s.tif' % char)
             for char in ['a', 'b']]
 
-        resample_method_list = ['nearest'] * 2
+        resample_method_list = ['near'] * 2
         bounding_box_mode = 'intersection'
 
         base_a_raster_info = pygeoprocessing.get_raster_info(base_a_path)
@@ -819,7 +819,7 @@ class PyGeoprocessing10(unittest.TestCase):
             os.path.join(self.workspace_dir, 'target_%s.tif' % char)
             for char in ['a', 'b']]
 
-        resample_method_list = ['nearest'] * 2
+        resample_method_list = ['near'] * 2
         bounding_box_mode = 'union'
 
         base_a_raster_info = pygeoprocessing.get_raster_info(base_a_path)
@@ -864,7 +864,7 @@ class PyGeoprocessing10(unittest.TestCase):
             os.path.join(self.workspace_dir, 'target_%s.tif' % char)
             for char in ['a', 'b']]
 
-        resample_method_list = ['nearest'] * 2
+        resample_method_list = ['near'] * 2
         # format is xmin,ymin,xmax,ymax; since y pixel size is negative it
         # goes first in the following bounding box construction
         bounding_box_mode = [
@@ -1664,7 +1664,7 @@ class PyGeoprocessing10(unittest.TestCase):
             self.assertEqual(sorted(geoprocessing._RESAMPLE_DICT.keys()),
                              ['average', 'bilinear', 'cubic', 'cubic_spline',
                               'lanczos', 'max', 'med', 'min', 'mode',
-                              'nearest', 'q1', 'q3'])
+                              'near', 'q1', 'q3'])
         finally:
             # Regardless of test outcome, reload the modules so we don't mess
             # with other tests.
@@ -1681,7 +1681,7 @@ class PyGeoprocessing10(unittest.TestCase):
 
             self.assertEqual(sorted(geoprocessing._RESAMPLE_DICT.keys()),
                              ['average', 'bilinear', 'cubic', 'cubic_spline',
-                              'lanczos', 'mode', 'nearest'])
+                              'lanczos', 'mode', 'near'])
         finally:
             # Regardless of test outcome, reload the modules so we don't mess
             # with other tests.
