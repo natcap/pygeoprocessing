@@ -11,6 +11,10 @@ import time
 import tempfile
 import uuid
 import distutils.version
+import multiprocessing
+import threading
+import sys
+import traceback
 
 from osgeo import gdal
 from osgeo import osr
@@ -26,14 +30,22 @@ import shapely.wkt
 import shapely.ops
 from shapely import speedups
 import shapely.prepared
+from . import queuehandler
+
+LOGGER = logging.getLogger(__name__)
+
+try:
+    import psutil
+    HAS_PSUTIL = True
+except ImportError:
+    HAS_PSUTIL = False
 
 import geoprocessing_core
 
-LOGGER = logging.getLogger('pygeoprocessing.geoprocessing')
-LOGGER.addHandler(logging.NullHandler())  # silence logging by default
 _LOGGING_PERIOD = 5.0  # min 5.0 seconds per update log message for the module
 _DEFAULT_GTIFF_CREATION_OPTIONS = (
-    'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW')
+    'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
+    'BLOCKXSIZE=256', 'BLOCKYSIZE=256')
 _LARGEST_ITERBLOCK = 2**16  # largest block for iterblocks to read in cells
 
 # A dictionary to map the resampling method input string to the gdal type
@@ -305,9 +317,8 @@ def align_and_resize_raster_stack(
 
     Returns:
         None
-    """
-    last_time = time.time()
 
+    """
     # make sure that the input lists are of the same length
     list_lengths = [
         len(base_raster_path_list), len(target_raster_path_list),
@@ -325,13 +336,12 @@ def align_and_resize_raster_stack(
         raise ValueError("Unknown bounding_box_mode %s" % (
             str(bounding_box_mode)))
 
+    n_rasters = len(base_raster_path_list)
     if ((raster_align_index is not None) and
-            ((raster_align_index < 0) or
-             (raster_align_index >= len(base_raster_path_list)))):
+            ((raster_align_index < 0) or (raster_align_index >= n_rasters))):
         raise ValueError(
             "Alignment index is out of bounds of the datasets index: %s"
-            " n_elements %s" % (
-                raster_align_index, len(base_raster_path_list)))
+            " n_elements %s" % (raster_align_index, n_rasters))
 
     raster_info_list = [
         get_raster_info(path) for path in base_raster_path_list]
@@ -373,18 +383,49 @@ def align_and_resize_raster_stack(
                 n_pixels * align_pixel_size[index] +
                 align_bounding_box[index])
 
+    logging_queue = multiprocessing.Manager().Queue()
+    listener = threading.Thread(
+        target=_listener_thread, args=(logging_queue,))
+    listener.start()
+
+    # using half the number of CPUs because in practice `warp_raster` seems
+    # to use 2 cores.
+    n_workers = max(
+        min(multiprocessing.cpu_count(), n_rasters) / 2, 1)
+    worker_pool = multiprocessing.Pool(n_workers)
+    if HAS_PSUTIL:
+        parent = psutil.Process()
+        parent.nice(psutil.BELOW_NORMAL_PRIORITY_CLASS)
+        for child in parent.children():
+            try:
+                child.nice(psutil.BELOW_NORMAL_PRIORITY_CLASS)
+            except psutil.NoSuchProcess:
+                LOGGER.warn(
+                    "NoSuchProcess exception encountered when trying "
+                    "to nice %s. This might be a bug in `psutil` so "
+                    "it should be okay to ignore.")
+
+    result_list = []
     for index, (base_path, target_path, resample_method) in enumerate(zip(
             base_raster_path_list, target_raster_path_list,
             resample_method_list)):
-        last_time = _invoke_timed_callback(
-            last_time, lambda: LOGGER.info(
-                "align_dataset_list aligning dataset %d of %d",
-                index, len(base_raster_path_list)), _LOGGING_PERIOD)
-        warp_raster(
-            base_path, target_pixel_size,
-            target_path, resample_method,
-            target_bb=target_bounding_box,
-            gtiff_creation_options=gtiff_creation_options)
+        result = worker_pool.apply_async(
+            func=warp_raster, args=(
+                base_path, target_pixel_size, target_path, resample_method),
+            kwds={
+                'target_bb': target_bounding_box,
+                'gtiff_creation_options': gtiff_creation_options,
+                'logging_queue': logging_queue
+                })
+        result_list.append(result)
+
+    for result in result_list:
+        result.get()
+    logging_queue.put(None)  # signal done logging
+    listener.join()
+
+    LOGGER.info(
+        "aligned all %d rasters.", n_rasters)
 
 
 def calculate_raster_stats(raster_path):
@@ -396,6 +437,7 @@ def calculate_raster_stats(raster_path):
 
     Returns:
         None
+
     """
     raster = gdal.OpenEx(raster_path, gdal.GA_Update)
     raster_properties = get_raster_info(raster_path)
@@ -1080,8 +1122,7 @@ def reproject_vector(
     # if this file already exists, then remove it
     if os.path.isfile(target_path):
         LOGGER.warn(
-            "reproject_vector: %s already exists, removing and overwriting",
-            target_path)
+            "%s already exists, removing and overwriting", target_path)
         os.remove(target_path)
 
     target_sr = osr.SpatialReference(target_wkt)
@@ -1228,7 +1269,8 @@ def reclassify_raster(
 def warp_raster(
         base_raster_path, target_pixel_size, target_raster_path,
         resample_method, target_bb=None, target_sr_wkt=None,
-        gtiff_creation_options=_DEFAULT_GTIFF_CREATION_OPTIONS):
+        gtiff_creation_options=_DEFAULT_GTIFF_CREATION_OPTIONS,
+        logging_queue=None):
     """Resize/resample raster to desired pixel size, bbox and projection.
 
     Parameters:
@@ -1248,10 +1290,18 @@ def warp_raster(
             Known Text format.
         gtiff_creation_options (list or tuple): list of strings that will be
             passed as GDAL "dataset" creation options to the GTIFF driver.
+        logging_queue (Queue): an optional Queue object to synchronize logging
+            across processes. If not none, this queue is wrapped in a
+            queuehandler.QueueHandler and added to this function's LOGGER.
 
     Returns:
         None
+
     """
+    if logging_queue:
+        queue_handler = queuehandler.QueueHandler(logging_queue)
+        LOGGER.addHandler(queue_handler)
+
     if target_bb is None:
         target_bb = get_raster_info(base_raster_path)['bounding_box']
         # transform the target_bb if target_sr_wkt is not None
@@ -1284,13 +1334,11 @@ def warp_raster(
         LOGGER.debug(target_pixel_size[1])
 
     reproject_callback = _make_logger_callback(
-        "Warp %.1f%% complete %s, psz_message '%s'")
+        "Warp %.1f%% complete %s")
 
     base_raster = gdal.Open(base_raster_path)
     gdal.Warp(
         target_raster_path, base_raster,
-        #width=target_x_size,
-        #height=target_y_size,
         outputBounds=target_bb,
         xRes=abs(target_pixel_size[0]),
         yRes=abs(target_pixel_size[1]),
@@ -1301,104 +1349,6 @@ def warp_raster(
         creationOptions=gtiff_creation_options,
         callback=reproject_callback,
         callback_data=[target_raster_path])
-    return
-    ############
-    base_raster = gdal.OpenEx(base_raster_path)
-    base_sr = osr.SpatialReference()
-    base_sr.ImportFromWkt(base_raster.GetProjection())
-
-    if target_bb is None:
-        target_bb = get_raster_info(base_raster_path)['bounding_box']
-        # transform the target_bb if target_sr_wkt is not None
-        if target_sr_wkt is not None:
-            target_bb = transform_bounding_box(
-                get_raster_info(base_raster_path)['bounding_box'],
-                get_raster_info(base_raster_path)['projection'],
-                target_sr_wkt)
-
-    target_geotransform = [
-        target_bb[0], target_pixel_size[0], 0.0, target_bb[1], 0.0,
-        target_pixel_size[1]]
-    # this handles a case of a negative pixel size in which case the raster
-    # row will increase downward
-    if target_pixel_size[0] < 0:
-        target_geotransform[0] = target_bb[2]
-    if target_pixel_size[1] < 0:
-        target_geotransform[3] = target_bb[3]
-    target_x_size = abs((target_bb[2] - target_bb[0]) / target_pixel_size[0])
-    target_y_size = abs((target_bb[3] - target_bb[1]) / target_pixel_size[1])
-
-    if target_x_size - int(target_x_size) > 0:
-        target_x_size = int(target_x_size) + 1
-    else:
-        target_x_size = int(target_x_size)
-
-    if target_y_size - int(target_y_size) > 0:
-        target_y_size = int(target_y_size) + 1
-    else:
-        target_y_size = int(target_y_size)
-
-    if target_x_size == 0:
-        LOGGER.warn(
-            "bounding_box is so small that x dimension rounds to 0; "
-            "clamping to 1.")
-        target_x_size = 1
-    if target_y_size == 0:
-        LOGGER.warn(
-            "bounding_box is so small that y dimension rounds to 0; "
-            "clamping to 1.")
-        target_y_size = 1
-
-    local_gtiff_creation_options = list(gtiff_creation_options)
-    # PIXELTYPE is sometimes used to define signed vs. unsigned bytes and
-    # the only place that is stored is in the IMAGE_STRUCTURE metadata
-    # copy it over if it exists; get this info from the first band since
-    # all bands have the same datatype
-    base_band = base_raster.GetRasterBand(1)
-    metadata = base_band.GetMetadata('IMAGE_STRUCTURE')
-    if 'PIXELTYPE' in metadata:
-        local_gtiff_creation_options.append(
-            'PIXELTYPE=' + metadata['PIXELTYPE'])
-
-    # make directory if it doesn't exist
-    try:
-        os.makedirs(os.path.dirname(target_raster_path))
-    except OSError:
-        pass
-    gdal_driver = gdal.GetDriverByName('GTiff')
-    target_raster = gdal_driver.Create(
-        target_raster_path, target_x_size, target_y_size,
-        base_raster.RasterCount, base_band.DataType,
-        options=local_gtiff_creation_options)
-    base_band = None
-
-    for index in xrange(target_raster.RasterCount):
-        base_nodata = base_raster.GetRasterBand(1+index).GetNoDataValue()
-        if base_nodata is not None:
-            target_band = target_raster.GetRasterBand(1+index)
-            target_band.SetNoDataValue(base_nodata)
-            target_band = None
-
-    # Set the geotransform
-    target_raster.SetGeoTransform(target_geotransform)
-    if target_sr_wkt is None:
-        target_sr_wkt = base_sr.ExportToWkt()
-    target_raster.SetProjection(target_sr_wkt)
-
-    # need to make this a closure so we get the current time and we can affect
-    # state
-    reproject_callback = _make_logger_callback(
-        "ReprojectImage %.1f%% complete %s, psz_message '%s'")
-
-    # Perform the projection/resampling
-    gdal.ReprojectImage(
-        base_raster, target_raster, base_sr.ExportToWkt(),
-        target_sr_wkt, _RESAMPLE_DICT[resample_method], 0, 0,
-        reproject_callback, [target_raster_path])
-
-    target_raster = None
-    base_raster = None
-    calculate_raster_stats(target_raster_path)
 
 
 def rasterize(
@@ -1459,7 +1409,7 @@ def rasterize(
     layer = vector.GetLayer(layer_index)
 
     rasterize_callback = _make_logger_callback(
-        "RasterizeLayer %.1f%% complete %s, psz_message '%s'")
+        "RasterizeLayer %.1f%% complete %s")
 
     if burn_values is None:
         burn_values = []
@@ -2456,24 +2406,23 @@ def _make_logger_callback(message):
     """Build a timed logger callback that prints `message` replaced.
 
     Parameters:
-        message (string): a string that expects 3 placement %% variables,
-            first for % complete from `df_complete`, second `psz_message`
-            and last is `p_progress_arg[0]`.
+        message (string): a string that expects 2 placement %% variables,
+            first for % complete from `df_complete`, second from
+            `p_progress_arg[0]`.
 
     Returns:
         Function with signature:
             logger_callback(df_complete, psz_message, p_progress_arg)
+
     """
-    def logger_callback(df_complete, psz_message, p_progress_arg):
-        """The argument names come from the GDAL API for callbacks."""
+    def logger_callback(df_complete, _, p_progress_arg):
+        """Argument names come from the GDAL API for callbacks."""
         try:
             current_time = time.time()
             if ((current_time - logger_callback.last_time) > 5.0 or
                     (df_complete == 1.0 and
                      logger_callback.total_time >= 5.0)):
-                LOGGER.info(
-                    message, df_complete * 100, p_progress_arg[0],
-                    psz_message)
+                LOGGER.info(message, df_complete * 100, p_progress_arg[0])
                 logger_callback.last_time = current_time
                 logger_callback.total_time += current_time
         except AttributeError:
@@ -2484,7 +2433,7 @@ def _make_logger_callback(message):
 
 
 def _is_raster_path_band_formatted(raster_path_band):
-    """Returns true if raster path band is a (str, int) tuple/list."""
+    """Return true if raster path band is a (str, int) tuple/list."""
     if not isinstance(raster_path_band, (list, tuple)):
         return False
     elif len(raster_path_band) != 2:
@@ -2495,3 +2444,25 @@ def _is_raster_path_band_formatted(raster_path_band):
         return False
     else:
         return True
+
+
+def _listener_thread(logging_queue):
+    """Master worker to process logging in multiprocess environments.
+
+    Parameters:
+        logging_queue (Queue): a Queue of `logging` records generated by
+            other processes. If a value of `get` is None, the function
+            terminates.
+
+    Returns:
+        None
+
+    """
+    while True:
+        try:
+            record = logging_queue.get()
+            if record is None:  # None is the quitting sentinel
+                break
+            LOGGER.handle(record)
+        except:
+            traceback.print_exc(file=sys.stderr)
