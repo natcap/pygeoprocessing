@@ -16,6 +16,12 @@ import threading
 import sys
 import traceback
 
+try:
+    import psutil
+    HAS_PSUTIL = True
+except ImportError:
+    HAS_PSUTIL = False
+
 from osgeo import gdal
 from osgeo import osr
 from osgeo import ogr
@@ -31,16 +37,10 @@ import shapely.ops
 from shapely import speedups
 import shapely.prepared
 from . import queuehandler
+from . import geoprocessing_core
 
 LOGGER = logging.getLogger(__name__)
 
-try:
-    import psutil
-    HAS_PSUTIL = True
-except ImportError:
-    HAS_PSUTIL = False
-
-import geoprocessing_core
 
 _LOGGING_PERIOD = 5.0  # min 5.0 seconds per update log message for the module
 _DEFAULT_GTIFF_CREATION_OPTIONS = (
