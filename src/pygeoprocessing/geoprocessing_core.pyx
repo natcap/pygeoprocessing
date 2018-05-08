@@ -26,6 +26,18 @@ LOGGER = logging.getLogger('geoprocessing_core')
 
 cdef float NODATA = -1.0
 
+
+class MaskWrapper(object):
+    def __init__(self, base_nodata):
+        self.base_nodata = base_nodata
+
+    def __call__(self, base_array):
+        result = numpy.empty(base_array.shape, dtype=numpy.int8)
+        result[:] = NODATA
+        valid_mask = base_array != self.base_nodata
+        result[valid_mask] = base_array[valid_mask] != 0
+        return result
+
 @cython.boundscheck(False)
 @cython.wraparound(False)
 @cython.cdivision(True)
@@ -60,16 +72,9 @@ def distance_transform_edt(base_mask_raster_path_band, target_distance_path):
     base_nodata = base_raster_info['nodata'][
         base_mask_raster_path_band[1]-1]
 
-    def _mask_op(base_array):
-        """Convert base_array to 1 if >0, 0 if == 0 or nodata."""
-        result = numpy.empty(base_array.shape, dtype=numpy.int8)
-        result[:] = NODATA
-        valid_mask = base_array != base_nodata
-        result[valid_mask] = base_array[valid_mask] != 0
-        return result
-
     pygeoprocessing.raster_calculator(
-        [base_mask_raster_path_band], _mask_op, base_mask_path,
+        [base_mask_raster_path_band], MaskWrapper(base_nodata),
+        base_mask_path,
         gdal.GDT_Byte, NODATA, calc_raster_stats=False)
 
     base_mask_raster = gdal.OpenEx(base_mask_path)

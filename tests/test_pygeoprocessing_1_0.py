@@ -19,12 +19,20 @@ import pygeoprocessing.routing
 import shapely.geometry
 import mock
 
+import pathos.multiprocessing
+
+
+def passthrough(x):
+    """Used in testing simple raster calculator calls."""
+    return x
+
 
 class PyGeoprocessing10(unittest.TestCase):
     """Tests for the PyGeoprocesing 1.0 refactor."""
 
     def setUp(self):
         """Create a temporary workspace that's deleted later."""
+        pathos.multiprocessing.freeze_support()
         self.workspace_dir = tempfile.mkdtemp()
 
     def tearDown(self):
@@ -903,7 +911,7 @@ class PyGeoprocessing10(unittest.TestCase):
         target_path = os.path.join(
             self.workspace_dir, 'target.tif')
         pygeoprocessing.raster_calculator(
-            [(base_path, 1)], lambda x: x, target_path,
+            [(base_path, 1)], passthrough, target_path,
             gdal.GDT_Int32, nodata_target, calc_raster_stats=True)
         pygeoprocessing.testing.assert_rasters_equal(base_path, target_path)
 
@@ -924,7 +932,7 @@ class PyGeoprocessing10(unittest.TestCase):
                 [(base_path, 1, base_path, 2)], base_path]:
             with self.assertRaises(ValueError):
                 pygeoprocessing.raster_calculator(
-                    bad_raster_path_band_list, lambda x: x, target_path,
+                    bad_raster_path_band_list, passthrough, target_path,
                     gdal.GDT_Int32, nodata_target, calc_raster_stats=True)
 
     def test_raster_calculator_no_path(self):
@@ -935,7 +943,7 @@ class PyGeoprocessing10(unittest.TestCase):
             self.workspace_dir, 'target.tif')
         with self.assertRaises(ValueError):
             pygeoprocessing.raster_calculator(
-                [(nonexistant_path, 1)], lambda x: x, target_path,
+                [(nonexistant_path, 1)], passthrough, target_path,
                 gdal.GDT_Int32, nodata_target, calc_raster_stats=True)
 
     def test_raster_calculator_nodata(self):
@@ -952,7 +960,7 @@ class PyGeoprocessing10(unittest.TestCase):
         target_path = os.path.join(
             self.workspace_dir, 'target.tif')
         pygeoprocessing.raster_calculator(
-            [(base_path, 1)], lambda x: x, target_path,
+            [(base_path, 1)], passthrough, target_path,
             gdal.GDT_Int32, nodata_target, calc_raster_stats=True)
         pygeoprocessing.testing.assert_rasters_equal(base_path, target_path)
 
@@ -969,7 +977,7 @@ class PyGeoprocessing10(unittest.TestCase):
         with self.assertRaises(ValueError):
             # intentionally passing target path as base path to raise error
             pygeoprocessing.raster_calculator(
-                [(base_path, 1)], lambda x: x, base_path,
+                [(base_path, 1)], passthrough, base_path,
                 gdal.GDT_Int32, nodata_base, calc_raster_stats=True)
 
     def test_rs_calculator_bad_overlap(self):
@@ -993,7 +1001,7 @@ class PyGeoprocessing10(unittest.TestCase):
             # intentionally passing a filename rather than a list of files
             # to get an expected exception
             pygeoprocessing.raster_calculator(
-                [(base_path_a, 1), (base_path_b, 1)], lambda x: x,
+                [(base_path_a, 1), (base_path_b, 1)], passthrough,
                 target_path, gdal.GDT_Int32, nodata_base,
                 gtiff_creation_options=None, calc_raster_stats=True)
 

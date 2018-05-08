@@ -15,6 +15,7 @@ import multiprocessing
 import threading
 import sys
 import traceback
+import Queue
 
 try:
     import psutil
@@ -22,6 +23,7 @@ try:
 except ImportError:
     HAS_PSUTIL = False
 
+import dill as pickle
 from osgeo import gdal
 from osgeo import osr
 from osgeo import ogr
@@ -167,19 +169,11 @@ def raster_calculator(
             "following raster are not identical %s" % str(
                 geospatial_info_set))
 
-    base_raster_list = [
-        gdal.OpenEx(path_band[0]) for path_band in base_raster_path_band_list]
-    base_band_list = [
-        raster.GetRasterBand(index) for raster, (_, index) in zip(
-            base_raster_list, base_raster_path_band_list)]
-
     base_raster_info = get_raster_info(base_raster_path_band_list[0][0])
 
     new_raster_from_base(
         base_raster_path_band_list[0][0], target_raster_path, datatype_target,
         [nodata_target], gtiff_creation_options=gtiff_creation_options)
-    target_raster = gdal.OpenEx(target_raster_path, gdal.GA_Update)
-    target_band = target_raster.GetRasterBand(1)
 
     try:
         n_cols, n_rows = base_raster_info['raster_size']
@@ -194,34 +188,53 @@ def raster_calculator(
         target_n = 0
         target_mean = None
         target_stddev = None
+
+        target_raster_lock = multiprocessing.Manager().Lock()
+
+        """
+        result = worker_pool.apply_async(
+            func=warp_raster, args=(
+                base_path, target_pixel_size, target_path, resample_method),
+            kwds={
+                'target_bb': target_bounding_box,
+                'gtiff_creation_options': gtiff_creation_options,
+                'logging_queue': logging_queue
+                })
+        """
+
+        n_workers = max(multiprocessing.cpu_count(), 1)
+        worker_queue = multiprocessing.Queue(-1)
+        result_queue = multiprocessing.Queue(-1)
+        worker_list = []
+
+        for index in xrange(n_workers):
+            p = multiprocessing.Process(
+                target=_process_raster_block_worker,
+                name='raster_calculator_worker_%d' % index,
+                args=(
+                    worker_queue, result_queue, base_raster_path_band_list,
+                    local_op, target_raster_lock, target_raster_path,
+                    'raster_calculator_worker_%d' % index))
+            worker_list.append(p)
+        if HAS_PSUTIL:
+            parent = psutil.Process()
+            parent.nice(psutil.BELOW_NORMAL_PRIORITY_CLASS)
+            for child in parent.children():
+                try:
+                    child.nice(psutil.BELOW_NORMAL_PRIORITY_CLASS)
+                except psutil.NoSuchProcess:
+                    LOGGER.warn(
+                        "NoSuchProcess exception encountered when trying "
+                        "to nice %s. This might be a bug in `psutil` so "
+                        "it should be okay to ignore.")
+        n_blocks = 0
         for block_offset in iterblocks(
                 base_raster_path_band_list[0][0], offset_only=True,
                 largest_block=largest_block):
-            xoff, yoff = block_offset['xoff'], block_offset['yoff']
-            last_time = _invoke_timed_callback(
-                last_time, lambda: LOGGER.info(
-                    'raster stack calculation approx. %.2f%% complete',
-                    100.0 * (yoff * n_cols - xoff) /
-                    (n_rows * n_cols)), _LOGGING_PERIOD)
-            blocksize = (block_offset['win_ysize'], block_offset['win_xsize'])
+            worker_queue.put(block_offset)
+            n_blocks += 1
 
-            if last_blocksize != blocksize:
-                raster_blocks = [
-                    numpy.zeros(blocksize, dtype=_gdal_to_numpy_type(band))
-                    for band in base_band_list]
-                last_blocksize = blocksize
-
-            for dataset_index in xrange(len(base_band_list)):
-                band_data = block_offset.copy()
-                band_data['buf_obj'] = raster_blocks[dataset_index]
-                base_band_list[dataset_index].ReadAsArray(**band_data)
-
-            target_block = local_op(*raster_blocks)
-
-            target_band.WriteArray(
-                target_block, xoff=block_offset['xoff'],
-                yoff=block_offset['yoff'])
-
+            """
             if calc_raster_stats:
                 # guard against an undefined nodata target
                 valid_mask = numpy.ones(target_block.shape, dtype=bool)
@@ -258,15 +271,30 @@ def raster_calculator(
             target_band.SetStatistics(
                 float(target_min), float(target_max), float(target_mean),
                 float(target_stddev))
+        """
+        for worker in worker_list:
+            worker.start()
+        blocks_done = 0
+        last_time = time.time()
+        while True:
+            status = result_queue.get()
+            if status:
+                blocks_done += 1
+                last_time = _invoke_timed_callback(
+                    last_time, lambda: LOGGER.info(
+                        '%.2f%% complete',
+                        float(blocks_done) / n_blocks * 100.0),
+                    _LOGGING_PERIOD)
+            else:
+                n_workers -= 1
+            if n_workers == 0:
+                break
+
+        for worker in worker_list:
+            worker.join()
+
     finally:
-        base_band_list[:] = []
-        for raster in base_raster_list:
-            gdal.Dataset.__swig_destroy__(raster)
-        base_raster_list[:] = []
-        target_band.FlushCache()
-        target_band = None
-        gdal.Dataset.__swig_destroy__(target_raster)
-        target_raster = None
+        pass
 
 
 def align_and_resize_raster_stack(
@@ -1494,6 +1522,16 @@ def calculate_disjoint_polygon_set(vector_path, layer_index=0):
     return subset_list
 
 
+class MaskWrapper(object):
+    def __init__(self, nodata, nodata_out):
+        self.nodata = nodata
+        self.nodata_out = nodata_out
+
+    def __call__(self, base_array):
+        """Convert base_array to 1 if >0, 0 if == 0 or nodata."""
+        return numpy.where(
+            base_array == self.nodata, self.nodata_out, base_array != 0)
+
 def distance_transform_edt(
         base_mask_raster_path_band, target_distance_raster_path,
         working_dir=None):
@@ -1523,14 +1561,9 @@ def distance_transform_edt(
     nodata = raster_info['nodata'][base_mask_raster_path_band[1]-1]
     nodata_out = 255
 
-    def _mask_op(base_array):
-        """Convert base_array to 1 if >0, 0 if == 0 or nodata."""
-        return numpy.where(
-            base_array == nodata, nodata_out, base_array != 0)
-
     raster_calculator(
-        [base_mask_raster_path_band], _mask_op, dt_mask_path,
-        gdal.GDT_Byte, nodata_out, calc_raster_stats=False)
+        [base_mask_raster_path_band], MaskWrapper(nodata, nodata_out),
+        dt_mask_path, gdal.GDT_Byte, nodata_out, calc_raster_stats=False)
     geoprocessing_core.distance_transform_edt(
         (dt_mask_path, 1), target_distance_raster_path)
     try:
@@ -2466,3 +2499,59 @@ def _listener_thread(logging_queue):
             LOGGER.handle(record)
         except:
             traceback.print_exc(file=sys.stderr)
+
+
+def _process_raster_block_worker(
+        work_queue, result_queue, base_raster_path_band_list, local_op,
+        target_raster_lock, target_raster_path, process_name):
+    """Process a block of base_raster_path_band for the given square."""
+    """
+    last_time = _invoke_timed_callback(
+        last_time, lambda: LOGGER.info(
+            'raster stack calculation approx. %.2f%% complete',
+            100.0 * (yoff * n_cols - xoff) /
+            (n_rows * n_cols)), _LOGGING_PERIOD)
+    """
+    base_raster_list = [
+        gdal.OpenEx(path_band[0]) for path_band in base_raster_path_band_list]
+    base_band_list = [
+        raster.GetRasterBand(index) for raster, (_, index) in zip(
+            base_raster_list, base_raster_path_band_list)]
+
+    while True:
+        try:
+            block_offset = work_queue.get_nowait()
+        except Queue.Empty:
+            break
+        blocksize = (block_offset['win_ysize'], block_offset['win_xsize'])
+        raster_blocks = [
+            numpy.zeros(blocksize, dtype=_gdal_to_numpy_type(band))
+            for band in base_band_list]
+
+        for dataset_index in xrange(len(base_band_list)):
+            band_data = block_offset.copy()
+            band_data['buf_obj'] = raster_blocks[dataset_index]
+            base_band_list[dataset_index].ReadAsArray(**band_data)
+
+        target_block = local_op(*raster_blocks)
+        with target_raster_lock:
+            target_raster = gdal.OpenEx(target_raster_path, gdal.GA_Update)
+            target_band = target_raster.GetRasterBand(1)
+            target_band.WriteArray(
+                target_block, xoff=block_offset['xoff'],
+                yoff=block_offset['yoff'])
+            target_band.FlushCache()
+            target_band = None
+            gdal.Dataset.__swig_destroy__(target_raster)
+            target_raster = None
+        result_queue.put(True)
+
+
+    base_band_list[:] = []
+    for raster in base_raster_list:
+        gdal.Dataset.__swig_destroy__(raster)
+    base_raster_list[:] = []
+    target_band = None
+    gdal.Dataset.__swig_destroy__(target_raster)
+    target_raster = None
+    result_queue.put(None)
