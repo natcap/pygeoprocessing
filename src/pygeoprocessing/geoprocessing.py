@@ -211,6 +211,10 @@ def raster_calculator(
         # blocks that have been calculated with local_op.
         write_block_queue = multiprocessing_manager.Queue(2)
 
+        stddev_work_queue = multiprocessing_manager.Queue()
+        stddev_S = multiprocessing_manager.Value('d', 0.0)
+        stddev_M = multiprocessing_manager.Value('d', 0.0)
+
         # this flag is used to terminate the write_block_worker in case of
         # an exception. c = 'char' == 8 bits
         emergency_stop = multiprocessing_manager.Value('c', False)
@@ -285,6 +289,7 @@ def raster_calculator(
                 if nodata_target is not None:
                     valid_mask[:] = target_block != nodata_target
                 valid_block = target_block[valid_mask]
+                stddev_work_queue.put(valid_block)
                 if valid_block.size == 0:
                     continue
                 if target_min is None:
@@ -297,6 +302,8 @@ def raster_calculator(
 
         # Making sure the band and dataset is flushed and not in memory before
         # adding stats
+        if calc_raster_stats:
+            stddev_work_queue.put(None)
         write_block_queue.put(None)
         write_worker_result.get()
         LOGGER.debug("write_worker terminated.")

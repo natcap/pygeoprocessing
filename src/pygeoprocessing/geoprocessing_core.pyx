@@ -468,3 +468,37 @@ def calculate_slope(
     gdal.Dataset.__swig_destroy__(target_slope_raster)
     dem_raster = None
     target_slope_raster = None
+
+
+def stddev_worker(stddev_work_queue):
+    """Worker to calculate continuous mean and standard deviation.
+
+    Parameters:
+        stddev_work_queue (Queue): a queue of numpy arrays or None. If None,
+            loop terminates, otherwise value in numpy arrays are included
+            in the running mean and variance.
+
+    Returns:
+        (mean, stddev) tuple.
+    """
+    cdef numpy.ndarray[numpy.float64_t, ndim=2] block
+    cdef double M_local = 0.0
+    cdef double S_local = 0.0
+    cdef int n = 0
+    while True:
+        payload = stddev_work_queue.get()
+        if payload is None:
+            break
+        block = payload
+        for i in xrange(block.size[0]):
+            for j in xrange(block.size[1]):
+                n += 1
+                x = block[i, j]
+                if n == 1:
+                    M_local = x
+                    S_local = 0.0
+                else:
+                    M_last = M_local
+                    M_local = M_local+(x - M_local)/<double>(n)
+                    S_local = S_local+(x-M_last)*(x-M_local)
+    return (M_local, (S_local / <double>n) ** 2)
