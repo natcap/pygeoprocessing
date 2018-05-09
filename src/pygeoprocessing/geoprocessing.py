@@ -178,6 +178,8 @@ def raster_calculator(
     try:
         n_cols, n_rows = base_raster_info['raster_size']
         last_time = time.time()
+
+        # these are initialized since they will be used in a loop later
         raster_blocks = None
         target_min = None
         target_max = None
@@ -185,6 +187,8 @@ def raster_calculator(
         target_n = 0
         target_mean = None
         target_stddev = None
+
+        # load base rasters and bands
         base_raster_list = [
             gdal.OpenEx(path_band[0])
             for path_band in base_raster_path_band_list]
@@ -192,23 +196,44 @@ def raster_calculator(
             raster.GetRasterBand(index) for raster, (_, index) in zip(
                 base_raster_list, base_raster_path_band_list)]
 
-        logging_queue = multiprocessing.Manager().Queue()
+        # this manager is used for a variety of workers below, communication
+        # queues, flags, and aggregated values
+        multiprocessing_manager = multiprocessing.Manager()
+
+        # this construct will make a queue that will be used for interprocess
+        # logging
+        logging_queue = multiprocessing_manager.Queue()
         listener = threading.Thread(
             target=_listener_thread, args=(logging_queue,))
         listener.start()
 
-        manager = multiprocessing.Manager()
+        # This queue is part of the first stage parallel pipeline to receive
+        # blocks that have been calculated with local_op.
+        write_block_queue = multiprocessing_manager.Queue(2)
 
-        write_block_queue = manager.Queue(2)
-        emergency_stop = manager.Value('c', False)  # c = 'char' == 8 bits
+        # this flag is used to terminate the write_block_worker in case of
+        # an exception. c = 'char' == 8 bits
+        emergency_stop = multiprocessing_manager.Value('c', False)
+
         n_workers = max(multiprocessing.cpu_count(), 1)
+
+        # the process pool is used to manage processes used for the first
+        # stage computational pipeline
         process_pool = multiprocessing.Pool(n_workers)
+
+        # the write worker takes the result of the call to `local_op` and
+        # writes it to the raster. It is not possible to parallel write to
+        # most raster types, so this gives slightly better performance than
+        # a single process doing both the read/computation and writing
+        # especially if writing to a compressed raster that needs extra
+        # computation.
         LOGGER.debug('starting write_worker')
         write_worker_result = process_pool.apply_async(
             func=_write_block_worker,
             args=(
                 write_block_queue, logging_queue, emergency_stop, target_raster_path,
                 '_write_block_worker'))
+
         LOGGER.debug('started write_worker')
         if HAS_PSUTIL:
             parent = psutil.Process()
@@ -224,6 +249,8 @@ def raster_calculator(
 
         pixels_done = 0
         n_pixels = n_cols * n_rows
+
+        # iterate over each block and calculate local_op
         for block_offset in iterblocks(
                 base_raster_path_band_list[0][0], offset_only=True,
                 largest_block=largest_block):
@@ -233,15 +260,19 @@ def raster_calculator(
                 numpy.zeros(blocksize, dtype=_gdal_to_numpy_type(band))
                 for band in base_band_list]
 
+            # read input blocks
             for dataset_index in xrange(len(base_band_list)):
                 band_data = block_offset.copy()
                 band_data['buf_obj'] = raster_blocks[dataset_index]
                 base_band_list[dataset_index].ReadAsArray(**band_data)
 
+            # calculate local_op over all inputs
             target_block = local_op(*raster_blocks)
-            write_block_queue.put((block_offset, target_block))
-            pixels_done += blocksize[0] * blocksize[1]
 
+            # send result to writer
+            write_block_queue.put((block_offset, target_block))
+
+            pixels_done += blocksize[0] * blocksize[1]
             last_time = _invoke_timed_callback(
                 last_time, lambda: LOGGER.info(
                     '%.2f%% complete',
@@ -274,8 +305,8 @@ def raster_calculator(
             LOGGER.info("Calculating raster stats.")
             target_mean = target_sum / float(target_n)
 
-            block_offset_queue = manager.Queue()
-            running_stdev_sum = manager.Value('d', 0.0)  # 'd' is double
+            block_offset_queue = multiprocessing_managerQueue()
+            running_stdev_sum = multiprocessing_managerValue('d', 0.0)  # 'd' is double
             write_worker_list = []
             for _ in xrange(n_workers):
                 write_worker_result = process_pool.apply_async(
