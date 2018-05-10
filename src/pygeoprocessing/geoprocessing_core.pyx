@@ -471,6 +471,7 @@ def calculate_slope(
     target_slope_raster = None
 
 
+@cython.boundscheck(False)
 def stats_worker(stddev_work_queue, logging_queue=None):
     """Worker to calculate continuous min, max, mean and standard deviation.
 
@@ -491,13 +492,15 @@ def stats_worker(stddev_work_queue, logging_queue=None):
     cdef double min_value = 0.0
     cdef double max_value = 0.0
     cdef double x = 0.0
-    cdef int i
+    cdef int i, n_elements
     cdef long long n = 0L
     payload = None
 
     if logging_queue:
         queue_handler = queuehandler.QueueHandler(logging_queue)
         LOGGER.addHandler(queue_handler)
+    else:
+        queue_handler = None
 
     try:
         while True:
@@ -506,31 +509,34 @@ def stats_worker(stddev_work_queue, logging_queue=None):
                 LOGGER.info('payload is None, terminating')
                 break
             block = payload.astype(numpy.float64)
-            for i in xrange(block.size):
-                n = n + 1
-                x = block[i]
-                if n <= 0:
-                    LOGGER.error('invalid value for n %s' % n)
-                if n == 1:
-                    M_local = x
-                    S_local = 0.0
-                    min_value = x
-                    max_value = x
-                else:
-                    M_last = M_local
-                    M_local = M_local+(x - M_local)/<double>(n)
-                    S_local = S_local+(x-M_last)*(x-M_local)
-                    if x < min_value:
+            n_elements = block.size
+            with nogil:
+                for i in xrange(n_elements):
+                    n = n + 1
+                    x = block[i]
+                    if n <= 0:
+                        with gil:
+                            LOGGER.error('invalid value for n %s' % n)
+                    if n == 1:
+                        M_local = x
+                        S_local = 0.0
                         min_value = x
-                    elif x > max_value:
                         max_value = x
+                    else:
+                        M_last = M_local
+                        M_local = M_local+(x - M_local)/<double>(n)
+                        S_local = S_local+(x-M_last)*(x-M_local)
+                        if x < min_value:
+                            min_value = x
+                        elif x > max_value:
+                            max_value = x
 
         if n > 0:
             return (
                 min_value, max_value, M_local, (S_local / <double>n) ** 0.5)
         else:
             return None
-    except Exception as e:
+    except Exception:
         LOGGER.exception(
             "exception %s %s %s %s %s", x, M_local, S_local, n, payload)
         raise

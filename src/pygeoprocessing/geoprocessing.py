@@ -215,7 +215,8 @@ def raster_calculator(
             # the process pool is used to manage processes used for the first
             # stage computational pipeline, 2 processes for the write and
             # running statistics workers
-            process_pool = multiprocessing.Pool(2)
+            process_pool = multiprocessing.Pool(1)
+            thread_pool = multiprocessing.pool.ThreadPool(1)
 
             if HAS_PSUTIL:
                 parent = psutil.Process()
@@ -244,6 +245,7 @@ def raster_calculator(
                 stats_worker_queue = Queue.Queue(2)
 
             process_pool = multiprocessing.pool.ThreadPool(2)
+            thread_pool = process_pool
 
 
         # the write worker takes the result of the call to `local_op` and
@@ -269,7 +271,7 @@ def raster_calculator(
             # the worker will finish and return a (min, max, mean, std)
             # tuple.
             LOGGER.debug('starting stats_worker')
-            stats_worker_result = process_pool.apply_async(
+            stats_worker_result = thread_pool.apply_async(
                 func=geoprocessing_core.stats_worker,
                 args=(stats_worker_queue, logging_queue))
             LOGGER.debug('started stats_worker %s', stats_worker_result)
@@ -368,6 +370,10 @@ def raster_calculator(
         LOGGER.debug("joining process pool")
         process_pool.join()
         LOGGER.debug("process pool joined")
+
+        LOGGER.debug("joining thread pool")
+        thread_pool.join()
+        LOGGER.debug("thread pool joined")
 
 
 def align_and_resize_raster_stack(
