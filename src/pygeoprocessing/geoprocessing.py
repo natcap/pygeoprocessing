@@ -106,7 +106,7 @@ def raster_calculator(
         gtiff_creation_options (list): this is an argument list that will be
             passed to the GTiff driver.  Useful for blocksizes, compression,
             and more.
-        calculate_raster_stats (boolean): If True, calculates and sets raster
+        calc_raster_stats (boolean): If True, calculates and sets raster
             statistics (min, max, mean, and stdev) for target raster.
         largest_block (int): Attempts to internally iterate over raster blocks
             with this many elements.  Useful in cases where the blocksize is
@@ -185,12 +185,16 @@ def raster_calculator(
             raster.GetRasterBand(index) for raster, (_, index) in zip(
                 base_raster_list, base_raster_path_band_list)]
 
+        local_op_work_queue = Queue.Queue(2)
         write_block_queue = Queue.Queue(2)
+        exception_queue = Queue.Queue(1)
 
-        if calculate_raster_stats:
+        if calc_raster_stats:
             # if this queue is used to send computed valid blocks of
             # the raster to an incremental statistics calculator worker
             stats_worker_queue = Queue.Queue(2)
+        else:
+            stats_worker_queue = None
 
         # the write worker takes the result of the call to `local_op` and
         # writes it to the raster. It is not possible to parallel write to
@@ -222,8 +226,17 @@ def raster_calculator(
             stats_worker_thread.start()
             LOGGER.debug('started stats_worker %s', stats_worker_thread)
 
+        LOGGER.debug('stats worker queue %s %s', stats_worker_queue, calc_raster_stats)
+
         pixels_processed = 0
         n_pixels = n_cols * n_rows
+
+        local_op_thread = threading.Thread(
+            target=_local_op_worker,
+            args=(
+                local_op, nodata_target, local_op_work_queue,
+                write_block_queue, stats_worker_queue, exception_queue))
+        local_op_thread.start()
 
         # iterate over each block and calculate local_op
         for block_offset in iterblocks(
@@ -240,21 +253,11 @@ def raster_calculator(
                 band_data['buf_obj'] = raster_blocks[dataset_index]
                 base_band_list[dataset_index].ReadAsArray(**band_data)
 
-            # calculate local_op over all inputs
-            target_block = local_op(*raster_blocks)
-
-            # send result to writer
-            write_block_queue.put((block_offset, target_block))
-
-            # send result to stats calculator
-            if calc_raster_stats:
-                # guard against an undefined nodata target
-                if nodata_target is not None:
-                    valid_block = target_block[target_block != nodata_target]
-                    if valid_block.size > 0:
-                        stats_worker_queue.put(valid_block)
-                else:
-                    stats_worker_queue.put(target_block)
+            if exception_queue.empty():
+                local_op_work_queue.put((block_offset, raster_blocks))
+            else:
+                LOGGER.error("Exception queue is not empty, quitting.")
+                break
 
             pixels_processed += blocksize[0] * blocksize[1]
             last_time = _invoke_timed_callback(
@@ -263,6 +266,15 @@ def raster_calculator(
                     float(pixels_processed) / n_pixels * 100.0),
                 _LOGGING_PERIOD)
 
+        local_op_work_queue.put(None)
+        local_op_thread.join()
+        try:
+            e = exception_queue.get(0)
+            LOGGER.error("Exception queue is not empty, raising exception.")
+            raise e
+        except Queue.Empty:
+            LOGGER.info("Exception queue was empty, no problem.")
+            pass
         LOGGER.info('100.00%% complete')
 
         # push `None` to work queues
@@ -2519,6 +2531,7 @@ def _listener_thread(logging_queue):
 def _write_block_worker(
         work_queue, target_raster_path):
     """Process a block of base_raster_path_band for the given square."""
+    LOGGER.debug('starting')
     target_raster = gdal.OpenEx(
         target_raster_path, gdal.GA_Update | gdal.OF_RASTER)
     if not target_raster:
@@ -2540,3 +2553,41 @@ def _write_block_worker(
     target_band.FlushCache()
     target_band = None
     gdal.Dataset.__swig_destroy__(target_raster)
+    LOGGER.debug('stopping')
+
+
+def _local_op_worker(
+        local_op, nodata_target, local_op_work_queue, write_block_queue,
+        stats_worker_queue, exception_queue):
+    # calculate local_op over all inputs
+    LOGGER.debug('starting')
+    try:
+        while True:
+            payload = local_op_work_queue.get()
+            if payload is None:
+                break
+            block_offset, raster_blocks = payload
+            target_block = local_op(*raster_blocks)
+
+            # send result to writer
+            write_block_queue.put((block_offset, target_block))
+
+            # send result to stats calculator
+            if stats_worker_queue:
+                # guard against an undefined nodata target
+                if nodata_target is not None:
+                    valid_block = target_block[target_block != nodata_target]
+                    if valid_block.size > 0:
+                        stats_worker_queue.put(valid_block)
+                else:
+                    stats_worker_queue.put(target_block)
+    except Exception as e:
+        LOGGER.exception(
+            "Exception occurred in _local_op_worker, pushing to exception "
+            "queue and terminating")
+        exception_queue.put(e)
+    finally:
+        LOGGER.debug('stopping, sending None to write and stats worker')
+        write_block_queue.put(None)
+        if stats_worker_queue:
+            stats_worker_queue.put(None)
