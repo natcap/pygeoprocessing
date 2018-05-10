@@ -472,15 +472,13 @@ def calculate_slope(
 
 
 @cython.boundscheck(False)
-def stats_worker(stddev_work_queue, logging_queue=None):
+def stats_worker(stddev_work_queue):
     """Worker to calculate continuous min, max, mean and standard deviation.
 
     Parameters:
         stddev_work_queue (Queue): a queue of 1D numpy arrays or None. If
             None, function terminates and returns current min, max, mean and
             stddev.
-        logging_queue (Queue): if not None, a queue to attach as a
-            queueHandler for logging.
 
     Returns:
         (min, max, mean, stddev) tuple or None if no valid numbers were
@@ -495,12 +493,6 @@ def stats_worker(stddev_work_queue, logging_queue=None):
     cdef int i, n_elements
     cdef long long n = 0L
     payload = None
-
-    if logging_queue:
-        queue_handler = queuehandler.QueueHandler(logging_queue)
-        LOGGER.addHandler(queue_handler)
-    else:
-        queue_handler = None
 
     try:
         while True:
@@ -540,6 +532,3 @@ def stats_worker(stddev_work_queue, logging_queue=None):
         LOGGER.exception(
             "exception %s %s %s %s %s", x, M_local, S_local, n, payload)
         raise
-    finally:
-        if logging_queue:
-            LOGGER.removeHandler(queue_handler)

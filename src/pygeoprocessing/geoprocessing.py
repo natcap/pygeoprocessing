@@ -77,8 +77,7 @@ def raster_calculator(
         datatype_target, nodata_target,
         gtiff_creation_options=_DEFAULT_GTIFF_CREATION_OPTIONS,
         calc_raster_stats=True,
-        largest_block=_LARGEST_ITERBLOCK,
-        multiprocessing_enabled=False):
+        largest_block=_LARGEST_ITERBLOCK):
     """Apply local a raster operation on a stack of rasters.
 
     This function applies a user defined function across a stack of
@@ -115,11 +114,6 @@ def raster_calculator(
             overhead dominates the iteration.  Defaults to 2**20.  A value of
             anything less than the original blocksize of the raster will
             result in blocksizes equal to the original size.
-        multiprocessing_enabled (bool): If True, uses two child processes
-            to parallelize writes and statistics calculations if requested.
-            Note to use this mode on Windows the main process must wrap its
-            entry point in a `if __name__ == '__main__':` condition to avoid
-            recursively launching processes.
 
     Returns:
         None
@@ -191,62 +185,17 @@ def raster_calculator(
             raster.GetRasterBand(index) for raster, (_, index) in zip(
                 base_raster_list, base_raster_path_band_list)]
 
-        if multiprocessing_enabled:
-            # this manager is used for a variety of workers below, communication
-            # queues, flags, and aggregated values
-            multiprocessing_manager = multiprocessing.Manager()
+        write_block_queue = Queue.Queue(2)
 
-            # this construct will make a queue that will be used for interprocess
-            # logging
-            logging_queue = multiprocessing_manager.Queue()
-            listener = threading.Thread(
-                target=_listener_thread, args=(logging_queue,))
-            listener.start()
+        if calculate_raster_stats:
+            # if this queue is used to send computed valid blocks of
+            # the raster to an incremental statistics calculator worker
+            stats_worker_queue = Queue.Queue(2)
 
-            # This queue is part of the first stage parallel pipeline to receive
-            # blocks that have been calculated with local_op.
-            write_block_queue = multiprocessing_manager.Queue(2)
-
-            if calculate_raster_stats:
-                # if this queue is used to send computed valid blocks of
-                # the raster to an incremental statistics calculator worker
-                stats_worker_queue = multiprocessing_manager.Queue(2)
-
-            # the process pool is used to manage processes used for the first
-            # stage computational pipeline, 2 processes for the write and
-            # running statistics workers
-            process_pool = multiprocessing.Pool(1)
-            thread_pool = multiprocessing.pool.ThreadPool(1)
-
-            if HAS_PSUTIL:
-                parent = psutil.Process()
-                parent.nice(psutil.BELOW_NORMAL_PRIORITY_CLASS)
-                for child in parent.children():
-                    try:
-                        child.nice(psutil.BELOW_NORMAL_PRIORITY_CLASS)
-                    except psutil.NoSuchProcess:
-                        LOGGER.warn(
-                            "NoSuchProcess exception encountered when trying "
-                            "to nice %s. This might be a bug in `psutil` so "
-                            "it should be okay to ignore.")
-
-        else:
-            # use threads for parallelism
-
-            # no need to sync the logger between processes so set the queue
-            # to none to signal that to that workers
-            logging_queue = None
-
-            # use regular queues to communicate instead of multiprocess manged
-            write_block_queue = Queue.Queue(2)
-            if calculate_raster_stats:
-                # if this queue is used to send computed valid blocks of
-                # the raster to an incremental statistics calculator worker
-                stats_worker_queue = Queue.Queue(2)
-
-            process_pool = multiprocessing.pool.ThreadPool(2)
-            thread_pool = process_pool
-
+        # the process pool is used to manage processes used for the first
+        # stage computational pipeline, 2 processes for the write and
+        # running statistics workers
+        thread_pool = multiprocessing.pool.ThreadPool(1)
 
         # the write worker takes the result of the call to `local_op` and
         # writes it to the raster. It is not possible to parallel write to
@@ -255,11 +204,12 @@ def raster_calculator(
         # especially if writing to a compressed raster that needs extra
         # computation.
         LOGGER.debug('starting write_worker')
-        write_worker_result = process_pool.apply_async(
-            func=_write_block_worker,
+        write_worker_thread = threading.Thread(
+            target=_write_block_worker,
             args=(
-                write_block_queue,  target_raster_path, logging_queue))
-        LOGGER.debug('started write_worker  %s', write_worker_result)
+                write_block_queue, target_raster_path))
+        write_worker_thread.start()
+        LOGGER.debug('started write_worker  %s', write_worker_thread)
 
         if calc_raster_stats:
             # To avoid doing two passes on the raster to calculate standard
@@ -273,7 +223,7 @@ def raster_calculator(
             LOGGER.debug('starting stats_worker')
             stats_worker_result = thread_pool.apply_async(
                 func=geoprocessing_core.stats_worker,
-                args=(stats_worker_queue, logging_queue))
+                args=(stats_worker_queue,))
             LOGGER.debug('started stats_worker %s', stats_worker_result)
 
         pixels_processed = 0
@@ -329,7 +279,7 @@ def raster_calculator(
         # Making sure the band and dataset is flushed and not in memory before
         # adding stats
         LOGGER.info("waiting for write worker to terminate")
-        write_worker_result.get()
+        write_worker_thread.join()
         LOGGER.info("write_worker terminated.")
 
         if calc_raster_stats:
@@ -351,27 +301,17 @@ def raster_calculator(
         LOGGER.exception('Exception encountered.')
         raise
     finally:
-        process_pool.close()
         if calc_raster_stats:
             stats_worker_queue.put(None)
             stats_worker_result.get()
             LOGGER.debug('stats_worker terminated')
 
         write_block_queue.put(None)
-        write_worker_result.get()
+        write_worker_thread.join()
         LOGGER.debug("write_worker terminated.")
 
-        if logging_queue is not None:
-            LOGGER.debug("terminating logging listener")
-            logging_queue.put(None)  # signal done logging
-            listener.join()
-            LOGGER.debug("logging listener terminated")
-
-        LOGGER.debug("joining process pool")
-        process_pool.join()
-        LOGGER.debug("process pool joined")
-
         LOGGER.debug("joining thread pool")
+        thread_pool.close()
         thread_pool.join()
         LOGGER.debug("thread pool joined")
 
@@ -2584,12 +2524,8 @@ def _listener_thread(logging_queue):
 
 
 def _write_block_worker(
-        work_queue, target_raster_path, logging_queue=None):
+        work_queue, target_raster_path):
     """Process a block of base_raster_path_band for the given square."""
-    if logging_queue:
-        queue_handler = queuehandler.QueueHandler(logging_queue)
-        LOGGER.addHandler(queue_handler)
-
     target_raster = gdal.OpenEx(
         target_raster_path, gdal.GA_Update | gdal.OF_RASTER)
     if not target_raster:
@@ -2611,6 +2547,3 @@ def _write_block_worker(
     target_band.FlushCache()
     target_band = None
     gdal.Dataset.__swig_destroy__(target_raster)
-
-    if logging_queue:
-        LOGGER.removeHandler(queue_handler)
