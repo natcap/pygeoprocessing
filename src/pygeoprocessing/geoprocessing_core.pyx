@@ -16,13 +16,14 @@ from libc.math cimport ceil
 
 from osgeo import gdal
 import pygeoprocessing
+from . import queuehandler
 
 # TODO: Would it make sense to import these from pygeoprocessing.geoprocessing
 # instead of redefining here?
 _DEFAULT_GTIFF_CREATION_OPTIONS = (
     'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW')
 
-LOGGER = logging.getLogger('geoprocessing_core')
+LOGGER = logging.getLogger('pygeoprocessing.geoprocessing_core')
 
 cdef float NODATA = -1.0
 
@@ -470,13 +471,15 @@ def calculate_slope(
     target_slope_raster = None
 
 
-def stats_worker(stddev_work_queue):
+def stats_worker(stddev_work_queue, logging_queue=None):
     """Worker to calculate continuous min, max, mean and standard deviation.
 
     Parameters:
         stddev_work_queue (Queue): a queue of 1D numpy arrays or None. If
             None, function terminates and returns current min, max, mean and
             stddev.
+        logging_queue (Queue): if not None, a queue to attach as a
+            queueHandler for logging.
 
     Returns:
         (min, max, mean, stddev) tuple or None if no valid numbers were
@@ -491,20 +494,23 @@ def stats_worker(stddev_work_queue):
     cdef int i
     cdef long long n = 0L
     payload = None
+
+    if logging_queue:
+        queue_handler = queuehandler.QueueHandler(logging_queue)
+        LOGGER.addHandler(queue_handler)
+
     try:
         while True:
             payload = stddev_work_queue.get()
             if payload is None:
-                print 'payload is None, breaking'
+                LOGGER.info('payload is None, terminating')
                 break
             block = payload.astype(numpy.float64)
             for i in xrange(block.size):
                 n = n + 1
                 x = block[i]
-                if n < 0:
-                    print 'error n is negative %s' % n
-                elif n == 0:
-                    print 'error n is zero %s' % n
+                if n <= 0:
+                    LOGGER.error('invalid value for n %s' % n)
                 if n == 1:
                     M_local = x
                     S_local = 0.0
@@ -518,10 +524,16 @@ def stats_worker(stddev_work_queue):
                         min_value = x
                     elif x > max_value:
                         max_value = x
+
         if n > 0:
-            return (min_value, max_value, M_local, (S_local / <double>n) ** 0.5)
+            return (
+                min_value, max_value, M_local, (S_local / <double>n) ** 0.5)
         else:
             return None
     except Exception as e:
-        print e, x, M_local, S_local, n, payload
+        LOGGER.exception(
+            "exception %s %s %s %s %s", x, M_local, S_local, n, payload)
         raise
+    finally:
+        if logging_queue:
+            LOGGER.removeHandler(queue_handler)

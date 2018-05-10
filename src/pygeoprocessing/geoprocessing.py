@@ -14,9 +14,6 @@ import distutils.version
 import multiprocessing
 import multiprocessing.pool
 import threading
-import sys
-import traceback
-import Queue
 
 try:
     import psutil
@@ -24,7 +21,6 @@ try:
 except ImportError:
     HAS_PSUTIL = False
 
-import dill as pickle
 from osgeo import gdal
 from osgeo import osr
 from osgeo import ogr
@@ -203,14 +199,12 @@ def raster_calculator(
         # blocks that have been calculated with local_op.
         write_block_queue = multiprocessing_manager.Queue(2)
 
-        # this flag is used to terminate the write_block_worker in case of
-        # an exception. c = 'char' == 8 bits
-        emergency_stop = multiprocessing_manager.Value('c', False)
-
         # the process pool is used to manage processes used for the first
-        # stage computational pipeline, 2 processes for 2 workers
+        # stage computational pipeline, 2 processes for the write and
+        # running statistics workers
         process_pool = multiprocessing.Pool(2)
         #process_pool = multiprocessing.pool.ThreadPool(2)
+
         if HAS_PSUTIL:
             parent = psutil.Process()
             parent.nice(psutil.BELOW_NORMAL_PRIORITY_CLASS)
@@ -233,21 +227,26 @@ def raster_calculator(
         write_worker_result = process_pool.apply_async(
             func=_write_block_worker,
             args=(
-                write_block_queue, logging_queue, emergency_stop,
-                target_raster_path, '_write_block_worker'))
+                write_block_queue,  target_raster_path, logging_queue))
         LOGGER.debug('started write_worker  %s', write_worker_result)
 
         if calc_raster_stats:
-            # incremental results of valid pixels will be pushed to this queue
-            # to determine running stats
+            # To avoid doing two passes on the raster to calculate standard
+            # deviation, we implement a continuous statistics calculation
+            # as the raster is computed. This computational effort is high
+            # and benefits from running in parallel. This queue and worker
+            # takes a valid block of a raster and incrementally calculates
+            # the raster's statistics. When `None` is pushed to the queue
+            # the worker will finish and return a (min, max, mean, std)
+            # tuple.
             stats_worker_queue = multiprocessing_manager.Queue(2)
             LOGGER.debug('starting stats_worker')
             stats_worker_result = process_pool.apply_async(
                 func=geoprocessing_core.stats_worker,
-                args=(stats_worker_queue,))
+                args=(stats_worker_queue, logging_queue))
             LOGGER.debug('started stats_worker %s', stats_worker_result)
 
-        pixels_done = 0
+        pixels_processed = 0
         n_pixels = n_cols * n_rows
 
         # iterate over each block and calculate local_op
@@ -255,12 +254,11 @@ def raster_calculator(
                 base_raster_path_band_list[0][0], offset_only=True,
                 largest_block=largest_block):
 
+            # read input blocks
             blocksize = (block_offset['win_ysize'], block_offset['win_xsize'])
             raster_blocks = [
                 numpy.zeros(blocksize, dtype=_gdal_to_numpy_type(band))
                 for band in base_band_list]
-
-            # read input blocks
             for dataset_index in xrange(len(base_band_list)):
                 band_data = block_offset.copy()
                 band_data['buf_obj'] = raster_blocks[dataset_index]
@@ -272,29 +270,31 @@ def raster_calculator(
             # send result to writer
             write_block_queue.put((block_offset, target_block))
 
-            pixels_done += blocksize[0] * blocksize[1]
+            # send result to stats calculator
+            if calc_raster_stats:
+                # guard against an undefined nodata target
+                if nodata_target is not None:
+                    valid_block = target_block[target_block != nodata_target]
+                    if valid_block.size > 0:
+                        stats_worker_queue.put(valid_block)
+                else:
+                    stats_worker_queue.put(target_block)
+
+            pixels_processed += blocksize[0] * blocksize[1]
             last_time = _invoke_timed_callback(
                 last_time, lambda: LOGGER.info(
                     '%.2f%% complete',
-                    float(pixels_done) / n_pixels * 100.0),
+                    float(pixels_processed) / n_pixels * 100.0),
                 _LOGGING_PERIOD)
-
-            if calc_raster_stats:
-                # guard against an undefined nodata target
-                valid_mask = numpy.ones(target_block.shape, dtype=bool)
-                if nodata_target is not None:
-                    valid_mask[:] = target_block != nodata_target
-                valid_block = target_block[valid_mask]
-                if valid_block.size > 0:
-                    stats_worker_queue.put(valid_block)
 
         LOGGER.info('100.00%% complete')
 
+        # push `None` to work queues
+        LOGGER.info('signaling write worker to shut down')
+        write_block_queue.put(None)
         if calc_raster_stats:
             LOGGER.info('signaling stats worker to shut down')
             stats_worker_queue.put(None)
-        LOGGER.info('signaling write worker to shut down')
-        write_block_queue.put(None)
 
         # Making sure the band and dataset is flushed and not in memory before
         # adding stats
@@ -318,23 +318,18 @@ def raster_calculator(
                 target_band = None
                 gdal.Dataset.__swig_destroy__(target_raster)
     except:
-        LOGGER.exception(
-            "Exception in raster_calculator, terminating process pool.")
-        emergency_stop.value = True
-        #write_worker_result.get()
+        LOGGER.exception('Exception encountered.')
         raise
     finally:
         process_pool.close()
         if calc_raster_stats:
             stats_worker_queue.put(None)
-    #        stats_worker_result.get()
+            stats_worker_result.get()
             LOGGER.debug('stats_worker terminated')
 
         write_block_queue.put(None)
-        #write_worker_result.get()
+        write_worker_result.get()
         LOGGER.debug("write_worker terminated.")
-
-        ### maybe drain all the queues?  subprocess crashed... figure out what
 
         LOGGER.debug("terminating logging listener")
         logging_queue.put(None)  # signal done logging
@@ -2417,6 +2412,7 @@ def _invoke_timed_callback(
     Returns:
         `reference_time` if `callback_lambda` not invoked, otherwise the time
         when `callback_lambda` was invoked.
+
     """
     current_time = time.time()
     if current_time - reference_time > callback_period:
@@ -2436,6 +2432,7 @@ def _gdal_to_numpy_type(band):
 
     Returns:
         numpy_datatype (numpy.dtype): equivalent of band.DataType
+
     """
     # doesn't include GDT_Byte because that's a special case
     base_gdal_type_to_numpy = {
@@ -2547,21 +2544,18 @@ def _listener_thread(logging_queue):
 
     """
     while True:
-        try:
-            record = logging_queue.get()
-            if record is None:  # None is the quitting sentinel
-                break
-            LOGGER.handle(record)
-        except:
-            traceback.print_exc(file=sys.stderr)
+        record = logging_queue.get()
+        if record is None:  # None is the quitting sentinel
+            break
+        LOGGER.handle(record)
 
 
 def _write_block_worker(
-        work_queue, logging_queue, emergency_stop, target_raster_path,
-        process_name):
+        work_queue, target_raster_path, logging_queue=None):
     """Process a block of base_raster_path_band for the given square."""
-    queue_handler = queuehandler.QueueHandler(logging_queue)
-    LOGGER.addHandler(queue_handler)
+    if logging_queue:
+        queue_handler = queuehandler.QueueHandler(logging_queue)
+        LOGGER.addHandler(queue_handler)
 
     target_raster = gdal.OpenEx(
         target_raster_path, gdal.GA_Update | gdal.OF_RASTER)
@@ -2570,19 +2564,11 @@ def _write_block_worker(
     target_band = target_raster.GetRasterBand(1)
 
     while True:
-        if emergency_stop.value:
-            LOGGER.warn(
-                "Encountered emergency_stop in %s, terminating.",
-                process_name)
-            break
-        try:
-            payload = work_queue.get(1)
-        except Queue.Empty:
-            LOGGER.error(
-                "Encountered timeout in %s, terminating.", process_name)
-            break
+        payload = work_queue.get(1)
         if payload is None:
-            LOGGER.info("Empty payload in %s, terminating.", process_name)
+            LOGGER.info(
+                "Empty payload, terminating. (%s)",
+                multiprocessing.current_process().name)
             break
         block_offset, block = payload
         target_band.WriteArray(
@@ -2592,21 +2578,6 @@ def _write_block_worker(
     target_band.FlushCache()
     target_band = None
     gdal.Dataset.__swig_destroy__(target_raster)
-    LOGGER.removeHandler(queue_handler)
 
-
-def _stdev_sum_aggreator(
-        block_offset_queue, running_sum, target_mean, nodata_target,
-        target_raster_path, process_name):
-    target_raster = gdal.Open(target_raster_path, gdal.OF_RASTER)
-    target_band = target_raster.GetRasterBand(1)
-    while True:
-        block_offset = block_offset_queue.get()
-        if block_offset is None:
-            break
-        target_block = target_band.ReadAsArray(**block_offset)
-        valid_mask = numpy.ones(target_block.shape, dtype=bool)
-        if nodata_target is not None:
-            valid_mask[:] = target_block != nodata_target
-        valid_block = target_block[valid_mask]
-        running_sum.value += numpy.sum((valid_block - target_mean) ** 2)
+    if logging_queue:
+        LOGGER.removeHandler(queue_handler)
