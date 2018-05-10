@@ -470,35 +470,49 @@ def calculate_slope(
     target_slope_raster = None
 
 
-def stddev_worker(stddev_work_queue):
-    """Worker to calculate continuous mean and standard deviation.
+def stats_worker(stddev_work_queue):
+    """Worker to calculate continuous min, max, mean and standard deviation.
 
     Parameters:
-        stddev_work_queue (Queue): a queue of numpy arrays or None. If None,
-            loop terminates, otherwise value in numpy arrays are included
-            in the running mean and variance.
+        stddev_work_queue (Queue): a queue of 1D numpy arrays or None. If
+            None, function terminates and returns current min, max, mean and
+            stddev.
 
     Returns:
-        (mean, stddev) tuple.
+        (min, max, mean, stddev) tuple or None if no valid numbers were
+        processed.
     """
-    cdef numpy.ndarray[numpy.float64_t, ndim=2] block
+    print 'in stats worker'
+    cdef numpy.ndarray[numpy.float64_t, ndim=1] block
     cdef double M_local = 0.0
     cdef double S_local = 0.0
+    cdef double min_value = 0.0
+    cdef double max_value = 0.0
+    cdef double x
+    cdef int i
     cdef int n = 0
     while True:
         payload = stddev_work_queue.get()
         if payload is None:
             break
-        block = payload
-        for i in xrange(block.size[0]):
-            for j in xrange(block.size[1]):
-                n += 1
-                x = block[i, j]
-                if n == 1:
-                    M_local = x
-                    S_local = 0.0
-                else:
-                    M_last = M_local
-                    M_local = M_local+(x - M_local)/<double>(n)
-                    S_local = S_local+(x-M_last)*(x-M_local)
-    return (M_local, (S_local / <double>n) ** 2)
+        block = payload.astype(numpy.float64)
+        for i in xrange(block.size):
+            n += 1
+            x = block[i]
+            if n == 1:
+                M_local = x
+                S_local = 0.0
+                min_value = x
+                max_value = x
+            else:
+                M_last = M_local
+                M_local = M_local+(x - M_local)/<double>(n)
+                S_local = S_local+(x-M_last)*(x-M_local)
+                if x < min_value:
+                    min_value = x
+                elif x > max_value:
+                    max_value = x
+    if n > 0:
+        return (min_value, max_value, M_local, (S_local / <double>n) ** 0.5)
+    else:
+        return None

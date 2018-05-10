@@ -19,8 +19,6 @@ import pygeoprocessing.routing
 import shapely.geometry
 import mock
 
-import pathos.multiprocessing
-
 
 def passthrough(x):
     """Used in testing simple raster calculator calls."""
@@ -32,7 +30,6 @@ class PyGeoprocessing10(unittest.TestCase):
 
     def setUp(self):
         """Create a temporary workspace that's deleted later."""
-        pathos.multiprocessing.freeze_support()
         self.workspace_dir = tempfile.mkdtemp()
 
     def tearDown(self):
