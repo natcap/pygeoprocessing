@@ -288,18 +288,24 @@ def raster_calculator(
                 if valid_block.size > 0:
                     stats_worker_queue.put(valid_block)
 
+        LOGGER.info('100.00%% complete')
+
         if calc_raster_stats:
+            LOGGER.info('signaling stats worker to shut down')
             stats_worker_queue.put(None)
+        LOGGER.info('signaling write worker to shut down')
         write_block_queue.put(None)
 
         # Making sure the band and dataset is flushed and not in memory before
         # adding stats
+        LOGGER.info("waiting for write worker to terminate")
         write_worker_result.get()
-        LOGGER.debug("write_worker terminated.")
+        LOGGER.info("write_worker terminated.")
 
         if calc_raster_stats:
-            LOGGER.info("Processing raster stats.")
+            LOGGER.info("Waiting for raster stats worker result.")
             payload = stats_worker_result.get()
+            LOGGER.info("Got %s from stats worker", payload)
             if payload is not None:
                 target_min, target_max, target_mean, target_stddev = payload
                 target_raster = gdal.OpenEx(
@@ -311,36 +317,30 @@ def raster_calculator(
                 target_band.FlushCache()
                 target_band = None
                 gdal.Dataset.__swig_destroy__(target_raster)
-    except ValueError:
-        LOGGER.warn(
-            "Exception in raster_calculator, setting flag to stop "
-            "write_worker.")
+    except:
+        LOGGER.exception(
+            "Exception in raster_calculator, terminating process pool.")
         emergency_stop.value = True
-        write_worker_result.get()
+        #write_worker_result.get()
         raise
     finally:
         process_pool.close()
-        emergency_stop = None
-
         if calc_raster_stats:
             stats_worker_queue.put(None)
-            stats_worker_result.get()
+    #        stats_worker_result.get()
             LOGGER.debug('stats_worker terminated')
 
         write_block_queue.put(None)
-        write_block_queue = None
-        write_worker_result.get()
+        #write_worker_result.get()
         LOGGER.debug("write_worker terminated.")
 
         ### maybe drain all the queues?  subprocess crashed... figure out what
 
         LOGGER.debug("terminating logging listener")
         logging_queue.put(None)  # signal done logging
-        logging_queue = None
         listener.join()
         LOGGER.debug("logging listener terminated")
 
-        multiprocessing_manager = None
         #process_pool.terminate()
 
         LOGGER.debug("joining process pool")

@@ -482,7 +482,6 @@ def stats_worker(stddev_work_queue):
         (min, max, mean, stddev) tuple or None if no valid numbers were
         processed.
     """
-    print 'in stats worker'
     cdef numpy.ndarray[numpy.float64_t, ndim=1] block
     cdef double M_local = 0.0
     cdef double S_local = 0.0
@@ -491,28 +490,33 @@ def stats_worker(stddev_work_queue):
     cdef double x
     cdef int i
     cdef int n = 0
-    while True:
-        payload = stddev_work_queue.get()
-        if payload is None:
-            break
-        block = payload.astype(numpy.float64)
-        for i in xrange(block.size):
-            n += 1
-            x = block[i]
-            if n == 1:
-                M_local = x
-                S_local = 0.0
-                min_value = x
-                max_value = x
-            else:
-                M_last = M_local
-                M_local = M_local+(x - M_local)/<double>(n)
-                S_local = S_local+(x-M_last)*(x-M_local)
-                if x < min_value:
+    try:
+        while True:
+            payload = stddev_work_queue.get()
+            if payload is None:
+                break
+            block = payload.astype(numpy.float64)
+            for i in xrange(block.size):
+                n += 1
+                x = block[i]
+                if n == 1:
+                    M_local = x
+                    S_local = 0.0
                     min_value = x
-                elif x > max_value:
                     max_value = x
-    if n > 0:
-        return (min_value, max_value, M_local, (S_local / <double>n) ** 0.5)
-    else:
-        return None
+                else:
+                    M_last = M_local
+                    M_local = M_local+(x - M_local)/<double>(n)
+                    S_local = S_local+(x-M_last)*(x-M_local)
+                    if x < min_value:
+                        min_value = x
+                    elif x > max_value:
+                        max_value = x
+        if n > 0:
+            return (min_value, max_value, M_local, (S_local / <double>n) ** 0.5)
+        else:
+            return None
+    except Exception as e:
+        print e
+        raise
+
