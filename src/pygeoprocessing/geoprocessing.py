@@ -192,11 +192,6 @@ def raster_calculator(
             # the raster to an incremental statistics calculator worker
             stats_worker_queue = Queue.Queue(2)
 
-        # the process pool is used to manage processes used for the first
-        # stage computational pipeline, 2 processes for the write and
-        # running statistics workers
-        thread_pool = multiprocessing.pool.ThreadPool(1)
-
         # the write worker takes the result of the call to `local_op` and
         # writes it to the raster. It is not possible to parallel write to
         # most raster types, so this gives slightly better performance than
@@ -221,10 +216,11 @@ def raster_calculator(
             # the worker will finish and return a (min, max, mean, std)
             # tuple.
             LOGGER.debug('starting stats_worker')
-            stats_worker_result = thread_pool.apply_async(
-                func=geoprocessing_core.stats_worker,
+            stats_worker_thread = threading.Thread(
+                target=geoprocessing_core.stats_worker,
                 args=(stats_worker_queue,))
-            LOGGER.debug('started stats_worker %s', stats_worker_result)
+            stats_worker_thread.start()
+            LOGGER.debug('started stats_worker %s', stats_worker_thread)
 
         pixels_processed = 0
         n_pixels = n_cols * n_rows
@@ -284,7 +280,8 @@ def raster_calculator(
 
         if calc_raster_stats:
             LOGGER.info("Waiting for raster stats worker result.")
-            payload = stats_worker_result.get()
+            stats_worker_thread.join()
+            payload = stats_worker_queue.get()
             LOGGER.info("Got %s from stats worker", payload)
             if payload is not None:
                 target_min, target_max, target_mean, target_stddev = payload
@@ -301,19 +298,15 @@ def raster_calculator(
         LOGGER.exception('Exception encountered.')
         raise
     finally:
-        if calc_raster_stats:
+        if calc_raster_stats and stats_worker_thread.is_alive():
             stats_worker_queue.put(None)
-            stats_worker_result.get()
+            stats_worker_thread.join()
             LOGGER.debug('stats_worker terminated')
 
-        write_block_queue.put(None)
-        write_worker_thread.join()
-        LOGGER.debug("write_worker terminated.")
-
-        LOGGER.debug("joining thread pool")
-        thread_pool.close()
-        thread_pool.join()
-        LOGGER.debug("thread pool joined")
+        if write_worker_thread.is_alive():
+            write_block_queue.put(None)
+            write_worker_thread.join()
+            LOGGER.debug("write_worker terminated.")
 
 
 def align_and_resize_raster_stack(

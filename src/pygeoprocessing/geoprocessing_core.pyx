@@ -472,17 +472,17 @@ def calculate_slope(
 
 
 @cython.boundscheck(False)
-def stats_worker(stddev_work_queue):
+def stats_worker(stats_work_queue):
     """Worker to calculate continuous min, max, mean and standard deviation.
 
     Parameters:
-        stddev_work_queue (Queue): a queue of 1D numpy arrays or None. If
-            None, function terminates and returns current min, max, mean and
-            stddev.
+        stats_work_queue (Queue): a queue of 1D numpy arrays or None. If
+            None, function puts a (min, max, mean, stddev) tuple to the
+            queue and quits.
 
     Returns:
-        (min, max, mean, stddev) tuple or None if no valid numbers were
-        processed.
+        None
+
     """
     cdef numpy.ndarray[numpy.float64_t, ndim=1] block
     cdef double M_local = 0.0
@@ -496,7 +496,7 @@ def stats_worker(stddev_work_queue):
 
     try:
         while True:
-            payload = stddev_work_queue.get()
+            payload = stats_work_queue.get()
             if payload is None:
                 LOGGER.info('payload is None, terminating')
                 break
@@ -524,10 +524,12 @@ def stats_worker(stddev_work_queue):
                             max_value = x
 
         if n > 0:
-            return (
-                min_value, max_value, M_local, (S_local / <double>n) ** 0.5)
+            stats_work_queue.put(
+                (min_value, max_value, M_local, (S_local / <double>n) ** 0.5))
         else:
-            return None
+            LOGGER.warn(
+                "No valid pixels were received, sending None.")
+            stats_work_queue.put(None)
     except Exception:
         LOGGER.exception(
             "exception %s %s %s %s %s", x, M_local, S_local, n, payload)
