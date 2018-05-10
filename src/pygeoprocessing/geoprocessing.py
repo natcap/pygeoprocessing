@@ -14,6 +14,7 @@ import distutils.version
 import multiprocessing
 import multiprocessing.pool
 import threading
+import Queue
 
 try:
     import psutil
@@ -76,7 +77,8 @@ def raster_calculator(
         datatype_target, nodata_target,
         gtiff_creation_options=_DEFAULT_GTIFF_CREATION_OPTIONS,
         calc_raster_stats=True,
-        largest_block=_LARGEST_ITERBLOCK):
+        largest_block=_LARGEST_ITERBLOCK,
+        multiprocessing_enabled=False):
     """Apply local a raster operation on a stack of rasters.
 
     This function applies a user defined function across a stack of
@@ -113,6 +115,11 @@ def raster_calculator(
             overhead dominates the iteration.  Defaults to 2**20.  A value of
             anything less than the original blocksize of the raster will
             result in blocksizes equal to the original size.
+        multiprocessing_enabled (bool): If True, uses two child processes
+            to parallelize writes and statistics calculations if requested.
+            Note to use this mode on Windows the main process must wrap its
+            entry point in a `if __name__ == '__main__':` condition to avoid
+            recursively launching processes.
 
     Returns:
         None
@@ -184,38 +191,60 @@ def raster_calculator(
             raster.GetRasterBand(index) for raster, (_, index) in zip(
                 base_raster_list, base_raster_path_band_list)]
 
-        # this manager is used for a variety of workers below, communication
-        # queues, flags, and aggregated values
-        multiprocessing_manager = multiprocessing.Manager()
+        if multiprocessing_enabled:
+            # this manager is used for a variety of workers below, communication
+            # queues, flags, and aggregated values
+            multiprocessing_manager = multiprocessing.Manager()
 
-        # this construct will make a queue that will be used for interprocess
-        # logging
-        logging_queue = multiprocessing_manager.Queue()
-        listener = threading.Thread(
-            target=_listener_thread, args=(logging_queue,))
-        listener.start()
+            # this construct will make a queue that will be used for interprocess
+            # logging
+            logging_queue = multiprocessing_manager.Queue()
+            listener = threading.Thread(
+                target=_listener_thread, args=(logging_queue,))
+            listener.start()
 
-        # This queue is part of the first stage parallel pipeline to receive
-        # blocks that have been calculated with local_op.
-        write_block_queue = multiprocessing_manager.Queue(2)
+            # This queue is part of the first stage parallel pipeline to receive
+            # blocks that have been calculated with local_op.
+            write_block_queue = multiprocessing_manager.Queue(2)
 
-        # the process pool is used to manage processes used for the first
-        # stage computational pipeline, 2 processes for the write and
-        # running statistics workers
-        process_pool = multiprocessing.Pool(2)
-        #process_pool = multiprocessing.pool.ThreadPool(2)
+            if calculate_raster_stats:
+                # if this queue is used to send computed valid blocks of
+                # the raster to an incremental statistics calculator worker
+                stats_worker_queue = multiprocessing_manager.Queue(2)
 
-        if HAS_PSUTIL:
-            parent = psutil.Process()
-            parent.nice(psutil.BELOW_NORMAL_PRIORITY_CLASS)
-            for child in parent.children():
-                try:
-                    child.nice(psutil.BELOW_NORMAL_PRIORITY_CLASS)
-                except psutil.NoSuchProcess:
-                    LOGGER.warn(
-                        "NoSuchProcess exception encountered when trying "
-                        "to nice %s. This might be a bug in `psutil` so "
-                        "it should be okay to ignore.")
+            # the process pool is used to manage processes used for the first
+            # stage computational pipeline, 2 processes for the write and
+            # running statistics workers
+            process_pool = multiprocessing.Pool(2)
+
+            if HAS_PSUTIL:
+                parent = psutil.Process()
+                parent.nice(psutil.BELOW_NORMAL_PRIORITY_CLASS)
+                for child in parent.children():
+                    try:
+                        child.nice(psutil.BELOW_NORMAL_PRIORITY_CLASS)
+                    except psutil.NoSuchProcess:
+                        LOGGER.warn(
+                            "NoSuchProcess exception encountered when trying "
+                            "to nice %s. This might be a bug in `psutil` so "
+                            "it should be okay to ignore.")
+
+        else:
+            # use threads for parallelism
+
+            # no need to sync the logger between processes so set the queue
+            # to none to signal that to that workers
+            logging_queue = None
+
+            # use regular queues to communicate instead of multiprocess manged
+            write_block_queue = Queue.Queue(2)
+            if calculate_raster_stats:
+                # if this queue is used to send computed valid blocks of
+                # the raster to an incremental statistics calculator worker
+                stats_worker_queue = Queue.Queue(2)
+
+            process_pool = multiprocessing.pool.ThreadPool(2)
+
 
         # the write worker takes the result of the call to `local_op` and
         # writes it to the raster. It is not possible to parallel write to
@@ -239,7 +268,6 @@ def raster_calculator(
             # the raster's statistics. When `None` is pushed to the queue
             # the worker will finish and return a (min, max, mean, std)
             # tuple.
-            stats_worker_queue = multiprocessing_manager.Queue(2)
             LOGGER.debug('starting stats_worker')
             stats_worker_result = process_pool.apply_async(
                 func=geoprocessing_core.stats_worker,
@@ -331,12 +359,11 @@ def raster_calculator(
         write_worker_result.get()
         LOGGER.debug("write_worker terminated.")
 
-        LOGGER.debug("terminating logging listener")
-        logging_queue.put(None)  # signal done logging
-        listener.join()
-        LOGGER.debug("logging listener terminated")
-
-        #process_pool.terminate()
+        if logging_queue is not None:
+            LOGGER.debug("terminating logging listener")
+            logging_queue.put(None)  # signal done logging
+            listener.join()
+            LOGGER.debug("logging listener terminated")
 
         LOGGER.debug("joining process pool")
         process_pool.join()
