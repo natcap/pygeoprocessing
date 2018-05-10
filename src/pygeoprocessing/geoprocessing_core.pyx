@@ -487,18 +487,24 @@ def stats_worker(stddev_work_queue):
     cdef double S_local = 0.0
     cdef double min_value = 0.0
     cdef double max_value = 0.0
-    cdef double x
+    cdef double x = 0.0
     cdef int i
-    cdef int n = 0
+    cdef long long n = 0L
+    payload = None
     try:
         while True:
             payload = stddev_work_queue.get()
             if payload is None:
+                print 'payload is None, breaking'
                 break
             block = payload.astype(numpy.float64)
             for i in xrange(block.size):
-                n += 1
+                n = n + 1
                 x = block[i]
+                if n < 0:
+                    print 'error n is negative %s' % n
+                elif n == 0:
+                    print 'error n is zero %s' % n
                 if n == 1:
                     M_local = x
                     S_local = 0.0
@@ -517,6 +523,5 @@ def stats_worker(stddev_work_queue):
         else:
             return None
     except Exception as e:
-        print e
+        print e, x, M_local, S_local, n, payload
         raise
-

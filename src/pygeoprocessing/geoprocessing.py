@@ -240,7 +240,7 @@ def raster_calculator(
         if calc_raster_stats:
             # incremental results of valid pixels will be pushed to this queue
             # to determine running stats
-            stats_worker_queue = multiprocessing_manager.Queue()
+            stats_worker_queue = multiprocessing_manager.Queue(2)
             LOGGER.debug('starting stats_worker')
             stats_worker_result = process_pool.apply_async(
                 func=geoprocessing_core.stats_worker,
