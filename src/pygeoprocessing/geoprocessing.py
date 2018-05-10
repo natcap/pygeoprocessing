@@ -439,8 +439,7 @@ def align_and_resize_raster_stack(
 
     # using half the number of CPUs because in practice `warp_raster` seems
     # to use 2 cores.
-    n_workers = max(
-        min(multiprocessing.cpu_count(), n_rasters) / 2, 1)
+    n_workers = max(min(multiprocessing.cpu_count(), n_rasters) / 2, 1)
     worker_pool = multiprocessing.Pool(n_workers)
     if HAS_PSUTIL:
         parent = psutil.Process()
@@ -468,10 +467,16 @@ def align_and_resize_raster_stack(
                 })
         result_list.append(result)
 
-    for result in result_list:
-        result.get(_MAX_TIMEOUT)
-    logging_queue.put(None)  # signal done logging
-    listener.join(_MAX_TIMEOUT)
+    try:
+        for result in result_list:
+            result.get()
+    except:
+        worker_pool.terminate()
+        LOGGER.exception("Exception occurred in worker")
+        raise
+    finally:
+        logging_queue.put(None, True, _MAX_TIMEOUT)  # signal done logging
+        listener.join(_MAX_TIMEOUT)
 
     LOGGER.info(
         "aligned all %d rasters.", n_rasters)
