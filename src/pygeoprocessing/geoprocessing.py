@@ -5,7 +5,6 @@ import os
 import shutil
 import functools
 import math
-import exceptions
 import heapq
 import time
 import tempfile
@@ -24,7 +23,6 @@ import scipy.ndimage
 import scipy.signal.signaltools
 import shapely.wkt
 import shapely.ops
-from shapely import speedups
 import shapely.prepared
 
 import geoprocessing_core
@@ -133,7 +131,7 @@ def raster_calculator(
     gdal.PopErrorHandler()
 
     if len(not_found_paths) != 0:
-        raise exceptions.ValueError(
+        raise ValueError(
             "The following files were expected but do not exist on the "
             "filesystem: " + str(not_found_paths))
 
