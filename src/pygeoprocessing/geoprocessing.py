@@ -41,7 +41,7 @@ from . import geoprocessing_core
 
 LOGGER = logging.getLogger(__name__)
 
-
+_MAX_TIMEOUT = 5.0
 _LOGGING_PERIOD = 5.0  # min 5.0 seconds per update log message for the module
 _DEFAULT_GTIFF_CREATION_OPTIONS = (
     'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
@@ -187,7 +187,7 @@ def raster_calculator(
 
         local_op_work_queue = Queue.Queue(2)
         write_block_queue = Queue.Queue(2)
-        exception_queue = Queue.Queue(1)
+        exception_queue = Queue.Queue()
 
         if calc_raster_stats:
             # if this queue is used to send computed valid blocks of
@@ -206,7 +206,7 @@ def raster_calculator(
         write_worker_thread = threading.Thread(
             target=_write_block_worker,
             args=(
-                write_block_queue, target_raster_path))
+                write_block_queue, target_raster_path, exception_queue))
         write_worker_thread.start()
         LOGGER.debug('started write_worker  %s', write_worker_thread)
 
@@ -222,7 +222,7 @@ def raster_calculator(
             LOGGER.debug('starting stats_worker')
             stats_worker_thread = threading.Thread(
                 target=geoprocessing_core.stats_worker,
-                args=(stats_worker_queue,))
+                args=(stats_worker_queue, exception_queue))
             stats_worker_thread.start()
             LOGGER.debug('started stats_worker %s', stats_worker_thread)
 
@@ -254,7 +254,8 @@ def raster_calculator(
                 base_band_list[dataset_index].ReadAsArray(**band_data)
 
             if exception_queue.empty():
-                local_op_work_queue.put((block_offset, raster_blocks))
+                local_op_work_queue.put(
+                    (block_offset, raster_blocks))
             else:
                 LOGGER.error("Exception queue is not empty, quitting.")
                 break
@@ -267,33 +268,29 @@ def raster_calculator(
                 _LOGGING_PERIOD)
 
         local_op_work_queue.put(None)
-        local_op_thread.join()
-        try:
-            e = exception_queue.get(0)
+        local_op_thread.join(_MAX_TIMEOUT)
+        if not exception_queue.empty():
             LOGGER.error("Exception queue is not empty, raising exception.")
-            raise e
-        except Queue.Empty:
-            LOGGER.info("Exception queue was empty, no problem.")
-            pass
+            raise exception_queue.get(True, _MAX_TIMEOUT)
         LOGGER.info('100.00%% complete')
 
         # push `None` to work queues
         LOGGER.info('signaling write worker to shut down')
-        write_block_queue.put(None)
+        write_block_queue.put(None, True, _MAX_TIMEOUT)
         if calc_raster_stats:
             LOGGER.info('signaling stats worker to shut down')
-            stats_worker_queue.put(None)
+            stats_worker_queue.put(None, True, _MAX_TIMEOUT)
 
         # Making sure the band and dataset is flushed and not in memory before
         # adding stats
         LOGGER.info("waiting for write worker to terminate")
-        write_worker_thread.join()
+        write_worker_thread.join(_MAX_TIMEOUT)
         LOGGER.info("write_worker terminated.")
 
         if calc_raster_stats:
             LOGGER.info("Waiting for raster stats worker result.")
-            stats_worker_thread.join()
-            payload = stats_worker_queue.get()
+            stats_worker_thread.join(_MAX_TIMEOUT)
+            payload = stats_worker_queue.get(True, _MAX_TIMEOUT)
             LOGGER.info("Got %s from stats worker", payload)
             if payload is not None:
                 target_min, target_max, target_mean, target_stddev = payload
@@ -311,13 +308,13 @@ def raster_calculator(
         raise
     finally:
         if calc_raster_stats and stats_worker_thread.is_alive():
-            stats_worker_queue.put(None)
-            stats_worker_thread.join()
+            stats_worker_queue.put(None, True, _MAX_TIMEOUT)
+            stats_worker_thread.join(_MAX_TIMEOUT)
             LOGGER.debug('stats_worker terminated')
 
         if write_worker_thread.is_alive():
-            write_block_queue.put(None)
-            write_worker_thread.join()
+            write_block_queue.put(None, True, _MAX_TIMEOUT)
+            write_worker_thread.join(_MAX_TIMEOUT)
             LOGGER.debug("write_worker terminated.")
 
 
@@ -472,9 +469,9 @@ def align_and_resize_raster_stack(
         result_list.append(result)
 
     for result in result_list:
-        result.get()
+        result.get(_MAX_TIMEOUT)
     logging_queue.put(None)  # signal done logging
-    listener.join()
+    listener.join(_MAX_TIMEOUT)
 
     LOGGER.info(
         "aligned all %d rasters.", n_rasters)
@@ -2529,31 +2526,40 @@ def _listener_thread(logging_queue):
 
 
 def _write_block_worker(
-        work_queue, target_raster_path):
+        work_queue, target_raster_path, exception_queue):
     """Process a block of base_raster_path_band for the given square."""
     LOGGER.debug('starting')
-    target_raster = gdal.OpenEx(
-        target_raster_path, gdal.GA_Update | gdal.OF_RASTER)
-    if not target_raster:
-        raise ValueError("Couldn't open raster %s" % target_raster_path)
-    target_band = target_raster.GetRasterBand(1)
+    try:
+        target_raster = gdal.OpenEx(
+            target_raster_path, gdal.GA_Update | gdal.OF_RASTER)
+        if not target_raster:
+            raise ValueError("Couldn't open raster %s" % target_raster_path)
+        target_band = target_raster.GetRasterBand(1)
 
-    while True:
-        payload = work_queue.get(1)
-        if payload is None:
-            LOGGER.info(
-                "Empty payload, terminating. (%s)",
-                multiprocessing.current_process().name)
-            break
-        block_offset, block = payload
-        target_band.WriteArray(
-            block, xoff=block_offset['xoff'],
-            yoff=block_offset['yoff'])
+        while True:
+            payload = work_queue.get()
+            if payload is None:
+                LOGGER.info(
+                    "Empty payload, terminating. (%s)",
+                    multiprocessing.current_process().name)
+                break
+            block_offset, block = payload
+            target_band.WriteArray(
+                block, xoff=block_offset['xoff'],
+                yoff=block_offset['yoff'])
+    except Exception as e:
+        LOGGER.exception(
+            "Exception occurred in _write_block_worker, pushing to exception "
+            "queue and terminating")
+        exception_queue.put(e)
+        while not work_queue.empty():
+            work_queue.get()
+    finally:
+        target_band.FlushCache()
+        target_band = None
+        gdal.Dataset.__swig_destroy__(target_raster)
+        LOGGER.debug('stopping')
 
-    target_band.FlushCache()
-    target_band = None
-    gdal.Dataset.__swig_destroy__(target_raster)
-    LOGGER.debug('stopping')
 
 
 def _local_op_worker(
@@ -2570,7 +2576,8 @@ def _local_op_worker(
             target_block = local_op(*raster_blocks)
 
             # send result to writer
-            write_block_queue.put((block_offset, target_block))
+            write_block_queue.put(
+                (block_offset, target_block))
 
             # send result to stats calculator
             if stats_worker_queue:
@@ -2578,7 +2585,8 @@ def _local_op_worker(
                 if nodata_target is not None:
                     valid_block = target_block[target_block != nodata_target]
                     if valid_block.size > 0:
-                        stats_worker_queue.put(valid_block)
+                        stats_worker_queue.put(
+                            valid_block)
                 else:
                     stats_worker_queue.put(target_block)
     except Exception as e:
@@ -2586,8 +2594,10 @@ def _local_op_worker(
             "Exception occurred in _local_op_worker, pushing to exception "
             "queue and terminating")
         exception_queue.put(e)
+        while not local_op_work_queue.empty():
+            local_op_work_queue.get()
     finally:
         LOGGER.debug('stopping, sending None to write and stats worker')
-        write_block_queue.put(None)
+        write_block_queue.put(None, True, _MAX_TIMEOUT)
         if stats_worker_queue:
-            stats_worker_queue.put(None)
+            stats_worker_queue.put(None, True, _MAX_TIMEOUT)

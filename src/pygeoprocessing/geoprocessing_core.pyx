@@ -472,7 +472,7 @@ def calculate_slope(
 
 
 @cython.boundscheck(False)
-def stats_worker(stats_work_queue):
+def stats_worker(stats_work_queue, exception_queue):
     """Worker to calculate continuous min, max, mean and standard deviation.
 
     Parameters:
@@ -530,7 +530,10 @@ def stats_worker(stats_work_queue):
             LOGGER.warn(
                 "No valid pixels were received, sending None.")
             stats_work_queue.put(None)
-    except Exception:
+    except Exception as e:
         LOGGER.exception(
             "exception %s %s %s %s %s", x, M_local, S_local, n, payload)
+        exception_queue.put(e)
+        while not stats_work_queue.empty():
+            stats_work_queue.get()
         raise
