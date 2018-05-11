@@ -41,15 +41,16 @@ effectively::
                 'regression_data/raster_1.tif')
 
 """
+from __future__ import absolute_import
 
 
-from assertions import assert_close, isclose, \
+from .assertions import assert_close, isclose, \
     assert_rasters_equal, assert_vectors_equal, assert_csv_equal, \
     assert_md5_equal, assert_json_equal, assert_text_equal, \
     assert_checksums_equal
-from utils import digest_file, digest_file_list, digest_folder, \
+from .utils import digest_file, digest_file_list, digest_folder, \
     checksum_folder
-from sampledata import create_raster_on_disk, create_vector_on_disk
+from .sampledata import create_raster_on_disk, create_vector_on_disk
 
 __all__ = [
     'create_raster_on_disk',

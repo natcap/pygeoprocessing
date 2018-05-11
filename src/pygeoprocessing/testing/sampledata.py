@@ -29,6 +29,9 @@ sample spatial reference data.
             projection.
 
 """
+from builtins import zip
+from builtins import str
+from builtins import range
 import os
 import shutil
 import collections
@@ -69,7 +72,7 @@ NUMPY_GDAL_DTYPES = {
     numpy.cfloat: gdal.GDT_CFloat32,
     numpy.cfloat: gdal.GDT_CFloat64
 }
-GDAL_NUMPY_TYPES = dict((g, n) for (n, g) in NUMPY_GDAL_DTYPES.iteritems())
+GDAL_NUMPY_TYPES = dict((g, n) for (n, g) in NUMPY_GDAL_DTYPES.items())
 
 # Build up an index mapping GDAL datatype index to the string label of the
 # datatype.  Helpful for Debug messages.
@@ -238,7 +241,7 @@ def create_raster_on_disk(
         raise TypeError('Band matrices have different sizes')
 
     # Derive reasonable gdal dtype from numpy matrix dtype if needed
-    numpy_dtype = band_matrix.dtype.type
+    numpy_dtype = band_matrices[0].dtype.type
     if datatype == 'auto':
         datatype = NUMPY_GDAL_DTYPES[numpy_dtype]
 
@@ -320,7 +323,7 @@ def create_vector_on_disk(
                                     "(%s) do not match.") % (num_geoms,
                                                              num_attrs)
 
-    for field_name, field_type in fields.iteritems():
+    for field_name, field_type in fields.items():
         assert field_type in VECTOR_FIELD_TYPES, \
             ("Vector field type for field %s not "
              "reconized: %s") % (field_name, field_type)
@@ -348,7 +351,7 @@ def create_vector_on_disk(
     srs.ImportFromWkt(projection)
     out_layer = out_vector.CreateLayer(layer_name, srs=srs)
 
-    for field_name, field_type in fields.iteritems():
+    for field_name, field_type in fields.items():
         field_defn = ogr.FieldDefn(field_name, VECTOR_FIELD_TYPES[field_type])
         out_layer.CreateField(field_defn)
     layer_defn = out_layer.GetLayerDefn()
@@ -358,7 +361,7 @@ def create_vector_on_disk(
         new_geometry = ogr.CreateGeometryFromWkb(shapely_feature.wkb)
         new_feature.SetGeometry(new_geometry)
 
-        for field_name, field_value in fields.iteritems():
+        for field_name, field_value in fields.items():
             new_feature.SetField(field_name, field_value)
         out_layer.CreateFeature(new_feature)
 

@@ -96,7 +96,7 @@ def digest_file(filepath):
     block_size = 2**20
     file_handler = open(filepath, 'rb')
     file_md5 = hashlib.md5()
-    for chunk in iter(lambda: file_handler.read(block_size), ''):
+    for chunk in iter(lambda: file_handler.read(block_size), b''):
         file_md5.update(chunk)
     file_handler.close()
 
@@ -139,7 +139,7 @@ def checksum_folder(workspace_uri, logfile_uri, style='GNU', ignore_exts=None):
         md5sum_string = format_styles[style]
     except KeyError:
         raise IOError('Invalid style: %s.  Valid styles: %s' % (
-            style, format_styles.keys()))
+            style, list(format_styles.keys())))
 
     import pygeoprocessing
     logfile = open(logfile_uri, 'w')
