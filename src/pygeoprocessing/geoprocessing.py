@@ -435,16 +435,25 @@ def align_and_resize_raster_stack(
     # to use 2 cores.
     n_workers = max(min(multiprocessing.cpu_count(), n_rasters) / 2, 1)
 
-    try:
-        worker_pool = multiprocessing.Pool(n_workers)
-    except RuntimeError:
-        LOGGER.warning(
-            "Runtime error when starting multiprocessing pool. This is "
-            "likely because this process is running on Windows and the "
-            "main entry point is not wrapped in an `if __name__ == "
-            "'__main__': block. Returning from this function to attempt "
-            "to recover.")
-        return
+    if n_workers > 1:
+        # We could use multiple processes to take advantage of the
+        # parallelization offered.
+        LOGGER.info(
+            "n_workers > 1 (%d) so starting a processes pool.", n_workers)
+        try:
+            worker_pool = multiprocessing.Pool(n_workers)
+        except RuntimeError:
+            LOGGER.warning(
+                "Runtime error when starting multiprocessing pool. This is "
+                "likely because this process is running on Windows and the "
+                "main entry point is not wrapped in an `if __name__ == "
+                "'__main__': block. Returning from this function to attempt "
+                "to recover.")
+            return
+    else:
+        # a threadpool is sufficient
+        LOGGER.info("n_workers is 1 so a threadpool is sufficient")
+        worker_pool = multiprocessing.pool.ThreadPool(n_workers)
 
     if HAS_PSUTIL:
         parent = psutil.Process()
