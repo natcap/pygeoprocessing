@@ -1,4 +1,6 @@
+# encoding=UTF-8
 """Tests for the creation of geospatial sample data."""
+from __future__ import unicode_literals
 import unittest
 import os
 import subprocess

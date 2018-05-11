@@ -1,4 +1,6 @@
+# coding=UTF-8
 """Tests for ``pygeoprocessing.testing`` functionality."""
+from __future__ import unicode_literals
 import unittest
 import tempfile
 import os

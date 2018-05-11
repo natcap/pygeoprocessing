@@ -49,7 +49,7 @@ def digest_file_list(filepath_list, ifdir='skip'):
                 continue
             else:  # ifdir == 'raise'
                 raise IOError(message)
-        summary_md5.update(digest_file(filepath))
+        summary_md5.update(digest_file(filepath).encode('utf-8'))
 
     return summary_md5.hexdigest()
 
