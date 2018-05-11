@@ -37,7 +37,7 @@ class JSONTests(unittest.TestCase):
         from pygeoprocessing.testing import assert_json_equal
 
         file_path_a = os.path.join(self.workspace, 'a.json')
-        json.dump(dict((a, a) for a in xrange(15)), open(file_path_a, 'w'))
+        json.dump(dict((a, a) for a in range(15)), open(file_path_a, 'w'))
 
         assert_json_equal(file_path_a, file_path_a)
 
@@ -48,8 +48,8 @@ class JSONTests(unittest.TestCase):
         file_path_a = os.path.join(self.workspace, 'a.json')
         file_path_b = os.path.join(self.workspace, 'b.json')
 
-        json.dump(dict((a, a) for a in xrange(15)), open(file_path_a, 'w'))
-        json.dump(dict((a, a) for a in xrange(20)), open(file_path_b, 'w'))
+        json.dump(dict((a, a) for a in range(15)), open(file_path_a, 'w'))
+        json.dump(dict((a, a) for a in range(20)), open(file_path_b, 'w'))
 
         with self.assertRaises(AssertionError):
             assert_json_equal(file_path_a, file_path_b)
