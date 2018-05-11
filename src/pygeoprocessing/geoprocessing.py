@@ -432,15 +432,21 @@ def align_and_resize_raster_stack(
                 n_pixels * align_pixel_size[index] +
                 align_bounding_box[index])
 
-    logging_queue = multiprocessing.Manager().Queue()
-    listener = threading.Thread(
-        target=_listener_thread, args=(logging_queue,))
-    listener.start()
-
     # using half the number of CPUs because in practice `warp_raster` seems
     # to use 2 cores.
     n_workers = max(min(multiprocessing.cpu_count(), n_rasters) / 2, 1)
-    worker_pool = multiprocessing.Pool(n_workers)
+
+    try:
+        worker_pool = multiprocessing.Pool(n_workers)
+    except RuntimeError:
+        LOGGER.warning(
+            "Runtime error when starting multiprocessing pool. This is "
+            "likely because this process is running on Windows and the "
+            "main entry point is not wrapped in an `if __name__ == "
+            "'__main__': block. Returning from this function to attempt "
+            "to recover.")
+        return
+
     if HAS_PSUTIL:
         parent = psutil.Process()
         parent.nice(psutil.BELOW_NORMAL_PRIORITY_CLASS)
@@ -463,7 +469,6 @@ def align_and_resize_raster_stack(
             kwds={
                 'target_bb': target_bounding_box,
                 'gtiff_creation_options': gtiff_creation_options,
-                'logging_queue': logging_queue
                 })
         result_list.append(result)
 
@@ -474,12 +479,8 @@ def align_and_resize_raster_stack(
         worker_pool.terminate()
         LOGGER.exception("Exception occurred in worker")
         raise
-    finally:
-        logging_queue.put(None, True, _MAX_TIMEOUT)  # signal done logging
-        listener.join(_MAX_TIMEOUT)
 
-    LOGGER.info(
-        "aligned all %d rasters.", n_rasters)
+    LOGGER.info("aligned all %d rasters.", n_rasters)
 
 
 def calculate_raster_stats(raster_path):
