@@ -491,6 +491,7 @@ def align_and_resize_raster_stack(
     LOGGER.info("aligned all %d rasters.", n_rasters)
 
 
+# TODO: refactor this with new algorithM?
 def calculate_raster_stats(raster_path):
     """Calculate and set min, max, stdev, and mean for all bands in raster.
 
@@ -799,6 +800,7 @@ def interpolate_points(
     band = target_raster.GetRasterBand(target_raster_path_band[1])
     nodata = band.GetNoDataValue()
     geotransform = target_raster.GetGeoTransform()
+    # TODO: could this be parallel?
     for offsets in iterblocks(
             target_raster_path_band[0], offset_only=True):
         grid_y, grid_x = numpy.mgrid[
@@ -960,6 +962,7 @@ def zonal_statistics(
     aggregate_id_raster = gdal.OpenEx(aggregate_id_raster_path, gdal.GA_Update)
     aggregate_stats = {}
 
+    # TODO: may be able to parallelize zonal stats?
     for polygon_set in minimal_polygon_sets:
         disjoint_layer = disjoint_vector.CreateLayer(
             'disjoint_vector', spat_ref, ogr.wkbPolygon)
@@ -1332,8 +1335,7 @@ def reclassify_raster(
 def warp_raster(
         base_raster_path, target_pixel_size, target_raster_path,
         resample_method, target_bb=None, target_sr_wkt=None,
-        gtiff_creation_options=_DEFAULT_GTIFF_CREATION_OPTIONS,
-        logging_queue=None):
+        gtiff_creation_options=_DEFAULT_GTIFF_CREATION_OPTIONS):
     """Resize/resample raster to desired pixel size, bbox and projection.
 
     Parameters:
@@ -1353,18 +1355,11 @@ def warp_raster(
             Known Text format.
         gtiff_creation_options (list or tuple): list of strings that will be
             passed as GDAL "dataset" creation options to the GTIFF driver.
-        logging_queue (Queue): an optional Queue object to synchronize logging
-            across processes. If not none, this queue is wrapped in a
-            queuehandler.QueueHandler and added to this scope's LOGGER.
 
     Returns:
         None
 
     """
-    if logging_queue:
-        queue_handler = queuehandler.QueueHandler(logging_queue)
-        LOGGER.addHandler(queue_handler)
-
     if target_bb is None:
         target_bb = get_raster_info(base_raster_path)['bounding_box']
         # transform the target_bb if target_sr_wkt is not None
@@ -1396,8 +1391,7 @@ def warp_raster(
         LOGGER.debug(target_bb)
         LOGGER.debug(target_pixel_size[1])
 
-    reproject_callback = _make_logger_callback(
-        "Warp %.1f%% complete %s")
+    reproject_callback = _make_logger_callback("Warp %.1f%% complete %s")
 
     base_raster = gdal.Open(base_raster_path)
     gdal.Warp(
@@ -1412,9 +1406,6 @@ def warp_raster(
         creationOptions=gtiff_creation_options,
         callback=reproject_callback,
         callback_data=[target_raster_path])
-
-    if logging_queue:
-        LOGGER.removeHandler(queue_handler)
 
 
 def rasterize(
@@ -1560,17 +1551,6 @@ def calculate_disjoint_polygon_set(vector_path, layer_index=0):
     return subset_list
 
 
-class MaskWrapper(object):
-    def __init__(self, nodata, nodata_out):
-        self.nodata = nodata
-        self.nodata_out = nodata_out
-
-    def __call__(self, base_array):
-        """Convert base_array to 1 if >0, 0 if == 0 or nodata."""
-        return numpy.where(
-            base_array == self.nodata, self.nodata_out, base_array != 0)
-
-
 def distance_transform_edt(
         base_mask_raster_path_band, target_distance_raster_path,
         working_dir=None):
@@ -1600,8 +1580,13 @@ def distance_transform_edt(
     nodata = raster_info['nodata'][base_mask_raster_path_band[1]-1]
     nodata_out = 255
 
+    def mask_op(base_array):
+        """Convert base_array to 1 if >0, 0 if == 0 or nodata."""
+        return numpy.where(
+            base_array == nodata, nodata_out, base_array != 0)
+
     raster_calculator(
-        [base_mask_raster_path_band], MaskWrapper(nodata, nodata_out),
+        [base_mask_raster_path_band], mask_op,
         dt_mask_path, gdal.GDT_Byte, nodata_out, calc_raster_stats=False)
     geoprocessing_core.distance_transform_edt(
         (dt_mask_path, 1), target_distance_raster_path)
@@ -1668,7 +1653,7 @@ def _next_regular(base):
         match = p5
     return match
 
-
+#TODO: can parallelize the kernel passes
 def convolve_2d(
         signal_path_band, kernel_path_band, target_path,
         ignore_nodata=False, mask_nodata=True, normalize_kernel=False,
@@ -2521,8 +2506,22 @@ def _is_raster_path_band_formatted(raster_path_band):
 
 
 def _write_block_worker(
-        work_queue, target_raster_path, exception_queue):
-    """Process a block of base_raster_path_band for the given square."""
+        write_work_queue, target_raster_path, exception_queue):
+    """Writes (block_offset, numpy.array) tuples to the target raster.
+
+        Parameters:
+            write_work_queue (Queue.Queue):  Contains (block_offset,
+                numpy.array) tuples to write to the raster at
+                `target_raster_path`.
+            target_raster_path (string): path to an existing raster that will
+                be written to during this call.
+            exception_queue (Queue.Queue): if this function encounters an
+                exception, it is pushed to this queue before returning.
+
+        Returns:
+            None.
+
+    """
     LOGGER.debug('starting')
     try:
         target_raster = gdal.OpenEx(
@@ -2532,7 +2531,7 @@ def _write_block_worker(
         target_band = target_raster.GetRasterBand(1)
 
         while True:
-            payload = work_queue.get()
+            payload = write_work_queue.get()
             if payload is None:
                 LOGGER.info(
                     "Empty payload, terminating. (%s)",
@@ -2547,8 +2546,8 @@ def _write_block_worker(
             "Exception occurred in _write_block_worker, pushing to exception "
             "queue and terminating")
         exception_queue.put(e)
-        while not work_queue.empty():
-            work_queue.get()
+        while not write_work_queue.empty():
+            write_work_queue.get()
     finally:
         target_band.FlushCache()
         target_band = None
@@ -2556,11 +2555,36 @@ def _write_block_worker(
         LOGGER.debug('stopping')
 
 
-
 def _local_op_worker(
         local_op, nodata_target, local_op_work_queue, write_block_queue,
         stats_worker_queue, exception_queue):
-    # calculate local_op over all inputs
+    """Used by raster_calculator to thread local_op calculations.
+
+        This might be useful it a local op uses a complex numpy calculation or a
+        Cython function with the GIL released.
+
+        Parameters:
+            local_op (function): function that takes local_op(*payload) from
+                `local_op_work_queue`.
+            nodata_target (numeric): a numerical nodata value or None for
+                determining statistics calculations.
+            local_op_work_queue (Queue.Queue): a queue of
+                (block_offset, raster_blocks) tuples such that local_op
+                operates on local_op(*raster_blocks) and the result is written
+                to the target raster at `block_offset`.
+            write_block_queue (Queue.Queue): queue to put result of local_op
+                effectively puting tuples
+                (block_offset, local_op(*raster_blocks)).
+            stats_worker_queue (Queue.Queue): if not none, the result of
+                `local_op` that is not `nodata_target` will be put to this
+                queue for stats processing.
+            exception_queue (Queue.Queue): if this function encounters an
+                exception, it is pushed to this queue before returning.
+
+        Returns:
+            None.
+
+    """
     LOGGER.debug('starting')
     try:
         while True:
