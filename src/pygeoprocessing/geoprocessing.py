@@ -119,6 +119,7 @@ def raster_calculator(
 
     Raises:
         ValueError: invalid input provided
+
     """
     # It's a common error to not pass in path/band tuples, so check for that
     # and report error if so
@@ -451,8 +452,7 @@ def align_and_resize_raster_stack(
                 "to recover.")
             return
     else:
-        # a threadpool is sufficient
-        LOGGER.info("n_workers is 1 so a threadpool is sufficient")
+        LOGGER.info("n_workers == 1 so a threadpool is sufficient")
         worker_pool = multiprocessing.pool.ThreadPool(n_workers)
 
     if HAS_PSUTIL:
@@ -491,7 +491,6 @@ def align_and_resize_raster_stack(
     LOGGER.info("aligned all %d rasters.", n_rasters)
 
 
-# TODO: refactor this with new algorithM?
 def calculate_raster_stats(raster_path):
     """Calculate and set min, max, stdev, and mean for all bands in raster.
 
@@ -587,6 +586,7 @@ def new_raster_from_base(
 
     Returns:
         None
+
     """
     base_raster = gdal.OpenEx(base_path)
     if n_rows is None:
@@ -690,6 +690,7 @@ def create_raster_from_vector_extents(
 
     Returns:
         None
+
     """
     # Determine the width and height of the tiff in pixels based on the
     # maximum size of the combined envelope of all the features
@@ -778,6 +779,7 @@ def interpolate_points(
 
     Returns:
        None
+
     """
     source_vector = gdal.OpenEx(base_vector_path)
     point_list = []
@@ -800,7 +802,6 @@ def interpolate_points(
     band = target_raster.GetRasterBand(target_raster_path_band[1])
     nodata = band.GetNoDataValue()
     geotransform = target_raster.GetGeoTransform()
-    # TODO: could this be parallel?
     for offsets in iterblocks(
             target_raster_path_band[0], offset_only=True):
         grid_y, grid_x = numpy.mgrid[
@@ -872,6 +873,7 @@ def zonal_statistics(
         nested dictionary indexed by aggregating feature id, and then by one
         of 'min' 'max' 'sum' 'mean' 'count' and 'nodata_count'.  Example:
         {0: {'min': 0, 'max': 1, 'mean': 0.5, 'count': 2, 'nodata_count': 1}}
+
     """
     if not _is_raster_path_band_formatted(base_raster_path_band):
         raise ValueError(
@@ -891,9 +893,6 @@ def zonal_statistics(
         raise ValueError(
             'Vector %s must have a field named %s' %
             (aggregate_vector_path, aggregate_field_name))
-
-    aggregate_field_def = aggregate_layer_defn.GetFieldDefn(
-        aggregate_field_index)
 
     # create a new aggregate ID field to map base vector aggregate fields to
     # local ones that are guaranteed to be integers.
@@ -962,7 +961,6 @@ def zonal_statistics(
     aggregate_id_raster = gdal.OpenEx(aggregate_id_raster_path, gdal.GA_Update)
     aggregate_stats = {}
 
-    # TODO: may be able to parallelize zonal stats?
     for polygon_set in minimal_polygon_sets:
         disjoint_layer = disjoint_vector.CreateLayer(
             'disjoint_vector', spat_ref, ogr.wkbPolygon)
@@ -1078,6 +1076,7 @@ def get_vector_info(vector_path, layer_index=0):
                 Text.
             'bounding_box' (list): list of floats representing the bounding
                 box in projected coordinates as [minx, miny, maxx, maxy].
+
     """
     vector = gdal.OpenEx(vector_path)
     vector_properties = {}
@@ -1122,6 +1121,7 @@ def get_raster_info(raster_path):
                 box in projected coordinates as [minx, miny, maxx, maxy]
             'block_size' (tuple): underlying x/y raster block size for
                 efficient reading.
+
     """
     raster_properties = {}
     raster = gdal.OpenEx(raster_path)
@@ -1182,6 +1182,7 @@ def reproject_vector(
 
     Returns:
         None
+
     """
     base_vector = gdal.OpenEx(base_vector_path)
 
@@ -1295,6 +1296,7 @@ def reclassify_raster(
     Raises:
         ValueError if values_required is True and the value from
            'key_raster' is not a key in 'attr_dict'
+
     """
     if len(value_map) == 0:
         raise ValueError("value_map must contain at least one value")
@@ -1456,6 +1458,7 @@ def rasterize(
 
     Returns:
         None
+
     """
     gdal.PushErrorHandler('CPLQuietErrorHandler')
     raster = gdal.OpenEx(target_raster_path, gdal.GA_Update | gdal.OF_RASTER)
@@ -1493,9 +1496,10 @@ def calculate_disjoint_polygon_set(vector_path, layer_index=0):
 
     Returns:
         subset_list (list): list of sets of FIDs from vector_path
+
     """
     vector = gdal.OpenEx(vector_path)
-    vector_layer = vector.GetLayer()
+    vector_layer = vector.GetLayer(layer_index)
 
     poly_intersect_lookup = {}
     for poly_feat in vector_layer:
@@ -1543,7 +1547,7 @@ def calculate_disjoint_polygon_set(vector_path, layer_index=0):
                 maximal_set.add(poly_fid)
                 # remove that polygon and update the intersections
                 del poly_intersect_lookup[poly_fid]
-        # remove all the polygons from intersections once they're compuated
+        # remove all the polygons from intersections once they're computed
         for maxset_fid in maximal_set:
             for poly_dict in poly_intersect_lookup.itervalues():
                 poly_dict['intersects'].discard(maxset_fid)
@@ -1572,6 +1576,7 @@ def distance_transform_edt(
 
     Returns:
         None
+
     """
     with tempfile.NamedTemporaryFile(
             prefix='dt_mask', delete=False, dir=working_dir) as dt_mask_file:
@@ -1653,7 +1658,7 @@ def _next_regular(base):
         match = p5
     return match
 
-#TODO: can parallelize the kernel passes
+
 def convolve_2d(
         signal_path_band, kernel_path_band, target_path,
         ignore_nodata=False, mask_nodata=True, normalize_kernel=False,
@@ -1698,6 +1703,7 @@ def convolve_2d(
 
     Returns:
         None
+
     """
     _gdal_type_to_numpy_lookup = {
         gdal.GDT_Byte: numpy.int8,
@@ -1754,7 +1760,7 @@ def convolve_2d(
     def _make_cache():
         """Create a helper function to remember the last computed fft."""
         def _fft_cache(fshape, xoff, yoff, data_block):
-            """Helper function to remember the last computed fft.
+            """Remember the last computed fft.
 
             Parameters:
                 fshape (numpy.ndarray): shape of fft
@@ -1764,6 +1770,7 @@ def convolve_2d(
 
             Returns:
                 fft transformed data_block of fshape size.
+
             """
             cache_key = (fshape[0], fshape[1], xoff, yoff)
             if cache_key != _fft_cache.key:
@@ -2013,6 +2020,7 @@ def iterblocks(
 
         If `offset_only` is True, the function returns only the block offset
             data and does not attempt to read binary data from the raster.
+
     """
     raster = gdal.OpenEx(raster_path)
 
@@ -2118,6 +2126,7 @@ def transform_bounding_box(
         A list of the form [xmin, ymin, xmax, ymax] that describes the largest
         fitting bounding box around the original warped bounding box in
         `new_epsg` coordinate system.
+
     """
     base_ref = osr.SpatialReference()
     base_ref.ImportFromWkt(base_ref_wkt)
@@ -2189,6 +2198,7 @@ def merge_rasters(
 
     Returns:
         None.
+
     """
     raster_info_list = [
         get_raster_info(path) for path in raster_path_list]
@@ -2441,6 +2451,7 @@ def _merge_bounding_boxes(bb1, bb2, mode):
 
     Returns:
         Reduced bounding box of bb1/bb2 depending on mode.
+
     """
     def _less_than_or_equal(x_val, y_val):
         return x_val if x_val <= y_val else y_val
@@ -2507,19 +2518,22 @@ def _is_raster_path_band_formatted(raster_path_band):
 
 def _write_block_worker(
         write_work_queue, target_raster_path, exception_queue):
-    """Writes (block_offset, numpy.array) tuples to the target raster.
+    """Write (block_offset, numpy.array) tuples to the target raster.
 
-        Parameters:
-            write_work_queue (Queue.Queue):  Contains (block_offset,
-                numpy.array) tuples to write to the raster at
-                `target_raster_path`.
-            target_raster_path (string): path to an existing raster that will
-                be written to during this call.
-            exception_queue (Queue.Queue): if this function encounters an
-                exception, it is pushed to this queue before returning.
+    This function is used in a concurrency framework to write computed
+    raster blocks to a target raster.
 
-        Returns:
-            None.
+    Parameters:
+        write_work_queue (Queue.Queue):  Contains (block_offset,
+            numpy.array) tuples to write to the raster at
+            `target_raster_path`.
+        target_raster_path (string): path to an existing raster that will
+            be written to during this call.
+        exception_queue (Queue.Queue): if this function encounters an
+            exception, it is pushed to this queue before returning.
+
+    Returns:
+        None.
 
     """
     LOGGER.debug('starting')
@@ -2546,6 +2560,7 @@ def _write_block_worker(
             "Exception occurred in _write_block_worker, pushing to exception "
             "queue and terminating")
         exception_queue.put(e)
+        # drain the `write_work_queue` so another process isn't blocked on it
         while not write_work_queue.empty():
             write_work_queue.get()
     finally:
@@ -2558,31 +2573,35 @@ def _write_block_worker(
 def _local_op_worker(
         local_op, nodata_target, local_op_work_queue, write_block_queue,
         stats_worker_queue, exception_queue):
-    """Used by raster_calculator to thread local_op calculations.
+    """Threads `local_op` function for `raster_calculator`.
 
-        This might be useful it a local op uses a complex numpy calculation or a
-        Cython function with the GIL released.
+    Separating this function into a call that could be threaded is
+    useful when local op uses a complex numpy calculation or a Cython
+    function with the GIL released.
 
-        Parameters:
-            local_op (function): function that takes local_op(*payload) from
-                `local_op_work_queue`.
-            nodata_target (numeric): a numerical nodata value or None for
-                determining statistics calculations.
-            local_op_work_queue (Queue.Queue): a queue of
-                (block_offset, raster_blocks) tuples such that local_op
-                operates on local_op(*raster_blocks) and the result is written
-                to the target raster at `block_offset`.
-            write_block_queue (Queue.Queue): queue to put result of local_op
-                effectively puting tuples
-                (block_offset, local_op(*raster_blocks)).
-            stats_worker_queue (Queue.Queue): if not none, the result of
-                `local_op` that is not `nodata_target` will be put to this
-                queue for stats processing.
-            exception_queue (Queue.Queue): if this function encounters an
-                exception, it is pushed to this queue before returning.
+    As blocks are processed this function passes completed blocks to a
+    write worker and a raster stats calculator if needed.
 
-        Returns:
-            None.
+    Parameters:
+        local_op (function): function that takes local_op(*payload) from
+            `local_op_work_queue`.
+        nodata_target (numeric): a numerical nodata value or None for
+            determining statistics calculations.
+        local_op_work_queue (Queue.Queue): a queue of
+            (block_offset, raster_blocks) tuples such that local_op
+            operates on local_op(*raster_blocks) and the result is written
+            to the target raster at `block_offset`.
+        write_block_queue (Queue.Queue): queue to put result of local_op
+            effectively puting tuples
+            (block_offset, local_op(*raster_blocks)).
+        stats_worker_queue (Queue.Queue): if not None, the result of
+            `local_op` that is not `nodata_target` will be put to this
+            queue for stats processing.
+        exception_queue (Queue.Queue): if this function encounters an
+            exception, it is pushed to this queue before returning.
+
+    Returns:
+        None.
 
     """
     LOGGER.debug('starting')
@@ -2613,6 +2632,8 @@ def _local_op_worker(
             "Exception occurred in _local_op_worker, pushing to exception "
             "queue and terminating")
         exception_queue.put(e)
+        # drain the work queue so that a thread waiting on the queue
+        # doesn't block.
         while not local_op_work_queue.empty():
             local_op_work_queue.get()
     finally:
