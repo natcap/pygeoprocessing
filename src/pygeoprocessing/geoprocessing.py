@@ -652,14 +652,34 @@ def new_raster_from_base(
         except AttributeError:
             target_band.SetNoDataValue(nodata_value)
 
+    target_raster.FlushCache()
+    last_time = time.time()
+    pixels_processed = 0
+    n_pixels = n_cols * n_rows
     if fill_value_list is not None:
         for index, fill_value in enumerate(fill_value_list):
             if fill_value is None:
                 continue
             target_band = target_raster.GetRasterBand(index + 1)
-            target_band.Fill(fill_value)
-            target_band = None
+            # some rasters are very large and a fill can appear to cause
+            # computation to hang. This block, though possibly slightly less
+            # efficient than `band.Fill` will give real-time feedback about
+            # how the fill is progressing.
+            for offsets in iterblocks(target_path, offset_only=True):
+                fill_array = numpy.empty(
+                    (offsets['win_ysize'], offsets['win_xsize']))
+                pixels_processed += (
+                    offsets['win_ysize'] * offsets['win_xsize'])
+                fill_array[:] = fill_value
+                target_band.WriteArray(
+                    fill_array, offsets['xoff'], offsets['yoff'])
 
+                last_time = _invoke_timed_callback(
+                    last_time, lambda: LOGGER.debug(
+                        '%.2f%% complete',
+                        float(pixels_processed) / n_pixels * 100.0),
+                    _LOGGING_PERIOD)
+            target_band = None
     target_raster = None
 
 
@@ -1719,12 +1739,16 @@ def convolve_2d(
             "`target_datatype` is set, but `target_nodata` is None. "
             "`target_nodata` must be set if `target_datatype` is not "
             "`gdal.GDT_Float64`.  `target_nodata` is set to None.")
+
+    worker_pool = multiprocessing.pool.ThreadPool(2)
+
     if target_nodata is None:
         target_nodata = numpy.finfo(numpy.float32).min
+    LOGGER.debug("creating target raster %s", target_path)
     new_raster_from_base(
         signal_path_band[0], target_path, target_datatype, [target_nodata],
-        fill_value_list=[0],
         gtiff_creation_options=gtiff_creation_options)
+    LOGGER.debug("target raster created %s", target_path)
 
     signal_raster_info = get_raster_info(signal_path_band[0])
     kernel_raster_info = get_raster_info(kernel_path_band[0])
@@ -1752,8 +1776,7 @@ def convolve_2d(
         mask_nodata = -1.0
         new_raster_from_base(
             signal_path_band[0], mask_raster_path, gdal.GDT_Float32,
-            [mask_nodata], fill_value_list=[0],
-            gtiff_creation_options=gtiff_creation_options)
+            [mask_nodata], gtiff_creation_options=gtiff_creation_options)
         mask_raster = gdal.OpenEx(mask_raster_path, gdal.GA_Update)
         mask_band = mask_raster.GetRasterBand(1)
 
@@ -1791,6 +1814,9 @@ def convolve_2d(
     last_time = time.time()
     signal_data = None
 
+    mask_processed_set = set()
+    target_processed_set = set()
+
     # get the kernel sum for normalization or reverse normalization if neede
     kernel_sum = 0.0
     for kernel_data, kernel_block in iterblocks(
@@ -1799,14 +1825,11 @@ def convolve_2d(
             kernel_block[kernel_block == k_nodata] = 0.0
         kernel_sum += numpy.sum(kernel_block)
 
+    n_pixels = target_raster.RasterXSize * target_raster.RasterYSize
+    pixels_processed = 0
     for signal_data, signal_block in iterblocks(
             s_path_band[0], band_index_list=[s_path_band[1]],
             astype_list=[_gdal_type_to_numpy_lookup[target_datatype]]):
-        last_time = _invoke_timed_callback(
-            last_time, lambda: LOGGER.info(
-                "convolution operating on signal pixel (%d, %d)",
-                signal_data['xoff'], signal_data['yoff']),
-            _LOGGING_PERIOD)
         if s_nodata is not None and ignore_nodata:
             # if we're ignoring nodata, we don't want to add it up in the
             # convolution, so we zero those values out
@@ -1816,6 +1839,7 @@ def convolve_2d(
         for kernel_data, kernel_block in iterblocks(
                 k_path_band[0], band_index_list=[k_path_band[1]],
                 astype_list=[_gdal_type_to_numpy_lookup[target_datatype]]):
+
             left_index_raster = (
                 signal_data['xoff'] - n_cols_kernel / 2 + kernel_data['xoff'])
             right_index_raster = (
@@ -1851,13 +1875,18 @@ def convolve_2d(
             # add zero padding so FFT is fast
             fshape = [_next_regular(int(d)) for d in shape]
 
-            signal_fft = _signal_fft_cache(
-                fshape, signal_data['xoff'], signal_data['yoff'],
-                signal_block)
-
-            kernel_fft = _kernel_fft_cache(
-                fshape, kernel_data['xoff'], kernel_data['yoff'],
-                kernel_block)
+            signal_fft_result = worker_pool.apply_async(
+                func=_signal_fft_cache,
+                args=(
+                    fshape, signal_data['xoff'], signal_data['yoff'],
+                    signal_block))
+            kernel_fft_result = worker_pool.apply_async(
+                func=_kernel_fft_cache,
+                args=(
+                    fshape, kernel_data['xoff'], kernel_data['yoff'],
+                    kernel_block))
+            signal_fft = signal_fft_result.get()
+            kernel_fft = kernel_fft_result.get()
 
             # this variable determines the output slice that doesn't include
             # the padded array region made for fast FFTs.
@@ -1895,14 +1924,26 @@ def convolve_2d(
                 bottom_index_raster = n_rows_signal
 
             # Add result to current output to account for overlapping edges
+            index_tuple = (
+                left_index_raster,
+                top_index_raster,
+                right_index_raster-left_index_raster,
+                bottom_index_raster-top_index_raster
+            )
             index_dict = {
-                'xoff': left_index_raster,
-                'yoff': top_index_raster,
-                'win_xsize': right_index_raster-left_index_raster,
-                'win_ysize': bottom_index_raster-top_index_raster
+                'xoff': index_tuple[0],
+                'yoff': index_tuple[1],
+                'win_xsize': index_tuple[2],
+                'win_ysize': index_tuple[3]
             }
             # read the current so we can add to it
-            current_output = target_band.ReadAsArray(**index_dict)
+            if index_tuple in target_processed_set:
+                current_output = target_band.ReadAsArray(**index_dict)
+            else:
+                target_processed_set.add(index_tuple)
+                current_output = numpy.zeros(
+                    (index_dict['win_ysize'], index_dict['win_xsize']))
+
             # read the signal block so we know where the nodata are
             potential_nodata_signal_array = signal_band.ReadAsArray(
                 **index_dict)
@@ -1928,7 +1969,13 @@ def convolve_2d(
             if s_nodata is not None and ignore_nodata:
                 # we'll need to save off the mask convolution so we can divide
                 # it in total later
-                current_mask = mask_band.ReadAsArray(**index_dict)
+                # read the current so we can add to it
+                if index_tuple in mask_processed_set:
+                    current_mask = mask_band.ReadAsArray(**index_dict)
+                else:
+                    mask_processed_set.add(index_tuple)
+                    current_mask = numpy.zeros(
+                        (index_dict['win_ysize'], index_dict['win_xsize']))
                 output_array[valid_mask] = (
                     (mask_result[
                         top_index_result:bottom_index_result,
@@ -1937,6 +1984,13 @@ def convolve_2d(
                 mask_band.WriteArray(
                     output_array, xoff=index_dict['xoff'],
                     yoff=index_dict['yoff'])
+        pixels_processed += (
+            signal_data['win_xsize'] * signal_data['win_ysize'])
+        last_time = _invoke_timed_callback(
+            last_time, lambda: LOGGER.info(
+                "convolution %.2f%% complete",
+                100.0 * float(pixels_processed) / n_pixels),
+            _LOGGING_PERIOD)
     target_band.FlushCache()
     target_raster.FlushCache()
     if s_nodata is not None and ignore_nodata:
