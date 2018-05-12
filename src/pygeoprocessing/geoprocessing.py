@@ -2034,6 +2034,9 @@ def iterblocks(
                 result = (result,) + tuple(raster_blocks)
             yield result
 
+    band_index_list = [None for i in band_index_list]
+    raster = None
+
 
 def transform_bounding_box(
         bounding_box, base_ref_wkt, target_ref_wkt, edge_samples=11):
