@@ -1779,18 +1779,20 @@ def convolve_2d(
     LOGGER.info('starting convolve')
     last_time = time.time()
 
-    convolve_2d_worker_result = worker_pool.apply_async(
-        func=_convolve_2d_worker,
+    convolve_2d_worker_result = threading.Thread(
+        target=_convolve_2d_worker,
         args=(
             signal_path_band, kernel_path_band,
             ignore_nodata, normalize_kernel,
             work_queue, write_queue, exception_queue))
+    convolve_2d_worker_result.start()
 
-    convolve_2d_writer_result = worker_pool.apply_async(
-        func=_convolve_2d_write_raster_worker,
+    convolve_2d_writer_result = threading.Thread(
+        target=_convolve_2d_write_raster_worker,
         args=(
             write_queue, signal_path_band,
             mask_raster_path, target_path, ignore_nodata))
+    convolve_2d_writer_result.start()
 
     n_pixels = target_raster.RasterXSize * target_raster.RasterYSize
     pixels_processed = 0
@@ -1808,14 +1810,12 @@ def convolve_2d(
 
     work_queue.put(None)
     LOGGER.debug("waiting for convolve 2d worker to terminate")
-    convolve_2d_worker_result.get()
+    convolve_2d_worker_result.join()
     LOGGER.debug("Convolve 2d worker terminated")
 
     LOGGER.debug("waiting for convolve 2d writer to terminate")
-    convolve_2d_writer_result.get()
+    convolve_2d_writer_result.join()
     LOGGER.debug("Convolve 2d writer terminated")
-
-    return
 
     if signal_nodata is not None and ignore_nodata:
         mask_band.FlushCache()
@@ -2670,6 +2670,7 @@ def _convolve_2d_worker(
         write_queue.put(
             (index_dict, result, mask_result, left_index_raster,
              right_index_raster, top_index_raster, bottom_index_raster))
+
     write_queue.put(None)
 
 
@@ -2722,7 +2723,7 @@ def _convolve_2d_write_raster_worker(
             index_dict['win_ysize'],
         )
         print (index_dict, result, mask_result, left_index_raster,
-         right_index_raster, top_index_raster, bottom_index_raster)
+               right_index_raster, top_index_raster, bottom_index_raster)
 
         left_index_result = 0
         right_index_result = result.shape[1]
