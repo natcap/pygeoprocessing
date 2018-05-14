@@ -542,7 +542,7 @@ def new_raster_from_base(
     base_band = None
     n_bands = len(band_nodata_list)
     target_raster = driver.Create(
-        target_path.encode('utf-8'), n_cols, n_rows, n_bands, datatype,
+        target_path, n_cols, n_rows, n_bands, datatype,
         options=gtiff_creation_options)
     target_raster.SetProjection(base_raster.GetProjection())
     target_raster.SetGeoTransform(base_raster.GetGeoTransform())
@@ -2235,7 +2235,7 @@ def merge_rasters(
     # we won't need it after anyway
     n_bands = n_bands_set.pop()
     target_raster = driver.Create(
-        target_path.encode('utf-8'), n_cols, n_rows, n_bands,
+        target_path, n_cols, n_rows, n_bands,
         datatype_set.pop(), options=gtiff_creation_options)
     target_raster.SetProjection(raster.GetProjection())
     target_raster.SetGeoTransform(target_geotransform)
