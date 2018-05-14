@@ -1796,6 +1796,7 @@ class PyGeoprocessing10(unittest.TestCase):
         band = raster_b.GetRasterBand(1)
         band.WriteArray(raster_b_array)
         band.FlushCache()
+        band = None
         raster_b = None
 
         target_path = os.path.join(self.workspace_dir, 'merged.tif')
@@ -1807,6 +1808,7 @@ class PyGeoprocessing10(unittest.TestCase):
         target_array = target_band.ReadAsArray()
         nodata_value = target_raster.GetRasterBand(2).GetNoDataValue()
         target_band = None
+        target_raster = None
         expected_array = numpy.zeros((22, 22))
         expected_array[0:11, 0:11] = 10
         expected_array[11:, 11:] = 20
