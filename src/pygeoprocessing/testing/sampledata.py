@@ -1,3 +1,4 @@
+# coding=UTF-8
 """The sampledata module provides functions for creating raster and vector
 data, constants for assisting with the creation of data, and some
 sample spatial reference data.
@@ -346,13 +347,14 @@ def create_vector_on_disk(
             vector_format, OGR_DRIVERS)
     out_vector = out_driver.CreateDataSource(vector_uri)
 
-    layer_name = str(os.path.basename(os.path.splitext(vector_uri)[0]))
+    layer_name = os.path.basename(os.path.splitext(vector_uri)[0])
     srs = osr.SpatialReference()
     srs.ImportFromWkt(projection)
     out_layer = out_vector.CreateLayer(layer_name, srs=srs)
 
     for field_name, field_type in fields.items():
-        field_defn = ogr.FieldDefn(field_name, VECTOR_FIELD_TYPES[field_type])
+        field_defn = ogr.FieldDefn(field_name,
+                                   VECTOR_FIELD_TYPES[field_type])
         out_layer.CreateField(field_defn)
     layer_defn = out_layer.GetLayerDefn()
 
