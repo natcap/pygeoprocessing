@@ -19,6 +19,11 @@ import pygeoprocessing.routing
 import shapely.geometry
 import mock
 
+try:
+    from builtins import reload
+except ImportError:
+    from imp import reload
+
 
 class PyGeoprocessing10(unittest.TestCase):
     """Tests for the PyGeoprocesing 1.0 refactor."""
@@ -67,8 +72,8 @@ class PyGeoprocessing10(unittest.TestCase):
         with mock.patch('pygeoprocessing.pkg_resources.get_distribution',
                         side_effect=DistributionNotFound('pygeoprocessing')):
             with self.assertRaises(RuntimeError):
-                # RuntimeError is a side effect of `import taskgraph`, so we
-                # reload it to retrigger the metadata load.
+                # RuntimeError is a side effect of `import pygeoprocessing`,
+                # so we reload it to retrigger the metadata load.
                 pygeoprocessing = reload(pygeoprocessing)
 
     def test_reclassify_raster_missing_pixel_value(self):
@@ -678,7 +683,7 @@ class PyGeoprocessing10(unittest.TestCase):
             base_a_raster_info['pixel_size'], bounding_box_mode,
             base_vector_path_list=None, raster_align_index=0)
 
-        for raster_index in xrange(2):
+        for raster_index in range(2):
             target_raster_info = pygeoprocessing.get_raster_info(
                 target_raster_path_list[raster_index])
             target_raster = gdal.Open(target_raster_path_list[raster_index])
@@ -736,7 +741,7 @@ class PyGeoprocessing10(unittest.TestCase):
             raster_align_index=0, base_vector_path_list=[single_pixel_path])
 
         expected_matrix = numpy.ones((1, 1), numpy.int16)
-        for raster_index in xrange(2):
+        for raster_index in range(2):
             target_raster_info = pygeoprocessing.get_raster_info(
                 target_raster_path_list[raster_index])
             target_raster = gdal.Open(target_raster_path_list[raster_index])

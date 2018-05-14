@@ -1,7 +1,7 @@
+# coding=UTF-8
 """A collection of GDAL dataset and raster utilities."""
 from __future__ import division
 from __future__ import absolute_import
-from builtins import str
 from builtins import zip
 from builtins import range
 from past.utils import old_div
@@ -33,6 +33,12 @@ import shapely.prepared
 
 from . import geoprocessing_core
 from functools import reduce
+
+try:
+    from builtins import basestring
+except ImportError:
+    # Python3 doesn't have a basestring.
+    basestring = str
 
 LOGGER = logging.getLogger('pygeoprocessing.geoprocessing')
 LOGGER.addHandler(logging.NullHandler())  # silence logging by default
@@ -770,7 +776,7 @@ def zonal_statistics(
     if not _is_raster_path_band_formatted(base_raster_path_band):
         raise ValueError(
             "`base_raster_path_band` not formatted as expected.  Expects "
-            "(path, band_index), recieved %s" + base_raster_path_band)
+            "(path, band_index), recieved %s" % repr(base_raster_path_band))
     aggregate_vector = gdal.OpenEx(aggregate_vector_path)
     if aggregate_layer_name is not None:
         aggregate_layer = aggregate_vector.GetLayerByName(
@@ -2258,7 +2264,7 @@ def merge_rasters(
             target_geotransform[0]) / target_pixel_size[0])
         raster_start_y = int((
             raster_info['geotransform'][3] -
-            target_geotransform[3]), target_pixel_size[1])
+            target_geotransform[3]) / target_pixel_size[1])
         for iter_result in iterblocks(raster_path):
             offset_info = iter_result[0]
             # its possible the block reads in coverage that is outside the
@@ -2442,7 +2448,7 @@ def _is_raster_path_band_formatted(raster_path_band):
         return False
     elif len(raster_path_band) != 2:
         return False
-    elif not isinstance(raster_path_band[0], (str,)):
+    elif not isinstance(raster_path_band[0], basestring):
         return False
     elif not isinstance(raster_path_band[1], int):
         return False
