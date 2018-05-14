@@ -1454,7 +1454,7 @@ class PyGeoprocessing10(unittest.TestCase):
         kernel_path = os.path.join(self.workspace_dir, 'kernel.tif')
         kernel_array = numpy.zeros(
             (n_kernel_pixels, n_kernel_pixels), numpy.float32)
-        kernel_array[n_kernel_pixels/2,n_kernel_pixels/2] = 1
+        kernel_array[int(n_kernel_pixels/2),int(n_kernel_pixels/2)] = 1
         pygeoprocessing.testing.create_raster_on_disk(
             [kernel_array], reference.origin, reference.projection,
             nodata_target, reference.pixel_size(30), filename=kernel_path)
@@ -1480,7 +1480,7 @@ class PyGeoprocessing10(unittest.TestCase):
         pixel_matrix[:] = numpy.arange((n_pixels))
         nodata_value = -1
         # make a nodata hole in the middle to test boundary cases
-        pixel_matrix[n_pixels/2, n_pixels/2] = nodata_value
+        pixel_matrix[int(n_pixels/2), int(n_pixels/2)] = nodata_value
         dem_path = os.path.join(self.workspace_dir, 'dem.tif')
         target_slope_path = os.path.join(self.workspace_dir, 'slope.tif')
         pygeoprocessing.testing.create_raster_on_disk(
@@ -1593,7 +1593,7 @@ class PyGeoprocessing10(unittest.TestCase):
         n_pixels = 1000
         base_raster_array = numpy.zeros(
             (n_pixels, n_pixels), dtype=numpy.int8)
-        base_raster_array[n_pixels/2, n_pixels/2] = 1
+        base_raster_array[int(n_pixels/2), int(n_pixels/2)] = 1
         base_raster_array[0, 0] = 1
         base_raster_array[0, n_pixels-1] = 1
         base_raster_array[3, 4] = 1
@@ -1607,9 +1607,9 @@ class PyGeoprocessing10(unittest.TestCase):
         base_raster_array[5, 6] = 1
         base_raster_array[n_pixels-1, 0] = 1
         base_raster_array[n_pixels-1, n_pixels-1] = 1
-        base_raster_array[n_pixels/2, n_pixels/2] = 1
-        base_raster_array[n_pixels/2, n_pixels/4] = 1
-        base_raster_array[n_pixels/2, (3*n_pixels)/4] = 1
+        base_raster_array[int(n_pixels/2), int(n_pixels/2)] = 1
+        base_raster_array[int(n_pixels/2), int(n_pixels/4)] = 1
+        base_raster_array[int(n_pixels/2), int((3*n_pixels)/4)] = 1
         nodata_target = -1
         base_raster_path = os.path.join(
             self.workspace_dir, 'base_raster.tif')
