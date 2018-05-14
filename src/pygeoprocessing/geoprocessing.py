@@ -1415,7 +1415,7 @@ def warp_raster(
 
     reproject_callback = _make_logger_callback("Warp %.1f%% complete %s")
 
-    base_raster = gdal.Open(base_raster_path)
+    base_raster = gdal.OpenEx(base_raster_path)
     gdal.Warp(
         target_raster_path, base_raster,
         outputBounds=target_bb,
@@ -1791,7 +1791,7 @@ def convolve_2d(
         target=_convolve_2d_write_raster_worker,
         args=(
             write_queue, signal_path_band,
-            mask_raster_path, target_path, ignore_nodata))
+            mask_raster_path, target_path, ignore_nodata, mask_nodata))
     convolve_2d_writer_result.start()
 
     n_pixels = target_raster.RasterXSize * target_raster.RasterYSize
@@ -2122,7 +2122,7 @@ def merge_rasters(
 
     pixeltype_set = set()
     for path in raster_path_list:
-        raster = gdal.Open(path)
+        raster = gdal.OpenEx(path)
         band = raster.GetRasterBand(1)
         metadata = band.GetMetadata('IMAGE_STRUCTURE')
         band = None
@@ -2551,9 +2551,8 @@ def _convolve_2d_worker(
         ignore_nodata, normalize_kernel,
         work_queue, write_queue, exception_queue):
 
-    print 'starting convolve 2d worker'
-    signal_raster = gdal.Open(signal_path_band[0])
-    kernel_raster = gdal.Open(kernel_path_band[0])
+    signal_raster = gdal.OpenEx(signal_path_band[0])
+    kernel_raster = gdal.OpenEx(kernel_path_band[0])
     signal_band = signal_raster.GetRasterBand(signal_path_band[1])
     kernel_band = kernel_raster.GetRasterBand(kernel_path_band[1])
 
@@ -2665,8 +2664,6 @@ def _convolve_2d_worker(
             'win_ysize': index_tuple[3]
         }
 
-        print 'worker is putting this result to the write queue: ', result
-
         write_queue.put(
             (index_dict, result, mask_result, left_index_raster,
              right_index_raster, top_index_raster, bottom_index_raster))
@@ -2676,14 +2673,10 @@ def _convolve_2d_worker(
 
 def _convolve_2d_write_raster_worker(
         write_raster_queue, signal_path_band,
-        mask_raster_path, target_raster_path, ignore_nodata):
+        mask_raster_path, target_raster_path, ignore_nodata, mask_nodata):
     target_processed_set = set()
     mask_processed_set = set()
 
-    print 'write worker getting info',
-    print signal_path_band
-    print mask_raster_path
-    print target_raster_path
     target_raster_info = get_raster_info(target_raster_path)
     signal_raster_info = get_raster_info(signal_path_band[0])
     target_nodata = target_raster_info['nodata'][0]
@@ -2691,12 +2684,11 @@ def _convolve_2d_write_raster_worker(
     n_cols_signal, n_rows_signal = signal_raster_info['raster_size']
     signal_nodata = signal_raster_info['nodata'][0]
 
-    print 'write worker opening target, %s' % target_raster_path
-    target_raster = gdal.Open(
+    target_raster = gdal.OpenEx(
         target_raster_path, gdal.OF_RASTER | gdal.GA_Update)
     target_band = target_raster.GetRasterBand(1)
 
-    signal_raster = gdal.Open(signal_path_band[0], gdal.OF_RASTER)
+    signal_raster = gdal.OpenEx(signal_path_band[0], gdal.OF_RASTER)
     signal_band = signal_raster.GetRasterBand(signal_path_band[1])
     n_cols_signal = signal_band.XSize
     n_rows_signal = signal_band.YSize
@@ -2704,16 +2696,14 @@ def _convolve_2d_write_raster_worker(
     if mask_raster_path:
         mask_raster_info = get_raster_info(mask_raster_path)
         mask_nodata = mask_raster_info['nodata'][0]
-        mask_raster = gdal.Open(
+        mask_raster = gdal.OpenEx(
             mask_raster_path, gdal.OF_RASTER | gdal.GA_Update)
         mask_band = mask_raster.GetRasterBand(1)
 
     while True:
-        print 'write worker getting payload'
         payload = write_raster_queue.get()
         if payload is None:
             break
-        print 'write worker payload', payload
         (index_dict, result, mask_result, left_index_raster,
          right_index_raster, top_index_raster, bottom_index_raster) = payload
         index_tuple = (
@@ -2722,8 +2712,6 @@ def _convolve_2d_write_raster_worker(
             index_dict['win_xsize'],
             index_dict['win_ysize'],
         )
-        print (index_dict, result, mask_result, left_index_raster,
-               right_index_raster, top_index_raster, bottom_index_raster)
 
         left_index_result = 0
         right_index_result = result.shape[1]
@@ -2744,6 +2732,19 @@ def _convolve_2d_write_raster_worker(
             bottom_index_result -= (
                 bottom_index_raster - n_rows_signal)
             bottom_index_raster = n_rows_signal
+
+        index_dict = {
+            'xoff': left_index_raster,
+            'yoff': top_index_raster,
+            'win_xsize': right_index_raster-left_index_raster,
+            'win_ysize': bottom_index_raster-top_index_raster
+        }
+        index_tuple = (
+            left_index_raster,
+            top_index_raster,
+            right_index_raster-left_index_raster,
+            bottom_index_raster-top_index_raster
+        )
 
         # read the current so we can add to it
         if index_tuple in target_processed_set:
