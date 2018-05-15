@@ -274,7 +274,7 @@ class TestRouting(unittest.TestCase):
                 'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
                 'BLOCKXSIZE=32', 'BLOCKYSIZE=32'))
 
-        dem_array[n/2, :] = -1
+        dem_array[int(n/2), :] = -1
 
         dem_band = dem_raster.GetRasterBand(1)
         dem_band.WriteArray(dem_array)
