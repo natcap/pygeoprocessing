@@ -1,3 +1,4 @@
+# coding=UTF-8
 # distutils: language=c++
 """
 Provides PyGeprocessing Routing functionality.
@@ -200,7 +201,7 @@ cdef class _ManagedRaster:
                 "Error: Block size is not a power of two: "
                 "block_xsize: %d, %d, %s" % (
                     self.block_xsize, self.block_ysize, raster_path))
-            print err_msg
+            print(err_msg)
             raise ValueError(err_msg)
 
         self.block_xbits = numpy.log2(self.block_xsize)
@@ -2275,7 +2276,7 @@ def distance_to_channel_mfd(
                     is_a_channel = (
                         channel_managed_raster.get(pixel.xi, pixel.yi) == 1)
                     if is_a_channel:
-                        #print xi_n, yi_n, 0
+                        #print(xi_n, yi_n, 0)
                         distance_to_channel_managed_raster.set(
                             pixel.xi, pixel.yi, 0)
                         continue
@@ -2324,7 +2325,7 @@ def distance_to_channel_mfd(
                         pixel.value = pixel.value / sum_of_flow_weights
                     else:
                         pixel.value = 0
-                    #print 'set', pixel.xi, pixel.yi, pixel.value
+                    #print('set', pixel.xi, pixel.yi, pixel.value)
                     distance_to_channel_managed_raster.set(
                         pixel.xi, pixel.yi, pixel.value)
     logger.info('%.2f%% complete', 100.0)
