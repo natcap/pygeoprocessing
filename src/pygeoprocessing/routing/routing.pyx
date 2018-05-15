@@ -166,11 +166,11 @@ cdef class _ManagedRaster:
     cdef int block_nx
     cdef int block_ny
     cdef int write_mode
-    cdef char* raster_path
+    cdef bytes raster_path
     cdef int band_id
     cdef int closed
 
-    def __cinit__(self, char* raster_path, int band_id, write_mode):
+    def __cinit__(self, raster_path, band_id, write_mode):
         """Create new instance of Managed Raster.
 
         Parameters:
@@ -212,7 +212,7 @@ cdef class _ManagedRaster:
             self.raster_y_size + (self.block_ysize) - 1) / self.block_ysize
 
         self.lru_cache = new LRUCache[int, double*](MANAGED_RASTER_N_BLOCKS)
-        self.raster_path = raster_path
+        self.raster_path = <bytes> raster_path
         self.band_id = band_id
         self.write_mode = write_mode
         self.closed = 0
