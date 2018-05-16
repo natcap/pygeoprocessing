@@ -2039,7 +2039,7 @@ def iterblocks(
                 result = (result,) + tuple(raster_blocks)
             yield result
 
-    band_index_list = [None for i in band_index_list]
+    band_index_list = None
     raster = None
 
 
