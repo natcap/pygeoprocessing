@@ -4,7 +4,6 @@ from __future__ import division
 from __future__ import absolute_import
 from builtins import zip
 from builtins import range
-from past.utils import old_div
 import types
 import logging
 import os
@@ -1980,15 +1979,15 @@ def iterblocks(
 
     block_area = cols_per_block * rows_per_block
     # try to make block wider
-    if old_div(largest_block, block_area) > 0:
-        width_factor = old_div(largest_block, block_area)
+    if int(largest_block / block_area) > 0:
+        width_factor = int(largest_block / block_area)
         cols_per_block *= width_factor
         if cols_per_block > n_cols:
             cols_per_block = n_cols
         block_area = cols_per_block * rows_per_block
     # try to make block taller
-    if old_div(largest_block, block_area) > 0:
-        height_factor = old_div(largest_block, block_area)
+    if int(largest_block / block_area) > 0:
+        height_factor = int(largest_block / block_area)
         rows_per_block *= height_factor
         if rows_per_block > n_rows:
             rows_per_block = n_rows
