@@ -4,6 +4,6 @@
 # pygeoprocessing to work as expected.
 
 GDAL>=2.0,<3.0
-numpy>=1.13.0
-scipy>=0.14.0
+numpy>=1.10.0
+scipy>=0.14.1,!=0.19.1
 Shapely
