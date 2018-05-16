@@ -4,6 +4,12 @@ Release History
 .. Unreleased Changes
 .. ------------------
 
+1.0.1 (5/16/2018)
+-----------------
+* Hotfix patch to remove upper bound on required numpy version. This was
+  causing a conflict with InVEST's looser requirement. Requirement is now
+  set to >=1.13.0.
+
 1.0.0 (4/29/2018)
 -----------------
 * This release marks a feature-complete version of PyGeoprocessing with a
