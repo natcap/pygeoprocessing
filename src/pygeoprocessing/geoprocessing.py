@@ -378,8 +378,8 @@ def align_and_resize_raster_stack(
         # raster[raster_align_index]
         for index in [0, 1]:
             n_pixels = int(
-                ((target_bounding_box[index] - align_bounding_box[index]) /
-                float(align_pixel_size[index])))
+                (target_bounding_box[index] - align_bounding_box[index]) /
+                float(align_pixel_size[index]))
             target_bounding_box[index] = (
                 n_pixels * align_pixel_size[index] +
                 align_bounding_box[index])
@@ -1759,15 +1759,15 @@ def convolve_2d(
                 k_path_band[0], band_index_list=[k_path_band[1]],
                 astype_list=[_gdal_type_to_numpy_lookup[target_datatype]]):
             left_index_raster = (
-                signal_data['xoff'] - old_div(n_cols_kernel, 2) + kernel_data['xoff'])
+                signal_data['xoff'] - int(n_cols_kernel / 2) + kernel_data['xoff'])
             right_index_raster = (
-                signal_data['xoff'] - old_div(n_cols_kernel, 2) +
+                signal_data['xoff'] - int(n_cols_kernel / 2) +
                 kernel_data['xoff'] + signal_data['win_xsize'] +
                 kernel_data['win_xsize'] - 1)
             top_index_raster = (
-                signal_data['yoff'] - old_div(n_rows_kernel, 2) + kernel_data['yoff'])
+                signal_data['yoff'] - int(n_rows_kernel / 2) + kernel_data['yoff'])
             bottom_index_raster = (
-                signal_data['yoff'] - old_div(n_rows_kernel, 2) +
+                signal_data['yoff'] - int(n_rows_kernel / 2) +
                 kernel_data['yoff'] + signal_data['win_ysize'] +
                 kernel_data['win_ysize'] - 1)
 
