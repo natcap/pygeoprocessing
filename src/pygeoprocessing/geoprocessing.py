@@ -1029,7 +1029,7 @@ def get_raster_info(raster_path):
     raster_properties['geotransform'] = geo_transform
     raster_properties['pixel_size'] = (geo_transform[1], geo_transform[5])
     raster_properties['mean_pixel_size'] = (
-        (abs(geo_transform[1]) + abs(geo_transform[5])), 2.0)
+        (abs(geo_transform[1]) + abs(geo_transform[5])) / 2.0)
     raster_properties['raster_size'] = (
         raster.GetRasterBand(1).XSize,
         raster.GetRasterBand(1).YSize)
