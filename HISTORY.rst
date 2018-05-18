@@ -1,8 +1,16 @@
 Release History
 ===============
 
-.. Unreleased Changes
-.. ------------------
+Unreleased Changes
+------------------
+* PyGeoprocessing now supports Python 2 and 3, and is tested on python 2.7, 3.5
+  and 3.6  Testing across multiple versions is configured to be run via
+  ``tox``.
+* After testing (tox configuration included under ``tox-libcompat.ini``), numpy
+  requirement has been dropped to ``numpy>=1.10.0`` and scipy has been modified
+  to be ``scipy>=0.14.1,!=0.19.1``.
+* A dependency on ``future`` has been added for compatibility between python
+  versions.
 
 1.0.1 (5/16/2018)
 -----------------
