@@ -3,7 +3,7 @@ Release History
 
 Unreleased Changes
 ------------------
-* PyGeoprocessing now supports Python 2 and 3, and is tested on python 2.7, 3.5
+* PyGeoprocessing now supports Python 2 and 3, and is tested on python 2.7
   and 3.6  Testing across multiple versions is configured to be run via
   ``tox``.
 * After testing (tox configuration included under ``tox-libcompat.ini``), numpy

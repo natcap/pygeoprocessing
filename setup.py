@@ -3,7 +3,6 @@ from Cython.Build import cythonize
 import numpy
 from setuptools.extension import Extension
 from setuptools import setup
-import pkg_resources
 
 # Read in requirements.txt and populate the python readme with the non-comment
 # contents.
@@ -48,7 +47,6 @@ setup(
         'Programming Language :: Python :: 2',
         'Programming Language :: Python :: 2.7',
         'Programming Language :: Python :: 3',
-        'Programming Language :: Python :: 3.5',
         'Programming Language :: Python :: 3.6',
         'Topic :: Scientific/Engineering :: GIS',
         'License :: OSI Approved :: BSD License'
