@@ -2276,7 +2276,6 @@ def distance_to_channel_mfd(
                     is_a_channel = (
                         channel_managed_raster.get(pixel.xi, pixel.yi) == 1)
                     if is_a_channel:
-                        #print(xi_n, yi_n, 0)
                         distance_to_channel_managed_raster.set(
                             pixel.xi, pixel.yi, 0)
                         continue
@@ -2325,7 +2324,6 @@ def distance_to_channel_mfd(
                         pixel.value = pixel.value / sum_of_flow_weights
                     else:
                         pixel.value = 0
-                    #print('set', pixel.xi, pixel.yi, pixel.value)
                     distance_to_channel_managed_raster.set(
                         pixel.xi, pixel.yi, pixel.value)
     logger.info('%.2f%% complete', 100.0)
