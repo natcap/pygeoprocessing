@@ -1965,7 +1965,7 @@ def iterblocks(
     raster = gdal.OpenEx(raster_path)
 
     if band_index_list is None:
-        band_index_list = list(range(1, raster.RasterCount + 1))
+        band_index_list = range(1, raster.RasterCount + 1)
 
     band_index_list = [
         raster.GetRasterBand(index) for index in band_index_list]
