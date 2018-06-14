@@ -1,3 +1,4 @@
+# coding=UTF-8
 # distutils: language=c++
 """
 Provides PyGeprocessing Routing functionality.
@@ -165,11 +166,11 @@ cdef class _ManagedRaster:
     cdef int block_nx
     cdef int block_ny
     cdef int write_mode
-    cdef char* raster_path
+    cdef bytes raster_path
     cdef int band_id
     cdef int closed
 
-    def __cinit__(self, char* raster_path, int band_id, write_mode):
+    def __cinit__(self, raster_path, band_id, write_mode):
         """Create new instance of Managed Raster.
 
         Parameters:
@@ -200,7 +201,7 @@ cdef class _ManagedRaster:
                 "Error: Block size is not a power of two: "
                 "block_xsize: %d, %d, %s" % (
                     self.block_xsize, self.block_ysize, raster_path))
-            print err_msg
+            print(err_msg)
             raise ValueError(err_msg)
 
         self.block_xbits = numpy.log2(self.block_xsize)
@@ -211,7 +212,7 @@ cdef class _ManagedRaster:
             self.raster_y_size + (self.block_ysize) - 1) / self.block_ysize
 
         self.lru_cache = new LRUCache[int, double*](MANAGED_RASTER_N_BLOCKS)
-        self.raster_path = raster_path
+        self.raster_path = <bytes> raster_path
         self.band_id = band_id
         self.write_mode = write_mode
         self.closed = 0
@@ -2275,7 +2276,6 @@ def distance_to_channel_mfd(
                     is_a_channel = (
                         channel_managed_raster.get(pixel.xi, pixel.yi) == 1)
                     if is_a_channel:
-                        #print xi_n, yi_n, 0
                         distance_to_channel_managed_raster.set(
                             pixel.xi, pixel.yi, 0)
                         continue
@@ -2324,7 +2324,6 @@ def distance_to_channel_mfd(
                         pixel.value = pixel.value / sum_of_flow_weights
                     else:
                         pixel.value = 0
-                    #print 'set', pixel.xi, pixel.yi, pixel.value
                     distance_to_channel_managed_raster.set(
                         pixel.xi, pixel.yi, pixel.value)
     logger.info('%.2f%% complete', 100.0)

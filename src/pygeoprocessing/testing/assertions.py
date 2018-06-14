@@ -1,5 +1,7 @@
 # coding=utf-8
 """Assertions for geospatial testing."""
+from builtins import zip
+from builtins import range
 
 import os
 import csv
@@ -393,8 +395,8 @@ def assert_csv_equal(
     Returns:
         None
     """
-    a_file = open(a_uri, 'rb')
-    b_file = open(b_uri, 'rb')
+    a_file = open(a_uri, 'r')
+    b_file = open(b_uri, 'r')
 
     reader_a = csv.reader(a_file)
     reader_b = csv.reader(b_file)
@@ -502,7 +504,7 @@ def assert_text_equal(text_1_uri, text_2_uri):
             for line in opened_file:
                 yield line
 
-    for index, (a_line, b_line) in enumerate(itertools.izip(
+    for index, (a_line, b_line) in enumerate(zip(
             lines(text_1_uri), lines(text_2_uri))):
         if a_line != b_line:
             raise AssertionError('Line %s in %s does not match regression '
@@ -558,7 +560,7 @@ def assert_checksums_equal(checksum_file, base_folder=None):
 
     missing_files = []
     nonmatching_files = []
-    for filepath, expected_md5sum in files.iteritems():
+    for filepath, expected_md5sum in files.items():
         full_filepath = os.path.join(base_folder, filepath)
         try:
             current_md5sum = utils.digest_file(full_filepath)
