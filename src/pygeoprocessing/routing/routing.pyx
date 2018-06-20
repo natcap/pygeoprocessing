@@ -39,6 +39,9 @@ from libcpp.stack cimport stack
 from libcpp.deque cimport deque
 from libcpp.set cimport set as cset
 
+LOGGER = logging.getLogger(__name__)
+LOGGER.addHandler(logging.NullHandler())  # silence logging by default
+
 # This module creates rasters with a memory xy block size of 2**BLOCK_BITS
 cdef int BLOCK_BITS = 8
 
@@ -199,7 +202,9 @@ cdef class _ManagedRaster:
             # ValueError in here at least for readability.
             err_msg = (
                 "Error: Block size is not a power of two: "
-                "block_xsize: %d, %d, %s" % (
+                "block_xsize: %d, %d, %s. This exception is happening"
+                "in Cython, so it will cause a hard seg-fault, but it's"
+                "otherwise meant to be a ValueError." % (
                     self.block_xsize, self.block_ysize, raster_path))
             print(err_msg)
             raise ValueError(err_msg)
@@ -261,7 +266,8 @@ cdef class _ManagedRaster:
                 inc(it)
             return
 
-        raster = gdal.Open(self.raster_path, gdal.GA_Update)
+        raster = gdal.OpenEx(
+            self.raster_path, gdal.GA_Update | gdal.OF_RASTER)
         raster_band = raster.GetRasterBand(self.band_id)
 
         # if we get here, we're in write_mode
@@ -363,7 +369,7 @@ cdef class _ManagedRaster:
         if yoff+win_ysize > self.raster_y_size:
             win_ysize = win_ysize - (yoff+win_ysize - self.raster_y_size)
 
-        raster = gdal.Open(self.raster_path)
+        raster = gdal.OpenEx(self.raster_path, gdal.OF_RASTER)
         raster_band = raster.GetRasterBand(self.band_id)
         block_array = raster_band.ReadAsArray(
             xoff=xoff, yoff=yoff, win_xsize=win_xsize,
@@ -381,7 +387,8 @@ cdef class _ManagedRaster:
             <int>block_index, <double*>double_buffer, removed_value_list)
 
         if self.write_mode:
-            raster = gdal.Open(self.raster_path, gdal.GA_Update)
+            raster = gdal.OpenEx(
+                self.raster_path, gdal.GA_Update | gdal.OF_RASTER)
             raster_band = raster.GetRasterBand(self.band_id)
 
         block_array = numpy.empty(
@@ -427,6 +434,25 @@ cdef class _ManagedRaster:
         if self.write_mode:
             raster_band = None
             raster = None
+
+
+def _create_routing_compatable_raster(base_path, target_path):
+    """Create a copy of a raster with a block size compatible with routing.
+
+    Parameters:
+        base_path_band (tuple): a path/band number representing the base
+            raster to convert.
+        target_path (string): path to a copy of `base_path` with creation
+            options compatible with `pyeoprocessing.routing` functions.
+
+    Returns:
+        None.
+
+    """
+    geotiff_driver = gdal.GetDriverByName('GTiff')
+    base_raster = gdal.OpenEx(base_path, gdal.OF_RASTER)
+    geotiff_driver.CreateCopy(
+        target_path, base_raster, options=GTIFF_CREATION_OPTIONS)
 
 
 def _generate_read_bounds(offset_dict, raster_x_size, raster_y_size):
@@ -554,9 +580,6 @@ def fill_pits(
     cdef time_t last_log_time
     last_log_time = ctime(NULL)
 
-    logger = logging.getLogger('pygeoprocessing.routing.fill_pits')
-    logger.addHandler(logging.NullHandler())  # silence logging by default
-
     # determine dem nodata in the working type, or set an improbable value
     # if one can't be determined
     dem_raster_info = pygeoprocessing.get_raster_info(dem_raster_path_band[0])
@@ -610,9 +633,9 @@ def fill_pits(
         pit_mask_path, 1, 1)
 
     # copy the base DEM to the target and set up for writing
-    gdal_driver = gdal.GetDriverByName('GTiff')
-    base_dem_raster = gdal.Open(dem_raster_path_band[0])
-    gdal_driver.CreateCopy(
+    geotiff_driver = gdal.GetDriverByName('GTiff')
+    base_dem_raster = gdal.OpenEx(dem_raster_path_band[0], gdal.OF_RASTER)
+    geotiff_driver.CreateCopy(
         target_filled_dem_raster_path, base_dem_raster,
         options=GTIFF_CREATION_OPTIONS)
     target_dem_raster = gdal.OpenEx(
@@ -635,7 +658,7 @@ def fill_pits(
         if ctime(NULL) - last_log_time > 5.0:
             last_log_time = ctime(NULL)
             current_pixel = xoff + yoff * raster_x_size
-            logger.info('%.2f%% complete', 100.0 * current_pixel / <float>(
+            LOGGER.info('%.2f%% complete', 100.0 * current_pixel / <float>(
                 raster_x_size * raster_y_size))
 
         # make a buffer big enough to capture block and boundaries around it
@@ -830,7 +853,7 @@ def fill_pits(
     pit_mask_managed_raster.close()
     flat_region_mask_managed_raster.close()
     shutil.rmtree(working_dir_path)
-    logger.info('%.2f%% complete', 100.0)
+    LOGGER.info('%.2f%% complete', 100.0)
 
 
 def flow_dir_d8(
@@ -906,9 +929,6 @@ def flow_dir_d8(
     cdef time_t last_log_time
     last_log_time = ctime(NULL)
 
-    logger = logging.getLogger('pygeoprocessing.routing.flow_dir_d8')
-    logger.addHandler(logging.NullHandler())  # silence logging by default
-
     # determine dem nodata in the working type, or set an improbable value
     # if one can't be determined
     dem_raster_info = pygeoprocessing.get_raster_info(dem_raster_path_band[0])
@@ -969,16 +989,29 @@ def flow_dir_d8(
         plateau_distance_path, 1, 1)
 
     # this raster is for random access of the DEM
+
+    compatable_dem_path = None
+    dem_block_xsize, dem_block_ysize = dem_raster_info['block_size']
+    if (dem_block_xsize & (dem_block_xsize - 1) != 0) or (
+            dem_block_ysize & (dem_block_ysize - 1) != 0):
+        LOGGER.warn("dem is not a power of 2, creating a copy that is.")
+        compatable_dem_path = os.path.join(
+            working_dir_path, 'compatable_dem.tif')
+        _create_routing_compatable_raster(
+            dem_raster_path_band[0], compatable_dem_path)
+        LOGGER.info("compatible dem complete")
+    else:
+        compatable_dem_path = dem_raster_path_band
     dem_managed_raster = _ManagedRaster(
-        dem_raster_path_band[0], dem_raster_path_band[1], 0)
+        compatable_dem_path[0], compatable_dem_path[1], 0)
 
     # and this raster is for efficient block-by-block reading of the dem
-    dem_raster = gdal.Open(dem_raster_path_band[0])
+    dem_raster = gdal.OpenEx(compatable_dem_path[0], gdal.OF_RASTER)
     dem_band = dem_raster.GetRasterBand(1)
 
     # this outer loop searches for a pixel that is locally undrained
     for offset_dict in pygeoprocessing.iterblocks(
-            dem_raster_path_band[0], offset_only=True, largest_block=0):
+            compatable_dem_path[0], offset_only=True, largest_block=0):
         win_xsize = offset_dict['win_xsize']
         win_ysize = offset_dict['win_ysize']
         xoff = offset_dict['xoff']
@@ -987,7 +1020,7 @@ def flow_dir_d8(
         if ctime(NULL) - last_log_time > 5.0:
             last_log_time = ctime(NULL)
             current_pixel = xoff + yoff * raster_x_size
-            logger.info('%.2f%% complete', 100.0 * current_pixel / <float>(
+            LOGGER.info('%.2f%% complete', 100.0 * current_pixel / <float>(
                 raster_x_size * raster_y_size))
 
         # make a buffer big enough to capture block and boundaries around it
@@ -1163,13 +1196,14 @@ def flow_dir_d8(
                             plateau_distance_managed_raster.set(
                                 xi_n, yi_n, n_drain_distance)
                             drain_queue.push(CoordinateType(xi_n, yi_n))
-
+    dem_band = None
+    dem_raster = None
     flow_dir_managed_raster.close()
     flat_region_mask_managed_raster.close()
     dem_managed_raster.close()
     plateau_distance_managed_raster.close()
     shutil.rmtree(working_dir_path)
-    logger.info('%.2f%% complete', 100.0)
+    LOGGER.info('%.2f%% complete', 100.0)
 
 
 def flow_accumulation_d8(
@@ -1226,8 +1260,6 @@ def flow_accumulation_d8(
     cdef time_t last_log_time
     last_log_time = ctime(NULL)
 
-    logger = logging.getLogger('pygeoprocessing.routing.flow_accumulation_d8')
-    logger.addHandler(logging.NullHandler())  # silence logging by default
     flow_accum_nodata = -1
     pygeoprocessing.new_raster_from_base(
         flow_dir_raster_path_band[0], target_flow_accum_raster_path,
@@ -1239,7 +1271,8 @@ def flow_accumulation_d8(
 
     flow_dir_managed_raster = _ManagedRaster(
         flow_dir_raster_path_band[0], flow_dir_raster_path_band[1], 0)
-    flow_dir_raster = gdal.Open(flow_dir_raster_path_band[0], gdal.OF_RASTER)
+    flow_dir_raster = gdal.OpenEx(
+        flow_dir_raster_path_band[0], gdal.OF_RASTER)
     flow_dir_band = flow_dir_raster.GetRasterBand(
         flow_dir_raster_path_band[1])
 
@@ -1265,7 +1298,7 @@ def flow_accumulation_d8(
         if ctime(NULL) - last_log_time > 5.0:
             last_log_time = ctime(NULL)
             current_pixel = xoff + yoff * raster_x_size
-            logger.info('%.2f%% complete', 100.0 * current_pixel / <float>(
+            LOGGER.info('%.2f%% complete', 100.0 * current_pixel / <float>(
                 raster_x_size * raster_y_size))
 
         # make a buffer big enough to capture block and boundaries around it
@@ -1334,7 +1367,7 @@ def flow_accumulation_d8(
                         flow_accum_managed_raster.set(
                             flow_pixel.xi, flow_pixel.yi,
                             flow_pixel.value)
-    logger.info('%.2f%% complete', 100.0)
+    LOGGER.info('%.2f%% complete', 100.0)
 
 
 def flow_dir_mfd(
@@ -1433,10 +1466,6 @@ def flow_dir_mfd(
     cdef time_t last_log_time
     last_log_time = ctime(NULL)
 
-    logger = logging.getLogger(
-        'pygeoprocessing.routing.flow_dir_mfd')
-    logger.addHandler(logging.NullHandler())  # silence logging by default
-
     # determine dem nodata in the working type, or set an improbable value
     # if one can't be determined
     dem_raster_info = pygeoprocessing.get_raster_info(dem_raster_path_band[0])
@@ -1509,16 +1538,33 @@ def flow_dir_mfd(
         plateau_distance_path, 1, 1)
 
     # this raster is for random access of the DEM
+    compatable_dem_raster_path_band = None
+    dem_block_xsize, dem_block_ysize = dem_raster_info['block_size']
+    if (dem_block_xsize & (dem_block_xsize - 1) != 0) or (
+            dem_block_ysize & (dem_block_ysize - 1) != 0):
+        LOGGER.warn("dem is not a power of 2, creating a copy that is.")
+        compatable_dem_raster_path_band = (
+            os.path.join(working_dir_path, 'compatable_dem.tif'),
+            dem_raster_path_band[1])
+        _create_routing_compatable_raster(
+            dem_raster_path_band[0], compatable_dem_raster_path_band[0])
+        LOGGER.info("compatible dem complete")
+    else:
+        compatable_dem_raster_path_band = dem_raster_path_band
     dem_managed_raster = _ManagedRaster(
-        dem_raster_path_band[0], dem_raster_path_band[1], 0)
+        compatable_dem_raster_path_band[0],
+        compatable_dem_raster_path_band[1], 0)
 
     # and this raster is for efficient block-by-block reading of the dem
-    dem_raster = gdal.Open(dem_raster_path_band[0])
-    dem_band = dem_raster.GetRasterBand(1)
+    dem_raster = gdal.OpenEx(
+        compatable_dem_raster_path_band[0], gdal.OF_RASTER)
+    dem_band = dem_raster.GetRasterBand(
+        compatable_dem_raster_path_band[1])
 
     # this outer loop searches for a pixel that is locally undrained
     for offset_dict in pygeoprocessing.iterblocks(
-            dem_raster_path_band[0], offset_only=True, largest_block=0):
+            compatable_dem_raster_path_band[0], offset_only=True,
+            largest_block=0):
         win_xsize = offset_dict['win_xsize']
         win_ysize = offset_dict['win_ysize']
         xoff = offset_dict['xoff']
@@ -1527,7 +1573,7 @@ def flow_dir_mfd(
         if ctime(NULL) - last_log_time > 5.0:
             last_log_time = ctime(NULL)
             current_pixel = xoff + yoff * raster_x_size
-            logger.info('%.2f%% complete', 100.0 * current_pixel / <float>(
+            LOGGER.info('%.2f%% complete', 100.0 * current_pixel / <float>(
                 raster_x_size * raster_y_size))
 
         # make a buffer big enough to capture block and boundaries around it
@@ -1796,13 +1842,15 @@ def flow_dir_mfd(
                     flow_dir_managed_raster.set(
                         xi_q, yi_q, compressed_integer_slopes)
 
+    dem_band = None
+    dem_raster = None
     plateau_drain_mask_managed_raster.close()
     flow_dir_managed_raster.close()
     flat_region_mask_managed_raster.close()
     dem_managed_raster.close()
     plateau_distance_managed_raster.close()
     shutil.rmtree(working_dir_path)
-    logger.info('%.2f%% complete', 100.0)
+    LOGGER.info('%.2f%% complete', 100.0)
 
 
 def flow_accumulation_mfd(
@@ -1865,9 +1913,6 @@ def flow_accumulation_mfd(
     cdef time_t last_log_time
     last_log_time = ctime(NULL)
 
-    logger = logging.getLogger(
-        'pygeoprocessing.routing.flow_accumulation_mfd')
-    logger.addHandler(logging.NullHandler())  # silence logging by default
     flow_accum_nodata = -1
     pygeoprocessing.new_raster_from_base(
         flow_dir_mfd_raster_path_band[0], target_flow_accum_raster_path,
@@ -1879,7 +1924,7 @@ def flow_accumulation_mfd(
 
     flow_dir_managed_raster = _ManagedRaster(
         flow_dir_mfd_raster_path_band[0], flow_dir_mfd_raster_path_band[1], 0)
-    flow_dir_raster = gdal.Open(
+    flow_dir_raster = gdal.OpenEx(
         flow_dir_mfd_raster_path_band[0], gdal.OF_RASTER)
     flow_dir_band = flow_dir_raster.GetRasterBand(
         flow_dir_mfd_raster_path_band[1])
@@ -1899,7 +1944,7 @@ def flow_accumulation_mfd(
         if ctime(NULL) - last_log_time > 5.0:
             last_log_time = ctime(NULL)
             current_pixel = xoff + yoff * raster_x_size
-            logger.info('%.2f%% complete', 100.0 * current_pixel / <float>(
+            LOGGER.info('%.2f%% complete', 100.0 * current_pixel / <float>(
                 raster_x_size * raster_y_size))
 
         # make a buffer big enough to capture block and boundaries around it
@@ -1986,7 +2031,7 @@ def flow_accumulation_mfd(
                         flow_accum_managed_raster.set(
                             flow_pixel.xi, flow_pixel.yi,
                             flow_pixel.value)
-    logger.info('%.2f%% complete', 100.0)
+    LOGGER.info('%.2f%% complete', 100.0)
 
 
 def distance_to_channel_d8(
@@ -2034,9 +2079,6 @@ def distance_to_channel_d8(
     cdef time_t last_log_time
     last_log_time = ctime(NULL)
 
-    logger = logging.getLogger(
-        'pygeoprocessing.routing.distance_to_channel_d8')
-    logger.addHandler(logging.NullHandler())  # silence logging by default
     distance_nodata = -1
     pygeoprocessing.new_raster_from_base(
         flow_dir_d8_raster_path_band[0],
@@ -2052,7 +2094,7 @@ def distance_to_channel_d8(
 
     flow_dir_d8_managed_raster = _ManagedRaster(
         flow_dir_d8_raster_path_band[0], flow_dir_d8_raster_path_band[1], 0)
-    channel_raster = gdal.Open(channel_raster_path_band[0], gdal.OF_RASTER)
+    channel_raster = gdal.OpenEx(channel_raster_path_band[0], gdal.OF_RASTER)
     channel_band = channel_raster.GetRasterBand(channel_raster_path_band[1])
 
     flow_dir_raster_info = pygeoprocessing.get_raster_info(
@@ -2071,7 +2113,7 @@ def distance_to_channel_d8(
         if ctime(NULL) - last_log_time > 5.0:
             last_log_time = ctime(NULL)
             current_pixel = xoff + yoff * raster_x_size
-            logger.info('%.2f%% complete', 100.0 * current_pixel / <float>(
+            LOGGER.info('%.2f%% complete', 100.0 * current_pixel / <float>(
                 raster_x_size * raster_y_size))
 
         # make a buffer big enough to capture block and boundaries around it
@@ -2181,9 +2223,6 @@ def distance_to_channel_mfd(
     cdef time_t last_log_time
     last_log_time = ctime(NULL)
 
-    logger = logging.getLogger(
-        'pygeoprocessing.routing.distance_to_channel_mfd')
-    logger.addHandler(logging.NullHandler())  # silence logging by default
     distance_nodata = -1
     pygeoprocessing.new_raster_from_base(
         flow_dir_mfd_raster_path_band[0],
@@ -2199,10 +2238,10 @@ def distance_to_channel_mfd(
 
     flow_dir_mfd_managed_raster = _ManagedRaster(
         flow_dir_mfd_raster_path_band[0], flow_dir_mfd_raster_path_band[1], 0)
-    channel_raster = gdal.Open(channel_raster_path_band[0], gdal.OF_RASTER)
+    channel_raster = gdal.OpenEx(channel_raster_path_band[0], gdal.OF_RASTER)
     channel_band = channel_raster.GetRasterBand(channel_raster_path_band[1])
 
-    flow_dir_mfd_raster = gdal.Open(
+    flow_dir_mfd_raster = gdal.OpenEx(
         flow_dir_mfd_raster_path_band[0], gdal.OF_RASTER)
     flow_dir_mfd_band = flow_dir_mfd_raster.GetRasterBand(
         flow_dir_mfd_raster_path_band[1])
@@ -2223,7 +2262,7 @@ def distance_to_channel_mfd(
         if ctime(NULL) - last_log_time > 5.0:
             last_log_time = ctime(NULL)
             current_pixel = xoff + yoff * raster_x_size
-            logger.info('%.2f%% complete', 100.0 * current_pixel / <float>(
+            LOGGER.info('%.2f%% complete', 100.0 * current_pixel / <float>(
                 raster_x_size * raster_y_size))
 
         # make a buffer big enough to capture block and boundaries around it
@@ -2326,4 +2365,4 @@ def distance_to_channel_mfd(
                         pixel.value = 0
                     distance_to_channel_managed_raster.set(
                         pixel.xi, pixel.yi, pixel.value)
-    logger.info('%.2f%% complete', 100.0)
+    LOGGER.info('%.2f%% complete', 100.0)
