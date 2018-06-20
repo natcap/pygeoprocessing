@@ -15,7 +15,6 @@ import scipy.ndimage
 import pygeoprocessing
 import pygeoprocessing.testing
 from pygeoprocessing.testing import sampledata
-import pygeoprocessing.routing
 import shapely.geometry
 import mock
 
