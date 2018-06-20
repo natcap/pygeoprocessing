@@ -436,25 +436,6 @@ cdef class _ManagedRaster:
             raster = None
 
 
-def _create_routing_compatable_raster(base_path, target_path):
-    """Create a copy of a raster with a block size compatible with routing.
-
-    Parameters:
-        base_path_band (tuple): a path/band number representing the base
-            raster to convert.
-        target_path (string): path to a copy of `base_path` with creation
-            options compatible with `pyeoprocessing.routing` functions.
-
-    Returns:
-        None.
-
-    """
-    geotiff_driver = gdal.GetDriverByName('GTiff')
-    base_raster = gdal.OpenEx(base_path, gdal.OF_RASTER)
-    geotiff_driver.CreateCopy(
-        target_path, base_raster, options=GTIFF_CREATION_OPTIONS)
-
-
 def _generate_read_bounds(offset_dict, raster_x_size, raster_y_size):
     """Helper function to expand GDAL memory block read bound by 1 pixel.
 
@@ -990,28 +971,35 @@ def flow_dir_d8(
 
     # this raster is for random access of the DEM
 
-    compatable_dem_path = None
+    compatable_dem_raster_path_band = None
     dem_block_xsize, dem_block_ysize = dem_raster_info['block_size']
     if (dem_block_xsize & (dem_block_xsize - 1) != 0) or (
             dem_block_ysize & (dem_block_ysize - 1) != 0):
         LOGGER.warn("dem is not a power of 2, creating a copy that is.")
-        compatable_dem_path = os.path.join(
-            working_dir_path, 'compatable_dem.tif')
-        _create_routing_compatable_raster(
-            dem_raster_path_band[0], compatable_dem_path)
+        compatable_dem_raster_path_band = (
+            os.path.join(working_dir_path, 'compatable_dem.tif'), 1)
+        geotiff_driver = gdal.GetDriverByName('GTiff')
+        dem_raster = gdal.OpenEx(dem_raster_path_band[0], gdal.OF_RASTER)
+        geotiff_driver.CreateCopy(
+            compatable_dem_raster_path_band[0], dem_raster,
+            options=GTIFF_CREATION_OPTIONS)
+        dem_raster = None
         LOGGER.info("compatible dem complete")
     else:
-        compatable_dem_path = dem_raster_path_band
+        compatable_dem_raster_path_band = dem_raster_path_band
     dem_managed_raster = _ManagedRaster(
-        compatable_dem_path[0], compatable_dem_path[1], 0)
+        compatable_dem_raster_path_band[0],
+        compatable_dem_raster_path_band[1], 0)
 
     # and this raster is for efficient block-by-block reading of the dem
-    dem_raster = gdal.OpenEx(compatable_dem_path[0], gdal.OF_RASTER)
-    dem_band = dem_raster.GetRasterBand(1)
+    dem_raster = gdal.OpenEx(
+        compatable_dem_raster_path_band[0], gdal.OF_RASTER)
+    dem_band = dem_raster.GetRasterBand(compatable_dem_raster_path_band[1])
 
     # this outer loop searches for a pixel that is locally undrained
     for offset_dict in pygeoprocessing.iterblocks(
-            compatable_dem_path[0], offset_only=True, largest_block=0):
+            compatable_dem_raster_path_band[0], offset_only=True,
+            largest_block=0):
         win_xsize = offset_dict['win_xsize']
         win_ysize = offset_dict['win_ysize']
         xoff = offset_dict['xoff']
@@ -1546,8 +1534,12 @@ def flow_dir_mfd(
         compatable_dem_raster_path_band = (
             os.path.join(working_dir_path, 'compatable_dem.tif'),
             dem_raster_path_band[1])
-        _create_routing_compatable_raster(
-            dem_raster_path_band[0], compatable_dem_raster_path_band[0])
+        geotiff_driver = gdal.GetDriverByName('GTiff')
+        dem_raster = gdal.OpenEx(dem_raster_path_band[0], gdal.OF_RASTER)
+        geotiff_driver.CreateCopy(
+            compatable_dem_raster_path_band[0], dem_raster,
+            options=GTIFF_CREATION_OPTIONS)
+        dem_raster = None
         LOGGER.info("compatible dem complete")
     else:
         compatable_dem_raster_path_band = dem_raster_path_band
