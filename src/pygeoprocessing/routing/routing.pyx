@@ -986,7 +986,8 @@ def flow_dir_d8(
             dem_block_ysize & (dem_block_ysize - 1) != 0):
         LOGGER.warn("dem is not a power of 2, creating a copy that is.")
         compatable_dem_raster_path_band = (
-            os.path.join(working_dir_path, 'compatable_dem.tif'), 1)
+            os.path.join(working_dir_path, 'compatable_dem.tif'),
+            dem_raster_path_band[1])
         geotiff_driver = gdal.GetDriverByName('GTiff')
         dem_raster = gdal.OpenEx(dem_raster_path_band[0], gdal.OF_RASTER)
         geotiff_driver.CreateCopy(
