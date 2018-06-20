@@ -194,6 +194,16 @@ cdef class _ManagedRaster:
         self.block_xmod = self.block_xsize-1
         self.block_ymod = self.block_ysize-1
 
+        if not (1 <= band_id <= raster_info['n_bands']):
+            err_msg = (
+                "Error: band ID (%s) is not a valid band number. "
+                "This exception is happening in Cython, so it will cause a "
+                "hard seg-fault, but it's otherwise meant to be a "
+                "ValueError." % (band_id))
+            print(err_msg)
+            raise ValueError(err_msg)
+        self.band_id = band_id
+
         if (self.block_xsize & (self.block_xsize - 1) != 0) or (
                 self.block_ysize & (self.block_ysize - 1) != 0):
             # If inputs are not a power of two, this will at least print
@@ -218,7 +228,6 @@ cdef class _ManagedRaster:
 
         self.lru_cache = new LRUCache[int, double*](MANAGED_RASTER_N_BLOCKS)
         self.raster_path = <bytes> raster_path
-        self.band_id = band_id
         self.write_mode = write_mode
         self.closed = 0
 
