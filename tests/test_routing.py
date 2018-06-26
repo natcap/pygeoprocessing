@@ -94,8 +94,8 @@ class TestRouting(unittest.TestCase):
         dem_raster = driver.Create(
             dem_path, dem_array.shape[1], dem_array.shape[0], 1,
             gdal.GDT_Float32, options=(
-                'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
-                'BLOCKXSIZE=32', 'BLOCKYSIZE=32'))
+                'TILED=NO', 'BIGTIFF=YES', 'COMPRESS=LZW',
+                'BLOCKXSIZE=11', 'BLOCKYSIZE=1'))
 
         dem_band = dem_raster.GetRasterBand(1)
         dem_band.WriteArray(dem_array)
@@ -205,8 +205,8 @@ class TestRouting(unittest.TestCase):
         dem_raster = driver.Create(
             dem_path, dem_array.shape[1], dem_array.shape[0], 1,
             gdal.GDT_Float32, options=(
-                'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
-                'BLOCKXSIZE=32', 'BLOCKYSIZE=32'))
+                'TILED=NO', 'BIGTIFF=YES', 'COMPRESS=LZW',
+                'BLOCKXSIZE=11', 'BLOCKYSIZE=1'))
 
         dem_band = dem_raster.GetRasterBand(1)
         dem_band.WriteArray(dem_array)
@@ -274,7 +274,7 @@ class TestRouting(unittest.TestCase):
                 'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
                 'BLOCKXSIZE=32', 'BLOCKYSIZE=32'))
 
-        dem_array[n/2, :] = -1
+        dem_array[int(n/2), :] = -1
 
         dem_band = dem_raster.GetRasterBand(1)
         dem_band.WriteArray(dem_array)

@@ -1,11 +1,15 @@
+# coding=UTF-8
 """A collection of GDAL dataset and raster utilities."""
+from __future__ import division
+from __future__ import absolute_import
+from builtins import zip
+from builtins import range
 import types
 import logging
 import os
 import shutil
 import functools
 import math
-import exceptions
 import heapq
 import time
 import tempfile
@@ -14,7 +18,12 @@ import distutils.version
 import multiprocessing
 import multiprocessing.pool
 import threading
-import Queue
+
+try:
+    import queue
+except ImportError:
+    # python 2 uses capital Q
+    import Queue as queue
 
 try:
     import psutil
@@ -34,17 +43,23 @@ import scipy.ndimage
 import scipy.signal.signaltools
 import shapely.wkt
 import shapely.ops
-from shapely import speedups
 import shapely.prepared
 from . import geoprocessing_core
 
+from functools import reduce
 LOGGER = logging.getLogger(__name__)
+LOGGER.addHandler(logging.NullHandler())  # silence logging by default
 
+from .geoprocessing_core import DEFAULT_GTIFF_CREATION_OPTIONS
 _MAX_TIMEOUT = 5.0
+
+try:
+    from builtins import basestring
+except ImportError:
+    # Python3 doesn't have a basestring.
+    basestring = str
+
 _LOGGING_PERIOD = 5.0  # min 5.0 seconds per update log message for the module
-_DEFAULT_GTIFF_CREATION_OPTIONS = (
-    'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
-    'BLOCKXSIZE=256', 'BLOCKYSIZE=256')
 _LARGEST_ITERBLOCK = 2**16  # largest block for iterblocks to read in cells
 
 # A dictionary to map the resampling method input string to the gdal type
@@ -74,7 +89,7 @@ if (distutils.version.LooseVersion(gdal.__version__) >=
 def raster_calculator(
         base_raster_path_band_list, local_op, target_raster_path,
         datatype_target, nodata_target,
-        gtiff_creation_options=_DEFAULT_GTIFF_CREATION_OPTIONS,
+        gtiff_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS,
         calc_raster_stats=True,
         largest_block=_LARGEST_ITERBLOCK):
     """Apply local a raster operation on a stack of rasters.
@@ -145,7 +160,7 @@ def raster_calculator(
     gdal.PopErrorHandler()
 
     if len(not_found_paths) != 0:
-        raise exceptions.ValueError(
+        raise ValueError(
             "The following files were expected but do not exist on the "
             "filesystem: " + str(not_found_paths))
 
@@ -185,14 +200,14 @@ def raster_calculator(
             raster.GetRasterBand(index) for raster, (_, index) in zip(
                 base_raster_list, base_raster_path_band_list)]
 
-        local_op_work_queue = Queue.Queue(2)
-        write_block_queue = Queue.Queue(2)
-        exception_queue = Queue.Queue()
+        local_op_work_queue = queue.Queue(2)
+        write_block_queue = queue.Queue(2)
+        exception_queue = queue.Queue()
 
         if calc_raster_stats:
             # if this queue is used to send computed valid blocks of
             # the raster to an incremental statistics calculator worker
-            stats_worker_queue = Queue.Queue(2)
+            stats_worker_queue = queue.Queue(2)
         else:
             stats_worker_queue = None
 
@@ -248,7 +263,7 @@ def raster_calculator(
             raster_blocks = [
                 numpy.zeros(blocksize, dtype=_gdal_to_numpy_type(band))
                 for band in base_band_list]
-            for dataset_index in xrange(len(base_band_list)):
+            for dataset_index in range(len(base_band_list)):
                 band_data = block_offset.copy()
                 band_data['buf_obj'] = raster_blocks[dataset_index]
                 base_band_list[dataset_index].ReadAsArray(**band_data)
@@ -322,7 +337,7 @@ def align_and_resize_raster_stack(
         base_raster_path_list, target_raster_path_list, resample_method_list,
         target_pixel_size, bounding_box_mode, base_vector_path_list=None,
         raster_align_index=None,
-        gtiff_creation_options=_DEFAULT_GTIFF_CREATION_OPTIONS):
+        gtiff_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS):
     """Generate rasters from a base such that they align geospatially.
 
     This function resizes base rasters that are in the same geospatial
@@ -504,7 +519,7 @@ def calculate_raster_stats(raster_path):
     """
     raster = gdal.OpenEx(raster_path, gdal.GA_Update)
     raster_properties = get_raster_info(raster_path)
-    for band_index in xrange(raster.RasterCount):
+    for band_index in range(raster.RasterCount):
         target_min = None
         target_max = None
         target_n = 0
@@ -555,7 +570,7 @@ def calculate_raster_stats(raster_path):
 def new_raster_from_base(
         base_path, target_path, datatype, band_nodata_list,
         fill_value_list=None, n_rows=None, n_cols=None,
-        gtiff_creation_options=_DEFAULT_GTIFF_CREATION_OPTIONS):
+        gtiff_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS):
     """Create new GeoTIFF by coping spatial reference/geotransform of base.
 
     A convenience function to simplify the creation of a new raster from the
@@ -637,7 +652,7 @@ def new_raster_from_base(
     base_band = None
     n_bands = len(band_nodata_list)
     target_raster = driver.Create(
-        target_path.encode('utf-8'), n_cols, n_rows, n_bands, datatype,
+        target_path, n_cols, n_rows, n_bands, datatype,
         options=gtiff_creation_options)
     target_raster.SetProjection(base_raster.GetProjection())
     target_raster.SetGeoTransform(base_raster.GetGeoTransform())
@@ -686,7 +701,7 @@ def new_raster_from_base(
 def create_raster_from_vector_extents(
         base_vector_path, target_raster_path, target_pixel_size,
         target_pixel_type, target_nodata, fill_value=None,
-        gtiff_creation_options=_DEFAULT_GTIFF_CREATION_OPTIONS):
+        gtiff_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS):
     """Create a blank raster based on a vector file extent.
 
     Parameters:
@@ -716,7 +731,7 @@ def create_raster_from_vector_extents(
     # maximum size of the combined envelope of all the features
     vector = gdal.OpenEx(base_vector_path)
     shp_extent = None
-    for layer_index in xrange(vector.GetLayerCount()):
+    for layer_index in range(vector.GetLayerCount()):
         layer = vector.GetLayer(layer_index)
         for feature in layer:
             try:
@@ -804,7 +819,7 @@ def interpolate_points(
     source_vector = gdal.OpenEx(base_vector_path)
     point_list = []
     value_list = []
-    for layer_index in xrange(source_vector.GetLayerCount()):
+    for layer_index in range(source_vector.GetLayerCount()):
         layer = source_vector.GetLayer(layer_index)
         for point_feature in layer:
             value = point_feature.GetField(vector_attribute_field)
@@ -898,7 +913,7 @@ def zonal_statistics(
     if not _is_raster_path_band_formatted(base_raster_path_band):
         raise ValueError(
             "`base_raster_path_band` not formatted as expected.  Expects "
-            "(path, band_index), recieved %s" + base_raster_path_band)
+            "(path, band_index), recieved %s" % repr(base_raster_path_band))
     aggregate_vector = gdal.OpenEx(aggregate_vector_path)
     if aggregate_layer_name is not None:
         aggregate_layer = aggregate_vector.GetLayerByName(
@@ -1073,11 +1088,11 @@ def zonal_statistics(
     # map the local ids back to the original base value
     local_to_base_aggregate_value = {
         value: key for key, value in
-        base_to_local_aggregate_value.iteritems()}
+        base_to_local_aggregate_value.items()}
 
     return {
         local_to_base_aggregate_value[key]: value
-        for key, value in aggregate_stats.iteritems()}
+        for key, value in aggregate_stats.items()}
 
 
 def get_vector_info(vector_path, layer_index=0):
@@ -1156,7 +1171,7 @@ def get_raster_info(raster_path):
         raster.GetRasterBand(1).YSize)
     raster_properties['n_bands'] = raster.RasterCount
     raster_properties['nodata'] = [
-        raster.GetRasterBand(index).GetNoDataValue() for index in xrange(
+        raster.GetRasterBand(index).GetNoDataValue() for index in range(
             1, raster_properties['n_bands']+1)]
     # blocksize is the same for all bands, so we can just get the first
     raster_properties['block_size'] = raster.GetRasterBand(1).GetBlockSize()
@@ -1230,7 +1245,7 @@ def reproject_vector(
     original_field_count = layer_dfn.GetFieldCount()
 
     # For every field, create a duplicate field in the new layer
-    for fld_index in xrange(original_field_count):
+    for fld_index in range(original_field_count):
         original_field = layer_dfn.GetFieldDefn(fld_index)
         target_field = ogr.FieldDefn(
             original_field.GetName(), original_field.GetType())
@@ -1269,7 +1284,7 @@ def reproject_vector(
 
         # For all the fields in the feature set the field values from the
         # source field
-        for fld_index in xrange(target_feature.GetFieldCount()):
+        for fld_index in range(target_feature.GetFieldCount()):
             target_feature.SetField(
                 fld_index, base_feature.GetField(fld_index))
 
@@ -1331,7 +1346,7 @@ def reclassify_raster(
     # otherwise if nodata not predefined, remap it into the dictionary
     if nodata is not None and nodata not in value_map_copy:
         value_map_copy[nodata] = target_nodata
-    keys = sorted(numpy.array(value_map_copy.keys()))
+    keys = sorted(numpy.array(list(value_map_copy.keys())))
     values = numpy.array([value_map_copy[x] for x in keys])
 
     def _map_dataset_to_value_op(original_values):
@@ -1357,7 +1372,7 @@ def reclassify_raster(
 def warp_raster(
         base_raster_path, target_pixel_size, target_raster_path,
         resample_method, target_bb=None, target_sr_wkt=None,
-        gtiff_creation_options=_DEFAULT_GTIFF_CREATION_OPTIONS):
+        gtiff_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS):
     """Resize/resample raster to desired pixel size, bbox and projection.
 
     Parameters:
@@ -1549,7 +1564,7 @@ def calculate_disjoint_polygon_set(vector_path, layer_index=0):
     while len(poly_intersect_lookup) > 0:
         # sort polygons by increasing number of intersections
         heap = []
-        for poly_fid, poly_dict in poly_intersect_lookup.iteritems():
+        for poly_fid, poly_dict in poly_intersect_lookup.items():
             heapq.heappush(
                 heap, (len(poly_dict['intersects']), poly_fid, poly_dict))
 
@@ -1569,7 +1584,7 @@ def calculate_disjoint_polygon_set(vector_path, layer_index=0):
                 del poly_intersect_lookup[poly_fid]
         # remove all the polygons from intersections once they're computed
         for maxset_fid in maximal_set:
-            for poly_dict in poly_intersect_lookup.itervalues():
+            for poly_dict in poly_intersect_lookup.values():
                 poly_dict['intersects'].discard(maxset_fid)
         subset_list.append(maximal_set)
     return subset_list
@@ -1684,7 +1699,7 @@ def convolve_2d(
         ignore_nodata=False, mask_nodata=True, normalize_kernel=False,
         target_datatype=gdal.GDT_Float64,
         target_nodata=None,
-        gtiff_creation_options=_DEFAULT_GTIFF_CREATION_OPTIONS,
+        gtiff_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS,
         working_dir=None):
     """Convolve 2D kernel over 2D signal.
 
@@ -1723,7 +1738,6 @@ def convolve_2d(
 
     Returns:
         None
-
     """
     _gdal_type_to_numpy_lookup = {
         gdal.GDT_Byte: numpy.int8,
@@ -1739,92 +1753,233 @@ def convolve_2d(
             "`target_datatype` is set, but `target_nodata` is None. "
             "`target_nodata` must be set if `target_datatype` is not "
             "`gdal.GDT_Float64`.  `target_nodata` is set to None.")
-
-    worker_pool = multiprocessing.pool.ThreadPool(4)
-
-    multiprocessing_manager = multiprocessing.Manager()
-    work_queue = multiprocessing_manager.Queue()
-    write_queue = multiprocessing_manager.Queue()
-    exception_queue = multiprocessing_manager.Queue()
-
     if target_nodata is None:
         target_nodata = numpy.finfo(numpy.float32).min
-    LOGGER.debug("creating target raster %s", target_path)
     new_raster_from_base(
         signal_path_band[0], target_path, target_datatype, [target_nodata],
+        fill_value_list=[0],
         gtiff_creation_options=gtiff_creation_options)
-    LOGGER.debug("target raster created %s", target_path)
 
     signal_raster_info = get_raster_info(signal_path_band[0])
+    kernel_raster_info = get_raster_info(kernel_path_band[0])
+
+    n_cols_signal, n_rows_signal = signal_raster_info['raster_size']
+    n_cols_kernel, n_rows_kernel = kernel_raster_info['raster_size']
+    s_path_band = signal_path_band
+    k_path_band = kernel_path_band
+    s_nodata = signal_raster_info['nodata'][0]
+    k_nodata = kernel_raster_info['nodata'][0]
 
     # we need the original signal raster info because we want the output to
     # be clipped and NODATA masked to it
-    signal_nodata = signal_raster_info['nodata']
+    base_signal_nodata = signal_raster_info['nodata']
+    signal_raster = gdal.OpenEx(signal_path_band[0])
+    signal_band = signal_raster.GetRasterBand(signal_path_band[1])
     target_raster = gdal.OpenEx(target_path, gdal.GA_Update)
     target_band = target_raster.GetRasterBand(1)
 
     # if we're ignoring nodata, we need to make a parallel convolved signal
     # of the nodata mask
-    mask_raster_path = None
-    if signal_nodata is not None and ignore_nodata:
+    if s_nodata is not None and ignore_nodata:
         mask_dir = tempfile.mkdtemp(dir=working_dir)
         mask_raster_path = os.path.join(mask_dir, 'convolved_mask.tif')
         mask_nodata = -1.0
         new_raster_from_base(
             signal_path_band[0], mask_raster_path, gdal.GDT_Float32,
-            [mask_nodata], gtiff_creation_options=gtiff_creation_options)
+            [mask_nodata], fill_value_list=[0],
+            gtiff_creation_options=gtiff_creation_options)
         mask_raster = gdal.OpenEx(mask_raster_path, gdal.GA_Update)
         mask_band = mask_raster.GetRasterBand(1)
 
+    def _make_cache():
+        """Create a helper function to remember the last computed fft."""
+        def _fft_cache(fshape, xoff, yoff, data_block):
+            """Helper function to remember the last computed fft.
+
+            Parameters:
+                fshape (numpy.ndarray): shape of fft
+                xoff,yoff (int): offsets of the data block
+                data_block (numpy.ndarray): the 2D array to calculate the FFT
+                    on if not already calculated.
+
+            Returns:
+                fft transformed data_block of fshape size.
+            """
+            cache_key = (fshape[0], fshape[1], xoff, yoff)
+            if cache_key != _fft_cache.key:
+                _fft_cache.cache = numpy.fft.rfftn(data_block, fshape)
+                _fft_cache.key = cache_key
+            return _fft_cache.cache
+
+        _fft_cache.cache = None
+        _fft_cache.key = None
+        return _fft_cache
+
     LOGGER.info('starting convolve')
+    _signal_fft_cache = _make_cache()
+    _kernel_fft_cache = _make_cache()
+    # we'll need this if we're ignoring nodata
+    if s_nodata is not None and ignore_nodata:
+        _mask_fft_cache = _make_cache()
     last_time = time.time()
+    signal_data = None
 
-    convolve_2d_worker_result = threading.Thread(
-        target=_convolve_2d_worker,
-        args=(
-            signal_path_band, kernel_path_band,
-            ignore_nodata, normalize_kernel,
-            work_queue, write_queue, exception_queue))
-    convolve_2d_worker_result.start()
+    # get the kernel sum for normalization or reverse normalization if neede
+    kernel_sum = 0.0
+    for kernel_data, kernel_block in iterblocks(
+            k_path_band[0], band_index_list=[k_path_band[1]]):
+        if k_nodata is not None and ignore_nodata:
+            kernel_block[kernel_block == k_nodata] = 0.0
+        kernel_sum += numpy.sum(kernel_block)
 
-    convolve_2d_writer_result = threading.Thread(
-        target=_convolve_2d_write_raster_worker,
-        args=(
-            write_queue, signal_path_band,
-            mask_raster_path, target_path, ignore_nodata, mask_nodata))
-    convolve_2d_writer_result.start()
-
-    n_pixels = target_raster.RasterXSize * target_raster.RasterYSize
-    pixels_processed = 0
-    for signal_offset in iterblocks(signal_path_band[0], offset_only=True):
-        for kernel_offset in iterblocks(kernel_path_band[0], offset_only=True):
-            work_queue.put((signal_offset, kernel_offset))
-
-        pixels_processed += (
-            signal_offset['win_xsize'] * signal_offset['win_ysize'])
+    for signal_data, signal_block in iterblocks(
+            s_path_band[0], band_index_list=[s_path_band[1]],
+            astype_list=[_gdal_type_to_numpy_lookup[target_datatype]]):
         last_time = _invoke_timed_callback(
             last_time, lambda: LOGGER.info(
-                "convolution %.2f%% complete",
-                100.0 * float(pixels_processed) / n_pixels),
+                "convolution operating on signal pixel (%d, %d)",
+                signal_data['xoff'], signal_data['yoff']),
             _LOGGING_PERIOD)
+        if s_nodata is not None and ignore_nodata:
+            # if we're ignoring nodata, we don't want to add it up in the
+            # convolution, so we zero those values out
+            signal_nodata_mask = signal_block == s_nodata
+            signal_block[signal_nodata_mask] = 0.0
 
-    work_queue.put(None)
-    LOGGER.debug("waiting for convolve 2d worker to terminate")
-    convolve_2d_worker_result.join()
-    LOGGER.debug("Convolve 2d worker terminated")
+        for kernel_data, kernel_block in iterblocks(
+                k_path_band[0], band_index_list=[k_path_band[1]],
+                astype_list=[_gdal_type_to_numpy_lookup[target_datatype]]):
+            left_index_raster = (
+                signal_data['xoff'] - int(n_cols_kernel / 2) + kernel_data['xoff'])
+            right_index_raster = (
+                signal_data['xoff'] - int(n_cols_kernel / 2) +
+                kernel_data['xoff'] + signal_data['win_xsize'] +
+                kernel_data['win_xsize'] - 1)
+            top_index_raster = (
+                signal_data['yoff'] - int(n_rows_kernel / 2) + kernel_data['yoff'])
+            bottom_index_raster = (
+                signal_data['yoff'] - int(n_rows_kernel / 2) +
+                kernel_data['yoff'] + signal_data['win_ysize'] +
+                kernel_data['win_ysize'] - 1)
 
-    LOGGER.debug("waiting for convolve 2d writer to terminate")
-    convolve_2d_writer_result.join()
-    LOGGER.debug("Convolve 2d writer terminated")
+            # it's possible that the piece of the integrating kernel
+            # doesn't affect the final result, if so we should skip
+            if (right_index_raster < 0 or
+                    bottom_index_raster < 0 or
+                    left_index_raster > n_cols_signal or
+                    top_index_raster > n_rows_signal):
+                continue
 
-    if signal_nodata is not None and ignore_nodata:
+            if k_nodata is not None and ignore_nodata:
+                kernel_block[kernel_block == k_nodata] = 0.0
+
+            if normalize_kernel:
+                kernel_block /= kernel_sum
+
+            # determine the output convolve shape
+            shape = (
+                numpy.array(signal_block.shape) +
+                numpy.array(kernel_block.shape) - 1)
+
+            # add zero padding so FFT is fast
+            fshape = [_next_regular(int(d)) for d in shape]
+
+            signal_fft = _signal_fft_cache(
+                fshape, signal_data['xoff'], signal_data['yoff'],
+                signal_block)
+
+            kernel_fft = _kernel_fft_cache(
+                fshape, kernel_data['xoff'], kernel_data['yoff'],
+                kernel_block)
+
+            # this variable determines the output slice that doesn't include
+            # the padded array region made for fast FFTs.
+            fslice = tuple([slice(0, int(sz)) for sz in shape])
+            # classic FFT convolution
+            result = numpy.fft.irfftn(signal_fft * kernel_fft, fshape)[fslice]
+
+            # if we're ignoring nodata, we need to make a convolution of the
+            # nodata mask too
+            if s_nodata is not None and ignore_nodata:
+                mask_fft = _mask_fft_cache(
+                    fshape, signal_data['xoff'], signal_data['yoff'],
+                    numpy.where(signal_nodata_mask, 0.0, 1.0))
+                mask_result = numpy.fft.irfftn(
+                    mask_fft * kernel_fft, fshape)[fslice]
+
+            left_index_result = 0
+            right_index_result = result.shape[1]
+            top_index_result = 0
+            bottom_index_result = result.shape[0]
+
+            # we might abut the edge of the raster, clip if so
+            if left_index_raster < 0:
+                left_index_result = -left_index_raster
+                left_index_raster = 0
+            if top_index_raster < 0:
+                top_index_result = -top_index_raster
+                top_index_raster = 0
+            if right_index_raster > n_cols_signal:
+                right_index_result -= right_index_raster - n_cols_signal
+                right_index_raster = n_cols_signal
+            if bottom_index_raster > n_rows_signal:
+                bottom_index_result -= (
+                    bottom_index_raster - n_rows_signal)
+                bottom_index_raster = n_rows_signal
+
+            # Add result to current output to account for overlapping edges
+            index_dict = {
+                'xoff': left_index_raster,
+                'yoff': top_index_raster,
+                'win_xsize': right_index_raster-left_index_raster,
+                'win_ysize': bottom_index_raster-top_index_raster
+            }
+            # read the current so we can add to it
+            current_output = target_band.ReadAsArray(**index_dict)
+            # read the signal block so we know where the nodata are
+            potential_nodata_signal_array = signal_band.ReadAsArray(
+                **index_dict)
+            output_array = numpy.empty(
+                current_output.shape, dtype=numpy.float32)
+
+            valid_mask = numpy.ones(
+                potential_nodata_signal_array.shape, dtype=bool)
+            # guard against a None nodata value
+            if base_signal_nodata is not None and mask_nodata:
+                valid_mask[:] = (
+                    potential_nodata_signal_array != base_signal_nodata)
+            output_array[:] = target_nodata
+            output_array[valid_mask] = (
+                (result[top_index_result:bottom_index_result,
+                        left_index_result:right_index_result])[valid_mask] +
+                current_output[valid_mask])
+
+            target_band.WriteArray(
+                output_array, xoff=index_dict['xoff'],
+                yoff=index_dict['yoff'])
+
+            if s_nodata is not None and ignore_nodata:
+                # we'll need to save off the mask convolution so we can divide
+                # it in total later
+                current_mask = mask_band.ReadAsArray(**index_dict)
+                output_array[valid_mask] = (
+                    (mask_result[
+                        top_index_result:bottom_index_result,
+                        left_index_result:right_index_result])[valid_mask] +
+                    current_mask[valid_mask])
+                mask_band.WriteArray(
+                    output_array, xoff=index_dict['xoff'],
+                    yoff=index_dict['yoff'])
+    target_band.FlushCache()
+    target_raster.FlushCache()
+    if s_nodata is not None and ignore_nodata:
         mask_band.FlushCache()
         mask_raster.FlushCache()
         for target_data, target_block in iterblocks(
                 target_path, band_index_list=[1],
                 astype_list=[_gdal_type_to_numpy_lookup[target_datatype]]):
             mask_block = mask_band.ReadAsArray(**target_data)
-            if signal_nodata is not None and mask_nodata:
+            if base_signal_nodata is not None and mask_nodata:
                 valid_mask = target_block != target_nodata
             else:
                 valid_mask = numpy.ones(target_block.shape, dtype=numpy.bool)
@@ -1917,15 +2072,15 @@ def iterblocks(
 
     block_area = cols_per_block * rows_per_block
     # try to make block wider
-    if largest_block / block_area > 0:
-        width_factor = largest_block / block_area
+    if int(largest_block / block_area) > 0:
+        width_factor = int(largest_block / block_area)
         cols_per_block *= width_factor
         if cols_per_block > n_cols:
             cols_per_block = n_cols
         block_area = cols_per_block * rows_per_block
     # try to make block taller
-    if largest_block / block_area > 0:
-        height_factor = largest_block / block_area
+    if int(largest_block / block_area) > 0:
+        height_factor = int(largest_block / block_area)
         rows_per_block *= height_factor
         if rows_per_block > n_rows:
             rows_per_block = n_rows
@@ -1943,13 +2098,13 @@ def iterblocks(
         block_type_list = [
             _gdal_to_numpy_type(ds_band) for ds_band in band_index_list]
 
-    for row_block_index in xrange(n_row_blocks):
+    for row_block_index in range(n_row_blocks):
         row_offset = row_block_index * rows_per_block
         row_block_width = n_rows - row_offset
         if row_block_width > rows_per_block:
             row_block_width = rows_per_block
 
-        for col_block_index in xrange(n_col_blocks):
+        for col_block_index in range(n_col_blocks):
             col_offset = col_block_index * cols_per_block
             col_block_width = n_cols - col_offset
             if col_block_width > cols_per_block:
@@ -1976,6 +2131,9 @@ def iterblocks(
                     ds_band.ReadAsArray(buf_obj=block, **offset_dict)
                 result = (result,) + tuple(raster_blocks)
             yield result
+
+    band_index_list = None
+    raster = None
 
 
 def transform_bounding_box(
@@ -2050,7 +2208,7 @@ def transform_bounding_box(
 def merge_rasters(
         raster_path_list, target_path, bounding_box=None,
         expected_nodata=None,
-        gtiff_creation_options=_DEFAULT_GTIFF_CREATION_OPTIONS):
+        gtiff_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS):
     """Merge the given rasters into a single raster.
 
     This operation creates a mosaic of the rasters in `raster_path_list`.
@@ -2171,7 +2329,7 @@ def merge_rasters(
     # we won't need it after anyway
     n_bands = n_bands_set.pop()
     target_raster = driver.Create(
-        target_path.encode('utf-8'), n_cols, n_rows, n_bands,
+        target_path, n_cols, n_rows, n_bands,
         datatype_set.pop(), options=gtiff_creation_options)
     target_raster.SetProjection(raster.GetProjection())
     target_raster.SetGeoTransform(target_geotransform)
@@ -2184,10 +2342,10 @@ def merge_rasters(
     if nodata is not None:
         # geotiffs only have 1 nodata value set through the band
         target_raster.GetRasterBand(1).SetNoDataValue(nodata)
-        for band_index in xrange(n_bands):
+        for band_index in range(n_bands):
             target_raster.GetRasterBand(band_index+1).Fill(nodata)
     target_band_list = [
-        target_raster.GetRasterBand(band_index) for band_index in xrange(
+        target_raster.GetRasterBand(band_index) for band_index in range(
             1, n_bands+1)]
 
     # the raster was left over from checking pixel types, remove it after
@@ -2386,7 +2544,7 @@ def _is_raster_path_band_formatted(raster_path_band):
         return False
     elif len(raster_path_band) != 2:
         return False
-    elif not isinstance(raster_path_band[0], types.StringTypes):
+    elif not isinstance(raster_path_band[0], basestring):
         return False
     elif not isinstance(raster_path_band[1], int):
         return False
@@ -2402,12 +2560,12 @@ def _write_block_worker(
     raster blocks to a target raster.
 
     Parameters:
-        write_work_queue (Queue.Queue):  Contains (block_offset,
+        write_work_queue (queue.Queue):  Contains (block_offset,
             numpy.array) tuples to write to the raster at
             `target_raster_path`.
         target_raster_path (string): path to an existing raster that will
             be written to during this call.
-        exception_queue (Queue.Queue): if this function encounters an
+        exception_queue (queue.Queue): if this function encounters an
             exception, it is pushed to this queue before returning.
 
     Returns:
@@ -2465,17 +2623,17 @@ def _local_op_worker(
             `local_op_work_queue`.
         nodata_target (numeric): a numerical nodata value or None for
             determining statistics calculations.
-        local_op_work_queue (Queue.Queue): a queue of
+        local_op_work_queue (queue.Queue): a queue of
             (block_offset, raster_blocks) tuples such that local_op
             operates on local_op(*raster_blocks) and the result is written
             to the target raster at `block_offset`.
-        write_block_queue (Queue.Queue): queue to put result of local_op
+        write_block_queue (queue.Queue): queue to put result of local_op
             effectively puting tuples
             (block_offset, local_op(*raster_blocks)).
-        stats_worker_queue (Queue.Queue): if not None, the result of
+        stats_worker_queue (queue.Queue): if not None, the result of
             `local_op` that is not `nodata_target` will be put to this
             queue for stats processing.
-        exception_queue (Queue.Queue): if this function encounters an
+        exception_queue (queue.Queue): if this function encounters an
             exception, it is pushed to this queue before returning.
 
     Returns:

@@ -16,13 +16,10 @@ from libc.math cimport ceil
 
 from osgeo import gdal
 import pygeoprocessing
-from . import queuehandler
 
-# TODO: Would it make sense to import these from pygeoprocessing.geoprocessing
-# instead of redefining here?
-_DEFAULT_GTIFF_CREATION_OPTIONS = (
-    'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW')
-
+DEFAULT_GTIFF_CREATION_OPTIONS = (
+    'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
+    'BLOCKXSIZE=256', 'BLOCKYSIZE=256')
 LOGGER = logging.getLogger('pygeoprocessing.geoprocessing_core')
 
 cdef float NODATA = -1.0
@@ -114,15 +111,15 @@ def distance_transform_edt(base_mask_raster_path_band, target_distance_path):
             buf_obj=mask_block)
         # base case
         g_block[0, :] = (mask_block[0, :] == 0) * numerical_inf
-        for row_index in xrange(1, n_rows):
-            for local_x_index in xrange(win_xsize):
+        for row_index in range(1, n_rows):
+            for local_x_index in range(win_xsize):
                 if mask_block[row_index, local_x_index] == 1:
                     g_block[row_index, local_x_index] = 0
                 else:
                     g_block[row_index, local_x_index] = (
                         g_block[row_index-1, local_x_index] + 1)
-        for row_index in xrange(n_rows-2, -1, -1):
-            for local_x_index in xrange(win_xsize):
+        for row_index in range(n_rows-2, -1, -1):
+            for local_x_index in range(win_xsize):
                 if (g_block[row_index+1, local_x_index] <
                         g_block[row_index, local_x_index]):
                     g_block[row_index, local_x_index] = (
@@ -159,11 +156,11 @@ def distance_transform_edt(base_mask_raster_path_band, target_distance_path):
         g_band.ReadAsArray(
             xoff=0, yoff=yoff, win_xsize=n_cols, win_ysize=win_ysize,
             buf_obj=g_block)
-        for local_y_index in xrange(win_ysize):
+        for local_y_index in range(win_ysize):
             q_index = 0
             s_array[0] = 0
             t_array[0] = 0
-            for u_index in xrange(1, n_cols):
+            for u_index in range(1, n_cols):
                 gu = g_block[local_y_index, u_index]**2
                 while (q_index >= 0):
                     tq = t_array[q_index]
@@ -188,7 +185,7 @@ def distance_transform_edt(base_mask_raster_path_band, target_distance_path):
             sq = s_array[q_index]
             gsq = g_block[local_y_index, sq]**2
             tq = t_array[q_index]
-            for u_index in xrange(n_cols-1, -1, -1):
+            for u_index in range(n_cols-1, -1, -1):
                 dt[local_y_index, u_index] = (u_index-sq)**2+gsq
                 if u_index == tq:
                     q_index -= 1
@@ -223,7 +220,7 @@ def distance_transform_edt(base_mask_raster_path_band, target_distance_path):
 @cython.cdivision(True)
 def calculate_slope(
         base_elevation_raster_path_band, target_slope_path,
-        gtiff_creation_options=_DEFAULT_GTIFF_CREATION_OPTIONS):
+        gtiff_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS):
     """Create a percent slope raster from DEM raster.
 
     Base algorithm is from Zevenbergen & Thorne "Quantitative Analysis of Land
@@ -329,8 +326,8 @@ def calculate_slope(
             buf_obj=dem_array[y_start:y_end, x_start:x_end],
             **block_offset_copy)
 
-        for row_index in xrange(1, win_ysize+1):
-            for col_index in xrange(1, win_xsize+1):
+        for row_index in range(1, win_ysize+1):
+            for col_index in range(1, win_xsize+1):
                 # Notation of the cell below comes from the algorithm
                 # description, cells are arraged as follows:
                 # abc
@@ -503,7 +500,7 @@ def stats_worker(stats_work_queue, exception_queue):
             block = payload.astype(numpy.float64)
             n_elements = block.size
             with nogil:
-                for i in xrange(n_elements):
+                for i in range(n_elements):
                     n = n + 1
                     x = block[i]
                     if n <= 0:

@@ -1,8 +1,24 @@
 Release History
 ===============
 
-.. Unreleased Changes
-.. ------------------
+Unreleased Changes
+------------------
+* PyGeoprocessing now supports Python 2 and 3, and is tested on python 2.7
+  and 3.6  Testing across multiple versions is configured to be run via
+  ``tox``.
+* After testing (tox configuration included under ``tox-libcompat.ini``), numpy
+  requirement has been dropped to ``numpy>=1.10.0`` and scipy has been modified
+  to be ``scipy>=0.14.1,!=0.19.1``.
+* A dependency on ``future`` has been added for compatibility between python
+  versions.
+* Fixed a crash in `pygeoprocessing.routing.flow_dir_mfd` and `flow_dir_d8`
+  if a base raster was passed in that did not have a power of two blocksize.
+
+1.0.1 (5/16/2018)
+-----------------
+* Hotfix patch to remove upper bound on required numpy version. This was
+  causing a conflict with InVEST's looser requirement. Requirement is now
+  set to >=1.13.0.
 
 1.0.0 (4/29/2018)
 -----------------
