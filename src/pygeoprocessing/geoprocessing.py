@@ -322,6 +322,9 @@ def raster_calculator(
         LOGGER.exception('Exception encountered.')
         raise
     finally:
+        base_band_list[:] = []
+        for raster in base_raster_list:
+            gdal.Dataset.__swig_destroy__(raster)
         if calc_raster_stats and stats_worker_thread.is_alive():
             stats_worker_queue.put(None, True, _MAX_TIMEOUT)
             stats_worker_thread.join(_MAX_TIMEOUT)
@@ -449,7 +452,7 @@ def align_and_resize_raster_stack(
 
     # using half the number of CPUs because in practice `warp_raster` seems
     # to use 2 cores.
-    n_workers = max(min(multiprocessing.cpu_count(), n_rasters) / 2, 1)
+    n_workers = max(min(multiprocessing.cpu_count(), n_rasters) // 2, 1)
 
     if n_workers > 1:
         # We could use multiple processes to take advantage of the
