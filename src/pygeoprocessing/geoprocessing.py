@@ -144,6 +144,11 @@ def raster_calculator(
     Raises:
         ValueError: invalid input provided
     """
+    if not base_raster_path_band_list and not constant_arg_list:
+        raise ValueError(
+            "Both `base_raster_path_band_list` and `constant_arg_list` are "
+            "empty, at least one should have at least one value.")
+
     # It's a common error to not pass in path/band tuples, so check for that
     # and report error if so
     bad_raster_path_list = False
@@ -199,24 +204,29 @@ def raster_calculator(
     if base_raster_path_band_list:
         n_cols, n_rows = get_raster_info(
             base_raster_path_band_list[0][0])['raster_size']
-    elif constant_arg_list:
+
+    if constant_arg_list:
         n_cols = 0
         n_rows = 0
+        clean_arg_list = []  # all args will be 2d arrays
         for constant_arg in constant_arg_list:
             if not isinstance(constant_arg, numpy.ndarray):
                 n_cols = max(n_cols, 1)
                 n_rows = max(n_rows, 1)
+                # make constant into a 1x1 array
+                clean_arg_list.append(numpy.array([[constant_arg]]))
             elif constant_arg.ndim == 1:
                 # broadcast to the trailing dimension (x)
                 n_cols = max(n_cols, constant_arg.size)
                 n_rows = max(n_rows, 1)
+                # make 1d array into a single row multiple column array
+                clean_arg_list.append(
+                    constant_arg.reshape(1, constant_arg.size))
             elif constant_arg.ndim == 2:
                 n_rows = max(n_rows, constant_arg.shape[0])
                 n_cols = max(n_cols, constant_arg.shape[1])
-    else:
-        raise ValueError(
-            "Both `base_raster_path_band_list` and `constant_arg_list` are "
-            "empty, at least one should have at least one value.")
+                # this argument is already 2d and can be passed through
+                clean_arg_list.append(constant_arg)
 
     if base_raster_path_band_list:
         new_raster_from_base(
@@ -274,7 +284,7 @@ def raster_calculator(
                 base_band_list[dataset_index].ReadAsArray(**band_data)
 
             if constant_arg_list:
-                for arg_index, broadcast_arg in enumerate(constant_arg_list):
+                for arg_index, broadcast_arg in enumerate(clean_arg_list):
                     if not isinstance(broadcast_arg, numpy.ndarray):
                         data_blocks.append(broadcast_arg)
                     elif broadcast_arg.ndim == 1:
@@ -307,7 +317,6 @@ def raster_calculator(
                             'invalid shape for broadcast_arg (%d): %s' % (
                                 arg_index, broadcast_arg.shape))
 
-            LOGGER.warning(data_blocks)
             target_block = local_op(*data_blocks)
 
             target_band.WriteArray(
