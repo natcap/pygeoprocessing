@@ -84,12 +84,12 @@ def raster_calculator(
 
     Parameters:
         base_raster_path_band_const_list (list): a list containing either
-            (str, int) tuples, numbers, or `numpy.ndarray`s up to two
-            dimensions. A `(str, int)` tuple refers to raster a raster path
-            band index pair to use as an input. Numbers and `numpy.ndarray`s
+            (str, int) tuples, numbers, or `numpy.ndarray`s of up to two
+            dimensions. A `(str, int)` tuple refers to a raster path band
+            index pair to use as an input. Numbers and `numpy.ndarray`s
             are constants.
 
-            The rasters in this list must have the same raster size and and
+            The rasters in this list must have the same raster size and
             `numpy.ndarray`s must be numpy broadcastable to those rasters.
             If only constants are input, the numpy arrays must be
             broadcastable to each other and the final raster size will be the
@@ -148,12 +148,16 @@ def raster_calculator(
             "ndarrays for `base_raster_path_band_const_list`, instead got: "
             "%s" % str(base_raster_path_band_const_list))
 
+    # check that any rasters exist on disk and have enough bands
     not_found_paths = []
     gdal.PushErrorHandler('CPLQuietErrorHandler')
-    for value in base_raster_path_band_const_list:
-        if (isinstance(value, tuple) and
-                gdal.OpenEx(value[0], gdal.OF_RASTER) is None):
-            not_found_paths.append(path)
+    base_raster_path_band_list = [
+        path_band for path_band in base_raster_path_band_const_list
+        if isinstance(path_band, tuple)]
+
+    for value in base_raster_path_band_list:
+        if gdal.OpenEx(value[0], gdal.OF_RASTER) is None:
+            not_found_paths.append(value[0])
     gdal.PopErrorHandler()
 
     if not_found_paths:
@@ -161,14 +165,25 @@ def raster_calculator(
             "The following files were expected but do not exist on the "
             "filesystem: " + str(not_found_paths))
 
-    if target_raster_path in [
-            x[0] for x in base_raster_path_band_const_list
-            if isinstance(x, tuple)]:
+    # check that band index exists in raster
+    invalid_band_index_list = []
+    for value in base_raster_path_band_list:
+        raster = gdal.OpenEx(value[0], gdal.OF_RASTER)
+        if not (1 <= value[1] <= raster.RasterCount):
+            invalid_band_index_list.append(value)
+    if invalid_band_index_list:
+        raise ValueError(
+            "The following rasters do not contain requested band "
+            "indexes: %s" % invalid_band_index_list)
+
+    # check that the target raster is not also an input raster
+    if target_raster_path in [x[0] for x in base_raster_path_band_list]:
         raise ValueError(
             "%s is used as a target path, but it is also in the base input "
             "path list %s" % (
                 target_raster_path, str(base_raster_path_band_const_list)))
 
+    # check that raster inputs are all the same dimensions
     raster_info_list = [
         get_raster_info(path_band[0])
         for path_band in base_raster_path_band_const_list
@@ -182,64 +197,80 @@ def raster_calculator(
             "following raster are not identical %s" % str(
                 geospatial_info_set))
 
-    numpy_dims_list = [
-        x.shape for x in base_raster_path_band_const_list
-        if isinstance(x, numpy.ndarray)])
+    # predict the broadcast shape and raise an error if arrays are not
+    # broadcastable
+    try:
+        numpy_broadcast_list = [
+            x for x in base_raster_path_band_const_list
+            if isinstance(x, numpy.ndarray)]
+        # numpy.broadcast can only take up to 32 arguments, this loop works
+        # around that restriction
+        while len(numpy_broadcast_list) > 1:
+            numpy_broadcast_list = (
+                [numpy.broadcast(*numpy_broadcast_list[:32])] +
+                numpy_broadcast_list[32:])
 
-    def combine_dims(x, y):
-        if x == y:
-            return x
-        if len(x) < y:
-            #TODO: LEFT OFF HERE
+        if len(numpy_broadcast_list[0].shape) > 2:
+            raise ValueError(
+                "Numpy array inputs must be 2 dimensions or less %s" %
+                numpy_broadcast_list)
+    except ValueError:
+        raise ValueError(
+            "Numpy array inputs cannot be broadcast into a single shape %s" %
+            numpy_broadcast_list)
 
-    if geospatial_info_set:
-        shape = reversed(geospatial_info_set.pop())
+    # check that the numpy shape will match with raster shape
+    if raster_info_list and numpy_broadcast_list:
+        # geospatial lists x/y order and numpy does y/x
+        raster_shape = tuple(reversed(raster_info_list[0]['raster_size']))
+        numpy_shape = numpy_broadcast_list[0].shape
+        invalid_broadcast_size = False
+        if len(numpy_shape) == 1:
+            # if there's only one dimension it should match the last
+            # dimension first, in the raster case this is the columns
+            # because of the row/column order of numpy. No problem if
+            # that value is `1` because it will be broadcast, otherwise
+            # it should be the same as the raster.
+            if numpy_shape[0] != raster_shape[1] and numpy_shape[0] != 1:
+                invalid_broadcast_size = True
+        else:
+            for dim_index in range(2):
+                # no problem if 1 because it'll broadcast, otherwise must
+                # be the same value
+                if (numpy_shape[dim_index] != raster_shape[dim_index] and
+                        numpy_shape[dim_index] != 1):
+                    invalid_broadcast_size = True
+        if invalid_broadcast_size:
+            raise ValueError(
+                "Raster size %s cannot be broadcast to numpy shape %s" % (
+                    raster_shape, numpy_shape))
+
+    # determine target raster shape
+    if raster_info_list:
+        # if rasters are passed, the target is the same size as the raster
+        n_cols, n_rows = raster_info_list[0]['raster_size']
+    elif numpy_broadcast_list:
+        # if only numpy arrays are passed it is the broadcast shape of those
+        # arrays with row/col order of dimensions
+        if len(numpy_shape) == 1:
+            n_rows, n_cols = numpy_shape, 1
+        else:
+            n_rows, n_cols = numpy_shape
     else:
-        shape = (1, 1)
+        # otherwise it's a 1x1 of scalar values
+        n_rows, n_cols = 1, 1
 
-    base_raster_list = [
-        gdal.OpenEx(path_band[0]) for path_band in base_raster_path_band_const_list]
-    base_band_list = [
-        raster.GetRasterBand(index) for raster, (_, index) in zip(
-            base_raster_list, base_raster_path_band_const_list)]
-
-    if base_raster_path_band_const_list:
-        n_cols, n_rows = get_raster_info(
-            base_raster_path_band_const_list[0][0])['raster_size']
-
-    if constant_arg_list:
-        n_cols = 0
-        n_rows = 0
-        clean_arg_list = []  # all args will be 2d arrays
-        for constant_arg in constant_arg_list:
-            if not isinstance(constant_arg, numpy.ndarray):
-                n_cols = max(n_cols, 1)
-                n_rows = max(n_rows, 1)
-                # make constant into a 1x1 array
-                clean_arg_list.append(numpy.array([[constant_arg]]))
-            elif constant_arg.ndim == 1:
-                # broadcast to the trailing dimension (x)
-                n_cols = max(n_cols, constant_arg.size)
-                n_rows = max(n_rows, 1)
-                # make 1d array into a single row multiple column array
-                clean_arg_list.append(
-                    constant_arg.reshape(1, constant_arg.size))
-            elif constant_arg.ndim == 2:
-                n_rows = max(n_rows, constant_arg.shape[0])
-                n_cols = max(n_cols, constant_arg.shape[1])
-                # this argument is already 2d and can be passed through
-                clean_arg_list.append(constant_arg)
-
-    if base_raster_path_band_const_list:
+    if base_raster_path_band_list:
         new_raster_from_base(
-            base_raster_path_band_const_list[0][0], target_raster_path,
+            base_raster_path_band_list[0][0], target_raster_path,
             datatype_target, [nodata_target],
             gtiff_creation_options=gtiff_creation_options)
         target_raster = gdal.OpenEx(target_raster_path, gdal.GA_Update)
         target_band = target_raster.GetRasterBand(1)
-        exemplar_raster_path = base_raster_path_band_const_list[0][0]
+        # exemplar path is used to drive the `iterblocks` loop below
+        exemplar_raster_path = base_raster_path_band_list[0][0]
     else:
-        # in case the base_raster_path_band_const_list is empty
+        # in case there are no rasters in `base_raster_path_band_const_list`
         gtiff_driver = gdal.GetDriverByName('GTiff')
         target_raster = gtiff_driver.Create(
             target_raster_path, n_cols, n_rows, 1, datatype_target,
@@ -249,7 +280,30 @@ def raster_calculator(
             target_band.SetNoDataValue(nodata_target)
         target_band.FlushCache()
         target_raster.FlushCache()
+        # exemplar path is used to drive the `iterblocks` loop below
         exemplar_raster_path = target_raster_path
+
+    # create a base argument list that's pure raster bands or 2d numpy arrays
+    base_unrolled_arg_list = []
+    base_raster_list = []
+    base_band_list = []
+    for value in base_raster_path_band_const_list:
+        if isinstance(value, tuple):
+            # it's a raster/path band, keep track of open raster and band
+            # for later so we can __swig_destroy__ them.
+            base_raster_list.append(gdal.OpenEx(value[0], gdal.OF_RASTER))
+            base_band_list.append(
+                base_raster_list[-1].GetRasterBand(value[1]))
+            base_unrolled_arg_list.append(base_raster_list[-1])
+        elif isinstance(value, numpy.ndarray):
+            if value.ndim == 2:
+                base_unrolled_arg_list.append(value)
+            else:
+                # other dimension is one
+                base_unrolled_arg_list.append(value.reshape(1, value.size))
+        else:
+            # it's a scalar
+            base_unrolled_arg_list.append(value)
 
     try:
         xoff = None
@@ -274,50 +328,40 @@ def raster_calculator(
                     (n_rows * n_cols)), _LOGGING_PERIOD)
             blocksize = (block_offset['win_ysize'], block_offset['win_xsize'])
 
-            if last_blocksize != blocksize:
-                data_blocks = [
-                    numpy.zeros(blocksize, dtype=_gdal_to_numpy_type(band))
-                    for band in base_band_list]
-                last_blocksize = blocksize
-
-            for dataset_index in range(len(base_band_list)):
-                band_data = block_offset.copy()
-                band_data['buf_obj'] = data_blocks[dataset_index]
-                base_band_list[dataset_index].ReadAsArray(**band_data)
-
-            if constant_arg_list:
-                for arg_index, broadcast_arg in enumerate(clean_arg_list):
-                    if not isinstance(broadcast_arg, numpy.ndarray):
-                        data_blocks.append(broadcast_arg)
-                    elif broadcast_arg.ndim == 1:
+            data_blocks = []
+            for value in base_unrolled_arg_list:
+                if isinstance(value, gdal.Band):
+                    data_blocks.append(value.ReadAsArray(**block_offset))
+                elif isinstance(value, numpy.ndarray):
+                    # need to slice given block offset
+                    if value.ndim == 1:
                         # broadcast to the trailing dimension (x)
                         data_blocks.append(
-                            broadcast_arg[
+                            value[
                                 block_offset['xoff']:
                                 block_offset['xoff']+blocksize[1]])
-                    elif (broadcast_arg.ndim == 2 and
-                          broadcast_arg.shape[0] == 1):
+                    elif (value.ndim == 2 and
+                          value.shape[0] == 1):
                         data_blocks.append(
-                            broadcast_arg[
+                            value[
                                 block_offset['xoff']:
                                 block_offset['xoff']+blocksize[1]])
-                    elif (broadcast_arg.ndim == 2 and
-                          broadcast_arg.shape[1] == 1):
+                    elif (value.ndim == 2 and
+                          value.shape[1] == 1):
                         data_blocks.append(
-                            broadcast_arg[
+                            value[
                                 block_offset['yoff']:
                                 block_offset['yoff']+blocksize[0]])
-                    elif broadcast_arg.ndim == 2:
+                    elif value.ndim == 2:
                         data_blocks.append(
-                            broadcast_arg[
+                            value[
                                 block_offset['yoff']:
                                 block_offset['yoff']+blocksize[0],
                                 block_offset['xoff']:
                                 block_offset['xoff']+blocksize[1]])
-                    else:
-                        raise ValueError(
-                            'invalid shape for broadcast_arg (%d): %s' % (
-                                arg_index, broadcast_arg.shape))
+                else:
+                    # it's a scalar, append directly
+                    data_blocks.append(value)
 
             target_block = local_op(*data_blocks)
 
@@ -420,6 +464,7 @@ def align_and_resize_raster_stack(
 
     Returns:
         None
+
     """
     last_time = time.time()
 

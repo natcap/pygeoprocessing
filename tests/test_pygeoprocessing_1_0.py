@@ -1022,9 +1022,8 @@ class PyGeoprocessing10(unittest.TestCase):
         y_arg = numpy.array(range(3)).reshape((3, 1))
         z_arg = numpy.ones((3, 2))
         pygeoprocessing.raster_calculator(
-            [], lambda a, x, y, z: a*x*y*z, target_path,
-            gdal.GDT_Float32, None,
-            constant_arg_list=[a_arg, x_arg, y_arg, z_arg])
+            [a_arg, x_arg, y_arg, z_arg], lambda a, x, y, z: a*x*y*z,
+            target_path, gdal.GDT_Float32, None)
 
         target_raster = gdal.OpenEx(target_path, gdal.OF_RASTER)
         target_array = target_raster.GetRasterBand(1).ReadAsArray()
@@ -1034,9 +1033,8 @@ class PyGeoprocessing10(unittest.TestCase):
 
         target_path = os.path.join(self.workspace_dir, 'target_a.tif')
         pygeoprocessing.raster_calculator(
-            [], lambda a: a, target_path,
-            gdal.GDT_Float32, None,
-            constant_arg_list=[a_arg])
+            [a_arg], lambda a: a, target_path,
+            gdal.GDT_Float32, None)
 
         target_raster = gdal.OpenEx(target_path, gdal.OF_RASTER)
         target_array = target_raster.GetRasterBand(1).ReadAsArray()
@@ -1047,9 +1045,8 @@ class PyGeoprocessing10(unittest.TestCase):
         target_path = os.path.join(
             self.workspace_dir, 'target_1d_2darray.tif')
         pygeoprocessing.raster_calculator(
-            [], lambda y: y, target_path,
-            gdal.GDT_Float32, None,
-            constant_arg_list=[y_arg])
+            [y_arg], lambda y: y, target_path,
+            gdal.GDT_Float32, None)
 
         target_raster = gdal.OpenEx(target_path, gdal.OF_RASTER)
         target_array = target_raster.GetRasterBand(1).ReadAsArray()
@@ -1058,9 +1055,8 @@ class PyGeoprocessing10(unittest.TestCase):
 
         target_path = os.path.join(self.workspace_dir, 'target_1d_only.tif')
         pygeoprocessing.raster_calculator(
-            [], lambda x: x, target_path,
-            gdal.GDT_Float32, None,
-            constant_arg_list=[x_arg])
+            [x_arg], lambda x: x, target_path,
+            gdal.GDT_Float32, None)
 
         target_raster = gdal.OpenEx(target_path, gdal.OF_RASTER)
         target_array = target_raster.GetRasterBand(1).ReadAsArray()
@@ -1083,9 +1079,9 @@ class PyGeoprocessing10(unittest.TestCase):
 
         target_path = os.path.join(self.workspace_dir, 'target.tif')
         pygeoprocessing.raster_calculator(
-            [(base_path, 1)], lambda array, x: array*x, target_path,
-            gdal.GDT_Float32, None,
-            constant_arg_list=[numpy.array(range(128))])
+            [(base_path, 1), numpy.array(range(128))],
+            lambda array, x: array*x, target_path,
+            gdal.GDT_Float32, None)
 
         target_raster = gdal.OpenEx(target_path, gdal.OF_RASTER)
         result = target_raster.GetRasterBand(1).ReadAsArray()
