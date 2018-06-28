@@ -73,6 +73,7 @@ if (distutils.version.LooseVersion(gdal.__version__) >=
 def raster_calculator(
         base_raster_path_band_list, local_op, target_raster_path,
         datatype_target, nodata_target,
+        broadcast_args=None,
         gtiff_creation_options=_DEFAULT_GTIFF_CREATION_OPTIONS,
         calc_raster_stats=True,
         largest_block=_LARGEST_ITERBLOCK):
@@ -101,6 +102,25 @@ def raster_calculator(
             the target raster.
         nodata_target (numerical value): the desired nodata value of the
             target raster.
+        broadcast_args (iterable): if not none, this is an iterable containing
+            numpy arrays that abstractly could be numpy broadcast to the
+            rasters in `base_raster_path_band_list`. These arguments will be
+            passed in order to `local_op` following the order of
+            `base_raster_path_band_list` arguments.
+
+            Since the base rasters are two dimensional, the valid sizes for
+            the numpy arrays in this list are either, 1, x_size,
+            y_size, (y_size, 1), or (y_size, x_size). During computation a
+            slice of these arguments will be passed to `local_op` such that it
+            can be applied to the raster arguments with numpy broadcasting
+            order. Internally, it is likely these arguments will be sliced in
+            order to match the raster block window that is applied to each
+            call to `local_op`. For example, if the raster sizes are
+            (100, 200) and the block sizes are (10, 10), a broadcast argument
+            could have the dimensions (1, 200) indicating values that should
+            be broadcast to the rows of the raster. During computation, the
+            broadcast array will be sliced into (1, 10) unit chunks that align
+            with the block window currently under operation.
         gtiff_creation_options (list): this is an argument list that will be
             passed to the GTiff driver.  Useful for blocksizes, compression,
             and more.
@@ -138,11 +158,11 @@ def raster_calculator(
     not_found_paths = []
     gdal.PushErrorHandler('CPLQuietErrorHandler')
     for path, _ in base_raster_path_band_list:
-        if gdal.OpenEx(path) is None:
+        if gdal.OpenEx(path, gdal.OF_RASTER) is None:
             not_found_paths.append(path)
     gdal.PopErrorHandler()
 
-    if len(not_found_paths) != 0:
+    if not_found_paths:
         raise ValueError(
             "The following files were expected but do not exist on the "
             "filesystem: " + str(not_found_paths))
@@ -171,20 +191,49 @@ def raster_calculator(
         raster.GetRasterBand(index) for raster, (_, index) in zip(
             base_raster_list, base_raster_path_band_list)]
 
-    base_raster_info = get_raster_info(base_raster_path_band_list[0][0])
+    if base_raster_path_band_list:
+        n_cols, n_rows = get_raster_info(
+            base_raster_path_band_list[0][0])['raster_size']
+    elif broadcast_args:
+        n_cols = 0
+        n_rows = 0
+        for broadcast_arg in broadcast_args:
+            if not isinstance(broadcast_arg, numpy.ndarray):
+                n_cols = max(n_cols, 1)
+                n_rows = max(n_rows, 1)
+            elif broadcast_arg.ndim == 1:
+                # broadcast to the trailing dimension (x)
+                n_cols = max(n_cols, broadcast_arg.size)
+            elif broadcast_arg.ndim == 2:
+                n_rows = max(n_rows, broadcast_arg.shape[0])
+                n_cols = max(n_cols, broadcast_arg.shape[1])
 
-    new_raster_from_base(
-        base_raster_path_band_list[0][0], target_raster_path, datatype_target,
-        [nodata_target], gtiff_creation_options=gtiff_creation_options)
-    target_raster = gdal.OpenEx(target_raster_path, gdal.GA_Update)
-    target_band = target_raster.GetRasterBand(1)
+    if base_raster_path_band_list:
+        new_raster_from_base(
+            base_raster_path_band_list[0][0], target_raster_path,
+            datatype_target, [nodata_target],
+            gtiff_creation_options=gtiff_creation_options)
+        target_raster = gdal.OpenEx(target_raster_path, gdal.GA_Update)
+        target_band = target_raster.GetRasterBand(1)
+        exemplar_raster_path = base_raster_path_band_list[0][0]
+    else:
+        # in case there is no base raster
+        gtiff_driver = gdal.GetDriverByName('GTiff')
+        target_raster = gtiff_driver.Create(
+            target_raster_path, n_cols, n_rows, 1, datatype_target,
+            options=gtiff_creation_options)
+        target_band = target_raster.GetRasterBand(1)
+        if nodata_target is not None:
+            target_band.SetNoDataValue(nodata_target)
+        target_band.FlushCache()
+        target_raster.FlushCache()
+        exemplar_raster_path = target_raster_path
 
     try:
-        n_cols, n_rows = base_raster_info['raster_size']
         xoff = None
         yoff = None
         last_time = time.time()
-        raster_blocks = None
+        data_blocks = None
         last_blocksize = None
         target_min = None
         target_max = None
@@ -193,7 +242,7 @@ def raster_calculator(
         target_mean = None
         target_stddev = None
         for block_offset in iterblocks(
-                base_raster_path_band_list[0][0], offset_only=True,
+                exemplar_raster_path, offset_only=True,
                 largest_block=largest_block):
             xoff, yoff = block_offset['xoff'], block_offset['yoff']
             last_time = _invoke_timed_callback(
@@ -204,17 +253,52 @@ def raster_calculator(
             blocksize = (block_offset['win_ysize'], block_offset['win_xsize'])
 
             if last_blocksize != blocksize:
-                raster_blocks = [
+                data_blocks = [
                     numpy.zeros(blocksize, dtype=_gdal_to_numpy_type(band))
                     for band in base_band_list]
                 last_blocksize = blocksize
 
             for dataset_index in range(len(base_band_list)):
                 band_data = block_offset.copy()
-                band_data['buf_obj'] = raster_blocks[dataset_index]
+                band_data['buf_obj'] = data_blocks[dataset_index]
                 base_band_list[dataset_index].ReadAsArray(**band_data)
 
-            target_block = local_op(*raster_blocks)
+            if broadcast_args:
+                for arg_index, broadcast_arg in enumerate(broadcast_args):
+                    if not isinstance(broadcast_arg, numpy.ndarray):
+                        data_blocks.append(broadcast_arg)
+                    elif broadcast_arg.ndim == 1:
+                        # broadcast to the trailing dimension (x)
+                        data_blocks.append(
+                            broadcast_arg[
+                                block_offset['xoff']:
+                                block_offset['xoff']+blocksize[1]])
+                    elif (broadcast_arg.ndim == 2 and
+                          broadcast_arg.shape[0] == 1):
+                        data_blocks.append(
+                            broadcast_arg[
+                                block_offset['xoff']:
+                                block_offset['xoff']+blocksize[1]])
+                    elif (broadcast_arg.ndim == 2 and
+                          broadcast_arg.shape[1] == 1):
+                        data_blocks.append(
+                            broadcast_arg[
+                                block_offset['yoff']:
+                                block_offset['yoff']+blocksize[0]])
+                    elif broadcast_arg.ndim == 2:
+                        data_blocks.append(
+                            broadcast_arg[
+                                block_offset['yoff']:
+                                block_offset['yoff']+blocksize[0],
+                                block_offset['xoff']:
+                                block_offset['xoff']+blocksize[1]])
+                    else:
+                        raise ValueError(
+                            'invalid shape for broadcast_arg (%d): %s' % (
+                                arg_index, broadcast_arg.shape))
+
+            LOGGER.warning(data_blocks)
+            target_block = local_op(*data_blocks)
 
             target_band.WriteArray(
                 target_block, xoff=block_offset['xoff'],

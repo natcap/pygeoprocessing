@@ -1001,6 +1001,26 @@ class PyGeoprocessing10(unittest.TestCase):
                 target_path, gdal.GDT_Int32, nodata_base,
                 gtiff_creation_options=None, calc_raster_stats=True)
 
+    def test_raster_calculator_broadcast(self):
+        """PGP.geoprocessing: test broadcast arguments of raster calc."""
+        import pygeoprocessing
+
+        target_path = os.path.join(self.workspace_dir, 'target.tif')
+        a = 3
+        x = numpy.array(range(2))
+        y = numpy.array(range(3)).reshape((3, 1))
+        z = numpy.ones((3, 2))
+        pygeoprocessing.raster_calculator(
+            [], lambda a, x, y, z: a*x*y*z, target_path,
+            gdal.GDT_Float32, None,
+            broadcast_args=[a, x, y, z])
+
+        target_raster = gdal.OpenEx(target_path, gdal.OF_RASTER)
+        target_array = target_raster.GetRasterBand(1).ReadAsArray()
+        target_raster = None
+        expected_result = numpy.array([[0, 0], [0, 3], [0, 6]])
+        numpy.testing.assert_array_almost_equal(target_array, expected_result)
+
     def test_new_raster_from_base_unsigned_byte(self):
         """PGP.geoprocessing: test that signed byte rasters copy over."""
         pixel_matrix = numpy.ones((128, 128), numpy.byte)
