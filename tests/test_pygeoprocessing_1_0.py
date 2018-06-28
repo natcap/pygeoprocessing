@@ -1012,6 +1012,43 @@ class PyGeoprocessing10(unittest.TestCase):
                 [], lambda: None, target_path,
                 gdal.GDT_Float32, None)
 
+    def test_raster_calculator_invalid_numpy_array(self):
+        """PGP.geoprocessing: handle invalid numpy array sizes."""
+        import pygeoprocessing
+
+        target_path = os.path.join(self.workspace_dir, 'target.tif')
+        #with self.assertRaises(ValueError):
+        # no input args should cause a ValueError
+        pygeoprocessing.raster_calculator(
+            [numpy.empty((3, 3, 3))], lambda x: None, target_path,
+            gdal.GDT_Float32, None)
+
+    def test_raster_calculator_invalid_band_numbers(self):
+        """PGP.geoprocessing: ensure invalid band numbers fail."""
+        import pygeoprocessing
+
+        driver = gdal.GetDriverByName("GTiff")
+        base_path = os.path.join(self.workspace_dir, 'base.tif')
+        new_raster = driver.Create(
+            base_path, 128, 128, 1, gdal.GDT_Int32,
+            options=(
+                'TILED=YES', 'BLOCKXSIZE=16', 'BLOCKYSIZE=16'))
+        new_raster.FlushCache()
+        new_raster = None
+
+        target_path = os.path.join(self.workspace_dir, 'target.tif')
+        with self.assertRaises(ValueError):
+            # no input args should cause a ValueError
+            pygeoprocessing.raster_calculator(
+                [(base_path, 2)], lambda: None, target_path,
+                gdal.GDT_Float32, None)
+
+        with self.assertRaises(ValueError):
+            # no input args should cause a ValueError
+            pygeoprocessing.raster_calculator(
+                [(base_path, 0)], lambda: None, target_path,
+                gdal.GDT_Float32, None)
+
     def test_raster_calculator_constant_args(self):
         """PGP.geoprocessing: test constant arguments of raster calc."""
         import pygeoprocessing
