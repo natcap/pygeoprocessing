@@ -2,6 +2,7 @@
 """A collection of GDAL dataset and raster utilities."""
 from __future__ import division
 from __future__ import absolute_import
+import pdb
 from builtins import zip
 from builtins import range
 import logging
@@ -254,7 +255,7 @@ def raster_calculator(
         # arrays with row/col order of dimensions
         numpy_shape = numpy_broadcast_list[0].shape
         if len(numpy_shape) == 1:
-            n_rows, n_cols = numpy_shape[0], 1
+            n_rows, n_cols = 1, numpy_shape[0]
         else:
             n_rows, n_cols = numpy_shape
     else:
@@ -311,7 +312,6 @@ def raster_calculator(
         yoff = None
         last_time = time.time()
         data_blocks = None
-        last_blocksize = None
         target_min = None
         target_max = None
         target_sum = 0.0
@@ -346,8 +346,7 @@ def raster_calculator(
                             value[
                                 block_offset['xoff']:
                                 block_offset['xoff']+blocksize[1]])
-                    elif (value.ndim == 2 and
-                          value.shape[1] == 1):
+                    elif (value.ndim == 2 and value.shape[1] == 1):
                         data_blocks.append(
                             value[
                                 block_offset['yoff']:
@@ -365,9 +364,12 @@ def raster_calculator(
 
             target_block = local_op(*data_blocks)
 
-            target_band.WriteArray(
-                target_block, xoff=block_offset['xoff'],
-                yoff=block_offset['yoff'])
+            try:
+                target_band.WriteArray(
+                    target_block, xoff=block_offset['xoff'],
+                    yoff=block_offset['yoff'])
+            except Exception as e:
+                pdb.post_mortem(e)
 
             if calc_raster_stats:
                 # guard against an undefined nodata target
