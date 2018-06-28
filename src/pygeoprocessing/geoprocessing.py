@@ -210,7 +210,7 @@ def raster_calculator(
                 [numpy.broadcast(*numpy_broadcast_list[:32])] +
                 numpy_broadcast_list[32:])
 
-        if len(numpy_broadcast_list[0].shape) > 2:
+        if numpy_broadcast_list and len(numpy_broadcast_list[0].shape) > 2:
             raise ValueError(
                 "Numpy array inputs must be 2 dimensions or less %s" %
                 numpy_broadcast_list)
@@ -252,8 +252,9 @@ def raster_calculator(
     elif numpy_broadcast_list:
         # if only numpy arrays are passed it is the broadcast shape of those
         # arrays with row/col order of dimensions
+        numpy_shape = numpy_broadcast_list[0].shape
         if len(numpy_shape) == 1:
-            n_rows, n_cols = numpy_shape, 1
+            n_rows, n_cols = numpy_shape[0], 1
         else:
             n_rows, n_cols = numpy_shape
     else:
@@ -303,7 +304,7 @@ def raster_calculator(
                 base_unrolled_arg_list.append(value.reshape(1, value.size))
         else:
             # it's a scalar
-            base_unrolled_arg_list.append(value)
+            base_unrolled_arg_list.append(numpy.array([[value]]))
 
     try:
         xoff = None
@@ -340,8 +341,7 @@ def raster_calculator(
                             value[
                                 block_offset['xoff']:
                                 block_offset['xoff']+blocksize[1]])
-                    elif (value.ndim == 2 and
-                          value.shape[0] == 1):
+                    elif (value.ndim == 2 and value.shape[0] == 1):
                         data_blocks.append(
                             value[
                                 block_offset['xoff']:
