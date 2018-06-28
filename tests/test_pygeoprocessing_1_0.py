@@ -1001,8 +1001,8 @@ class PyGeoprocessing10(unittest.TestCase):
                 target_path, gdal.GDT_Int32, nodata_base,
                 gtiff_creation_options=None, calc_raster_stats=True)
 
-    def test_raster_calculator_broadcast(self):
-        """PGP.geoprocessing: test broadcast arguments of raster calc."""
+    def test_raster_calculator_constant_args(self):
+        """PGP.geoprocessing: test constant arguments of raster calc."""
         import pygeoprocessing
 
         target_path = os.path.join(self.workspace_dir, 'target.tif')
@@ -1013,7 +1013,7 @@ class PyGeoprocessing10(unittest.TestCase):
         pygeoprocessing.raster_calculator(
             [], lambda a, x, y, z: a*x*y*z, target_path,
             gdal.GDT_Float32, None,
-            broadcast_args=[a, x, y, z])
+            constant_arg_list=[a, x, y, z])
 
         target_raster = gdal.OpenEx(target_path, gdal.OF_RASTER)
         target_array = target_raster.GetRasterBand(1).ReadAsArray()

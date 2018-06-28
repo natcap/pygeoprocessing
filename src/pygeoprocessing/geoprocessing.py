@@ -73,7 +73,7 @@ if (distutils.version.LooseVersion(gdal.__version__) >=
 def raster_calculator(
         base_raster_path_band_list, local_op, target_raster_path,
         datatype_target, nodata_target,
-        broadcast_args=None,
+        constant_arg_list=None,
         gtiff_creation_options=_DEFAULT_GTIFF_CREATION_OPTIONS,
         calc_raster_stats=True,
         largest_block=_LARGEST_ITERBLOCK):
@@ -87,7 +87,8 @@ def raster_calculator(
         base_raster_path_band_list (list): a list of (str, int) tuples where
             the strings are raster paths, and ints are band indexes.  The
             rasters in this list must have the same raster size so pixel
-            stacks align.
+            stacks align. This argument can be the empty list if
+            `constant_arg_list` is not none.
         local_op (function) a function that must take in as many arguments as
             there are elements in `base_raster_path_band_list`.  The will be
             in the same order as the rasters in arguments
@@ -97,15 +98,19 @@ def raster_calculator(
             in question at the time of the call.
         target_raster_path (string): the path of the output raster.  The
             projection, size, and cell size will be the same as the rasters
-            in `base_raster_path_band_list`.
+            in `base_raster_path_band_list` if is not the empty list. If it is
+            the empty list the target raster will not have a cell size nor
+            project set, but the raster dimensions will be the maximum of
+            all `constant_arg_list` dimensions.
         datatype_target (gdal datatype; int): the desired GDAL output type of
             the target raster.
         nodata_target (numerical value): the desired nodata value of the
             target raster.
-        broadcast_args (iterable): if not none, this is an iterable containing
-            numpy arrays that abstractly could be numpy broadcast to the
-            rasters in `base_raster_path_band_list`. These arguments will be
-            passed in order to `local_op` following the order of
+        constant_arg_list (iterable): if not none, this is an iterable
+            of numerical values, or 1 or 2d numpy arrays that meet the
+            requirements of being able to be broadcast to the dimensions of
+            the rasters in `base_raster_path_band_list`. These arguments will
+            be appended to the `local_op` argument list after the
             `base_raster_path_band_list` arguments.
 
             Since the base rasters are two dimensional, the valid sizes for
@@ -194,19 +199,24 @@ def raster_calculator(
     if base_raster_path_band_list:
         n_cols, n_rows = get_raster_info(
             base_raster_path_band_list[0][0])['raster_size']
-    elif broadcast_args:
+    elif constant_arg_list:
         n_cols = 0
         n_rows = 0
-        for broadcast_arg in broadcast_args:
-            if not isinstance(broadcast_arg, numpy.ndarray):
+        for constant_arg in constant_arg_list:
+            if not isinstance(constant_arg, numpy.ndarray):
                 n_cols = max(n_cols, 1)
                 n_rows = max(n_rows, 1)
-            elif broadcast_arg.ndim == 1:
+            elif constant_arg.ndim == 1:
                 # broadcast to the trailing dimension (x)
-                n_cols = max(n_cols, broadcast_arg.size)
-            elif broadcast_arg.ndim == 2:
-                n_rows = max(n_rows, broadcast_arg.shape[0])
-                n_cols = max(n_cols, broadcast_arg.shape[1])
+                n_cols = max(n_cols, constant_arg.size)
+                n_rows = max(n_rows, 1)
+            elif constant_arg.ndim == 2:
+                n_rows = max(n_rows, constant_arg.shape[0])
+                n_cols = max(n_cols, constant_arg.shape[1])
+    else:
+        raise ValueError(
+            "Both `base_raster_path_band_list` and `constant_arg_list` are "
+            "empty, at least one should have at least one value.")
 
     if base_raster_path_band_list:
         new_raster_from_base(
@@ -217,7 +227,7 @@ def raster_calculator(
         target_band = target_raster.GetRasterBand(1)
         exemplar_raster_path = base_raster_path_band_list[0][0]
     else:
-        # in case there is no base raster
+        # in case the base_raster_path_band_list is empty
         gtiff_driver = gdal.GetDriverByName('GTiff')
         target_raster = gtiff_driver.Create(
             target_raster_path, n_cols, n_rows, 1, datatype_target,
@@ -263,8 +273,8 @@ def raster_calculator(
                 band_data['buf_obj'] = data_blocks[dataset_index]
                 base_band_list[dataset_index].ReadAsArray(**band_data)
 
-            if broadcast_args:
-                for arg_index, broadcast_arg in enumerate(broadcast_args):
+            if constant_arg_list:
+                for arg_index, broadcast_arg in enumerate(constant_arg_list):
                     if not isinstance(broadcast_arg, numpy.ndarray):
                         data_blocks.append(broadcast_arg)
                     elif broadcast_arg.ndim == 1:
