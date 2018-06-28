@@ -294,7 +294,7 @@ def raster_calculator(
             base_raster_list.append(gdal.OpenEx(value[0], gdal.OF_RASTER))
             base_band_list.append(
                 base_raster_list[-1].GetRasterBand(value[1]))
-            base_unrolled_arg_list.append(base_raster_list[-1])
+            base_unrolled_arg_list.append(base_band_list[-1])
         elif isinstance(value, numpy.ndarray):
             if value.ndim == 2:
                 base_unrolled_arg_list.append(value)
