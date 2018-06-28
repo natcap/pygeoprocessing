@@ -24,20 +24,7 @@ except ImportError:
     from imp import reload
 
 
-class ExtendedTestCase(unittest.TestCase):
-    """Test case that adds the assertRaisesWithmessage context."""
-
-    def assertRaisesContainingMessage(self, msg, func, *args, **kwargs):
-        """Check that msg is in the expected exception."""
-        try:
-            func(*args, **kwargs)
-            self.assertFail()
-        except Exception as inst:
-            message = str(inst)
-            self.assertTrue(msg in message, message)
-
-
-class PyGeoprocessing10(ExtendedTestCase):
+class PyGeoprocessing10(unittest.TestCase):
     """Tests for the PyGeoprocesing 1.0 refactor."""
 
     def setUp(self):
@@ -107,10 +94,15 @@ class PyGeoprocessing10(ExtendedTestCase):
             test_value: 100,
         }
         target_nodata = -1
-        with self.assertRaises(ValueError):
+        with self.assertRaises(ValueError) as cm:
             pygeoprocessing.reclassify_raster(
                 (raster_path, 1), value_map, target_path, gdal.GDT_Float32,
                 target_nodata, values_required=True)
+        expected_message = (
+            'The following 1 raster values [-0.5] from "%s" do not have ' %
+            (raster_path,))
+        actual_message = str(cm.exception)
+        self.assertTrue(expected_message in actual_message, actual_message)
 
     def test_reclassify_raster(self):
         """PGP.geoprocessing: test reclassify raster."""
@@ -939,10 +931,15 @@ class PyGeoprocessing10(ExtendedTestCase):
         for bad_raster_path_band_list in [
                 [base_path], [(base_path, "1")], [(1, 1)],
                 [(base_path, 1, base_path, 2)], base_path]:
-            with self.assertRaises(ValueError):
+            with self.assertRaises(ValueError) as cm:
                 pygeoprocessing.raster_calculator(
                     bad_raster_path_band_list, lambda x: x, target_path,
                     gdal.GDT_Int32, nodata_target, calc_raster_stats=True)
+            expected_message = (
+                'Expected a list of path / integer band tuples, numbers, or')
+            actual_message = str(cm.exception)
+            self.assertTrue(
+                expected_message in actual_message, actual_message)
 
     def test_raster_calculator_no_path(self):
         """PGP.geoprocessing: raster_calculator raise ex. on bad file path."""
@@ -950,10 +947,14 @@ class PyGeoprocessing10(ExtendedTestCase):
         nonexistant_path = os.path.join(self.workspace_dir, 'nofile.tif')
         target_path = os.path.join(
             self.workspace_dir, 'target.tif')
-        with self.assertRaises(ValueError):
+        with self.assertRaises(ValueError) as cm:
             pygeoprocessing.raster_calculator(
                 [(nonexistant_path, 1)], lambda x: x, target_path,
                 gdal.GDT_Int32, nodata_target, calc_raster_stats=True)
+        expected_message = (
+            "The following files were expected but do not exist on the ")
+        actual_message = str(cm.exception)
+        self.assertTrue(expected_message in actual_message, actual_message)
 
     def test_raster_calculator_nodata(self):
         """PGP.geoprocessing: raster_calculator test with all nodata."""
@@ -983,11 +984,15 @@ class PyGeoprocessing10(ExtendedTestCase):
             [pixel_matrix], reference.origin, reference.projection,
             nodata_base, reference.pixel_size(30), filename=base_path)
 
-        with self.assertRaises(ValueError):
+        with self.assertRaises(ValueError) as cm:
             # intentionally passing target path as base path to raise error
             pygeoprocessing.raster_calculator(
                 [(base_path, 1)], lambda x: x, base_path,
                 gdal.GDT_Int32, nodata_base, calc_raster_stats=True)
+        expected_message = 'is used as a target path, but it is also in the '
+        actual_message = str(cm.exception)
+        self.assertTrue(expected_message in actual_message)
+
 
     def test_rs_calculator_bad_overlap(self):
         """PGP.geoprocessing: rs_calculator expected error on bad overlap."""
@@ -1006,24 +1011,28 @@ class PyGeoprocessing10(ExtendedTestCase):
             nodata_base, reference.pixel_size(30), filename=base_path_b)
 
         target_path = os.path.join(self.workspace_dir, 'target.tif')
-        with self.assertRaises(ValueError):
-            # intentionally passing a filename rather than a list of files
-            # to get an expected exception
+        with self.assertRaises(ValueError) as cm:
             pygeoprocessing.raster_calculator(
                 [(base_path_a, 1), (base_path_b, 1)], lambda x: x,
                 target_path, gdal.GDT_Int32, nodata_base,
                 gtiff_creation_options=None, calc_raster_stats=True)
+        expected_message = 'Input Rasters are not the same dimensions.'
+        actual_message = str(cm.exception)
+        self.assertTrue(expected_message in actual_message)
 
     def test_raster_calculator_constant_args_error(self):
         """PGP.geoprocessing: handle empty input arrays."""
         import pygeoprocessing
 
         target_path = os.path.join(self.workspace_dir, 'target.tif')
-        with self.assertRaises(ValueError):
+        with self.assertRaises(ValueError) as cm:
             # no input args should cause a ValueError
             pygeoprocessing.raster_calculator(
                 [], lambda: None, target_path,
                 gdal.GDT_Float32, None)
+        expected_message = '`base_raster_path_band_const_list` is empty'
+        actual_message = str(cm.exception)
+        self.assertTrue(expected_message in actual_message)
 
     def test_raster_calculator_invalid_numpy_array(self):
         """PGP.geoprocessing: handle invalid numpy array sizes."""
@@ -1053,17 +1062,24 @@ class PyGeoprocessing10(ExtendedTestCase):
         new_raster = None
 
         target_path = os.path.join(self.workspace_dir, 'target.tif')
-        with self.assertRaises(ValueError):
+        with self.assertRaises(ValueError) as cm:
             # no input args should cause a ValueError
             pygeoprocessing.raster_calculator(
                 [(base_path, 2)], lambda: None, target_path,
                 gdal.GDT_Float32, None)
+        expected_message = "do not contain requested band "
+        actual_message = str(cm.exception)
+        self.assertTrue(expected_message in actual_message)
 
-        with self.assertRaises(ValueError):
+        with self.assertRaises(ValueError) as cm:
             # no input args should cause a ValueError
             pygeoprocessing.raster_calculator(
                 [(base_path, 0)], lambda: None, target_path,
                 gdal.GDT_Float32, None)
+        expected_message = "do not contain requested band "
+        actual_message = str(cm.exception)
+        self.assertTrue(expected_message in actual_message)
+
 
     def test_raster_calculator_constant_args(self):
         """PGP.geoprocessing: test constant arguments of raster calc."""
@@ -1543,10 +1559,15 @@ class PyGeoprocessing10(ExtendedTestCase):
             [kernel_array], reference.origin, reference.projection,
             nodata_target, reference.pixel_size(30), filename=kernel_path)
         target_path = os.path.join(self.workspace_dir, 'target.tif')
-        with self.assertRaises(ValueError):
+        with self.assertRaises(ValueError) as cm:
             pygeoprocessing.convolve_2d(
                 (signal_path, 1), (kernel_path, 1), target_path,
                 target_datatype=gdal.GDT_Int32)
+        expected_message = (
+            "`target_datatype` is set, but `target_nodata` is None. ")
+        actual_message = str(cm.exception)
+        self.assertTrue(expected_message in actual_message)
+
 
     def test_convolve_2d_reverse(self):
         """PGP.geoprocessing: test convolve 2d reversed."""
@@ -1723,10 +1744,15 @@ class PyGeoprocessing10(ExtendedTestCase):
             fields={'id': 'int'}, attributes=[{'id': 5}],
             vector_format='GeoJSON', filename=base_vector_path)
 
-        with self.assertRaises(ValueError):
+        with self.assertRaises(ValueError) as cm:
             pygeoprocessing.rasterize(
                 base_vector_path, target_raster_path, [test_value], None,
                 layer_index=0)
+        expected_message = (
+            "%s doesn't exist, but needed to rasterize." % target_raster_path)
+        actual_message = str(cm.exception)
+        self.assertTrue(expected_message in actual_message, actual_message)
+
 
     def test_distance_transform_edt(self):
         """PGP.geoprocessing: test distance transform EDT."""

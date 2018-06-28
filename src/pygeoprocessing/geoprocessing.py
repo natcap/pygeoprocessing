@@ -1563,7 +1563,8 @@ def rasterize(
     raster = gdal.OpenEx(target_raster_path, gdal.GA_Update)
     gdal.PopErrorHandler()
     if raster is None:
-        raise ValueError("%s doesn't exist, but needed to rasterize.")
+        raise ValueError(
+            "%s doesn't exist, but needed to rasterize." % target_raster_path)
     vector = gdal.OpenEx(vector_path)
     layer = vector.GetLayer(layer_index)
 
