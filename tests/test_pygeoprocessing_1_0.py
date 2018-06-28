@@ -24,7 +24,20 @@ except ImportError:
     from imp import reload
 
 
-class PyGeoprocessing10(unittest.TestCase):
+class ExtendedTestCase(unittest.TestCase):
+    """Test case that adds the assertRaisesWithmessage context."""
+
+    def assertRaisesContainingMessage(self, msg, func, *args, **kwargs):
+        """Check that msg is in the expected exception."""
+        try:
+            func(*args, **kwargs)
+            self.assertFail()
+        except Exception as inst:
+            message = str(inst)
+            self.assertTrue(msg in message, message)
+
+
+class PyGeoprocessing10(ExtendedTestCase):
     """Tests for the PyGeoprocesing 1.0 refactor."""
 
     def setUp(self):
@@ -1017,11 +1030,14 @@ class PyGeoprocessing10(unittest.TestCase):
         import pygeoprocessing
 
         target_path = os.path.join(self.workspace_dir, 'target.tif')
-        #with self.assertRaises(ValueError):
-        # no input args should cause a ValueError
-        pygeoprocessing.raster_calculator(
-            [numpy.empty((3, 3, 3))], lambda x: None, target_path,
-            gdal.GDT_Float32, None)
+
+        with self.assertRaises(ValueError) as cm:
+            pygeoprocessing.raster_calculator(
+                [numpy.empty((3, 3, 3))], lambda x: None, target_path,
+                gdal.GDT_Float32, None)
+        expected_message = 'Numpy array inputs must be 2 dimensions or less'
+        actual_message = str(cm.exception)
+        self.assertTrue(expected_message in actual_message)
 
     def test_raster_calculator_invalid_band_numbers(self):
         """PGP.geoprocessing: ensure invalid band numbers fail."""
@@ -1115,16 +1131,17 @@ class PyGeoprocessing10(unittest.TestCase):
         new_raster = None
 
         target_path = os.path.join(self.workspace_dir, 'target.tif')
+
         pygeoprocessing.raster_calculator(
-            [(base_path, 1), numpy.array(range(128))],
-            lambda array, x: array*x, target_path,
+            [10, (base_path, 1), numpy.array(range(128))],
+            lambda scalar, array, x: scalar*array*x, target_path,
             gdal.GDT_Float32, None)
 
         target_raster = gdal.OpenEx(target_path, gdal.OF_RASTER)
         result = target_raster.GetRasterBand(1).ReadAsArray()
 
         numpy.testing.assert_allclose(
-            result, numpy.ones((128, 128))*numpy.array(range(128)))
+            result, 10 * numpy.ones((128, 128))*numpy.array(range(128)))
 
     def test_new_raster_from_base_unsigned_byte(self):
         """PGP.geoprocessing: test that signed byte rasters copy over."""

@@ -200,25 +200,27 @@ def raster_calculator(
 
     # predict the broadcast shape and raise an error if arrays are not
     # broadcastable
+    numpy_broadcast_list = [
+        x for x in base_raster_path_band_const_list
+        if isinstance(x, numpy.ndarray)]
+    # numpy.broadcast can only take up to 32 arguments, this loop works
+    # around that restriction
+
     try:
-        numpy_broadcast_list = [
-            x for x in base_raster_path_band_const_list
-            if isinstance(x, numpy.ndarray)]
-        # numpy.broadcast can only take up to 32 arguments, this loop works
-        # around that restriction
         while len(numpy_broadcast_list) > 1:
             numpy_broadcast_list = (
                 [numpy.broadcast(*numpy_broadcast_list[:32])] +
                 numpy_broadcast_list[32:])
-
-        if numpy_broadcast_list and len(numpy_broadcast_list[0].shape) > 2:
-            raise ValueError(
-                "Numpy array inputs must be 2 dimensions or less %s" %
-                numpy_broadcast_list)
     except ValueError:
         raise ValueError(
             "Numpy array inputs cannot be broadcast into a single shape %s" %
             numpy_broadcast_list)
+
+    if numpy_broadcast_list and len(numpy_broadcast_list[0].shape) > 2:
+        raise ValueError(
+            "Numpy array inputs must be 2 dimensions or less %s" %
+            numpy_broadcast_list)
+
 
     # check that the numpy shape will match with raster shape
     if raster_info_list and numpy_broadcast_list:
