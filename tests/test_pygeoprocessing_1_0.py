@@ -1010,7 +1010,7 @@ class PyGeoprocessing10(unittest.TestCase):
             # no input args should cause a ValueError
             pygeoprocessing.raster_calculator(
                 [], lambda: None, target_path,
-                gdal.GDT_Float32, None, constant_arg_list=[])
+                gdal.GDT_Float32, None)
 
     def test_raster_calculator_constant_args(self):
         """PGP.geoprocessing: test constant arguments of raster calc."""
