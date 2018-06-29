@@ -385,6 +385,7 @@ def raster_calculator(
         base_raster_list[:] = []
         target_band.FlushCache()
         target_band = None
+        target_raster.FlushCache()
         gdal.Dataset.__swig_destroy__(target_raster)
         target_raster = None
 
