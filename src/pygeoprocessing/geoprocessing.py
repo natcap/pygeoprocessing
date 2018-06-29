@@ -312,11 +312,10 @@ def raster_calculator(
             # to a band
             base_unrolled_arg_list.append(numpy.array([[value]]))
 
+    LOGGER.debug("unrolled arg list: %s", base_unrolled_arg_list)
+
     try:
-        xoff = None
-        yoff = None
         last_time = time.time()
-        data_blocks = None
         target_min = None
         target_max = None
         target_sum = 0.0
@@ -326,53 +325,34 @@ def raster_calculator(
         for block_offset in iterblocks(
                 exemplar_raster_path, offset_only=True,
                 largest_block=largest_block):
-            xoff, yoff = block_offset['xoff'], block_offset['yoff']
             last_time = _invoke_timed_callback(
                 last_time, lambda: LOGGER.info(
                     'raster stack calculation approx. %.2f%% complete',
-                    100.0 * (yoff * n_cols - xoff) /
+                    100.0 * (yoff * n_cols - block_offset['xoff']) /
                     (n_rows * n_cols)), _LOGGING_PERIOD)
+            offset_list = (block_offset['yoff'], block_offset['xoff'])
             blocksize = (block_offset['win_ysize'], block_offset['win_xsize'])
 
             data_blocks = []
             for value in base_unrolled_arg_list:
                 if isinstance(value, gdal.Band):
                     data_blocks.append(value.ReadAsArray(**block_offset))
-                elif isinstance(value, numpy.ndarray):
-                    # TOOD: treat everything as a 2D array
-
-
-                    # need to slice given block offset
-                    if value.ndim == 1:
-                        # slice on xoff since there's only one row
-                        data_blocks.append(
-                            value[
-                                block_offset['xoff']:
-                                block_offset['xoff']+blocksize[1]])
-                    elif value.shape[1] == 1:
-                        # slice on yoff since there's only one column
-                        data_blocks.append(
-                            value[
-                                block_offset['yoff']:
-                                block_offset['yoff']+blocksize[0]])
-                    elif value.ndim == 2:
-                        data_blocks.append(
-                            value[
-                                block_offset['yoff']:
-                                block_offset['yoff']+blocksize[0],
-                                block_offset['xoff']:
-                                block_offset['xoff']+blocksize[1]])
                 else:
-                    # it's a scalar, append directly
-                    data_blocks.append(value)
+                    # must be numpy array and all have been conditioned to be
+                    # 2d, so start with 0:1 slices and expand if possible
+                    slice_list = [slice(0, 1)] * 2
+                    for dim_index in [0, 1]:
+                        if value.shape[dim_index] > 1:
+                            slice_list[dim_index] = slice(
+                                offset_list[dim_index],
+                                offset_list[dim_index]+blocksize[dim_index],)
+                    data_blocks.append(value[slice_list])
 
-            LOGGER.debug(data_blocks)
-
+            LOGGER.debug("data blocks: %s", data_blocks)
             target_block = local_op(*data_blocks)
 
             target_band.WriteArray(
-                target_block, xoff=block_offset['xoff'],
-                yoff=block_offset['yoff'])
+                target_block, yoff=offset_list[0], xoff=offset_list[1])
 
             if calc_raster_stats:
                 # guard against an undefined nodata target
