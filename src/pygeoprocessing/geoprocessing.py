@@ -288,6 +288,10 @@ def raster_calculator(
         # otherwise raster is a 1x1 because of only scalar input
         n_rows, n_cols = 1, 1
     gtiff_driver = gdal.GetDriverByName('GTiff')
+    try:
+        os.makedirs(os.path.dirname(target_raster_path))
+    except OSError:
+        pass
     target_raster = gtiff_driver.Create(
         target_raster_path, n_cols, n_rows, 1, datatype_target,
         options=gtiff_creation_options)
