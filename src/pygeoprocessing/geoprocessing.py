@@ -2,7 +2,6 @@
 """A collection of GDAL dataset and raster utilities."""
 from __future__ import division
 from __future__ import absolute_import
-import pdb
 from builtins import zip
 from builtins import range
 import logging
@@ -95,7 +94,7 @@ def raster_calculator(
             If only constants are input, the numpy arrays must be
             broadcastable to each other and the final raster size will be the
             final broadcast array shape. It is possible to make a 1x1 raster
-            with only constant inputs.
+            with only scalar constant inputs.
         local_op (function) a function that must take in as many arguments as
             there are elements in `base_raster_path_band_list`.  The will be
             in the same order as the rasters in arguments can be treated as
@@ -299,8 +298,8 @@ def raster_calculator(
         # use the first raster in the list for the projection and geotransform
         target_raster.SetProjection(base_raster_list[0].GetProjection())
         target_raster.SetGeoTransform(base_raster_list[0].GetGeoTransform())
-    target_raster.FlushCache()
     target_band.FlushCache()
+    target_raster.FlushCache()
 
     try:
         last_time = time.time()
@@ -313,13 +312,13 @@ def raster_calculator(
         for block_offset in iterblocks(
                 target_raster_path, offset_only=True,
                 largest_block=largest_block):
+            offset_list = (block_offset['yoff'], block_offset['xoff'])
+            blocksize = (block_offset['win_ysize'], block_offset['win_xsize'])
             last_time = _invoke_timed_callback(
                 last_time, lambda: LOGGER.info(
                     'raster stack calculation approx. %.2f%% complete',
-                    100.0 * (yoff * n_cols - block_offset['xoff']) /
+                    100.0 * (yoff * n_cols - offset_list[1]) /
                     (n_rows * n_cols)), _LOGGING_PERIOD)
-            offset_list = (block_offset['yoff'], block_offset['xoff'])
-            blocksize = (block_offset['win_ysize'], block_offset['win_xsize'])
 
             data_blocks = []
             for value in base_canonical_arg_list:
