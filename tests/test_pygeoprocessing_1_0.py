@@ -910,7 +910,7 @@ class PyGeoprocessing10(unittest.TestCase):
             nodata_target, reference.pixel_size(30), filename=base_path)
 
         target_path = os.path.join(
-            self.workspace_dir, 'target.tif')
+            self.workspace_dir, 'subdir', 'target.tif')
         pygeoprocessing.raster_calculator(
             [(base_path, 1)], lambda x: x, target_path,
             gdal.GDT_Int32, nodata_target, calc_raster_stats=True)
