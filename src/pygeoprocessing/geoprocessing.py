@@ -300,13 +300,16 @@ def raster_calculator(
                 base_raster_list[-1].GetRasterBand(value[1]))
             base_unrolled_arg_list.append(base_band_list[-1])
         elif isinstance(value, numpy.ndarray):
-            if value.ndim == 2:
-                base_unrolled_arg_list.append(value)
+            if value.ndim == 1:
+                # easier to process as a 2d array for writing to band
+                base_unrolled_arg_list.append(
+                    value.reshape((1, value.shape[0])))
             else:
-                # other dimension is one
-                base_unrolled_arg_list.append(value.reshape(1, value.size))
+                # easiest to treat a 1 element array as a scalar
+                base_unrolled_arg_list.append(value)
         else:
-            # it's a scalar
+            # it's a scalar, easier to keep as 2d array in case of writing
+            # to a band
             base_unrolled_arg_list.append(numpy.array([[value]]))
 
     try:
@@ -336,19 +339,18 @@ def raster_calculator(
                 if isinstance(value, gdal.Band):
                     data_blocks.append(value.ReadAsArray(**block_offset))
                 elif isinstance(value, numpy.ndarray):
+                    # TOOD: treat everything as a 2D array
+
+
                     # need to slice given block offset
                     if value.ndim == 1:
-                        # broadcast to the trailing dimension (x)
+                        # slice on xoff since there's only one row
                         data_blocks.append(
                             value[
                                 block_offset['xoff']:
                                 block_offset['xoff']+blocksize[1]])
-                    elif (value.ndim == 2 and value.shape[0] == 1):
-                        data_blocks.append(
-                            value[
-                                block_offset['xoff']:
-                                block_offset['xoff']+blocksize[1]])
-                    elif (value.ndim == 2 and value.shape[1] == 1):
+                    elif value.shape[1] == 1:
+                        # slice on yoff since there's only one column
                         data_blocks.append(
                             value[
                                 block_offset['yoff']:
@@ -364,14 +366,13 @@ def raster_calculator(
                     # it's a scalar, append directly
                     data_blocks.append(value)
 
+            LOGGER.debug(data_blocks)
+
             target_block = local_op(*data_blocks)
 
-            try:
-                target_band.WriteArray(
-                    target_block, xoff=block_offset['xoff'],
-                    yoff=block_offset['yoff'])
-            except Exception as e:
-                pdb.post_mortem(e)
+            target_band.WriteArray(
+                target_block, xoff=block_offset['xoff'],
+                yoff=block_offset['yoff'])
 
             if calc_raster_stats:
                 # guard against an undefined nodata target

@@ -1143,7 +1143,7 @@ class PyGeoprocessing10(unittest.TestCase):
         z_arg = numpy.ones((3, 2))
         pygeoprocessing.raster_calculator(
             [a_arg, x_arg, y_arg, z_arg], lambda a, x, y, z: a*x*y*z,
-            target_path, gdal.GDT_Float32, None)
+            target_path, gdal.GDT_Float32, 0)
 
         target_raster = gdal.OpenEx(target_path, gdal.OF_RASTER)
         target_array = target_raster.GetRasterBand(1).ReadAsArray()
@@ -1191,7 +1191,7 @@ class PyGeoprocessing10(unittest.TestCase):
         new_raster = driver.Create(
             base_path, 128, 128, 1, gdal.GDT_Int32,
             options=(
-                'TILED=YES', 'BLOCKXSIZE=16', 'BLOCKYSIZE=16'))
+                'TILED=YES', 'BLOCKXSIZE=32', 'BLOCKYSIZE=32'))
         new_raster.GetRasterBand(1).WriteArray(
             numpy.ones((128, 128)))
         new_raster.FlushCache()
@@ -1202,13 +1202,13 @@ class PyGeoprocessing10(unittest.TestCase):
         pygeoprocessing.raster_calculator(
             [10, (base_path, 1), numpy.array(range(128))],
             lambda scalar, array, x: scalar*array*x, target_path,
-            gdal.GDT_Float32, None)
+            gdal.GDT_Float32, None, largest_block=0)
 
         target_raster = gdal.OpenEx(target_path, gdal.OF_RASTER)
         result = target_raster.GetRasterBand(1).ReadAsArray()
 
         numpy.testing.assert_allclose(
-            result, 10 * numpy.ones((128, 128))*numpy.array(range(128)))
+            result, 10 * numpy.ones((128, 128)) * numpy.array(range(128)))
 
     def test_new_raster_from_base_unsigned_byte(self):
         """PGP.geoprocessing: test that signed byte rasters copy over."""
