@@ -993,7 +993,6 @@ class PyGeoprocessing10(unittest.TestCase):
         actual_message = str(cm.exception)
         self.assertTrue(expected_message in actual_message)
 
-
     def test_rs_calculator_bad_overlap(self):
         """PGP.geoprocessing: rs_calculator expected error on bad overlap."""
         pixel_matrix_a = numpy.ones((5, 5), numpy.int16)
@@ -1080,6 +1079,58 @@ class PyGeoprocessing10(unittest.TestCase):
         actual_message = str(cm.exception)
         self.assertTrue(expected_message in actual_message)
 
+    def test_raster_calculator_unbroadcastable_array(self):
+        """PGP.geoprocessing: incompatable array sizes raise error."""
+        import pygeoprocessing
+
+        target_path = os.path.join(self.workspace_dir, 'target.tif')
+        a_arg = 3
+        x_arg = numpy.array(range(2))
+        y_arg = numpy.array(range(3)).reshape((3, 1))
+        z_arg = numpy.ones((4, 4))
+        with self.assertRaises(ValueError) as cm:
+            pygeoprocessing.raster_calculator(
+                [a_arg, x_arg, y_arg, z_arg], lambda a, x, y, z: a*x*y*z,
+                target_path, gdal.GDT_Float32, None)
+        expected_message = "inputs cannot be broadcast into a single shape"
+        actual_message = str(cm.exception)
+        self.assertTrue(expected_message in actual_message)
+
+    def test_raster_calculator_array_raster_mismatch(self):
+        """PGP.geoprocessing: bad array shape with raster raise error."""
+        target_path = os.path.join(self.workspace_dir, 'target.tif')
+        driver = gdal.GetDriverByName('GTiff')
+        base_path = os.path.join(self.workspace_dir, 'base.tif')
+        new_raster = driver.Create(
+            base_path, 128, 128, 1, gdal.GDT_Int32,
+            options=(
+                'TILED=YES', 'BLOCKXSIZE=16', 'BLOCKYSIZE=16'))
+        new_raster.GetRasterBand(1).WriteArray(
+            numpy.ones((128, 128)))
+        new_raster.FlushCache()
+        new_raster = None
+
+        z_arg = numpy.ones((4, 4))
+        with self.assertRaises(ValueError) as cm:
+            pygeoprocessing.raster_calculator(
+                [(base_path, 1), z_arg], lambda a, z: a*z,
+                target_path, gdal.GDT_Float32, None)
+        expected_message = (
+            'Raster size (128, 128) cannot be broadcast '
+            'to numpy shape (4, 4)')
+        actual_message = str(cm.exception)
+        self.assertTrue(expected_message in actual_message, actual_message)
+
+        y_arg = numpy.ones((4,))
+        with self.assertRaises(ValueError) as cm:
+            pygeoprocessing.raster_calculator(
+                [(base_path, 1), y_arg], lambda a, y: a*y,
+                target_path, gdal.GDT_Float32, None)
+        expected_message = (
+            'Raster size (128, 128) cannot be broadcast '
+            'to numpy shape (4,)')
+        actual_message = str(cm.exception)
+        self.assertTrue(expected_message in actual_message, actual_message)
 
     def test_raster_calculator_constant_args(self):
         """PGP.geoprocessing: test constant arguments of raster calc."""
