@@ -313,6 +313,7 @@ def raster_calculator(
         target_n = 0
         target_mean = None
         target_stddev = None
+        pixels_to_process = n_rows * n_cols
         for block_offset in iterblocks(
                 target_raster_path, offset_only=True,
                 largest_block=largest_block):
@@ -322,8 +323,8 @@ def raster_calculator(
                 last_time, lambda: LOGGER.info(
                     'raster stack calculation for %s approx. %.2f%% complete',
                     os.path.basename(target_raster_path),
-                    100.0 * (offset_list[0] * n_cols + offset_list[1]) /
-                    (n_rows * n_cols)), _LOGGING_PERIOD)
+                    (1 - pixels_to_process / (n_rows * n_cols)) * 100.0),
+                _LOGGING_PERIOD)
 
             data_blocks = []
             for value in base_canonical_arg_list:
@@ -371,6 +372,8 @@ def raster_calculator(
                 target_max = max(numpy.max(valid_block), target_max)
                 target_n += valid_block.size
 
+            pixels_to_process -= blocksize[0] * blocksize[1]
+
         # Making sure the band and dataset is flushed and not in memory before
         # adding stats
         target_band.FlushCache()
@@ -391,6 +394,8 @@ def raster_calculator(
             target_band.SetStatistics(
                 float(target_min), float(target_max), float(target_mean),
                 float(target_stddev))
+        LOGGER.info(
+            'raster stack calculation for %s approx. 100.0%% complete')
     finally:
         # This block ensures that rasters are destroyed even if there's an
         # exception raised.
