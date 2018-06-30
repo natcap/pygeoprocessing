@@ -320,8 +320,9 @@ def raster_calculator(
             blocksize = (block_offset['win_ysize'], block_offset['win_xsize'])
             last_time = _invoke_timed_callback(
                 last_time, lambda: LOGGER.info(
-                    'raster stack calculation approx. %.2f%% complete',
-                    100.0 * (offset_list[0] * n_cols - offset_list[1]) /
+                    'raster stack calculation for %s approx. %.2f%% complete',
+                    os.path.basename(target_raster_path),
+                    100.0 * (offset_list[0] * n_cols + offset_list[1]) /
                     (n_rows * n_cols)), _LOGGING_PERIOD)
 
             data_blocks = []
