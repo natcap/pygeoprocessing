@@ -271,7 +271,7 @@ def raster_calculator(
                 base_canonical_arg_list.append(value)
         else:
             # a scalar, easier to keep as 2d array when processing iterblocks
-            base_canonical_arg_list.append(numpy.array([[value]]))
+            base_canonical_arg_list.append(value)
 
     # create target raster
     if raster_info_list:
@@ -328,18 +328,29 @@ def raster_calculator(
             for value in base_canonical_arg_list:
                 if isinstance(value, gdal.Band):
                     data_blocks.append(value.ReadAsArray(**block_offset))
-                else:
+                elif isinstance(value, numpy.ndarray):
                     # must be numpy array and all have been conditioned to be
                     # 2d, so start with 0:1 slices and expand if possible
                     slice_list = [slice(0, 1)] * 2
+                    tile_dims = list(blocksize)
                     for dim_index in [0, 1]:
                         if value.shape[dim_index] > 1:
                             slice_list[dim_index] = slice(
                                 offset_list[dim_index],
-                                offset_list[dim_index]+blocksize[dim_index],)
-                    data_blocks.append(value[slice_list])
+                                offset_list[dim_index] +
+                                blocksize[dim_index],)
+                            tile_dims[dim_index] = 1
+                    data_blocks.append(
+                        numpy.tile(value[slice_list], tile_dims))
+                else:
+                    # must be a scalar
+                    data_blocks.append(value)
 
             target_block = local_op(*data_blocks)
+            if isinstance(target_block, numbers.Number):
+                # this happens if target_block is a scalar because all inputs
+                # are scalars, convert to a 1 element 2d array
+                target_block = numpy.array([[target_block]])
             target_band.WriteArray(
                 target_block, yoff=offset_list[0], xoff=offset_list[1])
 

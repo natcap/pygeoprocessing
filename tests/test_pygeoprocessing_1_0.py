@@ -1192,23 +1192,42 @@ class PyGeoprocessing10(unittest.TestCase):
             base_path, 128, 128, 1, gdal.GDT_Int32,
             options=(
                 'TILED=YES', 'BLOCKXSIZE=32', 'BLOCKYSIZE=32'))
-        new_raster.GetRasterBand(1).WriteArray(
-            numpy.ones((128, 128)))
+        new_band = new_raster.GetRasterBand(1)
+        nodata = 0
+        new_band.SetNoDataValue(nodata)
+        raster_array = numpy.ones((128, 128))
+        raster_array[127, 127] = nodata
+        new_band.WriteArray(raster_array)
+        raster_array = None
+        new_band.FlushCache()
+        new_band = None
         new_raster.FlushCache()
         new_raster = None
 
         target_path = os.path.join(self.workspace_dir, 'target.tif')
 
+        # making a local op that needs a valid mask to ensure that `col_array`
+        # is tiled out correctly
+        def local_op(scalar, raster_array, col_array):
+            valid_mask = raster_array != nodata
+            result = numpy.empty_like(raster_array)
+            result[:] = nodata
+            result[valid_mask] = (
+                scalar * raster_array[valid_mask] * col_array[valid_mask])
+            return result
+
         pygeoprocessing.raster_calculator(
             [10, (base_path, 1), numpy.array(range(128))],
-            lambda scalar, array, x: scalar*array*x, target_path,
-            gdal.GDT_Float32, None, largest_block=0)
+            local_op, target_path, gdal.GDT_Float32, None, largest_block=0)
 
         target_raster = gdal.OpenEx(target_path, gdal.OF_RASTER)
         result = target_raster.GetRasterBand(1).ReadAsArray()
 
-        numpy.testing.assert_allclose(
-            result, 10 * numpy.ones((128, 128)) * numpy.array(range(128)))
+        expected_result = (
+            10 * numpy.ones((128, 128)) * numpy.array(range(128)))
+        # we expect one pixel to have been masked out
+        expected_result[127, 127] = nodata
+        numpy.testing.assert_allclose(result, expected_result)
 
     def test_new_raster_from_base_unsigned_byte(self):
         """PGP.geoprocessing: test that signed byte rasters copy over."""
