@@ -425,7 +425,7 @@ def raster_calculator(
 def align_and_resize_raster_stack(
         base_raster_path_list, target_raster_path_list, resample_method_list,
         target_pixel_size, bounding_box_mode, base_vector_path_list=None,
-        raster_align_index=None,
+        raster_align_index=None, target_sr_wkt=None,
         gtiff_creation_options=_DEFAULT_GTIFF_CREATION_OPTIONS):
     """Generate rasters from a base such that they align geospatially.
 
@@ -464,6 +464,9 @@ def align_and_resize_raster_stack(
             grid layout.  If `None` then the bounding box of the target
             rasters is calculated as the precise intersection, union, or
             bounding box.
+        target_sr_wkt (string): if not None, this is the desired
+            projection of all target rasters in Well Known Text format. If
+            None, the base SRS will be passed to the target.
         gtiff_creation_options (list): list of strings that will be passed
             as GDAL "dataset" creation options to the GTIFF driver, or ignored
             if None.
@@ -550,6 +553,7 @@ def align_and_resize_raster_stack(
             base_path, target_pixel_size,
             target_path, resample_method,
             target_bb=target_bounding_box,
+            target_sr_wkt=target_sr_wkt,
             gtiff_creation_options=gtiff_creation_options)
 
 
