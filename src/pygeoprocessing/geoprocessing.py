@@ -88,18 +88,30 @@ def raster_calculator(
             dimensions. A `(str, int)` tuple refers to a raster path band
             index pair to use as an input. Numbers and `numpy.ndarray`s
             are constants.
-
             The rasters in this list must have the same raster size and
             `numpy.ndarray`s must be numpy broadcastable to those rasters.
             If only constants are input, the numpy arrays must be
             broadcastable to each other and the final raster size will be the
             final broadcast array shape. It is possible to make a 1x1 raster
             with only scalar constant inputs.
-        local_op (function) a function that must take in as many arguments as
-            there are elements in `base_raster_path_band_list`.  The will be
-            in the same order as the rasters in arguments can be treated as
-            parallel memory blocks from the original rasters with arrays
-            broadcast to the local memory block alignments.
+        local_op (function) a function that must take in as many parameters as
+            there are elements in `base_raster_path_band_const_list`. The
+            parameters in `local_op` will map 1-to-1 in order with the values
+            in `base_raster_path_band_const_list`. `raster_calculator` will
+            call `local_op` to generate the pixel values in `target_raster`
+            along memory block aligned processing windows. Note any
+            particular call to `local_op` will have the arguments from
+            `raster_path_band_const_list` sliced to overlap that window.
+            If an argument from `raster_path_band_const_list` is a raster/path
+            band tuple, it will be passed to `local_op` as a 2D numpy array of
+            pixel values that align with the processing window that `local_op`
+            is targeting. A 2D or 1D array will be sliced to match
+            the processing window and in the case of a 1D array tiled in
+            whatever dimension is flat. If an argument is a scalar it is
+            passed as as scalar.
+            The return value must be a 2D array of the same size as any of the
+            input parameter 2D arrays and contain the desired pixel values
+            for the target raster.
         target_raster_path (string): the path of the output raster.  The
             projection, size, and cell size will be the same as the rasters
             in `base_raster_path_const_band_list` or the final broadcast size
