@@ -558,7 +558,7 @@ def align_and_resize_raster_stack(
         last_time = _invoke_timed_callback(
             last_time, lambda: LOGGER.info(
                 "align_dataset_list aligning dataset %d of %d",
-                index, len(base_raster_path_list)), _LOGGING_PERIOD)
+                index+1, len(base_raster_path_list)), _LOGGING_PERIOD)
         warp_raster(
             base_path, target_pixel_size,
             target_path, resample_method,
