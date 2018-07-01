@@ -502,23 +502,33 @@ def align_and_resize_raster_stack(
             " n_elements %s" % (
                 raster_align_index, len(base_raster_path_list)))
 
+    # used to get bounding box, projection, and possible alignment info
     raster_info_list = [
         get_raster_info(path) for path in base_raster_path_list]
-    if base_vector_path_list is not None:
-        vector_info_list = [
-            get_vector_info(path) for path in base_vector_path_list]
-    else:
-        vector_info_list = []
 
     # get the literal or intersecting/unioned bounding box
     if isinstance(bounding_box_mode, (list, tuple)):
         target_bounding_box = bounding_box_mode
     else:
-        # either intersection or union
+        # either intersection or union, get list of bounding boxes, reproject
+        # if necessary, and reduce to a single box
+        if base_vector_path_list is not None:
+            # vectors are only interesting for their bounding boxes, that's
+            # this construction is inside an else.
+            vector_info_list = [
+                get_vector_info(path) for path in base_vector_path_list]
+        else:
+            vector_info_list = []
+
+        bounding_box_list = [
+            transform_bounding_box(
+                info['bounding_box'], info['projection'], target_sr_wkt)
+            if target_sr_wkt else info['bounding_box']
+            for info in raster_info_list + vector_info_list]
+
         target_bounding_box = reduce(
             functools.partial(_merge_bounding_boxes, mode=bounding_box_mode),
-            [info['bounding_box'] for info in
-             (raster_info_list + vector_info_list)])
+            bounding_box_list)
 
     if bounding_box_mode == "intersection" and (
             target_bounding_box[0] > target_bounding_box[2] or
