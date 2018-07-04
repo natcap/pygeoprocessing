@@ -536,7 +536,7 @@ def align_and_resize_raster_stack(
         raise ValueError("The rasters' and vectors' intersection is empty "
                          "(not all rasters and vectors touch each other).")
 
-    if raster_align_index >= 0:
+    if raster_align_index is not None and raster_align_index >= 0:
         # bounding box needs alignment
         align_bounding_box = (
             raster_info_list[raster_align_index]['bounding_box'])
