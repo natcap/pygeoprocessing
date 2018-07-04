@@ -266,6 +266,8 @@ def raster_calculator(
     base_raster_list = []
     base_band_list = []
     for value in base_raster_path_band_const_list:
+        # the input has been tested and value is either a raster/path band
+        # tuple, 1d ndarray, 2d ndarray, or a scalar
         if isinstance(value, tuple):
             # it's a raster/path band, keep track of open raster and band
             # for later so we can __swig_destroy__ them.
@@ -273,16 +275,11 @@ def raster_calculator(
             base_band_list.append(
                 base_raster_list[-1].GetRasterBand(value[1]))
             base_canonical_arg_list.append(base_band_list[-1])
-        elif isinstance(value, numpy.ndarray):
-            if value.ndim == 1:
-                # easier to process as a 2d array for writing to band
-                base_canonical_arg_list.append(
-                    value.reshape((1, value.shape[0])))
-            else:
-                # otherwise it's a 2d array, pass as is
-                base_canonical_arg_list.append(value)
+        elif isinstance(value, numpy.ndarray) and value.ndim == 1:
+            # easier to process as a 2d array for writing to band
+            base_canonical_arg_list.append(value.reshape((1, value.shape[0])))
         else:
-            # a scalar, easier to keep as 2d array when processing iterblocks
+            # otherwise it's a 2d array or scalar, pass as is
             base_canonical_arg_list.append(value)
 
     # create target raster
