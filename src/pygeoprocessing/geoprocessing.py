@@ -15,6 +15,7 @@ import tempfile
 import uuid
 import numbers
 import distutils.version
+import pprint
 
 from osgeo import gdal
 from osgeo import osr
@@ -159,7 +160,7 @@ def raster_calculator(
         raise ValueError(
             "Expected a list of path / integer band tuples, numbers, or "
             "ndarrays for `base_raster_path_band_const_list`, instead got: "
-            "%s" % str(base_raster_path_band_const_list))
+            "%s" % pprint.pformat(base_raster_path_band_const_list))
 
     # check that any rasters exist on disk and have enough bands
     not_found_paths = []
