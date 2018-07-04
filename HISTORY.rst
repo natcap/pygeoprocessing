@@ -17,6 +17,8 @@ Unreleased Changes
 * ``raster_calculator`` can now take numpy arrays and scalar values along with
   raster path band tuples. Arrays and scalars are broadcast to the raster size
   according to numpy array broadcasting rules.
+* ``align_and_resize_raster_stack`` can now take a desired target projection
+  which causes all input rasters to be warped to that projection on output.
 
 1.0.1 (5/16/2018)
 -----------------
