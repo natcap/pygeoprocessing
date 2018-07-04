@@ -1152,8 +1152,19 @@ class PyGeoprocessing10(unittest.TestCase):
         numpy.testing.assert_array_almost_equal(target_array, expected_result)
 
         target_path = os.path.join(self.workspace_dir, 'target_a.tif')
+        with self.assertRaises(ValueError) as cm:
+            # this will return a scalar, when it should return 2d array
+            pygeoprocessing.raster_calculator(
+                [a_arg], lambda a: a, target_path,
+                gdal.GDT_Float32, None)
+        expected_message = (
+            "Expected `local_op` to return a numpy.ndarray")
+        actual_message = str(cm.exception)
+        self.assertTrue(expected_message in actual_message)
+
+        # try the scalar as a 2d array
         pygeoprocessing.raster_calculator(
-            [a_arg], lambda a: a, target_path,
+            [a_arg], lambda a: numpy.array([[a]]), target_path,
             gdal.GDT_Float32, None)
 
         target_raster = gdal.OpenEx(target_path, gdal.OF_RASTER)

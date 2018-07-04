@@ -361,10 +361,12 @@ def raster_calculator(
                     data_blocks.append(value)
 
             target_block = local_op(*data_blocks)
-            if isinstance(target_block, numbers.Number):
-                # this happens if target_block is a scalar because all inputs
-                # are scalars, convert to a 1 element 2d array
-                target_block = numpy.array([[target_block]])
+            if (not isinstance(target_block, numpy.ndarray) or
+                    target_block.shape != blocksize):
+                raise ValueError(
+                    "Expected `local_op` to return a numpy.ndarray of "
+                    "shape %s but got this instead: %s" % (
+                        blocksize, target_block))
             target_band.WriteArray(
                 target_block, yoff=offset_list[0], xoff=offset_list[1])
 
