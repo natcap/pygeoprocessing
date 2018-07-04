@@ -2058,7 +2058,7 @@ class PyGeoprocessing10(unittest.TestCase):
         wgs84_sr.ImportFromEPSG(4326)  # WGS84 EPSG
 
         driver = gdal.GetDriverByName("GTiff")
-        base_path = 'wgs84raster.tif' #os.path.join(self.workspace_dir, 'base.tif')
+        base_path = os.path.join(self.workspace_dir, 'base.tif')
         new_raster = driver.Create(base_path, 10, 10, 1, gdal.GDT_Int32)
         new_raster.FlushCache()
 
@@ -2067,7 +2067,7 @@ class PyGeoprocessing10(unittest.TestCase):
             -123.587984, 1.0, 0.0, 44.725814, 0.0, -1.0])
         new_raster = None
 
-        target_path = 'utm10raster.tif' #os.path.join(self.workspace_dir, 'target.tif')
+        target_path = os.path.join(self.workspace_dir, 'target.tif')
 
         target_ref = osr.SpatialReference()
         target_ref.ImportFromEPSG(26910)  # UTM10N EPSG
