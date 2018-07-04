@@ -143,7 +143,7 @@ def raster_calculator(
     if not base_raster_path_band_const_list:
         raise ValueError(
             "`base_raster_path_band_const_list` is empty and "
-            "should have at least one should have at least one value.")
+            "should have at least one value.")
 
     # It's a common error to not pass in path/band tuples, so check for that
     # and report error if so
