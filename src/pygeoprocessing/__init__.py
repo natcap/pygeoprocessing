@@ -13,7 +13,6 @@ import pkg_resources
 from . import geoprocessing
 from .geoprocessing_core import calculate_slope
 
-
 try:
     __version__ = pkg_resources.get_distribution(__name__).version
 except pkg_resources.DistributionNotFound:
@@ -33,7 +32,6 @@ except pkg_resources.DistributionNotFound:
 
 
 LOGGER = logging.getLogger('pygeoprocessing')
-LOGGER.setLevel(logging.DEBUG)
 LOGGER.addHandler(logging.NullHandler())
 
 __all__ = ('calculate_slope',)

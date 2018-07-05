@@ -11,8 +11,12 @@ Unreleased Changes
   to be ``scipy>=0.14.1,!=0.19.1``.
 * A dependency on ``future`` has been added for compatibility between python
   versions.
-* Fixed a crash in `pygeoprocessing.routing.flow_dir_mfd` and `flow_dir_d8`
-  if a base raster was passed in that did not have a power of two blocksize.
+* Fixed a crash in ``pygeoprocessing.routing.flow_dir_mfd`` and
+  ``flow_dir_d8`` if a base raster was passed in that did not have a power of
+  two blocksize.
+* ``raster_calculator`` can now take numpy arrays and scalar values along with
+  raster path band tuples. Arrays and scalars are broadcast to the raster size
+  according to numpy array broadcasting rules.
 
 1.0.1 (5/16/2018)
 -----------------
