@@ -2061,3 +2061,44 @@ class PyGeoprocessing10(unittest.TestCase):
 
         numpy.testing.assert_almost_equal(target_array, expected_array)
         self.assertEqual(nodata_value, 0)
+
+    def test_align_with_target_sr(self):
+        """PGP: test align_and_resize_raster_stack with a target sr."""
+
+        wgs84_sr = osr.SpatialReference()
+        wgs84_sr.ImportFromEPSG(4326)  # WGS84 EPSG
+
+        driver = gdal.GetDriverByName("GTiff")
+        base_path = os.path.join(self.workspace_dir, 'base.tif')
+        new_raster = driver.Create(base_path, 10, 10, 1, gdal.GDT_Int32)
+        new_raster.FlushCache()
+
+        new_raster.SetProjection(wgs84_sr.ExportToWkt())
+        new_raster.SetGeoTransform([
+            -123.587984, 1.0, 0.0, 44.725814, 0.0, -1.0])
+        new_raster = None
+
+        target_path = os.path.join(self.workspace_dir, 'target.tif')
+
+        target_ref = osr.SpatialReference()
+        target_ref.ImportFromEPSG(26910)  # UTM10N EPSG
+
+        pygeoprocessing.align_and_resize_raster_stack(
+            [base_path], [target_path], ['nearest'],
+            (3e4, -3e4), 'intersection', target_sr_wkt=target_ref.ExportToWkt())
+
+        target_raster_info = pygeoprocessing.get_raster_info(target_path)
+
+        # I have confidence in the upper left bounding box coordinate
+        # hardcoded below because I plotted the WGS84 and UTM10N rasters on
+        # top of each other and moused over the upper right hand corner.
+        # Note the warping of wgs84 to utm will cause distortion and this
+        # function attempts to make a raster that bounds that distortion
+        # without losing any data, so a direct mapping from the lat/lng
+        # coordinate to the one below will be slightly of because the
+        # warped raster's bounding box will be a little larger.
+        self.assertIs(
+            numpy.testing.assert_allclose(
+                [446166.79245811916, 4995771.240781772],
+                [target_raster_info['bounding_box'][0],
+                 target_raster_info['bounding_box'][3]]), None)

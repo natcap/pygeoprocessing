@@ -425,7 +425,7 @@ def raster_calculator(
 def align_and_resize_raster_stack(
         base_raster_path_list, target_raster_path_list, resample_method_list,
         target_pixel_size, bounding_box_mode, base_vector_path_list=None,
-        raster_align_index=None,
+        raster_align_index=None, target_sr_wkt=None,
         gtiff_creation_options=_DEFAULT_GTIFF_CREATION_OPTIONS):
     """Generate rasters from a base such that they align geospatially.
 
@@ -464,6 +464,9 @@ def align_and_resize_raster_stack(
             grid layout.  If `None` then the bounding box of the target
             rasters is calculated as the precise intersection, union, or
             bounding box.
+        target_sr_wkt (string): if not None, this is the desired
+            projection of all target rasters in Well Known Text format. If
+            None, the base SRS will be passed to the target.
         gtiff_creation_options (list): list of strings that will be passed
             as GDAL "dataset" creation options to the GTIFF driver, or ignored
             if None.
@@ -499,23 +502,33 @@ def align_and_resize_raster_stack(
             " n_elements %s" % (
                 raster_align_index, len(base_raster_path_list)))
 
+    # used to get bounding box, projection, and possible alignment info
     raster_info_list = [
         get_raster_info(path) for path in base_raster_path_list]
-    if base_vector_path_list is not None:
-        vector_info_list = [
-            get_vector_info(path) for path in base_vector_path_list]
-    else:
-        vector_info_list = []
 
     # get the literal or intersecting/unioned bounding box
     if isinstance(bounding_box_mode, (list, tuple)):
         target_bounding_box = bounding_box_mode
     else:
-        # either intersection or union
+        # either intersection or union, get list of bounding boxes, reproject
+        # if necessary, and reduce to a single box
+        if base_vector_path_list is not None:
+            # vectors are only interesting for their bounding boxes, that's
+            # this construction is inside an else.
+            vector_info_list = [
+                get_vector_info(path) for path in base_vector_path_list]
+        else:
+            vector_info_list = []
+
+        bounding_box_list = [
+            transform_bounding_box(
+                info['bounding_box'], info['projection'], target_sr_wkt)
+            if target_sr_wkt else info['bounding_box']
+            for info in raster_info_list + vector_info_list]
+
         target_bounding_box = reduce(
             functools.partial(_merge_bounding_boxes, mode=bounding_box_mode),
-            [info['bounding_box'] for info in
-             (raster_info_list + vector_info_list)])
+            bounding_box_list)
 
     if bounding_box_mode == "intersection" and (
             target_bounding_box[0] > target_bounding_box[2] or
@@ -523,7 +536,7 @@ def align_and_resize_raster_stack(
         raise ValueError("The rasters' and vectors' intersection is empty "
                          "(not all rasters and vectors touch each other).")
 
-    if raster_align_index >= 0:
+    if raster_align_index is not None and raster_align_index >= 0:
         # bounding box needs alignment
         align_bounding_box = (
             raster_info_list[raster_align_index]['bounding_box'])
@@ -545,11 +558,12 @@ def align_and_resize_raster_stack(
         last_time = _invoke_timed_callback(
             last_time, lambda: LOGGER.info(
                 "align_dataset_list aligning dataset %d of %d",
-                index, len(base_raster_path_list)), _LOGGING_PERIOD)
+                index+1, len(base_raster_path_list)), _LOGGING_PERIOD)
         warp_raster(
             base_path, target_pixel_size,
             target_path, resample_method,
             target_bb=target_bounding_box,
+            target_sr_wkt=target_sr_wkt,
             gtiff_creation_options=gtiff_creation_options)
 
 
