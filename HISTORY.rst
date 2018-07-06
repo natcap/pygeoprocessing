@@ -1,8 +1,24 @@
 Release History
 ===============
 
-.. Unreleased Changes
-.. ------------------
+1.1.0 (7/6/2018)
+----------------
+* PyGeoprocessing now supports Python 2 and 3, and is tested on python 2.7
+  and 3.6  Testing across multiple versions is configured to be run via
+  ``tox``.
+* After testing (tox configuration included under ``tox-libcompat.ini``), numpy
+  requirement has been dropped to ``numpy>=1.10.0`` and scipy has been modified
+  to be ``scipy>=0.14.1,!=0.19.1``.
+* A dependency on ``future`` has been added for compatibility between python
+  versions.
+* Fixed a crash in ``pygeoprocessing.routing.flow_dir_mfd`` and
+  ``flow_dir_d8`` if a base raster was passed in that did not have a power of
+  two blocksize.
+* ``raster_calculator`` can now take numpy arrays and scalar values along with
+  raster path band tuples. Arrays and scalars are broadcast to the raster size
+  according to numpy array broadcasting rules.
+* ``align_and_resize_raster_stack`` can now take a desired target projection
+  which causes all input rasters to be warped to that projection on output.
 
 1.0.1 (5/16/2018)
 -----------------

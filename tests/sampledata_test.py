@@ -1,3 +1,4 @@
+# encoding=UTF-8
 """Tests for the creation of geospatial sample data."""
 import unittest
 import os

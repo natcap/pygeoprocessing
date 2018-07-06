@@ -1,4 +1,4 @@
-
+# coding=UTF-8
 import hashlib
 import logging
 import os
@@ -49,7 +49,7 @@ def digest_file_list(filepath_list, ifdir='skip'):
                 continue
             else:  # ifdir == 'raise'
                 raise IOError(message)
-        summary_md5.update(digest_file(filepath))
+        summary_md5.update(digest_file(filepath).encode('utf-8'))
 
     return summary_md5.hexdigest()
 
@@ -96,7 +96,7 @@ def digest_file(filepath):
     block_size = 2**20
     file_handler = open(filepath, 'rb')
     file_md5 = hashlib.md5()
-    for chunk in iter(lambda: file_handler.read(block_size), ''):
+    for chunk in iter(lambda: file_handler.read(block_size), b''):
         file_md5.update(chunk)
     file_handler.close()
 
@@ -139,7 +139,7 @@ def checksum_folder(workspace_uri, logfile_uri, style='GNU', ignore_exts=None):
         md5sum_string = format_styles[style]
     except KeyError:
         raise IOError('Invalid style: %s.  Valid styles: %s' % (
-            style, format_styles.keys()))
+            style, list(format_styles.keys())))
 
     import pygeoprocessing
     logfile = open(logfile_uri, 'w')
