@@ -1,8 +1,8 @@
 Release History
 ===============
 
-Unreleased Changes
-------------------
+1.1.0 (7/6/2018)
+----------------
 * PyGeoprocessing now supports Python 2 and 3, and is tested on python 2.7
   and 3.6  Testing across multiple versions is configured to be run via
   ``tox``.
