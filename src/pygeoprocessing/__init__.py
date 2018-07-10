@@ -4,7 +4,6 @@ __init__ module imports all the geoprocessing functions into this namespace.
 """
 from __future__ import absolute_import
 
-import logging
 import types
 import sys
 
@@ -30,10 +29,6 @@ except pkg_resources.DistributionNotFound:
         "  * python setup.py install\n"
         "  * python setup.py develop\n"
         "  * pip install <distribution>")
-
-LOGGER = logging.getLogger('pygeoprocessing')
-LOGGER.addHandler(logging.NullHandler())
-
 
 __all__ = ('calculate_slope',)
 for attrname in dir(geoprocessing):
