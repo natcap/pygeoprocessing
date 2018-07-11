@@ -332,6 +332,9 @@ def raster_calculator(
         target_raster.SetGeoTransform(base_raster_list[0].GetGeoTransform())
     target_band.FlushCache()
     target_raster.FlushCache()
+    target_band = None
+    gdal.Dataset.__swig_destroy__(target_raster)
+    target_raster = None
 
     try:
         last_time = time.time()
@@ -499,11 +502,6 @@ def raster_calculator(
             LOGGER.debug("write_worker terminated.")
 
         base_raster_list[:] = []
-        target_band.FlushCache()
-        target_band = None
-        target_raster.FlushCache()
-        gdal.Dataset.__swig_destroy__(target_raster)
-        target_raster = None
 
 
 def align_and_resize_raster_stack(
