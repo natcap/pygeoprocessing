@@ -404,10 +404,6 @@ def raster_calculator(
         local_op_thread.daemon = True
         local_op_thread.start()
 
-        # this variable is used to hold the exception raised from a worker
-        # thread
-        possible_exception = None
-
         # iterate over each block and calculate local_op
         for block_offset in iterblocks(
                 target_raster_path, offset_only=True,
@@ -463,24 +459,31 @@ def raster_calculator(
         # in case something bad happens and the thread doesn't terminate on
         # its own
         local_op_thread.join(_MAX_TIMEOUT)
+        if local_op_thread.is_alive():
+            raise RuntimeError("local_op_thread.join() timed out")
 
         # terminate write and stats workers
         LOGGER.debug('signaling write worker to shut down')
         write_block_queue.put(None, True, _MAX_TIMEOUT)
         LOGGER.debug("waiting for write worker to terminate")
         write_worker_thread.join(_MAX_TIMEOUT)
+        if write_worker_thread.is_alive():
+            raise RuntimeError("write_worker_thread.join() timed out")
 
         if calc_raster_stats:
             LOGGER.debug('signaling stats worker to shut down')
             stats_worker_queue.put(None, True, _MAX_TIMEOUT)
             LOGGER.debug("Waiting for raster stats worker result.")
             stats_worker_thread.join(_MAX_TIMEOUT)
+            if stats_worker_thread.is_alive():
+                raise RuntimeError("stats_worker_thread.join() timed out")
             payload = stats_worker_queue.get(True, _MAX_TIMEOUT)
             LOGGER.debug("Got %s from stats worker", payload)
             if payload is not None:
                 target_min, target_max, target_mean, target_stddev = payload
                 target_raster = gdal.OpenEx(
                     target_raster_path, gdal.GA_Update | gdal.OF_RASTER)
+                target_band = target_raster.GetRasterBand(1)
                 target_band.SetStatistics(
                     float(target_min), float(target_max), float(target_mean),
                     float(target_stddev))
@@ -2293,7 +2296,7 @@ def iterblocks(
             data and does not attempt to read binary data from the raster.
 
     """
-    raster = gdal.OpenEx(raster_path)
+    raster = gdal.OpenEx(raster_path, gdal.OF_RASTER)
 
     if band_index_list is None:
         band_index_list = range(1, raster.RasterCount + 1)
@@ -2371,6 +2374,7 @@ def iterblocks(
             yield result
 
     band_index_list = None
+    gdal.Dataset.__swig_destroy__(raster)
     raster = None
 
 
