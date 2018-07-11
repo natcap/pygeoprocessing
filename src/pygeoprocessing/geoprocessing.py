@@ -339,9 +339,6 @@ def raster_calculator(
     try:
         last_time = time.time()
 
-        # takes data blocks and processes them in a worker thread
-        local_op_work_queue = queue.Queue(2)
-
         # takes results from local op and writes them to disk in a thread
         write_block_queue = queue.Queue(2)
 
@@ -394,16 +391,6 @@ def raster_calculator(
         pixels_processed = 0
         n_pixels = n_cols * n_rows
 
-        # this worker calculates local_op on the data blocks read by the
-        # main thread and passed throuh the `local_op_work_queue`
-        local_op_thread = threading.Thread(
-            target=_local_op_worker,
-            args=(
-                local_op, nodata_target, local_op_work_queue,
-                write_block_queue, stats_worker_queue, exception_queue))
-        local_op_thread.daemon = True
-        local_op_thread.start()
-
         # iterate over each block and calculate local_op
         for block_offset in iterblocks(
                 target_raster_path, offset_only=True,
@@ -433,16 +420,40 @@ def raster_calculator(
                     # must be a scalar
                     data_blocks.append(value)
 
-            # check for an exception in the local worker, otherwise get result
+            target_block = local_op(*data_blocks)
+
+            if (not isinstance(target_block, numpy.ndarray) or
+                    target_block.shape != blocksize):
+                raise ValueError(
+                    "Expected `local_op` to return a numpy.ndarray of "
+                    "shape %s but got this instead: %s" % (
+                        blocksize, target_block))
+
+            # send result to writer
+            write_block_queue.put((block_offset, target_block))
+
+            # send result to stats calculator
+            if stats_worker_queue:
+                # guard against an undefined nodata target
+                if nodata_target is not None:
+                    valid_block = target_block[target_block != nodata_target]
+                    if valid_block.size > 0:
+                        stats_worker_queue.put(valid_block)
+                else:
+                    stats_worker_queue.put(target_block.flatten())
+
+            # check for an exception in the workers, otherwise get result
             # and pass to writer
             try:
                 exception = exception_queue.get_nowait()
                 # an exception happened, just terminate everything.
+                # worker threads are daemons, so they'll terminate
+                # without a problem.
                 LOGGER.error(
                     "Exception from local_op encountered, terminating.")
                 raise exception
             except queue.Empty:
-                local_op_work_queue.put((block_offset, data_blocks))
+                pass
 
             pixels_processed += blocksize[0] * blocksize[1]
             last_time = _invoke_timed_callback(
@@ -453,26 +464,17 @@ def raster_calculator(
 
         LOGGER.info('100.00%% complete')
 
-        # signal end to work queue by putting a None
-        local_op_work_queue.put(None)
-        # thread should join almost immediately, but _MAX_TIMEOUT is a guard
-        # in case something bad happens and the thread doesn't terminate on
-        # its own
-        local_op_thread.join(_MAX_TIMEOUT)
-        if local_op_thread.is_alive():
-            raise RuntimeError("local_op_thread.join() timed out")
+        write_block_queue.put(None, True, _MAX_TIMEOUT)
+        if stats_worker_queue:
+            stats_worker_queue.put(None, True, _MAX_TIMEOUT)
 
         # terminate write and stats workers
-        LOGGER.debug('signaling write worker to shut down')
-        write_block_queue.put(None, True, _MAX_TIMEOUT)
         LOGGER.debug("waiting for write worker to terminate")
         write_worker_thread.join(_MAX_TIMEOUT)
         if write_worker_thread.is_alive():
             raise RuntimeError("write_worker_thread.join() timed out")
 
         if calc_raster_stats:
-            LOGGER.debug('signaling stats worker to shut down')
-            stats_worker_queue.put(None, True, _MAX_TIMEOUT)
             LOGGER.debug("Waiting for raster stats worker result.")
             stats_worker_thread.join(_MAX_TIMEOUT)
             if stats_worker_thread.is_alive():
@@ -494,17 +496,32 @@ def raster_calculator(
         base_band_list[:] = []
         for raster in base_raster_list:
             gdal.Dataset.__swig_destroy__(raster)
-        if calc_raster_stats and stats_worker_thread.is_alive():
-            stats_worker_queue.put(None, True, _MAX_TIMEOUT)
-            stats_worker_thread.join(_MAX_TIMEOUT)
-            LOGGER.debug('stats_worker terminated')
+        base_raster_list[:] = []
 
+        # terminate write and stats workers
         if write_worker_thread.is_alive():
             write_block_queue.put(None, True, _MAX_TIMEOUT)
+            LOGGER.debug("waiting for write worker to terminate")
             write_worker_thread.join(_MAX_TIMEOUT)
-            LOGGER.debug("write_worker terminated.")
+            if write_worker_thread.is_alive():
+                raise RuntimeError("write_worker_thread.join() timed out")
 
-        base_raster_list[:] = []
+        if calc_raster_stats:
+            if stats_worker_thread.is_alive():
+                stats_worker_queue.put(None, True, _MAX_TIMEOUT)
+                LOGGER.debug("Waiting for raster stats worker result.")
+                stats_worker_thread.join(_MAX_TIMEOUT)
+                if stats_worker_thread.is_alive():
+                    raise RuntimeError("stats_worker_thread.join() timed out")
+
+        # check for an exception in the workers, otherwise get result
+        # and pass to writer
+        try:
+            exception = exception_queue.get_nowait()
+            LOGGER.error("Exception encountered at termination.")
+            raise exception
+        except queue.Empty:
+            pass
 
 
 def align_and_resize_raster_stack(
@@ -2851,8 +2868,8 @@ def _write_block_worker(
 
 
 def _local_op_worker(
-        local_op, nodata_target, local_op_work_queue, write_block_queue,
-        stats_worker_queue, exception_queue):
+        local_op, nodata_target, local_op_work_queue,
+        write_block_queue, stats_worker_queue, exception_queue):
     """Threads `local_op` function for `raster_calculator`.
 
     Separating this function into a call that could be threaded is
@@ -2868,9 +2885,10 @@ def _local_op_worker(
         nodata_target (numeric): a numerical nodata value or None for
             determining statistics calculations.
         local_op_work_queue (queue.Queue): a queue of
-            (block_offset, raster_blocks) tuples such that local_op
+            (block_offset, blocksize, raster_blocks) tuples such that local_op
             operates on local_op(*raster_blocks) and the result is written
-            to the target raster at `block_offset`.
+            to the target raster at `block_offset`. `blocksize` is used
+            to ensure the result from `local_op` is valid.
         write_block_queue (queue.Queue): queue to put result of local_op
             effectively puting tuples
             (block_offset, local_op(*raster_blocks)).
@@ -2890,8 +2908,15 @@ def _local_op_worker(
             payload = local_op_work_queue.get()
             if payload is None:
                 break
-            block_offset, raster_blocks = payload
+            block_offset, blocksize, raster_blocks = payload
             target_block = local_op(*raster_blocks)
+
+            if (not isinstance(target_block, numpy.ndarray) or
+                    target_block.shape != blocksize):
+                raise ValueError(
+                    "Expected `local_op` to return a numpy.ndarray of "
+                    "shape %s but got this instead: %s" % (
+                        blocksize, target_block))
 
             # send result to writer
             write_block_queue.put(
