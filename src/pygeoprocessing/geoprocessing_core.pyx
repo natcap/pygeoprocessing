@@ -495,7 +495,7 @@ def stats_worker(stats_work_queue, exception_queue):
         while True:
             payload = stats_work_queue.get()
             if payload is None:
-                LOGGER.info('payload is None, terminating')
+                LOGGER.debug('payload is None, terminating')
                 break
             block = payload.astype(numpy.float64)
             n_elements = block.size

@@ -1225,15 +1225,10 @@ class PyGeoprocessing10(unittest.TestCase):
         raster_array = numpy.ones((128, 128), dtype =numpy.int32)
         raster_array[127, 127] = nodata
         new_band.WriteArray(raster_array)
-        LOGGER.debug(raster_array)
         new_band.FlushCache()
-        new_band = None
         new_raster.FlushCache()
+        new_band = None
         new_raster = None
-
-        base_raster = gdal.OpenEx(base_path, gdal.OF_RASTER)
-        base_band = base_raster.GetRasterBand(1)
-        numpy.testing.assert_allclose(raster_array, base_band.ReadAsArray())
 
         target_path = os.path.join(self.workspace_dir, 'target.tif')
 
@@ -1242,7 +1237,6 @@ class PyGeoprocessing10(unittest.TestCase):
         def local_op(scalar, raster_array, col_array):
             valid_mask = raster_array != nodata
             result = numpy.empty_like(raster_array)
-            LOGGER.debug(f'{scalar}, {raster_array}, {col_array}')
             result[:] = nodata
             result[valid_mask] = (
                 scalar * raster_array[valid_mask] * col_array[valid_mask])
