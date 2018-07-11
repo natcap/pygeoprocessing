@@ -290,12 +290,15 @@ def raster_calculator(
             base_band_list.append(
                 base_raster_list[-1].GetRasterBand(value[1]))
             base_canonical_arg_list.append(base_band_list[-1])
+            LOGGER.debug(f'putting raster {value[0]}')
         elif isinstance(value, numpy.ndarray) and value.ndim == 1:
             # easier to process as a 2d array for writing to band
             base_canonical_arg_list.append(value.reshape((1, value.shape[0])))
         else:
             # otherwise it's a 2d array or scalar, pass as is
             base_canonical_arg_list.append(value)
+
+    LOGGER.debug(f'base_canonical_arg_list {base_canonical_arg_list}')
 
     # create target raster
     if raster_info_list:
@@ -330,18 +333,7 @@ def raster_calculator(
     target_raster.FlushCache()
 
     try:
-        n_cols, n_rows = base_raster_info['raster_size']
-        xoff = None
-        yoff = None
         last_time = time.time()
-
-        # load base rasters and bands
-        base_raster_list = [
-            gdal.OpenEx(path_band[0])
-            for path_band in base_raster_path_band_list]
-        base_band_list = [
-            raster.GetRasterBand(index) for raster, (_, index) in zip(
-                base_raster_list, base_raster_path_band_list)]
 
         local_op_work_queue = queue.Queue(2)
         write_block_queue = queue.Queue(2)
@@ -400,11 +392,9 @@ def raster_calculator(
         # iterate over each block and calculate local_op
         target_min = None
         target_max = None
-        target_sum = 0.0
-        target_n = 0
         target_mean = None
         target_stddev = None
-        pixels_to_process = n_rows * n_cols
+        possible_exception = None
         for block_offset in iterblocks(
                 target_raster_path, offset_only=True,
                 largest_block=largest_block):
@@ -433,12 +423,13 @@ def raster_calculator(
                     # must be a scalar
                     data_blocks.append(value)
 
-            if exception_queue.empty():
-                local_op_work_queue.put(
-                    (block_offset, data_blocks))
-            else:
+            try:
+                possible_exception = exception_queue.get_nowait()
                 LOGGER.error("Exception queue is not empty, quitting.")
                 break
+            except queue.Empty:
+                LOGGER.debug(f'putting data_blocks to queue {data_blocks}')
+                local_op_work_queue.put((block_offset, data_blocks))
 
             pixels_processed += blocksize[0] * blocksize[1]
             last_time = _invoke_timed_callback(
@@ -449,9 +440,9 @@ def raster_calculator(
 
         local_op_work_queue.put(None)
         local_op_thread.join(_MAX_TIMEOUT)
-        if not exception_queue.empty():
+        if possible_exception:
             LOGGER.error("Exception queue is not empty, raising exception.")
-            raise exception_queue.get(True, _MAX_TIMEOUT)
+            raise possible_exception
         LOGGER.info('100.00%% complete')
 
         # push `None` to work queues
@@ -474,13 +465,10 @@ def raster_calculator(
                 target_min, target_max, target_mean, target_stddev = payload
                 target_raster = gdal.OpenEx(
                     target_raster_path, gdal.GA_Update | gdal.OF_RASTER)
-                target_band = target_raster.GetRasterBand(1)
                 target_band.SetStatistics(
                     float(target_min), float(target_max), float(target_mean),
                     float(target_stddev))
                 target_band.FlushCache()
-                target_band = None
-                gdal.Dataset.__swig_destroy__(target_raster)
     except:
         LOGGER.exception('Exception encountered.')
         raise
@@ -1574,7 +1562,7 @@ def warp_raster(
         target_raster_path (string): the location of the resized and
             resampled raster.
         resample_method (string): the resampling technique, one of
-            "near|bilinear|cubic|cubic_spline|lanczos|average|mode|max"
+            "nearest|bilinear|cubic|cubic_spline|lanczos|average|mode|max"
             "min|med|q1|q3"
         target_bb (list): if None, target bounding box is the same as the
             source bounding box.  Otherwise it's a list of float describing
@@ -1587,8 +1575,11 @@ def warp_raster(
 
     Returns:
         None
-
     """
+    base_raster = gdal.OpenEx(base_raster_path)
+    base_sr = osr.SpatialReference()
+    base_sr.ImportFromWkt(base_raster.GetProjection())
+
     if target_bb is None:
         target_bb = get_raster_info(base_raster_path)['bounding_box']
         # transform the target_bb if target_sr_wkt is not None
@@ -1598,43 +1589,89 @@ def warp_raster(
                 get_raster_info(base_raster_path)['projection'],
                 target_sr_wkt)
 
-    target_x_size = int(
-        abs((target_bb[2] - target_bb[0]) / target_pixel_size[0]))
-    target_y_size = int(
-        abs((target_bb[3] - target_bb[1]) / target_pixel_size[1]))
+    target_geotransform = [
+        target_bb[0], target_pixel_size[0], 0.0, target_bb[1], 0.0,
+        target_pixel_size[1]]
+    # this handles a case of a negative pixel size in which case the raster
+    # row will increase downward
+    if target_pixel_size[0] < 0:
+        target_geotransform[0] = target_bb[2]
+    if target_pixel_size[1] < 0:
+        target_geotransform[3] = target_bb[3]
+    target_x_size = abs((target_bb[2] - target_bb[0]) / target_pixel_size[0])
+    target_y_size = abs((target_bb[3] - target_bb[1]) / target_pixel_size[1])
+
+    if target_x_size - int(target_x_size) > 0:
+        target_x_size = int(target_x_size) + 1
+    else:
+        target_x_size = int(target_x_size)
+
+    if target_y_size - int(target_y_size) > 0:
+        target_y_size = int(target_y_size) + 1
+    else:
+        target_y_size = int(target_y_size)
 
     if target_x_size == 0:
         LOGGER.warn(
             "bounding_box is so small that x dimension rounds to 0; "
             "clamping to 1.")
-        LOGGER.debug(target_bb)
-        target_bb[2] = target_bb[0] + abs(target_pixel_size[0])
-        LOGGER.debug(target_bb)
-        LOGGER.debug(target_pixel_size[0])
+        target_x_size = 1
     if target_y_size == 0:
         LOGGER.warn(
             "bounding_box is so small that y dimension rounds to 0; "
             "clamping to 1.")
-        LOGGER.debug(target_bb)
-        target_bb[3] = target_bb[1] + abs(target_pixel_size[1])
-        LOGGER.debug(target_bb)
-        LOGGER.debug(target_pixel_size[1])
+        target_y_size = 1
 
-    reproject_callback = _make_logger_callback("Warp %.1f%% complete %s")
+    local_gtiff_creation_options = list(gtiff_creation_options)
+    # PIXELTYPE is sometimes used to define signed vs. unsigned bytes and
+    # the only place that is stored is in the IMAGE_STRUCTURE metadata
+    # copy it over if it exists; get this info from the first band since
+    # all bands have the same datatype
+    base_band = base_raster.GetRasterBand(1)
+    metadata = base_band.GetMetadata('IMAGE_STRUCTURE')
+    if 'PIXELTYPE' in metadata:
+        local_gtiff_creation_options.append(
+            'PIXELTYPE=' + metadata['PIXELTYPE'])
 
-    base_raster = gdal.OpenEx(base_raster_path)
-    gdal.Warp(
-        target_raster_path, base_raster,
-        outputBounds=target_bb,
-        xRes=abs(target_pixel_size[0]),
-        yRes=abs(target_pixel_size[1]),
-        resampleAlg=resample_method,
-        outputBoundsSRS=target_sr_wkt,
-        multithread=True,
-        warpOptions=['NUM_THREADS=ALL_CPUS'],
-        creationOptions=gtiff_creation_options,
-        callback=reproject_callback,
-        callback_data=[target_raster_path])
+    # make directory if it doesn't exist
+    try:
+        os.makedirs(os.path.dirname(target_raster_path))
+    except OSError:
+        pass
+    gdal_driver = gdal.GetDriverByName('GTiff')
+    target_raster = gdal_driver.Create(
+        target_raster_path, target_x_size, target_y_size,
+        base_raster.RasterCount, base_band.DataType,
+        options=local_gtiff_creation_options)
+    base_band = None
+
+    for index in range(target_raster.RasterCount):
+        base_nodata = base_raster.GetRasterBand(1+index).GetNoDataValue()
+        if base_nodata is not None:
+            target_band = target_raster.GetRasterBand(1+index)
+            target_band.SetNoDataValue(base_nodata)
+            target_band = None
+
+    # Set the geotransform
+    target_raster.SetGeoTransform(target_geotransform)
+    if target_sr_wkt is None:
+        target_sr_wkt = base_sr.ExportToWkt()
+    target_raster.SetProjection(target_sr_wkt)
+
+    # need to make this a closure so we get the current time and we can affect
+    # state
+    reproject_callback = _make_logger_callback(
+        "ReprojectImage %.1f%% complete %s, psz_message '%s'")
+
+    # Perform the projection/resampling
+    gdal.ReprojectImage(
+        base_raster, target_raster, base_sr.ExportToWkt(),
+        target_sr_wkt, _RESAMPLE_DICT[resample_method], 0, 0,
+        reproject_callback, [target_raster_path])
+
+    target_raster = None
+    base_raster = None
+    calculate_raster_stats(target_raster_path)
 
 
 def rasterize(
@@ -2855,7 +2892,7 @@ def _local_op_worker(
                         stats_worker_queue.put(
                             valid_block)
                 else:
-                    stats_worker_queue.put(target_block)
+                    stats_worker_queue.put(target_block.flatten())
     except Exception as e:
         LOGGER.exception(
             "Exception occurred in _local_op_worker, pushing to exception "

@@ -6,6 +6,7 @@ import unittest
 import shutil
 import types
 import sys
+import logging
 
 from osgeo import gdal
 from osgeo import ogr
@@ -17,6 +18,8 @@ import pygeoprocessing.testing
 from pygeoprocessing.testing import sampledata
 import shapely.geometry
 import mock
+
+LOGGER = logging.getLogger(__name__)
 
 try:
     from builtins import reload
@@ -1204,21 +1207,33 @@ class PyGeoprocessing10(unittest.TestCase):
         """PGP.geoprocessing: test raster calc with constant args."""
         driver = gdal.GetDriverByName('GTiff')
         base_path = os.path.join(self.workspace_dir, 'base.tif')
+
+        wgs84_ref = osr.SpatialReference()
+        wgs84_ref.ImportFromEPSG(4326)  # WGS84 EPSG
+
         new_raster = driver.Create(
             base_path, 128, 128, 1, gdal.GDT_Int32,
             options=(
                 'TILED=YES', 'BLOCKXSIZE=32', 'BLOCKYSIZE=32'))
+        geotransform = [0.1, 1., 0., 0., 0., -1.]
+        new_raster.SetGeoTransform(geotransform)
+        new_raster.SetProjection(wgs84_ref.ExportToWkt())
         new_band = new_raster.GetRasterBand(1)
+
         nodata = 0
         new_band.SetNoDataValue(nodata)
-        raster_array = numpy.ones((128, 128))
+        raster_array = numpy.ones((128, 128), dtype =numpy.int32)
         raster_array[127, 127] = nodata
         new_band.WriteArray(raster_array)
-        raster_array = None
+        LOGGER.debug(raster_array)
         new_band.FlushCache()
         new_band = None
         new_raster.FlushCache()
         new_raster = None
+
+        base_raster = gdal.OpenEx(base_path, gdal.OF_RASTER)
+        base_band = base_raster.GetRasterBand(1)
+        numpy.testing.assert_allclose(raster_array, base_band.ReadAsArray())
 
         target_path = os.path.join(self.workspace_dir, 'target.tif')
 
@@ -1227,6 +1242,7 @@ class PyGeoprocessing10(unittest.TestCase):
         def local_op(scalar, raster_array, col_array):
             valid_mask = raster_array != nodata
             result = numpy.empty_like(raster_array)
+            LOGGER.debug(f'{scalar}, {raster_array}, {col_array}')
             result[:] = nodata
             result[valid_mask] = (
                 scalar * raster_array[valid_mask] * col_array[valid_mask])
