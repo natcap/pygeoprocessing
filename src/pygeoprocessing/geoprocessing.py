@@ -293,7 +293,6 @@ def raster_calculator(
             base_band_list.append(
                 base_raster_list[-1].GetRasterBand(value[1]))
             base_canonical_arg_list.append(base_band_list[-1])
-            LOGGER.debug(f'putting raster {value[0]}')
         elif isinstance(value, numpy.ndarray) and value.ndim == 1:
             # easier to process as a 2d array for writing to band
             base_canonical_arg_list.append(value.reshape((1, value.shape[0])))
