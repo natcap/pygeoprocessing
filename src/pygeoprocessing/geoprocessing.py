@@ -2,6 +2,9 @@
 """A collection of GDAL dataset and raster utilities."""
 from __future__ import division
 from __future__ import absolute_import
+
+from .geoprocessing_core import DEFAULT_GTIFF_CREATION_OPTIONS
+
 from builtins import zip
 from builtins import range
 import logging
@@ -51,7 +54,6 @@ from functools import reduce
 LOGGER = logging.getLogger(__name__)
 LOGGER.addHandler(logging.NullHandler())  # silence logging by default
 
-from .geoprocessing_core import DEFAULT_GTIFF_CREATION_OPTIONS
 _MAX_TIMEOUT = 5.0
 
 try:
@@ -332,41 +334,18 @@ def raster_calculator(
         target_raster.SetGeoTransform(base_raster_list[0].GetGeoTransform())
     target_band.FlushCache()
     target_raster.FlushCache()
-    target_band = None
-    gdal.Dataset.__swig_destroy__(target_raster)
-    target_raster = None
 
     try:
         last_time = time.time()
 
-        # takes results from local op and writes them to disk in a thread
-        write_block_queue = queue.Queue(2)
-
-        # if any exceptions occur in a worker, it is passed to this queue
-        # so workers can cleanly shut down
-        exception_queue = queue.Queue()
-
         if calc_raster_stats:
             # if this queue is used to send computed valid blocks of
             # the raster to an incremental statistics calculator worker
-            stats_worker_queue = queue.Queue(2)
+            stats_worker_queue = queue.Queue()
+            exception_queue = queue.Queue()
         else:
             stats_worker_queue = None
-
-        # the write worker takes the result of the call to `local_op` and
-        # writes it to the raster. It is not possible to parallel write to
-        # most raster types, so this gives slightly better performance than
-        # a single process doing both the read/computation and writing
-        # especially if writing to a compressed raster that needs extra
-        # computation.
-        LOGGER.debug('starting write_worker')
-        write_worker_thread = threading.Thread(
-            target=_write_block_worker,
-            args=(
-                write_block_queue, target_raster_path, exception_queue))
-        write_worker_thread.daemon = True
-        write_worker_thread.start()
-        LOGGER.debug('started write_worker  %s', write_worker_thread)
+            exception_queue = None
 
         if calc_raster_stats:
             # To avoid doing two passes on the raster to calculate standard
@@ -429,9 +408,6 @@ def raster_calculator(
                     "shape %s but got this instead: %s" % (
                         blocksize, target_block))
 
-            # send result to writer
-            write_block_queue.put((block_offset, target_block))
-
             # send result to stats calculator
             if stats_worker_queue:
                 # guard against an undefined nodata target
@@ -442,18 +418,10 @@ def raster_calculator(
                 else:
                     stats_worker_queue.put(target_block.flatten())
 
-            # check for an exception in the workers, otherwise get result
-            # and pass to writer
-            try:
-                exception = exception_queue.get_nowait()
-                # an exception happened, just terminate everything.
-                # worker threads are daemons, so they'll terminate
-                # without a problem.
-                LOGGER.error(
-                    "Exception from local_op encountered, terminating.")
-                raise exception
-            except queue.Empty:
-                pass
+            # send result to writer
+            target_band.WriteArray(
+                target_block, yoff=block_offset['yoff'],
+                xoff=block_offset['xoff'])
 
             pixels_processed += blocksize[0] * blocksize[1]
             last_time = _invoke_timed_callback(
@@ -464,17 +432,9 @@ def raster_calculator(
 
         LOGGER.info('100.00%% complete')
 
-        write_block_queue.put(None, True, _MAX_TIMEOUT)
-        if stats_worker_queue:
-            stats_worker_queue.put(None, True, _MAX_TIMEOUT)
-
-        # terminate write and stats workers
-        LOGGER.debug("waiting for write worker to terminate")
-        write_worker_thread.join(_MAX_TIMEOUT)
-        if write_worker_thread.is_alive():
-            raise RuntimeError("write_worker_thread.join() timed out")
-
         if calc_raster_stats:
+            LOGGER.debug("signaling stats worker to terminate")
+            stats_worker_queue.put(None)
             LOGGER.debug("Waiting for raster stats worker result.")
             stats_worker_thread.join(_MAX_TIMEOUT)
             if stats_worker_thread.is_alive():
@@ -483,9 +443,6 @@ def raster_calculator(
             LOGGER.debug("Got %s from stats worker", payload)
             if payload is not None:
                 target_min, target_max, target_mean, target_stddev = payload
-                target_raster = gdal.OpenEx(
-                    target_raster_path, gdal.GA_Update | gdal.OF_RASTER)
-                target_band = target_raster.GetRasterBand(1)
                 target_band.SetStatistics(
                     float(target_min), float(target_max), float(target_mean),
                     float(target_stddev))
@@ -498,14 +455,6 @@ def raster_calculator(
             gdal.Dataset.__swig_destroy__(raster)
         base_raster_list[:] = []
 
-        # terminate write and stats workers
-        if write_worker_thread.is_alive():
-            write_block_queue.put(None, True, _MAX_TIMEOUT)
-            LOGGER.debug("waiting for write worker to terminate")
-            write_worker_thread.join(_MAX_TIMEOUT)
-            if write_worker_thread.is_alive():
-                raise RuntimeError("write_worker_thread.join() timed out")
-
         if calc_raster_stats:
             if stats_worker_thread.is_alive():
                 stats_worker_queue.put(None, True, _MAX_TIMEOUT)
@@ -514,14 +463,14 @@ def raster_calculator(
                 if stats_worker_thread.is_alive():
                     raise RuntimeError("stats_worker_thread.join() timed out")
 
-        # check for an exception in the workers, otherwise get result
-        # and pass to writer
-        try:
-            exception = exception_queue.get_nowait()
-            LOGGER.error("Exception encountered at termination.")
-            raise exception
-        except queue.Empty:
-            pass
+            # check for an exception in the workers, otherwise get result
+            # and pass to writer
+            try:
+                exception = exception_queue.get_nowait()
+                LOGGER.error("Exception encountered at termination.")
+                raise exception
+            except queue.Empty:
+                pass
 
 
 def align_and_resize_raster_stack(
@@ -706,7 +655,7 @@ def align_and_resize_raster_stack(
             LOGGER.info(
                 '%d of %d aligned: %s', index+1, len(result_list),
                 os.path.basename(target_raster_path_list[index]))
-    except:
+    except BaseException:
         worker_pool.terminate()
         LOGGER.exception("Exception occurred in worker")
         raise
@@ -2108,13 +2057,15 @@ def convolve_2d(
                 k_path_band[0], band_index_list=[k_path_band[1]],
                 astype_list=[_gdal_type_to_numpy_lookup[target_datatype]]):
             left_index_raster = (
-                signal_data['xoff'] - int(n_cols_kernel / 2) + kernel_data['xoff'])
+                signal_data['xoff'] - int(n_cols_kernel / 2) +
+                kernel_data['xoff'])
             right_index_raster = (
                 signal_data['xoff'] - int(n_cols_kernel / 2) +
                 kernel_data['xoff'] + signal_data['win_xsize'] +
                 kernel_data['win_xsize'] - 1)
             top_index_raster = (
-                signal_data['yoff'] - int(n_rows_kernel / 2) + kernel_data['yoff'])
+                signal_data['yoff'] - int(n_rows_kernel / 2) +
+                kernel_data['yoff'])
             bottom_index_raster = (
                 signal_data['yoff'] - int(n_rows_kernel / 2) +
                 kernel_data['yoff'] + signal_data['win_ysize'] +
@@ -2565,9 +2516,11 @@ def merge_rasters(
     driver = gdal.GetDriverByName('GTiff')
     target_pixel_size = pixel_size_set.pop()
     n_cols = int(math.ceil(abs(
-        (target_bounding_box[2]-target_bounding_box[0]) / target_pixel_size[0])))
+        (target_bounding_box[2]-target_bounding_box[0]) /
+        target_pixel_size[0])))
     n_rows = int(math.ceil(abs(
-        (target_bounding_box[3]-target_bounding_box[1]) / target_pixel_size[1])))
+        (target_bounding_box[3]-target_bounding_box[1]) /
+        target_pixel_size[1])))
 
     target_geotransform = [
         target_bounding_box[0],
@@ -2811,143 +2764,6 @@ def _is_raster_path_band_formatted(raster_path_band):
         return True
 
 
-def _write_block_worker(
-        write_work_queue, target_raster_path, exception_queue):
-    """Write (block_offset, numpy.array) tuples to the target raster.
-
-    This function is used in a concurrency framework to write computed
-    raster blocks to a target raster.
-
-    Parameters:
-        write_work_queue (queue.Queue):  Contains (block_offset,
-            numpy.array) tuples to write to the raster at
-            `target_raster_path`.
-        target_raster_path (string): path to an existing raster that will
-            be written to during this call.
-        exception_queue (queue.Queue): if this function encounters an
-            exception, it is pushed to this queue before returning.
-
-    Returns:
-        None.
-
-    """
-    LOGGER.debug('starting')
-    try:
-        target_raster = gdal.OpenEx(
-            target_raster_path, gdal.GA_Update | gdal.OF_RASTER)
-        if not target_raster:
-            raise ValueError("Couldn't open raster %s" % target_raster_path)
-        target_band = target_raster.GetRasterBand(1)
-
-        while True:
-            payload = write_work_queue.get()
-            if payload is None:
-                LOGGER.debug(
-                    "Empty payload, terminating. (%s)",
-                    multiprocessing.current_process().name)
-                break
-            block_offset, block = payload
-            target_band.WriteArray(
-                block, xoff=block_offset['xoff'],
-                yoff=block_offset['yoff'])
-    except Exception as e:
-        LOGGER.exception(
-            "Exception occurred in _write_block_worker, pushing to exception "
-            "queue and terminating")
-        exception_queue.put(e)
-        # drain the `write_work_queue` so another process isn't blocked on it
-        while not write_work_queue.empty():
-            write_work_queue.get()
-    finally:
-        target_band.FlushCache()
-        target_raster.FlushCache()
-        target_band = None
-        gdal.Dataset.__swig_destroy__(target_raster)
-        target_raster = None
-        LOGGER.debug('stopping')
-
-
-def _local_op_worker(
-        local_op, nodata_target, local_op_work_queue,
-        write_block_queue, stats_worker_queue, exception_queue):
-    """Threads `local_op` function for `raster_calculator`.
-
-    Separating this function into a call that could be threaded is
-    useful when local op uses a complex numpy calculation or a Cython
-    function with the GIL released.
-
-    As blocks are processed this function passes completed blocks to a
-    write worker and a raster stats calculator if needed.
-
-    Parameters:
-        local_op (function): function that takes local_op(*payload) from
-            `local_op_work_queue`.
-        nodata_target (numeric): a numerical nodata value or None for
-            determining statistics calculations.
-        local_op_work_queue (queue.Queue): a queue of
-            (block_offset, blocksize, raster_blocks) tuples such that local_op
-            operates on local_op(*raster_blocks) and the result is written
-            to the target raster at `block_offset`. `blocksize` is used
-            to ensure the result from `local_op` is valid.
-        write_block_queue (queue.Queue): queue to put result of local_op
-            effectively puting tuples
-            (block_offset, local_op(*raster_blocks)).
-        stats_worker_queue (queue.Queue): if not None, the result of
-            `local_op` that is not `nodata_target` will be put to this
-            queue for stats processing.
-        exception_queue (queue.Queue): if this function encounters an
-            exception, it is pushed to this queue before returning.
-
-    Returns:
-        None.
-
-    """
-    LOGGER.debug('starting')
-    try:
-        while True:
-            payload = local_op_work_queue.get()
-            if payload is None:
-                break
-            block_offset, blocksize, raster_blocks = payload
-            target_block = local_op(*raster_blocks)
-
-            if (not isinstance(target_block, numpy.ndarray) or
-                    target_block.shape != blocksize):
-                raise ValueError(
-                    "Expected `local_op` to return a numpy.ndarray of "
-                    "shape %s but got this instead: %s" % (
-                        blocksize, target_block))
-
-            # send result to writer
-            write_block_queue.put(
-                (block_offset, target_block))
-
-            # send result to stats calculator
-            if stats_worker_queue:
-                # guard against an undefined nodata target
-                if nodata_target is not None:
-                    valid_block = target_block[target_block != nodata_target]
-                    if valid_block.size > 0:
-                        stats_worker_queue.put(
-                            valid_block)
-                else:
-                    stats_worker_queue.put(target_block.flatten())
-    except Exception as e:
-        LOGGER.exception(
-            "Exception occurred in _local_op_worker, pushing to exception "
-            "queue and terminating")
-        exception_queue.put(e)
-        # drain the work queue so that a thread waiting on the queue
-        # doesn't block.
-        while not local_op_work_queue.empty():
-            local_op_work_queue.get()
-    finally:
-        LOGGER.debug('stopping, sending None to write and stats worker')
-        write_block_queue.put(None, True, _MAX_TIMEOUT)
-        if stats_worker_queue:
-            stats_worker_queue.put(None, True, _MAX_TIMEOUT)
-
-
 def _make_fft_cache():
     """Create a helper function to remember the last computed fft."""
     def _fft_cache(fshape, xoff, yoff, data_block):
@@ -2972,6 +2788,7 @@ def _make_fft_cache():
     _fft_cache.cache = None
     _fft_cache.key = None
     return _fft_cache
+
 
 def _convolve_2d_worker(
         signal_path_band, kernel_path_band,
