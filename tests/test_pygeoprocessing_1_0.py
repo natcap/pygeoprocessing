@@ -6,7 +6,6 @@ import unittest
 import shutil
 import types
 import sys
-import logging
 
 from osgeo import gdal
 from osgeo import ogr
@@ -18,8 +17,6 @@ import pygeoprocessing.testing
 from pygeoprocessing.testing import sampledata
 import shapely.geometry
 import mock
-
-LOGGER = logging.getLogger(__name__)
 
 try:
     from builtins import reload

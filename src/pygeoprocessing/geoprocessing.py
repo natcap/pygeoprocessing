@@ -417,7 +417,6 @@ def raster_calculator(
                 else:
                     stats_worker_queue.put(target_block.flatten())
 
-            # send result to writer
             target_band.WriteArray(
                 target_block, yoff=block_offset['yoff'],
                 xoff=block_offset['xoff'])
@@ -453,6 +452,11 @@ def raster_calculator(
         for raster in base_raster_list:
             gdal.Dataset.__swig_destroy__(raster)
         base_raster_list[:] = []
+        target_band.FlushCache()
+        target_band = None
+        target_raster.FlushCache()
+        gdal.Dataset.__swig_destroy__(target_raster)
+        target_raster = None
 
         if calc_raster_stats:
             if stats_worker_thread.is_alive():
@@ -2793,9 +2797,17 @@ def _convolve_2d_worker(
         signal_path_band, kernel_path_band,
         ignore_nodata, normalize_kernel,
         work_queue, write_queue, exception_queue):
+    """Worker function to be used by `convolve_2d`.
 
-    signal_raster = gdal.OpenEx(signal_path_band[0])
-    kernel_raster = gdal.OpenEx(kernel_path_band[0])
+    Parameters:
+
+    Returns:
+        None
+
+    """
+
+    signal_raster = gdal.OpenEx(signal_path_band[0], gdal.OF_RASTER)
+    kernel_raster = gdal.OpenEx(kernel_path_band[0], gdal.OF_RASTER)
     signal_band = signal_raster.GetRasterBand(signal_path_band[1])
     kernel_band = kernel_raster.GetRasterBand(kernel_path_band[1])
 
@@ -2911,6 +2923,7 @@ def _convolve_2d_worker(
             (index_dict, result, mask_result, left_index_raster,
              right_index_raster, top_index_raster, bottom_index_raster))
 
+    # Indicates worker has terminated
     write_queue.put(None)
 
 
