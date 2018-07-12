@@ -642,6 +642,7 @@ def align_and_resize_raster_stack(
     for index, (base_path, target_path, resample_method) in enumerate(zip(
             base_raster_path_list, target_raster_path_list,
             resample_method_list)):
+        LOGGER.debug(target_sr_wkt)
         result = worker_pool.apply_async(
             func=warp_raster, args=(
                 base_path, target_pixel_size, target_path, resample_method),
@@ -1564,95 +1565,60 @@ def warp_raster(
     if target_bb is None:
         target_bb = get_raster_info(base_raster_path)['bounding_box']
         # transform the target_bb if target_sr_wkt is not None
+        LOGGER.debug("in warp raster targetwkt: %s", target_sr_wkt)
         if target_sr_wkt is not None:
+            LOGGER.debug(
+                "transforming bounding box from %s ", target_bb)
             target_bb = transform_bounding_box(
                 get_raster_info(base_raster_path)['bounding_box'],
                 get_raster_info(base_raster_path)['projection'],
                 target_sr_wkt)
+            LOGGER.debug(
+                "transforming bounding to %s ", target_bb)
 
-    target_geotransform = [
-        target_bb[0], target_pixel_size[0], 0.0, target_bb[1], 0.0,
-        target_pixel_size[1]]
-    # this handles a case of a negative pixel size in which case the raster
-    # row will increase downward
-    if target_pixel_size[0] < 0:
-        target_geotransform[0] = target_bb[2]
-    if target_pixel_size[1] < 0:
-        target_geotransform[3] = target_bb[3]
-    target_x_size = abs((target_bb[2] - target_bb[0]) / target_pixel_size[0])
-    target_y_size = abs((target_bb[3] - target_bb[1]) / target_pixel_size[1])
-
-    if target_x_size - int(target_x_size) > 0:
-        target_x_size = int(target_x_size) + 1
-    else:
-        target_x_size = int(target_x_size)
-
-    if target_y_size - int(target_y_size) > 0:
-        target_y_size = int(target_y_size) + 1
-    else:
-        target_y_size = int(target_y_size)
-
+    target_x_size = int(
+        abs((target_bb[2] - target_bb[0]) / target_pixel_size[0]))
+    target_y_size = int(
+        abs((target_bb[3] - target_bb[1]) / target_pixel_size[1]))
+    LOGGER.debug((target_x_size, target_y_size))
     if target_x_size == 0:
         LOGGER.warn(
             "bounding_box is so small that x dimension rounds to 0; "
             "clamping to 1.")
-        target_x_size = 1
+        LOGGER.debug(target_bb)
+        target_bb[2] = target_bb[0] + abs(target_pixel_size[0])
+        LOGGER.debug(target_bb)
+        LOGGER.debug(target_pixel_size[0])
     if target_y_size == 0:
         LOGGER.warn(
             "bounding_box is so small that y dimension rounds to 0; "
             "clamping to 1.")
-        target_y_size = 1
+        LOGGER.debug(target_bb)
+        target_bb[3] = target_bb[1] + abs(target_pixel_size[1])
+        LOGGER.debug(target_bb)
+        LOGGER.debug(target_pixel_size[1])
 
-    local_gtiff_creation_options = list(gtiff_creation_options)
-    # PIXELTYPE is sometimes used to define signed vs. unsigned bytes and
-    # the only place that is stored is in the IMAGE_STRUCTURE metadata
-    # copy it over if it exists; get this info from the first band since
-    # all bands have the same datatype
-    base_band = base_raster.GetRasterBand(1)
-    metadata = base_band.GetMetadata('IMAGE_STRUCTURE')
-    if 'PIXELTYPE' in metadata:
-        local_gtiff_creation_options.append(
-            'PIXELTYPE=' + metadata['PIXELTYPE'])
-
-    # make directory if it doesn't exist
-    try:
-        os.makedirs(os.path.dirname(target_raster_path))
-    except OSError:
-        pass
-    gdal_driver = gdal.GetDriverByName('GTiff')
-    target_raster = gdal_driver.Create(
-        target_raster_path, target_x_size, target_y_size,
-        base_raster.RasterCount, base_band.DataType,
-        options=local_gtiff_creation_options)
-    base_band = None
-
-    for index in range(target_raster.RasterCount):
-        base_nodata = base_raster.GetRasterBand(1+index).GetNoDataValue()
-        if base_nodata is not None:
-            target_band = target_raster.GetRasterBand(1+index)
-            target_band.SetNoDataValue(base_nodata)
-            target_band = None
-
-    # Set the geotransform
-    target_raster.SetGeoTransform(target_geotransform)
-    if target_sr_wkt is None:
-        target_sr_wkt = base_sr.ExportToWkt()
-    target_raster.SetProjection(target_sr_wkt)
-
-    # need to make this a closure so we get the current time and we can affect
-    # state
     reproject_callback = _make_logger_callback(
-        "ReprojectImage %.1f%% complete %s, psz_message '%s'")
+        "Warp %.1f%% complete %s, psz_message '%s'")
 
-    # Perform the projection/resampling
-    gdal.ReprojectImage(
-        base_raster, target_raster, base_sr.ExportToWkt(),
-        target_sr_wkt, _RESAMPLE_DICT[resample_method], 0, 0,
-        reproject_callback, [target_raster_path])
-
-    target_raster = None
-    base_raster = None
-    calculate_raster_stats(target_raster_path)
+    LOGGER.debug(target_bb)
+    base_raster = gdal.Open(base_raster_path)
+    gdal.Warp(
+        target_raster_path, base_raster,
+        #width=target_x_size,
+        #height=target_y_size,
+        outputBounds=target_bb,
+        xRes=abs(target_pixel_size[0]),
+        yRes=abs(target_pixel_size[1]),
+        resampleAlg=resample_method,
+        outputBoundsSRS=target_sr_wkt,
+        multithread=True,
+        warpOptions=['NUM_THREADS=ALL_CPUS'],
+        creationOptions=gtiff_creation_options,
+        callback=reproject_callback,
+        callback_data=[target_raster_path])
+    LOGGER.debug(target_raster_path)
+    return
 
 
 def rasterize(

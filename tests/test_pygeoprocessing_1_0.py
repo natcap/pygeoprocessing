@@ -2091,7 +2091,7 @@ class PyGeoprocessing10(unittest.TestCase):
             -123.587984, 1.0, 0.0, 44.725814, 0.0, -1.0])
         new_raster = None
 
-        target_path = os.path.join(self.workspace_dir, 'target.tif')
+        target_path = 'target.tif' #os.path.join(self.workspace_dir, 'target.tif')
 
         target_ref = osr.SpatialReference()
         target_ref.ImportFromEPSG(26910)  # UTM10N EPSG
