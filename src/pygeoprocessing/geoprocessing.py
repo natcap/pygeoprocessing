@@ -1555,6 +1555,7 @@ def warp_raster(
 
     Returns:
         None
+
     """
     base_raster = gdal.OpenEx(base_raster_path)
     base_sr = osr.SpatialReference()
@@ -1866,6 +1867,7 @@ def _next_regular(base):
 
     Returns:
         The next regular number greater than or equal to `base`.
+
     """
     if base <= 6:
         return base
@@ -1948,6 +1950,7 @@ def convolve_2d(
 
     Returns:
         None
+
     """
     _gdal_type_to_numpy_lookup = {
         gdal.GDT_Byte: numpy.int8,
@@ -1978,7 +1981,6 @@ def convolve_2d(
     s_path_band = signal_path_band
     k_path_band = kernel_path_band
     s_nodata = signal_raster_info['nodata'][0]
-    k_nodata = kernel_raster_info['nodata'][0]
 
     # we need the original signal raster info because we want the output to
     # be clipped and NODATA masked to it
@@ -2001,187 +2003,90 @@ def convolve_2d(
         mask_raster = gdal.OpenEx(mask_raster_path, gdal.GA_Update)
         mask_band = mask_raster.GetRasterBand(1)
 
-    def _make_cache():
-        """Create a helper function to remember the last computed fft."""
-        def _fft_cache(fshape, xoff, yoff, data_block):
-            """Helper function to remember the last computed fft.
-
-            Parameters:
-                fshape (numpy.ndarray): shape of fft
-                xoff,yoff (int): offsets of the data block
-                data_block (numpy.ndarray): the 2D array to calculate the FFT
-                    on if not already calculated.
-
-            Returns:
-                fft transformed data_block of fshape size.
-            """
-            cache_key = (fshape[0], fshape[1], xoff, yoff)
-            if cache_key != _fft_cache.key:
-                _fft_cache.cache = numpy.fft.rfftn(data_block, fshape)
-                _fft_cache.key = cache_key
-            return _fft_cache.cache
-
-        _fft_cache.cache = None
-        _fft_cache.key = None
-        return _fft_cache
-
     LOGGER.info('starting convolve')
-    _signal_fft_cache = _make_cache()
-    _kernel_fft_cache = _make_cache()
-    # we'll need this if we're ignoring nodata
-    if s_nodata is not None and ignore_nodata:
-        _mask_fft_cache = _make_cache()
     last_time = time.time()
     signal_data = None
 
-    # get the kernel sum for normalization or reverse normalization if neede
+    # calculate the kernel sum for normalization
+    kernel_nodata = kernel_raster_info['nodata'][0]
     kernel_sum = 0.0
-    for kernel_data, kernel_block in iterblocks(
-            k_path_band[0], band_index_list=[k_path_band[1]]):
-        if k_nodata is not None and ignore_nodata:
-            kernel_block[kernel_block == k_nodata] = 0.0
+    for _, kernel_block in iterblocks(kernel_path_band[0]):
+        if kernel_nodata is not None and ignore_nodata:
+            kernel_block[kernel_block == kernel_nodata] = 0.0
         kernel_sum += numpy.sum(kernel_block)
 
-    for signal_data, signal_block in iterblocks(
-            s_path_band[0], band_index_list=[s_path_band[1]],
-            astype_list=[_gdal_type_to_numpy_lookup[target_datatype]]):
-        last_time = _invoke_timed_callback(
-            last_time, lambda: LOGGER.info(
-                "convolution operating on signal pixel (%d, %d)",
-                signal_data['xoff'], signal_data['yoff']),
-            _LOGGING_PERIOD)
+    work_queue = multiprocessing.Queue()
+    write_queue = multiprocessing.Queue()
+
+    work_thread = threading.Thread(
+        target=_convolve_2d_worker,
+        args=(
+            signal_path_band, kernel_path_band,
+            ignore_nodata, normalize_kernel,
+            work_queue, write_queue))
+    work_thread.daemon = True
+    work_thread.start()
+
+    # get the kernel sum for normalization or reverse normalization if neede
+    for signal_offset in iterblocks(s_path_band[0], offset_only=True):
+        for kernel_offset in iterblocks(k_path_band[0], offset_only=True):
+            work_queue.put((signal_offset, kernel_offset))
+
+            last_time = _invoke_timed_callback(
+                last_time, lambda: LOGGER.info(
+                    "convolution operating on signal pixel (%d, %d)",
+                    signal_data['xoff'], signal_data['yoff']),
+                _LOGGING_PERIOD)
+
+    work_queue.put(None)
+    while True:
+        write_payload = write_queue.get()
+        if write_payload:
+
+            (index_dict, result, mask_result,
+             left_index_raster, right_index_raster,
+             top_index_raster, bottom_index_raster,
+             left_index_result, right_index_result,
+             top_index_result, bottom_index_result) = write_payload
+        else:
+            break
+
+        # read the current so we can add to it
+        current_output = target_band.ReadAsArray(**index_dict)
+        # read the signal block so we know where the nodata are
+        potential_nodata_signal_array = signal_band.ReadAsArray(
+            **index_dict)
+        output_array = numpy.empty(
+            current_output.shape, dtype=numpy.float32)
+
+        valid_mask = numpy.ones(
+            potential_nodata_signal_array.shape, dtype=bool)
+        # guard against a None nodata value
+        if base_signal_nodata is not None and mask_nodata:
+            valid_mask[:] = (
+                potential_nodata_signal_array != base_signal_nodata)
+        output_array[:] = target_nodata
+        output_array[valid_mask] = (
+            (result[top_index_result:bottom_index_result,
+                    left_index_result:right_index_result])[valid_mask] +
+            current_output[valid_mask])
+
+        target_band.WriteArray(
+            output_array, xoff=index_dict['xoff'],
+            yoff=index_dict['yoff'])
+
         if s_nodata is not None and ignore_nodata:
-            # if we're ignoring nodata, we don't want to add it up in the
-            # convolution, so we zero those values out
-            signal_nodata_mask = signal_block == s_nodata
-            signal_block[signal_nodata_mask] = 0.0
-
-        for kernel_data, kernel_block in iterblocks(
-                k_path_band[0], band_index_list=[k_path_band[1]],
-                astype_list=[_gdal_type_to_numpy_lookup[target_datatype]]):
-            left_index_raster = (
-                signal_data['xoff'] - int(n_cols_kernel / 2) +
-                kernel_data['xoff'])
-            right_index_raster = (
-                signal_data['xoff'] - int(n_cols_kernel / 2) +
-                kernel_data['xoff'] + signal_data['win_xsize'] +
-                kernel_data['win_xsize'] - 1)
-            top_index_raster = (
-                signal_data['yoff'] - int(n_rows_kernel / 2) +
-                kernel_data['yoff'])
-            bottom_index_raster = (
-                signal_data['yoff'] - int(n_rows_kernel / 2) +
-                kernel_data['yoff'] + signal_data['win_ysize'] +
-                kernel_data['win_ysize'] - 1)
-
-            # it's possible that the piece of the integrating kernel
-            # doesn't affect the final result, if so we should skip
-            if (right_index_raster < 0 or
-                    bottom_index_raster < 0 or
-                    left_index_raster > n_cols_signal or
-                    top_index_raster > n_rows_signal):
-                continue
-
-            if k_nodata is not None and ignore_nodata:
-                kernel_block[kernel_block == k_nodata] = 0.0
-
-            if normalize_kernel:
-                kernel_block /= kernel_sum
-
-            # determine the output convolve shape
-            shape = (
-                numpy.array(signal_block.shape) +
-                numpy.array(kernel_block.shape) - 1)
-
-            # add zero padding so FFT is fast
-            fshape = [_next_regular(int(d)) for d in shape]
-
-            signal_fft = _signal_fft_cache(
-                fshape, signal_data['xoff'], signal_data['yoff'],
-                signal_block)
-
-            kernel_fft = _kernel_fft_cache(
-                fshape, kernel_data['xoff'], kernel_data['yoff'],
-                kernel_block)
-
-            # this variable determines the output slice that doesn't include
-            # the padded array region made for fast FFTs.
-            fslice = tuple([slice(0, int(sz)) for sz in shape])
-            # classic FFT convolution
-            result = numpy.fft.irfftn(signal_fft * kernel_fft, fshape)[fslice]
-
-            # if we're ignoring nodata, we need to make a convolution of the
-            # nodata mask too
-            if s_nodata is not None and ignore_nodata:
-                mask_fft = _mask_fft_cache(
-                    fshape, signal_data['xoff'], signal_data['yoff'],
-                    numpy.where(signal_nodata_mask, 0.0, 1.0))
-                mask_result = numpy.fft.irfftn(
-                    mask_fft * kernel_fft, fshape)[fslice]
-
-            left_index_result = 0
-            right_index_result = result.shape[1]
-            top_index_result = 0
-            bottom_index_result = result.shape[0]
-
-            # we might abut the edge of the raster, clip if so
-            if left_index_raster < 0:
-                left_index_result = -left_index_raster
-                left_index_raster = 0
-            if top_index_raster < 0:
-                top_index_result = -top_index_raster
-                top_index_raster = 0
-            if right_index_raster > n_cols_signal:
-                right_index_result -= right_index_raster - n_cols_signal
-                right_index_raster = n_cols_signal
-            if bottom_index_raster > n_rows_signal:
-                bottom_index_result -= (
-                    bottom_index_raster - n_rows_signal)
-                bottom_index_raster = n_rows_signal
-
-            # Add result to current output to account for overlapping edges
-            index_dict = {
-                'xoff': left_index_raster,
-                'yoff': top_index_raster,
-                'win_xsize': right_index_raster-left_index_raster,
-                'win_ysize': bottom_index_raster-top_index_raster
-            }
-            # read the current so we can add to it
-            current_output = target_band.ReadAsArray(**index_dict)
-            # read the signal block so we know where the nodata are
-            potential_nodata_signal_array = signal_band.ReadAsArray(
-                **index_dict)
-            output_array = numpy.empty(
-                current_output.shape, dtype=numpy.float32)
-
-            valid_mask = numpy.ones(
-                potential_nodata_signal_array.shape, dtype=bool)
-            # guard against a None nodata value
-            if base_signal_nodata is not None and mask_nodata:
-                valid_mask[:] = (
-                    potential_nodata_signal_array != base_signal_nodata)
-            output_array[:] = target_nodata
+            # we'll need to save off the mask convolution so we can divide
+            # it in total later
+            current_mask = mask_band.ReadAsArray(**index_dict)
             output_array[valid_mask] = (
-                (result[top_index_result:bottom_index_result,
-                        left_index_result:right_index_result])[valid_mask] +
-                current_output[valid_mask])
-
-            target_band.WriteArray(
+                (mask_result[
+                    top_index_result:bottom_index_result,
+                    left_index_result:right_index_result])[valid_mask] +
+                current_mask[valid_mask])
+            mask_band.WriteArray(
                 output_array, xoff=index_dict['xoff'],
                 yoff=index_dict['yoff'])
-
-            if s_nodata is not None and ignore_nodata:
-                # we'll need to save off the mask convolution so we can divide
-                # it in total later
-                current_mask = mask_band.ReadAsArray(**index_dict)
-                output_array[valid_mask] = (
-                    (mask_result[
-                        top_index_result:bottom_index_result,
-                        left_index_result:right_index_result])[valid_mask] +
-                    current_mask[valid_mask])
-                mask_band.WriteArray(
-                    output_array, xoff=index_dict['xoff'],
-                    yoff=index_dict['yoff'])
     target_band.FlushCache()
     target_raster.FlushCache()
     if s_nodata is not None and ignore_nodata:
@@ -2209,6 +2114,8 @@ def convolve_2d(
         # delete the mask raster
         gdal.Dataset.__swig_destroy__(mask_raster)
         os.remove(mask_raster_path)
+
+    work_thread.join(_MAX_TIMEOUT)
 
 
 def iterblocks(
@@ -2796,16 +2703,14 @@ def _make_fft_cache():
 def _convolve_2d_worker(
         signal_path_band, kernel_path_band,
         ignore_nodata, normalize_kernel,
-        work_queue, write_queue, exception_queue):
+        work_queue, write_queue):
     """Worker function to be used by `convolve_2d`.
 
     Parameters:
 
-    Returns:
-        None
+
 
     """
-
     signal_raster = gdal.OpenEx(signal_path_band[0], gdal.OF_RASTER)
     kernel_raster = gdal.OpenEx(kernel_path_band[0], gdal.OF_RASTER)
     signal_band = signal_raster.GetRasterBand(signal_path_band[1])
@@ -2849,15 +2754,15 @@ def _convolve_2d_worker(
             signal_block[signal_nodata_mask] = 0.0
 
         left_index_raster = (
-            signal_offset['xoff'] - n_cols_kernel / 2 + kernel_offset['xoff'])
+            signal_offset['xoff'] - n_cols_kernel // 2 + kernel_offset['xoff'])
         right_index_raster = (
-            signal_offset['xoff'] - n_cols_kernel / 2 +
+            signal_offset['xoff'] - n_cols_kernel // 2 +
             kernel_offset['xoff'] + signal_offset['win_xsize'] +
             kernel_offset['win_xsize'] - 1)
         top_index_raster = (
-            signal_offset['yoff'] - n_rows_kernel / 2 + kernel_offset['yoff'])
+            signal_offset['yoff'] - n_rows_kernel // 2 + kernel_offset['yoff'])
         bottom_index_raster = (
-            signal_offset['yoff'] - n_rows_kernel / 2 +
+            signal_offset['yoff'] - n_rows_kernel // 2 +
             kernel_offset['yoff'] + signal_offset['win_ysize'] +
             kernel_offset['win_ysize'] - 1)
 
@@ -2905,23 +2810,40 @@ def _convolve_2d_worker(
             mask_result = numpy.fft.irfftn(
                 mask_fft * kernel_fft, fshape)[fslice]
 
+        left_index_result = 0
+        right_index_result = result.shape[1]
+        top_index_result = 0
+        bottom_index_result = result.shape[0]
+
+        # we might abut the edge of the raster, clip if so
+        if left_index_raster < 0:
+            left_index_result = -left_index_raster
+            left_index_raster = 0
+        if top_index_raster < 0:
+            top_index_result = -top_index_raster
+            top_index_raster = 0
+        if right_index_raster > n_cols_signal:
+            right_index_result -= right_index_raster - n_cols_signal
+            right_index_raster = n_cols_signal
+        if bottom_index_raster > n_rows_signal:
+            bottom_index_result -= (
+                bottom_index_raster - n_rows_signal)
+            bottom_index_raster = n_rows_signal
+
         # Add result to current output to account for overlapping edges
-        index_tuple = (
-            left_index_raster,
-            top_index_raster,
-            right_index_raster-left_index_raster,
-            bottom_index_raster-top_index_raster
-        )
         index_dict = {
-            'xoff': index_tuple[0],
-            'yoff': index_tuple[1],
-            'win_xsize': index_tuple[2],
-            'win_ysize': index_tuple[3]
+            'xoff': left_index_raster,
+            'yoff': top_index_raster,
+            'win_xsize': right_index_raster-left_index_raster,
+            'win_ysize': bottom_index_raster-top_index_raster
         }
 
         write_queue.put(
-            (index_dict, result, mask_result, left_index_raster,
-             right_index_raster, top_index_raster, bottom_index_raster))
+            (index_dict, result, mask_result,
+             left_index_raster, right_index_raster,
+             top_index_raster, bottom_index_raster,
+             left_index_result, right_index_result,
+             top_index_result, bottom_index_result))
 
     # Indicates worker has terminated
     write_queue.put(None)
