@@ -2018,14 +2018,19 @@ def convolve_2d(
     work_queue = multiprocessing.Queue()
     write_queue = multiprocessing.Queue()
 
-    work_thread = threading.Thread(
-        target=_convolve_2d_worker,
-        args=(
-            signal_path_band, kernel_path_band,
-            ignore_nodata, normalize_kernel,
-            work_queue, write_queue))
-    work_thread.daemon = True
-    work_thread.start()
+    n_workers = max(multiprocessing.cpu_count(), 1)
+
+    worker_list = []
+    for worker_id in range(n_workers):
+        worker = threading.Thread(
+            target=_convolve_2d_worker,
+            args=(
+                signal_path_band, kernel_path_band,
+                ignore_nodata, normalize_kernel,
+                work_queue, write_queue))
+        worker.daemon = True
+        worker.start()
+        worker_list.append(worker)
 
     # get the kernel sum for normalization or reverse normalization if neede
     for signal_offset in iterblocks(s_path_band[0], offset_only=True):
@@ -2038,7 +2043,10 @@ def convolve_2d(
                     signal_data['xoff'], signal_data['yoff']),
                 _LOGGING_PERIOD)
 
-    work_queue.put(None)
+    for _ in range(n_workers):
+        work_queue.put(None)
+
+    n_active_workers = n_workers
     while True:
         write_payload = write_queue.get()
         if write_payload:
@@ -2049,7 +2057,9 @@ def convolve_2d(
              left_index_result, right_index_result,
              top_index_result, bottom_index_result) = write_payload
         else:
-            break
+            n_active_workers -= 1
+            if n_active_workers == 0:
+                break
 
         # read the current so we can add to it
         current_output = target_band.ReadAsArray(**index_dict)
@@ -2115,7 +2125,8 @@ def convolve_2d(
         gdal.Dataset.__swig_destroy__(mask_raster)
         os.remove(mask_raster_path)
 
-    work_thread.join(_MAX_TIMEOUT)
+    for worker in worker_list:
+        worker.join(_MAX_TIMEOUT)
 
 
 def iterblocks(
