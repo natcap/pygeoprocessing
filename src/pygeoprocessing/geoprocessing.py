@@ -2015,14 +2015,16 @@ def convolve_2d(
             kernel_block[numpy.isclose(kernel_block, kernel_nodata)] = 0.0
         kernel_sum += numpy.sum(kernel_block)
 
-    work_queue = multiprocessing.Queue()
-    write_queue = multiprocessing.Queue()
-
     n_workers = max(multiprocessing.cpu_count(), 1)
+
+    # limit the size of the queue so we don't accidentally load a whole array
+    # into memory
+    work_queue = multiprocessing.Queue(n_workers * 2)
+    write_queue = multiprocessing.Queue(n_workers * 2)
 
     worker_list = []
     for worker_id in range(n_workers):
-        worker = threading.Thread(
+        worker = multiprocessing.Process(
             target=_convolve_2d_worker,
             args=(
                 signal_path_band, kernel_path_band,
@@ -2032,19 +2034,11 @@ def convolve_2d(
         worker.start()
         worker_list.append(worker)
 
-    # get the kernel sum for normalization or reverse normalization if neede
-    for signal_offset in iterblocks(s_path_band[0], offset_only=True):
-        for kernel_offset in iterblocks(k_path_band[0], offset_only=True):
-            work_queue.put((signal_offset, kernel_offset))
-
-            last_time = _invoke_timed_callback(
-                last_time, lambda: LOGGER.info(
-                    "convolution operating on signal pixel (%d, %d)",
-                    signal_data['xoff'], signal_data['yoff']),
-                _LOGGING_PERIOD)
-
-    for _ in range(n_workers):
-        work_queue.put(None)
+    convolve_2d_worker_thread = threading.Thread(
+        target=_convolve_2d_reader_worker,
+        args=(s_path_band[0], k_path_band[0], work_queue, n_workers))
+    convolve_2d_worker_thread.daemon = True
+    convolve_2d_worker_thread.start()
 
     n_active_workers = n_workers
     while True:
@@ -2710,6 +2704,15 @@ def _make_fft_cache():
     _fft_cache.key = None
     return _fft_cache
 
+
+def _convolve_2d_reader_worker(s_path, k_path, work_queue, n_workers):
+    # get the kernel sum for normalization or reverse normalization if neede
+    for signal_offset in iterblocks(s_path, offset_only=True):
+        for kernel_offset in iterblocks(k_path, offset_only=True):
+            work_queue.put((signal_offset, kernel_offset))
+
+    for _ in range(n_workers):
+        work_queue.put(None)
 
 def _convolve_2d_worker(
         signal_path_band, kernel_path_band,
