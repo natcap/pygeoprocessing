@@ -2005,7 +2005,6 @@ def convolve_2d(
 
     LOGGER.info('starting convolve')
     last_time = time.time()
-    signal_data = None
 
     # calculate the kernel sum for normalization
     kernel_nodata = kernel_raster_info['nodata'][0]
@@ -2017,9 +2016,10 @@ def convolve_2d(
 
     n_workers = max(multiprocessing.cpu_count(), 1)
 
-    # limit the size of the queue so we don't accidentally load a whole array
-    # into memory
-    work_queue = multiprocessing.Queue(n_workers * 2)
+    # limit the size of the write queue so we don't accidentally load a whole
+    # array into memory, work queue is okay because it's only passing block
+    # indexes
+    work_queue = multiprocessing.Queue()
     write_queue = multiprocessing.Queue(n_workers * 2)
 
     worker_list = []
@@ -2034,17 +2034,21 @@ def convolve_2d(
         worker.start()
         worker_list.append(worker)
 
-    convolve_2d_worker_thread = threading.Thread(
-        target=_convolve_2d_reader_worker,
-        args=(s_path_band[0], k_path_band[0], work_queue, n_workers))
-    convolve_2d_worker_thread.daemon = True
-    convolve_2d_worker_thread.start()
+    n_blocks = 0
+    for signal_offset in iterblocks(s_path_band[0], offset_only=True):
+        for kernel_offset in iterblocks(k_path_band[0], offset_only=True):
+            work_queue.put((signal_offset, kernel_offset))
+            n_blocks += 1
+    for _ in range(n_workers):
+        # signal end to worker
+        work_queue.put(None)
 
+    # used to count how many workers are still running
     n_active_workers = n_workers
+    n_blocks_processed = 0
     while True:
         write_payload = write_queue.get()
         if write_payload:
-
             (index_dict, result, mask_result,
              left_index_raster, right_index_raster,
              top_index_raster, bottom_index_raster,
@@ -2091,9 +2095,25 @@ def convolve_2d(
             mask_band.WriteArray(
                 output_array, xoff=index_dict['xoff'],
                 yoff=index_dict['yoff'])
+
+        n_blocks_processed += 1
+        last_time = _invoke_timed_callback(
+            last_time, lambda: LOGGER.info(
+                "convolution worker approximately %.1f%% complete on %s",
+                100.0 * float(n_blocks_processed) / (n_blocks),
+                os.path.basename(target_path)),
+            _LOGGING_PERIOD)
+
+    LOGGER.info(
+        "convolution worker 100.0%% complete on %s",
+        os.path.basename(target_path))
+
     target_band.FlushCache()
     target_raster.FlushCache()
     if s_nodata is not None and ignore_nodata:
+        LOGGER.info(
+            "need to normalize result so nodata values are not included")
+        mask_pixels_processed = 0
         mask_band.FlushCache()
         mask_raster.FlushCache()
         for target_data, target_block in iterblocks(
@@ -2115,9 +2135,21 @@ def convolve_2d(
             target_band.WriteArray(
                 target_block, xoff=target_data['xoff'],
                 yoff=target_data['yoff'])
+
+            mask_pixels_processed += target_block.size
+            last_time = _invoke_timed_callback(
+                last_time, lambda: LOGGER.info(
+                    "convolution nodata normalizer approximately %.1f%% "
+                    "complete on %s", 100.0 * float(mask_pixels_processed) / (
+                        n_cols_signal * n_rows_signal),
+                    os.path.basename(target_path)),
+                _LOGGING_PERIOD)
         # delete the mask raster
         gdal.Dataset.__swig_destroy__(mask_raster)
         os.remove(mask_raster_path)
+        LOGGER.info(
+            "convolution nodata normalize 100.0%% complete on %s",
+            os.path.basename(target_path))
 
     for worker in worker_list:
         worker.join(_MAX_TIMEOUT)
@@ -2705,15 +2737,6 @@ def _make_fft_cache():
     return _fft_cache
 
 
-def _convolve_2d_reader_worker(s_path, k_path, work_queue, n_workers):
-    # get the kernel sum for normalization or reverse normalization if neede
-    for signal_offset in iterblocks(s_path, offset_only=True):
-        for kernel_offset in iterblocks(k_path, offset_only=True):
-            work_queue.put((signal_offset, kernel_offset))
-
-    for _ in range(n_workers):
-        work_queue.put(None)
-
 def _convolve_2d_worker(
         signal_path_band, kernel_path_band,
         ignore_nodata, normalize_kernel,
@@ -2721,8 +2744,29 @@ def _convolve_2d_worker(
     """Worker function to be used by `convolve_2d`.
 
     Parameters:
+        Parameters:
+        signal_path_band (tuple): a 2 tuple of the form
+            (filepath to signal raster, band index).
+        kernel_path_band (tuple): a 2 tuple of the form
+            (filepath to kernel raster, band index).
+        ignore_nodata (boolean): If true, any pixels that are equal to
+            `signal_path_band`'s nodata value are not included when averaging
+            the convolution filter.
+        normalize_kernel (boolean): If true, the result is divided by the
+            sum of the kernel.
+        work_queue (Queue): will contain (signal_offset, kernel_offset)
+            tuples that can be used to read raster blocks directly using
+            GDAL ReadAsArray(**offset). Indicates the block to operate on.
+        write_queue (Queue): mechanism to pass result back to the writer
+            contains a (index_dict, result, mask_result,
+                 left_index_raster, right_index_raster,
+                 top_index_raster, bottom_index_raster,
+                 left_index_result, right_index_result,
+                 top_index_result, bottom_index_result) tuple that's used
+            for writing and masking.
 
-
+    Returns:
+        None
 
     """
     signal_raster = gdal.OpenEx(signal_path_band[0], gdal.OF_RASTER)
