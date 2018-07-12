@@ -2012,7 +2012,7 @@ def convolve_2d(
     kernel_sum = 0.0
     for _, kernel_block in iterblocks(kernel_path_band[0]):
         if kernel_nodata is not None and ignore_nodata:
-            kernel_block[kernel_block == kernel_nodata] = 0.0
+            kernel_block[numpy.isclose(kernel_block, kernel_nodata)] = 0.0
         kernel_sum += numpy.sum(kernel_block)
 
     work_queue = multiprocessing.Queue()
@@ -2097,7 +2097,7 @@ def convolve_2d(
                 astype_list=[_gdal_type_to_numpy_lookup[target_datatype]]):
             mask_block = mask_band.ReadAsArray(**target_data)
             if base_signal_nodata is not None and mask_nodata:
-                valid_mask = target_block != target_nodata
+                valid_mask = ~numpy.isclose(target_block, target_nodata)
             else:
                 valid_mask = numpy.ones(target_block.shape, dtype=numpy.bool)
             # divide the target_band by the mask_band
@@ -2734,7 +2734,7 @@ def _convolve_2d_worker(
     kernel_sum = 0.0
     for _, kernel_block in iterblocks(kernel_path_band[0]):
         if kernel_nodata is not None and ignore_nodata:
-            kernel_block[kernel_block == kernel_nodata] = 0.0
+            kernel_block[numpy.isclose(kernel_block, kernel_nodata)] = 0.0
         kernel_sum += numpy.sum(kernel_block)
 
     while True:
@@ -2750,7 +2750,7 @@ def _convolve_2d_worker(
         if signal_nodata is not None and ignore_nodata:
             # if we're ignoring nodata, we don't want to add it up in the
             # convolution, so we zero those values out
-            signal_nodata_mask = signal_block == signal_nodata
+            signal_nodata_mask = numpy.isclose(signal_block, signal_nodata)
             signal_block[signal_nodata_mask] = 0.0
 
         left_index_raster = (
@@ -2775,7 +2775,7 @@ def _convolve_2d_worker(
             continue
 
         if kernel_nodata is not None and ignore_nodata:
-            kernel_block[kernel_block == kernel_nodata] = 0.0
+            kernel_block[numpy.isclose(kernel_block, kernel_nodata)] = 0.0
 
         if normalize_kernel:
             kernel_block /= kernel_sum
