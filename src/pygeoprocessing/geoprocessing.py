@@ -2058,6 +2058,7 @@ def convolve_2d(
             n_active_workers -= 1
             if n_active_workers == 0:
                 break
+            continue
 
         # read the current so we can add to it
         current_output = target_band.ReadAsArray(**index_dict)
