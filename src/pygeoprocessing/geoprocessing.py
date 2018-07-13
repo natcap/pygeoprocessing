@@ -355,16 +355,13 @@ def raster_calculator(
             # the raster's statistics. When `None` is pushed to the queue
             # the worker will finish and return a (min, max, mean, std)
             # tuple.
-            LOGGER.debug('starting stats_worker')
+            LOGGER.info('starting stats_worker')
             stats_worker_thread = threading.Thread(
                 target=geoprocessing_core.stats_worker,
                 args=(stats_worker_queue, exception_queue))
             stats_worker_thread.daemon = True
             stats_worker_thread.start()
-            LOGGER.debug('started stats_worker %s', stats_worker_thread)
-
-        LOGGER.debug(
-            'stats worker queue %s %s', stats_worker_queue, calc_raster_stats)
+            LOGGER.info('started stats_worker %s', stats_worker_thread)
 
         pixels_processed = 0
         n_pixels = n_cols * n_rows
@@ -431,14 +428,13 @@ def raster_calculator(
         LOGGER.info('100.00%% complete')
 
         if calc_raster_stats:
-            LOGGER.debug("signaling stats worker to terminate")
+            LOGGER.info("signaling stats worker to terminate")
             stats_worker_queue.put(None)
-            LOGGER.debug("Waiting for raster stats worker result.")
+            LOGGER.info("Waiting for raster stats worker result.")
             stats_worker_thread.join(_MAX_TIMEOUT)
             if stats_worker_thread.is_alive():
                 raise RuntimeError("stats_worker_thread.join() timed out")
             payload = stats_worker_queue.get(True, _MAX_TIMEOUT)
-            LOGGER.debug("Got %s from stats worker", payload)
             if payload is not None:
                 target_min, target_max, target_mean, target_stddev = payload
                 target_band.SetStatistics(
@@ -461,7 +457,7 @@ def raster_calculator(
         if calc_raster_stats:
             if stats_worker_thread.is_alive():
                 stats_worker_queue.put(None, True, _MAX_TIMEOUT)
-                LOGGER.debug("Waiting for raster stats worker result.")
+                LOGGER.info("Waiting for raster stats worker result.")
                 stats_worker_thread.join(_MAX_TIMEOUT)
                 if stats_worker_thread.is_alive():
                     raise RuntimeError("stats_worker_thread.join() timed out")
@@ -642,7 +638,6 @@ def align_and_resize_raster_stack(
     for index, (base_path, target_path, resample_method) in enumerate(zip(
             base_raster_path_list, target_raster_path_list,
             resample_method_list)):
-        LOGGER.debug(target_sr_wkt)
         result = worker_pool.apply_async(
             func=warp_raster, args=(
                 base_path, target_pixel_size, target_path, resample_method),
@@ -851,7 +846,7 @@ def new_raster_from_base(
                     fill_array, offsets['xoff'], offsets['yoff'])
 
                 last_time = _invoke_timed_callback(
-                    last_time, lambda: LOGGER.debug(
+                    last_time, lambda: LOGGER.info(
                         '%.2f%% complete',
                         float(pixels_processed) / n_pixels * 100.0),
                     _LOGGING_PERIOD)
@@ -1508,7 +1503,6 @@ def reclassify_raster(
     if nodata is not None and nodata not in value_map_copy:
         value_map_copy[nodata] = target_nodata
     keys = sorted(numpy.array(list(value_map_copy.keys())))
-    LOGGER.debug(value_map)
     values = numpy.array([value_map_copy[x] for x in keys])
 
     def _map_dataset_to_value_op(original_values):
@@ -1523,7 +1517,6 @@ def reclassify_raster(
                     'corresponding entries in the `value_map`: %s' % (
                         missing_values.size, str(missing_values),
                         base_raster_path_band[0], str(value_map)))
-        LOGGER.debug(keys)
         index = numpy.digitize(original_values.ravel(), keys, right=True)
         return values[index].reshape(original_values.shape)
 
@@ -1595,8 +1588,6 @@ def warp_raster(
     reproject_callback = _make_logger_callback(
         "Warp %.1f%% complete %s, psz_message '%s'")
 
-    LOGGER.debug((target_bb, target_pixel_size, target_sr_wkt))
-    LOGGER.debug(((target_bb[2]-target_bb[0])/target_pixel_size[0], (target_bb[3]-target_bb[1])/target_pixel_size[1]))
     base_raster = gdal.OpenEx(base_raster_path, gdal.OF_RASTER)
     gdal.Warp(
         target_raster_path, base_raster,
@@ -2398,7 +2389,7 @@ def merge_rasters(
 
     pixeltype_set = set()
     for path in raster_path_list:
-        raster = gdal.OpenEx(path)
+        raster = gdal.OpenEx(path, gdal.OF_RASTER)
         band = raster.GetRasterBand(1)
         metadata = band.GetMetadata('IMAGE_STRUCTURE')
         band = None
@@ -2866,128 +2857,3 @@ def _convolve_2d_worker(
 
     # Indicates worker has terminated
     write_queue.put(None)
-
-
-def _convolve_2d_write_raster_worker(
-        write_raster_queue, signal_path_band,
-        mask_raster_path, target_raster_path, ignore_nodata, mask_nodata):
-    target_processed_set = set()
-    mask_processed_set = set()
-
-    target_raster_info = get_raster_info(target_raster_path)
-    signal_raster_info = get_raster_info(signal_path_band[0])
-    target_nodata = target_raster_info['nodata'][0]
-
-    n_cols_signal, n_rows_signal = signal_raster_info['raster_size']
-    signal_nodata = signal_raster_info['nodata'][0]
-
-    target_raster = gdal.OpenEx(
-        target_raster_path, gdal.OF_RASTER | gdal.GA_Update)
-    target_band = target_raster.GetRasterBand(1)
-
-    signal_raster = gdal.OpenEx(signal_path_band[0], gdal.OF_RASTER)
-    signal_band = signal_raster.GetRasterBand(signal_path_band[1])
-    n_cols_signal = signal_band.XSize
-    n_rows_signal = signal_band.YSize
-
-    if mask_raster_path:
-        mask_raster_info = get_raster_info(mask_raster_path)
-        mask_nodata = mask_raster_info['nodata'][0]
-        mask_raster = gdal.OpenEx(
-            mask_raster_path, gdal.OF_RASTER | gdal.GA_Update)
-        mask_band = mask_raster.GetRasterBand(1)
-
-    while True:
-        payload = write_raster_queue.get()
-        if payload is None:
-            break
-        (index_dict, result, mask_result, left_index_raster,
-         right_index_raster, top_index_raster, bottom_index_raster) = payload
-        index_tuple = (
-            index_dict['xoff'],
-            index_dict['yoff'],
-            index_dict['win_xsize'],
-            index_dict['win_ysize'],
-        )
-
-        left_index_result = 0
-        right_index_result = result.shape[1]
-        top_index_result = 0
-        bottom_index_result = result.shape[0]
-
-        # we might abut the edge of the raster, clip if so
-        if left_index_raster < 0:
-            left_index_result = -left_index_raster
-            left_index_raster = 0
-        if top_index_raster < 0:
-            top_index_result = -top_index_raster
-            top_index_raster = 0
-        if right_index_raster > n_cols_signal:
-            right_index_result -= right_index_raster - n_cols_signal
-            right_index_raster = n_cols_signal
-        if bottom_index_raster > n_rows_signal:
-            bottom_index_result -= (
-                bottom_index_raster - n_rows_signal)
-            bottom_index_raster = n_rows_signal
-
-        index_dict = {
-            'xoff': left_index_raster,
-            'yoff': top_index_raster,
-            'win_xsize': right_index_raster-left_index_raster,
-            'win_ysize': bottom_index_raster-top_index_raster
-        }
-        index_tuple = (
-            left_index_raster,
-            top_index_raster,
-            right_index_raster-left_index_raster,
-            bottom_index_raster-top_index_raster
-        )
-
-        # read the current so we can add to it
-        if index_tuple in target_processed_set:
-            current_output = target_band.ReadAsArray(**index_dict)
-        else:
-            target_processed_set.add(index_tuple)
-            current_output = numpy.zeros(
-                (index_dict['win_ysize'], index_dict['win_xsize']))
-
-        # read the signal block so we know where the nodata are
-        potential_nodata_signal_array = signal_band.ReadAsArray(
-            **index_dict)
-        output_array = numpy.empty(
-            current_output.shape, dtype=numpy.float32)
-
-        valid_mask = numpy.ones(
-            potential_nodata_signal_array.shape, dtype=bool)
-        # guard against a None nodata value
-        if signal_nodata is not None and mask_nodata:
-            valid_mask[:] = (
-                potential_nodata_signal_array != signal_nodata)
-        output_array[:] = target_nodata
-        output_array[valid_mask] = (
-            (result[top_index_result:bottom_index_result,
-                    left_index_result:right_index_result])[valid_mask] +
-            current_output[valid_mask])
-
-        target_band.WriteArray(
-            output_array, xoff=index_dict['xoff'],
-            yoff=index_dict['yoff'])
-
-        if signal_nodata is not None and ignore_nodata:
-            # we'll need to save off the mask convolution so we can divide
-            # it in total later
-            # read the current so we can add to it
-            if index_tuple in mask_processed_set:
-                current_mask = mask_band.ReadAsArray(**index_dict)
-            else:
-                mask_processed_set.add(index_tuple)
-                current_mask = numpy.zeros(
-                    (index_dict['win_ysize'], index_dict['win_xsize']))
-            output_array[valid_mask] = (
-                (mask_result[
-                    top_index_result:bottom_index_result,
-                    left_index_result:right_index_result])[valid_mask] +
-                current_mask[valid_mask])
-            mask_band.WriteArray(
-                output_array, xoff=index_dict['xoff'],
-                yoff=index_dict['yoff'])
