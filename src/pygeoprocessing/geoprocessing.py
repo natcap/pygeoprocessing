@@ -1508,6 +1508,7 @@ def reclassify_raster(
     if nodata is not None and nodata not in value_map_copy:
         value_map_copy[nodata] = target_nodata
     keys = sorted(numpy.array(list(value_map_copy.keys())))
+    LOGGER.debug(value_map)
     values = numpy.array([value_map_copy[x] for x in keys])
 
     def _map_dataset_to_value_op(original_values):
@@ -1522,6 +1523,7 @@ def reclassify_raster(
                     'corresponding entries in the `value_map`: %s' % (
                         missing_values.size, str(missing_values),
                         base_raster_path_band[0], str(value_map)))
+        LOGGER.debug(keys)
         index = numpy.digitize(original_values.ravel(), keys, right=True)
         return values[index].reshape(original_values.shape)
 
@@ -1565,7 +1567,6 @@ def warp_raster(
     if target_bb is None:
         target_bb = get_raster_info(base_raster_path)['bounding_box']
         # transform the target_bb if target_sr_wkt is not None
-        LOGGER.debug("in warp raster targetwkt: %s", target_sr_wkt)
         if target_sr_wkt is not None:
             LOGGER.debug(
                 "transforming bounding box from %s ", target_bb)
@@ -1580,29 +1581,23 @@ def warp_raster(
         abs((target_bb[2] - target_bb[0]) / target_pixel_size[0]))
     target_y_size = int(
         abs((target_bb[3] - target_bb[1]) / target_pixel_size[1]))
-    LOGGER.debug((target_x_size, target_y_size))
     if target_x_size == 0:
         LOGGER.warn(
             "bounding_box is so small that x dimension rounds to 0; "
             "clamping to 1.")
-        LOGGER.debug(target_bb)
         target_bb[2] = target_bb[0] + abs(target_pixel_size[0])
-        LOGGER.debug(target_bb)
-        LOGGER.debug(target_pixel_size[0])
     if target_y_size == 0:
         LOGGER.warn(
             "bounding_box is so small that y dimension rounds to 0; "
             "clamping to 1.")
-        LOGGER.debug(target_bb)
         target_bb[3] = target_bb[1] + abs(target_pixel_size[1])
-        LOGGER.debug(target_bb)
-        LOGGER.debug(target_pixel_size[1])
 
     reproject_callback = _make_logger_callback(
         "Warp %.1f%% complete %s, psz_message '%s'")
 
-    LOGGER.debug(target_bb)
-    base_raster = gdal.Open(base_raster_path)
+    LOGGER.debug((target_bb, target_pixel_size, target_sr_wkt))
+    LOGGER.debug(((target_bb[2]-target_bb[0])/target_pixel_size[0], (target_bb[3]-target_bb[1])/target_pixel_size[1]))
+    base_raster = gdal.OpenEx(base_raster_path, gdal.OF_RASTER)
     gdal.Warp(
         target_raster_path, base_raster,
         #width=target_x_size,
@@ -1612,13 +1607,12 @@ def warp_raster(
         yRes=abs(target_pixel_size[1]),
         resampleAlg=resample_method,
         outputBoundsSRS=target_sr_wkt,
+        dstSRS=target_sr_wkt,
         multithread=True,
         warpOptions=['NUM_THREADS=ALL_CPUS'],
         creationOptions=gtiff_creation_options,
         callback=reproject_callback,
         callback_data=[target_raster_path])
-    LOGGER.debug(target_raster_path)
-    return
 
 
 def rasterize(
