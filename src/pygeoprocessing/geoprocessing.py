@@ -1586,13 +1586,11 @@ def warp_raster(
         target_bb[3] = target_bb[1] + abs(target_pixel_size[1])
 
     reproject_callback = _make_logger_callback(
-        "Warp %.1f%% complete %s, psz_message '%s'")
+        "Warp %.1f%% complete %s")
 
     base_raster = gdal.OpenEx(base_raster_path, gdal.OF_RASTER)
     gdal.Warp(
         target_raster_path, base_raster,
-        #width=target_x_size,
-        #height=target_y_size,
         outputBounds=target_bb,
         xRes=abs(target_pixel_size[0]),
         yRes=abs(target_pixel_size[1]),
