@@ -1137,6 +1137,28 @@ class PyGeoprocessing10(unittest.TestCase):
         actual_message = str(cm.exception)
         self.assertTrue(expected_message in actual_message, actual_message)
 
+    def test_raster_calculator_bad_raw_args(self):
+        """PGP.geoprocessing: tuples that don't match (x, 'raw')."""
+        target_path = os.path.join(self.workspace_dir, 'target.tif')
+        driver = gdal.GetDriverByName('GTiff')
+        base_path = os.path.join(self.workspace_dir, 'base.tif')
+        new_raster = driver.Create(
+            base_path, 128, 128, 1, gdal.GDT_Int32,
+            options=(
+                'TILED=YES', 'BLOCKXSIZE=16', 'BLOCKYSIZE=16'))
+        new_raster.GetRasterBand(1).WriteArray(
+            numpy.ones((128, 128)))
+        new_raster.FlushCache()
+        new_raster = None
+
+        with self.assertRaises(ValueError) as cm:
+            pygeoprocessing.raster_calculator(
+                [(base_path, 1), ("raw")], lambda a, z: a*z,
+                target_path, gdal.GDT_Float32, None)
+        expected_message = ('Encountered an invalid tuple input')
+        actual_message = str(cm.exception)
+        self.assertTrue(expected_message in actual_message, actual_message)
+
     def test_raster_calculator_constant_args(self):
         """PGP.geoprocessing: test constant arguments of raster calc."""
         import pygeoprocessing

@@ -103,16 +103,18 @@ def raster_calculator(
 
     Parameters:
         base_raster_path_band_const_list (list): a list containing either
-            (str, int) tuples, numbers, or `numpy.ndarray`s of up to two
-            dimensions. A `(str, int)` tuple refers to a raster path band
-            index pair to use as an input. Numbers and `numpy.ndarray`s
-            are constants.
-            The rasters in this list must have the same raster size and
-            `numpy.ndarray`s must be numpy broadcastable to those rasters.
-            If only constants are input, the numpy arrays must be
-            broadcastable to each other and the final raster size will be the
-            final broadcast array shape. It is possible to make a 1x1 raster
-            with only scalar constant inputs.
+            (str, int) tuples, `numpy.ndarray`s of up to two
+            dimensions, numbers, or an (object, 'raw') tuple.  A `(str, int)`
+            tuple refers to a raster path band index pair to use as an input.
+            The `numpy.ndarray`s must be broadcastble to each other AND the
+            size of the raster inputs. Numbers are passed by value and
+            `(object, 'raw')` arguments are passed as `object` into the
+            `local_op`. All rasters must have the same raster size.
+            If only constants are input, numpy arrays must be broadcastable to
+            each other and the final raster size will be the final broadcast
+            array shape. It is possible to make a 1x1 raster with only scalar
+            constant inputs. A ValueError is raised if only raw inputs are
+            passed.
         local_op (function) a function that must take in as many parameters as
             there are elements in `base_raster_path_band_const_list`. The
             parameters in `local_op` will map 1-to-1 in order with the values
@@ -286,7 +288,7 @@ def raster_calculator(
     for value in base_raster_path_band_const_list:
         # the input has been tested and value is either a raster/path band
         # tuple, 1d ndarray, 2d ndarray, or a scalar
-        if isinstance(value, tuple):
+        if _is_raster_path_band_formatted(value):
             # it's a raster/path band, keep track of open raster and band
             # for later so we can __swig_destroy__ them.
             base_raster_list.append(gdal.OpenEx(value[0], gdal.OF_RASTER))
@@ -296,6 +298,13 @@ def raster_calculator(
         elif isinstance(value, numpy.ndarray) and value.ndim == 1:
             # easier to process as a 2d array for writing to band
             base_canonical_arg_list.append(value.reshape((1, value.shape[0])))
+        elif isinstance(value, tuple):
+            if len(value) != 2 or value[1] != 'raw':
+                raise ValueError(
+                    "Encountered an invalid tuple input: %s from the "
+                    "argument list: %s" % (
+                        value, base_raster_path_band_const_list))
+            base_canonical_arg_list.appent(value[0])
         else:
             # otherwise it's a 2d array or scalar, pass as is
             base_canonical_arg_list.append(value)
