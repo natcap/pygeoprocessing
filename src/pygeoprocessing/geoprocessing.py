@@ -173,13 +173,16 @@ def raster_calculator(
     else:
         for value in base_raster_path_band_const_list:
             if (not _is_raster_path_band_formatted(value) and
-                    not isinstance(value, (numbers.Number, numpy.ndarray))):
+                not isinstance(value, (numbers.Number, numpy.ndarray)) and
+                not (isinstance(value, tuple) and len(value) == 2 and
+                     value[1] == 'raw')):
                 bad_raster_path_list = True
                 break
     if bad_raster_path_list:
         raise ValueError(
-            "Expected a list of path / integer band tuples, numbers, or "
-            "ndarrays for `base_raster_path_band_const_list`, instead got: "
+            "Expected a list of path / integer band tuples, numbers, "
+            "ndarrays, or (value, 'raw') pairs for "
+            "`base_raster_path_band_const_list`, instead got: "
             "%s" % pprint.pformat(base_raster_path_band_const_list))
 
     # check that any rasters exist on disk and have enough bands
@@ -187,7 +190,7 @@ def raster_calculator(
     gdal.PushErrorHandler('CPLQuietErrorHandler')
     base_raster_path_band_list = [
         path_band for path_band in base_raster_path_band_const_list
-        if isinstance(path_band, tuple)]
+        if isinstance(path_band, tuple) and isinstance(path_band[0], str)]
     for value in base_raster_path_band_list:
         if gdal.OpenEx(value[0], gdal.OF_RASTER) is None:
             not_found_paths.append(value[0])
@@ -220,7 +223,7 @@ def raster_calculator(
     raster_info_list = [
         get_raster_info(path_band[0])
         for path_band in base_raster_path_band_const_list
-        if isinstance(path_band, tuple)]
+        if _is_raster_path_band_formatted(path_band)]
     geospatial_info_set = set()
     for raster_info in raster_info_list:
         geospatial_info_set.add(raster_info['raster_size'])
@@ -287,7 +290,7 @@ def raster_calculator(
     base_band_list = []
     for value in base_raster_path_band_const_list:
         # the input has been tested and value is either a raster/path band
-        # tuple, 1d ndarray, 2d ndarray, or a scalar
+        # tuple, 1d ndarray, 2d ndarray, scalar, or (value, 'raw') tuple.
         if _is_raster_path_band_formatted(value):
             # it's a raster/path band, keep track of open raster and band
             # for later so we can __swig_destroy__ them.
@@ -299,12 +302,7 @@ def raster_calculator(
             # easier to process as a 2d array for writing to band
             base_canonical_arg_list.append(value.reshape((1, value.shape[0])))
         elif isinstance(value, tuple):
-            if len(value) != 2 or value[1] != 'raw':
-                raise ValueError(
-                    "Encountered an invalid tuple input: %s from the "
-                    "argument list: %s" % (
-                        value, base_raster_path_band_const_list))
-            base_canonical_arg_list.appent(value[0])
+            base_canonical_arg_list.append(value[0])
         else:
             # otherwise it's a 2d array or scalar, pass as is
             base_canonical_arg_list.append(value)

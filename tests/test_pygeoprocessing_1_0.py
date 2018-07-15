@@ -941,7 +941,7 @@ class PyGeoprocessing10(unittest.TestCase):
                     bad_raster_path_band_list, passthrough, target_path,
                     gdal.GDT_Int32, nodata_target, calc_raster_stats=True)
             expected_message = (
-                'Expected a list of path / integer band tuples, numbers, or')
+                'Expected a list of path / integer band tuples, numbers,')
             actual_message = str(cm.exception)
             self.assertTrue(
                 expected_message in actual_message, actual_message)
@@ -1153,9 +1153,9 @@ class PyGeoprocessing10(unittest.TestCase):
 
         with self.assertRaises(ValueError) as cm:
             pygeoprocessing.raster_calculator(
-                [(base_path, 1), ("raw")], lambda a, z: a*z,
+                [(base_path, 1), ("raw",)], lambda a, z: a*z,
                 target_path, gdal.GDT_Float32, None)
-        expected_message = ('Encountered an invalid tuple input')
+        expected_message = ('Expected a list of path / integer band tuples')
         actual_message = str(cm.exception)
         self.assertTrue(expected_message in actual_message, actual_message)
 
@@ -1168,6 +1168,7 @@ class PyGeoprocessing10(unittest.TestCase):
         x_arg = numpy.array(range(2))
         y_arg = numpy.array(range(3)).reshape((3, 1))
         z_arg = numpy.ones((3, 2))
+        list_arg = [1, 1, 1, -1]
         pygeoprocessing.raster_calculator(
             [a_arg, x_arg, y_arg, z_arg], lambda a, x, y, z: a*x*y*z,
             target_path, gdal.GDT_Float32, 0)
@@ -1221,6 +1222,17 @@ class PyGeoprocessing10(unittest.TestCase):
         target_raster = None
         numpy.testing.assert_array_almost_equal(
             target_array, x_arg.reshape((1, x_arg.size)))
+
+        target_path = os.path.join(self.workspace_dir, 'raw_args.tif')
+        pygeoprocessing.raster_calculator(
+            [x_arg, (list_arg, 'raw')], lambda x, y_list: x * y_list[3],
+            target_path, gdal.GDT_Float32, None)
+
+        target_raster = gdal.OpenEx(target_path, gdal.OF_RASTER)
+        target_array = target_raster.GetRasterBand(1).ReadAsArray()
+        target_raster = None
+        numpy.testing.assert_array_almost_equal(
+            target_array, -x_arg.reshape((1, x_arg.size)))
 
     def test_combined_constant_args_raster(self):
         """PGP.geoprocessing: test raster calc with constant args."""
