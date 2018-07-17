@@ -1546,7 +1546,7 @@ def warp_raster(
         target_raster_path (string): the location of the resized and
             resampled raster.
         resample_method (string): the resampling technique, one of
-            "nearest|bilinear|cubic|cubic_spline|lanczos|average|mode|max"
+            "near|bilinear|cubic|cubicspline|lanczos|average|mode|max"
             "min|med|q1|q3"
         target_bb (list): if None, target bounding box is the same as the
             source bounding box.  Otherwise it's a list of float describing
