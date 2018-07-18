@@ -1296,6 +1296,10 @@ def get_raster_info(raster_path):
     Parameters:
        raster_path (String): a path to a GDAL raster.
 
+    Raises:
+        ValueError if `raster_path` is not a file or cannot be opened as a
+        gdal.OF_RASTER.
+
     Returns:
         raster_properties (dictionary): a dictionary with the properties
             stored under relevant keys.
@@ -1322,8 +1326,13 @@ def get_raster_info(raster_path):
                 efficient reading.
 
     """
+    if not os.path.exists(raster_path):
+        raise ValueError("%s does not exist." % raster_path)
     raster_properties = {}
-    raster = gdal.OpenEx(raster_path)
+    raster = gdal.OpenEx(raster_path, gdal.OF_RASTER)
+    if not raster:
+        raise ValueError(
+            "Could not open %s as a gdal.OF_RASTER" % raster_path)
     raster_properties['projection'] = raster.GetProjection()
     geo_transform = raster.GetGeoTransform()
     raster_properties['geotransform'] = geo_transform

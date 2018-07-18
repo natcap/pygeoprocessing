@@ -2150,3 +2150,24 @@ class PyGeoprocessing10(unittest.TestCase):
                 [446166.79245811916, 4995771.240781772],
                 [target_raster_info['bounding_box'][0],
                  target_raster_info['bounding_box'][3]]), None)
+
+    def test_get_raster_info_error_handling(self):
+        """PGP: test that bad data raise good errors in get_raster_info."""
+        # check for missing file
+        with self.assertRaises(ValueError) as cm:
+            pygeoprocessing.get_raster_info(
+                os.path.join(self.workspace_dir, 'not_a_file.tif'))
+        expected_message = 'does not exist'
+        actual_message = str(cm.exception)
+        self.assertTrue(expected_message in actual_message, actual_message)
+
+        # check that file exists but is not a raster.
+        not_a_raster_path = os.path.join(
+            self.workspace_dir, 'not_a_raster.tif')
+        with open(not_a_raster_path, 'w') as not_a_raster_file:
+            not_a_raster_file.write("this is not a raster.\n")
+        with self.assertRaises(ValueError) as cm:
+            pygeoprocessing.get_raster_info(not_a_raster_path)
+        expected_message = 'Could not open'
+        actual_message = str(cm.exception)
+        self.assertTrue(expected_message in actual_message, actual_message)
