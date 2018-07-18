@@ -31,8 +31,17 @@ except ImportError:
 try:
     import psutil
     HAS_PSUTIL = True
+    if psutil.WINDOWS:
+        # Windows' scheduler doesn't use POSIX niceness.
+        PROCESS_LOW_PRIORITY = psutil.BELOW_NORMAL_PRIORITY_CLASS
+    else:
+        # On POSIX, use system niceness.
+        # -20 is high priority, 0 is normal priority, 19 is low priority.
+        # 10 here is an abritrary selection that's probably nice enough.
+        PROCESS_LOW_PRIORITY = 10
 except ImportError:
     HAS_PSUTIL = False
+
 import pprint
 
 from osgeo import gdal
@@ -617,6 +626,17 @@ def align_and_resize_raster_stack(
             "n_workers > 1 (%d) so starting a processes pool.", n_workers)
         try:
             worker_pool = multiprocessing.Pool(n_workers)
+            if HAS_PSUTIL:
+                parent = psutil.Process()
+                parent.nice(PROCESS_LOW_PRIORITY)
+                for child in parent.children():
+                    try:
+                        child.nice(PROCESS_LOW_PRIORITY)
+                    except psutil.NoSuchProcess:
+                        LOGGER.warn(
+                            "NoSuchProcess exception encountered when trying "
+                            "to nice %s. This might be a bug in `psutil` so "
+                            "it should be okay to ignore." % parent)
         except RuntimeError:
             LOGGER.warning(
                 "Runtime error when starting multiprocessing pool. This is "
@@ -628,18 +648,6 @@ def align_and_resize_raster_stack(
     else:
         LOGGER.info("n_workers == 1 so a threadpool is sufficient")
         worker_pool = multiprocessing.pool.ThreadPool(n_workers)
-
-    if HAS_PSUTIL:
-        parent = psutil.Process()
-        parent.nice(psutil.BELOW_NORMAL_PRIORITY_CLASS)
-        for child in parent.children():
-            try:
-                child.nice(psutil.BELOW_NORMAL_PRIORITY_CLASS)
-            except psutil.NoSuchProcess:
-                LOGGER.warn(
-                    "NoSuchProcess exception encountered when trying "
-                    "to nice %s. This might be a bug in `psutil` so "
-                    "it should be okay to ignore.")
 
     result_list = []
     for index, (base_path, target_path, resample_method) in enumerate(zip(
