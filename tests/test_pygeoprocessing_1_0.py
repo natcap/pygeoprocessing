@@ -2171,3 +2171,23 @@ class PyGeoprocessing10(unittest.TestCase):
         expected_message = 'Could not open'
         actual_message = str(cm.exception)
         self.assertTrue(expected_message in actual_message, actual_message)
+
+    def test_get_vector_info_error_handling(self):
+        """PGP: test that bad data raise good errors in get_vector_info."""
+        # check for missing file
+        with self.assertRaises(ValueError) as cm:
+            pygeoprocessing.get_vector_info(
+                os.path.join(self.workspace_dir, 'not_a_file.tif'))
+        expected_message = 'does not exist'
+        actual_message = str(cm.exception)
+        self.assertTrue(expected_message in actual_message, actual_message)
+
+        # check that file exists but is not a raster.
+        not_a_vector_path = os.path.join(
+            self.workspace_dir, 'not_a_vector')
+        os.makedirs(not_a_vector_path)
+        with self.assertRaises(ValueError) as cm:
+            pygeoprocessing.get_raster_info(not_a_vector_path)
+        expected_message = 'Could not open'
+        actual_message = str(cm.exception)
+        self.assertTrue(expected_message in actual_message, actual_message)
