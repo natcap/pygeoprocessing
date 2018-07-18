@@ -23,6 +23,10 @@ Unreleased Changes
 * A recent GDAL upgrade (might have been 2.0?) changed the reference to
   nearest neighbor interpolation from 'nearest' to 'near'. This PR changes
   PyGeoprocessing to be consistent with that change.
+* ``raster_calculator`` can now also take "raw" arguments in the form of a
+  (value, "raw") tuple. The parameter `value` will be passed directly to
+  `local_op`. Scalars are no longer a special case and need to be passed as
+  "raw" parameters.
 
 
 1.1.0 (7/6/2018)

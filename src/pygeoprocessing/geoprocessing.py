@@ -113,17 +113,15 @@ def raster_calculator(
     Parameters:
         base_raster_path_band_const_list (list): a list containing either
             (str, int) tuples, `numpy.ndarray`s of up to two
-            dimensions, numbers, or an (object, 'raw') tuple.  A `(str, int)`
+            dimensions, or an (object, 'raw') tuple.  A `(str, int)`
             tuple refers to a raster path band index pair to use as an input.
             The `numpy.ndarray`s must be broadcastble to each other AND the
-            size of the raster inputs. Numbers are passed by value and
-            `(object, 'raw')` arguments are passed as `object` into the
-            `local_op`. All rasters must have the same raster size.
-            If only constants are input, numpy arrays must be broadcastable to
-            each other and the final raster size will be the final broadcast
-            array shape. It is possible to make a 1x1 raster with only scalar
-            constant inputs. A ValueError is raised if only raw inputs are
-            passed.
+            size of the raster inputs. Values passed by  `(object, 'raw')`
+            tuples pass `object` directly into the `local_op`. All rasters
+            must have the same raster size. If only arrays are input, numpy
+            arrays must be broadcastable to each other and the final raster
+            size will be the final broadcast array shape. A value error is
+            raised if only "raw" inputs are passed.
         local_op (function) a function that must take in as many parameters as
             there are elements in `base_raster_path_band_const_list`. The
             parameters in `local_op` will map 1-to-1 in order with the values
@@ -182,14 +180,14 @@ def raster_calculator(
     else:
         for value in base_raster_path_band_const_list:
             if (not _is_raster_path_band_formatted(value) and
-                not isinstance(value, (numbers.Number, numpy.ndarray)) and
+                not isinstance(value, numpy.ndarray) and
                 not (isinstance(value, tuple) and len(value) == 2 and
                      value[1] == 'raw')):
                 bad_raster_path_list = True
                 break
     if bad_raster_path_list:
         raise ValueError(
-            "Expected a list of path / integer band tuples, numbers, "
+            "Expected a list of path / integer band tuples, "
             "ndarrays, or (value, 'raw') pairs for "
             "`base_raster_path_band_const_list`, instead got: "
             "%s" % pprint.pformat(base_raster_path_band_const_list))
@@ -199,7 +197,7 @@ def raster_calculator(
     gdal.PushErrorHandler('CPLQuietErrorHandler')
     base_raster_path_band_list = [
         path_band for path_band in base_raster_path_band_const_list
-        if isinstance(path_band, tuple) and isinstance(path_band[0], str)]
+        if _is_raster_path_band_formatted(path_band)]
     for value in base_raster_path_band_list:
         if gdal.OpenEx(value[0], gdal.OF_RASTER) is None:
             not_found_paths.append(value[0])
@@ -293,13 +291,14 @@ def raster_calculator(
                 "Raster size %s cannot be broadcast to numpy shape %s" % (
                     raster_shape, numpy_broadcast_size))
 
-    # create a "canonical" argument list that's bands or 2d numpy arrays only
+    # create a "canonical" argument list that's bands, 2d numpy arrays, or
+    # raw values only
     base_canonical_arg_list = []
     base_raster_list = []
     base_band_list = []
     for value in base_raster_path_band_const_list:
         # the input has been tested and value is either a raster/path band
-        # tuple, 1d ndarray, 2d ndarray, scalar, or (value, 'raw') tuple.
+        # tuple, 1d ndarray, 2d ndarray, or (value, 'raw') tuple.
         if _is_raster_path_band_formatted(value):
             # it's a raster/path band, keep track of open raster and band
             # for later so we can __swig_destroy__ them.
@@ -307,14 +306,19 @@ def raster_calculator(
             base_band_list.append(
                 base_raster_list[-1].GetRasterBand(value[1]))
             base_canonical_arg_list.append(base_band_list[-1])
-        elif isinstance(value, numpy.ndarray) and value.ndim == 1:
-            # easier to process as a 2d array for writing to band
-            base_canonical_arg_list.append(value.reshape((1, value.shape[0])))
+        elif isinstance(value, numpy.ndarray):
+            if value.ndim == 1:
+                # easier to process as a 2d array for writing to band
+                base_canonical_arg_list.append(
+                    value.reshape((1, value.shape[0])))
+            else:  # dimensions are two because we checked earlier.
+                base_canonical_arg_list.append(value)
         elif isinstance(value, tuple):
             base_canonical_arg_list.append(value[0])
         else:
-            # otherwise it's a 2d array or scalar, pass as is
-            base_canonical_arg_list.append(value)
+            raise ValueError(
+                "An unexpected `value` occurred. This should never happen. "
+                "Value: %s" % str(value))
 
     # create target raster
     if raster_info_list:
@@ -328,8 +332,11 @@ def raster_calculator(
         else:
             n_rows, n_cols = numpy_broadcast_size
     else:
-        # otherwise raster is a 1x1 because of only scalar input
-        n_rows, n_cols = 1, 1
+        raise ValueError(
+            "Only (object, 'raw') values have been passed. Raster "
+            "calculator requires at least a raster or numpy array as a "
+            "parameter. This is the input list: %s" % pprint.pformat(
+                base_raster_path_band_const_list))
 
     # create target raster
     gtiff_driver = gdal.GetDriverByName('GTiff')
@@ -437,11 +444,11 @@ def raster_calculator(
             pixels_processed += blocksize[0] * blocksize[1]
             last_time = _invoke_timed_callback(
                 last_time, lambda: LOGGER.info(
-                    '%.2f%% complete',
+                    '%.1f%% complete',
                     float(pixels_processed) / n_pixels * 100.0),
                 _LOGGING_PERIOD)
 
-        LOGGER.info('100.00%% complete')
+        LOGGER.info('100.0%% complete')
 
         if calc_raster_stats:
             LOGGER.info("signaling stats worker to terminate")

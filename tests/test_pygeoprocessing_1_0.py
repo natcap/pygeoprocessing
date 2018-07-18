@@ -941,7 +941,7 @@ class PyGeoprocessing10(unittest.TestCase):
                     bad_raster_path_band_list, passthrough, target_path,
                     gdal.GDT_Int32, nodata_target, calc_raster_stats=True)
             expected_message = (
-                'Expected a list of path / integer band tuples, numbers,')
+                'Expected a list of path / integer band tuples, ndarrays, ')
             actual_message = str(cm.exception)
             self.assertTrue(
                 expected_message in actual_message, actual_message)
@@ -1095,11 +1095,12 @@ class PyGeoprocessing10(unittest.TestCase):
         z_arg = numpy.ones((4, 4))
         with self.assertRaises(ValueError) as cm:
             pygeoprocessing.raster_calculator(
-                [a_arg, x_arg, y_arg, z_arg], lambda a, x, y, z: a*x*y*z,
-                target_path, gdal.GDT_Float32, None)
+                [(a_arg, 'raw'), x_arg, y_arg, z_arg],
+                lambda a, x, y, z: a*x*y*z, target_path, gdal.GDT_Float32,
+                None)
         expected_message = "inputs cannot be broadcast into a single shape"
         actual_message = str(cm.exception)
-        self.assertTrue(expected_message in actual_message)
+        self.assertTrue(expected_message in actual_message, actual_message)
 
     def test_raster_calculator_array_raster_mismatch(self):
         """PGP.geoprocessing: bad array shape with raster raise error."""
@@ -1170,7 +1171,7 @@ class PyGeoprocessing10(unittest.TestCase):
         z_arg = numpy.ones((3, 2))
         list_arg = [1, 1, 1, -1]
         pygeoprocessing.raster_calculator(
-            [a_arg, x_arg, y_arg, z_arg], lambda a, x, y, z: a*x*y*z,
+            [(a_arg, 'raw'), x_arg, y_arg, z_arg], lambda a, x, y, z: a*x*y*z,
             target_path, gdal.GDT_Float32, 0)
 
         target_raster = gdal.OpenEx(target_path, gdal.OF_RASTER)
@@ -1183,23 +1184,22 @@ class PyGeoprocessing10(unittest.TestCase):
         with self.assertRaises(ValueError) as cm:
             # this will return a scalar, when it should return 2d array
             pygeoprocessing.raster_calculator(
-                [a_arg], lambda a: a, target_path,
+                [(a_arg, 'raw')], lambda a: a, target_path,
+                gdal.GDT_Float32, None)
+        expected_message = (
+            "Only (object, 'raw') values have been passed.")
+        actual_message = str(cm.exception)
+        self.assertTrue(expected_message in actual_message, actual_message)
+
+        with self.assertRaises(ValueError) as cm:
+            # this will return a scalar, when it should return 2d array
+            pygeoprocessing.raster_calculator(
+                [x_arg], lambda x: 0.0, target_path,
                 gdal.GDT_Float32, None)
         expected_message = (
             "Expected `local_op` to return a numpy.ndarray")
         actual_message = str(cm.exception)
-        self.assertTrue(expected_message in actual_message)
-
-        # try the scalar as a 2d array
-        pygeoprocessing.raster_calculator(
-            [a_arg], lambda a: numpy.array([[a]]), target_path,
-            gdal.GDT_Float32, None)
-
-        target_raster = gdal.OpenEx(target_path, gdal.OF_RASTER)
-        target_array = target_raster.GetRasterBand(1).ReadAsArray()
-        target_raster = None
-        expected_result = numpy.array([[a_arg]])
-        numpy.testing.assert_array_almost_equal(target_array, expected_result)
+        self.assertTrue(expected_message in actual_message, actual_message)
 
         target_path = os.path.join(
             self.workspace_dir, 'target_1d_2darray.tif')
@@ -1274,7 +1274,7 @@ class PyGeoprocessing10(unittest.TestCase):
             return result
 
         pygeoprocessing.raster_calculator(
-            [10, (base_path, 1), numpy.array(range(128))],
+            [(10, 'raw'), (base_path, 1), numpy.array(range(128))],
             local_op, target_path, gdal.GDT_Float32, None, largest_block=0)
 
         target_raster = gdal.OpenEx(target_path, gdal.OF_RASTER)
