@@ -27,6 +27,9 @@ Unreleased Changes
   (value, "raw") tuple. The parameter `value` will be passed directly to
   `local_op`. Scalars are no longer a special case and need to be passed as
   "raw" parameters.
+* Raising `ValueError` in `get_raster_info` and `get_vector_info` in case
+  cases where non-filepath non-GIS values are passed as parameters. Previously
+  such an error would result in an unhelpful error in the GDAL library.
 
 
 1.1.0 (7/6/2018)

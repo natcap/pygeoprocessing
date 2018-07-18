@@ -1282,6 +1282,10 @@ def get_vector_info(vector_path, layer_index=0):
         layer_index (int): index of underlying layer to analyze.  Defaults to
             0.
 
+    Raises:
+        ValueError if `vector_path` does not exist on disk or cannot be opened
+        as a gdal.OF_VECTOR.
+
     Returns:
         raster_properties (dictionary): a dictionary with the following
             properties stored under relevant keys.
@@ -1292,7 +1296,12 @@ def get_vector_info(vector_path, layer_index=0):
                 box in projected coordinates as [minx, miny, maxx, maxy].
 
     """
+    if not os.path.exists(vector_path):
+        raise ValueError("%s does not exist." % vector_path)
     vector = gdal.OpenEx(vector_path)
+    if not vector:
+        raise ValueError(
+            "Could not open %s as a gdal.OF_VECTOR" % vector_path)
     vector_properties = {}
     layer = vector.GetLayer(iLayer=layer_index)
     # projection is same for all layers, so just use the first one
@@ -1310,6 +1319,10 @@ def get_raster_info(raster_path):
 
     Parameters:
        raster_path (String): a path to a GDAL raster.
+
+    Raises:
+        ValueError if `raster_path` is not a file or cannot be opened as a
+        gdal.OF_RASTER.
 
     Returns:
         raster_properties (dictionary): a dictionary with the properties
@@ -1337,8 +1350,13 @@ def get_raster_info(raster_path):
                 efficient reading.
 
     """
+    if not os.path.exists(raster_path):
+        raise ValueError("%s does not exist." % raster_path)
+    raster = gdal.OpenEx(raster_path, gdal.OF_RASTER)
+    if not raster:
+        raise ValueError(
+            "Could not open %s as a gdal.OF_RASTER" % raster_path)
     raster_properties = {}
-    raster = gdal.OpenEx(raster_path)
     raster_properties['projection'] = raster.GetProjection()
     geo_transform = raster.GetGeoTransform()
     raster_properties['geotransform'] = geo_transform
