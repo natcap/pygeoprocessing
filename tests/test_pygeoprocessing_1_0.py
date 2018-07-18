@@ -24,6 +24,11 @@ except ImportError:
     from imp import reload
 
 
+def passthrough(x):
+    """Used in testing simple raster calculator calls."""
+    return x
+
+
 class PyGeoprocessing10(unittest.TestCase):
     """Tests for the PyGeoprocesing 1.0 refactor."""
 
@@ -464,7 +469,7 @@ class PyGeoprocessing10(unittest.TestCase):
 
         # interpolate
         pygeoprocessing.interpolate_points(
-            source_vector_path, 'value', (result_path, 1), 'nearest')
+            source_vector_path, 'value', (result_path, 1), 'near')
 
         # verify that result is expected
         result_raster = gdal.Open(result_path)
@@ -503,7 +508,7 @@ class PyGeoprocessing10(unittest.TestCase):
 
         pygeoprocessing.warp_raster(
             base_a_path, base_a_raster_info['pixel_size'], target_raster_path,
-            'nearest', target_sr_wkt=reference.projection)
+            'near', target_sr_wkt=reference.projection)
 
         pygeoprocessing.testing.assert_rasters_equal(
             base_a_path, target_raster_path)
@@ -524,7 +529,7 @@ class PyGeoprocessing10(unittest.TestCase):
         # convert 1x1 pixel to a 30x30m pixel
         pygeoprocessing.warp_raster(
             base_a_path, [-30, 30], target_raster_path,
-            'nearest', target_sr_wkt=reference.projection)
+            'near', target_sr_wkt=reference.projection)
 
         expected_raster_path = os.path.join(
             self.workspace_dir, 'expected.tif')
@@ -556,7 +561,7 @@ class PyGeoprocessing10(unittest.TestCase):
         target_bb[3] = target_bb[1]
         pygeoprocessing.warp_raster(
             base_a_path, base_a_raster_info['pixel_size'], target_raster_path,
-            'nearest', target_bb=target_bb,
+            'near', target_bb=target_bb,
             target_sr_wkt=reference.projection)
 
         expected_raster_path = os.path.join(
@@ -586,7 +591,7 @@ class PyGeoprocessing10(unittest.TestCase):
             os.path.join(self.workspace_dir, 'target_%s.tif' % char)
             for char in ['a', 'b']]
 
-        resample_method_list = ['nearest'] * 2
+        resample_method_list = ['near'] * 2
         bounding_box_mode = 'intersection'
 
         base_a_raster_info = pygeoprocessing.get_raster_info(base_a_path)
@@ -613,7 +618,7 @@ class PyGeoprocessing10(unittest.TestCase):
         target_raster_path_list = [
             os.path.join(self.workspace_dir, 'target_a.tif')]
 
-        resample_method_list = ['nearest']
+        resample_method_list = ['near']
         bounding_box_mode = 'bad_mode'
 
         base_a_raster_info = pygeoprocessing.get_raster_info(base_a_path)
@@ -640,7 +645,7 @@ class PyGeoprocessing10(unittest.TestCase):
         target_raster_path_list = [
             os.path.join(self.workspace_dir, 'target_a.tif')]
 
-        resample_method_list = ['nearest']
+        resample_method_list = ['near']
         bounding_box_mode = 'intersection'
 
         base_a_raster_info = pygeoprocessing.get_raster_info(base_a_path)
@@ -676,7 +681,7 @@ class PyGeoprocessing10(unittest.TestCase):
             os.path.join(self.workspace_dir, 'target_%s.tif' % char)
             for char in ['a', 'b']]
 
-        resample_method_list = ['nearest'] * 2
+        resample_method_list = ['near'] * 2
         bounding_box_mode = 'intersection'
 
         base_a_raster_info = pygeoprocessing.get_raster_info(base_a_path)
@@ -721,7 +726,7 @@ class PyGeoprocessing10(unittest.TestCase):
             os.path.join(self.workspace_dir, 'target_%s.tif' % char)
             for char in ['a', 'b']]
 
-        resample_method_list = ['nearest'] * 2
+        resample_method_list = ['near'] * 2
         bounding_box_mode = 'intersection'
 
         base_a_raster_info = pygeoprocessing.get_raster_info(base_a_path)
@@ -781,7 +786,7 @@ class PyGeoprocessing10(unittest.TestCase):
             os.path.join(self.workspace_dir, 'target_%s.tif' % char)
             for char in ['a', 'b']]
 
-        resample_method_list = ['nearest'] * 2
+        resample_method_list = ['near'] * 2
         bounding_box_mode = 'intersection'
 
         base_a_raster_info = pygeoprocessing.get_raster_info(base_a_path)
@@ -828,7 +833,7 @@ class PyGeoprocessing10(unittest.TestCase):
             os.path.join(self.workspace_dir, 'target_%s.tif' % char)
             for char in ['a', 'b']]
 
-        resample_method_list = ['nearest'] * 2
+        resample_method_list = ['near'] * 2
         bounding_box_mode = 'union'
 
         base_a_raster_info = pygeoprocessing.get_raster_info(base_a_path)
@@ -873,7 +878,7 @@ class PyGeoprocessing10(unittest.TestCase):
             os.path.join(self.workspace_dir, 'target_%s.tif' % char)
             for char in ['a', 'b']]
 
-        resample_method_list = ['nearest'] * 2
+        resample_method_list = ['near'] * 2
         # format is xmin,ymin,xmax,ymax; since y pixel size is negative it
         # goes first in the following bounding box construction
         bounding_box_mode = [
@@ -912,7 +917,7 @@ class PyGeoprocessing10(unittest.TestCase):
         target_path = os.path.join(
             self.workspace_dir, 'subdir', 'target.tif')
         pygeoprocessing.raster_calculator(
-            [(base_path, 1)], lambda x: x, target_path,
+            [(base_path, 1)], passthrough, target_path,
             gdal.GDT_Int32, nodata_target, calc_raster_stats=True)
         pygeoprocessing.testing.assert_rasters_equal(base_path, target_path)
 
@@ -933,7 +938,7 @@ class PyGeoprocessing10(unittest.TestCase):
                 [(base_path, 1, base_path, 2)], base_path]:
             with self.assertRaises(ValueError) as cm:
                 pygeoprocessing.raster_calculator(
-                    bad_raster_path_band_list, lambda x: x, target_path,
+                    bad_raster_path_band_list, passthrough, target_path,
                     gdal.GDT_Int32, nodata_target, calc_raster_stats=True)
             expected_message = (
                 'Expected a list of path / integer band tuples, numbers, or')
@@ -949,7 +954,7 @@ class PyGeoprocessing10(unittest.TestCase):
             self.workspace_dir, 'target.tif')
         with self.assertRaises(ValueError) as cm:
             pygeoprocessing.raster_calculator(
-                [(nonexistant_path, 1)], lambda x: x, target_path,
+                [(nonexistant_path, 1)], passthrough, target_path,
                 gdal.GDT_Int32, nodata_target, calc_raster_stats=True)
         expected_message = (
             "The following files were expected but do not exist on the ")
@@ -970,7 +975,7 @@ class PyGeoprocessing10(unittest.TestCase):
         target_path = os.path.join(
             self.workspace_dir, 'target.tif')
         pygeoprocessing.raster_calculator(
-            [(base_path, 1)], lambda x: x, target_path,
+            [(base_path, 1)], passthrough, target_path,
             gdal.GDT_Int32, nodata_target, calc_raster_stats=True)
         pygeoprocessing.testing.assert_rasters_equal(base_path, target_path)
 
@@ -987,7 +992,7 @@ class PyGeoprocessing10(unittest.TestCase):
         with self.assertRaises(ValueError) as cm:
             # intentionally passing target path as base path to raise error
             pygeoprocessing.raster_calculator(
-                [(base_path, 1)], lambda x: x, base_path,
+                [(base_path, 1)], passthrough, base_path,
                 gdal.GDT_Int32, nodata_base, calc_raster_stats=True)
         expected_message = 'is used as a target path, but it is also in the '
         actual_message = str(cm.exception)
@@ -1012,7 +1017,7 @@ class PyGeoprocessing10(unittest.TestCase):
         target_path = os.path.join(self.workspace_dir, 'target.tif')
         with self.assertRaises(ValueError) as cm:
             pygeoprocessing.raster_calculator(
-                [(base_path_a, 1), (base_path_b, 1)], lambda x: x,
+                [(base_path_a, 1), (base_path_b, 1)], passthrough,
                 target_path, gdal.GDT_Int32, nodata_base,
                 gtiff_creation_options=None, calc_raster_stats=True)
         expected_message = 'Input Rasters are not the same dimensions.'
@@ -1199,20 +1204,27 @@ class PyGeoprocessing10(unittest.TestCase):
         """PGP.geoprocessing: test raster calc with constant args."""
         driver = gdal.GetDriverByName('GTiff')
         base_path = os.path.join(self.workspace_dir, 'base.tif')
+
+        wgs84_ref = osr.SpatialReference()
+        wgs84_ref.ImportFromEPSG(4326)  # WGS84 EPSG
+
         new_raster = driver.Create(
             base_path, 128, 128, 1, gdal.GDT_Int32,
             options=(
                 'TILED=YES', 'BLOCKXSIZE=32', 'BLOCKYSIZE=32'))
+        geotransform = [0.1, 1., 0., 0., 0., -1.]
+        new_raster.SetGeoTransform(geotransform)
+        new_raster.SetProjection(wgs84_ref.ExportToWkt())
         new_band = new_raster.GetRasterBand(1)
+
         nodata = 0
         new_band.SetNoDataValue(nodata)
-        raster_array = numpy.ones((128, 128))
+        raster_array = numpy.ones((128, 128), dtype =numpy.int32)
         raster_array[127, 127] = nodata
         new_band.WriteArray(raster_array)
-        raster_array = None
         new_band.FlushCache()
-        new_band = None
         new_raster.FlushCache()
+        new_band = None
         new_raster = None
 
         target_path = os.path.join(self.workspace_dir, 'target.tif')
@@ -1917,7 +1929,7 @@ class PyGeoprocessing10(unittest.TestCase):
             self.assertEqual(sorted(geoprocessing._RESAMPLE_DICT.keys()),
                              ['average', 'bilinear', 'cubic', 'cubic_spline',
                               'lanczos', 'max', 'med', 'min', 'mode',
-                              'nearest', 'q1', 'q3'])
+                              'near', 'q1', 'q3'])
         finally:
             # Regardless of test outcome, reload the modules so we don't mess
             # with other tests.
@@ -1934,7 +1946,7 @@ class PyGeoprocessing10(unittest.TestCase):
 
             self.assertEqual(sorted(geoprocessing._RESAMPLE_DICT.keys()),
                              ['average', 'bilinear', 'cubic', 'cubic_spline',
-                              'lanczos', 'mode', 'nearest'])
+                              'lanczos', 'mode', 'near'])
         finally:
             # Regardless of test outcome, reload the modules so we don't mess
             # with other tests.
@@ -2044,6 +2056,7 @@ class PyGeoprocessing10(unittest.TestCase):
         band = raster_b.GetRasterBand(1)
         band.WriteArray(raster_b_array)
         band.FlushCache()
+        band = None
         raster_b = None
 
         target_path = os.path.join(self.workspace_dir, 'merged.tif')
@@ -2055,6 +2068,7 @@ class PyGeoprocessing10(unittest.TestCase):
         target_array = target_band.ReadAsArray()
         nodata_value = target_raster.GetRasterBand(2).GetNoDataValue()
         target_band = None
+        target_raster = None
         expected_array = numpy.zeros((22, 22))
         expected_array[0:11, 0:11] = 10
         expected_array[11:, 11:] = 20
@@ -2064,7 +2078,6 @@ class PyGeoprocessing10(unittest.TestCase):
 
     def test_align_with_target_sr(self):
         """PGP: test align_and_resize_raster_stack with a target sr."""
-
         wgs84_sr = osr.SpatialReference()
         wgs84_sr.ImportFromEPSG(4326)  # WGS84 EPSG
 
@@ -2084,8 +2097,9 @@ class PyGeoprocessing10(unittest.TestCase):
         target_ref.ImportFromEPSG(26910)  # UTM10N EPSG
 
         pygeoprocessing.align_and_resize_raster_stack(
-            [base_path], [target_path], ['nearest'],
-            (3e4, -3e4), 'intersection', target_sr_wkt=target_ref.ExportToWkt())
+            [base_path], [target_path], ['near'],
+            (3e4, -3e4), 'intersection',
+            target_sr_wkt=target_ref.ExportToWkt())
 
         target_raster_info = pygeoprocessing.get_raster_info(target_path)
 

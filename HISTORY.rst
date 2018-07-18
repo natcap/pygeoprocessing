@@ -1,6 +1,30 @@
 Release History
 ===============
 
+Unreleased Changes
+------------------
+
+* Several PyGeoprocessing functions now take advantage of multiple CPU cores:
+  * `raster_calculator` uses a separate thread to calculate raster statistics
+     in a `nogil` section of Cython code. In timing with a big rasters we
+     saw performance improvements of about 35%.
+  * `align_and_resize_raster_stack` uses as many CPU cores, up to the number
+    of CPUs reported by multiprocessing.cpu_count (but no less than 1), to
+    process each raster warp while also accounting for the fact that
+    `gdal.Warp` uses 2 cores on its own.
+  * `warp_raster` now directly uses `gdal.Warp`'s multithreading directly.
+    In practice it seems to utilize two cores.
+  * `convolve_2d` attempts to use `multiprocessing.cpu_count` cpus to
+    calculate separable convolutions per block while using the main thread to
+    aggregate  and write the result to the target raster. In practice we saw
+    this improve runtimes by about 50% for large rasters.
+* Fixed a bug that caused some nodata values to not be treated as nodata
+  if there was a numerical roundoff.
+* A recent GDAL upgrade (might have been 2.0?) changed the reference to
+  nearest neighbor interpolation from 'nearest' to 'near'. This PR changes
+  PyGeoprocessing to be consistent with that change.
+
+
 1.1.0 (7/6/2018)
 ----------------
 * PyGeoprocessing now supports Python 2 and 3, and is tested on python 2.7
