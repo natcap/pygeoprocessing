@@ -941,7 +941,7 @@ class PyGeoprocessing10(unittest.TestCase):
                     bad_raster_path_band_list, passthrough, target_path,
                     gdal.GDT_Int32, nodata_target, calc_raster_stats=True)
             expected_message = (
-                'Expected a list of path / integer band tuples, numbers, or')
+                'Expected a list of path / integer band tuples, ndarrays, ')
             actual_message = str(cm.exception)
             self.assertTrue(
                 expected_message in actual_message, actual_message)
@@ -1095,11 +1095,12 @@ class PyGeoprocessing10(unittest.TestCase):
         z_arg = numpy.ones((4, 4))
         with self.assertRaises(ValueError) as cm:
             pygeoprocessing.raster_calculator(
-                [a_arg, x_arg, y_arg, z_arg], lambda a, x, y, z: a*x*y*z,
-                target_path, gdal.GDT_Float32, None)
+                [(a_arg, 'raw'), x_arg, y_arg, z_arg],
+                lambda a, x, y, z: a*x*y*z, target_path, gdal.GDT_Float32,
+                None)
         expected_message = "inputs cannot be broadcast into a single shape"
         actual_message = str(cm.exception)
-        self.assertTrue(expected_message in actual_message)
+        self.assertTrue(expected_message in actual_message, actual_message)
 
     def test_raster_calculator_array_raster_mismatch(self):
         """PGP.geoprocessing: bad array shape with raster raise error."""
@@ -1137,6 +1138,28 @@ class PyGeoprocessing10(unittest.TestCase):
         actual_message = str(cm.exception)
         self.assertTrue(expected_message in actual_message, actual_message)
 
+    def test_raster_calculator_bad_raw_args(self):
+        """PGP.geoprocessing: tuples that don't match (x, 'raw')."""
+        target_path = os.path.join(self.workspace_dir, 'target.tif')
+        driver = gdal.GetDriverByName('GTiff')
+        base_path = os.path.join(self.workspace_dir, 'base.tif')
+        new_raster = driver.Create(
+            base_path, 128, 128, 1, gdal.GDT_Int32,
+            options=(
+                'TILED=YES', 'BLOCKXSIZE=16', 'BLOCKYSIZE=16'))
+        new_raster.GetRasterBand(1).WriteArray(
+            numpy.ones((128, 128)))
+        new_raster.FlushCache()
+        new_raster = None
+
+        with self.assertRaises(ValueError) as cm:
+            pygeoprocessing.raster_calculator(
+                [(base_path, 1), ("raw",)], lambda a, z: a*z,
+                target_path, gdal.GDT_Float32, None)
+        expected_message = ('Expected a list of path / integer band tuples')
+        actual_message = str(cm.exception)
+        self.assertTrue(expected_message in actual_message, actual_message)
+
     def test_raster_calculator_constant_args(self):
         """PGP.geoprocessing: test constant arguments of raster calc."""
         import pygeoprocessing
@@ -1146,8 +1169,9 @@ class PyGeoprocessing10(unittest.TestCase):
         x_arg = numpy.array(range(2))
         y_arg = numpy.array(range(3)).reshape((3, 1))
         z_arg = numpy.ones((3, 2))
+        list_arg = [1, 1, 1, -1]
         pygeoprocessing.raster_calculator(
-            [a_arg, x_arg, y_arg, z_arg], lambda a, x, y, z: a*x*y*z,
+            [(a_arg, 'raw'), x_arg, y_arg, z_arg], lambda a, x, y, z: a*x*y*z,
             target_path, gdal.GDT_Float32, 0)
 
         target_raster = gdal.OpenEx(target_path, gdal.OF_RASTER)
@@ -1160,23 +1184,22 @@ class PyGeoprocessing10(unittest.TestCase):
         with self.assertRaises(ValueError) as cm:
             # this will return a scalar, when it should return 2d array
             pygeoprocessing.raster_calculator(
-                [a_arg], lambda a: a, target_path,
+                [(a_arg, 'raw')], lambda a: a, target_path,
+                gdal.GDT_Float32, None)
+        expected_message = (
+            "Only (object, 'raw') values have been passed.")
+        actual_message = str(cm.exception)
+        self.assertTrue(expected_message in actual_message, actual_message)
+
+        with self.assertRaises(ValueError) as cm:
+            # this will return a scalar, when it should return 2d array
+            pygeoprocessing.raster_calculator(
+                [x_arg], lambda x: 0.0, target_path,
                 gdal.GDT_Float32, None)
         expected_message = (
             "Expected `local_op` to return a numpy.ndarray")
         actual_message = str(cm.exception)
-        self.assertTrue(expected_message in actual_message)
-
-        # try the scalar as a 2d array
-        pygeoprocessing.raster_calculator(
-            [a_arg], lambda a: numpy.array([[a]]), target_path,
-            gdal.GDT_Float32, None)
-
-        target_raster = gdal.OpenEx(target_path, gdal.OF_RASTER)
-        target_array = target_raster.GetRasterBand(1).ReadAsArray()
-        target_raster = None
-        expected_result = numpy.array([[a_arg]])
-        numpy.testing.assert_array_almost_equal(target_array, expected_result)
+        self.assertTrue(expected_message in actual_message, actual_message)
 
         target_path = os.path.join(
             self.workspace_dir, 'target_1d_2darray.tif')
@@ -1199,6 +1222,17 @@ class PyGeoprocessing10(unittest.TestCase):
         target_raster = None
         numpy.testing.assert_array_almost_equal(
             target_array, x_arg.reshape((1, x_arg.size)))
+
+        target_path = os.path.join(self.workspace_dir, 'raw_args.tif')
+        pygeoprocessing.raster_calculator(
+            [x_arg, (list_arg, 'raw')], lambda x, y_list: x * y_list[3],
+            target_path, gdal.GDT_Float32, None)
+
+        target_raster = gdal.OpenEx(target_path, gdal.OF_RASTER)
+        target_array = target_raster.GetRasterBand(1).ReadAsArray()
+        target_raster = None
+        numpy.testing.assert_array_almost_equal(
+            target_array, -x_arg.reshape((1, x_arg.size)))
 
     def test_combined_constant_args_raster(self):
         """PGP.geoprocessing: test raster calc with constant args."""
@@ -1240,7 +1274,7 @@ class PyGeoprocessing10(unittest.TestCase):
             return result
 
         pygeoprocessing.raster_calculator(
-            [10, (base_path, 1), numpy.array(range(128))],
+            [(10, 'raw'), (base_path, 1), numpy.array(range(128))],
             local_op, target_path, gdal.GDT_Float32, None, largest_block=0)
 
         target_raster = gdal.OpenEx(target_path, gdal.OF_RASTER)
@@ -2116,3 +2150,44 @@ class PyGeoprocessing10(unittest.TestCase):
                 [446166.79245811916, 4995771.240781772],
                 [target_raster_info['bounding_box'][0],
                  target_raster_info['bounding_box'][3]]), None)
+
+    def test_get_raster_info_error_handling(self):
+        """PGP: test that bad data raise good errors in get_raster_info."""
+        # check for missing file
+        with self.assertRaises(ValueError) as cm:
+            pygeoprocessing.get_raster_info(
+                os.path.join(self.workspace_dir, 'not_a_file.tif'))
+        expected_message = 'does not exist'
+        actual_message = str(cm.exception)
+        self.assertTrue(expected_message in actual_message, actual_message)
+
+        # check that file exists but is not a raster.
+        not_a_raster_path = os.path.join(
+            self.workspace_dir, 'not_a_raster.tif')
+        with open(not_a_raster_path, 'w') as not_a_raster_file:
+            not_a_raster_file.write("this is not a raster.\n")
+        with self.assertRaises(ValueError) as cm:
+            pygeoprocessing.get_raster_info(not_a_raster_path)
+        expected_message = 'Could not open'
+        actual_message = str(cm.exception)
+        self.assertTrue(expected_message in actual_message, actual_message)
+
+    def test_get_vector_info_error_handling(self):
+        """PGP: test that bad data raise good errors in get_vector_info."""
+        # check for missing file
+        with self.assertRaises(ValueError) as cm:
+            pygeoprocessing.get_vector_info(
+                os.path.join(self.workspace_dir, 'not_a_file.tif'))
+        expected_message = 'does not exist'
+        actual_message = str(cm.exception)
+        self.assertTrue(expected_message in actual_message, actual_message)
+
+        # check that file exists but is not a vector
+        not_a_vector_path = os.path.join(
+            self.workspace_dir, 'not_a_vector')
+        os.makedirs(not_a_vector_path)
+        with self.assertRaises(ValueError) as cm:
+            pygeoprocessing.get_raster_info(not_a_vector_path)
+        expected_message = 'Could not open'
+        actual_message = str(cm.exception)
+        self.assertTrue(expected_message in actual_message, actual_message)
