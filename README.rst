@@ -3,12 +3,6 @@
 About PyGeoprocessing
 =====================
 
-|test_coverage_badge|
-
-.. |test_coverage_badge| image:: http://builds.naturalcapitalproject.org:9931/jenkins/c/http/builds.naturalcapitalproject.org/job/test-pygeoprocessing/label=GCE-windows-1/
-  :target: http://builds.naturalcapitalproject.org/job/test-pygeoprocessing/label=GCE-windows-1
-
-
 PyGeoprocessing is a Python/Cython based library that provides a set of commonly
 used raster, vector, and hydrological operations for GIS processing.  Similar
 functionality can be found in ArcGIS/QGIS raster algebra, ArcGIS zonal
@@ -24,7 +18,7 @@ via filename. Specifically the functionally provided by PyGeoprocessing includes
 
 * a suite of raster manipulation functions (warp, align, raster calculator, reclassification, distance transform, convolution, and fast iteration)
 * a suite of vector based manipulation function (zonal statistics, rasterization, interpolate points, reprojection, and disjoint polygon sets)
-* a simplified hydrological routing library (d-infinity flow direction, plateau drainage, weighted and unweighted flow accumulation, and weighted and unweighted flow distance)
+* a simplified hydrological routing library (D8inf/MFD flow direction, plateau drainage, weighted and unweighted flow accumulation, and weighted and unweighted flow distance)
 
 Installing PyGeoprocessing
 ==========================
@@ -32,7 +26,6 @@ Installing PyGeoprocessing
 .. code-block:: console
 
     $ pip install pygeoprocessing
-
 
 If you `import pygeoprocessing` and see a `ValueError: numpy.dtype has the
 wrong size, try recompiling`, this is the result of a version compatibility

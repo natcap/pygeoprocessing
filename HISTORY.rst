@@ -1,6 +1,36 @@
 Release History
 ===============
 
+1.2.0 (7/19/2018)
+-----------------
+
+* Several PyGeoprocessing functions now take advantage of multiple CPU cores:
+  * `raster_calculator` uses a separate thread to calculate raster statistics
+     in a `nogil` section of Cython code. In timing with a big rasters we
+     saw performance improvements of about 35%.
+  * `align_and_resize_raster_stack` uses as many CPU cores, up to the number
+    of CPUs reported by multiprocessing.cpu_count (but no less than 1), to
+    process each raster warp while also accounting for the fact that
+    `gdal.Warp` uses 2 cores on its own.
+  * `warp_raster` now directly uses `gdal.Warp`'s multithreading directly.
+    In practice it seems to utilize two cores.
+  * `convolve_2d` attempts to use `multiprocessing.cpu_count` cpus to
+    calculate separable convolutions per block while using the main thread to
+    aggregate  and write the result to the target raster. In practice we saw
+    this improve runtimes by about 50% for large rasters.
+* Fixed a bug that caused some nodata values to not be treated as nodata
+  if there was a numerical roundoff.
+* A recent GDAL upgrade (might have been 2.0?) changed the reference to
+  nearest neighbor interpolation from 'nearest' to 'near'. This PR changes
+  PyGeoprocessing to be consistent with that change.
+* ``raster_calculator`` can now also take "raw" arguments in the form of a
+  (value, "raw") tuple. The parameter `value` will be passed directly to
+  `local_op`. Scalars are no longer a special case and need to be passed as
+  "raw" parameters.
+* Raising `ValueError` in `get_raster_info` and `get_vector_info` in cases
+  where non-filepath non-GIS values are passed as parameters. Previously
+  such an error would result in an unhelpful error in the GDAL library.
+
 1.1.0 (7/6/2018)
 ----------------
 * PyGeoprocessing now supports Python 2 and 3, and is tested on python 2.7
@@ -64,7 +94,6 @@ Release History
   accumulation.
 * Added a `merge_rasters` function to `pygeoprocessing` that will mosaic a
   set of rasters in the same projection, pixel size, and band count.
-
 
 0.6.0 (1/10/2017)
 -----------------
