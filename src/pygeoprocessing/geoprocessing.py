@@ -1298,7 +1298,7 @@ def get_vector_info(vector_path, layer_index=0):
     """
     if not os.path.exists(vector_path):
         raise ValueError("%s does not exist." % vector_path)
-    vector = gdal.OpenEx(vector_path)
+    vector = gdal.OpenEx(vector_path, gdal.OF_VECTOR)
     if not vector:
         raise ValueError(
             "Could not open %s as a gdal.OF_VECTOR" % vector_path)
