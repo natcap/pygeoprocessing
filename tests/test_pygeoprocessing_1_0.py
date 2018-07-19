@@ -2182,7 +2182,7 @@ class PyGeoprocessing10(unittest.TestCase):
         actual_message = str(cm.exception)
         self.assertTrue(expected_message in actual_message, actual_message)
 
-        # check that file exists but is not a raster.
+        # check that file exists but is not a vector
         not_a_vector_path = os.path.join(
             self.workspace_dir, 'not_a_vector')
         os.makedirs(not_a_vector_path)
