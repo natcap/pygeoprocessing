@@ -115,7 +115,7 @@ def raster_calculator(
             (str, int) tuples, `numpy.ndarray`s of up to two
             dimensions, or an (object, 'raw') tuple.  A `(str, int)`
             tuple refers to a raster path band index pair to use as an input.
-            The `numpy.ndarray`s must be broadcastble to each other AND the
+            The `numpy.ndarray`s must be broadcastable to each other AND the
             size of the raster inputs. Values passed by  `(object, 'raw')`
             tuples pass `object` directly into the `local_op`. All rasters
             must have the same raster size. If only arrays are input, numpy
