@@ -1,8 +1,8 @@
 Release History
 ===============
 
-Unreleased Changes
-------------------
+1.2.0 (7/19/2018)
+-----------------
 
 * Several PyGeoprocessing functions now take advantage of multiple CPU cores:
   * `raster_calculator` uses a separate thread to calculate raster statistics
@@ -30,7 +30,6 @@ Unreleased Changes
 * Raising `ValueError` in `get_raster_info` and `get_vector_info` in cases
   where non-filepath non-GIS values are passed as parameters. Previously
   such an error would result in an unhelpful error in the GDAL library.
-
 
 1.1.0 (7/6/2018)
 ----------------
@@ -95,7 +94,6 @@ Unreleased Changes
   accumulation.
 * Added a `merge_rasters` function to `pygeoprocessing` that will mosaic a
   set of rasters in the same projection, pixel size, and band count.
-
 
 0.6.0 (1/10/2017)
 -----------------
