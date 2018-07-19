@@ -318,7 +318,7 @@ def raster_calculator(
         else:
             raise ValueError(
                 "An unexpected `value` occurred. This should never happen. "
-                "Value: %s" % str(value))
+                "Value: %r" % value)
 
     # create target raster
     if raster_info_list:
