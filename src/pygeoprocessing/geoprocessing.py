@@ -1611,10 +1611,15 @@ def warp_raster(
             LOGGER.debug(
                 "transforming bounding to %s ", target_bb)
 
-    target_x_size = int(
-        abs((target_bb[2] - target_bb[0]) / target_pixel_size[0]))
-    target_y_size = int(
-        abs((target_bb[3] - target_bb[1]) / target_pixel_size[1]))
+    target_x_size = abs((target_bb[2] - target_bb[0]) / target_pixel_size[0])
+    target_y_size = abs((target_bb[3] - target_bb[1]) / target_pixel_size[1])
+    # make the bounding box a little bigger if there's any pixel overlap
+    if target_x_size - int(target_x_size) > 0:
+        target_bb[2] += abs(target_pixel_size[0])
+
+    if target_y_size - int(target_y_size) > 0:
+        target_bb[3] += abs(target_pixel_size[1])
+
     if target_x_size == 0:
         LOGGER.warn(
             "bounding_box is so small that x dimension rounds to 0; "
