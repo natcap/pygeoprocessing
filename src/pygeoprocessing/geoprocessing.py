@@ -16,7 +16,6 @@ import heapq
 import time
 import tempfile
 import uuid
-import numbers
 import distutils.version
 import multiprocessing
 import multiprocessing.pool
@@ -656,21 +655,21 @@ def align_and_resize_raster_stack(
         LOGGER.info("n_workers == 1 so a threadpool is sufficient")
         worker_pool = multiprocessing.pool.ThreadPool(n_workers)
 
-    result_list = []
-    for index, (base_path, target_path, resample_method) in enumerate(zip(
-            base_raster_path_list, target_raster_path_list,
-            resample_method_list)):
-        result = worker_pool.apply_async(
-            func=warp_raster, args=(
-                base_path, target_pixel_size, target_path, resample_method),
-            kwds={
-                'target_bb': target_bounding_box,
-                'gtiff_creation_options': gtiff_creation_options,
-                'target_sr_wkt': target_sr_wkt,
-                })
-        result_list.append(result)
-
     try:
+        result_list = []
+        for index, (base_path, target_path, resample_method) in enumerate(zip(
+                base_raster_path_list, target_raster_path_list,
+                resample_method_list)):
+            result = worker_pool.apply_async(
+                func=warp_raster, args=(
+                    base_path, target_pixel_size, target_path, resample_method),
+                kwds={
+                    'target_bb': target_bounding_box,
+                    'gtiff_creation_options': gtiff_creation_options,
+                    'target_sr_wkt': target_sr_wkt,
+                    })
+            result_list.append(result)
+
         for index, result in enumerate(result_list):
             result.get()
             LOGGER.info(
@@ -680,6 +679,9 @@ def align_and_resize_raster_stack(
         worker_pool.terminate()
         LOGGER.exception("Exception occurred in worker")
         raise
+    finally:
+        worker_pool.close()
+        worker_pool.join()
 
     LOGGER.info("aligned all %d rasters.", n_rasters)
 
