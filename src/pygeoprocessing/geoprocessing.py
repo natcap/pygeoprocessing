@@ -1601,37 +1601,39 @@ def warp_raster(
     base_sr.ImportFromWkt(base_raster.GetProjection())
 
     if target_bb is None:
-        target_bb = get_raster_info(base_raster_path)['bounding_box']
-        # transform the target_bb if target_sr_wkt is not None
+        working_bb = get_raster_info(base_raster_path)['bounding_box']
+        # transform the working_bb if target_sr_wkt is not None
         if target_sr_wkt is not None:
             LOGGER.debug(
-                "transforming bounding box from %s ", target_bb)
-            target_bb = transform_bounding_box(
+                "transforming bounding box from %s ", working_bb)
+            working_bb = transform_bounding_box(
                 get_raster_info(base_raster_path)['bounding_box'],
                 get_raster_info(base_raster_path)['projection'],
                 target_sr_wkt)
             LOGGER.debug(
-                "transforming bounding to %s ", target_bb)
+                "transforming bounding to %s ", working_bb)
+    else:
+        working_bb = target_bb[:]
 
-    target_x_size = abs((target_bb[2] - target_bb[0]) / target_pixel_size[0])
-    target_y_size = abs((target_bb[3] - target_bb[1]) / target_pixel_size[1])
-    # make the bounding box a little bigger if there's any pixel overlap
-    if target_x_size - int(target_x_size) > 0:
-        target_bb[2] += abs(target_pixel_size[0])
-
-    if target_y_size - int(target_y_size) > 0:
-        target_bb[3] += abs(target_pixel_size[1])
+    # determine the raster size that bounds the input bounding box and then
+    # adjust the bounding box to be that size
+    target_x_size = int(round(0.5+abs(
+        float(working_bb[2] - working_bb[0]) / target_pixel_size[0])))
+    working_bb[2] = working_bb[0] + abs(target_pixel_size[0] * target_x_size)
+    target_y_size = int(round(0.5+abs(
+        float(working_bb[3] - working_bb[1]) / target_pixel_size[1])))
+    working_bb[3] = working_bb[1] + abs(target_pixel_size[1] * target_y_size)
 
     if target_x_size == 0:
         LOGGER.warn(
             "bounding_box is so small that x dimension rounds to 0; "
             "clamping to 1.")
-        target_bb[2] = target_bb[0] + abs(target_pixel_size[0])
+        working_bb[2] = working_bb[0] + abs(target_pixel_size[0])
     if target_y_size == 0:
         LOGGER.warn(
             "bounding_box is so small that y dimension rounds to 0; "
             "clamping to 1.")
-        target_bb[3] = target_bb[1] + abs(target_pixel_size[1])
+        working_bb[3] = working_bb[1] + abs(target_pixel_size[1])
 
     reproject_callback = _make_logger_callback(
         "Warp %.1f%% complete %s")
@@ -1639,9 +1641,9 @@ def warp_raster(
     base_raster = gdal.OpenEx(base_raster_path, gdal.OF_RASTER)
     gdal.Warp(
         target_raster_path, base_raster,
-        outputBounds=target_bb,
-        xRes=abs(target_pixel_size[0]),
-        yRes=abs(target_pixel_size[1]),
+        outputBounds=working_bb,
+        xRes=target_pixel_size[0],
+        yRes=target_pixel_size[1],
         resampleAlg=resample_method,
         outputBoundsSRS=target_sr_wkt,
         dstSRS=target_sr_wkt,
