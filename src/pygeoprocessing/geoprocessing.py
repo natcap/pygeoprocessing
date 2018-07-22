@@ -1617,23 +1617,38 @@ def warp_raster(
 
     # determine the raster size that bounds the input bounding box and then
     # adjust the bounding box to be that size
-    target_x_size = int(round(0.5+abs(
-        float(working_bb[2] - working_bb[0]) / target_pixel_size[0])))
-    working_bb[2] = working_bb[0] + abs(target_pixel_size[0] * target_x_size)
-    target_y_size = int(round(0.5+abs(
-        float(working_bb[3] - working_bb[1]) / target_pixel_size[1])))
-    working_bb[3] = working_bb[1] + abs(target_pixel_size[1] * target_y_size)
+    target_x_size = int(abs(
+        float(working_bb[2] - working_bb[0]) / target_pixel_size[0]))
+    target_y_size = int(abs(
+        float(working_bb[3] - working_bb[1]) / target_pixel_size[1]))
+
+    # sometimes bounding boxes are numerically perfect, this checks for that
+    x_residual = (
+        abs(target_x_size * target_pixel_size[0]) -
+        (working_bb[2] - working_bb[0]))
+    if not numpy.isclose(x_residual, 0.0):
+        target_x_size += 1
+    y_residual = (
+        abs(target_y_size * target_pixel_size[1]) -
+        (working_bb[3] - working_bb[1]))
+    if not numpy.isclose(y_residual, 0.0):
+        target_y_size += 1
 
     if target_x_size == 0:
         LOGGER.warn(
             "bounding_box is so small that x dimension rounds to 0; "
             "clamping to 1.")
-        working_bb[2] = working_bb[0] + abs(target_pixel_size[0])
+        target_x_size = 1
     if target_y_size == 0:
         LOGGER.warn(
             "bounding_box is so small that y dimension rounds to 0; "
             "clamping to 1.")
-        working_bb[3] = working_bb[1] + abs(target_pixel_size[1])
+        target_y_size = 1
+
+    # this ensures the bounding boxes perfectly fit a multiple of the target
+    # pixel size
+    working_bb[2] = working_bb[0] + abs(target_pixel_size[0] * target_x_size)
+    working_bb[3] = working_bb[1] + abs(target_pixel_size[1] * target_y_size)
 
     reproject_callback = _make_logger_callback(
         "Warp %.1f%% complete %s")
@@ -1642,8 +1657,8 @@ def warp_raster(
     gdal.Warp(
         target_raster_path, base_raster,
         outputBounds=working_bb,
-        xRes=target_pixel_size[0],
-        yRes=target_pixel_size[1],
+        xRes=abs(target_pixel_size[0]),
+        yRes=abs(target_pixel_size[1]),
         resampleAlg=resample_method,
         outputBoundsSRS=target_sr_wkt,
         dstSRS=target_sr_wkt,
