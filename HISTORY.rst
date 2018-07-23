@@ -1,6 +1,15 @@
 Release History
 ===============
 
+1.2.1 (7/22/2018)
+-----------------
+* Fixing an issue with `warp_raster` that would round off bounding boxes
+  for rasters that did not fit perfectly into the target raster's provided
+  pixel size.
+* Cautiously `join`ing all process pools to avoid a potential bug where a
+  deamonized subprocess in a process pool may still have access to a raster
+  but another process may require write access to it.
+
 1.2.0 (7/19/2018)
 -----------------
 
