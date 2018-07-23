@@ -2147,7 +2147,7 @@ class PyGeoprocessing10(unittest.TestCase):
         # warped raster's bounding box will be a little larger.
         self.assertIs(
             numpy.testing.assert_allclose(
-                [446166.79245811916, 4995771.240781772],
+                [446166.79245811916, 5012714.829567],
                 [target_raster_info['bounding_box'][0],
                  target_raster_info['bounding_box'][3]]), None)
 

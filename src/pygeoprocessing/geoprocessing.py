@@ -16,7 +16,6 @@ import heapq
 import time
 import tempfile
 import uuid
-import numbers
 import distutils.version
 import multiprocessing
 import multiprocessing.pool
@@ -656,21 +655,21 @@ def align_and_resize_raster_stack(
         LOGGER.info("n_workers == 1 so a threadpool is sufficient")
         worker_pool = multiprocessing.pool.ThreadPool(n_workers)
 
-    result_list = []
-    for index, (base_path, target_path, resample_method) in enumerate(zip(
-            base_raster_path_list, target_raster_path_list,
-            resample_method_list)):
-        result = worker_pool.apply_async(
-            func=warp_raster, args=(
-                base_path, target_pixel_size, target_path, resample_method),
-            kwds={
-                'target_bb': target_bounding_box,
-                'gtiff_creation_options': gtiff_creation_options,
-                'target_sr_wkt': target_sr_wkt,
-                })
-        result_list.append(result)
-
     try:
+        result_list = []
+        for index, (base_path, target_path, resample_method) in enumerate(zip(
+                base_raster_path_list, target_raster_path_list,
+                resample_method_list)):
+            result = worker_pool.apply_async(
+                func=warp_raster, args=(
+                    base_path, target_pixel_size, target_path, resample_method),
+                kwds={
+                    'target_bb': target_bounding_box,
+                    'gtiff_creation_options': gtiff_creation_options,
+                    'target_sr_wkt': target_sr_wkt,
+                    })
+            result_list.append(result)
+
         for index, result in enumerate(result_list):
             result.get()
             LOGGER.info(
@@ -680,6 +679,9 @@ def align_and_resize_raster_stack(
         worker_pool.terminate()
         LOGGER.exception("Exception occurred in worker")
         raise
+    finally:
+        worker_pool.close()
+        worker_pool.join()
 
     LOGGER.info("aligned all %d rasters.", n_rasters)
 
@@ -1599,32 +1601,54 @@ def warp_raster(
     base_sr.ImportFromWkt(base_raster.GetProjection())
 
     if target_bb is None:
-        target_bb = get_raster_info(base_raster_path)['bounding_box']
-        # transform the target_bb if target_sr_wkt is not None
+        working_bb = get_raster_info(base_raster_path)['bounding_box']
+        # transform the working_bb if target_sr_wkt is not None
         if target_sr_wkt is not None:
             LOGGER.debug(
-                "transforming bounding box from %s ", target_bb)
-            target_bb = transform_bounding_box(
+                "transforming bounding box from %s ", working_bb)
+            working_bb = transform_bounding_box(
                 get_raster_info(base_raster_path)['bounding_box'],
                 get_raster_info(base_raster_path)['projection'],
                 target_sr_wkt)
             LOGGER.debug(
-                "transforming bounding to %s ", target_bb)
+                "transforming bounding to %s ", working_bb)
+    else:
+        working_bb = target_bb[:]
 
-    target_x_size = int(
-        abs((target_bb[2] - target_bb[0]) / target_pixel_size[0]))
-    target_y_size = int(
-        abs((target_bb[3] - target_bb[1]) / target_pixel_size[1]))
+    # determine the raster size that bounds the input bounding box and then
+    # adjust the bounding box to be that size
+    target_x_size = int(abs(
+        float(working_bb[2] - working_bb[0]) / target_pixel_size[0]))
+    target_y_size = int(abs(
+        float(working_bb[3] - working_bb[1]) / target_pixel_size[1]))
+
+    # sometimes bounding boxes are numerically perfect, this checks for that
+    x_residual = (
+        abs(target_x_size * target_pixel_size[0]) -
+        (working_bb[2] - working_bb[0]))
+    if not numpy.isclose(x_residual, 0.0):
+        target_x_size += 1
+    y_residual = (
+        abs(target_y_size * target_pixel_size[1]) -
+        (working_bb[3] - working_bb[1]))
+    if not numpy.isclose(y_residual, 0.0):
+        target_y_size += 1
+
     if target_x_size == 0:
         LOGGER.warn(
             "bounding_box is so small that x dimension rounds to 0; "
             "clamping to 1.")
-        target_bb[2] = target_bb[0] + abs(target_pixel_size[0])
+        target_x_size = 1
     if target_y_size == 0:
         LOGGER.warn(
             "bounding_box is so small that y dimension rounds to 0; "
             "clamping to 1.")
-        target_bb[3] = target_bb[1] + abs(target_pixel_size[1])
+        target_y_size = 1
+
+    # this ensures the bounding boxes perfectly fit a multiple of the target
+    # pixel size
+    working_bb[2] = working_bb[0] + abs(target_pixel_size[0] * target_x_size)
+    working_bb[3] = working_bb[1] + abs(target_pixel_size[1] * target_y_size)
 
     reproject_callback = _make_logger_callback(
         "Warp %.1f%% complete %s")
@@ -1632,7 +1656,7 @@ def warp_raster(
     base_raster = gdal.OpenEx(base_raster_path, gdal.OF_RASTER)
     gdal.Warp(
         target_raster_path, base_raster,
-        outputBounds=target_bb,
+        outputBounds=working_bb,
         xRes=abs(target_pixel_size[0]),
         yRes=abs(target_pixel_size[1]),
         resampleAlg=resample_method,
