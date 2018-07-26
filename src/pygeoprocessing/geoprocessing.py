@@ -313,7 +313,7 @@ def raster_calculator(
             else:  # dimensions are two because we checked earlier.
                 base_canonical_arg_list.append(value)
         elif isinstance(value, tuple):
-            base_canonical_arg_list.append(value[0])
+            base_canonical_arg_list.append(value)
         else:
             raise ValueError(
                 "An unexpected `value` occurred. This should never happen. "
@@ -414,8 +414,8 @@ def raster_calculator(
                     data_blocks.append(
                         numpy.tile(value[slice_list], tile_dims))
                 else:
-                    # must be a scalar
-                    data_blocks.append(value)
+                    # must be a raw tuple
+                    data_blocks.append(value[0])
 
             target_block = local_op(*data_blocks)
 

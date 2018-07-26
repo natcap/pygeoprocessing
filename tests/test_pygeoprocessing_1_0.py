@@ -1247,7 +1247,6 @@ class PyGeoprocessing10(unittest.TestCase):
             target_array, -x_arg.reshape((1, x_arg.size)))
 
 
-
     def test_combined_constant_args_raster(self):
         """PGP.geoprocessing: test raster calc with constant args."""
         driver = gdal.GetDriverByName('GTiff')
