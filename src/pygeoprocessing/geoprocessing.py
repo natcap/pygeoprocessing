@@ -1571,7 +1571,8 @@ def reclassify_raster(
 def warp_raster(
         base_raster_path, target_pixel_size, target_raster_path,
         resample_method, target_bb=None, target_sr_wkt=None,
-        gtiff_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS):
+        gtiff_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS,
+        n_threads=None):
     """Resize/resample raster to desired pixel size, bbox and projection.
 
     Parameters:
@@ -1591,6 +1592,8 @@ def warp_raster(
             Known Text format.
         gtiff_creation_options (list or tuple): list of strings that will be
             passed as GDAL "dataset" creation options to the GTIFF driver.
+        n_threads (int): optional, if not None this sets the `N_THREADS`
+            option for `gdal.Warp`.
 
     Returns:
         None
@@ -1653,6 +1656,10 @@ def warp_raster(
     reproject_callback = _make_logger_callback(
         "Warp %.1f%% complete %s")
 
+    warp_options = []
+    if n_threads:
+        warp_options.append('NUM_THREADS=%d' % n_threads)
+
     base_raster = gdal.OpenEx(base_raster_path, gdal.OF_RASTER)
     gdal.Warp(
         target_raster_path, base_raster,
@@ -1663,7 +1670,7 @@ def warp_raster(
         outputBoundsSRS=target_sr_wkt,
         dstSRS=target_sr_wkt,
         multithread=True,
-        warpOptions=['NUM_THREADS=ALL_CPUS'],
+        warpOptions=warp_options,
         creationOptions=gtiff_creation_options,
         callback=reproject_callback,
         callback_data=[target_raster_path])
