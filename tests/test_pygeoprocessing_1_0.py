@@ -1234,6 +1234,20 @@ class PyGeoprocessing10(unittest.TestCase):
         numpy.testing.assert_array_almost_equal(
             target_array, -x_arg.reshape((1, x_arg.size)))
 
+        target_path = os.path.join(self.workspace_dir, 'raw_numpy_args.tif')
+        pygeoprocessing.raster_calculator(
+            [x_arg, (numpy.array(list_arg), 'raw')],
+            lambda x, y_list: x * y_list[3], target_path, gdal.GDT_Float32,
+            None)
+
+        target_raster = gdal.OpenEx(target_path, gdal.OF_RASTER)
+        target_array = target_raster.GetRasterBand(1).ReadAsArray()
+        target_raster = None
+        numpy.testing.assert_array_almost_equal(
+            target_array, -x_arg.reshape((1, x_arg.size)))
+
+
+
     def test_combined_constant_args_raster(self):
         """PGP.geoprocessing: test raster calc with constant args."""
         driver = gdal.GetDriverByName('GTiff')
