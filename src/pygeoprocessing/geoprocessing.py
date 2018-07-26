@@ -1669,7 +1669,7 @@ def warp_raster(
         resampleAlg=resample_method,
         outputBoundsSRS=target_sr_wkt,
         dstSRS=target_sr_wkt,
-        multithread=True,
+        multithread=True if warp_options else False,
         warpOptions=warp_options,
         creationOptions=gtiff_creation_options,
         callback=reproject_callback,
