@@ -1,6 +1,11 @@
 Release History
 ===============
 
+1.2.2 (7/25/2018)
+-----------------
+* Hotfixed a bug that would cause numpy arrays to be treated as broadcastable
+  even if they were passed in "raw".
+
 1.2.1 (7/22/2018)
 -----------------
 * Fixing an issue with `warp_raster` that would round off bounding boxes
