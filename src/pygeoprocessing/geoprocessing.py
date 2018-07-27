@@ -2129,7 +2129,6 @@ def convolve_2d(
     LOGGER.info(
         "convolution worker 100.0%% complete on %s",
         os.path.basename(target_path))
-
     target_band.FlushCache()
     target_raster.FlushCache()
     if s_nodata is not None and ignore_nodata:
@@ -2175,6 +2174,11 @@ def convolve_2d(
 
     for worker in worker_list:
         worker.join(_MAX_TIMEOUT)
+    target_band.FlushCache()
+    target_band = None
+    target_raster.FlushCache()
+    gdal.Dataset.__swig_destroy__(target_raster)
+    target_raster = None
 
 
 def iterblocks(
