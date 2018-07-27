@@ -1134,7 +1134,7 @@ def zonal_statistics(
         [base_raster_path_band[0]], [clipped_raster_path], ['near'],
         raster_info['pixel_size'], 'intersection',
         base_vector_path_list=[aggregate_vector_path], raster_align_index=0)
-    clipped_raster = gdal.OpenEx(clipped_raster_path)
+    clipped_raster = gdal.OpenEx(clipped_raster_path, gdal.OF_RASTER)
 
     # make a shapefile that non-overlapping layers can be added to
     driver = ogr.GetDriverByName('ESRI Shapefile')
@@ -1173,7 +1173,8 @@ def zonal_statistics(
     new_raster_from_base(
         clipped_raster_path, aggregate_id_raster_path, gdal.GDT_Int32,
         [aggregate_id_nodata])
-    aggregate_id_raster = gdal.OpenEx(aggregate_id_raster_path, gdal.GA_Update)
+    aggregate_id_raster = gdal.OpenEx(
+        aggregate_id_raster_path, gdal.GA_Update | gdal.OF_RASTER)
     aggregate_stats = {}
 
     for polygon_set in minimal_polygon_sets:
@@ -1197,8 +1198,6 @@ def zonal_statistics(
         # nodata out the mask
         aggregate_id_band = aggregate_id_raster.GetRasterBand(1)
         aggregate_id_band.Fill(aggregate_id_nodata)
-        aggregate_id_band = None
-
         gdal.RasterizeLayer(
             aggregate_id_raster, [1], disjoint_layer, **rasterize_layer_args)
         aggregate_id_raster.FlushCache()
@@ -1209,8 +1208,10 @@ def zonal_statistics(
 
         # create a key array
         # and parallel min, max, count, and nodata count arrays
-        for aggregate_id_offsets, aggregate_id_block in iterblocks(
-                aggregate_id_raster_path):
+        for aggregate_id_offsets in iterblocks(
+                aggregate_id_raster_path, offset_only=True):
+            aggregate_id_block = aggregate_id_band.ReadAsArray(
+                **aggregate_id_offsets)
             clipped_block = clipped_band.ReadAsArray(**aggregate_id_offsets)
             # guard against a None nodata type
             valid_mask = numpy.ones(aggregate_id_block.shape, dtype=bool)
