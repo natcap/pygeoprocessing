@@ -2138,10 +2138,11 @@ def convolve_2d(
         mask_pixels_processed = 0
         mask_band.FlushCache()
         mask_raster.FlushCache()
-        for target_data, target_block in iterblocks(
-                target_path, band_index_list=[1],
-                astype_list=[_gdal_type_to_numpy_lookup[target_datatype]]):
-            mask_block = mask_band.ReadAsArray(**target_data)
+        for target_offset_data in iterblocks(target_path, offset_only=True):
+            target_block = target_band.ReadAsArray(
+                **target_offset_data).astype(
+                    _gdal_type_to_numpy_lookup[target_datatype])
+            mask_block = mask_band.ReadAsArray(**target_offset_data)
             if base_signal_nodata is not None and mask_nodata:
                 valid_mask = ~numpy.isclose(target_block, target_nodata)
             else:
@@ -2155,8 +2156,8 @@ def convolve_2d(
                 target_block[valid_mask] *= kernel_sum
 
             target_band.WriteArray(
-                target_block, xoff=target_data['xoff'],
-                yoff=target_data['yoff'])
+                target_block, xoff=target_offset_data['xoff'],
+                yoff=target_offset_data['yoff'])
 
             mask_pixels_processed += target_block.size
             last_time = _invoke_timed_callback(
