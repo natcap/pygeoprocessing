@@ -663,14 +663,15 @@ def align_and_resize_raster_stack(
                 resample_method_list)):
             result = worker_pool.apply_async(
                 func=warp_raster, args=(
-                    base_path, target_pixel_size, target_path, resample_method),
+                    base_path, target_pixel_size, target_path,
+                    resample_method),
                 kwds={
                     'target_bb': target_bounding_box,
                     'gtiff_creation_options': gtiff_creation_options,
                     'target_sr_wkt': target_sr_wkt,
                     })
             result_list.append(result)
-
+        worker_pool.close()
         for index, result in enumerate(result_list):
             result.get()
             LOGGER.info(
@@ -681,7 +682,6 @@ def align_and_resize_raster_stack(
         LOGGER.exception("Exception occurred in worker")
         raise
     finally:
-        worker_pool.close()
         worker_pool.join()
         worker_pool.terminate()
 
@@ -1602,7 +1602,7 @@ def warp_raster(
         None
 
     """
-    base_raster = gdal.OpenEx(base_raster_path)
+    base_raster = gdal.OpenEx(base_raster_path, gdal.OF_RASTER)
     base_sr = osr.SpatialReference()
     base_sr.ImportFromWkt(base_raster.GetProjection())
 
