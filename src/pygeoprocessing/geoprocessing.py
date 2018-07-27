@@ -242,6 +242,7 @@ def raster_calculator(
     numpy_broadcast_list = [
         x for x in base_raster_path_band_const_list
         if isinstance(x, numpy.ndarray)]
+    stats_worker_thread = None
     try:
         # numpy.broadcast can only take up to 32 arguments, this loop works
         # around that restriction:
@@ -476,7 +477,7 @@ def raster_calculator(
         gdal.Dataset.__swig_destroy__(target_raster)
         target_raster = None
 
-        if calc_raster_stats:
+        if calc_raster_stats and stats_worker_thread:
             if stats_worker_thread.is_alive():
                 stats_worker_queue.put(None, True, _MAX_TIMEOUT)
                 LOGGER.info("Waiting for raster stats worker result.")
