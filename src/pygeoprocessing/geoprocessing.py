@@ -683,6 +683,7 @@ def align_and_resize_raster_stack(
     finally:
         worker_pool.close()
         worker_pool.join()
+        worker_pool.terminate()
 
     LOGGER.info("aligned all %d rasters.", n_rasters)
 
@@ -2178,6 +2179,7 @@ def convolve_2d(
 
     for worker in worker_list:
         worker.join(_MAX_TIMEOUT)
+        worker.terminate()
     target_band.FlushCache()
     target_raster.FlushCache()
     gdal.Dataset.__swig_destroy__(target_raster)
