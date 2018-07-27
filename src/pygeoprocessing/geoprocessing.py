@@ -2021,7 +2021,8 @@ def convolve_2d(
             signal_path_band[0], mask_raster_path, gdal.GDT_Float32,
             [mask_nodata], fill_value_list=[0],
             gtiff_creation_options=gtiff_creation_options)
-        mask_raster = gdal.OpenEx(mask_raster_path, gdal.GA_Update)
+        mask_raster = gdal.OpenEx(
+            mask_raster_path, gdal.GA_Update | gdal.OF_RASTER)
         mask_band = mask_raster.GetRasterBand(1)
 
     LOGGER.info('starting convolve')
@@ -2175,9 +2176,9 @@ def convolve_2d(
     for worker in worker_list:
         worker.join(_MAX_TIMEOUT)
     target_band.FlushCache()
-    target_band = None
     target_raster.FlushCache()
     gdal.Dataset.__swig_destroy__(target_raster)
+    target_band = None
     target_raster = None
 
 
