@@ -1936,7 +1936,7 @@ def convolve_2d(
         target_datatype=gdal.GDT_Float64,
         target_nodata=None,
         gtiff_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS,
-        working_dir=None):
+        n_threads=1, working_dir=None):
     """Convolve 2D kernel over 2D signal.
 
     Convolves the raster in `kernel_path_band` over `signal_path_band`.
@@ -2039,17 +2039,22 @@ def convolve_2d(
             kernel_block[numpy.isclose(kernel_block, kernel_nodata)] = 0.0
         kernel_sum += numpy.sum(kernel_block)
 
-    n_workers = max(multiprocessing.cpu_count(), 1)
+    # process workers is 1 - number of threads because we count the current
+    # thread
+    if n_threads > 1:
+        WorkerConstructor = multiprocessing.Process
+    else:
+        WorkerConstructor = threading.Thread
 
     # limit the size of the write queue so we don't accidentally load a whole
     # array into memory, work queue is okay because it's only passing block
     # indexes
     work_queue = multiprocessing.Queue()
-    write_queue = multiprocessing.Queue(n_workers * 2)
+    write_queue = multiprocessing.Queue(n_threads * 2)
 
     worker_list = []
-    for worker_id in range(n_workers):
-        worker = multiprocessing.Process(
+    for worker_id in range(max(1, n_threads-1)):
+        worker = WorkerConstructor(
             target=_convolve_2d_worker,
             args=(
                 signal_path_band, kernel_path_band,
@@ -2064,12 +2069,12 @@ def convolve_2d(
         for kernel_offset in iterblocks(k_path_band[0], offset_only=True):
             work_queue.put((signal_offset, kernel_offset))
             n_blocks += 1
-    for _ in range(n_workers):
+    for _ in range(max(1, n_threads-1)):
         # signal end to worker
         work_queue.put(None)
 
     # used to count how many workers are still running
-    n_active_workers = n_workers
+    n_active_workers = max(1, n_threads-1)
     n_blocks_processed = 0
     while True:
         write_payload = write_queue.get()
@@ -2179,7 +2184,8 @@ def convolve_2d(
 
     for worker in worker_list:
         worker.join(_MAX_TIMEOUT)
-        worker.terminate()
+        if n_threads > 1:
+            worker.terminate()
     target_band.FlushCache()
     target_raster.FlushCache()
     gdal.Dataset.__swig_destroy__(target_raster)
