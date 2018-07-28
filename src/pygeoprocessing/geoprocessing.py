@@ -62,7 +62,7 @@ from functools import reduce
 LOGGER = logging.getLogger(__name__)
 LOGGER.addHandler(logging.NullHandler())  # silence logging by default
 
-_MAX_TIMEOUT = 5.0
+_MAX_TIMEOUT = 60.0
 
 try:
     from builtins import basestring
@@ -242,6 +242,7 @@ def raster_calculator(
     numpy_broadcast_list = [
         x for x in base_raster_path_band_const_list
         if isinstance(x, numpy.ndarray)]
+    stats_worker_thread = None
     try:
         # numpy.broadcast can only take up to 32 arguments, this loop works
         # around that restriction:
@@ -476,7 +477,7 @@ def raster_calculator(
         gdal.Dataset.__swig_destroy__(target_raster)
         target_raster = None
 
-        if calc_raster_stats:
+        if calc_raster_stats and stats_worker_thread:
             if stats_worker_thread.is_alive():
                 stats_worker_queue.put(None, True, _MAX_TIMEOUT)
                 LOGGER.info("Waiting for raster stats worker result.")
@@ -662,14 +663,15 @@ def align_and_resize_raster_stack(
                 resample_method_list)):
             result = worker_pool.apply_async(
                 func=warp_raster, args=(
-                    base_path, target_pixel_size, target_path, resample_method),
+                    base_path, target_pixel_size, target_path,
+                    resample_method),
                 kwds={
                     'target_bb': target_bounding_box,
                     'gtiff_creation_options': gtiff_creation_options,
                     'target_sr_wkt': target_sr_wkt,
                     })
             result_list.append(result)
-
+        worker_pool.close()
         for index, result in enumerate(result_list):
             result.get()
             LOGGER.info(
@@ -680,8 +682,8 @@ def align_and_resize_raster_stack(
         LOGGER.exception("Exception occurred in worker")
         raise
     finally:
-        worker_pool.close()
         worker_pool.join()
+        worker_pool.terminate()
 
     LOGGER.info("aligned all %d rasters.", n_rasters)
 
@@ -1134,7 +1136,7 @@ def zonal_statistics(
         [base_raster_path_band[0]], [clipped_raster_path], ['near'],
         raster_info['pixel_size'], 'intersection',
         base_vector_path_list=[aggregate_vector_path], raster_align_index=0)
-    clipped_raster = gdal.OpenEx(clipped_raster_path)
+    clipped_raster = gdal.OpenEx(clipped_raster_path, gdal.OF_RASTER)
 
     # make a shapefile that non-overlapping layers can be added to
     driver = ogr.GetDriverByName('ESRI Shapefile')
@@ -1173,7 +1175,8 @@ def zonal_statistics(
     new_raster_from_base(
         clipped_raster_path, aggregate_id_raster_path, gdal.GDT_Int32,
         [aggregate_id_nodata])
-    aggregate_id_raster = gdal.OpenEx(aggregate_id_raster_path, gdal.GA_Update)
+    aggregate_id_raster = gdal.OpenEx(
+        aggregate_id_raster_path, gdal.GA_Update | gdal.OF_RASTER)
     aggregate_stats = {}
 
     for polygon_set in minimal_polygon_sets:
@@ -1197,8 +1200,6 @@ def zonal_statistics(
         # nodata out the mask
         aggregate_id_band = aggregate_id_raster.GetRasterBand(1)
         aggregate_id_band.Fill(aggregate_id_nodata)
-        aggregate_id_band = None
-
         gdal.RasterizeLayer(
             aggregate_id_raster, [1], disjoint_layer, **rasterize_layer_args)
         aggregate_id_raster.FlushCache()
@@ -1209,8 +1210,10 @@ def zonal_statistics(
 
         # create a key array
         # and parallel min, max, count, and nodata count arrays
-        for aggregate_id_offsets, aggregate_id_block in iterblocks(
-                aggregate_id_raster_path):
+        for aggregate_id_offsets in iterblocks(
+                aggregate_id_raster_path, offset_only=True):
+            aggregate_id_block = aggregate_id_band.ReadAsArray(
+                **aggregate_id_offsets)
             clipped_block = clipped_band.ReadAsArray(**aggregate_id_offsets)
             # guard against a None nodata type
             valid_mask = numpy.ones(aggregate_id_block.shape, dtype=bool)
@@ -1571,7 +1574,8 @@ def reclassify_raster(
 def warp_raster(
         base_raster_path, target_pixel_size, target_raster_path,
         resample_method, target_bb=None, target_sr_wkt=None,
-        gtiff_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS):
+        gtiff_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS,
+        n_threads=None):
     """Resize/resample raster to desired pixel size, bbox and projection.
 
     Parameters:
@@ -1591,12 +1595,14 @@ def warp_raster(
             Known Text format.
         gtiff_creation_options (list or tuple): list of strings that will be
             passed as GDAL "dataset" creation options to the GTIFF driver.
+        n_threads (int): optional, if not None this sets the `N_THREADS`
+            option for `gdal.Warp`.
 
     Returns:
         None
 
     """
-    base_raster = gdal.OpenEx(base_raster_path)
+    base_raster = gdal.OpenEx(base_raster_path, gdal.OF_RASTER)
     base_sr = osr.SpatialReference()
     base_sr.ImportFromWkt(base_raster.GetProjection())
 
@@ -1653,6 +1659,10 @@ def warp_raster(
     reproject_callback = _make_logger_callback(
         "Warp %.1f%% complete %s")
 
+    warp_options = []
+    if n_threads:
+        warp_options.append('NUM_THREADS=%d' % n_threads)
+
     base_raster = gdal.OpenEx(base_raster_path, gdal.OF_RASTER)
     gdal.Warp(
         target_raster_path, base_raster,
@@ -1662,8 +1672,8 @@ def warp_raster(
         resampleAlg=resample_method,
         outputBoundsSRS=target_sr_wkt,
         dstSRS=target_sr_wkt,
-        multithread=True,
-        warpOptions=['NUM_THREADS=ALL_CPUS'],
+        multithread=True if warp_options else False,
+        warpOptions=warp_options,
         creationOptions=gtiff_creation_options,
         callback=reproject_callback,
         callback_data=[target_raster_path])
@@ -1926,7 +1936,7 @@ def convolve_2d(
         target_datatype=gdal.GDT_Float64,
         target_nodata=None,
         gtiff_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS,
-        working_dir=None):
+        n_threads=1, working_dir=None):
     """Convolve 2D kernel over 2D signal.
 
     Convolves the raster in `kernel_path_band` over `signal_path_band`.
@@ -2014,7 +2024,8 @@ def convolve_2d(
             signal_path_band[0], mask_raster_path, gdal.GDT_Float32,
             [mask_nodata], fill_value_list=[0],
             gtiff_creation_options=gtiff_creation_options)
-        mask_raster = gdal.OpenEx(mask_raster_path, gdal.GA_Update)
+        mask_raster = gdal.OpenEx(
+            mask_raster_path, gdal.GA_Update | gdal.OF_RASTER)
         mask_band = mask_raster.GetRasterBand(1)
 
     LOGGER.info('starting convolve')
@@ -2028,17 +2039,22 @@ def convolve_2d(
             kernel_block[numpy.isclose(kernel_block, kernel_nodata)] = 0.0
         kernel_sum += numpy.sum(kernel_block)
 
-    n_workers = max(multiprocessing.cpu_count(), 1)
+    # process workers is 1 - number of threads because we count the current
+    # thread
+    if n_threads > 1:
+        WorkerConstructor = multiprocessing.Process
+    else:
+        WorkerConstructor = threading.Thread
 
     # limit the size of the write queue so we don't accidentally load a whole
     # array into memory, work queue is okay because it's only passing block
     # indexes
     work_queue = multiprocessing.Queue()
-    write_queue = multiprocessing.Queue(n_workers * 2)
+    write_queue = multiprocessing.Queue(n_threads * 2)
 
     worker_list = []
-    for worker_id in range(n_workers):
-        worker = multiprocessing.Process(
+    for worker_id in range(max(1, n_threads-1)):
+        worker = WorkerConstructor(
             target=_convolve_2d_worker,
             args=(
                 signal_path_band, kernel_path_band,
@@ -2053,12 +2069,12 @@ def convolve_2d(
         for kernel_offset in iterblocks(k_path_band[0], offset_only=True):
             work_queue.put((signal_offset, kernel_offset))
             n_blocks += 1
-    for _ in range(n_workers):
+    for _ in range(max(1, n_threads-1)):
         # signal end to worker
         work_queue.put(None)
 
     # used to count how many workers are still running
-    n_active_workers = n_workers
+    n_active_workers = max(1, n_threads-1)
     n_blocks_processed = 0
     while True:
         write_payload = write_queue.get()
@@ -2122,7 +2138,6 @@ def convolve_2d(
     LOGGER.info(
         "convolution worker 100.0%% complete on %s",
         os.path.basename(target_path))
-
     target_band.FlushCache()
     target_raster.FlushCache()
     if s_nodata is not None and ignore_nodata:
@@ -2131,10 +2146,11 @@ def convolve_2d(
         mask_pixels_processed = 0
         mask_band.FlushCache()
         mask_raster.FlushCache()
-        for target_data, target_block in iterblocks(
-                target_path, band_index_list=[1],
-                astype_list=[_gdal_type_to_numpy_lookup[target_datatype]]):
-            mask_block = mask_band.ReadAsArray(**target_data)
+        for target_offset_data in iterblocks(target_path, offset_only=True):
+            target_block = target_band.ReadAsArray(
+                **target_offset_data).astype(
+                    _gdal_type_to_numpy_lookup[target_datatype])
+            mask_block = mask_band.ReadAsArray(**target_offset_data)
             if base_signal_nodata is not None and mask_nodata:
                 valid_mask = ~numpy.isclose(target_block, target_nodata)
             else:
@@ -2148,8 +2164,8 @@ def convolve_2d(
                 target_block[valid_mask] *= kernel_sum
 
             target_band.WriteArray(
-                target_block, xoff=target_data['xoff'],
-                yoff=target_data['yoff'])
+                target_block, xoff=target_offset_data['xoff'],
+                yoff=target_offset_data['yoff'])
 
             mask_pixels_processed += target_block.size
             last_time = _invoke_timed_callback(
@@ -2168,6 +2184,13 @@ def convolve_2d(
 
     for worker in worker_list:
         worker.join(_MAX_TIMEOUT)
+        if n_threads > 1:
+            worker.terminate()
+    target_band.FlushCache()
+    target_raster.FlushCache()
+    gdal.Dataset.__swig_destroy__(target_raster)
+    target_band = None
+    target_raster = None
 
 
 def iterblocks(

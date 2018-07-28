@@ -1,6 +1,23 @@
 Release History
 ===============
 
+1.2.3 (7/25/2018)
+-----------------
+* Exposing a parameter and setting reasonable defaults for the number of
+  processes to allocate to ``convolve_2d`` and ``warp_raster``. Fixes an issue
+  where the number of processes could exponentiate if many processes were
+  calling these functions.
+* Fixing an issue on ``zonal_statistics`` and ``convolve_2d`` that would
+  attempt to both read and write to the target raster with two different GDAL
+  objects. This caused an issue on Linux where the read file was not caught up
+  with the written one. Refactored to use only one handle.
+* Fixing a rare race condition where an exception could occur in
+  ``raster_calculator`` that would be obscured by an access to an object that
+  had not yet been assigned.
+* ``align_and_resize_raster_stack`` now terminates its process pool.
+* Increased the timeout in joining ``raster_calculator``'s stats worker.
+  On a slow system 5 seconds was not quite enough time.
+
 1.2.2 (7/25/2018)
 -----------------
 * Hotfixed a bug that would cause numpy arrays to be treated as broadcastable
