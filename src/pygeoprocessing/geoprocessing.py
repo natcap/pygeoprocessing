@@ -1969,6 +1969,11 @@ def convolve_2d(
         gtiff_creation_options (list): an argument list that will be
             passed to the GTiff driver for creating `target_path`.  Useful for
             blocksizes, compression, and more.
+        n_threads (int): number of computational threads to devote to
+            convolution. A value of 1 will have a single thread calculate the
+            FFTs and read from/write to disk. Any value > 1 will spawn
+            processes to calculate separable FFTs in parallel while one thread
+            manages the reads and writes.
          working_dir (string): If not None, indicates where temporary files
             should be created during this run.
 
