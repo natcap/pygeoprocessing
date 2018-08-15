@@ -78,7 +78,7 @@ _RESAMPLE_DICT = {
     "near": gdal.GRA_NearestNeighbour,
     "bilinear": gdal.GRA_Bilinear,
     "cubic": gdal.GRA_Cubic,
-    "cubic_spline": gdal.GRA_CubicSpline,
+    "cubicspline": gdal.GRA_CubicSpline,
     "lanczos": gdal.GRA_Lanczos,
     'mode': gdal.GRA_Mode,
     'average': gdal.GRA_Average,
@@ -518,7 +518,7 @@ def align_and_resize_raster_stack(
         resample_method_list (list): a list of resampling methods which
             one to one map each path in `base_raster_path_list` during
             resizing.  Each element must be one of
-            "near|bilinear|cubic|cubic_spline|lanczos|mode".
+            "near|bilinear|cubic|cubicspline|lanczos|mode".
         target_pixel_size (tuple): the target raster's x and y pixel size
             example: [30, -30].
         bounding_box_mode (string): one of "union", "intersection", or
