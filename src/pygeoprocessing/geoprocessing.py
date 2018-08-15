@@ -1433,6 +1433,7 @@ def reproject_vector(
 
     # create a new shapefile from the orginal_datasource
     target_driver = ogr.GetDriverByName(driver_name)
+    LOGGER.debug("creating datasource")
     target_vector = target_driver.CreateDataSource(target_path)
 
     layer = base_vector.GetLayer(layer_index)
@@ -1440,6 +1441,7 @@ def reproject_vector(
 
     # Create new layer for target_vector using same name and
     # geometry type from base vector but new projection
+    LOGGER.debug("creating layer")
     target_layer = target_vector.CreateLayer(
         layer_dfn.GetName(), target_sr, layer_dfn.GetGeomType())
 
@@ -1448,6 +1450,7 @@ def reproject_vector(
 
     # For every field, create a duplicate field in the new layer
     for fld_index in range(original_field_count):
+        LOGGER.debug("creating field %d", fld_index)
         original_field = layer_dfn.GetFieldDefn(fld_index)
         target_field = ogr.FieldDefn(
             original_field.GetName(), original_field.GetType())
@@ -1460,8 +1463,18 @@ def reproject_vector(
     coord_trans = osr.CoordinateTransformation(base_sr, target_sr)
 
     # Copy all of the features in layer to the new shapefile
+    target_layer.StartTransaction()
     error_count = 0
-    for base_feature in layer:
+    last_time = time.time()
+    for feature_index, base_feature in enumerate(layer):
+        LOGGER.debug(feature_index)
+        last_time = _invoke_timed_callback(
+            last_time, lambda: LOGGER.info(
+                "reprojection approximately %.1f%% complete on %s",
+                100.0 * float(feature_index+1) / (layer.GetFeatureCount()),
+                os.path.basename(target_path)),
+            _LOGGING_PERIOD)
+
         geom = base_feature.GetGeometryRef()
         if geom is None:
             # we encountered this error occasionally when transforming clipped
@@ -1493,6 +1506,9 @@ def reproject_vector(
         target_layer.CreateFeature(target_feature)
         target_feature = None
         base_feature = None
+    target_layer.CommitTransaction()
+    LOGGER.info(
+        "reprojection 100.0%% complete on %s", os.path.basename(target_path))
     if error_count > 0:
         LOGGER.warn(
             '%d features out of %d were unable to be transformed and are'
