@@ -1179,7 +1179,15 @@ def zonal_statistics(
         aggregate_id_raster_path, gdal.GA_Update | gdal.OF_RASTER)
     aggregate_stats = {}
 
-    for polygon_set in minimal_polygon_sets:
+    last_time = time.time()
+    LOGGER.info("processing %d polygon sets", len(minimal_polygon_sets))
+    for set_index, polygon_set in enumerate(minimal_polygon_sets):
+        last_time = _invoke_timed_callback(
+            last_time, lambda: LOGGER.info(
+                "zonal stats approximately %.1f%% complete on %s",
+                100.0 * float(set_index+1) / len(minimal_polygon_sets),
+                os.path.basename(aggregate_vector_path)),
+            _LOGGING_PERIOD)
         disjoint_layer = disjoint_vector.CreateLayer(
             'disjoint_vector', spat_ref, ogr.wkbPolygon)
         disjoint_layer.CreateField(local_aggregate_field_def)
