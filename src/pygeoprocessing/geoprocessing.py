@@ -1151,12 +1151,11 @@ def zonal_statistics(
     # original datasource even if we don't pick up a value later
     LOGGER.info("build a lookup of aggregate field value to FID")
     base_to_local_aggregate_value = {}
-    for feature in aggregate_layer:
-        aggregate_field_value = feature.GetField(aggregate_field_name)
-        # this builds up a map of aggregate field values to unique ids
-        if aggregate_field_value not in base_to_local_aggregate_value:
-            base_to_local_aggregate_value[aggregate_field_value] = len(
-                base_to_local_aggregate_value)
+
+    base_to_local_aggregate_value = dict(
+        [(field_value, field_index) for field_index, field_value in enumerate(
+            set([feature.GetField(aggregate_field_name)
+                 for feature in aggregate_layer]))])
     aggregate_layer.ResetReading()
 
     # Loop over each polygon and aggregate
