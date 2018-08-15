@@ -1800,15 +1800,15 @@ def calculate_disjoint_polygon_set(vector_path, layer_index=0):
     last_time = time.time()
     LOGGER.info("build shapely polygon list")
 
-    shapely_polygon_list = [
+    shapely_polygon_lookup = dict([
         (poly_feat.GetFID(),
          shapely.wkb.loads(poly_feat.GetGeometryRef().ExportToWkb()))
-        for poly_feat in vector_layer]
+        for poly_feat in vector_layer])
 
     LOGGER.info("build shapely rtree index")
     poly_rtree_index = rtree.index.Index(
         [(poly_fid, poly.bounds, None)
-         for poly_fid, poly in shapely_polygon_list])
+         for poly_fid, poly in shapely_polygon_lookup.items()])
 
     vector_layer = None
     vector = None
@@ -1818,21 +1818,24 @@ def calculate_disjoint_polygon_set(vector_path, layer_index=0):
 
     LOGGER.info('build poly intersection lookup')
     poly_intersect_lookup = collections.defaultdict(set)
-    for poly_index, (poly_fid, poly_geom) in enumerate(shapely_polygon_list):
+    for poly_index, (poly_fid, poly_geom) in enumerate(
+            shapely_polygon_lookup.items()):
         last_time = _invoke_timed_callback(
             last_time, lambda: LOGGER.info(
                 "poly intersection lookup approximately %.1f%% complete "
                 "on %s", 100.0 * float(poly_index+1) / len(
-                    shapely_polygon_list), os.path.basename(vector_path)),
+                    shapely_polygon_lookup), os.path.basename(vector_path)),
             _LOGGING_PERIOD)
-        possible_intersection_set = poly_rtree_index.intersection(
-            poly_geom.bounds)
-        if not possible_intersection_set:
-            continue
-        polygon = shapely.prepared.prep(poly_geom)
+        possible_intersection_set = list(poly_rtree_index.intersection(
+            poly_geom.bounds))
+        # no reason to prep the polygon to intersect itself
+        if len(possible_intersection_set) > 1:
+            polygon = shapely.prepared.prep(poly_geom)
+        else:
+            polygon = poly_geom
         for intersect_poly_fid in possible_intersection_set:
             if intersect_poly_fid == poly_fid or polygon.intersects(
-                    shapely_polygon_list[intersect_poly_fid][1]):
+                    shapely_polygon_lookup[intersect_poly_fid]):
                 poly_intersect_lookup[poly_fid].add(intersect_poly_fid)
         polygon = None
     LOGGER.info(
