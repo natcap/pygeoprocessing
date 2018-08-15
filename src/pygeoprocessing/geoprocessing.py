@@ -1433,7 +1433,6 @@ def reproject_vector(
 
     # create a new shapefile from the orginal_datasource
     target_driver = ogr.GetDriverByName(driver_name)
-    LOGGER.debug("creating datasource")
     target_vector = target_driver.CreateDataSource(target_path)
 
     layer = base_vector.GetLayer(layer_index)
@@ -1441,7 +1440,6 @@ def reproject_vector(
 
     # Create new layer for target_vector using same name and
     # geometry type from base vector but new projection
-    LOGGER.debug("creating layer")
     target_layer = target_vector.CreateLayer(
         layer_dfn.GetName(), target_sr, layer_dfn.GetGeomType())
 
@@ -1450,7 +1448,6 @@ def reproject_vector(
 
     # For every field, create a duplicate field in the new layer
     for fld_index in range(original_field_count):
-        LOGGER.debug("creating field %d", fld_index)
         original_field = layer_dfn.GetFieldDefn(fld_index)
         target_field = ogr.FieldDefn(
             original_field.GetName(), original_field.GetType())
@@ -1466,8 +1463,8 @@ def reproject_vector(
     target_layer.StartTransaction()
     error_count = 0
     last_time = time.time()
+    LOGGER.info("starting reprojection")
     for feature_index, base_feature in enumerate(layer):
-        LOGGER.debug(feature_index)
         last_time = _invoke_timed_callback(
             last_time, lambda: LOGGER.info(
                 "reprojection approximately %.1f%% complete on %s",
