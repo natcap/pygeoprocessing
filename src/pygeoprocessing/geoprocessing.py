@@ -46,6 +46,7 @@ import pprint
 from osgeo import gdal
 from osgeo import osr
 from osgeo import ogr
+import rtree
 import numpy
 import numpy.ma
 import scipy.interpolate
@@ -1794,10 +1795,13 @@ def calculate_disjoint_polygon_set(vector_path, layer_index=0):
     vector = gdal.OpenEx(vector_path)
     vector_layer = vector.GetLayer(layer_index)
 
+    poly_rtree_index = rtree.index.Index()
     poly_intersect_lookup = {}
     for poly_feat in vector_layer:
         poly_wkt = poly_feat.GetGeometryRef().ExportToWkt()
         shapely_polygon = shapely.wkt.loads(poly_wkt)
+        poly_rtree_index.insert(
+            poly_feat.GetFID(), shapely_polygon.bounds)
         poly_wkt = None
         poly_fid = poly_feat.GetFID()
         poly_intersect_lookup[poly_fid] = {
@@ -1808,9 +1812,10 @@ def calculate_disjoint_polygon_set(vector_path, layer_index=0):
     vector = None
 
     for poly_fid in poly_intersect_lookup:
-        polygon = shapely.prepared.prep(
-            poly_intersect_lookup[poly_fid]['poly'])
-        for intersect_poly_fid in poly_intersect_lookup:
+        current_poly = poly_intersect_lookup[poly_fid]['poly']
+        polygon = shapely.prepared.prep(current_poly)
+        for intersect_poly_fid in poly_rtree_index.intersection(
+                current_poly.bounds):
             if intersect_poly_fid == poly_fid or polygon.intersects(
                     poly_intersect_lookup[intersect_poly_fid]['poly']):
                 poly_intersect_lookup[poly_fid]['intersects'].add(
