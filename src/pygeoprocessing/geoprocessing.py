@@ -1147,6 +1147,7 @@ def zonal_statistics(
 
     # Initialize these dictionaries to have the shapefile fields in the
     # original datasource even if we don't pick up a value later
+    LOGGER.info("build a lookup of aggregate field value to FID")
     base_to_local_aggregate_value = {}
     for feature in aggregate_layer:
         aggregate_field_value = feature.GetField(aggregate_field_name)
@@ -1158,6 +1159,7 @@ def zonal_statistics(
 
     # Loop over each polygon and aggregate
     if polygons_might_overlap:
+        LOGGER.info("creating disjoint polygon set")
         minimal_polygon_sets = calculate_disjoint_polygon_set(
             aggregate_vector_path)
     else:
