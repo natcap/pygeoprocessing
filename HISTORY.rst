@@ -1,6 +1,14 @@
 Release History
 ===============
 
+Unreleased Changes
+------------------
+* Fixed a handful of docstring errors.
+* Improved runtime of ``zonal_statistics`` by a couple of orders of magnitude
+  for large vectors by using spatial indexes when calculating disjoint polygon
+  overlap sets, using database transactions, and memory buffers.
+* Improved logging for long runtimes in ``zonal_statistics``.
+
 1.2.3 (7/25/2018)
 -----------------
 * Exposing a parameter and setting reasonable defaults for the number of

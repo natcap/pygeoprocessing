@@ -1839,14 +1839,6 @@ def calculate_disjoint_polygon_set(vector_path, layer_index=0):
     # Build maximal subsets
     subset_list = []
     while len(poly_intersect_lookup) > 0:
-        last_time = _invoke_timed_callback(
-            last_time, lambda: LOGGER.info(
-                "maximal subset build approximately %.1f%% complete "
-                "on %s", 100.0 * float(
-                    feature_count - len(poly_intersect_lookup)) /
-                feature_count, os.path.basename(vector_path)),
-            _LOGGING_PERIOD)
-
         # sort polygons by increasing number of intersections
         intersections_list = [
             (len(poly_intersect_set), poly_fid, poly_intersect_set)
