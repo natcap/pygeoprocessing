@@ -9,10 +9,8 @@ from builtins import zip
 from builtins import range
 import logging
 import os
-import shutil
 import functools
 import math
-import heapq
 import time
 import tempfile
 import uuid
