@@ -1098,7 +1098,7 @@ def zonal_statistics(
         raise ValueError(
             "`base_raster_path_band` not formatted as expected.  Expects "
             "(path, band_index), recieved %s" % repr(base_raster_path_band))
-    aggregate_vector = gdal.OpenEx(aggregate_vector_path)
+    aggregate_vector = gdal.OpenEx(aggregate_vector_path, gdal.OF_VECTOR)
     if aggregate_layer_name is not None:
         aggregate_layer = aggregate_vector.GetLayerByName(
             aggregate_layer_name)
@@ -1141,10 +1141,8 @@ def zonal_statistics(
     clipped_raster = gdal.OpenEx(clipped_raster_path, gdal.OF_RASTER)
 
     # make a shapefile that non-overlapping layers can be added to
-    driver = ogr.GetDriverByName('ESRI Shapefile')
-    disjoint_vector_dir = tempfile.mkdtemp(dir=working_dir)
-    disjoint_vector = driver.CreateDataSource(
-        os.path.join(disjoint_vector_dir, 'disjoint_vector.shp'))
+    driver = ogr.GetDriverByName('MEMORY')
+    disjoint_vector = driver.CreateDataSource('disjoint_vector')
     spat_ref = aggregate_layer.GetSpatialRef()
 
     # Initialize these dictionaries to have the shapefile fields in the
@@ -1196,17 +1194,11 @@ def zonal_statistics(
         disjoint_layer_defn = disjoint_layer.GetLayerDefn()
         disjoint_layer.CreateField(local_aggregate_field_def)
         # add polygons to subset_layer
-        LOGGER.debug('add polygons to subset layer')
         disjoint_layer.StartTransaction()
         for index, poly_fid in enumerate(polygon_set):
             poly_feat = aggregate_layer.GetFeature(poly_fid)
             new_feat = ogr.Feature(disjoint_layer_defn)
             new_feat.SetGeometry(poly_feat.GetGeometryRef().Clone())
-            #disjoint_layer.CreateFeature(poly_feat)
-            # we seem to need to reload the feature and set the index because
-            # just copying over the feature left indexes as all 0s.  Not sure
-            # why.
-            #new_feat = disjoint_layer.GetFeature(index)
             new_feat.SetField(
                 local_aggregate_field_name, base_to_local_aggregate_value[
                     poly_feat.GetField(aggregate_field_name)])
@@ -1215,7 +1207,6 @@ def zonal_statistics(
         disjoint_layer.SyncToDisk()
 
         # nodata out the mask
-        LOGGER.debug('rasterize layer')
         aggregate_id_band = aggregate_id_raster.GetRasterBand(1)
         aggregate_id_band.Fill(aggregate_id_nodata)
         gdal.RasterizeLayer(
@@ -1228,7 +1219,6 @@ def zonal_statistics(
 
         # create a key array
         # and parallel min, max, count, and nodata count arrays
-        LOGGER.debug('collect stats')
         for aggregate_id_offsets in iterblocks(
                 aggregate_id_raster_path, offset_only=True):
             aggregate_id_block = aggregate_id_band.ReadAsArray(
@@ -1286,7 +1276,6 @@ def zonal_statistics(
     disjoint_vector = None
     for filename in [aggregate_id_raster_path, clipped_raster_path]:
         os.remove(filename)
-    shutil.rmtree(disjoint_vector_dir)
 
     # map the local ids back to the original base value
     local_to_base_aggregate_value = {
