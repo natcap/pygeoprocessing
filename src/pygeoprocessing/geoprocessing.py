@@ -1194,6 +1194,13 @@ def zonal_statistics(
         # add polygons to subset_layer
         disjoint_layer.StartTransaction()
         for index, poly_fid in enumerate(polygon_set):
+            last_time = _invoke_timed_callback(
+                last_time, lambda: LOGGER.info(
+                    "polygon set %d of %d approximately %.1f%% processed "
+                    "on %s", set_index+1, len(minimal_polygon_sets),
+                    100.0 * float(index+1) / len(polygon_set),
+                    os.path.basename(aggregate_vector_path)),
+                _LOGGING_PERIOD)
             poly_feat = aggregate_layer.GetFeature(poly_fid)
             new_feat = ogr.Feature(disjoint_layer_defn)
             new_feat.SetGeometry(poly_feat.GetGeometryRef().Clone())
@@ -1203,12 +1210,25 @@ def zonal_statistics(
             disjoint_layer.CreateFeature(new_feat)
         disjoint_layer.CommitTransaction()
         disjoint_layer.SyncToDisk()
+        LOGGER.info(
+            "polygon set %d of %d 100.0%% processed on %s", set_index+1,
+            len(minimal_polygon_sets),
+            100.0 * float(index+1) / len(polygon_set),
+            os.path.basename(aggregate_vector_path))
 
         # nodata out the mask
         aggregate_id_band = aggregate_id_raster.GetRasterBand(1)
         aggregate_id_band.Fill(aggregate_id_nodata)
+        LOGGER.info(
+            "rasterizing polygon set %d of %d %s", set_index+1,
+            len(minimal_polygon_sets),
+            os.path.basename(aggregate_vector_path))
+        rasterize_callback = _make_logger_callback(
+            "rasterizing polygon " + str(set_index+1) + " of " +
+            str(len(polygon_set)) + " set %.1f%% complete")
         gdal.RasterizeLayer(
-            aggregate_id_raster, [1], disjoint_layer, **rasterize_layer_args)
+            aggregate_id_raster, [1], disjoint_layer,
+            callback=rasterize_callback, **rasterize_layer_args)
         aggregate_id_raster.FlushCache()
 
         # Delete the features we just added to the subset_layer
@@ -1217,6 +1237,10 @@ def zonal_statistics(
 
         # create a key array
         # and parallel min, max, count, and nodata count arrays
+        LOGGER.info(
+            "summarizing rasterized polygon set %d of %d %s", set_index+1,
+            len(minimal_polygon_sets),
+            os.path.basename(aggregate_vector_path))
         for aggregate_id_offsets in iterblocks(
                 aggregate_id_raster_path, offset_only=True):
             aggregate_id_block = aggregate_id_band.ReadAsArray(
@@ -1265,6 +1289,10 @@ def zonal_statistics(
                     masked_clipped_block.size)
                 aggregate_stats[aggregate_id]['sum'] += numpy.sum(
                     masked_clipped_block)
+
+    LOGGER.info(
+        "all done processing polygon sets for %s", os.path.basename(
+            aggregate_vector_path))
 
     # clean up temporary files
     clipped_band = None
