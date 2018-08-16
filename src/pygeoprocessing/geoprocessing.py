@@ -1213,7 +1213,6 @@ def zonal_statistics(
         LOGGER.info(
             "polygon set %d of %d 100.0%% processed on %s", set_index+1,
             len(minimal_polygon_sets),
-            100.0 * float(index+1) / len(polygon_set),
             os.path.basename(aggregate_vector_path))
 
         # nodata out the mask
