@@ -1193,22 +1193,29 @@ def zonal_statistics(
             _LOGGING_PERIOD)
         disjoint_layer = disjoint_vector.CreateLayer(
             'disjoint_vector', spat_ref, ogr.wkbPolygon)
+        disjoint_layer_defn = disjoint_layer.GetLayerDefn()
         disjoint_layer.CreateField(local_aggregate_field_def)
         # add polygons to subset_layer
+        LOGGER.debug('add polygons to subset layer')
+        disjoint_layer.StartTransaction()
         for index, poly_fid in enumerate(polygon_set):
             poly_feat = aggregate_layer.GetFeature(poly_fid)
-            disjoint_layer.CreateFeature(poly_feat)
+            new_feat = ogr.Feature(disjoint_layer_defn)
+            new_feat.SetGeometry(poly_feat.GetGeometryRef().Clone())
+            #disjoint_layer.CreateFeature(poly_feat)
             # we seem to need to reload the feature and set the index because
             # just copying over the feature left indexes as all 0s.  Not sure
             # why.
-            new_feat = disjoint_layer.GetFeature(index)
+            #new_feat = disjoint_layer.GetFeature(index)
             new_feat.SetField(
                 local_aggregate_field_name, base_to_local_aggregate_value[
                     poly_feat.GetField(aggregate_field_name)])
-            disjoint_layer.SetFeature(new_feat)
+            disjoint_layer.CreateFeature(new_feat)
+        disjoint_layer.CommitTransaction()
         disjoint_layer.SyncToDisk()
 
         # nodata out the mask
+        LOGGER.debug('rasterize layer')
         aggregate_id_band = aggregate_id_raster.GetRasterBand(1)
         aggregate_id_band.Fill(aggregate_id_nodata)
         gdal.RasterizeLayer(
@@ -1221,6 +1228,7 @@ def zonal_statistics(
 
         # create a key array
         # and parallel min, max, count, and nodata count arrays
+        LOGGER.debug('collect stats')
         for aggregate_id_offsets in iterblocks(
                 aggregate_id_raster_path, offset_only=True):
             aggregate_id_block = aggregate_id_band.ReadAsArray(
