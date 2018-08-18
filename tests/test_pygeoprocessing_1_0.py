@@ -6,6 +6,9 @@ import unittest
 import shutil
 import types
 import sys
+import logging
+
+LOGGER = logging.getLogger(__name__)
 
 from osgeo import gdal
 from osgeo import ogr
@@ -227,6 +230,71 @@ class PyGeoprocessing10(unittest.TestCase):
         self.assertTrue(
             osr.SpatialReference(result_reference.ExportToWkt()).IsSame(
                 osr.SpatialReference(target_reference.ExportToWkt())))
+
+    def test_zonal_stats_for_small_polygons(self):
+        """PGP.geoprocessing: test small polygons for zonal stats."""
+        gpkg_driver = ogr.GetDriverByName('GPKG')
+        vector_path = 'small_vector.gpkg' #os.path.join(self.workspace_dir, 'small_vector.gpkg')
+        vector = gpkg_driver.CreateDataSource(vector_path)
+
+        srs = osr.SpatialReference()
+        srs.ImportFromEPSG(4326)
+        layer = vector.CreateLayer('small_vector', srs=srs)
+        layer.CreateField(ogr.FieldDefn('id', ogr.OFTInteger))
+        layer_defn = layer.GetLayerDefn()
+
+        # make an n x n raster with 2*m x 2*m polygons inside.
+        pixel_size = 1.0
+        subpixel_size = 1./5. * pixel_size
+        origin_x = 1.0
+        origin_y = -1.0
+        n = 32
+        layer.StartTransaction()
+        for row_index in range(n * 2):
+            for col_index in range(n * 2):
+                x_pos = origin_x + (
+                    col_index*2 + 1 + col_index // 2) * subpixel_size
+                y_pos = origin_y - (
+                    row_index*2 + 1 + row_index // 2) * subpixel_size
+                shapely_feature = shapely.geometry.Polygon([
+                    (x_pos, y_pos),
+                    (x_pos+subpixel_size, y_pos),
+                    (x_pos+subpixel_size, y_pos-subpixel_size),
+                    (x_pos, y_pos-subpixel_size),
+                    (x_pos, y_pos)])
+                new_feature = ogr.Feature(layer_defn)
+                new_geometry = ogr.CreateGeometryFromWkb(shapely_feature.wkb)
+                new_feature.SetGeometry(new_geometry)
+                feature_index = row_index // 2 * n + col_index // 2
+                new_feature.SetField('id', feature_index)
+                layer.CreateFeature(new_feature)
+        layer.CommitTransaction()
+        layer.SyncToDisk()
+        vector.SyncToDisk()
+        layer = None
+        vector = None
+
+        gtiff_driver = gdal.GetDriverByName('GTiff')
+        raster_path = 'small_raster.tif'
+        new_raster = gtiff_driver.Create(
+            raster_path, n, n, 1, gdal.GDT_Int32, options=[
+                'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
+                'BLOCKXSIZE=16', 'BLOCKYSIZE=16'])
+        new_raster.SetProjection(srs.ExportToWkt())
+        new_raster.SetGeoTransform([origin_x, 1.0, 0.0, origin_y, 0.0, -1.0])
+        new_band = new_raster.GetRasterBand(1)
+        new_band.SetNoDataValue(-1)
+        array = numpy.array(range(n*n), dtype=numpy.int32).reshape((n, n))
+        new_band.WriteArray(array)
+        new_raster.FlushCache()
+        new_band = None
+        new_raster = None
+
+        zonal_stats = pygeoprocessing.zonal_statistics(
+            (raster_path, 1), vector_path, 'id', all_touched=True)
+        self.assertEqual(len(zonal_stats), n*n)
+        for poly_id in zonal_stats:
+            self.assertEqual(poly_id * 4, zonal_stats[poly_id]['sum'])
 
     def test_zonal_statistics(self):
         """PGP.geoprocessing: test zonal stats function."""
