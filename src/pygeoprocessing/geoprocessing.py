@@ -1147,8 +1147,8 @@ def zonal_statistics(
     base_to_local_aggregate_value = {}
 
     base_to_local_aggregate_value = dict(
-        [(field_value, field_index) for field_index, field_value in enumerate(
-            set([feature.GetField(aggregate_field_name)
+        [(field_value, field_index) for field_index, field_value in (
+            set([(feature.GetFID(), feature.GetField(aggregate_field_name))
                  for feature in aggregate_layer]))])
     aggregate_layer.ResetReading()
 
@@ -1170,7 +1170,7 @@ def zonal_statistics(
             delete=False, dir=working_dir) as aggregate_id_raster_file:
         aggregate_id_raster_path = aggregate_id_raster_file.name
 
-    aggregate_id_nodata = len(base_to_local_aggregate_value)
+    aggregate_id_nodata = -1
     new_raster_from_base(
         clipped_raster_path, aggregate_id_raster_path, gdal.GDT_Int32,
         [aggregate_id_nodata])
@@ -1292,6 +1292,54 @@ def zonal_statistics(
     unset_fids = aggregate_layer_fid_set.difference(aggregate_stats)
     LOGGER.debug(
         "unset_fids: %s of %s ", len(unset_fids),
+        len(aggregate_layer_fid_set))
+    clipped_gt = clipped_raster.GetGeoTransform()
+    for unset_fid in unset_fids:
+        unset_feat = aggregate_layer.GetFeature(unset_fid)
+        unset_geom = shapely.wkb.loads(
+            unset_feat.GetGeometryRef().ExportToWkb())
+        xoff = int((unset_geom.bounds[0] - clipped_gt[0]) / clipped_gt[1])
+        yoff = int((unset_geom.bounds[1] - clipped_gt[3]) / clipped_gt[5])
+        win_xsize = int(numpy.ceil(
+            (unset_geom.bounds[2] - clipped_gt[0]) / clipped_gt[1])) - xoff
+        win_ysize = int(numpy.ceil(
+            (unset_geom.bounds[3] - clipped_gt[3]) / clipped_gt[5])) - yoff
+        #LOGGER.debug("%d %d %d %d", xoff, yoff, win_xsize, win_ysize)
+        unset_fid_block = clipped_band.ReadAsArray(
+            xoff=xoff, yoff=yoff, win_xsize=win_xsize, win_ysize=win_ysize)
+        for block_y in range(unset_fid_block.shape[0]):
+            for block_x in range(unset_fid_block.shape[1]):
+                x_min = clipped_gt[0] + clipped_gt[1] * (block_x+xoff)
+                y_min = clipped_gt[3] + clipped_gt[5] * (block_y+yoff)
+                x_max = clipped_gt[0] + clipped_gt[1] * (block_x+xoff+1)
+                y_max = clipped_gt[3] + clipped_gt[5] * (block_y+yoff+1)
+                if x_max < x_min:
+                    x_min, x_max = x_max, x_min
+                if y_max < y_min:
+                    y_min, y_max = y_max, y_min
+                pixel_box = shapely.geometry.box(x_min, y_min, x_max, y_max)
+                intersection_area = pixel_box.intersection(unset_geom).area
+                if intersection_area > 0:
+                    val = unset_fid_block[block_x, block_y]
+                    if unset_fid not in aggregate_stats:
+                        aggregate_stats[unset_fid] = {
+                                'min': val,
+                                'max': val,
+                                'count': 0,
+                                'nodata_count': 0,
+                                'sum': 0.0
+                            }
+                    aggregate_stats[unset_fid]['min'] = min(
+                        val, aggregate_stats[unset_fid]['min'])
+                    aggregate_stats[unset_fid]['max'] = max(
+                        val, aggregate_stats[unset_fid]['max'])
+                    aggregate_stats[unset_fid]['count'] += 1
+                    aggregate_stats[unset_fid]['sum'] += val
+        #LOGGER.debug(unset_fid_block)
+
+    unset_fids = aggregate_layer_fid_set.difference(aggregate_stats)
+    LOGGER.debug(
+        "remaining unset_fids: %s of %s ", len(unset_fids),
         len(aggregate_layer_fid_set))
 
     LOGGER.info(
