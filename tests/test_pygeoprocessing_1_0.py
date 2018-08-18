@@ -291,7 +291,7 @@ class PyGeoprocessing10(unittest.TestCase):
         new_raster = None
 
         zonal_stats = pygeoprocessing.zonal_statistics(
-            (raster_path, 1), vector_path, 'id', all_touched=True)
+            (raster_path, 1), vector_path, 'id')
         self.assertEqual(len(zonal_stats), n*n)
         for poly_id in zonal_stats:
             self.assertEqual(poly_id * 4, zonal_stats[poly_id]['sum'])

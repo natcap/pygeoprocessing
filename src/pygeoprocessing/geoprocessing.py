@@ -1040,7 +1040,7 @@ def interpolate_points(
 def zonal_statistics(
         base_raster_path_band, aggregate_vector_path,
         aggregate_field_name, aggregate_layer_name=None,
-        ignore_nodata=True, all_touched=False, polygons_might_overlap=True,
+        ignore_nodata=True, polygons_might_overlap=True,
         working_dir=None):
     """Collect stats on pixel values which lie within polygons.
 
@@ -1075,8 +1075,6 @@ def zonal_statistics(
             calculating min, max, count, or mean.  However, the value of
             `nodata_count` will always be the number of nodata pixels
             aggregated under the polygon.
-        all_touched (boolean): if true will account for any pixel whose
-            geometry passes through the pixel, not just the center point.
         polygons_might_overlap (boolean): if True the function calculates
             aggregation coverage close to optimally by rasterizing sets of
             polygons that don't overlap.  However, this step can be
@@ -1120,7 +1118,7 @@ def zonal_statistics(
     # Adding the rasterize by attribute option
     rasterize_layer_args = {
         'options': [
-            'ALL_TOUCHED=%s' % str(all_touched).upper(),
+            'ALL_TOUCHED=TRUE',
             'ATTRIBUTE=%s' % local_aggregate_field_name]
         }
 
@@ -1154,14 +1152,16 @@ def zonal_statistics(
                  for feature in aggregate_layer]))])
     aggregate_layer.ResetReading()
 
+    aggregate_layer_fid_set = set(
+        [feat.GetFID() for feat in aggregate_layer])
+
     # Loop over each polygon and aggregate
     if polygons_might_overlap:
         LOGGER.info("creating disjoint polygon set")
         minimal_polygon_sets = calculate_disjoint_polygon_set(
             aggregate_vector_path)
     else:
-        minimal_polygon_sets = [
-            set([feat.GetFID() for feat in aggregate_layer])]
+        minimal_polygon_sets = aggregate_layer_fid_set
 
     clipped_band = clipped_raster.GetRasterBand(base_raster_path_band[1])
 
@@ -1288,6 +1288,11 @@ def zonal_statistics(
                     masked_clipped_block.size)
                 aggregate_stats[aggregate_id]['sum'] += numpy.sum(
                     masked_clipped_block)
+
+    unset_fids = aggregate_layer_fid_set.difference(aggregate_stats)
+    LOGGER.debug(
+        "unset_fids: %s of %s ", len(unset_fids),
+        len(aggregate_layer_fid_set))
 
     LOGGER.info(
         "all done processing polygon sets for %s", os.path.basename(
