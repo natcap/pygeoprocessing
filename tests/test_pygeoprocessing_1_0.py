@@ -240,7 +240,7 @@ class PyGeoprocessing10(unittest.TestCase):
         srs = osr.SpatialReference()
         srs.ImportFromEPSG(4326)
         layer = vector.CreateLayer('small_vector', srs=srs)
-        layer.CreateField(ogr.FieldDefn('id', ogr.OFTInteger))
+        layer.CreateField(ogr.FieldDefn('expected_value', ogr.OFTInteger))
         layer_defn = layer.GetLayerDefn()
 
         # make an n x n raster with 2*m x 2*m polygons inside.
@@ -265,14 +265,11 @@ class PyGeoprocessing10(unittest.TestCase):
                 new_feature = ogr.Feature(layer_defn)
                 new_geometry = ogr.CreateGeometryFromWkb(shapely_feature.wkb)
                 new_feature.SetGeometry(new_geometry)
-                feature_index = row_index // 2 * n + col_index // 2
-                new_feature.SetField('id', feature_index)
+                expected_value = row_index // 2 * n + col_index // 2
+                new_feature.SetField('expected_value', expected_value)
                 layer.CreateFeature(new_feature)
         layer.CommitTransaction()
         layer.SyncToDisk()
-        vector.SyncToDisk()
-        layer = None
-        vector = None
 
         gtiff_driver = gdal.GetDriverByName('GTiff')
         raster_path = 'small_raster.tif'
@@ -291,10 +288,13 @@ class PyGeoprocessing10(unittest.TestCase):
         new_raster = None
 
         zonal_stats = pygeoprocessing.zonal_statistics(
-            (raster_path, 1), vector_path, 'id')
-        self.assertEqual(len(zonal_stats), n*n)
+            (raster_path, 1), vector_path)
+        self.assertEqual(len(zonal_stats), 4*n*n)
         for poly_id in zonal_stats:
-            self.assertEqual(poly_id * 4, zonal_stats[poly_id]['sum'])
+            feature = layer.GetFeature(poly_id)
+            self.assertEqual(
+                feature.GetField('expected_value'),
+                zonal_stats[poly_id]['sum'])
 
     def test_zonal_statistics(self):
         """PGP.geoprocessing: test zonal stats function."""
@@ -331,7 +331,7 @@ class PyGeoprocessing10(unittest.TestCase):
             nodata_target, reference.pixel_size(30), filename=raster_path)
         result = pygeoprocessing.zonal_statistics(
             (raster_path, 1), aggregating_vector_path,
-            aggregate_field_name, aggregate_layer_name=None,
+            aggregate_layer_name=None,
             ignore_nodata=True, all_touched=False,
             polygons_might_overlap=True)
         expected_result = {
@@ -379,7 +379,7 @@ class PyGeoprocessing10(unittest.TestCase):
             nodata_target, reference.pixel_size(30), filename=raster_path)
         result = pygeoprocessing.zonal_statistics(
             (raster_path, 1), aggregating_vector_path,
-            aggregate_field_name, aggregate_layer_name=None,
+            aggregate_layer_name=None,
             ignore_nodata=True, all_touched=False,
             polygons_might_overlap=False)
         expected_result = {
@@ -420,7 +420,7 @@ class PyGeoprocessing10(unittest.TestCase):
             nodata_target, reference.pixel_size(30), filename=raster_path)
         result = pygeoprocessing.zonal_statistics(
             (raster_path, 1), aggregating_vector_path,
-            aggregate_field_name, aggregate_layer_name='aggregate_vector',
+            aggregate_layer_name='aggregate_vector',
             ignore_nodata=True, all_touched=False,
             polygons_might_overlap=True)
         expected_result = {
@@ -468,7 +468,7 @@ class PyGeoprocessing10(unittest.TestCase):
         with self.assertRaises(ValueError):
             _ = pygeoprocessing.zonal_statistics(
                 (raster_path, 1), aggregating_vector_path,
-                'BAD ID', aggregate_layer_name=None,
+                aggregate_layer_name=None,
                 ignore_nodata=True, all_touched=False,
                 polygons_might_overlap=False)
 
@@ -508,7 +508,7 @@ class PyGeoprocessing10(unittest.TestCase):
             # intentionally not passing a (path, band) tuple as first arg
             _ = pygeoprocessing.zonal_statistics(
                 raster_path, aggregating_vector_path,
-                aggregate_field_name, aggregate_layer_name=None,
+                aggregate_layer_name=None,
                 ignore_nodata=True, all_touched=False,
                 polygons_might_overlap=True)
 
