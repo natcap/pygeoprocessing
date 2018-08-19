@@ -248,7 +248,7 @@ class PyGeoprocessing10(unittest.TestCase):
         subpixel_size = 1./5. * pixel_size
         origin_x = 1.0
         origin_y = -1.0
-        n = 32
+        n = 100
         layer.StartTransaction()
         for row_index in range(n * 2):
             for col_index in range(n * 2):

@@ -1187,7 +1187,8 @@ def zonal_statistics(
     LOGGER.debug(
         "unset_fids: %s of %s ", len(unset_fids),
         len(aggregate_layer_fid_set))
-    clipped_gt = clipped_raster.GetGeoTransform()
+    clipped_gt = numpy.array(
+        clipped_raster.GetGeoTransform(), dtype=numpy.float32)
     for unset_fid in unset_fids:
         unset_feat = aggregate_layer.GetFeature(unset_fid)
         unset_geom = shapely.wkb.loads(
@@ -1200,31 +1201,9 @@ def zonal_statistics(
             (unset_geom.bounds[3] - clipped_gt[3]) / clipped_gt[5])) - yoff
         unset_fid_block = clipped_band.ReadAsArray(
             xoff=xoff, yoff=yoff, win_xsize=win_xsize, win_ysize=win_ysize)
-        for block_y in range(unset_fid_block.shape[0]):
-            for block_x in range(unset_fid_block.shape[1]):
-                x_min = clipped_gt[0] + clipped_gt[1] * (block_x+xoff)
-                y_min = clipped_gt[3] + clipped_gt[5] * (block_y+yoff)
-                x_max = clipped_gt[0] + clipped_gt[1] * (block_x+xoff+1)
-                y_max = clipped_gt[3] + clipped_gt[5] * (block_y+yoff+1)
-                if x_max < x_min:
-                    x_min, x_max = x_max, x_min
-                if y_max < y_min:
-                    y_min, y_max = y_max, y_min
-                pixel_box = shapely.geometry.box(x_min, y_min, x_max, y_max)
-                intersection_area = pixel_box.intersection(unset_geom).area
-                if intersection_area > 0:
-                    val = unset_fid_block[block_x, block_y]
-
-                    if aggregate_stats[unset_fid]['min'] is None:
-                        aggregate_stats[unset_fid]['min'] = val
-                        aggregate_stats[unset_fid]['max'] = val
-
-                    aggregate_stats[unset_fid]['min'] = min(
-                        val, aggregate_stats[unset_fid]['min'])
-                    aggregate_stats[unset_fid]['max'] = max(
-                        val, aggregate_stats[unset_fid]['max'])
-                    aggregate_stats[unset_fid]['count'] += 1
-                    aggregate_stats[unset_fid]['sum'] += val
+        aggregate_stats[unset_fid] = (
+            geoprocessing_core._calculate_pixel_intersection_stats(
+                unset_geom, xoff, yoff, unset_fid_block, clipped_gt))
 
     unset_fids = aggregate_layer_fid_set.difference(aggregate_stats)
     LOGGER.debug(
