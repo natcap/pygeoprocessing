@@ -664,67 +664,6 @@ def align_and_resize_raster_stack(
     LOGGER.info("aligned all %d rasters.", n_rasters)
 
 
-def calculate_raster_stats(raster_path):
-    """Calculate and set min, max, stdev, and mean for all bands in raster.
-
-    Parameters:
-        raster_path (string): a path to a GDAL raster raster that will be
-            modified by having its band statistics set
-
-    Returns:
-        None
-
-    """
-    raster = gdal.OpenEx(raster_path, gdal.GA_Update)
-    raster_properties = get_raster_info(raster_path)
-    for band_index in range(raster.RasterCount):
-        target_min = None
-        target_max = None
-        target_n = 0
-        target_sum = 0.0
-        for _, target_block in iterblocks(
-                raster_path, band_index_list=[band_index+1]):
-            nodata_target = raster_properties['nodata'][band_index]
-            # guard against an undefined nodata target
-            valid_mask = numpy.ones(target_block.shape, dtype=bool)
-            if nodata_target is not None:
-                valid_mask[:] = target_block != nodata_target
-            valid_block = target_block[valid_mask]
-            if valid_block.size == 0:
-                continue
-            if target_min is None:
-                # initialize first min/max
-                target_min = target_max = valid_block[0]
-            target_sum += numpy.sum(valid_block)
-            target_min = min(numpy.min(valid_block), target_min)
-            target_max = max(numpy.max(valid_block), target_max)
-            target_n += valid_block.size
-
-        if target_min is not None:
-            target_mean = target_sum / float(target_n)
-            stdev_sum = 0.0
-            for _, target_block in iterblocks(
-                    raster_path, band_index_list=[band_index+1]):
-                # guard against an undefined nodata target
-                valid_mask = numpy.ones(target_block.shape, dtype=bool)
-                if nodata_target is not None:
-                    valid_mask = target_block != nodata_target
-                valid_block = target_block[valid_mask]
-                stdev_sum += numpy.sum((valid_block - target_mean) ** 2)
-            target_stddev = (stdev_sum / float(target_n)) ** 0.5
-
-            target_band = raster.GetRasterBand(band_index+1)
-            target_band.SetStatistics(
-                float(target_min), float(target_max), float(target_mean),
-                float(target_stddev))
-            target_band = None
-        else:
-            LOGGER.warn(
-                "Stats not calculated for %s band %d since no non-nodata "
-                "pixels were found.", raster_path, band_index+1)
-    raster = None
-
-
 def new_raster_from_base(
         base_path, target_path, datatype, band_nodata_list,
         fill_value_list=None, n_rows=None, n_cols=None,
@@ -1297,11 +1236,16 @@ def zonal_statistics(
             aggregate_vector_path))
 
     # clean up temporary files
+    gdal.Dataset.__swig_destroy__(agg_fid_raster)
+    gdal.Dataset.__swig_destroy__(aggregate_vector)
+    gdal.Dataset.__swig_destroy__(clipped_raster)
     clipped_band = None
     clipped_raster = None
     agg_fid_raster = None
     disjoint_layer = None
     disjoint_vector = None
+    aggregate_layer = None
+    aggregate_vector = None
     for filename in [agg_fid_raster_path, clipped_raster_path]:
         os.remove(filename)
 

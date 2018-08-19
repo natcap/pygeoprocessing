@@ -403,14 +403,11 @@ class PyGeoprocessing10(unittest.TestCase):
             (reference.origin[0], reference.origin[1])])
         aggregating_vector_path = os.path.join(
             self.workspace_dir, 'aggregate_vector.shp')
-        aggregate_field_name = 'id'
         pygeoprocessing.testing.create_vector_on_disk(
             [polygon_a], reference.projection,
-            fields={'id': 'int'}, attributes=[
-                {aggregate_field_name: 0}],
             vector_format='ESRI Shapefile', filename=aggregating_vector_path)
         pixel_matrix = numpy.ones((n_pixels, n_pixels), numpy.float32)
-        nodata_target = -1
+        nodata_target = None
         raster_path = os.path.join(self.workspace_dir, 'raster.tif')
         pygeoprocessing.testing.create_raster_on_disk(
             [pixel_matrix], reference.origin, reference.projection,
@@ -1359,24 +1356,6 @@ class PyGeoprocessing10(unittest.TestCase):
         # we expect a negative result even though we put in a positive because
         # we know signed bytes will convert
         self.assertEqual(target_matrix[0, 0], -1)
-
-    def test_calculate_raster_stats_empty(self):
-        """PGP.geoprocessing: test empty rasters don't calculate stats."""
-        pixel_matrix = numpy.ones((5, 5), numpy.byte)
-        pixel_matrix[0, 0] = 255  # 255 ubyte is -1 byte
-        reference = sampledata.SRS_COLOMBIA
-        nodata_base = -1
-        pixel_matrix[:] = nodata_base
-        base_path = os.path.join(self.workspace_dir, 'base.tif')
-        pygeoprocessing.testing.create_raster_on_disk(
-            [pixel_matrix], reference.origin, reference.projection,
-            nodata_base, reference.pixel_size(30), datatype=gdal.GDT_Byte,
-            filename=base_path, dataset_opts=['PIXELTYPE=SIGNEDBYTE'])
-
-        # this used to cause an error to be printed, now it won't though it
-        # doesn't bother setting any values in the raster
-        pygeoprocessing.calculate_raster_stats(base_path)
-        self.assertTrue(True)
 
     def test_new_raster_from_base_nodata_not_set(self):
         """PGP.geoprocessing: test new raster with nodata not set."""
