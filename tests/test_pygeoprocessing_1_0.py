@@ -2016,49 +2016,6 @@ class PyGeoprocessing10(unittest.TestCase):
             next_int = pygeoprocessing.geoprocessing._next_regular(next_int+1)
             self.assertEqual(next_int, regular_int)
 
-    def test_available_interpolation_values_gdal223(self):
-        """PGP.geoprocessing: available interpolation values: gdal 2.2.3."""
-        try:
-            from pygeoprocessing import geoprocessing
-            # artificially set the interpolation values
-            sys.modules['osgeo.gdal'].__version__ = '2.2.3'
-
-            # if our local installation of GDAL is below 2.2.3, we need to
-            # manually define these attributes.
-            for interpolation_mode in ('GRA_Max', 'GRA_Min', 'GRA_Med',
-                                       'GRA_Q1', 'GRA_Q3'):
-                setattr(sys.modules['osgeo.gdal'], interpolation_mode, None)
-
-            # Now that we've updated the GDAL module, reload pygeoprocessing
-            # and ensure that the right interpolation options are there.
-            geoprocessing = reload(geoprocessing)
-            self.assertEqual(sorted(geoprocessing._RESAMPLE_DICT.keys()),
-                             ['average', 'bilinear', 'cubic', 'cubicspline',
-                              'lanczos', 'max', 'med', 'min', 'mode',
-                              'near', 'q1', 'q3'])
-        finally:
-            # Regardless of test outcome, reload the modules so we don't mess
-            # with other tests.
-            sys.modules['osgeo.gdal'] = reload(sys.modules['osgeo.gdal'])
-            geoprocessing = reload(geoprocessing)
-
-    def test_available_interpolation_values_gdal200(self):
-        """PGP.geoprocessing: available interpolation values: gdal 2.0.0."""
-        try:
-            from pygeoprocessing import geoprocessing
-            # artificially set the interpolation values
-            sys.modules['osgeo.gdal'].__version__ = '2.0.0'
-            geoprocessing = reload(geoprocessing)
-
-            self.assertEqual(sorted(geoprocessing._RESAMPLE_DICT.keys()),
-                             ['average', 'bilinear', 'cubic', 'cubicspline',
-                              'lanczos', 'mode', 'near'])
-        finally:
-            # Regardless of test outcome, reload the modules so we don't mess
-            # with other tests.
-            sys.modules['osgeo.gdal'] = reload(sys.modules['osgeo.gdal'])
-            geoprocessing = reload(geoprocessing)
-
     def test_merge_rasters(self):
         """PGP.geoprocessing: test merge_rasters."""
         driver = gdal.GetDriverByName('GTiff')

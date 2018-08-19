@@ -13,7 +13,6 @@ import functools
 import math
 import time
 import tempfile
-import uuid
 import distutils.version
 import multiprocessing
 import multiprocessing.pool
@@ -72,29 +71,6 @@ except ImportError:
 
 _LOGGING_PERIOD = 5.0  # min 5.0 seconds per update log message for the module
 _LARGEST_ITERBLOCK = 2**16  # largest block for iterblocks to read in cells
-
-# A dictionary to map the resampling method input string to the gdal type
-_RESAMPLE_DICT = {
-    "near": gdal.GRA_NearestNeighbour,
-    "bilinear": gdal.GRA_Bilinear,
-    "cubic": gdal.GRA_Cubic,
-    "cubicspline": gdal.GRA_CubicSpline,
-    "lanczos": gdal.GRA_Lanczos,
-    'mode': gdal.GRA_Mode,
-    'average': gdal.GRA_Average,
-}
-
-
-# GDAL 2.2.3 added a couple of useful interpolation values.
-if (distutils.version.LooseVersion(gdal.__version__) >=
-        distutils.version.LooseVersion('2.2.3')):
-    _RESAMPLE_DICT.update({
-        'max': gdal.GRA_Max,
-        'min': gdal.GRA_Min,
-        'med': gdal.GRA_Med,
-        'q1': gdal.GRA_Q1,
-        'q3': gdal.GRA_Q3,
-    })
 
 
 def raster_calculator(
