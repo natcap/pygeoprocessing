@@ -1110,7 +1110,7 @@ def zonal_statistics(
     local_aggregate_field_name = 'original_fid'
     rasterize_layer_args = {
         'options': [
-            'ALL_TOUCHED=TRUE',
+            'ALL_TOUCHED=FALSE',
             'ATTRIBUTE=%s' % local_aggregate_field_name]
         }
 
@@ -1136,7 +1136,6 @@ def zonal_statistics(
     # Initialize these dictionaries to have the shapefile fields in the
     # original datasource even if we don't pick up a value later
     LOGGER.info("build a lookup of aggregate field value to FID")
-    agg_value_to_id_map = {}
 
     aggregate_layer_fid_set = set(
         [agg_feat.GetFID() for agg_feat in aggregate_layer])
@@ -1147,7 +1146,7 @@ def zonal_statistics(
         disjoint_fid_sets = calculate_disjoint_polygon_set(
             aggregate_vector_path)
     else:
-        disjoint_fid_sets = aggregate_layer_fid_set
+        disjoint_fid_sets = [aggregate_layer_fid_set]
 
     clipped_band = clipped_raster.GetRasterBand(base_raster_path_band[1])
 
@@ -1180,6 +1179,8 @@ def zonal_statistics(
         disjoint_layer_defn = disjoint_layer.GetLayerDefn()
         # add polygons to subset_layer
         disjoint_layer.StartTransaction()
+        LOGGER.debug(disjoint_fid_sets)
+        LOGGER.debug(disjoint_fid_set)
         for index, feature_fid in enumerate(disjoint_fid_set):
             last_time = _invoke_timed_callback(
                 last_time, lambda: LOGGER.info(
@@ -1328,7 +1329,7 @@ def zonal_statistics(
     for filename in [agg_fid_raster_path, clipped_raster_path]:
         os.remove(filename)
 
-    return aggregate_stats
+    return dict(aggregate_stats)
 
 
 def get_vector_info(vector_path, layer_index=0):
