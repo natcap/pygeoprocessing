@@ -1089,7 +1089,7 @@ def zonal_statistics(
     Returns:
         nested dictionary indexed by aggregating feature id, and then by one
         of 'min' 'max' 'sum' 'count' and 'nodata_count'.  Example:
-        {0: {'min': 0, 'max': 1, 'count': 2, 'nodata_count': 1}}
+        {0: {'min': 0, 'max': 1, 'sum': 1.7, count': 3, 'nodata_count': 1}}
 
     """
     if not _is_raster_path_band_formatted(base_raster_path_band):
