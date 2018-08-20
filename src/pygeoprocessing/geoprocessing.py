@@ -1821,15 +1821,15 @@ def calculate_disjoint_polygon_set(vector_path, layer_index=0):
     last_time = time.time()
     LOGGER.info("build shapely polygon list")
 
-    shapely_polygon_lookup = dict([
+    shapely_polygon_lookup = dict((
         (poly_feat.GetFID(),
          shapely.wkb.loads(poly_feat.GetGeometryRef().ExportToWkb()))
-        for poly_feat in vector_layer])
+        for poly_feat in vector_layer))
 
     LOGGER.info("build shapely rtree index")
     poly_rtree_index = rtree.index.Index(
-        [(poly_fid, poly.bounds, None)
-         for poly_fid, poly in shapely_polygon_lookup.items()])
+        ((poly_fid, poly.bounds, None)
+         for poly_fid, poly in shapely_polygon_lookup.items()))
 
     vector_layer = None
     vector = None
