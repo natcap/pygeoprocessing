@@ -8,7 +8,7 @@ Unreleased Changes
   for large vectors by using spatial indexes when calculating disjoint polygon
   overlap sets, using database transactions, and memory buffers.
 * Improved runtime performance of ``reproject_vector`` by using database
-  transations.
+  transactions.
 * Improved logging for long runtimes in ``zonal_statistics``.
 
 1.2.3 (7/25/2018)
