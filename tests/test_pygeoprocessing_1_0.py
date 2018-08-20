@@ -2008,7 +2008,7 @@ class PyGeoprocessing10(unittest.TestCase):
             # and ensure that the right interpolation options are there.
             geoprocessing = reload(geoprocessing)
             self.assertEqual(sorted(geoprocessing._RESAMPLE_DICT.keys()),
-                             ['average', 'bilinear', 'cubic', 'cubic_spline',
+                             ['average', 'bilinear', 'cubic', 'cubicspline',
                               'lanczos', 'max', 'med', 'min', 'mode',
                               'near', 'q1', 'q3'])
         finally:
@@ -2026,7 +2026,7 @@ class PyGeoprocessing10(unittest.TestCase):
             geoprocessing = reload(geoprocessing)
 
             self.assertEqual(sorted(geoprocessing._RESAMPLE_DICT.keys()),
-                             ['average', 'bilinear', 'cubic', 'cubic_spline',
+                             ['average', 'bilinear', 'cubic', 'cubicspline',
                               'lanczos', 'mode', 'near'])
         finally:
             # Regardless of test outcome, reload the modules so we don't mess

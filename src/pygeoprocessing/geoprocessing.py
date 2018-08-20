@@ -9,10 +9,8 @@ from builtins import zip
 from builtins import range
 import logging
 import os
-import shutil
 import functools
 import math
-import heapq
 import time
 import tempfile
 import uuid
@@ -20,6 +18,7 @@ import distutils.version
 import multiprocessing
 import multiprocessing.pool
 import threading
+import collections
 
 try:
     import queue
@@ -46,6 +45,7 @@ import pprint
 from osgeo import gdal
 from osgeo import osr
 from osgeo import ogr
+import rtree
 import numpy
 import numpy.ma
 import scipy.interpolate
@@ -53,7 +53,7 @@ import scipy.sparse
 import scipy.signal
 import scipy.ndimage
 import scipy.signal.signaltools
-import shapely.wkt
+import shapely.wkb
 import shapely.ops
 import shapely.prepared
 from . import geoprocessing_core
@@ -78,7 +78,7 @@ _RESAMPLE_DICT = {
     "near": gdal.GRA_NearestNeighbour,
     "bilinear": gdal.GRA_Bilinear,
     "cubic": gdal.GRA_Cubic,
-    "cubic_spline": gdal.GRA_CubicSpline,
+    "cubicspline": gdal.GRA_CubicSpline,
     "lanczos": gdal.GRA_Lanczos,
     'mode': gdal.GRA_Mode,
     'average': gdal.GRA_Average,
@@ -518,7 +518,7 @@ def align_and_resize_raster_stack(
         resample_method_list (list): a list of resampling methods which
             one to one map each path in `base_raster_path_list` during
             resizing.  Each element must be one of
-            "near|bilinear|cubic|cubic_spline|lanczos|mode".
+            "near|bilinear|cubic|cubicspline|lanczos|mode".
         target_pixel_size (tuple): the target raster's x and y pixel size
             example: [30, -30].
         bounding_box_mode (string): one of "union", "intersection", or
@@ -1088,15 +1088,15 @@ def zonal_statistics(
 
     Returns:
         nested dictionary indexed by aggregating feature id, and then by one
-        of 'min' 'max' 'sum' 'mean' 'count' and 'nodata_count'.  Example:
-        {0: {'min': 0, 'max': 1, 'mean': 0.5, 'count': 2, 'nodata_count': 1}}
+        of 'min' 'max' 'sum' 'count' and 'nodata_count'.  Example:
+        {0: {'min': 0, 'max': 1, 'sum': 1.7, count': 3, 'nodata_count': 1}}
 
     """
     if not _is_raster_path_band_formatted(base_raster_path_band):
         raise ValueError(
             "`base_raster_path_band` not formatted as expected.  Expects "
             "(path, band_index), recieved %s" % repr(base_raster_path_band))
-    aggregate_vector = gdal.OpenEx(aggregate_vector_path)
+    aggregate_vector = gdal.OpenEx(aggregate_vector_path, gdal.OF_VECTOR)
     if aggregate_layer_name is not None:
         aggregate_layer = aggregate_vector.GetLayerByName(
             aggregate_layer_name)
@@ -1139,25 +1139,24 @@ def zonal_statistics(
     clipped_raster = gdal.OpenEx(clipped_raster_path, gdal.OF_RASTER)
 
     # make a shapefile that non-overlapping layers can be added to
-    driver = ogr.GetDriverByName('ESRI Shapefile')
-    disjoint_vector_dir = tempfile.mkdtemp(dir=working_dir)
-    disjoint_vector = driver.CreateDataSource(
-        os.path.join(disjoint_vector_dir, 'disjoint_vector.shp'))
+    driver = ogr.GetDriverByName('MEMORY')
+    disjoint_vector = driver.CreateDataSource('disjoint_vector')
     spat_ref = aggregate_layer.GetSpatialRef()
 
     # Initialize these dictionaries to have the shapefile fields in the
     # original datasource even if we don't pick up a value later
+    LOGGER.info("build a lookup of aggregate field value to FID")
     base_to_local_aggregate_value = {}
-    for feature in aggregate_layer:
-        aggregate_field_value = feature.GetField(aggregate_field_name)
-        # this builds up a map of aggregate field values to unique ids
-        if aggregate_field_value not in base_to_local_aggregate_value:
-            base_to_local_aggregate_value[aggregate_field_value] = len(
-                base_to_local_aggregate_value)
+
+    base_to_local_aggregate_value = dict(
+        [(field_value, field_index) for field_index, field_value in enumerate(
+            set([feature.GetField(aggregate_field_name)
+                 for feature in aggregate_layer]))])
     aggregate_layer.ResetReading()
 
     # Loop over each polygon and aggregate
     if polygons_might_overlap:
+        LOGGER.info("creating disjoint polygon set")
         minimal_polygon_sets = calculate_disjoint_polygon_set(
             aggregate_vector_path)
     else:
@@ -1179,29 +1178,56 @@ def zonal_statistics(
         aggregate_id_raster_path, gdal.GA_Update | gdal.OF_RASTER)
     aggregate_stats = {}
 
-    for polygon_set in minimal_polygon_sets:
+    last_time = time.time()
+    LOGGER.info("processing %d polygon sets", len(minimal_polygon_sets))
+    for set_index, polygon_set in enumerate(minimal_polygon_sets):
+        last_time = _invoke_timed_callback(
+            last_time, lambda: LOGGER.info(
+                "zonal stats approximately %.1f%% complete on %s",
+                100.0 * float(set_index+1) / len(minimal_polygon_sets),
+                os.path.basename(aggregate_vector_path)),
+            _LOGGING_PERIOD)
         disjoint_layer = disjoint_vector.CreateLayer(
             'disjoint_vector', spat_ref, ogr.wkbPolygon)
+        disjoint_layer_defn = disjoint_layer.GetLayerDefn()
         disjoint_layer.CreateField(local_aggregate_field_def)
         # add polygons to subset_layer
+        disjoint_layer.StartTransaction()
         for index, poly_fid in enumerate(polygon_set):
+            last_time = _invoke_timed_callback(
+                last_time, lambda: LOGGER.info(
+                    "polygon set %d of %d approximately %.1f%% processed "
+                    "on %s", set_index+1, len(minimal_polygon_sets),
+                    100.0 * float(index+1) / len(polygon_set),
+                    os.path.basename(aggregate_vector_path)),
+                _LOGGING_PERIOD)
             poly_feat = aggregate_layer.GetFeature(poly_fid)
-            disjoint_layer.CreateFeature(poly_feat)
-            # we seem to need to reload the feature and set the index because
-            # just copying over the feature left indexes as all 0s.  Not sure
-            # why.
-            new_feat = disjoint_layer.GetFeature(index)
+            new_feat = ogr.Feature(disjoint_layer_defn)
+            new_feat.SetGeometry(poly_feat.GetGeometryRef().Clone())
             new_feat.SetField(
                 local_aggregate_field_name, base_to_local_aggregate_value[
                     poly_feat.GetField(aggregate_field_name)])
-            disjoint_layer.SetFeature(new_feat)
+            disjoint_layer.CreateFeature(new_feat)
+        disjoint_layer.CommitTransaction()
         disjoint_layer.SyncToDisk()
+        LOGGER.info(
+            "polygon set %d of %d 100.0%% processed on %s", set_index+1,
+            len(minimal_polygon_sets),
+            os.path.basename(aggregate_vector_path))
 
         # nodata out the mask
         aggregate_id_band = aggregate_id_raster.GetRasterBand(1)
         aggregate_id_band.Fill(aggregate_id_nodata)
+        LOGGER.info(
+            "rasterizing polygon set %d of %d %s", set_index+1,
+            len(minimal_polygon_sets),
+            os.path.basename(aggregate_vector_path))
+        rasterize_callback = _make_logger_callback(
+            "rasterizing polygon " + str(set_index+1) + " of " +
+            str(len(polygon_set)) + " set %.1f%% complete")
         gdal.RasterizeLayer(
-            aggregate_id_raster, [1], disjoint_layer, **rasterize_layer_args)
+            aggregate_id_raster, [1], disjoint_layer,
+            callback=rasterize_callback, **rasterize_layer_args)
         aggregate_id_raster.FlushCache()
 
         # Delete the features we just added to the subset_layer
@@ -1210,6 +1236,10 @@ def zonal_statistics(
 
         # create a key array
         # and parallel min, max, count, and nodata count arrays
+        LOGGER.info(
+            "summarizing rasterized polygon set %d of %d %s", set_index+1,
+            len(minimal_polygon_sets),
+            os.path.basename(aggregate_vector_path))
         for aggregate_id_offsets in iterblocks(
                 aggregate_id_raster_path, offset_only=True):
             aggregate_id_block = aggregate_id_band.ReadAsArray(
@@ -1259,6 +1289,10 @@ def zonal_statistics(
                 aggregate_stats[aggregate_id]['sum'] += numpy.sum(
                     masked_clipped_block)
 
+    LOGGER.info(
+        "all done processing polygon sets for %s", os.path.basename(
+            aggregate_vector_path))
+
     # clean up temporary files
     clipped_band = None
     clipped_raster = None
@@ -1267,7 +1301,6 @@ def zonal_statistics(
     disjoint_vector = None
     for filename in [aggregate_id_raster_path, clipped_raster_path]:
         os.remove(filename)
-    shutil.rmtree(disjoint_vector_dir)
 
     # map the local ids back to the original base value
     local_to_base_aggregate_value = {
@@ -1460,8 +1493,18 @@ def reproject_vector(
     coord_trans = osr.CoordinateTransformation(base_sr, target_sr)
 
     # Copy all of the features in layer to the new shapefile
+    target_layer.StartTransaction()
     error_count = 0
-    for base_feature in layer:
+    last_time = time.time()
+    LOGGER.info("starting reprojection")
+    for feature_index, base_feature in enumerate(layer):
+        last_time = _invoke_timed_callback(
+            last_time, lambda: LOGGER.info(
+                "reprojection approximately %.1f%% complete on %s",
+                100.0 * float(feature_index+1) / (layer.GetFeatureCount()),
+                os.path.basename(target_path)),
+            _LOGGING_PERIOD)
+
         geom = base_feature.GetGeometryRef()
         if geom is None:
             # we encountered this error occasionally when transforming clipped
@@ -1493,6 +1536,9 @@ def reproject_vector(
         target_layer.CreateFeature(target_feature)
         target_feature = None
         base_feature = None
+    target_layer.CommitTransaction()
+    LOGGER.info(
+        "reprojection 100.0%% complete on %s", os.path.basename(target_path))
     if error_count > 0:
         LOGGER.warn(
             '%d features out of %d were unable to be transformed and are'
@@ -1770,58 +1816,86 @@ def calculate_disjoint_polygon_set(vector_path, layer_index=0):
     """
     vector = gdal.OpenEx(vector_path)
     vector_layer = vector.GetLayer(layer_index)
+    feature_count = vector_layer.GetFeatureCount()
 
-    poly_intersect_lookup = {}
-    for poly_feat in vector_layer:
-        poly_wkt = poly_feat.GetGeometryRef().ExportToWkt()
-        shapely_polygon = shapely.wkt.loads(poly_wkt)
-        poly_wkt = None
-        poly_fid = poly_feat.GetFID()
-        poly_intersect_lookup[poly_fid] = {
-            'poly': shapely_polygon,
-            'intersects': set(),
-        }
+    last_time = time.time()
+    LOGGER.info("build shapely polygon list")
+
+    shapely_polygon_lookup = dict((
+        (poly_feat.GetFID(),
+         shapely.wkb.loads(poly_feat.GetGeometryRef().ExportToWkb()))
+        for poly_feat in vector_layer))
+
+    LOGGER.info("build shapely rtree index")
+    poly_rtree_index = rtree.index.Index(
+        ((poly_fid, poly.bounds, None)
+         for poly_fid, poly in shapely_polygon_lookup.items()))
+
     vector_layer = None
     vector = None
+    LOGGER.info(
+        'poly feature lookup 100.0%% complete on %s',
+        os.path.basename(vector_path))
 
-    for poly_fid in poly_intersect_lookup:
-        polygon = shapely.prepared.prep(
-            poly_intersect_lookup[poly_fid]['poly'])
-        for intersect_poly_fid in poly_intersect_lookup:
+    LOGGER.info('build poly intersection lookup')
+    poly_intersect_lookup = collections.defaultdict(set)
+    for poly_index, (poly_fid, poly_geom) in enumerate(
+            shapely_polygon_lookup.items()):
+        last_time = _invoke_timed_callback(
+            last_time, lambda: LOGGER.info(
+                "poly intersection lookup approximately %.1f%% complete "
+                "on %s", 100.0 * float(poly_index+1) / len(
+                    shapely_polygon_lookup), os.path.basename(vector_path)),
+            _LOGGING_PERIOD)
+        possible_intersection_set = list(poly_rtree_index.intersection(
+            poly_geom.bounds))
+        # no reason to prep the polygon to intersect itself
+        if len(possible_intersection_set) > 1:
+            polygon = shapely.prepared.prep(poly_geom)
+        else:
+            polygon = poly_geom
+        for intersect_poly_fid in possible_intersection_set:
             if intersect_poly_fid == poly_fid or polygon.intersects(
-                    poly_intersect_lookup[intersect_poly_fid]['poly']):
-                poly_intersect_lookup[poly_fid]['intersects'].add(
-                    intersect_poly_fid)
+                    shapely_polygon_lookup[intersect_poly_fid]):
+                poly_intersect_lookup[poly_fid].add(intersect_poly_fid)
         polygon = None
+    LOGGER.info(
+        'poly intersection feature lookup 100.0%% complete on %s',
+        os.path.basename(vector_path))
 
     # Build maximal subsets
     subset_list = []
     while len(poly_intersect_lookup) > 0:
         # sort polygons by increasing number of intersections
-        heap = []
-        for poly_fid, poly_dict in poly_intersect_lookup.items():
-            heapq.heappush(
-                heap, (len(poly_dict['intersects']), poly_fid, poly_dict))
+        intersections_list = [
+            (len(poly_intersect_set), poly_fid, poly_intersect_set)
+            for poly_fid, poly_intersect_set in
+            poly_intersect_lookup.items()]
+        intersections_list.sort()
 
         # build maximal subset
         maximal_set = set()
-        while len(heap) > 0:
-            _, poly_fid, poly_dict = heapq.heappop(heap)
-            for maxset_fid in maximal_set:
-                if maxset_fid in poly_intersect_lookup[poly_fid]['intersects']:
-                    # it intersects and can't be part of the maximal subset
-                    break
-            else:
-                # made it through without an intersection, add poly_fid to
-                # the maximal set
+        for _, poly_fid, poly_intersect_set in intersections_list:
+            last_time = _invoke_timed_callback(
+                last_time, lambda: LOGGER.info(
+                    "maximal subset build approximately %.1f%% complete "
+                    "on %s", 100.0 * float(
+                        feature_count - len(poly_intersect_lookup)) /
+                    feature_count, os.path.basename(vector_path)),
+                _LOGGING_PERIOD)
+            if not poly_intersect_set.intersection(maximal_set):
+                # no intersection, add poly_fid to the maximal set and remove
+                # the polygon from the lookup
                 maximal_set.add(poly_fid)
-                # remove that polygon and update the intersections
                 del poly_intersect_lookup[poly_fid]
         # remove all the polygons from intersections once they're computed
-        for maxset_fid in maximal_set:
-            for poly_dict in poly_intersect_lookup.values():
-                poly_dict['intersects'].discard(maxset_fid)
+        for poly_fid, poly_intersect_set in poly_intersect_lookup.items():
+            poly_intersect_lookup[poly_fid] = (
+                poly_intersect_set.difference(maximal_set))
         subset_list.append(maximal_set)
+    LOGGER.info(
+        'maximal subset build 100.0%% complete on %s',
+        os.path.basename(vector_path))
     return subset_list
 
 
