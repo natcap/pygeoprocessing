@@ -1094,8 +1094,6 @@ def zonal_statistics(
         disjoint_layer_defn = disjoint_layer.GetLayerDefn()
         # add polygons to subset_layer
         disjoint_layer.StartTransaction()
-        LOGGER.debug(disjoint_fid_sets)
-        LOGGER.debug(disjoint_fid_set)
         for index, feature_fid in enumerate(disjoint_fid_set):
             last_time = _invoke_timed_callback(
                 last_time, lambda: LOGGER.info(
@@ -1191,20 +1189,38 @@ def zonal_statistics(
         clipped_raster.GetGeoTransform(), dtype=numpy.float32)
     for unset_fid in unset_fids:
         unset_feat = aggregate_layer.GetFeature(unset_fid)
-        unset_geom = shapely.wkb.loads(
-            unset_feat.GetGeometryRef().ExportToWkb())
-        xoff = int((unset_geom.bounds[0] - clipped_gt[0]) / clipped_gt[1])
-        yoff = int((unset_geom.bounds[1] - clipped_gt[3]) / clipped_gt[5])
+        unset_geom_envelope = list(unset_feat.GetGeometryRef().GetEnvelope())
+        if clipped_gt[1] < 0:
+            unset_geom_envelope[0], unset_geom_envelope[1] = (
+                unset_geom_envelope[1], unset_geom_envelope[0])
+        if clipped_gt[5] < 0:
+            unset_geom_envelope[2], unset_geom_envelope[3] = (
+                unset_geom_envelope[3], unset_geom_envelope[2])
+        xoff = int((unset_geom_envelope[0] - clipped_gt[0]) / clipped_gt[1])
+        yoff = int((unset_geom_envelope[2] - clipped_gt[3]) / clipped_gt[5])
         win_xsize = int(numpy.ceil(
-            (unset_geom.bounds[2] - clipped_gt[0]) / clipped_gt[1])) - xoff
+            (unset_geom_envelope[1] - clipped_gt[0]) /
+            clipped_gt[1])) - xoff
         win_ysize = int(numpy.ceil(
-            (unset_geom.bounds[3] - clipped_gt[3]) / clipped_gt[5])) - yoff
+            (unset_geom_envelope[3] - clipped_gt[3]) /
+            clipped_gt[5])) - yoff
         unset_fid_block = clipped_band.ReadAsArray(
             xoff=xoff, yoff=yoff, win_xsize=win_xsize, win_ysize=win_ysize)
 
-        aggregate_stats[unset_fid] = (
-            geoprocessing_core._calculate_pixel_intersection_stats(
-                unset_geom, xoff, yoff, unset_fid_block, clipped_gt))
+        if raster_nodata:
+            unset_fid_nodata_mask = numpy.isclose(
+                unset_fid_block, raster_nodata)
+        else:
+            unset_fid_nodata_mask = numpy.zeros(
+                unset_fid_block.shape, dtype=numpy.bool)
+
+        valid_unset_fid_block = unset_fid_block[~unset_fid_nodata_mask]
+        aggregate_stats[unset_fid]['min'] = numpy.min(valid_unset_fid_block)
+        aggregate_stats[unset_fid]['max'] = numpy.max(valid_unset_fid_block)
+        aggregate_stats[unset_fid]['sum'] = numpy.sum(valid_unset_fid_block)
+        aggregate_stats[unset_fid]['count'] = valid_unset_fid_block.size
+        aggregate_stats[unset_fid]['nodata_count'] = numpy.count_nonzero(
+            unset_fid_nodata_mask)
 
     unset_fids = aggregate_layer_fid_set.difference(aggregate_stats)
     LOGGER.debug(
