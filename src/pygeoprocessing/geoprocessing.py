@@ -998,7 +998,7 @@ def zonal_statistics(
     Returns:
         nested dictionary indexed by aggregating feature id, and then by one
         of 'min' 'max' 'sum' 'count' and 'nodata_count'.  Example:
-        {0: {'min': 0, 'max': 1, 'sum': 2.0, 'count': 3, 'nodata_count': 1}}
+        {0: {'min': 0, 'max': 1, 'sum': 1.7, count': 3, 'nodata_count': 1}}
 
     """
     if not _is_raster_path_band_formatted(base_raster_path_band):
@@ -1740,15 +1740,15 @@ def calculate_disjoint_polygon_set(vector_path, layer_index=0):
     last_time = time.time()
     LOGGER.info("build shapely polygon list")
 
-    shapely_polygon_lookup = dict([
+    shapely_polygon_lookup = dict((
         (poly_feat.GetFID(),
          shapely.wkb.loads(poly_feat.GetGeometryRef().ExportToWkb()))
-        for poly_feat in vector_layer])
+        for poly_feat in vector_layer))
 
     LOGGER.info("build shapely rtree index")
     poly_rtree_index = rtree.index.Index(
-        [(poly_fid, poly.bounds, None)
-         for poly_fid, poly in shapely_polygon_lookup.items()])
+        ((poly_fid, poly.bounds, None)
+         for poly_fid, poly in shapely_polygon_lookup.items()))
 
     vector_layer = None
     vector = None

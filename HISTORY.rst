@@ -8,7 +8,7 @@ Unreleased Changes
   for large vectors by using spatial indexes when calculating disjoint polygon
   overlap sets, using database transactions, and memory buffers.
 * Improved runtime performance of ``reproject_vector`` by using database
-  transations.
+  transactions.
 * Improved logging for long runtimes in ``zonal_statistics``.
 * Changed ``zonal_statistics`` API and functionality to aggregate across the
   FIDs of the aggregate vector. This is to be consistent with QGIS and other
