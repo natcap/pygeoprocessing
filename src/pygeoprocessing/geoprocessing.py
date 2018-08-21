@@ -1201,6 +1201,7 @@ def zonal_statistics(
             (unset_geom.bounds[3] - clipped_gt[3]) / clipped_gt[5])) - yoff
         unset_fid_block = clipped_band.ReadAsArray(
             xoff=xoff, yoff=yoff, win_xsize=win_xsize, win_ysize=win_ysize)
+
         aggregate_stats[unset_fid] = (
             geoprocessing_core._calculate_pixel_intersection_stats(
                 unset_geom, xoff, yoff, unset_fid_block, clipped_gt))
@@ -1572,7 +1573,8 @@ def warp_raster(
     base_sr.ImportFromWkt(base_raster.GetProjection())
 
     if target_bb is None:
-        working_bb = get_raster_info(base_raster_path)['bounding_box']
+        # ensure it's a list so we can modify it
+        working_bb = list(get_raster_info(base_raster_path)['bounding_box'])
         # transform the working_bb if target_sr_wkt is not None
         if target_sr_wkt is not None:
             LOGGER.debug(
@@ -1584,7 +1586,8 @@ def warp_raster(
             LOGGER.debug(
                 "transforming bounding to %s ", working_bb)
     else:
-        working_bb = target_bb[:]
+        # ensure it's a list so we can modify it
+        working_bb = list(target_bb)
 
     # determine the raster size that bounds the input bounding box and then
     # adjust the bounding box to be that size
