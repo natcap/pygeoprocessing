@@ -2204,7 +2204,7 @@ class PyGeoprocessing10(unittest.TestCase):
         with self.assertRaises(ValueError) as cm:
             pygeoprocessing.get_raster_info(
                 os.path.join(self.workspace_dir, 'not_a_file.tif'))
-        expected_message = 'does not exist'
+        expected_message = 'Could not open'
         actual_message = str(cm.exception)
         self.assertTrue(expected_message in actual_message, actual_message)
 
@@ -2225,7 +2225,7 @@ class PyGeoprocessing10(unittest.TestCase):
         with self.assertRaises(ValueError) as cm:
             pygeoprocessing.get_vector_info(
                 os.path.join(self.workspace_dir, 'not_a_file.tif'))
-        expected_message = 'does not exist'
+        expected_message = 'Could not open'
         actual_message = str(cm.exception)
         self.assertTrue(expected_message in actual_message, actual_message)
 
