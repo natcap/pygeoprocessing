@@ -645,7 +645,7 @@ def align_and_resize_raster_stack(
                             "to nice %s. This might be a bug in `psutil` so "
                             "it should be okay to ignore." % parent)
         except RuntimeError:
-            LOGGER.warninging(
+            LOGGER.warning(
                 "Runtime error when starting multiprocessing pool. This is "
                 "likely because this process is running on Windows and the "
                 "main entry point is not wrapped in an `if __name__ == "
