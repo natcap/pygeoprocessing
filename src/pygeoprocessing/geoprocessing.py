@@ -640,7 +640,7 @@ def align_and_resize_raster_stack(
                     try:
                         child.nice(PROCESS_LOW_PRIORITY)
                     except psutil.NoSuchProcess:
-                        LOGGER.warn(
+                        LOGGER.warning(
                             "NoSuchProcess exception encountered when trying "
                             "to nice %s. This might be a bug in `psutil` so "
                             "it should be okay to ignore." % parent)
@@ -743,7 +743,7 @@ def calculate_raster_stats(raster_path):
                 float(target_stddev))
             target_band = None
         else:
-            LOGGER.warn(
+            LOGGER.warning(
                 "Stats not calculated for %s band %d since no non-nodata "
                 "pixels were found.", raster_path, band_index+1)
     raster = None
@@ -932,7 +932,7 @@ def create_raster_from_vector_extents(
                 # since it's valid to have a NULL entry in the attribute table
                 # this is expressed as a None value in the geometry reference
                 # this feature won't contribute
-                LOGGER.warn(error)
+                LOGGER.warning(error)
 
     # round up on the rows and cols so that the target raster encloses the
     # base vector
@@ -1334,8 +1334,6 @@ def get_vector_info(vector_path, layer_index=0):
                 box in projected coordinates as [minx, miny, maxx, maxy].
 
     """
-    if not os.path.exists(vector_path):
-        raise ValueError("%s does not exist." % vector_path)
     vector = gdal.OpenEx(vector_path, gdal.OF_VECTOR)
     if not vector:
         raise ValueError(
@@ -1388,8 +1386,6 @@ def get_raster_info(raster_path):
                 efficient reading.
 
     """
-    if not os.path.exists(raster_path):
-        raise ValueError("%s does not exist." % raster_path)
     raster = gdal.OpenEx(raster_path, gdal.OF_RASTER)
     if not raster:
         raise ValueError(
@@ -1458,7 +1454,7 @@ def reproject_vector(
 
     # if this file already exists, then remove it
     if os.path.isfile(target_path):
-        LOGGER.warn(
+        LOGGER.warning(
             "%s already exists, removing and overwriting", target_path)
         os.remove(target_path)
 
@@ -1540,7 +1536,7 @@ def reproject_vector(
     LOGGER.info(
         "reprojection 100.0%% complete on %s", os.path.basename(target_path))
     if error_count > 0:
-        LOGGER.warn(
+        LOGGER.warning(
             '%d features out of %d were unable to be transformed and are'
             ' not in the output vector at %s', error_count,
             layer.GetFeatureCount(), target_path)
@@ -1687,12 +1683,12 @@ def warp_raster(
         target_y_size += 1
 
     if target_x_size == 0:
-        LOGGER.warn(
+        LOGGER.warning(
             "bounding_box is so small that x dimension rounds to 0; "
             "clamping to 1.")
         target_x_size = 1
     if target_y_size == 0:
-        LOGGER.warn(
+        LOGGER.warning(
             "bounding_box is so small that y dimension rounds to 0; "
             "clamping to 1.")
         target_y_size = 1
@@ -1942,7 +1938,7 @@ def distance_transform_edt(
     try:
         os.remove(dt_mask_path)
     except OSError:
-        LOGGER.warn("couldn't remove file %s", dt_mask_path)
+        LOGGER.warning("couldn't remove file %s", dt_mask_path)
 
 
 def _next_regular(base):

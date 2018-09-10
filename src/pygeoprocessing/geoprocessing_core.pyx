@@ -211,7 +211,7 @@ def distance_transform_edt(base_mask_raster_path_band, target_distance_path):
     try:
         os.remove(g_path)
     except OSError:
-        LOGGER.warn("couldn't remove file %s" % g_path)
+        LOGGER.warning("couldn't remove file %s" % g_path)
 
 
 @cython.boundscheck(False)
@@ -524,7 +524,7 @@ def stats_worker(stats_work_queue, exception_queue):
             stats_work_queue.put(
                 (min_value, max_value, M_local, (S_local / <double>n) ** 0.5))
         else:
-            LOGGER.warn(
+            LOGGER.warning(
                 "No valid pixels were received, sending None.")
             stats_work_queue.put(None)
     except Exception as e:
