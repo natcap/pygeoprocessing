@@ -609,7 +609,7 @@ def align_and_resize_raster_stack(
                 else:
                     base_raster_sr_wkt = raster_info['projection']
                     if not base_raster_sr_wkt:
-                        raise Exception(
+                        raise ValueError(
                             "no projection for raster %s" %
                             base_raster_path_list[raster_index])
                 raster_bounding_box_list.append(
