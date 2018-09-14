@@ -1192,7 +1192,7 @@ class PyGeoprocessing10(unittest.TestCase):
                 target_path, gdal.GDT_Float32, None)
         expected_message = (
             'Raster size (128, 128) cannot be broadcast '
-            'to numpy shape (4, 4)')
+            'to numpy shape (4')
         actual_message = str(cm.exception)
         self.assertTrue(expected_message in actual_message, actual_message)
 
@@ -1203,7 +1203,7 @@ class PyGeoprocessing10(unittest.TestCase):
                 target_path, gdal.GDT_Float32, None)
         expected_message = (
             'Raster size (128, 128) cannot be broadcast '
-            'to numpy shape (4,)')
+            'to numpy shape (4')
         actual_message = str(cm.exception)
         self.assertTrue(expected_message in actual_message, actual_message)
 

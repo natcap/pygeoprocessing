@@ -599,19 +599,28 @@ def align_and_resize_raster_stack(
         else:
             vector_info_list = []
 
-        # compute the raster bounding box separately because it has some
-        # non-trivial cases whether projections are defined or not
         raster_bounding_box_list = []
         for raster_index, raster_info in enumerate(raster_info_list):
+            # this block calculates the base projection of `raster_info` if
+            # `target_sr_wkt` is defined, thus implying a reprojection will
+            # be necessary.
             if target_sr_wkt:
                 if base_sr_wkt_list and base_sr_wkt_list[raster_index]:
+                    # a base is defined, use that
                     base_raster_sr_wkt = base_sr_wkt_list[raster_index]
                 else:
+                    # otherwise use the raster's projection and there must
+                    # be one since we're reprojecting
                     base_raster_sr_wkt = raster_info['projection']
                     if not base_raster_sr_wkt:
                         raise ValueError(
                             "no projection for raster %s" %
                             base_raster_path_list[raster_index])
+                # since the base spatial reference is potentially different
+                # than the target, we need to transform the base bounding
+                # box into target coordinates so later we can calculate
+                # accurate bounding box overlaps in the target coordinate
+                # system
                 raster_bounding_box_list.append(
                     transform_bounding_box(
                         raster_info['bounding_box'], base_raster_sr_wkt,
