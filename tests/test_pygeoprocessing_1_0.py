@@ -761,6 +761,75 @@ class PyGeoprocessing10(unittest.TestCase):
                 target_raster_info['pixel_size'],
                 base_a_raster_info['pixel_size'])
 
+    def test_align_and_resize_raster_stack_manual_projection(self):
+        """PGP.geoprocessing: align/resize with manual projections."""
+        geotiff_driver = gdal.GetDriverByName('GTiff')
+        base_raster_path = os.path.join(self.workspace_dir, 'base_raster.tif')
+        base_raster = geotiff_driver.Create(
+            base_raster_path, 1, 1, 1, gdal.GDT_Byte)
+        base_raster.SetGeoTransform([0.1, 1, 0, 0.1, 0, -1])
+        base_band = base_raster.GetRasterBand(1)
+        pixel_matrix = numpy.ones((1, 1), numpy.int16)
+        base_band.WriteArray(pixel_matrix)
+        base_band = None
+        base_raster = None
+
+        utm_30n_sr = osr.SpatialReference()
+        utm_30n_sr.ImportFromEPSG(32630)
+        wgs84_sr = osr.SpatialReference()
+        wgs84_sr.ImportFromEPSG(4326)
+
+        target_raster_path = os.path.join(self.workspace_dir, 'target.tif')
+        target_pixel_size = (112000/4, -112000/4)
+
+        pygeoprocessing.align_and_resize_raster_stack(
+            [base_raster_path], [target_raster_path],
+            ['near'], target_pixel_size, 'intersection',
+            raster_align_index=0,
+            base_sr_wkt_list=[wgs84_sr.ExportToWkt()],
+            target_sr_wkt=utm_30n_sr.ExportToWkt())
+
+        target_raster = gdal.OpenEx(target_raster_path, gdal.OF_RASTER)
+        target_band = target_raster.GetRasterBand(1)
+        target_array = target_band.ReadAsArray()
+        target_band = None
+        target_raster = None
+        numpy.testing.assert_almost_equal(
+            target_array, numpy.ones((4, 4)))
+
+    def test_align_and_resize_raster_stack_no_base_projection(self):
+        """PGP.geoprocessing: align raise error if no base projection."""
+        geotiff_driver = gdal.GetDriverByName('GTiff')
+        base_raster_path = os.path.join(self.workspace_dir, 'base_raster.tif')
+        base_raster = geotiff_driver.Create(
+            base_raster_path, 1, 1, 1, gdal.GDT_Byte)
+        base_raster.SetGeoTransform([0.1, 1, 0, 0.1, 0, -1])
+        base_band = base_raster.GetRasterBand(1)
+        pixel_matrix = numpy.ones((1, 1), numpy.int16)
+        base_band.WriteArray(pixel_matrix)
+        base_band = None
+        base_raster = None
+
+        utm_30n_sr = osr.SpatialReference()
+        utm_30n_sr.ImportFromEPSG(32630)
+        wgs84_sr = osr.SpatialReference()
+        wgs84_sr.ImportFromEPSG(4326)
+
+        target_raster_path = os.path.join(self.workspace_dir, 'target.tif')
+        target_pixel_size = (112000/4, -112000/4)
+
+        with self.assertRaises(ValueError) as cm:
+            pygeoprocessing.align_and_resize_raster_stack(
+                [base_raster_path], [target_raster_path],
+                ['near'], target_pixel_size, 'intersection',
+                raster_align_index=0,
+                base_sr_wkt_list=[None],
+                target_sr_wkt=utm_30n_sr.ExportToWkt())
+            expected_message = "no projection for raster"
+            actual_message = str(cm.exception)
+            self.assertTrue(
+                expected_message in actual_message, actual_message)
+
     def test_align_and_resize_raster_stack_no_overlap(self):
         """PGP.geoprocessing: align/resize raster no intersection error."""
         pixel_a_matrix = numpy.ones((5, 5), numpy.int16)
@@ -1123,7 +1192,7 @@ class PyGeoprocessing10(unittest.TestCase):
                 target_path, gdal.GDT_Float32, None)
         expected_message = (
             'Raster size (128, 128) cannot be broadcast '
-            'to numpy shape (4, 4)')
+            'to numpy shape (4')
         actual_message = str(cm.exception)
         self.assertTrue(expected_message in actual_message, actual_message)
 
@@ -1134,7 +1203,7 @@ class PyGeoprocessing10(unittest.TestCase):
                 target_path, gdal.GDT_Float32, None)
         expected_message = (
             'Raster size (128, 128) cannot be broadcast '
-            'to numpy shape (4,)')
+            'to numpy shape (4')
         actual_message = str(cm.exception)
         self.assertTrue(expected_message in actual_message, actual_message)
 

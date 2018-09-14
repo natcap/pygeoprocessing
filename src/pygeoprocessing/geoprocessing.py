@@ -498,7 +498,7 @@ def raster_calculator(
 def align_and_resize_raster_stack(
         base_raster_path_list, target_raster_path_list, resample_method_list,
         target_pixel_size, bounding_box_mode, base_vector_path_list=None,
-        raster_align_index=None, target_sr_wkt=None,
+        raster_align_index=None, base_sr_wkt_list=None, target_sr_wkt=None,
         gtiff_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS):
     """Generate rasters from a base such that they align geospatially.
 
@@ -522,7 +522,8 @@ def align_and_resize_raster_stack(
         target_pixel_size (tuple): the target raster's x and y pixel size
             example: [30, -30].
         bounding_box_mode (string): one of "union", "intersection", or
-            a list of floats of the form [minx, miny, maxx, maxy].  Depending
+            a list of floats of the form [minx, miny, maxx, maxy] in the
+            target projection coordinate system.  Depending
             on the value, output extents are defined as the union,
             intersection, or the explicit bounding box.
         base_vector_path_list (list): a list of base vector paths whose
@@ -537,6 +538,11 @@ def align_and_resize_raster_stack(
             grid layout.  If `None` then the bounding box of the target
             rasters is calculated as the precise intersection, union, or
             bounding box.
+        base_sr_wkt_list (list): if not None, this is a list of base
+            projections of the rasters in `base_raster_path_list`. If a value
+            is `None` the `base_sr` is assumed to be whatever is defined in
+            that raster. This value is useful if there are rasters with no
+            projection defined, but otherwise known.
         target_sr_wkt (string): if not None, this is the desired
             projection of all target rasters in Well Known Text format. If
             None, the base SRS will be passed to the target.
@@ -578,6 +584,9 @@ def align_and_resize_raster_stack(
 
     # get the literal or intersecting/unioned bounding box
     if isinstance(bounding_box_mode, (list, tuple)):
+        # if it's a list or tuple, it must be a manual bounding box
+        LOGGER.debug(
+            "assuming manual bounding box mode of %s", bounding_box_mode)
         target_bounding_box = bounding_box_mode
     else:
         # either intersection or union, get list of bounding boxes, reproject
@@ -590,11 +599,43 @@ def align_and_resize_raster_stack(
         else:
             vector_info_list = []
 
+        raster_bounding_box_list = []
+        for raster_index, raster_info in enumerate(raster_info_list):
+            # this block calculates the base projection of `raster_info` if
+            # `target_sr_wkt` is defined, thus implying a reprojection will
+            # be necessary.
+            if target_sr_wkt:
+                if base_sr_wkt_list and base_sr_wkt_list[raster_index]:
+                    # a base is defined, use that
+                    base_raster_sr_wkt = base_sr_wkt_list[raster_index]
+                else:
+                    # otherwise use the raster's projection and there must
+                    # be one since we're reprojecting
+                    base_raster_sr_wkt = raster_info['projection']
+                    if not base_raster_sr_wkt:
+                        raise ValueError(
+                            "no projection for raster %s" %
+                            base_raster_path_list[raster_index])
+                # since the base spatial reference is potentially different
+                # than the target, we need to transform the base bounding
+                # box into target coordinates so later we can calculate
+                # accurate bounding box overlaps in the target coordinate
+                # system
+                raster_bounding_box_list.append(
+                    transform_bounding_box(
+                        raster_info['bounding_box'], base_raster_sr_wkt,
+                        target_sr_wkt))
+            else:
+                raster_bounding_box_list.append(raster_info['bounding_box'])
+
+        # include the vector bounding box information to make a global list
+        # of target bounding boxes
         bounding_box_list = [
+            vector_info['bounding_box'] if target_sr_wkt is None else
             transform_bounding_box(
-                info['bounding_box'], info['projection'], target_sr_wkt)
-            if target_sr_wkt else info['bounding_box']
-            for info in raster_info_list + vector_info_list]
+                vector_info['bounding_box'],
+                vector_info['projection'], target_sr_wkt)
+            for vector_info in vector_info_list] + raster_bounding_box_list
 
         target_bounding_box = reduce(
             functools.partial(_merge_bounding_boxes, mode=bounding_box_mode),
@@ -669,6 +710,9 @@ def align_and_resize_raster_stack(
                     'target_bb': target_bounding_box,
                     'gtiff_creation_options': gtiff_creation_options,
                     'target_sr_wkt': target_sr_wkt,
+                    'base_sr_wkt': (
+                        None if not base_sr_wkt_list else
+                        base_sr_wkt_list[index]),
                     })
             result_list.append(result)
         worker_pool.close()
@@ -1615,7 +1659,7 @@ def reclassify_raster(
 
 def warp_raster(
         base_raster_path, target_pixel_size, target_raster_path,
-        resample_method, target_bb=None, target_sr_wkt=None,
+        resample_method, target_bb=None, base_sr_wkt=None, target_sr_wkt=None,
         gtiff_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS,
         n_threads=None):
     """Resize/resample raster to desired pixel size, bbox and projection.
@@ -1633,6 +1677,8 @@ def warp_raster(
             source bounding box.  Otherwise it's a list of float describing
             target bounding box in target coordinate system as
             [minx, miny, maxx, maxy].
+        base_sr_wkt (string): if not None, interpret the projection of
+            `base_raster_path` as this.
         target_sr_wkt (string): if not None, desired target projection in Well
             Known Text format.
         gtiff_creation_options (list or tuple): list of strings that will be
@@ -1713,6 +1759,7 @@ def warp_raster(
         yRes=abs(target_pixel_size[1]),
         resampleAlg=resample_method,
         outputBoundsSRS=target_sr_wkt,
+        srcSRS=base_sr_wkt,
         dstSRS=target_sr_wkt,
         multithread=True if warp_options else False,
         warpOptions=warp_options,

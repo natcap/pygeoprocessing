@@ -13,6 +13,11 @@ Unreleased Changes
 * Fixes an issue in `get_raster_info` and `get_vector_info` where the path to
   the raster/vector includes non-standard OS pathing (such as a NETCDF), info
   will still calculate info.
+* Added functionality to `align_raster_stack` and `warp_raster` to define a
+  base spatial reference system for rasters if not is not defined or one wishes
+  to override the existing one. This functionality is useful when reprojecting
+  a rasters that does not have a spatial reference defined in the dataset but
+  is otherwise known.
 
 1.2.3 (7/25/2018)
 -----------------
