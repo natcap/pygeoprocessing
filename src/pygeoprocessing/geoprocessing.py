@@ -628,8 +628,6 @@ def align_and_resize_raster_stack(
                 vector_info['projection'], target_sr_wkt)
             for vector_info in vector_info_list] + raster_bounding_box_list
 
-        LOGGER.debug("here are the bounding boxes: %s", bounding_box_list)
-
         target_bounding_box = reduce(
             functools.partial(_merge_bounding_boxes, mode=bounding_box_mode),
             bounding_box_list)
