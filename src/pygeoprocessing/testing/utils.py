@@ -45,7 +45,7 @@ def digest_file_list(filepath_list, ifdir='skip'):
             # We only want to pass files down to the digest_file function
             message = 'Skipping md5sum for directory %s' % filepath
             if ifdir == 'skip':
-                LOGGER.warn(message)
+                LOGGER.warning(message)
                 continue
             else:  # ifdir == 'raise'
                 raise IOError(message)

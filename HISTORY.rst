@@ -10,6 +10,9 @@ Unreleased Changes
 * Improved runtime performance of ``reproject_vector`` by using database
   transactions.
 * Improved logging for long runtimes in ``zonal_statistics``.
+* Fixes an issue in `get_raster_info` and `get_vector_info` where the path to
+  the raster/vector includes non-standard OS pathing (such as a NETCDF), info
+  will still calculate info.
 
 1.2.3 (7/25/2018)
 -----------------

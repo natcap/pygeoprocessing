@@ -984,7 +984,7 @@ def flow_dir_d8(
     dem_block_xsize, dem_block_ysize = dem_raster_info['block_size']
     if (dem_block_xsize & (dem_block_xsize - 1) != 0) or (
             dem_block_ysize & (dem_block_ysize - 1) != 0):
-        LOGGER.warn("dem is not a power of 2, creating a copy that is.")
+        LOGGER.warning("dem is not a power of 2, creating a copy that is.")
         compatable_dem_raster_path_band = (
             os.path.join(working_dir_path, 'compatable_dem.tif'),
             dem_raster_path_band[1])
@@ -1540,7 +1540,7 @@ def flow_dir_mfd(
     dem_block_xsize, dem_block_ysize = dem_raster_info['block_size']
     if (dem_block_xsize & (dem_block_xsize - 1) != 0) or (
             dem_block_ysize & (dem_block_ysize - 1) != 0):
-        LOGGER.warn("dem is not a power of 2, creating a copy that is.")
+        LOGGER.warning("dem is not a power of 2, creating a copy that is.")
         compatable_dem_raster_path_band = (
             os.path.join(working_dir_path, 'compatable_dem.tif'),
             dem_raster_path_band[1])
