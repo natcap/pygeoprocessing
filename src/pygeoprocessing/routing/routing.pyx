@@ -1915,7 +1915,10 @@ def flow_accumulation_mfd(
             flow into it. The proportion is determined as the value of the
             upstream flow dir pixel in the downslope direction pointing to
             the current pixel divided by the sum of all the flow weights
-            exiting that pixel.
+            exiting that pixel. Note the target type of this raster
+            is a 64 bit float so there is minimal risk of overflow and the
+            possibility of handling a float dtype in
+            `weight_raster_path_band`.
         weight_raster_path_band (tuple): optional path and band number to a
             raster that will be used as the per-pixel flow accumulation
             weight. If `None`, 1 is the default flow accumulation weight.
