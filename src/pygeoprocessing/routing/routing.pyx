@@ -188,6 +188,9 @@ cdef class _ManagedRaster:
         Returns:
             None.
         """
+        if not os.path.isfile(raster_path):
+            LOGGER.error("%s is not a file.", raster_path)
+            return
         raster_info = pygeoprocessing.get_raster_info(raster_path)
         self.raster_x_size, self.raster_y_size = raster_info['raster_size']
         self.block_xsize, self.block_ysize = raster_info['block_size']
@@ -1856,7 +1859,8 @@ def flow_dir_mfd(
 
 
 def flow_accumulation_mfd(
-        flow_dir_mfd_raster_path_band, target_flow_accum_raster_path):
+        flow_dir_mfd_raster_path_band, target_flow_accum_raster_path,
+        weight_raster_path_band=None):
     """Multiple flow direction accumulation.
 
     Parameters:
@@ -1872,6 +1876,10 @@ def flow_accumulation_mfd(
             upstream flow dir pixel in the downslope direction pointing to
             the current pixel divided by the sum of all the flow weights
             exiting that pixel.
+        weight_raster_path_band (tuple): path and band number to a raster
+            that will be used as the per-pixel flow accumulation weight. If
+            `None`, 1 is the default flow accumulation weight. This raster
+            must be the same dimensions as `flow_dir_mfd_raster_path_band`.
 
     Returns:
         None.
@@ -1902,6 +1910,10 @@ def flow_accumulation_mfd(
     # to trigger a recursive uphill walk
     cdef double upstream_flow_accum
 
+    # this value is used to store the current weight which might be 1 or
+    # come from a predefined flow accumulation weight raster
+    cdef double weight_val
+
     # `search_stack` is used to walk upstream to calculate flow accumulation
     # values represented in a flow pixel which stores the x/y position,
     # next direction to check, and running flow accumulation value.
@@ -1914,6 +1926,16 @@ def flow_accumulation_mfd(
     # used for time-delayed logging
     cdef time_t last_log_time
     last_log_time = ctime(NULL)
+
+    if not _is_raster_path_band_formatted(flow_dir_mfd_raster_path_band):
+        raise ValueError(
+            "%s is supposed to be a raster band tuple but it's not." % (
+                flow_dir_mfd_raster_path_band))
+    if weight_raster_path_band and not _is_raster_path_band_formatted(
+            weight_raster_path_band):
+        raise ValueError(
+            "%s is supposed to be a raster band tuple but it's not." % (
+                weight_raster_path_band))
 
     flow_accum_nodata = -1
     pygeoprocessing.new_raster_from_base(
@@ -1930,6 +1952,13 @@ def flow_accumulation_mfd(
         flow_dir_mfd_raster_path_band[0], gdal.OF_RASTER)
     flow_dir_band = flow_dir_raster.GetRasterBand(
         flow_dir_mfd_raster_path_band[1])
+
+    cdef _ManagedRaster weight_raster = None
+    if weight_raster_path_band:
+        LOGGER.debug('opening weight raster')
+        weight_raster = _ManagedRaster(
+            weight_raster_path_band[0], weight_raster_path_band[1], 0)
+    LOGGER.debug('weight raster open')
 
     flow_dir_raster_info = pygeoprocessing.get_raster_info(
         flow_dir_mfd_raster_path_band[0])
@@ -1987,8 +2016,12 @@ def flow_accumulation_mfd(
                         # root must be a drain
                         xi_root = xi-1+xoff
                         yi_root = yi-1+yoff
+                        if weight_raster is not None:
+                            weight_val = weight_raster.get(xi_root, yi_root)
+                        else:
+                            weight_val = 1.0
                         search_stack.push(
-                            FlowPixelType(xi_root, yi_root, 0, 1))
+                            FlowPixelType(xi_root, yi_root, 0, weight_val))
                         break
 
                 while not search_stack.empty():
@@ -2017,7 +2050,14 @@ def flow_accumulation_mfd(
                             # process upstream before this one
                             flow_pixel.last_flow_dir = i_n
                             search_stack.push(flow_pixel)
-                            search_stack.push(FlowPixelType(xi_n, yi_n, 0, 1))
+
+                            if weight_raster is not None:
+                                weight_val = weight_raster.get(xi_n, yi_n)
+                            else:
+                                weight_val = 1.0
+
+                            search_stack.push(
+                                FlowPixelType(xi_n, yi_n, 0, weight_val))
                             preempted = 1
                             break
                         upstream_flow_dir_sum = 0
@@ -2211,9 +2251,6 @@ def distance_to_channel_mfd(
     # used to remember if the current pixel is a channel for routing
     cdef int is_a_channel
 
-    # used when searching pixels to be fully upstream
-    cdef int inflow
-
     # `distance_to_channel_queue` is the data structure that walks upstream
     # from a defined flow distance pixel
     cdef stack[FlowPixelType] distance_to_channel_stack
@@ -2368,3 +2405,17 @@ def distance_to_channel_mfd(
                     distance_to_channel_managed_raster.set(
                         pixel.xi, pixel.yi, pixel.value)
     LOGGER.info('%.2f%% complete', 100.0)
+
+
+def _is_raster_path_band_formatted(raster_path_band):
+    """Return true if raster path band is a (str, int) tuple/list."""
+    if not isinstance(raster_path_band, (list, tuple)):
+        return False
+    elif len(raster_path_band) != 2:
+        return False
+    elif not isinstance(raster_path_band[0], basestring):
+        return False
+    elif not isinstance(raster_path_band[1], int):
+        return False
+    else:
+        return True
