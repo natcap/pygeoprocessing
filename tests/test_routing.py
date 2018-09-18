@@ -174,7 +174,7 @@ class TestRouting(unittest.TestCase):
         flow_accum_array = flow_accum_band.ReadAsArray()
         flow_accum_band = None
         flow_accum_raster = None
-        self.assertEqual(flow_accum_array.dtype, numpy.int32)
+        self.assertEqual(flow_accum_array.dtype, numpy.float64)
 
         # this is a regression result saved by hand
         expected_result = numpy.array(
@@ -192,6 +192,87 @@ class TestRouting(unittest.TestCase):
 
         numpy.testing.assert_almost_equal(flow_accum_array, expected_result)
 
+    def test_flow_accum_d8_flow_weights(self):
+        """PGP.routing: test D8 flow accum."""
+        import pygeoprocessing.routing
+
+        driver = gdal.GetDriverByName('GTiff')
+        flow_dir_path = os.path.join(self.workspace_dir, 'flow_dir.tif')
+        # this was generated from a pre-calculated plateau drain dem
+        flow_dir_array = numpy.array([
+            [2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 0],
+            [4, 2, 2, 2, 2, 2, 2, 2, 2, 2, 0],
+            [4, 4, 2, 2, 2, 2, 2, 2, 2, 0, 0],
+            [4, 4, 4, 2, 2, 2, 2, 2, 0, 0, 0],
+            [4, 4, 4, 4, 2, 2, 2, 0, 0, 0, 0],
+            [4, 4, 4, 4, 4, 2, 0, 0, 0, 0, 0],
+            [4, 4, 4, 4, 4, 6, 0, 0, 0, 0, 0],
+            [4, 4, 4, 4, 6, 6, 6, 0, 0, 0, 0],
+            [4, 4, 4, 6, 6, 6, 6, 6, 0, 0, 0],
+            [4, 4, 6, 6, 6, 6, 6, 6, 6, 0, 0],
+            [4, 6, 6, 6, 6, 6, 6, 6, 6, 6, 0]])
+        flow_dir_raster = driver.Create(
+            flow_dir_path, flow_dir_array.shape[1], flow_dir_array.shape[0],
+            1, gdal.GDT_Float32, options=(
+                'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
+                'BLOCKXSIZE=32', 'BLOCKYSIZE=32'))
+
+        flow_dir_band = flow_dir_raster.GetRasterBand(1)
+        flow_dir_band.WriteArray(flow_dir_array)
+        flow_dir_band.FlushCache()
+        flow_dir_band = None
+        flow_dir_raster = None
+
+        flow_weight_raster_path = os.path.join(
+            self.workspace_dir, 'flow_weights.tif')
+        flow_weight_array = numpy.empty(
+            flow_dir_array.shape)
+        flow_weight_constant = 2.7
+        flow_weight_array[:] = flow_weight_constant
+
+        flow_weight_raster = driver.Create(
+            flow_weight_raster_path, flow_weight_array.shape[1],
+            flow_weight_array.shape[0], 1, gdal.GDT_Float32, options=(
+                'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
+                'BLOCKXSIZE=32', 'BLOCKYSIZE=32'))
+        flow_weight_band = flow_weight_raster.GetRasterBand(1)
+        flow_weight_band.WriteArray(flow_weight_array)
+        flow_weight_band.FlushCache()
+        flow_weight_band = None
+        flow_weight_raster = None
+
+        target_flow_accum_path = os.path.join(
+            self.workspace_dir, 'flow_accum.tif')
+
+        pygeoprocessing.routing.flow_accumulation_d8(
+            (flow_dir_path, 1), target_flow_accum_path,
+            weight_raster_path_band=(flow_weight_raster_path, 1))
+
+        flow_accum_raster = gdal.OpenEx(
+            target_flow_accum_path, gdal.OF_RASTER)
+        flow_accum_band = flow_accum_raster.GetRasterBand(1)
+        flow_accum_array = flow_accum_band.ReadAsArray()
+        flow_accum_band = None
+        flow_accum_raster = None
+        self.assertEqual(flow_accum_array.dtype, numpy.float64)
+
+        # this is a regression result saved by hand from a simple run but
+        # multiplied by the flow weight constant so we know flow weights work.
+        expected_result = flow_weight_constant * numpy.array(
+            [[1, 2, 3, 4, 5, 6, 5, 4, 3, 2, 1],
+             [1, 1, 2, 3, 4, 5, 4, 3, 2, 1, 1],
+             [2, 1, 1, 2, 3, 4, 3, 2, 1, 1, 2],
+             [3, 2, 1, 1, 2, 3, 2, 1, 1, 2, 3],
+             [4, 3, 2, 1, 1, 2, 1, 1, 2, 3, 4],
+             [5, 4, 3, 2, 1, 1, 1, 2, 3, 4, 5],
+             [5, 4, 3, 2, 1, 1, 1, 2, 3, 4, 5],
+             [4, 3, 2, 1, 1, 2, 1, 1, 2, 3, 4],
+             [3, 2, 1, 1, 2, 3, 2, 1, 1, 2, 3],
+             [2, 1, 1, 2, 3, 4, 3, 2, 1, 1, 2],
+             [1, 1, 2, 3, 4, 5, 4, 3, 2, 1, 1]], dtype=numpy.float64)
+
+        numpy.testing.assert_almost_equal(
+            flow_accum_array, expected_result, 6)
 
     def test_flow_dir_mfd(self):
         """PGP.routing: test multiple flow dir."""
@@ -357,7 +438,8 @@ class TestRouting(unittest.TestCase):
         flow_weight_raster_path = os.path.join(
             self.workspace_dir, 'flow_weights.tif')
         flow_weight_array = numpy.empty((n, n))
-        flow_weight_array[:] = 2
+        flow_weight_constant = 2.7
+        flow_weight_array[:] = flow_weight_constant
         pygeoprocessing.new_raster_from_base(
             flow_dir_path, flow_weight_raster_path, gdal.GDT_Float32,
             [-1.0])
@@ -387,7 +469,7 @@ class TestRouting(unittest.TestCase):
         # this was generated from a hand-checked result with flow weight of
         # 1, so the result should be twice that since we have flow weights
         # of 2.
-        expected_result = 2.0 * numpy.array([
+        expected_result = flow_weight_constant * numpy.array([
             [1., 1., 1., 1., 1., 1., 1., 1., 1., 1., 1.],
             [1.88571429, 2.11428571, 2., 2., 2., 2., 2., 2., 2., 2.11428571,
              1.88571429],
@@ -410,7 +492,7 @@ class TestRouting(unittest.TestCase):
              1.88571429],
             [1., 1., 1., 1., 1., 1., 1., 1., 1., 1., 1.]])
 
-        numpy.testing.assert_almost_equal(flow_array, expected_result)
+        numpy.testing.assert_almost_equal(flow_array, expected_result, 1e-6)
 
     def test_distance_to_channel_d8(self):
         """PGP.routing: test distance to channel D8."""
