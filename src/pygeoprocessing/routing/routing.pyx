@@ -2315,6 +2315,14 @@ def distance_to_channel_mfd(
     cdef time_t last_log_time
     last_log_time = ctime(NULL)
 
+    for path in (
+            flow_dir_mfd_raster_path_band, channel_raster_path_band,
+            weight_raster_path_band):
+        if path is not None and not _is_raster_path_band_formatted(path):
+            raise ValueError(
+                "%s is supposed to be a raster band tuple but it's not." % (
+                    path))
+
     distance_nodata = -1
     pygeoprocessing.new_raster_from_base(
         flow_dir_mfd_raster_path_band[0],
