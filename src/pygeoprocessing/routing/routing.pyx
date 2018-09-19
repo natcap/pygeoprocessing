@@ -2167,6 +2167,10 @@ def distance_to_channel_d8(
     # properties of the parallel rasters
     cdef int raster_x_size, raster_y_size
 
+    # these area used to store custom per-pixel weights and per-pixel values
+    # for distance updates
+    cdef float weight_val, pixel_val
+
     # used for time-delayed logging
     cdef time_t last_log_time
     last_log_time = ctime(NULL)
@@ -2246,7 +2250,7 @@ def distance_to_channel_d8(
                     continue
 
                 distance_to_channel_stack.push(
-                    PixelType(0.0, xi+xoff-1, yi+yoff-1, 0.0))
+                    PixelType(0.0, xi+xoff-1, yi+yoff-1, 0))
 
                 while not distance_to_channel_stack.empty():
                     xi_q = distance_to_channel_stack.top().xi
@@ -2283,7 +2287,7 @@ def distance_to_channel_d8(
 
                             distance_to_channel_stack.push(
                                 PixelType(
-                                    weight_val + pixel_val, xi_n, yi_n, 0.0))
+                                    weight_val + pixel_val, xi_n, yi_n, 0))
 
 
 def distance_to_channel_mfd(
