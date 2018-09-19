@@ -18,6 +18,9 @@ Unreleased Changes
   to override the existing one. This functionality is useful when reprojecting
   a rasters that does not have a spatial reference defined in the dataset but
   is otherwise known.
+* Added a `weight_raster_path_band` parameter to both `flow_accumulation_d8`
+  and `flow_accumulation_mfd` that allows the caller to use per-pixel weights
+  from a parallel raster as opposed to assuming a weight of 1 per pixel.
 
 1.2.3 (7/25/2018)
 -----------------
