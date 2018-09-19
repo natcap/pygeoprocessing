@@ -854,7 +854,7 @@ class TestRouting(unittest.TestCase):
         flow_weight_array = numpy.empty(flow_dir_mfd_array.shape)
         flow_weight_array[:] = 2.0
         flow_dir_mfd_weight_path = os.path.join(
-            self.workspace_dir, 'flow_dir_mfd.tif')
+            self.workspace_dir, 'flow_dir_mfd_weights.tif')
         flow_dir_mfd_weight_raster = driver.Create(
             flow_dir_mfd_weight_path, flow_weight_array.shape[1],
             flow_weight_array.shape[0], 1, gdal.GDT_Int32, options=(
