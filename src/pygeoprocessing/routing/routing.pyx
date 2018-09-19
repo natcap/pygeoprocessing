@@ -2260,7 +2260,7 @@ def distance_to_channel_d8(
 
 def distance_to_channel_mfd(
         flow_dir_mfd_raster_path_band, channel_raster_path_band,
-        target_distance_to_channel_raster_path):
+        target_distance_to_channel_raster_path, weight_raster_path_band=None):
     """Calculate distance to channel with multiple flow direction.
 
     Parameters:
@@ -2277,6 +2277,11 @@ def distance_to_channel_mfd(
         target_distance_to_channel_raster_path (string): path to a raster
             created by this call that has per-pixel distances from a given
             pixel to the nearest downhill channel.
+        weight_raster_path_band (tuple): optional path and band number to a
+            raster that will be used as the per-pixel flow distance
+            weight. If `None`, 1 is the default distance between neighboring
+            pixels. This raster must be the same dimensions as
+            `flow_dir_mfd_raster_path_band`.
 
     Returns:
         None.
@@ -2301,6 +2306,10 @@ def distance_to_channel_mfd(
 
     # properties of the parallel rasters
     cdef int raster_x_size, raster_y_size
+
+    # this value is used to store the current weight which might be 1 or
+    # come from a predefined flow accumulation weight raster
+    cdef double weight_val
 
     # used for time-delayed logging
     cdef time_t last_log_time
@@ -2328,6 +2337,11 @@ def distance_to_channel_mfd(
         flow_dir_mfd_raster_path_band[0], gdal.OF_RASTER)
     flow_dir_mfd_band = flow_dir_mfd_raster.GetRasterBand(
         flow_dir_mfd_raster_path_band[1])
+
+    cdef _ManagedRaster weight_raster = None
+    if weight_raster_path_band:
+        weight_raster = _ManagedRaster(
+            weight_raster_path_band[0], weight_raster_path_band[1], 0)
 
     flow_dir_raster_info = pygeoprocessing.get_raster_info(
         flow_dir_mfd_raster_path_band[0])
@@ -2431,8 +2445,13 @@ def distance_to_channel_mfd(
                                 FlowPixelType(xi_n, yi_n, 0, 0.0))
                             break
 
+                        if weight_raster is not None:
+                            weight_val = weight_raster.get(xi_n, yi_n)
+                        else:
+                            weight_val = (SQRT2 if i_n % 2 else 1)
+
                         pixel.value += flow_dir_weight * (
-                            (SQRT2 if i_n % 2 else 1) + n_distance)
+                            weight_val + n_distance)
 
                     if preempted:
                         continue
