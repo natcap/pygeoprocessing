@@ -2368,3 +2368,22 @@ def distance_to_channel_mfd(
                     distance_to_channel_managed_raster.set(
                         pixel.xi, pixel.yi, pixel.value)
     LOGGER.info('%.2f%% complete', 100.0)
+
+
+def delineate_watersheds(
+        d8_flow_dir_raster_path_band, outflow_points_vector_path,
+        target_watersheds_vector, scratch_raster_path):
+
+    # TODO: Check that flow direction is tiled appopriately
+    # TODO: Check that raster path band is formatted well
+    flow_dir_managed_raster = _ManagedRaster(d8_flow_dir_raster_path_band[0],
+                                             d8_flow_dir_raster_path_band[1],
+                                             0)  # read-only
+
+    # Create a new watershed scratch raster the size, shape of the flow dir raster
+    pygeoprocessing.new_raster_from_base(
+        d8_flow_dir_raster_path_band[0], scratch_raster_path, gdal.GDT_Byte,
+        [255], fill_value_list=[0],
+        gtiff_creation_options=GTIFF_CREATION_OPTIONS)
+
+
