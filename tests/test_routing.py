@@ -810,7 +810,8 @@ class TestRouting(unittest.TestCase):
         """PGP.routing: test distance to channel mfd with weights."""
         import pygeoprocessing.routing
         driver = gdal.GetDriverByName('GTiff')
-        flow_dir_mfd_path = 'flow_dir_mfd.tif' #os.path.join(self.workspace_dir, 'flow_dir_mfd.tif')
+        flow_dir_mfd_path = os.path.join(
+            self.workspace_dir, 'flow_dir_mfd.tif')
         flow_dir_mfd_array = numpy.array([
             [1761607680, 1178599424, 1178599424, 1178599424, 1178599424,
              1178599424, 1178599424, 1178599424, 1178599424, 1178599424,
@@ -891,7 +892,8 @@ class TestRouting(unittest.TestCase):
         channel_band = None
         channel_raster = None
 
-        distance_to_channel_mfd_path = 'distance_to_channel_mfd.tif' # os.path.join(self.workspace_dir, 'distance_to_channel_mfd.tif')
+        distance_to_channel_mfd_path = os.path.join(
+            self.workspace_dir, 'distance_to_channel_mfd.tif')
         pygeoprocessing.routing.distance_to_channel_mfd(
             (flow_dir_mfd_path, 1), (channel_path, 1),
             distance_to_channel_mfd_path,
