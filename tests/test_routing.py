@@ -193,7 +193,7 @@ class TestRouting(unittest.TestCase):
         numpy.testing.assert_almost_equal(flow_accum_array, expected_result)
 
     def test_flow_accum_d8_flow_weights(self):
-        """PGP.routing: test D8 flow accum."""
+        """PGP.routing: test D8 flow accum with flow weights."""
         import pygeoprocessing.routing
 
         driver = gdal.GetDriverByName('GTiff')
