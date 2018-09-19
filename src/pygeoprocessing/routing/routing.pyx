@@ -2122,7 +2122,8 @@ def flow_accumulation_mfd(
 
 def distance_to_channel_d8(
         flow_dir_d8_raster_path_band, channel_raster_path_band,
-        target_distance_to_channel_raster_path):
+        target_distance_to_channel_raster_path,
+        weight_raster_path_band=None):
     """Calculate distance to channel with D8 flow.
 
     Parameters:
@@ -2141,6 +2142,11 @@ def distance_to_channel_d8(
         target_distance_to_channel_raster_path (string): path to a raster
             created by this call that has per-pixel distances from a given
             pixel to the nearest downhill channel.
+        weight_raster_path_band (tuple): optional path and band number to a
+            raster that will be used as the per-pixel flow distance
+            weight. If `None`, 1 is the default distance between neighboring
+            pixels. This raster must be the same dimensions as
+            `flow_dir_mfd_raster_path_band`.
 
     Returns:
         None.
@@ -2165,6 +2171,14 @@ def distance_to_channel_d8(
     cdef time_t last_log_time
     last_log_time = ctime(NULL)
 
+    for path in (
+            flow_dir_d8_raster_path_band, channel_raster_path_band,
+            weight_raster_path_band):
+        if path is not None and not _is_raster_path_band_formatted(path):
+            raise ValueError(
+                "%s is supposed to be a raster band tuple but it's not." % (
+                    path))
+
     distance_nodata = -1
     pygeoprocessing.new_raster_from_base(
         flow_dir_d8_raster_path_band[0],
@@ -2174,6 +2188,11 @@ def distance_to_channel_d8(
         gtiff_creation_options=GTIFF_CREATION_OPTIONS)
     distance_to_channel_managed_raster = _ManagedRaster(
         target_distance_to_channel_raster_path, 1, 1)
+
+    cdef _ManagedRaster weight_raster = None
+    if weight_raster_path_band:
+        weight_raster = _ManagedRaster(
+            weight_raster_path_band[0], weight_raster_path_band[1], 0)
 
     channel_managed_raster = _ManagedRaster(
         channel_raster_path_band[0], channel_raster_path_band[1], 0)
@@ -2232,10 +2251,10 @@ def distance_to_channel_d8(
                 while not distance_to_channel_stack.empty():
                     xi_q = distance_to_channel_stack.top().xi
                     yi_q = distance_to_channel_stack.top().yi
-                    dist_q = distance_to_channel_stack.top().value
+                    pixel_val = distance_to_channel_stack.top().value
                     distance_to_channel_stack.pop()
 
-                    distance_to_channel_managed_raster.set(xi_q, yi_q, dist_q)
+                    distance_to_channel_managed_raster.set(xi_q, yi_q, pixel_val)
 
                     for i_n in xrange(8):
                         xi_n = xi_q+NEIGHBOR_OFFSET_ARRAY[2*i_n]
@@ -2252,10 +2271,19 @@ def distance_to_channel_d8(
 
                         if (flow_dir_d8_managed_raster.get(xi_n, yi_n) ==
                                 D8_REVERSE_DIRECTION[i_n]):
+                            # if a weight is passed we use it directly and do
+                            # not consider that a diagonal pixel is further
+                            # away than an adjacent one. If no weight is used
+                            # then "distance" is being calculated and we account
+                            # for diagonal distance.
+                            if weight_raster is not None:
+                                weight_val = weight_raster.get(xi_n, yi_n)
+                            else:
+                                weight_val = (SQRT2 if i_n % 2 else 1)
+
                             distance_to_channel_stack.push(
                                 PixelType(
-                                    SQRT2 + dist_q if i_n % 2 else dist_q + 1,
-                                    xi_n, yi_n, 0.0))
+                                    weight_val + pixel_val, xi_n, yi_n, 0.0))
 
 
 def distance_to_channel_mfd(
@@ -2453,6 +2481,11 @@ def distance_to_channel_mfd(
                                 FlowPixelType(xi_n, yi_n, 0, 0.0))
                             break
 
+                        # if a weight is passed we use it directly and do
+                        # not consider that a diagonal pixel is further
+                        # away than an adjacent one. If no weight is used
+                        # then "distance" is being calculated and we account
+                        # for diagonal distance.
                         if weight_raster is not None:
                             weight_val = weight_raster.get(xi_n, yi_n)
                         else:
