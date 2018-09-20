@@ -5,8 +5,10 @@ import shutil
 import os
 
 from osgeo import gdal
+from osgeo import osr
 import numpy
 import numpy.testing
+import shapely.geometry
 
 
 class TestRouting(unittest.TestCase):
@@ -926,3 +928,55 @@ class TestRouting(unittest.TestCase):
 
         numpy.testing.assert_almost_equal(
             distance_to_channel_mfd_array, expected_result)
+
+    def test_watershed_delineation(self):
+        import pygeoprocessing.routing
+        import pygeoprocessing.testing
+
+        srs = osr.SpatialReference()
+        srs.ImportFromEPSG(32731) # WGS84 / UTM zone 31s
+        srs_wkt = srs.ExportToWkt()
+
+        flow_dir_array = numpy.array([
+            [0, 0, 0, 2, 4, 4, 6],
+            [6, 0, 0, 2, 4, 4, 6],
+            [6, 6, 0, 2, 4, 6, 6],
+            [4, 4, 4, 2, 0, 0, 0],
+            [2, 2, 0, 6, 4, 2, 2],
+            [2, 0, 0, 6, 4, 4, 2],
+            [2, 0, 0, 6, 4, 4, 4]])
+
+        flow_dir_path = os.path.join(self.workspace_dir, 'flow_dir.tif')
+        driver = gdal.GetDriverByName('GTiff')
+        flow_dir_raster = driver.Create(
+            flow_dir_path, flow_dir_array.shape[1], flow_dir_array.shape[0],
+            1, gdal.GDT_Byte, options=(
+                'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
+                'BLOCKXSIZE=256', 'BLOCKYSIZE=256'))
+        flow_dir_raster.SetProjection(srs_wkt)
+        flow_dir_raster.SetGeoTransform([2, 2, 0, -2, -2, 0])
+        flow_dir_raster = None
+
+        scratch_raster_path = os.path.join(self.workspace_dir, 'scratch.tif')
+
+        # TODO: What about when points are in a different projection?
+
+        outflow_points = os.path.join(self.workspace_dir,
+                                      'outflow_points.gpkg')
+        points_geometry = [
+            shapely.geometry.Point(2, -8),
+            shapely.geometry.Point(8, 2),
+            shapely.geometry.Point(14, -8),
+            shapely.geometry.Point(8, -14)]
+        pygeoprocessing.testing.create_vector_on_disk(
+            points_geometry, srs_wkt, vector_format='GPKG',
+            filename=outflow_points)
+
+        target_watersheds_vector = os.path.join(self.workspace_dir,
+                                                'sheds.gpkg')
+
+        pygeoprocessing.routing.delineate_watersheds(
+            (flow_dir_path, 1), outflow_points, target_watersheds_vector,
+            scratch_raster_path)
+
+

@@ -24,6 +24,7 @@ import tempfile
 import numpy
 import pygeoprocessing
 from osgeo import gdal
+from osgeo import osr
 
 cimport numpy
 cimport cython
@@ -2515,21 +2516,142 @@ def distance_to_channel_mfd(
     LOGGER.info('%.2f%% complete', 100.0)
 
 
+ctypedef pair[int, int] CoordinatePair
+ctypedef queue[CoordinatePair] CoordinateQueue
+ctypedef cset[CoordinatePair] CoordinateSet
+
+
 def delineate_watersheds(
         d8_flow_dir_raster_path_band, outflow_points_vector_path,
         target_watersheds_vector, scratch_raster_path):
+
+    if (d8_flow_dir_raster_path_band is not None and not
+            _is_raster_path_band_formatted(d8_flow_dir_raster_path_band)):
+        raise ValueError(
+            "%s is supposed to be a raster band tuple but it's not." % (
+                d8_flow_dir_raster_path_band))
+
+    cdef _ManagedRaster flow_dir_managed_raster, scratch_managed_raster
 
     # TODO: Check that flow direction is tiled appopriately
     # TODO: Check that raster path band is formatted well
     flow_dir_managed_raster = _ManagedRaster(d8_flow_dir_raster_path_band[0],
                                              d8_flow_dir_raster_path_band[1],
                                              0)  # read-only
+    flow_dir_info = pygeoprocessing.get_raster_info(
+        d8_flow_dir_raster_path_band[0])
+    source_gt = flow_dir_info['geotransform']
+    cdef int flow_dir_n_cols = flow_dir_info['raster_size'][0]
+    cdef int flow_dir_n_rows = flow_dir_info['raster_size'][1]
 
     # Create a new watershed scratch raster the size, shape of the flow dir raster
     pygeoprocessing.new_raster_from_base(
         d8_flow_dir_raster_path_band[0], scratch_raster_path, gdal.GDT_Byte,
         [255], fill_value_list=[0],
         gtiff_creation_options=GTIFF_CREATION_OPTIONS)
+
+    driver = gdal.GetDriverByName('GPKG')
+    watersheds_srs = osr.SpatialReference()
+    watersheds_srs.ImportFromWkt(flow_dir_info['projection'])
+    watersheds_vector = driver.Create(target_watersheds_vector, 0, 0)
+    watersheds_layer = watersheds_vector.CreateLayer(
+        'watersheds', watersheds_srs.ExportToWkt())  # layer type???
+
+    cdef int yi_outflow, xi_outflow
+    cdef CoordinatePair current_pixel, neighbor_pixel
+    cdef CoordinateQueue process_queue
+    cdef CoordinateSet process_queue_set
+
+    cdef int* neighbor_col = [1, 1, 0, -1, -1, -1, 0, 1]
+    cdef int* neighbor_row = [0, -1, -1, -1, 0, 1, 1, 1]
+    cdef int* reverse_flow = [4, 5, 6, 7, 0, 1, 2, 3, 4]
+
+    print 'starting loop'
+
+    vector = gdal.OpenEx(outflow_points_vector_path, gdal.OF_VECTOR)
+    for layer in vector:
+        for outflow_point in layer:
+            geometry = outflow_point.GetGeometryRef()
+            xi_outflow = (geometry.GetX() - source_gt[0]) // source_gt[1]
+            yi_outflow = (geometry.GetY() - source_gt[3]) // source_gt[5]
+
+            if 0 <= xi_outflow < flow_dir_n_cols:
+                continue
+
+            if 0 <= yi_outflow < flow_dir_n_rows:
+                continue
+
+            current_pixel = CoordinatePair(xi_outflow, yi_outflow)
+            process_queue.push(current_pixel)
+            process_queue_set.insert(current_pixel)
+
+            # The scratch raster is managed within the context of each point
+            # we're evaluating.
+            scratch_managed_raster = _ManagedRaster(scratch_raster_path, 1, 1)
+
+            while not process_queue.empty():
+                current_pixel = process_queue.front()
+                process_queue_set.erase(current_pixel)
+                process_queue.pop()
+
+                for neighbor_index in range(8):
+                    neighbor_pixel = CoordinatePair(
+                        current_pixel.first + neighbor_col[neighbor_index],
+                        current_pixel.second + neighbor_row[neighbor_index])
+
+                    if not 0 <= neighbor_pixel.first < flow_dir_n_cols:
+                        continue
+
+                    if not 0 <= neighbor_pixel.second < flow_dir_n_rows:
+                        continue
+
+                    # Is the neighbor pixel already in the queue?
+                    if (process_queue_set.find(neighbor_pixel) !=
+                            process_queue_set.end()):
+                        continue
+
+                    # Does the neighbor already belong to the watershed?
+                    if scratch_managed_raster.get(neighbor_pixel.first,
+                                                  neighbor_pixel.second) == 1:
+                        continue
+
+                    # Does the neighbor flow into the current pixel?
+                    if (reverse_flow[neighbor_index] ==
+                            flow_dir_managed_raster.get(
+                                neighbor_pixel.first, neighbor_pixel.second)):
+                        process_queue.push(neighbor_pixel)
+                        process_queue_set.insert(neighbor_pixel)
+
+            scratch_managed_raster.close()  # flush the scratch raster.
+
+            scratch_raster = gdal.OpenEx(scratch_raster_path,
+                                         gdal.OF_RASTER | gdal.GA_Update)
+            scratch_band = scratch_raster.GetRasterBand(1)
+
+            gdal.Polygonize(
+                scratch_band,  # the source band to be analyzed
+                scratch_band,  # the mask band indicating valid pixels
+                watersheds_layer,  # polygons are added to this layer
+                0,  # field index into which to save the pixel value of watershed
+                ['8CONNECTED8'])  # use 8-connectedness algorithm.
+
+            # TODO: copy over all of the fields from the points vector to the WS vector.
+
+            scratch_band.fill(0)  # reset the scratch raster
+            scratch_band = None
+            scratch_raster = None
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 def _is_raster_path_band_formatted(raster_path_band):
