@@ -1489,12 +1489,11 @@ def reproject_vector(
             Defaults to 0.
         driver_name (string): String to pass to ogr.GetDriverByName, defaults
             to 'ESRI Shapefile'.
-        copy_fields (bool or list/tuple): If True, all the fields in
+        copy_fields (bool or iterable): If True, all the fields in
             `base_vector_path` will be copied to `target_path` during the
-            reprojection step. If it is a list, it will be a list of field
-            names to exclusively copy. An unmatched fieldname will cause an
-            exception to be raised. If `False` no fields are copied into the
-            new vector.
+            reprojection step. If it is an iterable, it will contain the
+            field names to exclusively copy. An unmatched fieldname will be
+            ignored. If `False` no fields are copied into the new vector.
 
     Returns:
         None
@@ -1585,7 +1584,7 @@ def reproject_vector(
         # For all the fields in the feature set the field values from the
         # source field
         for target_index, base_index in (
-                target_to_base_field_id_map.iteritems()):
+                target_to_base_field_id_map.items()):
             target_feature.SetField(
                 target_index, base_feature.GetField(base_index))
 
