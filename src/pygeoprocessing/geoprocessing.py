@@ -1474,7 +1474,7 @@ def get_raster_info(raster_path):
 
 def reproject_vector(
         base_vector_path, target_wkt, target_path, layer_index=0,
-        driver_name='ESRI Shapefile'):
+        driver_name='ESRI Shapefile', copy_fields=True):
     """Reproject OGR DataSource (vector).
 
     Transforms the features of the base vector to the desired output
