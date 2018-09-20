@@ -3,6 +3,93 @@ Release History
 
 Unreleased Changes
 ------------------
+* Fixed a handful of docstring errors.
+* Improved runtime of ``zonal_statistics`` by a couple of orders of magnitude
+  for large vectors by using spatial indexes when calculating disjoint polygon
+  overlap sets, using database transactions, and memory buffers.
+* Improved runtime performance of ``reproject_vector`` by using database
+  transactions.
+* Improved logging for long runtimes in ``zonal_statistics``.
+* Fixes an issue in `get_raster_info` and `get_vector_info` where the path to
+  the raster/vector includes non-standard OS pathing (such as a NETCDF), info
+  will still calculate info.
+* Added functionality to `align_raster_stack` and `warp_raster` to define a
+  base spatial reference system for rasters if not is not defined or one wishes
+  to override the existing one. This functionality is useful when reprojecting
+  a rasters that does not have a spatial reference defined in the dataset but
+  is otherwise known.
+* Added a `weight_raster_path_band` parameter to both `flow_accumulation_d8`
+  and `flow_accumulation_mfd` that allows the caller to use per-pixel weights
+  from a parallel raster as opposed to assuming a weight of 1 per pixel.
+* Added a `weight_raster_path_band` parameter to both
+  `distance_to_channel_mfd` and `distance_to_channel_d8` that allows the
+  caller to use per-pixel weights from a parallel raster as opposed to
+  assuming a distance of 1 between neighboring pixels or sqrt(2) between
+  diagonal ones.
+
+1.2.3 (7/25/2018)
+-----------------
+* Exposing a parameter and setting reasonable defaults for the number of
+  processes to allocate to ``convolve_2d`` and ``warp_raster``. Fixes an issue
+  where the number of processes could exponentiate if many processes were
+  calling these functions.
+* Fixing an issue on ``zonal_statistics`` and ``convolve_2d`` that would
+  attempt to both read and write to the target raster with two different GDAL
+  objects. This caused an issue on Linux where the read file was not caught up
+  with the written one. Refactored to use only one handle.
+* Fixing a rare race condition where an exception could occur in
+  ``raster_calculator`` that would be obscured by an access to an object that
+  had not yet been assigned.
+* ``align_and_resize_raster_stack`` now terminates its process pool.
+* Increased the timeout in joining ``raster_calculator``'s stats worker.
+  On a slow system 5 seconds was not quite enough time.
+
+1.2.2 (7/25/2018)
+-----------------
+* Hotfixed a bug that would cause numpy arrays to be treated as broadcastable
+  even if they were passed in "raw".
+
+1.2.1 (7/22/2018)
+-----------------
+* Fixing an issue with `warp_raster` that would round off bounding boxes
+  for rasters that did not fit perfectly into the target raster's provided
+  pixel size.
+* Cautiously `join`ing all process pools to avoid a potential bug where a
+  deamonized subprocess in a process pool may still have access to a raster
+  but another process may require write access to it.
+
+1.2.0 (7/19/2018)
+-----------------
+
+* Several PyGeoprocessing functions now take advantage of multiple CPU cores:
+  * `raster_calculator` uses a separate thread to calculate raster statistics
+     in a `nogil` section of Cython code. In timing with a big rasters we
+     saw performance improvements of about 35%.
+  * `align_and_resize_raster_stack` uses as many CPU cores, up to the number
+    of CPUs reported by multiprocessing.cpu_count (but no less than 1), to
+    process each raster warp while also accounting for the fact that
+    `gdal.Warp` uses 2 cores on its own.
+  * `warp_raster` now directly uses `gdal.Warp`'s multithreading directly.
+    In practice it seems to utilize two cores.
+  * `convolve_2d` attempts to use `multiprocessing.cpu_count` cpus to
+    calculate separable convolutions per block while using the main thread to
+    aggregate  and write the result to the target raster. In practice we saw
+    this improve runtimes by about 50% for large rasters.
+* Fixed a bug that caused some nodata values to not be treated as nodata
+  if there was a numerical roundoff.
+* A recent GDAL upgrade (might have been 2.0?) changed the reference to
+  nearest neighbor interpolation from 'nearest' to 'near'. This PR changes
+  PyGeoprocessing to be consistent with that change.
+* ``raster_calculator`` can now also take "raw" arguments in the form of a
+  (value, "raw") tuple. The parameter `value` will be passed directly to
+  `local_op`. Scalars are no longer a special case and need to be passed as
+  "raw" parameters.
+* Raising `ValueError` in `get_raster_info` and `get_vector_info` in cases
+  where non-filepath non-GIS values are passed as parameters. Previously
+  such an error would result in an unhelpful error in the GDAL library.
+
+1.1.0 (7/6/2018)
+----------------
 * PyGeoprocessing now supports Python 2 and 3, and is tested on python 2.7
   and 3.6  Testing across multiple versions is configured to be run via
   ``tox``.
@@ -11,8 +98,14 @@ Unreleased Changes
   to be ``scipy>=0.14.1,!=0.19.1``.
 * A dependency on ``future`` has been added for compatibility between python
   versions.
-* Fixed a crash in `pygeoprocessing.routing.flow_dir_mfd` and `flow_dir_d8`
-  if a base raster was passed in that did not have a power of two blocksize.
+* Fixed a crash in ``pygeoprocessing.routing.flow_dir_mfd`` and
+  ``flow_dir_d8`` if a base raster was passed in that did not have a power of
+  two blocksize.
+* ``raster_calculator`` can now take numpy arrays and scalar values along with
+  raster path band tuples. Arrays and scalars are broadcast to the raster size
+  according to numpy array broadcasting rules.
+* ``align_and_resize_raster_stack`` can now take a desired target projection
+  which causes all input rasters to be warped to that projection on output.
 
 1.0.1 (5/16/2018)
 -----------------
@@ -58,7 +151,6 @@ Unreleased Changes
   accumulation.
 * Added a `merge_rasters` function to `pygeoprocessing` that will mosaic a
   set of rasters in the same projection, pixel size, and band count.
-
 
 0.6.0 (1/10/2017)
 -----------------

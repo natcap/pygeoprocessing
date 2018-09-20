@@ -17,14 +17,24 @@ from libc.math cimport ceil
 from osgeo import gdal
 import pygeoprocessing
 
-# TODO: Would it make sense to import these from pygeoprocessing.geoprocessing
-# instead of redefining here?
-_DEFAULT_GTIFF_CREATION_OPTIONS = (
-    'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW')
-
-LOGGER = logging.getLogger('geoprocessing_core')
+DEFAULT_GTIFF_CREATION_OPTIONS = (
+    'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
+    'BLOCKXSIZE=256', 'BLOCKYSIZE=256')
+LOGGER = logging.getLogger('pygeoprocessing.geoprocessing_core')
 
 cdef float NODATA = -1.0
+
+
+class MaskWrapper(object):
+    def __init__(self, base_nodata):
+        self.base_nodata = base_nodata
+
+    def __call__(self, base_array):
+        result = numpy.empty(base_array.shape, dtype=numpy.int8)
+        result[:] = NODATA
+        valid_mask = base_array != self.base_nodata
+        result[valid_mask] = base_array[valid_mask] != 0
+        return result
 
 @cython.boundscheck(False)
 @cython.wraparound(False)
@@ -60,16 +70,9 @@ def distance_transform_edt(base_mask_raster_path_band, target_distance_path):
     base_nodata = base_raster_info['nodata'][
         base_mask_raster_path_band[1]-1]
 
-    def _mask_op(base_array):
-        """Convert base_array to 1 if >0, 0 if == 0 or nodata."""
-        result = numpy.empty(base_array.shape, dtype=numpy.int8)
-        result[:] = NODATA
-        valid_mask = base_array != base_nodata
-        result[valid_mask] = base_array[valid_mask] != 0
-        return result
-
     pygeoprocessing.raster_calculator(
-        [base_mask_raster_path_band], _mask_op, base_mask_path,
+        [base_mask_raster_path_band], MaskWrapper(base_nodata),
+        base_mask_path,
         gdal.GDT_Byte, NODATA, calc_raster_stats=False)
 
     base_mask_raster = gdal.OpenEx(base_mask_path)
@@ -108,15 +111,15 @@ def distance_transform_edt(base_mask_raster_path_band, target_distance_path):
             buf_obj=mask_block)
         # base case
         g_block[0, :] = (mask_block[0, :] == 0) * numerical_inf
-        for row_index in xrange(1, n_rows):
-            for local_x_index in xrange(win_xsize):
+        for row_index in range(1, n_rows):
+            for local_x_index in range(win_xsize):
                 if mask_block[row_index, local_x_index] == 1:
                     g_block[row_index, local_x_index] = 0
                 else:
                     g_block[row_index, local_x_index] = (
                         g_block[row_index-1, local_x_index] + 1)
-        for row_index in xrange(n_rows-2, -1, -1):
-            for local_x_index in xrange(win_xsize):
+        for row_index in range(n_rows-2, -1, -1):
+            for local_x_index in range(win_xsize):
                 if (g_block[row_index+1, local_x_index] <
                         g_block[row_index, local_x_index]):
                     g_block[row_index, local_x_index] = (
@@ -153,11 +156,11 @@ def distance_transform_edt(base_mask_raster_path_band, target_distance_path):
         g_band.ReadAsArray(
             xoff=0, yoff=yoff, win_xsize=n_cols, win_ysize=win_ysize,
             buf_obj=g_block)
-        for local_y_index in xrange(win_ysize):
+        for local_y_index in range(win_ysize):
             q_index = 0
             s_array[0] = 0
             t_array[0] = 0
-            for u_index in xrange(1, n_cols):
+            for u_index in range(1, n_cols):
                 gu = g_block[local_y_index, u_index]**2
                 while (q_index >= 0):
                     tq = t_array[q_index]
@@ -182,7 +185,7 @@ def distance_transform_edt(base_mask_raster_path_band, target_distance_path):
             sq = s_array[q_index]
             gsq = g_block[local_y_index, sq]**2
             tq = t_array[q_index]
-            for u_index in xrange(n_cols-1, -1, -1):
+            for u_index in range(n_cols-1, -1, -1):
                 dt[local_y_index, u_index] = (u_index-sq)**2+gsq
                 if u_index == tq:
                     q_index -= 1
@@ -208,7 +211,7 @@ def distance_transform_edt(base_mask_raster_path_band, target_distance_path):
     try:
         os.remove(g_path)
     except OSError:
-        LOGGER.warn("couldn't remove file %s" % g_path)
+        LOGGER.warning("couldn't remove file %s" % g_path)
 
 
 @cython.boundscheck(False)
@@ -217,7 +220,7 @@ def distance_transform_edt(base_mask_raster_path_band, target_distance_path):
 @cython.cdivision(True)
 def calculate_slope(
         base_elevation_raster_path_band, target_slope_path,
-        gtiff_creation_options=_DEFAULT_GTIFF_CREATION_OPTIONS):
+        gtiff_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS):
     """Create a percent slope raster from DEM raster.
 
     Base algorithm is from Zevenbergen & Thorne "Quantitative Analysis of Land
@@ -323,8 +326,8 @@ def calculate_slope(
             buf_obj=dem_array[y_start:y_end, x_start:x_end],
             **block_offset_copy)
 
-        for row_index in xrange(1, win_ysize+1):
-            for col_index in xrange(1, win_xsize+1):
+        for row_index in range(1, win_ysize+1):
+            for col_index in range(1, win_xsize+1):
                 # Notation of the cell below comes from the algorithm
                 # description, cells are arraged as follows:
                 # abc
@@ -463,3 +466,71 @@ def calculate_slope(
     gdal.Dataset.__swig_destroy__(target_slope_raster)
     dem_raster = None
     target_slope_raster = None
+
+
+@cython.boundscheck(False)
+def stats_worker(stats_work_queue, exception_queue):
+    """Worker to calculate continuous min, max, mean and standard deviation.
+
+    Parameters:
+        stats_work_queue (Queue): a queue of 1D numpy arrays or None. If
+            None, function puts a (min, max, mean, stddev) tuple to the
+            queue and quits.
+
+    Returns:
+        None
+
+    """
+    cdef numpy.ndarray[numpy.float64_t, ndim=1] block
+    cdef double M_local = 0.0
+    cdef double S_local = 0.0
+    cdef double min_value = 0.0
+    cdef double max_value = 0.0
+    cdef double x = 0.0
+    cdef int i, n_elements
+    cdef long long n = 0L
+    payload = None
+
+    try:
+        while True:
+            payload = stats_work_queue.get()
+            if payload is None:
+                LOGGER.debug('payload is None, terminating')
+                break
+            block = payload.astype(numpy.float64)
+            n_elements = block.size
+            with nogil:
+                for i in range(n_elements):
+                    n = n + 1
+                    x = block[i]
+                    if n <= 0:
+                        with gil:
+                            LOGGER.error('invalid value for n %s' % n)
+                    if n == 1:
+                        M_local = x
+                        S_local = 0.0
+                        min_value = x
+                        max_value = x
+                    else:
+                        M_last = M_local
+                        M_local = M_local+(x - M_local)/<double>(n)
+                        S_local = S_local+(x-M_last)*(x-M_local)
+                        if x < min_value:
+                            min_value = x
+                        elif x > max_value:
+                            max_value = x
+
+        if n > 0:
+            stats_work_queue.put(
+                (min_value, max_value, M_local, (S_local / <double>n) ** 0.5))
+        else:
+            LOGGER.warning(
+                "No valid pixels were received, sending None.")
+            stats_work_queue.put(None)
+    except Exception as e:
+        LOGGER.exception(
+            "exception %s %s %s %s %s", x, M_local, S_local, n, payload)
+        exception_queue.put(e)
+        while not stats_work_queue.empty():
+            stats_work_queue.get()
+        raise

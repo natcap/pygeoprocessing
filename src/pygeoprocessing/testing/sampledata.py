@@ -47,6 +47,7 @@ from osgeo import gdal
 from osgeo import ogr
 from osgeo import osr
 from .. import geoprocessing
+from ..geoprocessing_core import DEFAULT_GTIFF_CREATION_OPTIONS
 
 
 LOGGER = logging.getLogger('pygeoprocessing.testing.sampledata')
@@ -179,7 +180,7 @@ def cleanup(uri):
 def create_raster_on_disk(
         band_matrices, origin, projection_wkt, nodata, pixel_size,
         datatype='auto', format='GTiff',
-        dataset_opts=geoprocessing._DEFAULT_GTIFF_CREATION_OPTIONS,
+        dataset_opts=DEFAULT_GTIFF_CREATION_OPTIONS,
         filename=None):
     """
     Create a GDAL raster on disk.
