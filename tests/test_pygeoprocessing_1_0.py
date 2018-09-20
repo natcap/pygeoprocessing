@@ -228,6 +228,71 @@ class PyGeoprocessing10(unittest.TestCase):
             osr.SpatialReference(result_reference.ExportToWkt()).IsSame(
                 osr.SpatialReference(target_reference.ExportToWkt())))
 
+    def test_reproject_vector_partial_fields(self):
+        """PGP.geoprocessing: reproject vector with partial field copy."""
+        reference = sampledata.SRS_WILLAMETTE
+        pixel_size = 30.0
+        n_pixels = 9
+        polygon_a = shapely.geometry.Polygon([
+            (reference.origin[0], reference.origin[1]),
+            (reference.origin[0], -pixel_size * n_pixels+reference.origin[1]),
+            (reference.origin[0]+pixel_size * n_pixels,
+             -pixel_size * n_pixels+reference.origin[1]),
+            (reference.origin[0]+pixel_size * n_pixels, reference.origin[1]),
+            (reference.origin[0], reference.origin[1])])
+        base_vector_path = os.path.join(
+            self.workspace_dir, 'base_vector.json')
+        aggregate_field_name = 'id'
+        pygeoprocessing.testing.create_vector_on_disk(
+            [polygon_a], reference.projection,
+            fields={
+                'id': 'int',
+                'foo': 'string'},
+            attributes=[{aggregate_field_name: 0}],
+            vector_format='GeoJSON', filename=base_vector_path)
+
+        target_reference = osr.SpatialReference()
+        # UTM zone 18N
+        target_reference.ImportFromEPSG(26918)
+
+        target_vector_path = os.path.join(
+            self.workspace_dir, 'target_vector.shp')
+        # create the file first so the model needs to deal with that
+        target_file = open(target_vector_path, 'w')
+        target_file.close()
+        pygeoprocessing.reproject_vector(
+            base_vector_path, target_reference.ExportToWkt(),
+            target_vector_path, layer_index=0, copy_fields=['id'])
+
+        vector = ogr.Open(target_vector_path)
+        layer = vector.GetLayer()
+        result_reference = layer.GetSpatialRef()
+        layer_defn = layer.GetLayerDefn()
+        self.assertTrue(
+            osr.SpatialReference(result_reference.ExportToWkt()).IsSame(
+                osr.SpatialReference(target_reference.ExportToWkt())))
+        self.assertTrue(layer_defn.GetFieldCount(), 1)
+        self.assertEqual(layer_defn.GetFieldIndex('id'), 0)
+
+        target_vector_no_fields_path = os.path.join(
+            self.workspace_dir, 'target_vector_no_fields.shp')
+        pygeoprocessing.reproject_vector(
+            base_vector_path, target_reference.ExportToWkt(),
+            target_vector_no_fields_path, layer_index=0, copy_fields=False)
+        layer = None
+        vector = None
+
+        vector = ogr.Open(target_vector_no_fields_path)
+        layer = vector.GetLayer()
+        result_reference = layer.GetSpatialRef()
+        layer_defn = layer.GetLayerDefn()
+        self.assertTrue(
+            osr.SpatialReference(result_reference.ExportToWkt()).IsSame(
+                osr.SpatialReference(target_reference.ExportToWkt())))
+        self.assertTrue(layer_defn.GetFieldCount(), 0)
+        layer = None
+        vector = None
+
     def test_zonal_statistics(self):
         """PGP.geoprocessing: test zonal stats function."""
         # create aggregating polygon

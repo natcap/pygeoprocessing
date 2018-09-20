@@ -1489,6 +1489,12 @@ def reproject_vector(
             Defaults to 0.
         driver_name (string): String to pass to ogr.GetDriverByName, defaults
             to 'ESRI Shapefile'.
+        copy_fields (bool or list/tuple): If True, all the fields in
+            `base_vector_path` will be copied to `target_path` during the
+            reprojection step. If it is a list, it will be a list of field
+            names to exclusively copy. An unmatched fieldname will cause an
+            exception to be raised. If `False` no fields are copied into the
+            new vector.
 
     Returns:
         None
@@ -1516,15 +1522,24 @@ def reproject_vector(
     target_layer = target_vector.CreateLayer(
         layer_dfn.GetName(), target_sr, layer_dfn.GetGeomType())
 
-    # Get the number of fields in original_layer
-    original_field_count = layer_dfn.GetFieldCount()
+    # this will map the target field index to the base index it came from
+    # in case we don't need to copy all the fields
+    target_to_base_field_id_map = {}
+    if copy_fields:
+        # Get the number of fields in original_layer
+        original_field_count = layer_dfn.GetFieldCount()
+        # For every field that's copying, create a duplicate field in the
+        # new layer
 
-    # For every field, create a duplicate field in the new layer
-    for fld_index in range(original_field_count):
-        original_field = layer_dfn.GetFieldDefn(fld_index)
-        target_field = ogr.FieldDefn(
-            original_field.GetName(), original_field.GetType())
-        target_layer.CreateField(target_field)
+        for fld_index in range(original_field_count):
+            original_field = layer_dfn.GetFieldDefn(fld_index)
+            field_name = original_field.GetName()
+            if copy_fields is True or field_name in copy_fields:
+                target_field = ogr.FieldDefn(
+                    field_name, original_field.GetType())
+                target_layer.CreateField(target_field)
+                target_to_base_field_id_map[fld_index] = len(
+                    target_to_base_field_id_map)
 
     # Get the SR of the original_layer to use in transforming
     base_sr = layer.GetSpatialRef()
@@ -1569,9 +1584,10 @@ def reproject_vector(
 
         # For all the fields in the feature set the field values from the
         # source field
-        for fld_index in range(target_feature.GetFieldCount()):
+        for target_index, base_index in (
+                target_to_base_field_id_map.iteritems()):
             target_feature.SetField(
-                fld_index, base_feature.GetField(fld_index))
+                target_index, base_feature.GetField(base_index))
 
         target_layer.CreateFeature(target_feature)
         target_feature = None

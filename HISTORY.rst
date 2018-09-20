@@ -26,6 +26,8 @@ Unreleased Changes
   caller to use per-pixel weights from a parallel raster as opposed to
   assuming a distance of 1 between neighboring pixels or sqrt(2) between
   diagonal ones.
+* Added an option to `reproject_vector` that allows a caller to specify which
+  fields, if any, to copy to the target vector after reprojection.
 
 1.2.3 (7/25/2018)
 -----------------
