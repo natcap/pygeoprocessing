@@ -21,6 +21,11 @@ Unreleased Changes
 * Added a `weight_raster_path_band` parameter to both `flow_accumulation_d8`
   and `flow_accumulation_mfd` that allows the caller to use per-pixel weights
   from a parallel raster as opposed to assuming a weight of 1 per pixel.
+* Added a `weight_raster_path_band` parameter to both
+  `distance_to_channel_mfd` and `distance_to_channel_d8` that allows the
+  caller to use per-pixel weights from a parallel raster as opposed to
+  assuming a distance of 1 between neighboring pixels or sqrt(2) between
+  diagonal ones.
 
 1.2.3 (7/25/2018)
 -----------------
