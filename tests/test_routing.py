@@ -6,9 +6,11 @@ import os
 
 from osgeo import gdal
 from osgeo import osr
+from osgeo import ogr
 import numpy
 import numpy.testing
 import shapely.geometry
+import shapely.wkb
 
 
 class TestRouting(unittest.TestCase):
@@ -956,7 +958,8 @@ class TestRouting(unittest.TestCase):
         flow_dir_raster.SetProjection(srs_wkt)
         flow_dir_band = flow_dir_raster.GetRasterBand(1)
         flow_dir_band.WriteArray(flow_dir_array)
-        flow_dir_raster.SetGeoTransform([2, 2, 0, -2, 0, -2])
+        flow_dir_geotransform = [2, 2, 0, -2, 0, -2]
+        flow_dir_raster.SetGeoTransform(flow_dir_geotransform)
         flow_dir_raster = None
 
         scratch_raster_path = os.path.join(self.workspace_dir, 'scratch.tif')
@@ -987,3 +990,35 @@ class TestRouting(unittest.TestCase):
         numpy.testing.assert_almost_equal(
             gdal.Open(scratch_raster_path).ReadAsArray(),
             numpy.zeros(flow_dir_array.shape))
+
+        vector = ogr.Open(target_watersheds_vector)
+        self.assertEqual(vector.GetLayerCount(), 1)
+
+        geometries = []
+        for watershed_feature in vector.GetLayer():
+            geometries.append(shapely.wkb.loads(
+                watershed_feature.GetGeometryRef().ExportToWkb()))
+
+        # Per GEOS docs, geometries 'touch' when they have at least one
+        # point where they touch, but the interiors do not overlap.
+        for index in (1, 3):
+            self.assertTrue(geometries[0].touches(geometries[index]))
+
+        for index in (0, 2, 3):
+            self.assertTrue(geometries[1].touches(geometries[index]))
+
+        for index in (1, 3):
+            self.assertTrue(geometries[2].touches(geometries[index]))
+
+        for index in (0, 1, 2):
+            self.assertTrue(geometries[3].touches(geometries[index]))
+
+        # Check the areas of each individual polygon
+        for ws_index, expected_area in enumerate([40.0, 60.0, 40.0, 56.0]):
+            self.assertEqual(geometries[ws_index].area, expected_area)
+
+        # Assert that sum of areas match the area of the raster.
+        raster_area = ((flow_dir_geotransform[1]*flow_dir_array.shape[1]) *
+                       (flow_dir_geotransform[5]*flow_dir_array.shape[0]))
+        self.assertEqual(sum(geometry.area for geometry in geometries),
+                         abs(raster_area))
