@@ -25,6 +25,7 @@ import numpy
 import pygeoprocessing
 from osgeo import gdal
 from osgeo import osr
+from osgeo import ogr
 
 cimport numpy
 cimport cython
@@ -2550,12 +2551,15 @@ def delineate_watersheds(
         [255], fill_value_list=[0],
         gtiff_creation_options=GTIFF_CREATION_OPTIONS)
 
-    driver = gdal.GetDriverByName('GPKG')
+    driver = ogr.GetDriverByName('GPKG')
     watersheds_srs = osr.SpatialReference()
     watersheds_srs.ImportFromWkt(flow_dir_info['projection'])
-    watersheds_vector = driver.Create(target_watersheds_vector, 0, 0)
+    watersheds_vector = driver.CreateDataSource(target_watersheds_vector)
     watersheds_layer = watersheds_vector.CreateLayer(
-        'watersheds', watersheds_srs.ExportToWkt())  # layer type???
+        'watersheds', watersheds_srs, ogr.wkbPolygon)
+    index_field = ogr.FieldDefn('pixel_value', ogr.OFTInteger)
+    index_field.SetWidth(24)
+    watersheds_layer.CreateField(index_field)
 
     cdef int yi_outflow, xi_outflow
     cdef CoordinatePair current_pixel, neighbor_pixel
@@ -2566,9 +2570,7 @@ def delineate_watersheds(
     cdef int* neighbor_row = [0, -1, -1, -1, 0, 1, 1, 1]
     cdef int* reverse_flow = [4, 5, 6, 7, 0, 1, 2, 3, 4]
 
-    print 'starting loop'
-
-    vector = gdal.OpenEx(outflow_points_vector_path, gdal.OF_VECTOR)
+    vector = ogr.Open(outflow_points_vector_path)
     for layer in vector:
         for outflow_point in layer:
             geometry = outflow_point.GetGeometryRef()
@@ -2594,6 +2596,9 @@ def delineate_watersheds(
                 process_queue_set.erase(current_pixel)
                 process_queue.pop()
 
+                scratch_managed_raster.set(current_pixel.first,
+                                           current_pixel.second, 1)
+
                 for neighbor_index in range(8):
                     neighbor_pixel = CoordinatePair(
                         current_pixel.first + neighbor_col[neighbor_index],
@@ -2611,13 +2616,13 @@ def delineate_watersheds(
                         continue
 
                     # Does the neighbor already belong to the watershed?
-                    if scratch_managed_raster.get(neighbor_pixel.first,
-                                                  neighbor_pixel.second) == 1:
+                    if <int>scratch_managed_raster.get(neighbor_pixel.first,
+                                                       neighbor_pixel.second) == 1:
                         continue
 
                     # Does the neighbor flow into the current pixel?
                     if (reverse_flow[neighbor_index] ==
-                            flow_dir_managed_raster.get(
+                            <int>flow_dir_managed_raster.get(
                                 neighbor_pixel.first, neighbor_pixel.second)):
                         process_queue.push(neighbor_pixel)
                         process_queue_set.insert(neighbor_pixel)
@@ -2628,20 +2633,27 @@ def delineate_watersheds(
                                          gdal.OF_RASTER | gdal.GA_Update)
             scratch_band = scratch_raster.GetRasterBand(1)
 
-            gdal.Polygonize(
+            # TODO: Add a callback.
+            scratch_raster.FlushCache()
+            result = gdal.Polygonize(
                 scratch_band,  # the source band to be analyzed
                 scratch_band,  # the mask band indicating valid pixels
                 watersheds_layer,  # polygons are added to this layer
                 0,  # field index into which to save the pixel value of watershed
                 ['8CONNECTED8'])  # use 8-connectedness algorithm.
+            print 'watersheds result', result
 
             # TODO: copy over all of the fields from the points vector to the WS vector.
 
             scratch_band.fill(0)  # reset the scratch raster
+            scratch_raster.FlushCache()
             scratch_band = None
             scratch_raster = None
 
 
+            watersheds_layer.FlushCache()
+            watersheds_layer = None
+            watersheds_vector = None
 
 
 
