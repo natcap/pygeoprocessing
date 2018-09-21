@@ -987,8 +987,3 @@ class TestRouting(unittest.TestCase):
         numpy.testing.assert_almost_equal(
             gdal.Open(scratch_raster_path).ReadAsArray(),
             numpy.zeros(flow_dir_array.shape))
-
-        print self.workspace_dir
-        import pdb; pdb.set_trace()
-
-
