@@ -954,7 +954,9 @@ class TestRouting(unittest.TestCase):
                 'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
                 'BLOCKXSIZE=256', 'BLOCKYSIZE=256'))
         flow_dir_raster.SetProjection(srs_wkt)
-        flow_dir_raster.SetGeoTransform([2, 2, 0, -2, -2, 0])
+        flow_dir_band = flow_dir_raster.GetRasterBand(1)
+        flow_dir_band.WriteArray(flow_dir_array)
+        flow_dir_raster.SetGeoTransform([2, 2, 0, -2, 0, -2])
         flow_dir_raster = None
 
         scratch_raster_path = os.path.join(self.workspace_dir, 'scratch.tif')
@@ -964,10 +966,10 @@ class TestRouting(unittest.TestCase):
         outflow_points = os.path.join(self.workspace_dir,
                                       'outflow_points.gpkg')
         points_geometry = [
-            shapely.geometry.Point(2, -8),
-            shapely.geometry.Point(8, 2),
-            shapely.geometry.Point(14, -8),
-            shapely.geometry.Point(8, -14)]
+            shapely.geometry.Point(3, -9),
+            shapely.geometry.Point(9, -3),
+            shapely.geometry.Point(15, -9),
+            shapely.geometry.Point(9, -15)]
         pygeoprocessing.testing.create_vector_on_disk(
             points_geometry, srs_wkt, vector_format='GPKG',
             filename=outflow_points)
@@ -978,5 +980,15 @@ class TestRouting(unittest.TestCase):
         pygeoprocessing.routing.delineate_watersheds(
             (flow_dir_path, 1), outflow_points, target_watersheds_vector,
             scratch_raster_path)
+
+        numpy.testing.assert_almost_equal(
+            gdal.Open(flow_dir_path).ReadAsArray(), flow_dir_array)
+
+        numpy.testing.assert_almost_equal(
+            gdal.Open(scratch_raster_path).ReadAsArray(),
+            numpy.zeros(flow_dir_array.shape))
+
+        print self.workspace_dir
+        import pdb; pdb.set_trace()
 
 
