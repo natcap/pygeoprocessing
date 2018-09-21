@@ -984,13 +984,6 @@ class TestRouting(unittest.TestCase):
             (flow_dir_path, 1), outflow_points, target_watersheds_vector,
             scratch_raster_path)
 
-        numpy.testing.assert_almost_equal(
-            gdal.Open(flow_dir_path).ReadAsArray(), flow_dir_array)
-
-        numpy.testing.assert_almost_equal(
-            gdal.Open(scratch_raster_path).ReadAsArray(),
-            numpy.zeros(flow_dir_array.shape))
-
         vector = ogr.Open(target_watersheds_vector)
         self.assertEqual(vector.GetLayerCount(), 1)
 
@@ -998,6 +991,8 @@ class TestRouting(unittest.TestCase):
         for watershed_feature in vector.GetLayer():
             geometries.append(shapely.wkb.loads(
                 watershed_feature.GetGeometryRef().ExportToWkb()))
+
+            # TODO: Assert that fields have been copied over
 
         # Per GEOS docs, geometries 'touch' when they have at least one
         # point where they touch, but the interiors do not overlap.
@@ -1022,3 +1017,4 @@ class TestRouting(unittest.TestCase):
                        (flow_dir_geotransform[5]*flow_dir_array.shape[0]))
         self.assertEqual(sum(geometry.area for geometry in geometries),
                          abs(raster_area))
+
