@@ -2591,8 +2591,6 @@ def delineate_watersheds(
         # we're evaluating.
         scratch_managed_raster = _ManagedRaster(scratch_raster_path, 1, 1)
 
-        print('starting the queue')
-
         while not process_queue.empty():
             current_pixel = process_queue.front()
             process_queue_set.erase(current_pixel)
@@ -2634,7 +2632,6 @@ def delineate_watersheds(
         scratch_raster = gdal.OpenEx(scratch_raster_path,
                                      gdal.OF_RASTER | gdal.GA_Update)
         scratch_band = scratch_raster.GetRasterBand(1)
-        print('array', scratch_band.ReadAsArray())
 
         # TODO: Add a callback.
         scratch_raster.FlushCache()
