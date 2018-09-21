@@ -521,6 +521,7 @@ def fill_pits(
     Returns:
         None.
     """
+    # TODO: add path-band checking to this.
     # These variables are used to iterate over the DEM using `iterblock`
     # indexes, a numpy.float64 type is used since we need to statically cast
     # and it's the most complex numerical type and will be compatible without
@@ -2532,10 +2533,10 @@ def delineate_watersheds(
             "%s is supposed to be a raster band tuple but it's not." % (
                 d8_flow_dir_raster_path_band))
 
+    # TODO: Check that flow direction is tiled appopriately
+
     cdef _ManagedRaster flow_dir_managed_raster, scratch_managed_raster
 
-    # TODO: Check that flow direction is tiled appopriately
-    # TODO: Check that raster path band is formatted well
     flow_dir_managed_raster = _ManagedRaster(d8_flow_dir_raster_path_band[0],
                                              d8_flow_dir_raster_path_band[1],
                                              0)  # read-only
@@ -2572,7 +2573,12 @@ def delineate_watersheds(
 
     vector = ogr.Open(outflow_points_vector_path)
     layer = vector.GetLayer()
+    points_in_layer = layer.GetFeatureCount()
+    current_watershed_index = 1
     for outflow_point in layer:
+        LOGGER.info('Delineating watershed %i of %i',
+                    current_watershed_index, points_in_layer)
+        current_watershed_index += 1
         geometry = outflow_point.GetGeometryRef()
         xi_outflow = (geometry.GetX() - source_gt[0]) // source_gt[1]
         yi_outflow = (geometry.GetY() - source_gt[3]) // source_gt[5]
