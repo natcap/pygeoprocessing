@@ -2574,20 +2574,20 @@ def delineate_watersheds(
     vector = ogr.Open(outflow_points_vector_path)
     layer = vector.GetLayer()
     points_in_layer = layer.GetFeatureCount()
-    current_watershed_index = 1
-    for outflow_point in layer:
-        LOGGER.info('Delineating watershed %i of %i',
-                    current_watershed_index, points_in_layer)
-        current_watershed_index += 1
+    for current_watershed_index, outflow_point in enumerate(layer, 1):
         geometry = outflow_point.GetGeometryRef()
         xi_outflow = (geometry.GetX() - source_gt[0]) // source_gt[1]
         yi_outflow = (geometry.GetY() - source_gt[3]) // source_gt[5]
 
-        if not 0 <= xi_outflow < flow_dir_n_cols:
+        if (xi_outflow < 0 or xi_outflow >= flow_dir_n_cols or
+                yi_outflow < 0 or yi_outflow >= flow_dir_n_rows):
+            LOGGER.info(
+                "Outflow point %i does not intersect the flow direction "
+                "raster; skipping delineation.", current_watershed_index)
             continue
 
-        if not 0 <= yi_outflow < flow_dir_n_rows:
-            continue
+        LOGGER.info('Delineating watershed %i of %i',
+                    current_watershed_index, points_in_layer)
 
         current_pixel = CoordinatePair(xi_outflow, yi_outflow)
         process_queue.push(current_pixel)
