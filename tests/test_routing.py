@@ -1073,7 +1073,6 @@ class TestRouting(unittest.TestCase):
             points_geometry, srs_wkt, vector_format='GPKG',
             filename=outflow_points)
 
-
         target_watersheds_vector = os.path.join(self.workspace_dir,
                                                 'sheds.gpkg')
         pygeoprocessing.routing.delineate_watersheds(
@@ -1081,3 +1080,14 @@ class TestRouting(unittest.TestCase):
             (dem_path, 1), target_watersheds_vector,
             os.path.join(self.workspace_dir, 'scratch'))
 
+        watersheds_vector = ogr.Open(target_watersheds_vector)
+        watersheds_layer = watersheds_vector.GetLayer()
+        self.assertEqual(watersheds_layer.GetFeatureCount(), 3)
+
+        geometries = []
+        for watershed_feature in watersheds_vector.GetLayer():
+            geometries.append(shapely.wkb.loads(
+                watershed_feature.GetGeometryRef().ExportToWkb()))
+
+        for ws_index, expected_area in enumerate([36.0, 16.0, 4.0]):
+            self.assertEqual(geometries[ws_index].area, expected_area)

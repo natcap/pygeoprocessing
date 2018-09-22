@@ -26,6 +26,8 @@ import pygeoprocessing
 from osgeo import gdal
 from osgeo import osr
 from osgeo import ogr
+import shapely.wkb
+import shapely.ops
 
 cimport numpy
 cimport cython
@@ -2577,12 +2579,14 @@ def delineate_watersheds(
     driver = ogr.GetDriverByName('GPKG')
     watersheds_srs = osr.SpatialReference()
     watersheds_srs.ImportFromWkt(flow_dir_info['projection'])
-    watersheds_vector = driver.CreateDataSource(target_watersheds_vector)
-    watersheds_layer = watersheds_vector.CreateLayer(
+    temp_watersheds_vector = driver.CreateDataSource(
+        os.path.join(work_dir, 'disjoint_watersheds.gpkg'))
+    temp_watersheds_layer = temp_watersheds_vector.CreateLayer(
         'watersheds', watersheds_srs, ogr.wkbPolygon)
-    index_field = ogr.FieldDefn('val', ogr.OFTInteger)
+    watershed_index_field = 'ws_id'
+    index_field = ogr.FieldDefn(watershed_index_field, ogr.OFTInteger)
     index_field.SetWidth(24)
-    watersheds_layer.CreateField(index_field)
+    temp_watersheds_layer.CreateField(index_field)
 
     cdef long yi_outflow, xi_outflow
     cdef CoordinatePair current_pixel, neighbor_pixel
@@ -2687,12 +2691,45 @@ def delineate_watersheds(
     gdal.Polygonize(
         scratch_band,  # the source band to be analyzed
         mask_band,  # the mask band indicating valid pixels
-        watersheds_layer,  # polygons are added to this layer
+        temp_watersheds_layer,  # polygons are added to this layer
         0,  # field index into which to save the pixel value of watershed
         ['8CONNECTED8'])  # use 8-connectedness algorithm.
 
     # TODO: copy over all of the fields from the points vector to the WS vector.
     # TODO: join the geometries of nested watersheds.
+
+    # create a new vector with new geometries in it
+    # If watersheds have nested watersheds, the geometries written should be
+    # the union of all upstream sheds.
+    # If a watershed is alone (does not contain nested watersheds), the
+    # geometry should be written as-is.
+
+    watersheds_vector = driver.CreateDataSource(
+        target_watersheds_vector)
+    watersheds_layer = watersheds_vector.CreateLayer(
+        'watersheds', watersheds_srs, ogr.wkbPolygon)
+
+    visited_watersheds = set([])
+    for parent_ws_id, nested_ws_id_set in nested_watersheds.items():
+        geometry = []
+        for feature in temp_watersheds_layer:
+            feature_id = feature.GetField('ws_id')
+            if feature_id in nested_ws_id_set:
+                geometry.append(shapely.wkb.loads(
+                    feature.GetGeometryRef.ExportToWkb()))
+                visited_watersheds.add(feature_id)
+        geometry_union = shapely.ops.cascaded_union(geometry)
+        feature = ogr.Feature(watersheds_layer.GetLayerDefn())
+        feature.SetGeometry(
+            ogr.CreateGeometryFromWkb(shapely.wkb.dumps(geometry_union)))
+        watersheds_layer.CreateFeature(feature)
+
+    for feature in temp_watersheds_layer:
+        feature_id = feature.GetField('ws_id')
+        if feature not in visited_watersheds:
+            feature = ogr.Feature(watersheds_layer.GetLayerDefn())
+            feature.SetGeometry(feature.GetGeometryRef())
+            watersheds_layer.CreateFeature(feature)
 
     scratch_band = None
     scratch_raster = None
@@ -2702,15 +2739,8 @@ def delineate_watersheds(
     watersheds_layer = None
     watersheds_vector = None
 
-
-
-
-
-
-
-
-
-
+    temp_watersheds_layer = None
+    temp_watersheds_vector = None
 
 
 def _is_raster_path_band_formatted(raster_path_band):
