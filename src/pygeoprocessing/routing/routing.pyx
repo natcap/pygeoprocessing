@@ -2525,13 +2525,14 @@ ctypedef cset[CoordinatePair] CoordinateSet
 
 def delineate_watersheds(
         d8_flow_dir_raster_path_band, outflow_points_vector_path,
-        target_watersheds_vector, scratch_raster_path):
+        filled_dem_path_band, target_watersheds_vector, work_dir=None):
 
-    if (d8_flow_dir_raster_path_band is not None and not
-            _is_raster_path_band_formatted(d8_flow_dir_raster_path_band)):
-        raise ValueError(
-            "%s is supposed to be a raster band tuple but it's not." % (
-                d8_flow_dir_raster_path_band))
+    for path_band in (d8_flow_dir_raster_path_band, filled_dem_path_band):
+        if (path_band is not None and not
+                _is_raster_path_band_formatted(path_band)):
+            raise ValueError(
+                "%s is supposed to be a raster band tuple but it's not." % (
+                    path_band))
 
     # TODO: Check that flow direction is tiled appopriately
 
@@ -2546,11 +2547,32 @@ def delineate_watersheds(
     cdef long flow_dir_n_cols = flow_dir_info['raster_size'][0]
     cdef long flow_dir_n_rows = flow_dir_info['raster_size'][1]
 
+    if work_dir is None:
+        work_dir = tempfile.mkdtemp(prefix='tmp_watershed_')
+
+    if not os.path.isdir(work_dir):
+        os.makedirs(work_dir)
+
+    scratch_raster_path = os.path.join(work_dir, 'scratch_raster.tif')
+    mask_raster_path = os.path.join(work_dir, 'scratch_mask.tif')
+
     # Create a new watershed scratch raster the size, shape of the flow dir raster
+    NO_WATERSHED = -1
     pygeoprocessing.new_raster_from_base(
-        d8_flow_dir_raster_path_band[0], scratch_raster_path, gdal.GDT_Byte,
+        d8_flow_dir_raster_path_band[0], scratch_raster_path, gdal.GDT_Int32,
+        [NO_WATERSHED], fill_value_list=[NO_WATERSHED],
+        gtiff_creation_options=GTIFF_CREATION_OPTIONS)
+
+    # Create a new watershed scratch mask raster the size, shape of the flow dir raster
+    pygeoprocessing.new_raster_from_base(
+        d8_flow_dir_raster_path_band[0], mask_raster_path, gdal.GDT_Byte,
         [255], fill_value_list=[0],
         gtiff_creation_options=GTIFF_CREATION_OPTIONS)
+
+    scratch_managed_raster = _ManagedRaster(scratch_raster_path, 1, 1)
+    mask_managed_raster = _ManagedRaster(mask_raster_path, 1, 1)
+    dem_managed_raster = _ManagedRaster(filled_dem_path_band[0],
+                                        filled_dem_path_band[1], 0)
 
     driver = ogr.GetDriverByName('GPKG')
     watersheds_srs = osr.SpatialReference()
@@ -2574,7 +2596,10 @@ def delineate_watersheds(
     vector = ogr.Open(outflow_points_vector_path)
     layer = vector.GetLayer()
     points_in_layer = layer.GetFeatureCount()
-    for current_watershed_index, outflow_point in enumerate(layer, 1):
+
+    points = []
+
+    for current_watershed_index, outflow_point in enumerate(layer):
         geometry = outflow_point.GetGeometryRef()
         xi_outflow = (geometry.GetX() - source_gt[0]) // source_gt[1]
         yi_outflow = (geometry.GetY() - source_gt[3]) // source_gt[5]
@@ -2586,24 +2611,31 @@ def delineate_watersheds(
                 "raster; skipping delineation.", current_watershed_index)
             continue
 
+        dem_height = dem_managed_raster.get(xi_outflow, yi_outflow)
+        points.append((dem_height, xi_outflow, yi_outflow))
+
+    # Map ws_id to the watersheds that nest within.
+    nested_watersheds = {}
+
+    # Iterate over points in decreasing order of elevation.
+    sorted_points = sorted(points, key=lambda x: x[0], reverse=True)
+    for ws_id, (_, xi_outflow, yi_outflow) in enumerate(sorted_points, 1):
         LOGGER.info('Delineating watershed %i of %i',
-                    current_watershed_index, points_in_layer)
+                    ws_id, len(sorted_points))
 
         current_pixel = CoordinatePair(xi_outflow, yi_outflow)
         process_queue.push(current_pixel)
         process_queue_set.insert(current_pixel)
-
-        # The scratch raster is managed within the context of each point
-        # we're evaluating.
-        scratch_managed_raster = _ManagedRaster(scratch_raster_path, 1, 1)
 
         while not process_queue.empty():
             current_pixel = process_queue.front()
             process_queue_set.erase(current_pixel)
             process_queue.pop()
 
+            mask_managed_raster.set(current_pixel.first,
+                                    current_pixel.second, 1)
             scratch_managed_raster.set(current_pixel.first,
-                                       current_pixel.second, 1)
+                                       current_pixel.second, ws_id)
 
             for neighbor_index in range(8):
                 neighbor_pixel = CoordinatePair(
@@ -2621,10 +2653,20 @@ def delineate_watersheds(
                         process_queue_set.end()):
                     continue
 
-                # Does the neighbor already belong to the watershed?
-                if <int>scratch_managed_raster.get(neighbor_pixel.first,
-                                                   neighbor_pixel.second) == 1:
-                    continue
+                # Is the neighbor already within a watershed?
+                existing_ws_id = <int>scratch_managed_raster.get(
+                    neighbor_pixel.first, neighbor_pixel.second)
+                # Is the neighbor within the current watershed?
+                if existing_ws_id == ws_id:
+                    continue  # Already processed!
+
+                # Does the neighbor belong to a nested watershed?
+                # If so, track it!
+                if existing_ws_id != NO_WATERSHED:
+                    try:
+                        nested_watersheds[ws_id].add(existing_ws_id)
+                    except KeyError:
+                        nested_watersheds[ws_id] = set([existing_ws_id])
 
                 # Does the neighbor flow into the current pixel?
                 if (reverse_flow[neighbor_index] ==
@@ -2633,27 +2675,29 @@ def delineate_watersheds(
                     process_queue.push(neighbor_pixel)
                     process_queue_set.insert(neighbor_pixel)
 
-        scratch_managed_raster.close()  # flush the scratch raster.
+    scratch_managed_raster.close()  # flush the scratch raster.
+    mask_managed_raster.close()  # flush the mask raster
 
-        scratch_raster = gdal.OpenEx(scratch_raster_path,
-                                     gdal.OF_RASTER | gdal.GA_Update)
-        scratch_band = scratch_raster.GetRasterBand(1)
+    scratch_raster = gdal.OpenEx(scratch_raster_path, gdal.OF_RASTER)
+    scratch_band = scratch_raster.GetRasterBand(1)
+    mask_raster = gdal.OpenEx(mask_raster_path, gdal.OF_RASTER)
+    mask_band = mask_raster.GetRasterBand(1)
 
-        # TODO: Add a callback.
-        scratch_raster.FlushCache()
-        gdal.Polygonize(
-            scratch_band,  # the source band to be analyzed
-            scratch_band,  # the mask band indicating valid pixels
-            watersheds_layer,  # polygons are added to this layer
-            0,  # field index into which to save the pixel value of watershed
-            ['8CONNECTED8'])  # use 8-connectedness algorithm.
+    # TODO: Add a callback.
+    gdal.Polygonize(
+        scratch_band,  # the source band to be analyzed
+        mask_band,  # the mask band indicating valid pixels
+        watersheds_layer,  # polygons are added to this layer
+        0,  # field index into which to save the pixel value of watershed
+        ['8CONNECTED8'])  # use 8-connectedness algorithm.
 
-        # TODO: copy over all of the fields from the points vector to the WS vector.
+    # TODO: copy over all of the fields from the points vector to the WS vector.
+    # TODO: join the geometries of nested watersheds.
 
-        scratch_band.Fill(0)  # reset the scratch raster
-        scratch_raster.FlushCache()
-        scratch_band = None
-        scratch_raster = None
+    scratch_band = None
+    scratch_raster = None
+    mask_band = None
+    mask_raster = None
 
     watersheds_layer = None
     watersheds_vector = None
