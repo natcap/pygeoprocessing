@@ -42,6 +42,7 @@ from libcpp.queue cimport queue
 from libcpp.stack cimport stack
 from libcpp.deque cimport deque
 from libcpp.set cimport set as cset
+from libcpp.map cimport map as cmap
 
 LOGGER = logging.getLogger(__name__)
 LOGGER.addHandler(logging.NullHandler())  # silence logging by default
@@ -2527,9 +2528,9 @@ ctypedef cset[CoordinatePair] CoordinateSet
 
 def delineate_watersheds(
         d8_flow_dir_raster_path_band, outflow_points_vector_path,
-        filled_dem_path_band, target_watersheds_vector, work_dir=None):
+        target_watersheds_vector, work_dir=None):
 
-    for path_band in (d8_flow_dir_raster_path_band, filled_dem_path_band):
+    for path_band in (d8_flow_dir_raster_path_band,):
         if (path_band is not None and not
                 _is_raster_path_band_formatted(path_band)):
             raise ValueError(
@@ -2573,25 +2574,23 @@ def delineate_watersheds(
 
     scratch_managed_raster = _ManagedRaster(scratch_raster_path, 1, 1)
     mask_managed_raster = _ManagedRaster(mask_raster_path, 1, 1)
-    dem_managed_raster = _ManagedRaster(filled_dem_path_band[0],
-                                        filled_dem_path_band[1], 0)
 
     driver = ogr.GetDriverByName('GPKG')
     watersheds_srs = osr.SpatialReference()
     watersheds_srs.ImportFromWkt(flow_dir_info['projection'])
-    temp_watersheds_vector = driver.CreateDataSource(
-        os.path.join(work_dir, 'disjoint_watersheds.gpkg'))
-    temp_watersheds_layer = temp_watersheds_vector.CreateLayer(
+    watersheds_vector = driver.CreateDataSource(target_watersheds_vector)
+    watersheds_layer = watersheds_vector.CreateLayer(
         'watersheds', watersheds_srs, ogr.wkbPolygon)
     watershed_index_field = 'ws_id'
     index_field = ogr.FieldDefn(watershed_index_field, ogr.OFTInteger)
     index_field.SetWidth(24)
-    temp_watersheds_layer.CreateField(index_field)
+    watersheds_layer.CreateField(index_field)
 
     cdef long yi_outflow, xi_outflow
-    cdef CoordinatePair current_pixel, neighbor_pixel
-    cdef CoordinateQueue process_queue
-    cdef CoordinateSet process_queue_set
+    cdef CoordinatePair current_pixel, neighbor_pixel, outflow_pixel
+    cdef CoordinateQueue process_queue, outflow_queue
+    cdef CoordinateSet process_queue_set, outflow_queue_set
+    outflow_id_map = {}
 
     cdef int* neighbor_col = [1, 1, 0, -1, -1, -1, 0, 1]
     cdef int* neighbor_row = [0, -1, -1, -1, 0, 1, 1, 1]
@@ -2601,9 +2600,11 @@ def delineate_watersheds(
     layer = vector.GetLayer()
     points_in_layer = layer.GetFeatureCount()
 
-    points = []
+    # Map ws_id to the watersheds that nest within.
+    nested_watersheds = {}
 
-    for current_watershed_index, outflow_point in enumerate(layer):
+    cdef int ws_id
+    for ws_id, outflow_point in enumerate(layer, start=1):
         geometry = outflow_point.GetGeometryRef()
         xi_outflow = (geometry.GetX() - source_gt[0]) // source_gt[1]
         yi_outflow = (geometry.GetY() - source_gt[3]) // source_gt[5]
@@ -2612,24 +2613,25 @@ def delineate_watersheds(
                 yi_outflow < 0 or yi_outflow >= flow_dir_n_rows):
             LOGGER.info(
                 "Outflow point %i does not intersect the flow direction "
-                "raster; skipping delineation.", current_watershed_index)
+                "raster; skipping delineation.", ws_id)
             continue
 
-        dem_height = dem_managed_raster.get(xi_outflow, yi_outflow)
-        points.append((dem_height, xi_outflow, yi_outflow))
+        outflow_pixel = CoordinatePair(xi_outflow, yi_outflow)
+        outflow_queue.push(outflow_pixel)
+        outflow_queue_set.insert(outflow_pixel)
+        outflow_id_map[outflow_pixel] = ws_id
 
-    # Map ws_id to the watersheds that nest within.
-    nested_watersheds = {}
+    ws_id = 1
+    while not outflow_queue.empty():
+        current_pixel = outflow_queue.front()
+        outflow_queue.pop()
 
-    # Iterate over points in decreasing order of elevation.
-    sorted_points = sorted(points, key=lambda x: x[0], reverse=True)
-    for ws_id, (_, xi_outflow, yi_outflow) in enumerate(sorted_points, 1):
         LOGGER.info('Delineating watershed %i of %i',
-                    ws_id, len(sorted_points))
+                    ws_id, points_in_layer)
 
-        current_pixel = CoordinatePair(xi_outflow, yi_outflow)
         process_queue.push(current_pixel)
         process_queue_set.insert(current_pixel)
+        nested_watershed_ids = set([])
 
         while not process_queue.empty():
             current_pixel = process_queue.front()
@@ -2664,21 +2666,25 @@ def delineate_watersheds(
                 if existing_ws_id == ws_id:
                     continue  # Already processed!
 
-                # Does the neighbor belong to a nested watershed?
-                # If so, track it!
-                if existing_ws_id != NO_WATERSHED:
-                    try:
-                        nested_watersheds[ws_id].add(existing_ws_id)
-                    except KeyError:
-                        nested_watersheds[ws_id] = set([existing_ws_id])
-                    continue
-
                 # Does the neighbor flow into the current pixel?
                 if (reverse_flow[neighbor_index] ==
                         <int>flow_dir_managed_raster.get(
                             neighbor_pixel.first, neighbor_pixel.second)):
+
+                    # Is the neighbor pixel the outflow point of another watershed?
+                    if (outflow_queue_set.find(neighbor_pixel) !=
+                            outflow_queue_set.end()):
+                        # If it is, track the watershed connectivity, but otherwise
+                        # skip this pixel.  Either we've already processed it, or
+                        # else we will soon!
+                        nested_watershed_ids.add(outflow_id_map[neighbor_pixel])
+                        continue
+
                     process_queue.push(neighbor_pixel)
                     process_queue_set.insert(neighbor_pixel)
+
+        nested_watersheds[ws_id] = nested_watershed_ids
+        ws_id += 1
 
     scratch_managed_raster.close()  # flush the scratch raster.
     mask_managed_raster.close()  # flush the mask raster
@@ -2692,7 +2698,7 @@ def delineate_watersheds(
     gdal.Polygonize(
         scratch_band,  # the source band to be analyzed
         mask_band,  # the mask band indicating valid pixels
-        temp_watersheds_layer,  # polygons are added to this layer
+        watersheds_layer,  # polygons are added to this layer
         0,  # field index into which to save the pixel value of watershed
         ['8CONNECTED8'])  # use 8-connectedness algorithm.
 
@@ -2705,15 +2711,32 @@ def delineate_watersheds(
     # If a watershed is alone (does not contain nested watersheds), the
     # geometry should be written as-is.
 
+    scratch_band = None
+    scratch_raster = None
+    mask_band = None
+
+    watersheds_layer = None
+    watersheds_vector = None
+
+
+def join_watershed_fragments(watershed_fragments_vector, target_watersheds_vector):
+    # Use an integer list field to identify DAG
+    # Check for loops in DAG
+
+    fragments_vector = ogr.Open(watershed_fragments_vector)
+    fragments_layer = fragments_vector.GetLayer()
+    fragments_srs = fragments_layer.GetSpatialRef()
+
+    driver = ogr.GetDriverByName('GPKG')
     watersheds_vector = driver.CreateDataSource(
         target_watersheds_vector)
     watersheds_layer = watersheds_vector.CreateLayer(
-        'watersheds', watersheds_srs, ogr.wkbPolygon)
+        'watersheds', fragments_srs, ogr.wkbPolygon)
 
     watersheds_geometries = dict(
         (feature.GetField('ws_id'), shapely.wkb.loads(
             feature.GetGeometryRef().ExportToWkb()))
-        for feature in temp_watersheds_layer)
+        for feature in fragments_layer)
 
     def _recurse_nested_watersheds(ws_id, ws_geoms=None):
         if ws_geoms is None:
@@ -2729,6 +2752,7 @@ def delineate_watersheds(
         return ws_geoms
 
     unioned_geometries = {}
+    nested_watersheds = {}
     for parent_ws, nested_ws_id_set in nested_watersheds.items():
         unioned_geometries[parent_ws] = shapely.ops.cascaded_union(
             _recurse_nested_watersheds(parent_ws))
@@ -2740,16 +2764,8 @@ def delineate_watersheds(
             shapely.wkb.dumps(shapely_geom)))
         watersheds_layer.CreateFeature(feature)
 
-    scratch_band = None
-    scratch_raster = None
-    mask_band = None
-    mask_raster = None
-
     watersheds_layer = None
     watersheds_vector = None
-
-    temp_watersheds_layer = None
-    temp_watersheds_vector = None
 
 
 def _is_raster_path_band_formatted(raster_path_band):

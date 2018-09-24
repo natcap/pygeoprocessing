@@ -931,7 +931,6 @@ class TestRouting(unittest.TestCase):
         numpy.testing.assert_almost_equal(
             distance_to_channel_mfd_array, expected_result)
 
-    @unittest.skip('different signature')
     def test_watershed_delineation(self):
         import pygeoprocessing.routing
         import pygeoprocessing.testing
@@ -963,7 +962,7 @@ class TestRouting(unittest.TestCase):
         flow_dir_raster.SetGeoTransform(flow_dir_geotransform)
         flow_dir_raster = None
 
-        scratch_raster_path = os.path.join(self.workspace_dir, 'scratch.tif')
+        work_dir = os.path.join(self.workspace_dir, 'scratch')
 
         # TODO: What about when points are in a different projection?
 
@@ -983,34 +982,21 @@ class TestRouting(unittest.TestCase):
 
         pygeoprocessing.routing.delineate_watersheds(
             (flow_dir_path, 1), outflow_points, target_watersheds_vector,
-            scratch_raster_path)
+            work_dir)
 
         vector = ogr.Open(target_watersheds_vector)
         self.assertEqual(vector.GetLayerCount(), 1)
 
         geometries = []
         for watershed_feature in vector.GetLayer():
-            geometries.append(shapely.wkb.loads(
-                watershed_feature.GetGeometryRef().ExportToWkb()))
+            geometry = shapely.wkb.loads(
+                watershed_feature.GetGeometryRef().ExportToWkb())
+            geometries.append(geometry)
 
             # TODO: Assert that fields have been copied over
 
-        # Per GEOS docs, geometries 'touch' when they have at least one
-        # point where they touch, but the interiors do not overlap.
-        for index in (1, 3):
-            self.assertTrue(geometries[0].touches(geometries[index]))
-
-        for index in (0, 2, 3):
-            self.assertTrue(geometries[1].touches(geometries[index]))
-
-        for index in (1, 3):
-            self.assertTrue(geometries[2].touches(geometries[index]))
-
-        for index in (0, 1, 2):
-            self.assertTrue(geometries[3].touches(geometries[index]))
-
         # Check the areas of each individual polygon
-        for ws_index, expected_area in enumerate([40.0, 60.0, 40.0, 56.0]):
+        for ws_index, expected_area in enumerate([60.0, 40.0, 40.0, 56.0]):
             self.assertEqual(geometries[ws_index].area, expected_area)
 
         # Assert that sum of areas match the area of the raster.
@@ -1077,7 +1063,7 @@ class TestRouting(unittest.TestCase):
                                                 'sheds.gpkg')
         pygeoprocessing.routing.delineate_watersheds(
             (flow_dir_path, 1), outflow_points,
-            (dem_path, 1), target_watersheds_vector,
+            target_watersheds_vector,
             os.path.join(self.workspace_dir, 'scratch'))
 
         watersheds_vector = ogr.Open(target_watersheds_vector)
@@ -1089,5 +1075,5 @@ class TestRouting(unittest.TestCase):
             geometries.append(shapely.wkb.loads(
                 watershed_feature.GetGeometryRef().ExportToWkb()))
 
-        for ws_index, expected_area in enumerate([4, 16, 36]):
+        for ws_index, expected_area in enumerate([20, 12, 4]):
             self.assertEqual(geometries[ws_index].area, expected_area)
