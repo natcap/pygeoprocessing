@@ -1070,6 +1070,17 @@ class TestRouting(unittest.TestCase):
         watersheds_layer = watersheds_vector.GetLayer()
         self.assertEqual(watersheds_layer.GetFeatureCount(), 3)
 
+        expected_ws_id_to_upstream_watersheds = {
+            1: '2',
+            2: '3',
+            3: '',  # indicates no upstream watersheds
+        }
+        ws_id_to_upstream_ws_id = dict(
+            (f.GetField('ws_id'), f.GetField('upstream_fragments'))
+            for f in watersheds_vector.GetLayer())
+        self.assertEqual(expected_ws_id_to_upstream_watersheds,
+                         ws_id_to_upstream_ws_id)
+
         geometries = []
         for watershed_feature in watersheds_vector.GetLayer():
             geometries.append(shapely.wkb.loads(

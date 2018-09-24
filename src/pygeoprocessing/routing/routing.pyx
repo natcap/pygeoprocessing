@@ -2576,15 +2576,15 @@ def delineate_watersheds(
     mask_managed_raster = _ManagedRaster(mask_raster_path, 1, 1)
 
     driver = ogr.GetDriverByName('GPKG')
-    watersheds_srs = osr.SpatialReference()
-    watersheds_srs.ImportFromWkt(flow_dir_info['projection'])
-    watersheds_vector = driver.CreateDataSource(target_watersheds_vector)
-    watersheds_layer = watersheds_vector.CreateLayer(
-        'watersheds', watersheds_srs, ogr.wkbPolygon)
-    watershed_index_field = 'ws_id'
-    index_field = ogr.FieldDefn(watershed_index_field, ogr.OFTInteger)
-    index_field.SetWidth(24)
-    watersheds_layer.CreateField(index_field)
+    watershed_fragments_srs = osr.SpatialReference()
+    watershed_fragments_srs.ImportFromWkt(flow_dir_info['projection'])
+    watershed_fragments_path = os.path.join(work_dir, 'watershed_fragments.gpkg')
+    watershed_fragments_vector = driver.CreateDataSource(watershed_fragments_path)
+    watershed_fragments_layer = watershed_fragments_vector.CreateLayer(
+        'watersheds', watershed_fragments_srs, ogr.wkbPolygon)
+    ws_id_field = ogr.FieldDefn('ws_id', ogr.OFTInteger)
+    ws_id_field.SetWidth(24)
+    watershed_fragments_layer.CreateField(ws_id_field)
 
     cdef long yi_outflow, xi_outflow
     cdef CoordinatePair current_pixel, neighbor_pixel, outflow_pixel
@@ -2599,9 +2599,13 @@ def delineate_watersheds(
     vector = ogr.Open(outflow_points_vector_path)
     layer = vector.GetLayer()
     points_in_layer = layer.GetFeatureCount()
+    outlet_layer_definition = layer.GetLayerDefn()
 
     # Map ws_id to the watersheds that nest within.
     nested_watersheds = {}
+
+    # Track outflow point FIDs against the WS_ID used.
+    ws_id_to_fid = {}
 
     cdef int ws_id
     for ws_id, outflow_point in enumerate(layer, start=1):
@@ -2620,6 +2624,7 @@ def delineate_watersheds(
         outflow_queue.push(outflow_pixel)
         outflow_queue_set.insert(outflow_pixel)
         outflow_id_map[outflow_pixel] = ws_id
+        ws_id_to_fid[ws_id] = outflow_point.GetFID()
 
     ws_id = 1
     while not outflow_queue.empty():
@@ -2698,7 +2703,7 @@ def delineate_watersheds(
     gdal.Polygonize(
         scratch_band,  # the source band to be analyzed
         mask_band,  # the mask band indicating valid pixels
-        watersheds_layer,  # polygons are added to this layer
+        watershed_fragments_layer,  # polygons are added to this layer
         0,  # field index into which to save the pixel value of watershed
         ['8CONNECTED8'])  # use 8-connectedness algorithm.
 
@@ -2711,12 +2716,55 @@ def delineate_watersheds(
     # If a watershed is alone (does not contain nested watersheds), the
     # geometry should be written as-is.
 
+    watershed_vector = driver.CreateDataSource(target_watersheds_vector)
+    watershed_layer = watershed_vector.CreateLayer(
+        'watershed_fragments', watershed_fragments_srs, ogr.wkbPolygon)
+
+    # Create the fields in the target vector that already existed in the
+    # outflow points vector
+    for index in range(outlet_layer_definition.GetFieldCount()):
+        field_defn = outlet_layer_definition.GetFieldDefn(index)
+        field_type = field_defn.GetType()
+
+        if field_type in (ogr.OFTInteger, ogr.OFTReal):
+            field_defn.SetWidth(24)
+        watershed_layer.CreateField(field_defn)
+
+    upstream_fragments_field = ogr.FieldDefn('upstream_fragments', ogr.OFTString)
+    watershed_layer.CreateField(upstream_fragments_field)
+    watershed_layer.CreateField(ws_id_field)
+    watershed_layer_defn = watershed_layer.GetLayerDefn()
+
+    # Copy over the field values to the target vector
+    for watershed_fragment in watershed_fragments_layer:
+        fragment_ws_id = watershed_fragment.GetField('ws_id')
+        outflow_point_fid = ws_id_to_fid[fragment_ws_id]
+
+        watershed_feature = ogr.Feature(watershed_layer_defn)
+        watershed_feature.SetGeometry(watershed_fragment.GetGeometryRef())
+
+        outflow_point_feature = layer.GetFeature(outflow_point_fid)
+        for outflow_field_index in range(outlet_layer_definition.GetFieldCount()):
+            watershed_feature.SetField(
+                outflow_field_index,
+                outflow_point_feature.GetField(outflow_field_index))
+
+        watershed_feature.SetField('ws_id', float(fragment_ws_id))
+        try:
+            upstream_fragments = ','.join(
+                str(s) for s in sorted(nested_watersheds[fragment_ws_id]))
+        except KeyError:
+            upstream_fragments = ''
+        watershed_feature.SetField('upstream_fragments', upstream_fragments)
+
+        watershed_layer.CreateFeature(watershed_feature)
+
     scratch_band = None
     scratch_raster = None
     mask_band = None
 
-    watersheds_layer = None
-    watersheds_vector = None
+    watershed_fragments_layer = None
+    watershed_fragments_vector = None
 
 
 def join_watershed_fragments(watershed_fragments_vector, target_watersheds_vector):
