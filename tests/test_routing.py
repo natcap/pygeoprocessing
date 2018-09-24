@@ -1089,5 +1089,5 @@ class TestRouting(unittest.TestCase):
             geometries.append(shapely.wkb.loads(
                 watershed_feature.GetGeometryRef().ExportToWkb()))
 
-        for ws_index, expected_area in enumerate([36.0, 16.0, 4.0]):
+        for ws_index, expected_area in enumerate([4, 16, 36]):
             self.assertEqual(geometries[ws_index].area, expected_area)

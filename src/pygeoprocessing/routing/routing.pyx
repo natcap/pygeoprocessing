@@ -2671,6 +2671,7 @@ def delineate_watersheds(
                         nested_watersheds[ws_id].add(existing_ws_id)
                     except KeyError:
                         nested_watersheds[ws_id] = set([existing_ws_id])
+                    continue
 
                 # Does the neighbor flow into the current pixel?
                 if (reverse_flow[neighbor_index] ==
@@ -2709,27 +2710,35 @@ def delineate_watersheds(
     watersheds_layer = watersheds_vector.CreateLayer(
         'watersheds', watersheds_srs, ogr.wkbPolygon)
 
-    visited_watersheds = set([])
-    for parent_ws_id, nested_ws_id_set in nested_watersheds.items():
-        geometry = []
-        for feature in temp_watersheds_layer:
-            feature_id = feature.GetField('ws_id')
-            if feature_id in nested_ws_id_set:
-                geometry.append(shapely.wkb.loads(
-                    feature.GetGeometryRef.ExportToWkb()))
-                visited_watersheds.add(feature_id)
-        geometry_union = shapely.ops.cascaded_union(geometry)
-        feature = ogr.Feature(watersheds_layer.GetLayerDefn())
-        feature.SetGeometry(
-            ogr.CreateGeometryFromWkb(shapely.wkb.dumps(geometry_union)))
-        watersheds_layer.CreateFeature(feature)
+    watersheds_geometries = dict(
+        (feature.GetField('ws_id'), shapely.wkb.loads(
+            feature.GetGeometryRef().ExportToWkb()))
+        for feature in temp_watersheds_layer)
 
-    for feature in temp_watersheds_layer:
-        feature_id = feature.GetField('ws_id')
-        if feature not in visited_watersheds:
-            feature = ogr.Feature(watersheds_layer.GetLayerDefn())
-            feature.SetGeometry(feature.GetGeometryRef())
-            watersheds_layer.CreateFeature(feature)
+    def _recurse_nested_watersheds(ws_id, ws_geoms=None):
+        if ws_geoms is None:
+            ws_geoms = []
+
+        ws_geoms.append(watersheds_geometries[ws_id])
+
+        try:
+            for nested_watershed in nested_watersheds[ws_id]:
+                ws_geoms.extend(_recurse_nested_watersheds(nested_watershed))
+        except KeyError:
+            pass # No nested watersheds for this WS
+        return ws_geoms
+
+    unioned_geometries = {}
+    for parent_ws, nested_ws_id_set in nested_watersheds.items():
+        unioned_geometries[parent_ws] = shapely.ops.cascaded_union(
+            _recurse_nested_watersheds(parent_ws))
+
+    watersheds_geometries.update(unioned_geometries)
+    for ws_id, shapely_geom in watersheds_geometries.items():
+        feature = ogr.Feature(watersheds_layer.GetLayerDefn())
+        feature.SetGeometry(ogr.CreateGeometryFromWkb(
+            shapely.wkb.dumps(shapely_geom)))
+        watersheds_layer.CreateFeature(feature)
 
     scratch_band = None
     scratch_raster = None
