@@ -2786,6 +2786,17 @@ def join_watershed_fragments(watershed_fragments_vector, target_watersheds_vecto
             feature.GetGeometryRef().ExportToWkb()))
         for feature in fragments_layer)
 
+    all_ws_ids = set([])
+    watersheds_geometries = {}
+    nested_fragments = {}
+    for feature in fragments_layer:
+        ws_id = feature.GetField('ws_id')
+        all_ws_ids.add(ws_id)
+        watersheds_geometries[ws_id] = shapely.wkb.loads(
+            feature.GetGeometryRef().ExportToWkb())
+        nested_fragments[ws_id] = [
+            int(f) for f in feature.GetField('upstream_fragments').split(',')]
+
     def _recurse_nested_watersheds(ws_id, ws_geoms=None):
         if ws_geoms is None:
             ws_geoms = []

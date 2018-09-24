@@ -1088,3 +1088,61 @@ class TestRouting(unittest.TestCase):
 
         for ws_index, expected_area in enumerate([20, 12, 4]):
             self.assertEqual(geometries[ws_index].area, expected_area)
+
+    def test_join_watershed_fragments(self):
+        import pygeoprocessing.routing
+        import pygeoprocessing.testing
+
+        fragment_a = shapely.geometry.Polygon([
+            (0, 0), (0, 1), (1, 1), (1, 0)])
+        fragment_b = shapely.geometry.Polygon([
+            (1, 0), (1, 1), (2, 1), (2, 0)])
+        fragment_c = shapely.geometry.Polygon([
+            (0, 1), (0, 2), (2, 2), (2, 1)])
+
+        srs = osr.SpatialReference()
+        srs.ImportFromEPSG(32731) # WGS84 / UTM zone 31s
+        srs_wkt = srs.ExportToWkt()
+
+        fragments_vector_path = os.path.join(self.workspace_dir, 'fragments.gpkg')
+        pygeoprocessing.testing.create_vector_on_disk(
+            [fragment_a, fragment_b, fragment_c], srs_wkt,
+            fields={'ws_id': 'int',
+                    'upstream_fragments': 'string',
+                    'other': 'real'},
+            attributes=[
+                {'other': 1.2, 'ws_id': 0, 'upstream_fragments': ''},
+                {'other': 2.3, 'ws_id': 1, 'upstream_fragments': '0'},
+                {'other': 3.4, 'ws_id': 2, 'upstream_fragments': '0,1'}],
+            filename=fragments_vector_path)
+
+        joined_vector_path = os.path.join(self.workspace_dir, 'joined.gpkg')
+        pygeoprocessing.routing.join_watershed_fragments(
+            fragments_vector_path, joined_vector_path)
+
+        joined_vector = ogr.Open(joined_vector_path)
+        joined_layer = joined_vector.GetLayer()
+
+        # Maps WS_ID to expected geometries
+        expected_geoms = {
+            0: fragment_a,
+            1: shapely.ops.cascaded_union([fragment_a, fragment_b]),
+            2: shapely.ops.cascaded_union([fragment_a, fragment_b,
+                                           fragment_c]),
+        }
+
+        expected_other_values = {
+            0: 1.2,
+            1: 2.3,
+            2: 3.4,
+        }
+
+        for joined_feature in joined_layer:
+            ws_id = joined_feature.GetField('ws_id')
+            joined_geometry = shapely.wkb.loads(
+                joined_feature.GetGeometryRef().ExportToWkb())
+            self.assertEqual(expected_geoms[ws_id], joined_geometry)
+
+            # Verify all fields are copied over.
+            self.assertEqual(joined_feature.GetField('other'),
+                             expected_other_values[ws_id])
