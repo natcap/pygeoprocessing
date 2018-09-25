@@ -2572,6 +2572,7 @@ def delineate_watersheds(
                                              0)  # read-only
     flow_dir_info = pygeoprocessing.get_raster_info(
         d8_flow_dir_raster_path_band[0])
+    flow_dir_nodata = flow_dir_info['nodata'][0]
     source_gt = flow_dir_info['geotransform']
     cdef long flow_dir_n_cols = flow_dir_info['raster_size'][0]
     cdef long flow_dir_n_rows = flow_dir_info['raster_size'][1]
@@ -2648,7 +2649,7 @@ def delineate_watersheds(
                 "raster; skipping delineation.", ws_id)
             continue
 
-        # TODO: check for nodata in the flow direction raster.
+        # TODO: check for nodata in the flow direction raster?
 
         outflow_pixel = CoordinatePair(xi_outflow, yi_outflow)
         outflow_queue.push(outflow_pixel)
@@ -2849,6 +2850,7 @@ def join_watershed_fragments(watershed_fragments_vector, target_watersheds_vecto
         if upstream_fragments:
             nested_fragments[ws_id] = [int(f) for f in upstream_fragments.split(',')]
 
+    # TODO: don't re-join nested geometries.
     def _recurse_nested_fragments(ws_id):
         if ws_id not in nested_fragments:
             return []
