@@ -669,6 +669,38 @@ class PyGeoprocessing10(unittest.TestCase):
                 base_a_raster_info['pixel_size'], bounding_box_mode,
                 base_vector_path_list=None, raster_align_index=0)
 
+    def test_align_and_resize_raster_stack_duplicate_outputs(self):
+        """PGP.geoprocessing: align/resize raster duplicate outputs."""
+        pixel_a_matrix = numpy.ones((5, 5), numpy.int16)
+        reference = sampledata.SRS_COLOMBIA
+        nodata_target = -1
+        base_a_path = os.path.join(self.workspace_dir, 'base_a.tif')
+        pygeoprocessing.testing.create_raster_on_disk(
+            [pixel_a_matrix], reference.origin, reference.projection,
+            nodata_target, reference.pixel_size(30), filename=base_a_path)
+
+        base_raster_path_list = [base_a_path, base_a_path]
+        target_raster_path_list = [
+            os.path.join(self.workspace_dir, 'target_%s.tif' % char)
+            for char in ['a', 'a']]
+
+        resample_method_list = ['near'] * 2
+        bounding_box_mode = 'intersection'
+
+        base_a_raster_info = pygeoprocessing.get_raster_info(base_a_path)
+
+        with self.assertRaises(ValueError) as cm:
+            # here base_raster_path_list is length 1 but others are length 2
+            pygeoprocessing.align_and_resize_raster_stack(
+                base_raster_path_list, target_raster_path_list,
+                resample_method_list,
+                base_a_raster_info['pixel_size'], bounding_box_mode,
+                base_vector_path_list=None, raster_align_index=0)
+
+        expected_message = 'There are duplicated paths on the target list.'
+        actual_message = str(cm.exception)
+        self.assertTrue(expected_message in actual_message, actual_message)
+
     def test_align_and_resize_raster_stack_bad_mode(self):
         """PGP.geoprocessing: align/resize raster bad bounding box mode."""
         pixel_a_matrix = numpy.ones((5, 5), numpy.int16)

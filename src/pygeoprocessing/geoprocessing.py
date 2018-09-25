@@ -400,6 +400,11 @@ def raster_calculator(
             for value in base_canonical_arg_list:
                 if isinstance(value, gdal.Band):
                     data_blocks.append(value.ReadAsArray(**block_offset))
+                    if not isinstance(data_blocks[-1], numpy.ndarray):
+                        raise ValueError(
+                            "got a %s when trying to read %s at %s",
+                            data_blocks[-1], value.GetDataset().GetFileList(),
+                            block_offset)
                 elif isinstance(value, numpy.ndarray):
                     # must be numpy array and all have been conditioned to be
                     # 2d, so start with 0:1 slices and expand if possible
@@ -514,7 +519,8 @@ def align_and_resize_raster_stack(
             box.
         target_raster_path_list (list): a list of raster paths that will be
             created to one-to-one map with `base_raster_path_list` as aligned
-            versions of those original rasters.
+            versions of those original rasters. If there are duplicate paths
+            in this list, the function will raise a ValueError.
         resample_method_list (list): a list of resampling methods which
             one to one map each path in `base_raster_path_list` during
             resizing.  Each element must be one of
@@ -563,6 +569,20 @@ def align_and_resize_raster_stack(
             "base_raster_path_list, target_raster_path_list, and "
             "resample_method_list must be the same length "
             " current lengths are %s" % (str(list_lengths)))
+
+    unique_targets = set(target_raster_path_list)
+    if len(unique_targets) != len(target_raster_path_list):
+        seen = set()
+        duplicate_list = []
+        for path in target_raster_path_list:
+            if path not in seen:
+                seen.add(path)
+            else:
+                duplicate_list.append(path)
+        raise ValueError(
+            "There are duplicated paths on the target list. This is an "
+            "invalid state of `target_path_list`. Duplicates: %s" % (
+                duplicate_list))
 
     # we can accept 'union', 'intersection', or a 4 element list/tuple
     if bounding_box_mode not in ["union", "intersection"] and (

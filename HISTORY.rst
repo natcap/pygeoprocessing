@@ -28,6 +28,9 @@ Unreleased Changes
   diagonal ones.
 * Added an option to `reproject_vector` that allows a caller to specify which
   fields, if any, to copy to the target vector after reprojection.
+* Adding a check in `align_and_resize_raster_stack` for duplicate target
+  output paths to avoid problems where multiple rasters are being warped to
+  the same path.
 
 1.2.3 (7/25/2018)
 -----------------
