@@ -400,6 +400,11 @@ def raster_calculator(
             for value in base_canonical_arg_list:
                 if isinstance(value, gdal.Band):
                     data_blocks.append(value.ReadAsArray(**block_offset))
+                    if not isinstance(data_blocks[-1], numpy.ndarray):
+                        raise ValueError(
+                            "got a %s when trying to read %s at %s",
+                            data_blocks[-1], value.GetDataset().GetFileList(),
+                            block_offset)
                 elif isinstance(value, numpy.ndarray):
                     # must be numpy array and all have been conditioned to be
                     # 2d, so start with 0:1 slices and expand if possible
@@ -652,9 +657,8 @@ def align_and_resize_raster_stack(
                 vector_info['projection'], target_sr_wkt)
             for vector_info in vector_info_list] + raster_bounding_box_list
 
-        target_bounding_box = reduce(
-            functools.partial(_merge_bounding_boxes, mode=bounding_box_mode),
-            bounding_box_list)
+        target_bounding_box = merge_bounding_box_list(
+            bounding_box_list, bounding_box_mode)
 
     if bounding_box_mode == "intersection" and (
             target_bounding_box[0] > target_bounding_box[2] or
@@ -2642,13 +2646,10 @@ def merge_rasters(
                 pixeltype_set))
 
     bounding_box_list = [x['bounding_box'] for x in raster_info_list]
-    target_bounding_box = reduce(
-        functools.partial(_merge_bounding_boxes, mode='union'),
-        bounding_box_list)
+    target_bounding_box = merge_bounding_box_list(bounding_box_list, 'union')
     if bounding_box is not None:
-        target_bounding_box = reduce(
-            functools.partial(_merge_bounding_boxes, mode='intersection'),
-            [target_bounding_box, bounding_box])
+        target_bounding_box = merge_bounding_box_list(
+            [target_bounding_box, bounding_box], 'intersection')
 
     driver = gdal.GetDriverByName('GTiff')
     target_pixel_size = pixel_size_set.pop()
@@ -2826,35 +2827,52 @@ def _gdal_to_numpy_type(band):
     return numpy.uint8
 
 
-def _merge_bounding_boxes(bb1, bb2, mode):
-    """Merge two bounding boxes through union or intersection.
+def merge_bounding_box_list(bounding_box_list, bounding_box_mode):
+    """Creates a single bounding box by union or intersection of the list.
 
     Parameters:
-        bb1, bb2 (list): list of float representing bounding box in the
-            form bb=[minx,miny,maxx,maxy]
-        mode (string); one of 'union' or 'intersection'
+        bounding_box_list (list): a list of bounding box tuples/lists of the
+            form [minx,miny,maxx,maxy].
+        mode (string): either 'union' or 'intersection' for the cooresponding
+            reduction mode.
 
     Returns:
-        Reduced bounding box of bb1/bb2 depending on mode.
+        A 4 tuple bounding box that is the combin
 
     """
-    def _less_than_or_equal(x_val, y_val):
-        return x_val if x_val <= y_val else y_val
+    def _merge_bounding_boxes(bb1, bb2, mode):
+        """Merge two bounding boxes through union or intersection.
 
-    def _greater_than(x_val, y_val):
-        return x_val if x_val > y_val else y_val
+        Parameters:
+            bb1, bb2 (list): list of float representing bounding box in the
+                form bb=[minx,miny,maxx,maxy]
+            mode (string); one of 'union' or 'intersection'
 
-    if mode == "union":
-        comparison_ops = [
-            _less_than_or_equal, _less_than_or_equal,
-            _greater_than, _greater_than]
-    if mode == "intersection":
-        comparison_ops = [
-            _greater_than, _greater_than,
-            _less_than_or_equal, _less_than_or_equal]
+        Returns:
+            Reduced bounding box of bb1/bb2 depending on mode.
 
-    bb_out = [op(x, y) for op, x, y in zip(comparison_ops, bb1, bb2)]
-    return bb_out
+        """
+        def _less_than_or_equal(x_val, y_val):
+            return x_val if x_val <= y_val else y_val
+
+        def _greater_than(x_val, y_val):
+            return x_val if x_val > y_val else y_val
+
+        if mode == "union":
+            comparison_ops = [
+                _less_than_or_equal, _less_than_or_equal,
+                _greater_than, _greater_than]
+        if mode == "intersection":
+            comparison_ops = [
+                _greater_than, _greater_than,
+                _less_than_or_equal, _less_than_or_equal]
+
+        bb_out = [op(x, y) for op, x, y in zip(comparison_ops, bb1, bb2)]
+        return bb_out
+
+    return reduce(
+        functools.partial(_merge_bounding_boxes, mode=bounding_box_mode),
+        bounding_box_list)
 
 
 def _make_logger_callback(message):

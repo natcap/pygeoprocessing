@@ -2404,3 +2404,17 @@ class PyGeoprocessing10(unittest.TestCase):
         expected_message = 'Could not open'
         actual_message = str(cm.exception)
         self.assertTrue(expected_message in actual_message, actual_message)
+
+    def test_merge_bounding_box_list(self):
+        """PGP: test merge_bounding_box_list."""
+        bb_a = (-1, -1, 1, 1)
+        bb_b = (-.9, -1.5, 1.5, 1)
+
+        union_bb = pygeoprocessing.merge_bounding_box_list(
+            [bb_a, bb_b], 'union')
+        numpy.testing.assert_array_almost_equal(
+            union_bb, [-1, -1.5, 1.5, 1])
+        intersection_bb = pygeoprocessing.merge_bounding_box_list(
+            [bb_a, bb_b], 'intersection')
+        numpy.testing.assert_array_almost_equal(
+            intersection_bb, [-.9, -1, 1, 1])
