@@ -2521,13 +2521,13 @@ def distance_to_channel_mfd(
     LOGGER.info('%.2f%% complete', 100.0)
 
 
-# TODO: document these 
+# It's convenient to define a C++ pair here as a pair of longs to represent the
+# x,y coordinates of a pixel.  So, CoordinatePair().first is the x coordinate,
+# CoordinatePair().second is the y coordinate.  Both are in integer pixel
+# coordinates.
 ctypedef pair[long, long] CoordinatePair
-ctypedef queue[CoordinatePair] CoordinateQueue
-ctypedef cset[CoordinatePair] CoordinateSet
 
 
-# TODO: add a docstring
 # TODO: note change in history
 def delineate_watersheds(
         d8_flow_dir_raster_path_band, outflow_points_vector_path,
@@ -2616,8 +2616,8 @@ def delineate_watersheds(
 
     cdef long yi_outflow, xi_outflow
     cdef CoordinatePair current_pixel, neighbor_pixel, outflow_pixel
-    cdef CoordinateQueue process_queue, outflow_queue
-    cdef CoordinateSet process_queue_set, outflow_queue_set
+    cdef queue[CoordinatePair] process_queue, outflow_queue
+    cdef cset[CoordinatePair] process_queue_set, outflow_queue_set
     outflow_id_map = {}
 
     cdef int* neighbor_col = [1, 1, 0, -1, -1, -1, 0, 1]
@@ -2647,6 +2647,8 @@ def delineate_watersheds(
                 "Outflow point %i does not intersect the flow direction "
                 "raster; skipping delineation.", ws_id)
             continue
+
+        # TODO: check for nodata in the flow direction raster.
 
         outflow_pixel = CoordinatePair(xi_outflow, yi_outflow)
         outflow_queue.push(outflow_pixel)
