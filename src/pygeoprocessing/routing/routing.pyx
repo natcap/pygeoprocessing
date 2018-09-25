@@ -2531,18 +2531,41 @@ ctypedef cset[CoordinatePair] CoordinateSet
 # TODO: note change in history
 def delineate_watersheds(
         d8_flow_dir_raster_path_band, outflow_points_vector_path,
-        target_watersheds_vector, work_dir=None):
+        target_fragments_vector_path, working_dir=None):
+    """Delineate watersheds from a D8 flow direction raster.
 
-    for path_band in (d8_flow_dir_raster_path_band,):
-        if (path_band is not None and not
-                _is_raster_path_band_formatted(path_band)):
-            raise ValueError(
-                "%s is supposed to be a raster band tuple but it's not." % (
-                    path_band))
+    This function produces a vector of watershed fragments, where each fragment
+    represents the area that flows into each outflow point.  Nested watersheds
+    are represented by the field
 
-    # TODO: Check that flow direction is tiled appopriately
+    Parameters:
+        d8_flow_dir_raster_path_band (tuple): A two-tuple representing the
+            string path to the D8 flow direction raster to use and the band
+            index to use.
+        outflow_points_vector_path (string): Path to a vector of points on
+            disk representing outflow points for a watershed.  This vector
+            must have one layer, only contain point geometries, and must be
+            in the same projection as the flow direction raster.
+        target_fragments_vector_path (string): Path to where the watershed
+            fragments vector will be stored on disk.  This filepath must end
+            with the 'gpkg' extension, and will be created as a GeoPackage.
+        working_dir=None (string or None): The path to a directory on disk
+            where intermediate files will be stored.  This directory will be
+            created if it does not exist, and intermediate files created will
+            be removed.  If ``None``, a new temporary folder will be created
+            within the system temp directory.
 
-    cdef _ManagedRaster flow_dir_managed_raster, scratch_managed_raster
+    Returns:
+        ``None``
+
+    """
+    if (d8_flow_dir_raster_path_band is not None and not
+            _is_raster_path_band_formatted(d8_flow_dir_raster_path_band)):
+        raise ValueError(
+            "%s is supposed to be a raster band tuple but it's not." % (
+                d8_flow_dir_raster_path_band))
+
+    cdef _ManagedRaster flow_dir_managed_raster, scratch_managed_raster, mask_managed_raster
 
     flow_dir_managed_raster = _ManagedRaster(d8_flow_dir_raster_path_band[0],
                                              d8_flow_dir_raster_path_band[1],
@@ -2552,15 +2575,17 @@ def delineate_watersheds(
     source_gt = flow_dir_info['geotransform']
     cdef long flow_dir_n_cols = flow_dir_info['raster_size'][0]
     cdef long flow_dir_n_rows = flow_dir_info['raster_size'][1]
+    try:
+        if working_dir is not None:
+            os.makedirs(working_dir)
+    except OSError:
+        pass
+    working_dir_path = tempfile.mkdtemp(
+        dir=working_dir, prefix='watershed_delineation_%s_' % time.strftime(
+            '%Y-%m-%d_%H_%M_%S', time.gmtime()))
 
-    if work_dir is None:
-        work_dir = tempfile.mkdtemp(prefix='tmp_watershed_')
-
-    if not os.path.isdir(work_dir):
-        os.makedirs(work_dir)
-
-    scratch_raster_path = os.path.join(work_dir, 'scratch_raster.tif')
-    mask_raster_path = os.path.join(work_dir, 'scratch_mask.tif')
+    scratch_raster_path = os.path.join(working_dir, 'scratch_raster.tif')
+    mask_raster_path = os.path.join(working_dir, 'scratch_mask.tif')
 
     # Create a new watershed scratch raster the size, shape of the flow dir raster
     NO_WATERSHED = -1
@@ -2581,7 +2606,7 @@ def delineate_watersheds(
     driver = ogr.GetDriverByName('GPKG')
     watershed_fragments_srs = osr.SpatialReference()
     watershed_fragments_srs.ImportFromWkt(flow_dir_info['projection'])
-    watershed_fragments_path = os.path.join(work_dir, 'watershed_fragments.gpkg')
+    watershed_fragments_path = os.path.join(working_dir, 'watershed_fragments.gpkg')
     watershed_fragments_vector = driver.CreateDataSource(watershed_fragments_path)
     watershed_fragments_layer = watershed_fragments_vector.CreateLayer(
         'watersheds', watershed_fragments_srs, ogr.wkbPolygon)
@@ -2695,6 +2720,7 @@ def delineate_watersheds(
         nested_watersheds[ws_id] = nested_watershed_ids
         ws_id += 1
 
+    flow_dir_managed_raster.close()  # Don't need this any more.
     scratch_managed_raster.close()  # flush the scratch raster.
     mask_managed_raster.close()  # flush the mask raster
 
@@ -2716,7 +2742,7 @@ def delineate_watersheds(
     # the union of all upstream sheds.
     # If a watershed is alone (does not contain nested watersheds), the
     # geometry should be written as-is.
-    watershed_vector = driver.CreateDataSource(target_watersheds_vector)
+    watershed_vector = driver.CreateDataSource(target_fragments_vector_path)
     watershed_layer = watershed_vector.CreateLayer(
         'watershed_fragments', watershed_fragments_srs, ogr.wkbPolygon)
 
@@ -2730,6 +2756,7 @@ def delineate_watersheds(
             field_defn.SetWidth(24)
         watershed_layer.CreateField(field_defn)
 
+    # TODO: intelligently set the upstream fragments width.
     upstream_fragments_field = ogr.FieldDefn('upstream_fragments', ogr.OFTString)
     watershed_layer.CreateField(upstream_fragments_field)
     watershed_layer.CreateField(ws_id_field)
@@ -2752,21 +2779,21 @@ def delineate_watersheds(
         watershed_feature.SetField('ws_id', float(fragment_ws_id))
         try:
             upstream_fragments = ','.join(
-                str(s) for s in sorted(nested_watersheds[fragment_ws_id]))
+                [str(s) for s in sorted(nested_watersheds[fragment_ws_id])])
         except KeyError:
             upstream_fragments = ''
         watershed_feature.SetField('upstream_fragments', upstream_fragments)
 
         watershed_layer.CreateFeature(watershed_feature)
 
-    # TODO: remove working dir
-
     scratch_band = None
     scratch_raster = None
     mask_band = None
-
+    mask_raster = None
     watershed_fragments_layer = None
     watershed_fragments_vector = None
+
+    shutil.rmtree(working_dir_path, ignore_errors=True)
 
 
 def join_watershed_fragments(watershed_fragments_vector, target_watersheds_vector):
