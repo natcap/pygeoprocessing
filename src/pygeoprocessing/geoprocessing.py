@@ -400,11 +400,6 @@ def raster_calculator(
             for value in base_canonical_arg_list:
                 if isinstance(value, gdal.Band):
                     data_blocks.append(value.ReadAsArray(**block_offset))
-                    if not isinstance(data_blocks[-1], numpy.ndarray):
-                        raise ValueError(
-                            "got a %s when trying to read %s at %s",
-                            data_blocks[-1], value.GetDataset().GetFileList(),
-                            block_offset)
                 elif isinstance(value, numpy.ndarray):
                     # must be numpy array and all have been conditioned to be
                     # 2d, so start with 0:1 slices and expand if possible
