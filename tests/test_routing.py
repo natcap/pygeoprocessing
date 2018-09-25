@@ -932,6 +932,7 @@ class TestRouting(unittest.TestCase):
             distance_to_channel_mfd_array, expected_result)
 
     def test_watershed_delineation(self):
+        """PGP.routing: test delineation of disjoint watersheds."""
         import pygeoprocessing.routing
         import pygeoprocessing.testing
 
@@ -1006,6 +1007,7 @@ class TestRouting(unittest.TestCase):
                          abs(raster_area))
 
     def test_watershed_delineation_nested(self):
+        """PGP.routing: test delineation of nested watersheds."""
         import pygeoprocessing.routing
         import pygeoprocessing.testing
 
@@ -1090,6 +1092,7 @@ class TestRouting(unittest.TestCase):
             self.assertEqual(geometries[ws_index].area, expected_area)
 
     def test_join_watershed_fragments(self):
+        """PGP.routing: test joining of watershed fragments."""
         import pygeoprocessing.routing
         import pygeoprocessing.testing
 

@@ -2521,11 +2521,14 @@ def distance_to_channel_mfd(
     LOGGER.info('%.2f%% complete', 100.0)
 
 
+# TODO: document these 
 ctypedef pair[long, long] CoordinatePair
 ctypedef queue[CoordinatePair] CoordinateQueue
 ctypedef cset[CoordinatePair] CoordinateSet
 
 
+# TODO: add a docstring
+# TODO: note change in history
 def delineate_watersheds(
         d8_flow_dir_raster_path_band, outflow_points_vector_path,
         target_watersheds_vector, work_dir=None):
@@ -2639,6 +2642,7 @@ def delineate_watersheds(
         nested_watershed_ids = set([])
 
         while not process_queue.empty():
+            # TODO: Add progress logging
             current_pixel = process_queue.front()
             process_queue_set.erase(current_pixel)
             process_queue.pop()
@@ -2707,15 +2711,11 @@ def delineate_watersheds(
         0,  # field index into which to save the pixel value of watershed
         ['8CONNECTED8'])  # use 8-connectedness algorithm.
 
-    # TODO: copy over all of the fields from the points vector to the WS vector.
-    # TODO: join the geometries of nested watersheds.
-
     # create a new vector with new geometries in it
     # If watersheds have nested watersheds, the geometries written should be
     # the union of all upstream sheds.
     # If a watershed is alone (does not contain nested watersheds), the
     # geometry should be written as-is.
-
     watershed_vector = driver.CreateDataSource(target_watersheds_vector)
     watershed_layer = watershed_vector.CreateLayer(
         'watershed_fragments', watershed_fragments_srs, ogr.wkbPolygon)
@@ -2758,6 +2758,8 @@ def delineate_watersheds(
         watershed_feature.SetField('upstream_fragments', upstream_fragments)
 
         watershed_layer.CreateFeature(watershed_feature)
+
+    # TODO: remove working dir
 
     scratch_band = None
     scratch_raster = None
