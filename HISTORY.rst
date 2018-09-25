@@ -26,6 +26,13 @@ Unreleased Changes
   caller to use per-pixel weights from a parallel raster as opposed to
   assuming a distance of 1 between neighboring pixels or sqrt(2) between
   diagonal ones.
+* Adding an implementation of watershed delineation based on D8 flow direction
+  as ``pygeoprocessing.routing.delineate_watersheds``.  This function writes a
+  GeoPackage of polygons representing the regions that flow exclusively
+  into outflow points.  Another function,
+  ``pygeoprocessing.routing.join_watershed_fragments``, will take the delineated
+  watershed fragments and join nested watersheds into new geometries, writing
+  the results into a new GeoPackage.
 
 1.2.3 (7/25/2018)
 -----------------
