@@ -2768,9 +2768,29 @@ def delineate_watersheds(
 
 
 def join_watershed_fragments(watershed_fragments_vector, target_watersheds_vector):
-    # Use an integer list field to identify DAG
-    # Check for loops in DAG
+    """Join watershed fragments by their IDs.
 
+    This function takes a watershed fragments vector and creates a new vector
+    where all geometries represent the full watershed represented by any nested
+    watershed fragments contained within the watershed fragments vector.
+
+    Parameters:
+        watershed_fragments_vector (string): A path to a vector on disk.  This
+            vector must have at least two fields: 'ws_id' (int) and
+            'upstream_fragments' (string).  The 'upstream_fragments' field's
+            values must be formatted as a list of comma-separated integers
+            (example: ``1,2,3,4``), where each integer matches the ``ws_id``
+            field of a polygon in this vector.  If a fragment has no nested
+            watersheds, this field's value will have an empty string.  The
+            ``ws_id`` field represents a unique integer ID for the watershed
+            fragment.
+        target_watersheds_vector (string): A path to a vector on disk.  This
+            vector will be written as a GeoPackage.
+
+    Returns:
+        ``None``
+
+    """
     fragments_vector = ogr.Open(watershed_fragments_vector)
     fragments_layer = fragments_vector.GetLayer()
     fragments_srs = fragments_layer.GetSpatialRef()
@@ -2781,47 +2801,47 @@ def join_watershed_fragments(watershed_fragments_vector, target_watersheds_vecto
     watersheds_layer = watersheds_vector.CreateLayer(
         'watersheds', fragments_srs, ogr.wkbPolygon)
 
-    watersheds_geometries = dict(
-        (feature.GetField('ws_id'), shapely.wkb.loads(
-            feature.GetGeometryRef().ExportToWkb()))
-        for feature in fragments_layer)
+    for index in range(fragments_layer.GetLayerDefn().GetFieldCount()):
+        field_defn = fragments_layer.GetLayerDefn().GetFieldDefn(index)
+        field_type = field_defn.GetType()
 
-    all_ws_ids = set([])
-    watersheds_geometries = {}
+        if field_type in (ogr.OFTInteger, ogr.OFTReal):
+            field_defn.SetWidth(24)
+        watersheds_layer.CreateField(field_defn)
+
+    ws_id_to_fid = {}
     nested_fragments = {}
     for feature in fragments_layer:
         ws_id = feature.GetField('ws_id')
-        all_ws_ids.add(ws_id)
-        watersheds_geometries[ws_id] = shapely.wkb.loads(
-            feature.GetGeometryRef().ExportToWkb())
-        nested_fragments[ws_id] = [
-            int(f) for f in feature.GetField('upstream_fragments').split(',')]
+        ws_id_to_fid[ws_id] = feature.GetFID()
+        upstream_fragments = feature.GetField('upstream_fragments')
+        if upstream_fragments:
+            nested_fragments[ws_id] = [int(f) for f in upstream_fragments.split(',')]
 
-    def _recurse_nested_watersheds(ws_id, ws_geoms=None):
-        if ws_geoms is None:
-            ws_geoms = []
+    def _recurse_nested_fragments(ws_id):
+        if ws_id not in nested_fragments:
+            return []
+        else:
+            return [nested_fragments[f] for f in nested_fragments[ws_id]]
 
-        ws_geoms.append(watersheds_geometries[ws_id])
+    for fragment_feature in fragments_layer:
+        watershed_feature = fragment_feature.Clone()
+        fragment_ws_id = fragment_feature.GetField('ws_id')
 
+        multi = ogr.Geometry(ogr.wkbMultiPolygon)
+        multi.AddGeometry(fragment_feature.GetGeometryRef())
         try:
-            for nested_watershed in nested_watersheds[ws_id]:
-                ws_geoms.extend(_recurse_nested_watersheds(nested_watershed))
+            for nested_ws_id in _recurse_nested_fragments(fragment_ws_id):
+                nested_fid = ws_id_to_fid[nested_ws_id]
+                multi.AddGeometry(fragments_layer.GetFeature(
+                    nested_fid).GetGeometryRef())
         except KeyError:
-            pass # No nested watersheds for this WS
-        return ws_geoms
+            # No geometries to join
+            pass
+        watershed_feature.SetGeometry(multi.UnionCascaded())
 
-    unioned_geometries = {}
-    nested_watersheds = {}
-    for parent_ws, nested_ws_id_set in nested_watersheds.items():
-        unioned_geometries[parent_ws] = shapely.ops.cascaded_union(
-            _recurse_nested_watersheds(parent_ws))
-
-    watersheds_geometries.update(unioned_geometries)
-    for ws_id, shapely_geom in watersheds_geometries.items():
-        feature = ogr.Feature(watersheds_layer.GetLayerDefn())
-        feature.SetGeometry(ogr.CreateGeometryFromWkb(
-            shapely.wkb.dumps(shapely_geom)))
-        watersheds_layer.CreateFeature(feature)
+    fragments_layer = None
+    fragments_vector = None
 
     watersheds_layer = None
     watersheds_vector = None

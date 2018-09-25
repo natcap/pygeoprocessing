@@ -1120,9 +1120,6 @@ class TestRouting(unittest.TestCase):
         pygeoprocessing.routing.join_watershed_fragments(
             fragments_vector_path, joined_vector_path)
 
-        joined_vector = ogr.Open(joined_vector_path)
-        joined_layer = joined_vector.GetLayer()
-
         # Maps WS_ID to expected geometries
         expected_geoms = {
             0: fragment_a,
@@ -1137,6 +1134,8 @@ class TestRouting(unittest.TestCase):
             2: 3.4,
         }
 
+        joined_vector = ogr.Open(joined_vector_path)
+        joined_layer = joined_vector.GetLayer()
         for joined_feature in joined_layer:
             ws_id = joined_feature.GetField('ws_id')
             joined_geometry = shapely.wkb.loads(
