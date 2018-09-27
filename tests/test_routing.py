@@ -1012,11 +1012,11 @@ class TestRouting(unittest.TestCase):
         import pygeoprocessing.testing
 
         srs = osr.SpatialReference()
-        srs.ImportFromEPSG(32731) # WGS84 / UTM zone 31s
+        srs.ImportFromEPSG(32731)  # WGS84 / UTM zone 31s
         srs_wkt = srs.ExportToWkt()
 
         dem_array = numpy.array([
-            [3, 2, 1],
+            [255, 2, 1],
             [4, 3, 2],
             [5, 4, 3]])
         dem_path = os.path.join(self.workspace_dir, 'dem.tif')
@@ -1028,13 +1028,14 @@ class TestRouting(unittest.TestCase):
                 'BLOCKXSIZE=256', 'BLOCKYSIZE=256'))
         dem_raster.SetProjection(srs_wkt)
         dem_band = dem_raster.GetRasterBand(1)
+        dem_band.SetNoDataValue(255)
         dem_band.WriteArray(dem_array)
         dem_geotransform = [2, 2, 0, -2, 0, -2]
         dem_raster.SetGeoTransform(dem_geotransform)
         dem_raster = None
 
         flow_dir_array = numpy.array([
-            [0, 0, 0],
+            [255, 0, 0],
             [0, 1, 2],
             [1, 2, 2]])
         flow_dir_path = os.path.join(self.workspace_dir, 'flow_dir.tif')
@@ -1046,6 +1047,7 @@ class TestRouting(unittest.TestCase):
                 'BLOCKXSIZE=256', 'BLOCKYSIZE=256'))
         flow_dir_raster.SetProjection(srs_wkt)
         flow_dir_band = flow_dir_raster.GetRasterBand(1)
+        flow_dir_band.SetNoDataValue(255)
         flow_dir_band.WriteArray(flow_dir_array)
         flow_dir_geotransform = [2, 2, 0, -2, 0, -2]
         flow_dir_raster.SetGeoTransform(flow_dir_geotransform)
@@ -1056,6 +1058,8 @@ class TestRouting(unittest.TestCase):
             shapely.geometry.Point(7, -3),
             shapely.geometry.Point(5, -5),
             shapely.geometry.Point(3, -7),
+            shapely.geometry.Point(0, 0),  # off edge of raster; skipped.
+            shapely.geometry.Point(3, -3),  # over nodata; skipped.
         ]
         pygeoprocessing.testing.create_vector_on_disk(
             points_geometry, srs_wkt, vector_format='GPKG',
@@ -1088,7 +1092,7 @@ class TestRouting(unittest.TestCase):
             geometries.append(shapely.wkb.loads(
                 watershed_feature.GetGeometryRef().ExportToWkb()))
 
-        for ws_index, expected_area in enumerate([20, 12, 4]):
+        for ws_index, expected_area in enumerate([16, 12, 4]):
             self.assertEqual(geometries[ws_index].area, expected_area)
 
     def test_join_watershed_fragments(self):

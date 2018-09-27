@@ -2651,7 +2651,13 @@ def delineate_watersheds(
             points_in_layer -= 1
             continue
 
-        # TODO: check for nodata in the flow direction raster?
+        if flow_dir_nodata is not None and (
+                abs(flow_dir_managed_raster.get(
+                    xi_outflow, yi_outflow) - flow_dir_nodata) < 10e-5):
+            LOGGER.info(
+                'Outflow point %i is over nodata; skipping delineation.',
+                ws_id)
+            continue
 
         outflow_pixel = CoordinatePair(xi_outflow, yi_outflow)
         outflow_queue.push(outflow_pixel)
