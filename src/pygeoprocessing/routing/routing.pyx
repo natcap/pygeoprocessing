@@ -2819,10 +2819,13 @@ def join_watershed_fragments(watershed_fragments_vector, target_watersheds_vecto
             'upstream_fragments' (string).  The 'upstream_fragments' field's
             values must be formatted as a list of comma-separated integers
             (example: ``1,2,3,4``), where each integer matches the ``ws_id``
-            field of a polygon in this vector.  If a fragment has no nested
-            watersheds, this field's value will have an empty string.  The
-            ``ws_id`` field represents a unique integer ID for the watershed
-            fragment.
+            field of a polygon in this vector.  This field should only contain
+            the ``ws_id``s of watershed fragments that directly touch the
+            current fragment, as this function will recurse through the
+            fragments to determine the correct nested geometry.  If a fragment
+            has no nested watersheds, this field's value will have an empty
+            string.  The ``ws_id`` field represents a unique integer ID for the
+            watershed fragment.
         target_watersheds_vector (string): A path to a vector on disk.  This
             vector will be written as a GeoPackage.
 
@@ -2857,7 +2860,11 @@ def join_watershed_fragments(watershed_fragments_vector, target_watersheds_vecto
         if upstream_fragments:
             nested_fragments[ws_id] = [int(f) for f in upstream_fragments.split(',')]
 
+    # TO avoid re-joining fragments:
+    #  * Sort by length of list of upstream fragments
+
     # TODO: don't re-join nested geometries.
+    # also, this doesn't currently recurse
     def _recurse_nested_fragments(ws_id):
         if ws_id not in nested_fragments:
             return []

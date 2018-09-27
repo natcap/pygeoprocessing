@@ -1102,6 +1102,8 @@ class TestRouting(unittest.TestCase):
             (1, 0), (1, 1), (2, 1), (2, 0)])
         fragment_c = shapely.geometry.Polygon([
             (0, 1), (0, 2), (2, 2), (2, 1)])
+        fragment_d = shapely.geometry.Polygon([
+            (0, 2), (0, 3), (2, 3), (2, 2)])
 
         srs = osr.SpatialReference()
         srs.ImportFromEPSG(32731) # WGS84 / UTM zone 31s
@@ -1109,14 +1111,15 @@ class TestRouting(unittest.TestCase):
 
         fragments_vector_path = os.path.join(self.workspace_dir, 'fragments.gpkg')
         pygeoprocessing.testing.create_vector_on_disk(
-            [fragment_a, fragment_b, fragment_c], srs_wkt,
+            [fragment_a, fragment_b, fragment_c, fragment_d], srs_wkt,
             fields={'ws_id': 'int',
                     'upstream_fragments': 'string',
                     'other': 'real'},
             attributes=[
                 {'other': 1.2, 'ws_id': 0, 'upstream_fragments': ''},
                 {'other': 2.3, 'ws_id': 1, 'upstream_fragments': '0'},
-                {'other': 3.4, 'ws_id': 2, 'upstream_fragments': '0,1'}],
+                {'other': 3.4, 'ws_id': 2, 'upstream_fragments': '0,1'},
+                {'other': 4.5, 'ws_id': 3, 'upstream_fragments': '2'}],
             filename=fragments_vector_path)
 
         joined_vector_path = os.path.join(self.workspace_dir, 'joined.gpkg')
@@ -1129,12 +1132,15 @@ class TestRouting(unittest.TestCase):
             1: shapely.ops.cascaded_union([fragment_a, fragment_b]),
             2: shapely.ops.cascaded_union([fragment_a, fragment_b,
                                            fragment_c]),
+            3: shapely.ops.cascaded_union([fragment_a, fragment_b,
+                                           fragment_c, fragment_d])
         }
 
         expected_other_values = {
             0: 1.2,
             1: 2.3,
             2: 3.4,
+            3: 4.5,
         }
 
         joined_vector = ogr.Open(joined_vector_path)
