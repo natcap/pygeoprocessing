@@ -2746,13 +2746,31 @@ def delineate_watersheds(
     mask_raster = gdal.OpenEx(mask_raster_path, gdal.OF_RASTER)
     mask_band = mask_raster.GetRasterBand(1)
 
-    # TODO: Add a callback.
+    def _polygonize_callback(df_complete, psz_message, p_progress_arg):
+        """Log progress messages during long-running polygonize calls.
+
+        The parameters for this function are defined by GDAL."""
+        try:
+            current_time = time.time()
+            if ((current_time - _polygonize_callback.last_time) > 5.0 or
+                    (df_complete == 1.0 and _polygonize_callback.total_time >= 5.0)):
+                LOGGER.info(
+                    'Fragment polygonization %.1f%% complete %s, psz_message %s',
+                    df_complete * 100, p_progress_arg[0], psz_message)
+                _polygonize_callback.last_time = time.time()
+                _polygonize_callback.total_time += current_time
+        except AttributeError:
+            _polygonize_callback.last_time = time.time()
+            _polygonize_callback.total_time = 0.0
+
     gdal.Polygonize(
         scratch_band,  # the source band to be analyzed
         mask_band,  # the mask band indicating valid pixels
         watershed_fragments_layer,  # polygons are added to this layer
         0,  # field index into which to save the pixel value of watershed
-        ['8CONNECTED8'])  # use 8-connectedness algorithm.
+        ['8CONNECTED8'],  # use 8-connectedness algorithm.
+        _polygonize_callback
+    )
 
     # create a new vector with new geometries in it
     # If watersheds have nested watersheds, the geometries written should be
