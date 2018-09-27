@@ -2884,17 +2884,14 @@ def join_watershed_fragments(watershed_fragments_vector, target_watersheds_vecto
         upstream_fragments = feature.GetField('upstream_fragments')
         if upstream_fragments:
             nested_fragments[ws_id] = [int(f) for f in upstream_fragments.split(',')]
-
-    # TO avoid re-joining fragments:
-    #  * Sort by length of list of upstream fragments
-
-    # TODO: don't re-join nested geometries.
-    # also, this doesn't currently recurse
-    def _recurse_nested_fragments(ws_id):
-        if ws_id not in nested_fragments:
-            return []
         else:
-            return [nested_fragments[f] for f in nested_fragments[ws_id]]
+            # If no upstream fragments, the string will be '', and ''.split(',') turns into
+            # [''], which crashes when you cast it to an int.
+            nested_fragments[ws_id] = []
+
+    def _recurse_nested_fragments(ws_id):
+        return [nested_fragments[f] for f in
+                _recurse_nested_fragments(nested_fragments[ws_id])]
 
     for fragment_feature in fragments_layer:
         watershed_feature = fragment_feature.Clone()
@@ -2902,14 +2899,10 @@ def join_watershed_fragments(watershed_fragments_vector, target_watersheds_vecto
 
         multi = ogr.Geometry(ogr.wkbMultiPolygon)
         multi.AddGeometry(fragment_feature.GetGeometryRef())
-        try:
-            for nested_ws_id in _recurse_nested_fragments(fragment_ws_id):
-                nested_fid = ws_id_to_fid[nested_ws_id]
-                multi.AddGeometry(fragments_layer.GetFeature(
-                    nested_fid).GetGeometryRef())
-        except KeyError:
-            # No geometries to join
-            pass
+        for nested_ws_id in _recurse_nested_fragments(fragment_ws_id):
+            nested_fid = ws_id_to_fid[nested_ws_id]
+            multi.AddGeometry(fragments_layer.GetFeature(
+                nested_fid).GetGeometryRef())
         watershed_feature.SetGeometry(multi.UnionCascaded())
 
     fragments_layer = None
