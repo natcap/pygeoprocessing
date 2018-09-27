@@ -2615,6 +2615,7 @@ def delineate_watersheds(
     ws_id_field.SetWidth(24)
     watershed_fragments_layer.CreateField(ws_id_field)
 
+    cdef time_t last_log_time = ctime(NULL)
     cdef long yi_outflow, xi_outflow
     cdef CoordinatePair current_pixel, neighbor_pixel, outflow_pixel
     cdef queue[CoordinatePair] process_queue, outflow_queue
@@ -2637,6 +2638,7 @@ def delineate_watersheds(
     ws_id_to_fid = {}
 
     cdef int ws_id
+    cdef int pixels_in_watershed
     for ws_id, outflow_point in enumerate(layer, start=1):
         geometry = outflow_point.GetGeometryRef()
         xi_outflow = (geometry.GetX() - source_gt[0]) // source_gt[1]
@@ -2659,6 +2661,7 @@ def delineate_watersheds(
 
     ws_id = 1
     while not outflow_queue.empty():
+        pixels_in_watershed = 0
         current_pixel = outflow_queue.front()
         outflow_queue.pop()
 
@@ -2670,7 +2673,12 @@ def delineate_watersheds(
         nested_watershed_ids = set([])
 
         while not process_queue.empty():
-            # TODO: Add progress logging
+            pixels_in_watershed += 1
+            if ctime(NULL) - last_log_time > 5.0:
+                last_log_time = ctime(NULL)
+                LOGGER.info('Delineating watershed %i of %i, %i pixels '
+                            'found so far.', pixels_in_watershed)
+
             current_pixel = process_queue.front()
             process_queue_set.erase(current_pixel)
             process_queue.pop()
