@@ -2890,9 +2890,20 @@ def join_watershed_fragments(watershed_fragments_vector, target_watersheds_vecto
             nested_fragments[ws_id] = []
 
     def _recurse_nested_fragments(ws_id):
+        """Return a list of fragment ids that nest within ``ws_id``."""
         return [nested_fragments[f] for f in
                 _recurse_nested_fragments(nested_fragments[ws_id])]
 
+    # This loop iterates uses the _recurse_nested_fragments function above to
+    # take the union of watershed geometries.  There's undoubtedly a better way
+    # to do this by:
+    #  1. Copying watersheds in increasing order of the number of fragments
+    #     nested within.
+    #  2. Using the already-unioned geometries for upstream watersheds rather
+    #     than recomputing the union of upstream geometries for each downstream
+    #     watershed.
+    #
+    # I'm leaving this as-is because it might be good enough.
     for fragment_feature in fragments_layer:
         watershed_feature = fragment_feature.Clone()
         fragment_ws_id = fragment_feature.GetField('ws_id')
