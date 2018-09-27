@@ -2627,7 +2627,7 @@ def delineate_watersheds(
 
     vector = ogr.Open(outflow_points_vector_path)
     layer = vector.GetLayer()
-    points_in_layer = layer.GetFeatureCount()
+    cdef int points_in_layer = layer.GetFeatureCount()
     outlet_layer_definition = layer.GetLayerDefn()
 
     # Map ws_id to the watersheds that nest within.
@@ -2648,6 +2648,7 @@ def delineate_watersheds(
             LOGGER.info(
                 "Outflow point %i does not intersect the flow direction "
                 "raster; skipping delineation.", ws_id)
+            points_in_layer -= 1
             continue
 
         # TODO: check for nodata in the flow direction raster?
