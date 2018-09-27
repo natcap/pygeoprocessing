@@ -2528,7 +2528,6 @@ def distance_to_channel_mfd(
 ctypedef pair[long, long] CoordinatePair
 
 
-# TODO: note change in history
 def delineate_watersheds(
         d8_flow_dir_raster_path_band, outflow_points_vector_path,
         target_fragments_vector_path, working_dir=None):
