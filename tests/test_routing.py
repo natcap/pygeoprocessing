@@ -1015,25 +1015,6 @@ class TestRouting(unittest.TestCase):
         srs.ImportFromEPSG(32731)  # WGS84 / UTM zone 31s
         srs_wkt = srs.ExportToWkt()
 
-        dem_array = numpy.array([
-            [255, 2, 1],
-            [4, 3, 2],
-            [5, 4, 3]])
-        dem_path = os.path.join(self.workspace_dir, 'dem.tif')
-        driver = gdal.GetDriverByName('GTiff')
-        dem_raster = driver.Create(
-            dem_path, dem_array.shape[1], dem_array.shape[0],
-            1, gdal.GDT_Byte, options=(
-                'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
-                'BLOCKXSIZE=256', 'BLOCKYSIZE=256'))
-        dem_raster.SetProjection(srs_wkt)
-        dem_band = dem_raster.GetRasterBand(1)
-        dem_band.SetNoDataValue(255)
-        dem_band.WriteArray(dem_array)
-        dem_geotransform = [2, 2, 0, -2, 0, -2]
-        dem_raster.SetGeoTransform(dem_geotransform)
-        dem_raster = None
-
         flow_dir_array = numpy.array([
             [255, 0, 0],
             [0, 1, 2],
