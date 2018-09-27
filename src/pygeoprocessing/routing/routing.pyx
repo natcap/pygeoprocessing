@@ -2606,7 +2606,7 @@ def delineate_watersheds(
     driver = ogr.GetDriverByName('GPKG')
     watershed_fragments_srs = osr.SpatialReference()
     watershed_fragments_srs.ImportFromWkt(flow_dir_info['projection'])
-    watershed_fragments_path = os.path.join(working_dir, 'watershed_fragments.gpkg')
+    watershed_fragments_path = os.path.join(working_dir_path, 'watershed_fragments.gpkg')
     watershed_fragments_vector = driver.CreateDataSource(watershed_fragments_path)
     watershed_fragments_layer = watershed_fragments_vector.CreateLayer(
         'watersheds', watershed_fragments_srs, ogr.wkbPolygon)
