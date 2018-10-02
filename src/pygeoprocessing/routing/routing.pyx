@@ -2903,6 +2903,7 @@ def join_watershed_fragments(watershed_fragments_vector, target_watersheds_vecto
     #     than recomputing the union of upstream geometries for each downstream
     #     watershed.
     #
+    # Sounds great; I had great difficulty with the implementation.
     # I'm leaving this as-is because it might be good enough.
     for fragment_feature in fragments_layer:
         watershed_feature = fragment_feature.Clone()
