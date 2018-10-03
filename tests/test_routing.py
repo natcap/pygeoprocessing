@@ -1134,7 +1134,7 @@ class TestRouting(unittest.TestCase):
             ws_id = joined_feature.GetField('ws_id')
             joined_geometry = shapely.wkb.loads(
                 joined_feature.GetGeometryRef().ExportToWkb())
-            self.assertEqual(expected_geoms[ws_id], joined_geometry)
+            self.assertTrue(expected_geoms[ws_id].equals(joined_geometry))
 
             # Verify all fields are copied over.
             self.assertEqual(joined_feature.GetField('other'),
