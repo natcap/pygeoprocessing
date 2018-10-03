@@ -5,7 +5,8 @@ from osgeo import ogr
 import shapely.wkb
 
 
-def join_watershed_fragments(watershed_fragments_vector, target_watersheds_vector):
+def join_watershed_fragments(watershed_fragments_vector,
+                             target_watersheds_vector):
     """Join watershed fragments by their IDs.
 
     This function takes a watershed fragments vector and creates a new vector
@@ -74,6 +75,27 @@ def join_watershed_fragments(watershed_fragments_vector, target_watersheds_vecto
         upstream_fragments.iteritems() if not upstream_fragments)
 
     def _recurse_watersheds(ws_id):
+        """Find or build geometries for the given ``ws_id``.
+
+        This is a dynamic programming, recursive approach to determining
+        watershed geometries.  If a geometry already exists, we use that.
+        If it doesn't, we create the appropriate geometries as needed by
+        taking the union of that fragment's upstream fragments with the
+        geometry of the fragment itself.
+
+        This function has the side effect of modifying the
+        ``watershed_geometries`` dict.
+
+        Parameters:
+            ws_id (int): The integer ws_id that identifies the watershed
+                geometry to build.
+
+        Returns:
+            shapely.geometry.Polygon object of the union of the watershed
+                fragment identified by ws_id as well as all watersheds upstream
+                of this fragment.
+
+        """
         try:
             return watershed_geometries[ws_id]
         except KeyError:
@@ -85,9 +107,12 @@ def join_watershed_fragments(watershed_fragments_vector, target_watersheds_vecto
                 geometries.append(watershed_geometries[upstream_fragment_id])
             return shapely.ops.cascaded_union(geometries)
 
+    # Iterate over the ws_ids and get the watershed geometries.
     for ws_id in upstream_fragments:
         watershed_geometries[ws_id] = _recurse_watersheds(ws_id)
 
+    # Copy features from the fragments vector, but modify the geometry to match
+    # the new, unioned geometries.
     for ws_id, watershed_geometry in sorted(watershed_geometries.items(),
                                             key=lambda x: x[0]):
         fragments_feature = fragments_vector.ExecuteSQL(
