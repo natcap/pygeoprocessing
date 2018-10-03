@@ -1082,13 +1082,13 @@ class TestRouting(unittest.TestCase):
         import pygeoprocessing.testing
 
         fragment_a = shapely.geometry.Polygon([
-            (0, 0), (0, 1), (1, 1), (1, 0)])
+            (0, 0), (0, 1), (1, 1), (1, 0), (0, 0)])
         fragment_b = shapely.geometry.Polygon([
-            (1, 0), (1, 1), (2, 1), (2, 0)])
+            (1, 0), (1, 1), (2, 1), (2, 0), (1, 0)])
         fragment_c = shapely.geometry.Polygon([
-            (0, 1), (0, 2), (2, 2), (2, 1)])
+            (0, 1), (0, 2), (2, 2), (2, 1), (0, 1)])
         fragment_d = shapely.geometry.Polygon([
-            (0, 2), (0, 3), (2, 3), (2, 2)])
+            (0, 2), (0, 3), (2, 3), (2, 2), (0, 2)])
 
         srs = osr.SpatialReference()
         srs.ImportFromEPSG(32731) # WGS84 / UTM zone 31s
@@ -1102,7 +1102,7 @@ class TestRouting(unittest.TestCase):
                     'other': 'real'},
             attributes=[
                 {'other': 1.2, 'ws_id': 0, 'upstream_fragments': ''},
-                {'other': 2.3, 'ws_id': 1, 'upstream_fragments': '0'},
+                {'other': 2.3, 'ws_id': 1, 'upstream_fragments': ''},
                 {'other': 3.4, 'ws_id': 2, 'upstream_fragments': '0,1'},
                 {'other': 4.5, 'ws_id': 3, 'upstream_fragments': '2'}],
             filename=fragments_vector_path)
@@ -1114,7 +1114,7 @@ class TestRouting(unittest.TestCase):
         # Maps WS_ID to expected geometries
         expected_geoms = {
             0: fragment_a,
-            1: shapely.ops.cascaded_union([fragment_a, fragment_b]),
+            1: fragment_b,
             2: shapely.ops.cascaded_union([fragment_a, fragment_b,
                                            fragment_c]),
             3: shapely.ops.cascaded_union([fragment_a, fragment_b,
