@@ -50,7 +50,6 @@ def join_watershed_fragments(watershed_fragments_vector, target_watersheds_vecto
         if field_type in (ogr.OFTInteger, ogr.OFTReal):
             field_defn.SetWidth(24)
         watersheds_layer.CreateField(field_defn)
-        print('creating field', field_defn.GetName())
 
     upstream_fragments = {}
     fragment_geometries = {}
@@ -68,29 +67,23 @@ def join_watershed_fragments(watershed_fragments_vector, target_watersheds_vecto
         fragment_geometries[ws_id] = shapely.wkb.loads(
             feature.GetGeometryRef().ExportToWkb())
 
-    watershed_geometries = {}
+    # Populate the watershed geometries dict with fragments that are as
+    # upstream as you can go.
+    watershed_geometries = dict(
+        (ws_id, fragment_geometries[ws_id]) for (ws_id, upstream_fragments) in
+        upstream_fragments.iteritems() if not upstream_fragments)
 
     def _recurse_watersheds(ws_id):
         try:
-            print 'Using precalculated geometry for ws_id', ws_id
             return watershed_geometries[ws_id]
         except KeyError:
-            print 'calculating geometry for ws_id', ws_id
-            # If we haven't already built geometry for this watershed,
-            # recurse the watersheds tree and build up the geometry.
-            pass
-
-        fragment_feature = fragments_vector.ExecuteSQL(
-            "SELECT * FROM %s WHERE ws_id = %s" % (
-                fragments_layer_name, ws_id)).next()
-        fragment_geometry = shapely.wkb.loads(
-            fragment_feature.GetGeometryRef().ExportToWkb())
-        geometries = [fragment_geometry]
-        if upstream_fragments[ws_id]:
-            for upstream_ws_id in upstream_fragments[ws_id]:
-                geometries.append(_recurse_watersheds(upstream_ws_id))
-
-        return shapely.ops.cascaded_union(geometries)
+            geometries = [fragment_geometries[ws_id]]
+            for upstream_fragment_id in upstream_fragments[ws_id]:
+                if upstream_fragment_id not in watershed_geometries:
+                    watershed_geometries[upstream_fragment_id] = (
+                        _recurse_watersheds(upstream_fragment_id))
+                geometries.append(watershed_geometries[upstream_fragment_id])
+            return shapely.ops.cascaded_union(geometries)
 
     for ws_id, _ in sorted(upstream_fragments.items(),
                            key=lambda x: len(x[1])):
