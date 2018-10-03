@@ -85,8 +85,7 @@ def join_watershed_fragments(watershed_fragments_vector, target_watersheds_vecto
                 geometries.append(watershed_geometries[upstream_fragment_id])
             return shapely.ops.cascaded_union(geometries)
 
-    for ws_id, _ in sorted(upstream_fragments.items(),
-                           key=lambda x: len(x[1])):
+    for ws_id in upstream_fragments:
         watershed_geometries[ws_id] = _recurse_watersheds(ws_id)
 
     for ws_id, watershed_geometry in sorted(watershed_geometries.items(),
