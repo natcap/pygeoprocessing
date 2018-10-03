@@ -107,9 +107,15 @@ def join_watershed_fragments(watershed_fragments_vector,
                 geometries.append(watershed_geometries[upstream_fragment_id])
             return shapely.ops.cascaded_union(geometries)
 
-    # Iterate over the ws_ids and get the watershed geometries.
-    for ws_id in upstream_fragments:
-        watershed_geometries[ws_id] = _recurse_watersheds(ws_id)
+    # Iterate over the ws_ids that have upstream geometries and create the
+    # watershed geometries
+    for ws_id in set(upstream_fragments.keys()).difference(
+            set(watershed_geometries.keys())):
+        # The presence of a ws_id key in watershed_geometries could be
+        # altered during a call to _recurse_watersheds.  This condition
+        # ensures that we don't call _recurse_watersheds more than we need to.
+        if ws_id not in watershed_geometries:
+            watershed_geometries[ws_id] = _recurse_watersheds(ws_id)
 
     # Copy features from the fragments vector, but modify the geometry to match
     # the new, unioned geometries.
