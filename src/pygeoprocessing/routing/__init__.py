@@ -3,6 +3,7 @@ from pygeoprocessing.routing.routing import *
 from osgeo import gdal
 from osgeo import ogr
 import shapely.wkb
+import shapely.geometry
 
 
 def join_watershed_fragments(watershed_fragments_vector,
@@ -65,13 +66,24 @@ def join_watershed_fragments(watershed_fragments_vector,
             # ''.split(',') turns into [''], which crashes when you cast it to
             # an int.
             upstream_fragments[ws_id] = []
-        fragment_geometries[ws_id] = shapely.wkb.loads(
+        shapely_polygon = shapely.wkb.loads(
             feature.GetGeometryRef().ExportToWkb())
+        try:
+            fragment_geometries[ws_id].append(shapely_polygon)
+        except KeyError:
+            fragment_geometries[ws_id] = [shapely_polygon]
+
+    # Create multipolygons from each of the lists of fragment geometries.
+    fragment_multipolygons = {}
+    for ws_id, geometry_list in fragment_geometries.items():
+        fragment_multipolygons[ws_id] = shapely.geometry.MultiPolygon(
+            geometry_list)
+    del fragment_geometries  # don't need this dict any longer.
 
     # Populate the watershed geometries dict with fragments that are as
     # upstream as you can go.
     watershed_geometries = dict(
-        (ws_id, fragment_geometries[ws_id]) for (ws_id, upstream_fragments) in
+        (ws_id, fragment_multipolygons[ws_id]) for (ws_id, upstream_fragments) in
         upstream_fragments.iteritems() if not upstream_fragments)
 
     def _recurse_watersheds(ws_id):
@@ -99,7 +111,7 @@ def join_watershed_fragments(watershed_fragments_vector,
         try:
             return watershed_geometries[ws_id]
         except KeyError:
-            geometries = [fragment_geometries[ws_id]]
+            geometries = [fragment_multipolygons[ws_id]]
             for upstream_fragment_id in upstream_fragments[ws_id]:
                 if upstream_fragment_id not in watershed_geometries:
                     watershed_geometries[upstream_fragment_id] = (
