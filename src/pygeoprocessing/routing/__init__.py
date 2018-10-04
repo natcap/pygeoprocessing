@@ -38,7 +38,7 @@ def join_watershed_fragments(watershed_fragments_vector,
     fragments_layer_name = fragments_layer.GetName()
     fragments_srs = fragments_layer.GetSpatialRef()
 
-    driver = gdal.GetDriverByName('GeoJSON')
+    driver = gdal.GetDriverByName('GPKG')
     watersheds_vector = driver.Create(target_watersheds_vector, 0, 0, 0,
                                       gdal.GDT_Unknown)
     watersheds_layer = watersheds_vector.CreateLayer(
