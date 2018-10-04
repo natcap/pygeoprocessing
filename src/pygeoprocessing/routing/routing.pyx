@@ -2677,6 +2677,7 @@ def delineate_watersheds(
         process_queue.push(current_pixel)
         process_queue_set.insert(current_pixel)
         nested_watershed_ids = set([])
+        last_log_time = ctime(NULL)  # reset log time for each watershed.
 
         while not process_queue.empty():
             pixels_in_watershed += 1
@@ -2756,13 +2757,15 @@ def delineate_watersheds(
             if ((current_time - _polygonize_callback.last_time) > 5.0 or
                     (df_complete == 1.0 and _polygonize_callback.total_time >= 5.0)):
                 LOGGER.info(
-                    'Fragment polygonization %.1f%% complete %s, psz_message %s',
-                    df_complete * 100, p_progress_arg[0], psz_message)
+                    'Fragment polygonization %.1f%% complete %s',
+                    df_complete * 100, psz_message)
                 _polygonize_callback.last_time = time.time()
                 _polygonize_callback.total_time += current_time
         except AttributeError:
             _polygonize_callback.last_time = time.time()
             _polygonize_callback.total_time = 0.0
+        except:
+            LOGGER.exception('Something failed in polygonize callback')
 
     gdal.Polygonize(
         scratch_band,  # the source band to be analyzed
