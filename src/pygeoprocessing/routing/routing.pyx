@@ -2683,7 +2683,8 @@ def delineate_watersheds(
             if ctime(NULL) - last_log_time > 5.0:
                 last_log_time = ctime(NULL)
                 LOGGER.info('Delineating watershed %i of %i, %i pixels '
-                            'found so far.', pixels_in_watershed)
+                            'found so far.', ws_id, points_in_layer,
+                            pixels_in_watershed)
 
             current_pixel = process_queue.front()
             process_queue_set.erase(current_pixel)
