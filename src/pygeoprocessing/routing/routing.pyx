@@ -2584,8 +2584,8 @@ def delineate_watersheds(
         dir=working_dir, prefix='watershed_delineation_%s_' % time.strftime(
             '%Y-%m-%d_%H_%M_%S', time.gmtime()))
 
-    scratch_raster_path = os.path.join(working_dir, 'scratch_raster.tif')
-    mask_raster_path = os.path.join(working_dir, 'scratch_mask.tif')
+    scratch_raster_path = os.path.join(working_dir_path, 'scratch_raster.tif')
+    mask_raster_path = os.path.join(working_dir_path, 'scratch_mask.tif')
 
     # Create a new watershed scratch raster the size, shape of the flow dir raster
     NO_WATERSHED = -1
