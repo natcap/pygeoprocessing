@@ -33,6 +33,8 @@ Unreleased Changes
   ``pygeoprocessing.routing.join_watershed_fragments``, will take the delineated
   watershed fragments and join nested watersheds into new geometries, writing
   the results into a new GeoPackage.
+* Added an option to `reproject_vector` that allows a caller to specify which
+  fields, if any, to copy to the target vector after reprojection.
 
 1.2.3 (7/25/2018)
 -----------------

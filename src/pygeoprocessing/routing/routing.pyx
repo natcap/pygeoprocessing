@@ -42,7 +42,6 @@ from libcpp.queue cimport queue
 from libcpp.stack cimport stack
 from libcpp.deque cimport deque
 from libcpp.set cimport set as cset
-from libcpp.map cimport map as cmap
 
 LOGGER = logging.getLogger(__name__)
 LOGGER.addHandler(logging.NullHandler())  # silence logging by default
