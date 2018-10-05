@@ -44,11 +44,10 @@ def join_watershed_fragments(watershed_fragments_vector,
                                       gdal.GDT_Unknown)
     watersheds_layer = watersheds_vector.CreateLayer(
         'watersheds', fragments_srs, ogr.wkbPolygon)
+    watersheds_layer_defn = watersheds_layer.GetLayerDefn()
 
-    for index in range(fragments_layer.GetLayerDefn().GetFieldCount()):
-        field_defn = fragments_layer.GetLayerDefn().GetFieldDefn(index)
+    for field_defn in fragments_layer.schema:
         field_type = field_defn.GetType()
-
         if field_type in (ogr.OFTInteger, ogr.OFTReal):
             field_defn.SetWidth(24)
         watersheds_layer.CreateField(field_defn)
@@ -129,19 +128,29 @@ def join_watershed_fragments(watershed_fragments_vector,
         if ws_id not in watershed_geometries:
             watershed_geometries[ws_id] = _recurse_watersheds(ws_id)
 
-    # Copy features from the fragments vector, but modify the geometry to match
-    # the new, unioned geometries.
+    # Copy fields from the fragments vector and set the geometries to the
+    # newly-created, unioned geometries.
     for ws_id, watershed_geometry in sorted(watershed_geometries.items(),
                                             key=lambda x: x[0]):
+        # It's possible that this SQL query will return more than 1 feature.
+        # That should be OK because all features with the same WS_ID will
+        # have the same field values if they were created by the
+        # pygeoprocessing watershed delineation function.
+        # In any case, there'll be at least one feature in the virtual layer
+        # returned by the SQL query, so we just grab the next one.
         fragments_feature = fragments_vector.ExecuteSQL(
             "SELECT * FROM %s WHERE ws_id = %s" % (
                 fragments_layer_name, ws_id)).next()
-        watershed_feature = fragments_feature.Clone()
+
+        # Creating the feature here works properly, unlike
+        # fragments_feature.Clone(), which raised SQL errors.
+        watershed_feature = ogr.Feature(watersheds_layer_defn)
+        for field_name, field_value in fragments_feature.items().items():
+            watershed_feature.SetField(field_name, field_value)
+
         watershed_feature.SetGeometry(ogr.CreateGeometryFromWkb(
             shapely.wkb.dumps(watershed_geometry)))
-        watersheds_layer.StartTransaction()
         watersheds_layer.CreateFeature(watershed_feature)
-        watersheds_layer.CommitTransaction()
 
     fragments_layer = None
     fragments_vector = None
