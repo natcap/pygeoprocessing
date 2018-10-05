@@ -83,7 +83,7 @@ def join_watershed_fragments(watershed_fragments_vector,
     # upstream as you can go.
     watershed_geometries = dict(
         (ws_id, fragment_multipolygons[ws_id]) for (ws_id, upstream_fragments)
-        in upstream_fragments.iteritems() if not upstream_fragments)
+        in upstream_fragments.items() if not upstream_fragments)
 
     def _recurse_watersheds(ws_id):
         """Find or build geometries for the given ``ws_id``.
