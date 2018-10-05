@@ -2799,7 +2799,6 @@ def delineate_watersheds(
             field_defn.SetWidth(24)
         watershed_layer.CreateField(field_defn)
 
-    # TODO: intelligently set the upstream fragments width.
     upstream_fragments_field = ogr.FieldDefn('upstream_fragments', ogr.OFTString)
     watershed_layer.CreateField(upstream_fragments_field)
     watershed_layer.CreateField(ws_id_field)
