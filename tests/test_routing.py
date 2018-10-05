@@ -1102,7 +1102,11 @@ class TestRouting(unittest.TestCase):
         fragment_d = shapely.geometry.Polygon([
             (0, 2), (0, 3), (2, 3), (2, 2), (0, 2)])
         fragment_e = shapely.geometry.Polygon([
-            (2, 1), (2, 2), (3, 2), (3, 1), (2, 1)])
+            (2, 2), (2, 3), (3, 3), (3, 2), (2, 2)])
+        fragment_f = shapely.geometry.Polygon([
+            (3, 1), (3, 2), (4, 2), (4, 1), (3, 1)])
+        fragment_g = shapely.geometry.Polygon([
+            (4, 0), (4, 1), (5, 1), (5, 0), (4, 0)])
 
         srs = osr.SpatialReference()
         srs.ImportFromEPSG(32731) # WGS84 / UTM zone 31s
@@ -1110,7 +1114,8 @@ class TestRouting(unittest.TestCase):
 
         fragments_vector_path = os.path.join(self.workspace_dir, 'fragments.gpkg')
         pygeoprocessing.testing.create_vector_on_disk(
-            [fragment_a, fragment_b, fragment_c, fragment_d, fragment_e],
+            [fragment_a, fragment_b, fragment_c, fragment_d, fragment_e,
+             fragment_f, fragment_g],
             srs_wkt,
             fields={'ws_id': 'int',
                     'upstream_fragments': 'string',
@@ -1119,8 +1124,10 @@ class TestRouting(unittest.TestCase):
                 {'other': 1.2, 'ws_id': 0, 'upstream_fragments': ''},
                 {'other': 2.3, 'ws_id': 1, 'upstream_fragments': ''},
                 {'other': 3.4, 'ws_id': 2, 'upstream_fragments': '0,1'},
-                {'other': 4.5, 'ws_id': 3, 'upstream_fragments': '2'},
-                {'other': 4.5, 'ws_id': 3, 'upstream_fragments': '2'},
+                {'other': 4.5, 'ws_id': 3, 'upstream_fragments': '2,4'},
+                {'other': 4.5, 'ws_id': 3, 'upstream_fragments': '2,4'},
+                {'other': 5.6, 'ws_id': 4, 'upstream_fragments': '5'},
+                {'other': 6.7, 'ws_id': 5, 'upstream_fragments': ''},
             ],
             filename=fragments_vector_path)
 
@@ -1136,7 +1143,10 @@ class TestRouting(unittest.TestCase):
                                            fragment_c]),
             3: shapely.ops.cascaded_union([fragment_a, fragment_b,
                                            fragment_c, fragment_d,
-                                           fragment_e])
+                                           fragment_e, fragment_f,
+                                           fragment_g]),
+            4: shapely.ops.cascaded_union([fragment_f, fragment_g]),
+            5: fragment_g,
         }
 
         expected_other_values = {
@@ -1144,6 +1154,8 @@ class TestRouting(unittest.TestCase):
             1: 2.3,
             2: 3.4,
             3: 4.5,
+            4: 5.6,
+            5: 6.7,
         }
 
         joined_vector = ogr.Open(joined_vector_path)
