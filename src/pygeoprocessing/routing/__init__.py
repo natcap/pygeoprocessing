@@ -138,9 +138,9 @@ def join_watershed_fragments(watershed_fragments_vector,
         # pygeoprocessing watershed delineation function.
         # In any case, there'll be at least one feature in the virtual layer
         # returned by the SQL query, so we just grab the next one.
-        fragments_feature = fragments_vector.ExecuteSQL(
+        fragments_feature = next(fragments_vector.ExecuteSQL(
             "SELECT * FROM %s WHERE ws_id = %s" % (
-                fragments_layer_name, ws_id)).next()
+                fragments_layer_name, ws_id)))
 
         # Creating the feature here works properly, unlike
         # fragments_feature.Clone(), which raised SQL errors.
