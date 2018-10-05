@@ -2767,7 +2767,9 @@ def delineate_watersheds(
             _polygonize_callback.last_time = time.time()
             _polygonize_callback.total_time = 0.0
         except:
-            LOGGER.exception('Something failed in polygonize callback')
+            # If an exception is uncaught from this callback, it will kill the
+            # polygonize routine.  Just an FYI.
+            LOGGER.exception('Error in polygonize progress callback')
 
     gdal.Polygonize(
         scratch_band,  # the source band to be analyzed
