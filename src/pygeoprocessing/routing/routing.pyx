@@ -2611,7 +2611,7 @@ def delineate_watersheds(
     watershed_fragments_path = os.path.join(working_dir_path, 'watershed_fragments.gpkg')
     watershed_fragments_vector = driver.CreateDataSource(watershed_fragments_path)
     watershed_fragments_layer = watershed_fragments_vector.CreateLayer(
-        'watersheds', watershed_fragments_srs, ogr.wkbPolygon)
+        'watershed_fragments', watershed_fragments_srs, ogr.wkbPolygon)
     ws_id_field = ogr.FieldDefn('ws_id', ogr.OFTInteger)
     ws_id_field.SetWidth(24)
     watershed_fragments_layer.CreateField(ws_id_field)
