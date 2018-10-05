@@ -55,6 +55,18 @@ class TestRouting(unittest.TestCase):
         dem_array[3:8, 3:8] = 0.0
         numpy.testing.assert_almost_equal(result_array, dem_array)
 
+    def test_pit_filling_path_band_checking(self):
+        """PGP.routing: test pitfilling catches path-band formatting errors."""
+        import pygeoprocessing.routing
+
+        with self.assertRaises(ValueError):
+            pygeoprocessing.routing.fill_pits(
+                ('invalid path', 1), 'foo')
+
+        with self.assertRaises(ValueError):
+            pygeoprocessing.routing.fill_pits(
+                'invalid path', 'foo')
+
     def test_pit_filling_nodata_int(self):
         """PGP.routing: test pitfilling with nodata value."""
         import pygeoprocessing.routing

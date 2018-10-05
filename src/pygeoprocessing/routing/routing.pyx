@@ -524,7 +524,9 @@ def fill_pits(
     Returns:
         None.
     """
-    # TODO: add path-band checking to this.
+    if not _is_raster_path_band_formatted(dem_raster_path_band):
+        raise ValueError('Parameter dem_raster_path_band must be a tuple of '
+                         '(raster path, band index).')
     # These variables are used to iterate over the DEM using `iterblock`
     # indexes, a numpy.float64 type is used since we need to statically cast
     # and it's the most complex numerical type and will be compatible without
