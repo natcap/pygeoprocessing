@@ -2895,7 +2895,12 @@ def _make_logger_callback(message):
             if ((current_time - logger_callback.last_time) > 5.0 or
                     (df_complete == 1.0 and
                      logger_callback.total_time >= 5.0)):
-                LOGGER.info(message, df_complete * 100, p_progress_arg[0])
+                if p_progress_arg is not None:
+                    LOGGER.info(message, df_complete * 100, p_progress_arg[0])
+                else:
+                    LOGGER.info(
+                        'p_progress_arg is None df_complete: %s, message: %s',
+                        df_complete, message)
                 logger_callback.last_time = current_time
                 logger_callback.total_time += current_time
         except AttributeError:
