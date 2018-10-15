@@ -400,6 +400,10 @@ def raster_calculator(
             for value in base_canonical_arg_list:
                 if isinstance(value, gdal.Band):
                     data_blocks.append(value.ReadAsArray(**block_offset))
+                    # I've encountered the following error when a gdal raster
+                    # is corrupt, often from multiple threads writing to the
+                    # same file. This helps to catch the error early rather
+                    # than lead to confusing values of `data_blocks` later.
                     if not isinstance(data_blocks[-1], numpy.ndarray):
                         raise ValueError(
                             "got a %s when trying to read %s at %s",
@@ -2895,7 +2899,12 @@ def _make_logger_callback(message):
             if ((current_time - logger_callback.last_time) > 5.0 or
                     (df_complete == 1.0 and
                      logger_callback.total_time >= 5.0)):
-                if p_progress_arg is not None:
+                # In some multiprocess applications I was encountering a
+                # `p_progress_arg` of None. This is unexpected and I suspect
+                # was an issue for some kind of GDAL race condition. So I'm
+                # guarding against it here and reporting an appropriate log
+                # if it occurs.
+                if p_progress_arg:
                     LOGGER.info(message, df_complete * 100, p_progress_arg[0])
                 else:
                     LOGGER.info(
