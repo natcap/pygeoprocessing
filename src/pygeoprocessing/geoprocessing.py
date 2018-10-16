@@ -508,7 +508,8 @@ def align_and_resize_raster_stack(
         base_raster_path_list, target_raster_path_list, resample_method_list,
         target_pixel_size, bounding_box_mode, base_vector_path_list=None,
         raster_align_index=None, base_sr_wkt_list=None, target_sr_wkt=None,
-        gtiff_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS):
+        gtiff_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS,
+        vector_mask_options=None):
     """Generate rasters from a base such that they align geospatially.
 
     This function resizes base rasters that are in the same geospatial
@@ -559,6 +560,21 @@ def align_and_resize_raster_stack(
         gtiff_creation_options (list): list of strings that will be passed
             as GDAL "dataset" creation options to the GTIFF driver, or ignored
             if None.
+        vector_mask_options (dict): optional, if not None, this is a
+            dictionary of options to use an existing vector's geometry to
+            mask out pixels in the target raster that do not overlap the
+            vector's geometry. Keys to this dictionary are:
+                'mask_vector_path': (str) path to the mask vector file. This
+                    vector will be automatically projected to the target
+                    projection if its base coordinate system does not match
+                    the target.
+                'mask_layer_name': (str) the layer name to use for masking,
+                    if this key is not in the dictionary the default is to use
+                    the layer at index 0.
+                'mask_vector_where_filter': (str) an SQL WHERE string that can
+                    be used to filter the geometry in the mask. Ex:
+                    'id > 10' would use all features whose field value of
+                    'id' is > 10.
 
     Returns:
         None
@@ -717,7 +733,7 @@ def align_and_resize_raster_stack(
                 "to recover.")
             return
     else:
-        LOGGER.info("n_workers == 1 so a threadpool is sufficient")
+        LOGGER.debug("n_workers == 1 so a threadpool is sufficient")
         worker_pool = multiprocessing.pool.ThreadPool(n_workers)
 
     try:
@@ -736,7 +752,7 @@ def align_and_resize_raster_stack(
                     'base_sr_wkt': (
                         None if not base_sr_wkt_list else
                         base_sr_wkt_list[index]),
-                    })
+                    'vector_mask_options': vector_mask_options})
             result_list.append(result)
         worker_pool.close()
         for index, result in enumerate(result_list):
@@ -1699,7 +1715,7 @@ def warp_raster(
         base_raster_path, target_pixel_size, target_raster_path,
         resample_method, target_bb=None, base_sr_wkt=None, target_sr_wkt=None,
         gtiff_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS,
-        n_threads=None):
+        n_threads=None, vector_mask_options=None):
     """Resize/resample raster to desired pixel size, bbox and projection.
 
     Parameters:
@@ -1723,6 +1739,21 @@ def warp_raster(
             passed as GDAL "dataset" creation options to the GTIFF driver.
         n_threads (int): optional, if not None this sets the `N_THREADS`
             option for `gdal.Warp`.
+        vector_mask_options (dict): optional, if not None, this is a
+            dictionary of options to use an existing vector's geometry to
+            mask out pixels in the target raster that do not overlap the
+            vector's geometry. Keys to this dictionary are:
+                'mask_vector_path': (str) path to the mask vector file. This
+                    vector will be automatically projected to the target
+                    projection if its base coordinate system does not match
+                    the target.
+                'mask_layer_name': (str) the layer name to use for masking,
+                    if this key is not in the dictionary the default is to use
+                    the layer at index 0.
+                'mask_vector_where_filter': (str) an SQL WHERE string that can
+                    be used to filter the geometry in the mask. Ex:
+                    'id > 10' would use all features whose field value of
+                    'id' is > 10.
 
     Returns:
         None
@@ -1789,6 +1820,25 @@ def warp_raster(
     if n_threads:
         warp_options.append('NUM_THREADS=%d' % n_threads)
 
+    mask_vector_path = None
+    mask_layer_name = None
+    mask_vector_where_filter = None
+    if vector_mask_options:
+        # translate pygeoprocessing terminology into GDAL warp options.
+        if 'mask_vector_path' not in vector_mask_options:
+            raise ValueError(
+                'vector_mask_options passed, but no value for '
+                '"mask_vector_path": %s', vector_mask_options)
+        mask_vector_path = vector_mask_options['mask_vector_path']
+        if not os.path.exists(mask_vector_path):
+            raise ValueError(
+                'The mask vector at %s was not found.', mask_vector_path)
+        if 'mask_layer_name' in vector_mask_options:
+            mask_layer_name = vector_mask_options['mask_layer_name']
+        if 'mask_vector_where_filter' in vector_mask_options:
+            mask_vector_where_filter = (
+                vector_mask_options['mask_vector_where_filter'])
+
     base_raster = gdal.OpenEx(base_raster_path, gdal.OF_RASTER)
     gdal.Warp(
         target_raster_path, base_raster,
@@ -1803,7 +1853,10 @@ def warp_raster(
         warpOptions=warp_options,
         creationOptions=gtiff_creation_options,
         callback=reproject_callback,
-        callback_data=[target_raster_path])
+        callback_data=[target_raster_path],
+        cutlineDSName=mask_vector_path,
+        cutlineLayer=mask_layer_name,
+        cutlineWhere=mask_vector_where_filter)
 
 
 def rasterize(

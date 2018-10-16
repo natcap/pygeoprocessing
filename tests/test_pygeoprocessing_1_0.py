@@ -2418,3 +2418,103 @@ class PyGeoprocessing10(unittest.TestCase):
             [bb_a, bb_b], 'intersection')
         numpy.testing.assert_array_almost_equal(
             intersection_bb, [-.9, -1, 1, 1])
+
+    def test_align_and_resize_raster_stack_int_with_vector_mask(self):
+        """PGP.geoprocessing: align/resize raster w/ vector mask."""
+        pixel_a_matrix = numpy.ones((5, 5), numpy.int16)
+        reference = sampledata.SRS_COLOMBIA
+        nodata_target = -1
+        base_a_path = os.path.join(self.workspace_dir, 'base_a.tif')
+        pygeoprocessing.testing.create_raster_on_disk(
+            [pixel_a_matrix], reference.origin, reference.projection,
+            nodata_target, reference.pixel_size(30), filename=base_a_path)
+
+        resample_method_list = ['near']
+        bounding_box_mode = 'intersection'
+
+        base_a_raster_info = pygeoprocessing.get_raster_info(base_a_path)
+
+        # make a vector whose bounding box is 1 pixel large
+        ring = ogr.Geometry(ogr.wkbLinearRing)
+        ring.AddPoint(reference.origin[0], reference.origin[1])
+        ring.AddPoint(
+            reference.origin[0] + reference.pixel_size(30)[0],
+            reference.origin[1])
+        ring.AddPoint(
+            reference.origin[0] + reference.pixel_size(30)[0],
+            reference.origin[1] + reference.pixel_size(30)[1])
+        ring.AddPoint(
+            reference.origin[0], reference.origin[1] +
+            reference.pixel_size(30)[1])
+        ring.AddPoint(reference.origin[0], reference.origin[1])
+        poly = ogr.Geometry(ogr.wkbPolygon)
+        poly.AddGeometry(ring)
+        shapely_poly_a = shapely.wkb.loads(poly.ExportToWkb())
+
+        ring = ogr.Geometry(ogr.wkbLinearRing)
+        ring.AddPoint(
+            reference.origin[0] + 2*reference.pixel_size(30)[0],
+            reference.origin[1] + 2*reference.pixel_size(30)[1])
+        ring.AddPoint(
+            reference.origin[0] + 3*reference.pixel_size(30)[0],
+            reference.origin[1] + 2*reference.pixel_size(30)[1])
+        ring.AddPoint(
+            reference.origin[0] + 3*reference.pixel_size(30)[0],
+            reference.origin[1] + 3*reference.pixel_size(30)[1])
+        ring.AddPoint(
+            reference.origin[0] + 2*reference.pixel_size(30)[0],
+            reference.origin[1] + 3*reference.pixel_size(30)[1])
+        ring.AddPoint(
+            reference.origin[0] + 2*reference.pixel_size(30)[0],
+            reference.origin[1] + 2*reference.pixel_size(30)[1])
+        poly = ogr.Geometry(ogr.wkbPolygon)
+        poly.AddGeometry(ring)
+        shapely_poly_b = shapely.wkb.loads(poly.ExportToWkb())
+
+        dual_poly_path = os.path.join(self.workspace_dir, 'dual_poly')
+        pygeoprocessing.testing.create_vector_on_disk(
+            [shapely_poly_a, shapely_poly_b],
+            reference.projection, fields={'value': 'int'},
+            attributes=[{'value': 100}, {'value': 1}],
+            vector_format='GeoJSON', filename=dual_poly_path)
+
+        target_path = os.path.join(self.workspace_dir, 'target_a.tif')
+        pygeoprocessing.align_and_resize_raster_stack(
+            [base_a_path], [target_path],
+            resample_method_list,
+            base_a_raster_info['pixel_size'], bounding_box_mode,
+            raster_align_index=0,
+            vector_mask_options={
+                'mask_vector_path': dual_poly_path,
+                'mask_layer_name': 'dual_poly',
+            })
+
+        target_raster = gdal.Open(target_path)
+        target_band = target_raster.GetRasterBand(1)
+        target_array = target_band.ReadAsArray()
+        target_band = None
+        target_raster = None
+        # the first pass doesn't do any filtering, so we should have 2 pixels
+        self.assertEqual(
+            numpy.count_nonzero(target_array[target_array == 1]), 2)
+
+        # now test where only one of the polygons match
+        pygeoprocessing.align_and_resize_raster_stack(
+            [base_a_path], [target_path],
+            resample_method_list,
+            base_a_raster_info['pixel_size'], bounding_box_mode,
+            raster_align_index=0,
+            vector_mask_options={
+                'mask_vector_path': dual_poly_path,
+                'mask_layer_name': 'dual_poly',
+                'mask_vector_where_filter': 'value=1'
+            })
+
+        target_raster = gdal.Open(target_path)
+        target_band = target_raster.GetRasterBand(1)
+        target_array = target_band.ReadAsArray()
+        target_band = None
+        target_raster = None
+        # we should have only one pixel left
+        self.assertEqual(
+            numpy.count_nonzero(target_array[target_array == 1]), 1)
