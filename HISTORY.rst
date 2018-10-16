@@ -28,6 +28,12 @@ Unreleased Changes
   diagonal ones.
 * Added an option to `reproject_vector` that allows a caller to specify which
   fields, if any, to copy to the target vector after reprojection.
+* Adding a check in `align_and_resize_raster_stack` for duplicate target
+  output paths to avoid problems where multiple rasters are being warped to
+  the same path.
+* Created a public `merge_bounding_box_list` function that's useful for union
+  or intersection of bounding boxes consistent with the format in
+  PyGeoprocessing.
 
 1.2.3 (7/25/2018)
 -----------------
