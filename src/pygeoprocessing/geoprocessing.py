@@ -686,6 +686,31 @@ def align_and_resize_raster_stack(
         raise ValueError("The rasters' and vectors' intersection is empty "
                          "(not all rasters and vectors touch each other).")
 
+    if vector_mask_options:
+        # translate pygeoprocessing terminology into GDAL warp options.
+        if 'mask_vector_path' not in vector_mask_options:
+            raise ValueError(
+                'vector_mask_options passed, but no value for '
+                '"mask_vector_path": %s', vector_mask_options)
+        mask_vector_info = get_vector_info(
+            vector_mask_options['mask_vector_path'])
+        mask_vector_sr_wkt = mask_vector_info['projection']
+        if mask_vector_sr_wkt is not None and target_sr_wkt is not None:
+            mask_vector_bb = transform_bounding_box(
+                mask_vector_info['bounding_box'],
+                mask_vector_info['projection'], target_sr_wkt)
+        else:
+            mask_vector_bb = mask_vector_info['bounding_box']
+        mask_vector_intersect_box = merge_bounding_box_list(
+            [target_bounding_box, mask_vector_bb], 'intersection')
+
+        if (mask_vector_intersect_box[0] > mask_vector_intersect_box[2] or
+                mask_vector_intersect_box[1] > mask_vector_intersect_box[3]):
+            raise ValueError(
+                "The mask vector's bounding box does not overlap with the "
+                "target bounding box. (mask bb: %s, target bb: %s)" % (
+                    mask_vector_intersect_box, target_bounding_box))
+
     if raster_align_index is not None and raster_align_index >= 0:
         # bounding box needs alignment
         align_bounding_box = (
@@ -1424,7 +1449,11 @@ def get_vector_info(vector_path, layer_index=0):
     vector_properties = {}
     layer = vector.GetLayer(iLayer=layer_index)
     # projection is same for all layers, so just use the first one
-    vector_properties['projection'] = layer.GetSpatialRef().ExportToWkt()
+    vector_sr_wkt = layer.GetSpatialRef().ExportToWkt()
+    if vector_sr_wkt:
+        vector_properties['projection'] = layer.GetSpatialRef().ExportToWkt()
+    else:
+        vector_properties['projection'] = None
     layer_bb = layer.GetExtent()
     layer = None
     vector = None
@@ -1762,17 +1791,19 @@ def warp_raster(
     base_raster = gdal.OpenEx(base_raster_path, gdal.OF_RASTER)
     base_sr = osr.SpatialReference()
     base_sr.ImportFromWkt(base_raster.GetProjection())
+    base_raster_info = get_raster_info(base_raster_path)
+    if target_sr_wkt is not None:
+        target_sr_wkt = base_raster_info['projection']
 
     if target_bb is None:
-        working_bb = get_raster_info(base_raster_path)['bounding_box']
+        working_bb = base_raster_info['bounding_box']
         # transform the working_bb if target_sr_wkt is not None
         if target_sr_wkt is not None:
             LOGGER.debug(
                 "transforming bounding box from %s ", working_bb)
             working_bb = transform_bounding_box(
-                get_raster_info(base_raster_path)['bounding_box'],
-                get_raster_info(base_raster_path)['projection'],
-                target_sr_wkt)
+                base_raster_info['bounding_box'],
+                base_raster_info['projection'], target_sr_wkt)
             LOGGER.debug(
                 "transforming bounding to %s ", working_bb)
     else:
@@ -1838,6 +1869,27 @@ def warp_raster(
         if 'mask_vector_where_filter' in vector_mask_options:
             mask_vector_where_filter = (
                 vector_mask_options['mask_vector_where_filter'])
+
+        mask_vector_info = get_vector_info(
+            vector_mask_options['mask_vector_path'])
+        if (mask_vector_info['projection'] is not None and
+                target_sr_wkt is not None):
+            mask_vector_bb = transform_bounding_box(
+                mask_vector_info['bounding_box'],
+                mask_vector_info['projection'], target_sr_wkt)
+        else:
+            mask_vector_bb = mask_vector_info['bounding_box']
+
+        mask_vector_intersect_box = merge_bounding_box_list(
+            [working_bb, mask_vector_bb], 'intersection')
+
+        if (mask_vector_intersect_box[0] > mask_vector_intersect_box[2] or
+                mask_vector_intersect_box[1] > mask_vector_intersect_box[3]):
+            raise ValueError(
+                "The mask vector's bounding box does not overlap with the "
+                "target raster's bounding box. "
+                "(mask bb: %s, target bb: %s)" % (
+                    mask_vector_intersect_box, working_bb))
 
     base_raster = gdal.OpenEx(base_raster_path, gdal.OF_RASTER)
     gdal.Warp(
