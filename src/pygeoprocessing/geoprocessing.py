@@ -2,6 +2,7 @@
 """A collection of GDAL dataset and raster utilities."""
 from __future__ import division
 from __future__ import absolute_import
+import pdb
 
 from .geoprocessing_core import DEFAULT_GTIFF_CREATION_OPTIONS
 
@@ -1450,10 +1451,9 @@ def get_vector_info(vector_path, layer_index=0):
     layer = vector.GetLayer(iLayer=layer_index)
     # projection is same for all layers, so just use the first one
     vector_sr_wkt = layer.GetSpatialRef().ExportToWkt()
-    if vector_sr_wkt:
-        vector_properties['projection'] = layer.GetSpatialRef().ExportToWkt()
-    else:
-        vector_properties['projection'] = None
+    if not vector_sr_wkt:
+        vector_sr_wkt = None
+    vector_properties['projection'] = vector_sr_wkt
     layer_bb = layer.GetExtent()
     layer = None
     vector = None
@@ -1503,7 +1503,10 @@ def get_raster_info(raster_path):
         raise ValueError(
             "Could not open %s as a gdal.OF_RASTER" % raster_path)
     raster_properties = {}
-    raster_properties['projection'] = raster.GetProjection()
+    projection_wkt = raster.GetProjection()
+    if not projection_wkt:
+        projection_wkt = None
+    raster_properties['projection'] = projection_wkt
     geo_transform = raster.GetGeoTransform()
     raster_properties['geotransform'] = geo_transform
     raster_properties['pixel_size'] = (geo_transform[1], geo_transform[5])
@@ -1788,11 +1791,8 @@ def warp_raster(
         None
 
     """
-    base_raster = gdal.OpenEx(base_raster_path, gdal.OF_RASTER)
-    base_sr = osr.SpatialReference()
-    base_sr.ImportFromWkt(base_raster.GetProjection())
     base_raster_info = get_raster_info(base_raster_path)
-    if target_sr_wkt is not None:
+    if target_sr_wkt is None:
         target_sr_wkt = base_raster_info['projection']
 
     if target_bb is None:
