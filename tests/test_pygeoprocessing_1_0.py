@@ -2518,3 +2518,79 @@ class PyGeoprocessing10(unittest.TestCase):
         # we should have only one pixel left
         self.assertEqual(
             numpy.count_nonzero(target_array[target_array == 1]), 1)
+
+    def test_align_and_resize_raster_stack_int_with_bad_vector_mask(self):
+        """PGP.geoprocessing: align/resize raster w/ bad vector mask."""
+        pixel_a_matrix = numpy.ones((5, 5), numpy.int16)
+        reference = sampledata.SRS_COLOMBIA
+        nodata_target = -1
+        base_a_path = os.path.join(self.workspace_dir, 'base_a.tif')
+        pygeoprocessing.testing.create_raster_on_disk(
+            [pixel_a_matrix], reference.origin, reference.projection,
+            nodata_target, reference.pixel_size(30), filename=base_a_path)
+
+        resample_method_list = ['near']
+        bounding_box_mode = 'intersection'
+
+        base_a_raster_info = pygeoprocessing.get_raster_info(base_a_path)
+
+        # make a vector whose bounding box is 1 pixel large
+        ring = ogr.Geometry(ogr.wkbLinearRing)
+        ring.AddPoint(
+            1e3+reference.origin[0], reference.origin[1])
+        ring.AddPoint(
+            1e3+reference.origin[0] + reference.pixel_size(30)[0],
+            reference.origin[1])
+        ring.AddPoint(
+            1e3+reference.origin[0] + reference.pixel_size(30)[0],
+            reference.origin[1] + reference.pixel_size(30)[1])
+        ring.AddPoint(
+            1e3+reference.origin[0], reference.origin[1] +
+            reference.pixel_size(30)[1])
+        ring.AddPoint(
+            1e3+reference.origin[0], reference.origin[1])
+        poly = ogr.Geometry(ogr.wkbPolygon)
+        poly.AddGeometry(ring)
+        shapely_poly_a = shapely.wkb.loads(poly.ExportToWkb())
+
+        ring = ogr.Geometry(ogr.wkbLinearRing)
+        ring.AddPoint(
+            1e3+reference.origin[0] + 2*reference.pixel_size(30)[0],
+            reference.origin[1] + 2*reference.pixel_size(30)[1])
+        ring.AddPoint(
+            1e3+reference.origin[0] + 3*reference.pixel_size(30)[0],
+            reference.origin[1] + 2*reference.pixel_size(30)[1])
+        ring.AddPoint(
+            1e3+reference.origin[0] + 3*reference.pixel_size(30)[0],
+            reference.origin[1] + 3*reference.pixel_size(30)[1])
+        ring.AddPoint(
+            1e3+reference.origin[0] + 2*reference.pixel_size(30)[0],
+            reference.origin[1] + 3*reference.pixel_size(30)[1])
+        ring.AddPoint(
+            1e3+reference.origin[0] + 2*reference.pixel_size(30)[0],
+            reference.origin[1] + 2*reference.pixel_size(30)[1])
+        poly = ogr.Geometry(ogr.wkbPolygon)
+        poly.AddGeometry(ring)
+        shapely_poly_b = shapely.wkb.loads(poly.ExportToWkb())
+
+        dual_poly_path = os.path.join(self.workspace_dir, 'dual_poly')
+        pygeoprocessing.testing.create_vector_on_disk(
+            [shapely_poly_a, shapely_poly_b],
+            reference.projection, fields={'value': 'int'},
+            attributes=[{'value': 100}, {'value': 1}],
+            vector_format='GeoJSON', filename=dual_poly_path)
+
+        target_path = os.path.join(self.workspace_dir, 'target_a.tif')
+        with self.assertRaises(ValueError) as cm:
+            pygeoprocessing.align_and_resize_raster_stack(
+                [base_a_path], [target_path],
+                resample_method_list,
+                base_a_raster_info['pixel_size'], bounding_box_mode,
+                raster_align_index=0,
+                vector_mask_options={
+                    'mask_vector_path': dual_poly_path,
+                    'mask_layer_name': 'dual_poly',
+                })
+        expected_message = 'does not overlap '
+        actual_message = str(cm.exception)
+        self.assertTrue(expected_message in actual_message, actual_message)
