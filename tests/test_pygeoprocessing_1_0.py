@@ -2594,3 +2594,53 @@ class PyGeoprocessing10(unittest.TestCase):
         expected_message = 'does not overlap '
         actual_message = str(cm.exception)
         self.assertTrue(expected_message in actual_message, actual_message)
+
+        with self.assertRaises(ValueError) as cm:
+            pygeoprocessing.warp_raster(
+                base_a_path, base_a_raster_info['pixel_size'],
+                target_path, 'near',
+                vector_mask_options={
+                    'mask_vector_path': dual_poly_path,
+                    'mask_layer_name': 'dual_poly',
+                })
+        expected_message = 'does not overlap '
+        actual_message = str(cm.exception)
+        self.assertTrue(expected_message in actual_message, actual_message)
+
+        with self.assertRaises(ValueError) as cm:
+            pygeoprocessing.align_and_resize_raster_stack(
+                [base_a_path], [target_path],
+                resample_method_list,
+                base_a_raster_info['pixel_size'], bounding_box_mode,
+                raster_align_index=0,
+                vector_mask_options={
+                    'bad_mask_vector_path': dual_poly_path,
+                    'mask_layer_name': 'dual_poly',
+                })
+        expected_message = 'no value for "mask_vector_path"'
+        actual_message = str(cm.exception)
+        self.assertTrue(expected_message in actual_message, actual_message)
+
+        with self.assertRaises(ValueError) as cm:
+            pygeoprocessing.warp_raster(
+                base_a_path, base_a_raster_info['pixel_size'],
+                target_path, 'near',
+                vector_mask_options={
+                    'bad_mask_vector_path': dual_poly_path,
+                    'mask_layer_name': 'dual_poly',
+                })
+        expected_message = 'no value for "mask_vector_path"'
+        actual_message = str(cm.exception)
+        self.assertTrue(expected_message in actual_message, actual_message)
+
+        with self.assertRaises(ValueError) as cm:
+            pygeoprocessing.warp_raster(
+                base_a_path, base_a_raster_info['pixel_size'],
+                target_path, 'near',
+                vector_mask_options={
+                    'mask_vector_path': 'not_a_file.shp',
+                    'mask_layer_name': 'dual_poly',
+                })
+        expected_message = 'was not found'
+        actual_message = str(cm.exception)
+        self.assertTrue(expected_message in actual_message, actual_message)
