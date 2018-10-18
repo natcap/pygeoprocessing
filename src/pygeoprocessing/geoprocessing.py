@@ -2,7 +2,6 @@
 """A collection of GDAL dataset and raster utilities."""
 from __future__ import division
 from __future__ import absolute_import
-import pdb
 
 from .geoprocessing_core import DEFAULT_GTIFF_CREATION_OPTIONS
 
@@ -580,9 +579,13 @@ def align_and_resize_raster_stack(
     Returns:
         None
 
+    Raises:
+        ValueError if any combination of the raw boudning boxes, raster
+            bounding boxes, vector bounding boxes, and/or vector_mask
+            bounding box does not overlap to produce a valid target.
+
     """
     # make sure that the input lists are of the same length
-    pdb.set_trace()
     list_lengths = [
         len(base_raster_path_list), len(target_raster_path_list),
         len(resample_method_list)]
@@ -1872,27 +1875,6 @@ def warp_raster(
         if 'mask_vector_where_filter' in vector_mask_options:
             mask_vector_where_filter = (
                 vector_mask_options['mask_vector_where_filter'])
-
-        mask_vector_info = get_vector_info(
-            vector_mask_options['mask_vector_path'])
-        if (mask_vector_info['projection'] is not None and
-                target_sr_wkt is not None):
-            mask_vector_bb = transform_bounding_box(
-                mask_vector_info['bounding_box'],
-                mask_vector_info['projection'], target_sr_wkt)
-        else:
-            mask_vector_bb = mask_vector_info['bounding_box']
-
-        mask_vector_intersect_box = merge_bounding_box_list(
-            [working_bb, mask_vector_bb], 'intersection')
-
-        if (mask_vector_intersect_box[0] > mask_vector_intersect_box[2] or
-                mask_vector_intersect_box[1] > mask_vector_intersect_box[3]):
-            raise ValueError(
-                "The mask vector's bounding box does not overlap with the "
-                "target raster's bounding box. "
-                "(mask bb: %s, target bb: %s)" % (
-                    mask_vector_intersect_box, working_bb))
 
     base_raster = gdal.OpenEx(base_raster_path, gdal.OF_RASTER)
     gdal.Warp(

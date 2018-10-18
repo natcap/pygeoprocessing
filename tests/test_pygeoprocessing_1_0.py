@@ -2432,7 +2432,8 @@ class PyGeoprocessing10(unittest.TestCase):
         pixel_size = 30
         base_raster.SetGeoTransform(
             [reference.origin[0], pixel_size, 0,
-            reference.origin[1], 0, -pixel_size])
+             reference.origin[1], 0, -pixel_size])
+        base_raster.SetProjection(reference.projection)
         base_band = base_raster.GetRasterBand(1)
         base_band.WriteArray(pixel_a_matrix)
         base_band.SetNoDataValue(nodata_target)
@@ -2481,12 +2482,14 @@ class PyGeoprocessing10(unittest.TestCase):
         poly_b = ogr.Geometry(ogr.wkbPolygon)
         poly_b.AddGeometry(ring)
 
-        dual_poly_path = os.path.join(self.workspace_dir, 'dual_poly')
-        vector_driver = gdal.GetDriverByName('ESRI Shapefile')
+        dual_poly_path = os.path.join(self.workspace_dir, 'dual_poly.gpkg')
+        vector_driver = gdal.GetDriverByName('GPKG')
         poly_vector = vector_driver.Create(
             dual_poly_path, 0, 0, 0, gdal.GDT_Unknown)
+        reference_srs = osr.SpatialReference()
+        reference_srs.ImportFromWkt(reference.projection)
         poly_layer = poly_vector.CreateLayer(
-            'poly_vector', None, ogr.wkbPolygon)
+            'dual_poly', reference_srs, ogr.wkbPolygon)
         poly_layer.CreateField(ogr.FieldDefn('value', ogr.OFTInteger))
         poly_feature = ogr.Feature(poly_layer.GetLayerDefn())
         poly_feature.SetGeometry(poly_a)
@@ -2498,6 +2501,7 @@ class PyGeoprocessing10(unittest.TestCase):
         poly_feature.SetField('value', 1)
         poly_layer.CreateFeature(poly_feature)
         poly_layer.SyncToDisk()
+        poly_vector.FlushCache()
         poly_layer = None
         poly_vector = None
 
@@ -2507,6 +2511,7 @@ class PyGeoprocessing10(unittest.TestCase):
             resample_method_list,
             base_a_raster_info['pixel_size'], bounding_box_mode,
             raster_align_index=0,
+            target_sr_wkt=reference.projection,
             vector_mask_options={
                 'mask_vector_path': dual_poly_path,
                 'mask_layer_name': 'dual_poly',
@@ -2596,18 +2601,6 @@ class PyGeoprocessing10(unittest.TestCase):
                 resample_method_list,
                 base_a_raster_info['pixel_size'], bounding_box_mode,
                 raster_align_index=0,
-                vector_mask_options={
-                    'mask_vector_path': dual_poly_path,
-                    'mask_layer_name': 'dual_poly',
-                })
-        expected_message = 'does not overlap '
-        actual_message = str(cm.exception)
-        self.assertTrue(expected_message in actual_message, actual_message)
-
-        with self.assertRaises(ValueError) as cm:
-            pygeoprocessing.warp_raster(
-                base_a_path, base_a_raster_info['pixel_size'],
-                target_path, 'near',
                 vector_mask_options={
                     'mask_vector_path': dual_poly_path,
                     'mask_layer_name': 'dual_poly',
