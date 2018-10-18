@@ -582,6 +582,7 @@ def align_and_resize_raster_stack(
 
     """
     # make sure that the input lists are of the same length
+    pdb.set_trace()
     list_lengths = [
         len(base_raster_path_list), len(target_raster_path_list),
         len(resample_method_list)]

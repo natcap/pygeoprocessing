@@ -2425,9 +2425,21 @@ class PyGeoprocessing10(unittest.TestCase):
         reference = sampledata.SRS_COLOMBIA
         nodata_target = -1
         base_a_path = os.path.join(self.workspace_dir, 'base_a.tif')
-        pygeoprocessing.testing.create_raster_on_disk(
-            [pixel_a_matrix], reference.origin, reference.projection,
-            nodata_target, reference.pixel_size(30), filename=base_a_path)
+
+        geotiff_driver = gdal.GetDriverByName('GTiff')
+        base_raster = geotiff_driver.Create(
+            base_a_path, 5, 5, 1, gdal.GDT_Byte)
+        pixel_size = 30
+        base_raster.SetGeoTransform(
+            [reference.origin[0], pixel_size, 0,
+            reference.origin[1], 0, -pixel_size])
+        base_band = base_raster.GetRasterBand(1)
+        base_band.WriteArray(pixel_a_matrix)
+        base_band.SetNoDataValue(nodata_target)
+        base_band.FlushCache()
+        base_raster.FlushCache()
+        base_band = None
+        base_raster = None
 
         resample_method_list = ['near']
         bounding_box_mode = 'intersection'
@@ -2447,9 +2459,8 @@ class PyGeoprocessing10(unittest.TestCase):
             reference.origin[0], reference.origin[1] +
             reference.pixel_size(30)[1])
         ring.AddPoint(reference.origin[0], reference.origin[1])
-        poly = ogr.Geometry(ogr.wkbPolygon)
-        poly.AddGeometry(ring)
-        shapely_poly_a = shapely.wkb.loads(poly.ExportToWkb())
+        poly_a = ogr.Geometry(ogr.wkbPolygon)
+        poly_a.AddGeometry(ring)
 
         ring = ogr.Geometry(ogr.wkbLinearRing)
         ring.AddPoint(
@@ -2467,16 +2478,28 @@ class PyGeoprocessing10(unittest.TestCase):
         ring.AddPoint(
             reference.origin[0] + 2*reference.pixel_size(30)[0],
             reference.origin[1] + 2*reference.pixel_size(30)[1])
-        poly = ogr.Geometry(ogr.wkbPolygon)
-        poly.AddGeometry(ring)
-        shapely_poly_b = shapely.wkb.loads(poly.ExportToWkb())
+        poly_b = ogr.Geometry(ogr.wkbPolygon)
+        poly_b.AddGeometry(ring)
 
         dual_poly_path = os.path.join(self.workspace_dir, 'dual_poly')
-        pygeoprocessing.testing.create_vector_on_disk(
-            [shapely_poly_a, shapely_poly_b],
-            reference.projection, fields={'value': 'int'},
-            attributes=[{'value': 100}, {'value': 1}],
-            vector_format='GeoJSON', filename=dual_poly_path)
+        vector_driver = gdal.GetDriverByName('ESRI Shapefile')
+        poly_vector = vector_driver.Create(
+            dual_poly_path, 0, 0, 0, gdal.GDT_Unknown)
+        poly_layer = poly_vector.CreateLayer(
+            'poly_vector', None, ogr.wkbPolygon)
+        poly_layer.CreateField(ogr.FieldDefn('value', ogr.OFTInteger))
+        poly_feature = ogr.Feature(poly_layer.GetLayerDefn())
+        poly_feature.SetGeometry(poly_a)
+        poly_feature.SetField('value', 100)
+        poly_layer.CreateFeature(poly_feature)
+
+        poly_feature = ogr.Feature(poly_layer.GetLayerDefn())
+        poly_feature.SetGeometry(poly_b)
+        poly_feature.SetField('value', 1)
+        poly_layer.CreateFeature(poly_feature)
+        poly_layer.SyncToDisk()
+        poly_layer = None
+        poly_vector = None
 
         target_path = os.path.join(self.workspace_dir, 'target_a.tif')
         pygeoprocessing.align_and_resize_raster_stack(
@@ -2489,7 +2512,7 @@ class PyGeoprocessing10(unittest.TestCase):
                 'mask_layer_name': 'dual_poly',
             })
 
-        target_raster = gdal.Open(target_path)
+        target_raster = gdal.OpenEx(target_path, gdal.OF_RASTER)
         target_band = target_raster.GetRasterBand(1)
         target_array = target_band.ReadAsArray()
         target_band = None
