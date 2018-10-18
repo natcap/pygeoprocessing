@@ -2522,12 +2522,21 @@ class PyGeoprocessing10(unittest.TestCase):
     def test_align_and_resize_raster_stack_int_with_bad_vector_mask(self):
         """PGP.geoprocessing: align/resize raster w/ bad vector mask."""
         pixel_a_matrix = numpy.ones((5, 5), numpy.int16)
-        reference = sampledata.SRS_COLOMBIA
         nodata_target = -1
         base_a_path = os.path.join(self.workspace_dir, 'base_a.tif')
-        pygeoprocessing.testing.create_raster_on_disk(
-            [pixel_a_matrix], reference.origin, reference.projection,
-            nodata_target, reference.pixel_size(30), filename=base_a_path)
+
+        geotiff_driver = gdal.GetDriverByName('GTiff')
+        base_raster = geotiff_driver.Create(
+            base_a_path, 10, 10, 1, gdal.GDT_Byte)
+        pixel_size = 30
+        base_raster.SetGeoTransform([0.1, pixel_size, 0, 0.1, 0, -pixel_size])
+        base_band = base_raster.GetRasterBand(1)
+        base_band.WriteArray(pixel_a_matrix)
+        base_band.SetNoDataValue(nodata_target)
+        base_band.FlushCache()
+        base_raster.FlushCache()
+        base_band = None
+        base_raster = None
 
         resample_method_list = ['near']
         bounding_box_mode = 'intersection'
@@ -2536,49 +2545,26 @@ class PyGeoprocessing10(unittest.TestCase):
 
         # make a vector whose bounding box is 1 pixel large
         ring = ogr.Geometry(ogr.wkbLinearRing)
-        ring.AddPoint(
-            1e3+reference.origin[0], reference.origin[1])
-        ring.AddPoint(
-            1e3+reference.origin[0] + reference.pixel_size(30)[0],
-            reference.origin[1])
-        ring.AddPoint(
-            1e3+reference.origin[0] + reference.pixel_size(30)[0],
-            reference.origin[1] + reference.pixel_size(30)[1])
-        ring.AddPoint(
-            1e3+reference.origin[0], reference.origin[1] +
-            reference.pixel_size(30)[1])
-        ring.AddPoint(
-            1e3+reference.origin[0], reference.origin[1])
+        ring.AddPoint(1e3, 0)
+        ring.AddPoint(1e3 + pixel_size, 0)
+        ring.AddPoint(1e3 + pixel_size, pixel_size)
+        ring.AddPoint(1e3 + pixel_size, 0)
+        ring.AddPoint(1e3, 0)
         poly = ogr.Geometry(ogr.wkbPolygon)
         poly.AddGeometry(ring)
-        shapely_poly_a = shapely.wkb.loads(poly.ExportToWkb())
-
-        ring = ogr.Geometry(ogr.wkbLinearRing)
-        ring.AddPoint(
-            1e3+reference.origin[0] + 2*reference.pixel_size(30)[0],
-            reference.origin[1] + 2*reference.pixel_size(30)[1])
-        ring.AddPoint(
-            1e3+reference.origin[0] + 3*reference.pixel_size(30)[0],
-            reference.origin[1] + 2*reference.pixel_size(30)[1])
-        ring.AddPoint(
-            1e3+reference.origin[0] + 3*reference.pixel_size(30)[0],
-            reference.origin[1] + 3*reference.pixel_size(30)[1])
-        ring.AddPoint(
-            1e3+reference.origin[0] + 2*reference.pixel_size(30)[0],
-            reference.origin[1] + 3*reference.pixel_size(30)[1])
-        ring.AddPoint(
-            1e3+reference.origin[0] + 2*reference.pixel_size(30)[0],
-            reference.origin[1] + 2*reference.pixel_size(30)[1])
-        poly = ogr.Geometry(ogr.wkbPolygon)
-        poly.AddGeometry(ring)
-        shapely_poly_b = shapely.wkb.loads(poly.ExportToWkb())
 
         dual_poly_path = os.path.join(self.workspace_dir, 'dual_poly')
-        pygeoprocessing.testing.create_vector_on_disk(
-            [shapely_poly_a, shapely_poly_b],
-            reference.projection, fields={'value': 'int'},
-            attributes=[{'value': 100}, {'value': 1}],
-            vector_format='GeoJSON', filename=dual_poly_path)
+        vector_driver = gdal.GetDriverByName('ESRI Shapefile')
+        poly_vector = vector_driver.Create(
+            dual_poly_path, 0, 0, 0, gdal.GDT_Unknown)
+        poly_layer = poly_vector.CreateLayer(
+            'poly_vector', None, ogr.wkbPolygon)
+        poly_feature = ogr.Feature(poly_layer.GetLayerDefn())
+        poly_feature.SetGeometry(poly)
+        poly_layer.CreateFeature(poly_feature)
+        poly_layer.SyncToDisk()
+        poly_layer = None
+        poly_vector = None
 
         target_path = os.path.join(self.workspace_dir, 'target_a.tif')
         with self.assertRaises(ValueError) as cm:

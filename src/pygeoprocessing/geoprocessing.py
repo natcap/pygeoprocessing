@@ -1450,8 +1450,10 @@ def get_vector_info(vector_path, layer_index=0):
     vector_properties = {}
     layer = vector.GetLayer(iLayer=layer_index)
     # projection is same for all layers, so just use the first one
-    vector_sr_wkt = layer.GetSpatialRef().ExportToWkt()
-    if not vector_sr_wkt:
+    spatial_ref = layer.GetSpatialRef()
+    if spatial_ref:
+        vector_sr_wkt = spatial_ref.ExportToWkt()
+    else:
         vector_sr_wkt = None
     vector_properties['projection'] = vector_sr_wkt
     layer_bb = layer.GetExtent()
