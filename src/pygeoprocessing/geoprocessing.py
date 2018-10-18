@@ -580,9 +580,19 @@ def align_and_resize_raster_stack(
         None
 
     Raises:
-        ValueError if any combination of the raw boudning boxes, raster
+        ValueError if any combination of the raw bounding boxes, raster
             bounding boxes, vector bounding boxes, and/or vector_mask
             bounding box does not overlap to produce a valid target.
+        ValueError if any of the input or target lists are of different
+            lengths.
+        ValueError if there are duplicate paths on the target list which would
+            risk corrupted output.
+        ValueError if some combination of base, target, and embedded source
+            reference systems results in an ambiguous target coordinate
+            system.
+        ValueError if `vector_mask_options` is not None but the
+            `mask_vector_path` is undefined or doesn't point to a valid
+            file.
 
     """
     # make sure that the input lists are of the same length
