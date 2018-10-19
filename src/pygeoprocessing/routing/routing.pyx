@@ -2588,30 +2588,14 @@ def delineate_watersheds(
     scratch_raster_path = os.path.join(working_dir_path, 'scratch_raster.tif')
     mask_raster_path = os.path.join(working_dir_path, 'scratch_mask.tif')
 
-    # Create a new watershed scratch raster the size, shape of the flow dir raster
-    NO_WATERSHED = -1
-    pygeoprocessing.new_raster_from_base(
-        d8_flow_dir_raster_path_band[0], scratch_raster_path, gdal.GDT_Int32,
-        [NO_WATERSHED], fill_value_list=[NO_WATERSHED],
-        gtiff_creation_options=GTIFF_CREATION_OPTIONS)
-
-    # Create a new watershed scratch mask raster the size, shape of the flow dir raster
-    pygeoprocessing.new_raster_from_base(
-        d8_flow_dir_raster_path_band[0], mask_raster_path, gdal.GDT_Byte,
-        [255], fill_value_list=[0],
-        gtiff_creation_options=GTIFF_CREATION_OPTIONS)
-
-    scratch_managed_raster = _ManagedRaster(scratch_raster_path, 1, 1)
-    mask_managed_raster = _ManagedRaster(mask_raster_path, 1, 1)
-
     # Create the watershed fragments layer for later.
     gpkg_driver = ogr.GetDriverByName('GPKG')
-    watershed_fragments_srs = osr.SpatialReference()
-    watershed_fragments_srs.ImportFromWkt(flow_dir_info['projection'])
+    flow_dir_srs = osr.SpatialReference()
+    flow_dir_srs.ImportFromWkt(flow_dir_info['projection'])
     watershed_fragments_path = os.path.join(working_dir_path, 'watershed_fragments.gpkg')
     watershed_fragments_vector = gpkg_driver.CreateDataSource(watershed_fragments_path)
     watershed_fragments_layer = watershed_fragments_vector.CreateLayer(
-        'watershed_fragments', watershed_fragments_srs, ogr.wkbPolygon)
+        'watershed_fragments', flow_dir_srs, ogr.wkbPolygon)
     ws_id_field = ogr.FieldDefn('ws_id', ogr.OFTInteger)
     ws_id_field.SetWidth(24)
     watershed_fragments_layer.CreateField(ws_id_field)
@@ -2620,36 +2604,55 @@ def delineate_watersheds(
     flow_dir_bbox_vector = gpkg_driver.CreateDataSource(
         os.path.join(working_dir_path, 'flow_dir_bbox.gpkg'))
     flow_dir_bbox_layer = flow_dir_bbox_vector.CreateLayer(
-        'flow_dir_bbox', watershed_fragments_srs, ogr.wkbPolygon)
+        'flow_dir_bbox', flow_dir_srs, ogr.wkbPolygon)
     flow_dir_bbox_geom = ogr.CreateGeometryFromWkb(
-        shapely.wkb.dumps(shapely.geometry.box(flow_dir_info['bounding_box'])))
+        shapely.wkb.dumps(shapely.geometry.box(*flow_dir_info['bounding_box'])))
     flow_dir_bbox_feature = ogr.Feature(flow_dir_bbox_layer.GetLayerDefn())
     flow_dir_bbox_feature.SetGeometry(flow_dir_bbox_geom)
     flow_dir_bbox_layer.CreateFeature(flow_dir_bbox_feature)
+    flow_dir_bbox_layer.SyncToDisk()
 
     # Open the outflow geometries vector for later.
     source_outlets_vector = ogr.Open(outflow_points_vector_path)
     source_outlets_layer = source_outlets_vector.GetLayer()
 
     # clip the outlet geometries against the flow dir bbox vector.
-    clipped_outlets_vector = gpkg_driver.CreateDataSource(
-        os.path.join(working_dir_path, 'clipped_outlets.gpkg'))
+    clipped_outlets_path = os.path.join(working_dir_path,
+                                        'clipped_outlets.shp')
+    shp_driver = ogr.GetDriverByName('ESRI Shapefile')
+    clipped_outlets_vector = shp_driver.CreateDataSource(clipped_outlets_path)
     clipped_outlets_layer = clipped_outlets_vector.CreateLayer(
-        'clipped_outlets', watershed_fragments_srs, ogr.wkbUnknown)
+        'clipped_outlets', flow_dir_srs, ogr.wkbUnknown)
     source_outlets_layer.Clip(flow_dir_bbox_layer, clipped_outlets_layer)
-    outlet_layer_definition = clipped_outlets_layer.GetLayerDefn()
     cdef int features_in_layer = clipped_outlets_layer.GetFeatureCount()
+    clipped_outlets_layer = None
+    clipped_outlets_vector = None
 
-    # Rasterize the FIDs of the outlets vector onto the scratch raster.
+    # Create a new watershed scratch raster the size, shape of the flow dir raster
+    # via rasterization.
+    NO_WATERSHED = -1
     gdal.Rasterize(
         scratch_raster_path,
-        clipped_outlets_layer,
+        clipped_outlets_path,
         format='GTiff',
-        bands=[1],
+        noData=NO_WATERSHED,
+        initValues=NO_WATERSHED,
+        outputBounds=flow_dir_info['bounding_box'],
+        width=flow_dir_n_cols,
+        height=flow_dir_n_rows,
         allTouched=True,
         attribute='FID',
-        SQLStatement='SELECT FID, * FROM clipped_outlets'
+        layers=['clipped_outlets'],
+        SQLStatement='SELECT FID, * FROM clipped_outlets',
+        SQLDialect='OGRSQL',
+        creationOptions=GTIFF_CREATION_OPTIONS
     )
+
+    # Create a new watershed scratch mask raster the size, shape of the flow dir raster
+    pygeoprocessing.raster_calculator(
+        [(scratch_raster_path, 1)],
+        lambda x: numpy.where(x == NO_WATERSHED, 0, 1),
+        mask_raster_path, gdal.GDT_Byte, 255, GTIFF_CREATION_OPTIONS)
 
     # clean up vectors that are no longer needed.
     flow_dir_bbox_feature = None
@@ -2657,11 +2660,15 @@ def delineate_watersheds(
     flow_dir_bbox_layer = None
     flow_dir_bbox_vector = None
 
+    scratch_managed_raster = _ManagedRaster(scratch_raster_path, 1, 1)
+    mask_managed_raster = _ManagedRaster(mask_raster_path, 1, 1)
+
     cdef time_t last_log_time = ctime(NULL)
     cdef long yi_outflow, xi_outflow
     cdef CoordinatePair current_pixel, neighbor_pixel, outflow_pixel
     cdef queue[CoordinatePair] process_queue, outflow_queue
     cdef cset[CoordinatePair] process_queue_set, outflow_queue_set
+    cdef cset[CoordinatePair] pixels_in_geometry
     outflow_id_map = {}
 
     cdef int* neighbor_col = [1, 1, 0, -1, -1, -1, 0, 1]
@@ -2676,42 +2683,85 @@ def delineate_watersheds(
 
     cdef int ws_id
     cdef int pixels_in_watershed
-    for outflow_feature in clipped_outlets_layer:
-        ws_id = clipped_outlets_layer.GetFID()
+    clipped_outlets_vector = ogr.Open(clipped_outlets_path)
+    clipped_outlets_layer = clipped_outlets_vector.GetLayer('clipped_outlets')
+    outlet_layer_definition = clipped_outlets_layer.GetLayerDefn()
+    for ws_id, outflow_feature in enumerate(clipped_outlets_layer, start=1):
+        feature_fid = outflow_feature.GetFID()
         geometry = outflow_feature.GetGeometryRef()
-        xi_outflow = (geometry.GetX() - source_gt[0]) // source_gt[1]
-        yi_outflow = (geometry.GetY() - source_gt[3]) // source_gt[5]
+        if geometry.GetGeometryType() == ogr.wkbPoint:
+            point_in_geom = geometry
+        else:  # assume it's a polygon.
+            geometry = outflow_feature.GetGeometryRef()
+            point_in_geom = geometry.PointOnSurface()
 
-        if (xi_outflow < 0 or xi_outflow >= flow_dir_n_cols or
-                yi_outflow < 0 or yi_outflow >= flow_dir_n_rows):
-            LOGGER.info(
-                "Outflow point %i does not intersect the flow direction "
-                "raster; skipping delineation.", ws_id)
-            points_in_layer -= 1
-            continue
+        xi_outflow = (point_in_geom.GetX() - source_gt[0]) // source_gt[1]
+        yi_outflow = (point_in_geom.GetY() - source_gt[3]) // source_gt[5]
 
-        if flow_dir_nodata is not None and (
-                abs(flow_dir_managed_raster.get(
-                    xi_outflow, yi_outflow) - flow_dir_nodata) < 10e-5):
-            LOGGER.info(
-                'Outflow point %i is over nodata; skipping delineation.',
-                ws_id)
-            continue
 
         outflow_pixel = CoordinatePair(xi_outflow, yi_outflow)
-        outflow_queue.push(outflow_pixel)
-        outflow_queue_set.insert(outflow_pixel)
-        outflow_id_map[outflow_pixel] = ws_id
-        ws_id_to_fid[ws_id] = outflow_feature.GetFID()
+        process_queue.push(outflow_pixel)
+        process_queue_set.insert(outflow_pixel)
+        while not process_queue.empty():
+            current_pixel = process_queue.front()
+            process_queue_set.erase(current_pixel)
+            process_queue.pop()
 
-    ws_id = 1
+            for neighbor_index in range(8):
+                neighbor_pixel = CoordinatePair(
+                    current_pixel.first + neighbor_col[neighbor_index],
+                    current_pixel.second + neighbor_row[neighbor_index])
+
+                if not 0 <= neighbor_pixel.first < flow_dir_n_cols:
+                    continue
+
+                if not 0 <= neighbor_pixel.second < flow_dir_n_rows:
+                    continue
+
+                # Is this pixel already queued to be processed?
+                if (process_queue_set.find(neighbor_pixel) !=
+                        process_queue_set.end()):
+                    continue
+
+                # Is this queue already a known member of this watershed?
+                if (pixels_in_geometry.find(neighbor_pixel) !=
+                        pixels_in_geometry.end()):
+                    continue
+
+                # Does this neighbor pixel belong to this feature?
+                if (scratch_managed_raster.get(
+                        neighbor_pixel.first,
+                        neighbor_pixel.second) == feature_fid):
+                    pixels_in_geometry.insert(neighbor_pixel)
+                    process_queue.push(neighbor_pixel)
+                    process_queue_set.insert(neighbor_pixel)
+                elif (not neighbor_index & 1):
+                    # If we're on one of the 4 cardinal directions and the
+                    # neighbor pixel DOES NOT belong to this feature, this
+                    # current pixel is an edge pixel.
+                    outflow_queue.push(current_pixel)
+                    outflow_queue_set.insert(current_pixel)
+                    outflow_id_map[current_pixel] = ws_id
+
+        ws_id_to_fid[ws_id] = feature_fid
+
+        # Don't need to track pixels in this geometry any longer; clear the
+        # used sets and queues.
+        pixels_in_geometry.clear()
+        process_queue_set.clear()
+
+        while not process_queue.empty():
+            process_queue.pop()
+
     while not outflow_queue.empty():
         pixels_in_watershed = 0
         current_pixel = outflow_queue.front()
         outflow_queue.pop()
+        ws_id = <int> scratch_managed_raster.get(current_pixel.first,
+                                                 current_pixel.second)
 
         LOGGER.info('Delineating watershed %i of %i',
-                    ws_id, points_in_layer)
+                    ws_id, features_in_layer)
 
         process_queue.push(current_pixel)
         process_queue_set.insert(current_pixel)
@@ -2723,7 +2773,7 @@ def delineate_watersheds(
             if ctime(NULL) - last_log_time > 5.0:
                 last_log_time = ctime(NULL)
                 LOGGER.info('Delineating watershed %i of %i, %i pixels '
-                            'found so far.', ws_id, points_in_layer,
+                            'found so far.', ws_id, features_in_layer,
                             pixels_in_watershed)
 
             current_pixel = process_queue.front()
@@ -2824,7 +2874,7 @@ def delineate_watersheds(
     # geometry should be written as-is.
     watershed_vector = gpkg_driver.CreateDataSource(target_fragments_vector_path)
     watershed_layer = watershed_vector.CreateLayer(
-        'watershed_fragments', watershed_fragments_srs, ogr.wkbPolygon)
+        'watershed_fragments', flow_dir_srs, ogr.wkbPolygon)
 
     # Create the fields in the target vector that already existed in the
     # outflow points vector
