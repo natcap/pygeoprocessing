@@ -2418,3 +2418,231 @@ class PyGeoprocessing10(unittest.TestCase):
             [bb_a, bb_b], 'intersection')
         numpy.testing.assert_array_almost_equal(
             intersection_bb, [-.9, -1, 1, 1])
+
+    def test_align_and_resize_raster_stack_int_with_vector_mask(self):
+        """PGP.geoprocessing: align/resize raster w/ vector mask."""
+        pixel_a_matrix = numpy.ones((5, 5), numpy.int16)
+        reference = sampledata.SRS_COLOMBIA
+        nodata_target = -1
+        base_a_path = os.path.join(self.workspace_dir, 'base_a.tif')
+
+        geotiff_driver = gdal.GetDriverByName('GTiff')
+        base_raster = geotiff_driver.Create(
+            base_a_path, 5, 5, 1, gdal.GDT_Byte)
+        pixel_size = 30
+        base_raster.SetGeoTransform(
+            [reference.origin[0], pixel_size, 0,
+             reference.origin[1], 0, -pixel_size])
+        base_raster.SetProjection(reference.projection)
+        base_band = base_raster.GetRasterBand(1)
+        base_band.WriteArray(pixel_a_matrix)
+        base_band.SetNoDataValue(nodata_target)
+        base_band.FlushCache()
+        base_raster.FlushCache()
+        base_band = None
+        base_raster = None
+
+        resample_method_list = ['near']
+        bounding_box_mode = 'intersection'
+
+        base_a_raster_info = pygeoprocessing.get_raster_info(base_a_path)
+
+        # make a vector whose bounding box is 1 pixel large
+        ring = ogr.Geometry(ogr.wkbLinearRing)
+        ring.AddPoint(reference.origin[0], reference.origin[1])
+        ring.AddPoint(
+            reference.origin[0] + reference.pixel_size(30)[0],
+            reference.origin[1])
+        ring.AddPoint(
+            reference.origin[0] + reference.pixel_size(30)[0],
+            reference.origin[1] + reference.pixel_size(30)[1])
+        ring.AddPoint(
+            reference.origin[0], reference.origin[1] +
+            reference.pixel_size(30)[1])
+        ring.AddPoint(reference.origin[0], reference.origin[1])
+        poly_a = ogr.Geometry(ogr.wkbPolygon)
+        poly_a.AddGeometry(ring)
+
+        ring = ogr.Geometry(ogr.wkbLinearRing)
+        ring.AddPoint(
+            reference.origin[0] + 2*reference.pixel_size(30)[0],
+            reference.origin[1] + 2*reference.pixel_size(30)[1])
+        ring.AddPoint(
+            reference.origin[0] + 3*reference.pixel_size(30)[0],
+            reference.origin[1] + 2*reference.pixel_size(30)[1])
+        ring.AddPoint(
+            reference.origin[0] + 3*reference.pixel_size(30)[0],
+            reference.origin[1] + 3*reference.pixel_size(30)[1])
+        ring.AddPoint(
+            reference.origin[0] + 2*reference.pixel_size(30)[0],
+            reference.origin[1] + 3*reference.pixel_size(30)[1])
+        ring.AddPoint(
+            reference.origin[0] + 2*reference.pixel_size(30)[0],
+            reference.origin[1] + 2*reference.pixel_size(30)[1])
+        poly_b = ogr.Geometry(ogr.wkbPolygon)
+        poly_b.AddGeometry(ring)
+
+        dual_poly_path = os.path.join(self.workspace_dir, 'dual_poly.gpkg')
+        vector_driver = gdal.GetDriverByName('GPKG')
+        poly_vector = vector_driver.Create(
+            dual_poly_path, 0, 0, 0, gdal.GDT_Unknown)
+        reference_srs = osr.SpatialReference()
+        reference_srs.ImportFromWkt(reference.projection)
+        poly_layer = poly_vector.CreateLayer(
+            'dual_poly', reference_srs, ogr.wkbPolygon)
+        poly_layer.CreateField(ogr.FieldDefn('value', ogr.OFTInteger))
+        poly_feature = ogr.Feature(poly_layer.GetLayerDefn())
+        poly_feature.SetGeometry(poly_a)
+        poly_feature.SetField('value', 100)
+        poly_layer.CreateFeature(poly_feature)
+
+        poly_feature = ogr.Feature(poly_layer.GetLayerDefn())
+        poly_feature.SetGeometry(poly_b)
+        poly_feature.SetField('value', 1)
+        poly_layer.CreateFeature(poly_feature)
+        poly_layer.SyncToDisk()
+        poly_vector.FlushCache()
+        poly_layer = None
+        poly_vector = None
+
+        target_path = os.path.join(self.workspace_dir, 'target_a.tif')
+        pygeoprocessing.align_and_resize_raster_stack(
+            [base_a_path], [target_path],
+            resample_method_list,
+            base_a_raster_info['pixel_size'], bounding_box_mode,
+            raster_align_index=0,
+            target_sr_wkt=reference.projection,
+            vector_mask_options={
+                'mask_vector_path': dual_poly_path,
+                'mask_layer_name': 'dual_poly',
+            })
+
+        target_raster = gdal.OpenEx(target_path, gdal.OF_RASTER)
+        target_band = target_raster.GetRasterBand(1)
+        target_array = target_band.ReadAsArray()
+        target_band = None
+        target_raster = None
+        # the first pass doesn't do any filtering, so we should have 2 pixels
+        self.assertEqual(
+            numpy.count_nonzero(target_array[target_array == 1]), 2)
+
+        # now test where only one of the polygons match
+        pygeoprocessing.align_and_resize_raster_stack(
+            [base_a_path], [target_path],
+            resample_method_list,
+            base_a_raster_info['pixel_size'], bounding_box_mode,
+            raster_align_index=0,
+            vector_mask_options={
+                'mask_vector_path': dual_poly_path,
+                'mask_layer_name': 'dual_poly',
+                'mask_vector_where_filter': 'value=1'
+            })
+
+        target_raster = gdal.Open(target_path)
+        target_band = target_raster.GetRasterBand(1)
+        target_array = target_band.ReadAsArray()
+        target_band = None
+        target_raster = None
+        # we should have only one pixel left
+        self.assertEqual(
+            numpy.count_nonzero(target_array[target_array == 1]), 1)
+
+    def test_align_and_resize_raster_stack_int_with_bad_vector_mask(self):
+        """PGP.geoprocessing: align/resize raster w/ bad vector mask."""
+        pixel_a_matrix = numpy.ones((5, 5), numpy.int16)
+        nodata_target = -1
+        base_a_path = os.path.join(self.workspace_dir, 'base_a.tif')
+
+        geotiff_driver = gdal.GetDriverByName('GTiff')
+        base_raster = geotiff_driver.Create(
+            base_a_path, 10, 10, 1, gdal.GDT_Byte)
+        pixel_size = 30
+        base_raster.SetGeoTransform([0.1, pixel_size, 0, 0.1, 0, -pixel_size])
+        base_band = base_raster.GetRasterBand(1)
+        base_band.WriteArray(pixel_a_matrix)
+        base_band.SetNoDataValue(nodata_target)
+        base_band.FlushCache()
+        base_raster.FlushCache()
+        base_band = None
+        base_raster = None
+
+        resample_method_list = ['near']
+        bounding_box_mode = 'intersection'
+
+        base_a_raster_info = pygeoprocessing.get_raster_info(base_a_path)
+
+        # make a vector whose bounding box is 1 pixel large
+        ring = ogr.Geometry(ogr.wkbLinearRing)
+        ring.AddPoint(1e3, 0)
+        ring.AddPoint(1e3 + pixel_size, 0)
+        ring.AddPoint(1e3 + pixel_size, pixel_size)
+        ring.AddPoint(1e3 + pixel_size, 0)
+        ring.AddPoint(1e3, 0)
+        poly = ogr.Geometry(ogr.wkbPolygon)
+        poly.AddGeometry(ring)
+
+        dual_poly_path = os.path.join(self.workspace_dir, 'dual_poly')
+        vector_driver = gdal.GetDriverByName('ESRI Shapefile')
+        poly_vector = vector_driver.Create(
+            dual_poly_path, 0, 0, 0, gdal.GDT_Unknown)
+        poly_layer = poly_vector.CreateLayer(
+            'poly_vector', None, ogr.wkbPolygon)
+        poly_feature = ogr.Feature(poly_layer.GetLayerDefn())
+        poly_feature.SetGeometry(poly)
+        poly_layer.CreateFeature(poly_feature)
+        poly_layer.SyncToDisk()
+        poly_layer = None
+        poly_vector = None
+
+        target_path = os.path.join(self.workspace_dir, 'target_a.tif')
+        with self.assertRaises(ValueError) as cm:
+            pygeoprocessing.align_and_resize_raster_stack(
+                [base_a_path], [target_path],
+                resample_method_list,
+                base_a_raster_info['pixel_size'], bounding_box_mode,
+                raster_align_index=0,
+                vector_mask_options={
+                    'mask_vector_path': dual_poly_path,
+                    'mask_layer_name': 'dual_poly',
+                })
+        expected_message = 'does not overlap '
+        actual_message = str(cm.exception)
+        self.assertTrue(expected_message in actual_message, actual_message)
+
+        with self.assertRaises(ValueError) as cm:
+            pygeoprocessing.align_and_resize_raster_stack(
+                [base_a_path], [target_path],
+                resample_method_list,
+                base_a_raster_info['pixel_size'], bounding_box_mode,
+                raster_align_index=0,
+                vector_mask_options={
+                    'bad_mask_vector_path': dual_poly_path,
+                    'mask_layer_name': 'dual_poly',
+                })
+        expected_message = 'no value for "mask_vector_path"'
+        actual_message = str(cm.exception)
+        self.assertTrue(expected_message in actual_message, actual_message)
+
+        with self.assertRaises(ValueError) as cm:
+            pygeoprocessing.warp_raster(
+                base_a_path, base_a_raster_info['pixel_size'],
+                target_path, 'near',
+                vector_mask_options={
+                    'bad_mask_vector_path': dual_poly_path,
+                    'mask_layer_name': 'dual_poly',
+                })
+        expected_message = 'no value for "mask_vector_path"'
+        actual_message = str(cm.exception)
+        self.assertTrue(expected_message in actual_message, actual_message)
+
+        with self.assertRaises(ValueError) as cm:
+            pygeoprocessing.warp_raster(
+                base_a_path, base_a_raster_info['pixel_size'],
+                target_path, 'near',
+                vector_mask_options={
+                    'mask_vector_path': 'not_a_file.shp',
+                    'mask_layer_name': 'dual_poly',
+                })
+        expected_message = 'was not found'
+        actual_message = str(cm.exception)
+        self.assertTrue(expected_message in actual_message, actual_message)

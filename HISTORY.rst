@@ -34,6 +34,11 @@ Unreleased Changes
 * Created a public `merge_bounding_box_list` function that's useful for union
   or intersection of bounding boxes consistent with the format in
   PyGeoprocessing.
+* Added functionality in `align_and_resize_raster_stack` and `warp_raster`
+  to use a vector to mask out pixel values that lie outside of the polygon
+  coverage area. This parameter is called `vector_mask_options` and is
+  fully documented in both functions. It is similar to the cutline
+  functionality provided in `gdal.Warp`.
 
 1.2.3 (7/25/2018)
 -----------------
