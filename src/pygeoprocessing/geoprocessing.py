@@ -724,7 +724,7 @@ def align_and_resize_raster_stack(
             raise ValueError(
                 "The mask vector's bounding box does not overlap with the "
                 "target bounding box. (mask bb: %s, target bb: %s)" % (
-                    mask_vector_intersect_box, target_bounding_box))
+                    mask_vector_bb, target_bounding_box))
 
     if raster_align_index is not None and raster_align_index >= 0:
         # bounding box needs alignment
