@@ -2604,16 +2604,58 @@ def delineate_watersheds(
     scratch_managed_raster = _ManagedRaster(scratch_raster_path, 1, 1)
     mask_managed_raster = _ManagedRaster(mask_raster_path, 1, 1)
 
-    driver = ogr.GetDriverByName('GPKG')
+    # Create the watershed fragments layer for later.
+    gpkg_driver = ogr.GetDriverByName('GPKG')
     watershed_fragments_srs = osr.SpatialReference()
     watershed_fragments_srs.ImportFromWkt(flow_dir_info['projection'])
     watershed_fragments_path = os.path.join(working_dir_path, 'watershed_fragments.gpkg')
-    watershed_fragments_vector = driver.CreateDataSource(watershed_fragments_path)
+    watershed_fragments_vector = gpkg_driver.CreateDataSource(watershed_fragments_path)
     watershed_fragments_layer = watershed_fragments_vector.CreateLayer(
         'watershed_fragments', watershed_fragments_srs, ogr.wkbPolygon)
     ws_id_field = ogr.FieldDefn('ws_id', ogr.OFTInteger)
     ws_id_field.SetWidth(24)
     watershed_fragments_layer.CreateField(ws_id_field)
+
+    # Create a temporary vector for storing the flow direction raster's bbox.
+    flow_dir_bbox_vector = gpkg_driver.CreateDataSource(
+        os.path.join(working_dir_path, 'flow_dir_bbox.gpkg'))
+    flow_dir_bbox_layer = flow_dir_bbox_vector.CreateLayer(
+        'flow_dir_bbox', watershed_fragments_srs, ogr.wkbPolygon)
+    flow_dir_bbox_geom = ogr.CreateGeometryFromWkb(
+        shapely.wkb.dumps(shapely.geometry.box(flow_dir_info['bounding_box'])))
+    flow_dir_bbox_feature = ogr.Feature(flow_dir_bbox_layer.GetLayerDefn())
+    flow_dir_bbox_feature.SetGeometry(flow_dir_bbox_geom)
+    flow_dir_bbox_layer.CreateFeature(flow_dir_bbox_feature)
+
+    # Open the outflow geometries vector for later.
+    source_outlets_vector = ogr.Open(outflow_points_vector_path)
+    source_outlets_layer = source_outlets_vector.GetLayer()
+
+    # clip the outlet geometries against the flow dir bbox vector.
+    clipped_outlets_vector = gpkg_driver.CreateDataSource(
+        os.path.join(working_dir_path, 'clipped_outlets.gpkg'))
+    clipped_outlets_layer = clipped_outlets_vector.CreateLayer(
+        'clipped_outlets', watershed_fragments_srs, ogr.wkbUnknown)
+    source_outlets_layer.Clip(flow_dir_bbox_layer, clipped_outlets_layer)
+    outlet_layer_definition = clipped_outlets_layer.GetLayerDefn()
+    cdef int features_in_layer = clipped_outlets_layer.GetFeatureCount()
+
+    # Rasterize the FIDs of the outlets vector onto the scratch raster.
+    gdal.Rasterize(
+        scratch_raster_path,
+        clipped_outlets_layer,
+        format='GTiff',
+        bands=[1],
+        allTouched=True,
+        attribute='FID',
+        SQLStatement='SELECT FID, * FROM clipped_outlets'
+    )
+
+    # clean up vectors that are no longer needed.
+    flow_dir_bbox_feature = None
+    flow_dir_bbox_geom = None
+    flow_dir_bbox_layer = None
+    flow_dir_bbox_vector = None
 
     cdef time_t last_log_time = ctime(NULL)
     cdef long yi_outflow, xi_outflow
@@ -2626,11 +2668,6 @@ def delineate_watersheds(
     cdef int* neighbor_row = [0, -1, -1, -1, 0, 1, 1, 1]
     cdef int* reverse_flow = [4, 5, 6, 7, 0, 1, 2, 3]
 
-    vector = ogr.Open(outflow_points_vector_path)
-    layer = vector.GetLayer()
-    cdef int points_in_layer = layer.GetFeatureCount()
-    outlet_layer_definition = layer.GetLayerDefn()
-
     # Map ws_id to the watersheds that nest within.
     nested_watersheds = {}
 
@@ -2639,8 +2676,9 @@ def delineate_watersheds(
 
     cdef int ws_id
     cdef int pixels_in_watershed
-    for ws_id, outflow_point in enumerate(layer, start=1):
-        geometry = outflow_point.GetGeometryRef()
+    for outflow_feature in clipped_outlets_layer:
+        ws_id = clipped_outlets_layer.GetFID()
+        geometry = outflow_feature.GetGeometryRef()
         xi_outflow = (geometry.GetX() - source_gt[0]) // source_gt[1]
         yi_outflow = (geometry.GetY() - source_gt[3]) // source_gt[5]
 
@@ -2664,7 +2702,7 @@ def delineate_watersheds(
         outflow_queue.push(outflow_pixel)
         outflow_queue_set.insert(outflow_pixel)
         outflow_id_map[outflow_pixel] = ws_id
-        ws_id_to_fid[ws_id] = outflow_point.GetFID()
+        ws_id_to_fid[ws_id] = outflow_feature.GetFID()
 
     ws_id = 1
     while not outflow_queue.empty():
@@ -2784,7 +2822,7 @@ def delineate_watersheds(
     # the union of all upstream sheds.
     # If a watershed is alone (does not contain nested watersheds), the
     # geometry should be written as-is.
-    watershed_vector = driver.CreateDataSource(target_fragments_vector_path)
+    watershed_vector = gpkg_driver.CreateDataSource(target_fragments_vector_path)
     watershed_layer = watershed_vector.CreateLayer(
         'watershed_fragments', watershed_fragments_srs, ogr.wkbPolygon)
 
@@ -2811,7 +2849,7 @@ def delineate_watersheds(
         watershed_feature = ogr.Feature(watershed_layer_defn)
         watershed_feature.SetGeometry(watershed_fragment.GetGeometryRef())
 
-        outflow_point_feature = layer.GetFeature(outflow_point_fid)
+        outflow_point_feature = clipped_outlets_layer.GetFeature(outflow_point_fid)
         for outflow_field_index in range(outlet_layer_definition.GetFieldCount()):
             watershed_feature.SetField(
                 outflow_field_index,

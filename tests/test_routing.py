@@ -1169,3 +1169,50 @@ class TestRouting(unittest.TestCase):
             # Verify all fields are copied over.
             self.assertEqual(joined_feature.GetField('other'),
                              expected_other_values[ws_id])
+
+    def test_watershed_delineation_lakes(self):
+        import pygeoprocessing.routing
+        import pygeoprocessing.testing
+
+        srs = osr.SpatialReference()
+        srs.ImportFromEPSG(32731)  # WGS84 / UTM zone 31s
+        srs_wkt = srs.ExportToWkt()
+
+        flow_dir_array = numpy.zeros((7, 7), dtype=numpy.uint8)
+        flow_dir_path = os.path.join(self.workspace_dir, 'flow_dir.tif')
+        driver = gdal.GetDriverByName('GTiff')
+        flow_dir_raster = driver.Create(
+            flow_dir_path, flow_dir_array.shape[1], flow_dir_array.shape[0],
+            1, gdal.GDT_Byte, options=(
+                'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
+                'BLOCKXSIZE=256', 'BLOCKYSIZE=256'))
+        flow_dir_raster.SetProjection(srs_wkt)
+        flow_dir_band = flow_dir_raster.GetRasterBand(1)
+        flow_dir_band.WriteArray(flow_dir_array)
+        flow_dir_geotransform = [2, 2, 0, -2, 0, -2]
+        flow_dir_raster.SetGeoTransform(flow_dir_geotransform)
+        flow_dir_raster = None
+
+        def square(centerpoint_tuple):
+            x, y = centerpoint_tuple
+            return shapely.geometry.Polygon(
+                [(x-1, y-1), (x-1, y+1), (x+1, y+1), (x+1, y-1), (x-1, y-1)])
+
+        watershed_geometries = [
+            square((16, -8)),
+            square((8, -10)),
+            square((2, -8)),
+            shapely.geometry.Point(11, -11),
+        ]
+
+        outflow_vector = os.path.join(self.workspace_dir, 'outflow.gpkg')
+        pygeoprocessing.testing.create_vector_on_disk(
+            watershed_geometries, srs_wkt, vector_format='GPKG',
+            filename=outflow_vector)
+
+        target_fragments_vector = os.path.join(self.workspace_dir,
+                                               'fragments.gpkg')
+
+        pygeoprocessing.routing.delineate_watersheds(
+            (flow_dir_path, 1), outflow_vector, target_fragments_vector,
+            os.path.join(self.workspace_dir, 'scratch'))
