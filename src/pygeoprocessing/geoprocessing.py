@@ -1086,8 +1086,12 @@ def zonal_statistics(
     overlapped by the polygons in the vector layer. Statistics are calculated
     in two passes, where first polygons aggregate over pixels in the raster
     whose centers intersect with the polygon. In the second pass, any polygons
-    not aggregated (likely because they are so small they do not intersect
-    a pixel), are geometrically intersected with the raster.
+    that are not aggregated use their bounding box to intersect with the
+    raster for overlap statistics. Note there may be some degenerate
+    cases where the bounding box vs. actual geometry intersection would be
+    incorrect, but these are so unlikely as to be manually constructed. If
+    you encounter one of these please email the description and dataset
+    to richsharp@stanford.edu.
 
     Parameters:
         base_raster_path_band (tuple): a str/int tuple indicating the path to
@@ -1327,6 +1331,14 @@ def zonal_statistics(
         win_ysize = int(numpy.ceil(
             (unset_geom_envelope[3] - clipped_gt[3]) /
             clipped_gt[5])) - yoff
+        # here we consider the pixels that intersect with the geometry's
+        # bounding box as being the proxy for the intersection with the
+        # polygon itself. This is not a bad approximation since the case
+        # that caused the polygon to be skipped in the first phase is that it
+        # is as small as a pixel. There could be some degenerate cases that
+        # make this estimation very wrong, but we do not know of any that
+        # would come from natural data. If you do encounter such a dataset
+        # please email the description and datset to richsharp@stanford.edu.
         unset_fid_block = clipped_band.ReadAsArray(
             xoff=xoff, yoff=yoff, win_xsize=win_xsize, win_ysize=win_ysize)
 
