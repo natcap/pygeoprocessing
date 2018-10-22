@@ -22,6 +22,35 @@ Unreleased Changes
   functionality, but with a slower runtime, and now functions in
   ``pygeoprocessing`` that create rasters also calculate stats on the fly if
   desired.
+* Fixes an issue in `get_raster_info` and `get_vector_info` where the path to
+  the raster/vector includes non-standard OS pathing (such as a NETCDF), info
+  will still calculate info.
+* Added functionality to `align_raster_stack` and `warp_raster` to define a
+  base spatial reference system for rasters if not is not defined or one wishes
+  to override the existing one. This functionality is useful when reprojecting
+  a rasters that does not have a spatial reference defined in the dataset but
+  is otherwise known.
+* Added a `weight_raster_path_band` parameter to both `flow_accumulation_d8`
+  and `flow_accumulation_mfd` that allows the caller to use per-pixel weights
+  from a parallel raster as opposed to assuming a weight of 1 per pixel.
+* Added a `weight_raster_path_band` parameter to both
+  `distance_to_channel_mfd` and `distance_to_channel_d8` that allows the
+  caller to use per-pixel weights from a parallel raster as opposed to
+  assuming a distance of 1 between neighboring pixels or sqrt(2) between
+  diagonal ones.
+* Added an option to `reproject_vector` that allows a caller to specify which
+  fields, if any, to copy to the target vector after reprojection.
+* Adding a check in `align_and_resize_raster_stack` for duplicate target
+  output paths to avoid problems where multiple rasters are being warped to
+  the same path.
+* Created a public `merge_bounding_box_list` function that's useful for union
+  or intersection of bounding boxes consistent with the format in
+  PyGeoprocessing.
+* Added functionality in `align_and_resize_raster_stack` and `warp_raster`
+  to use a vector to mask out pixel values that lie outside of the polygon
+  coverage area. This parameter is called `vector_mask_options` and is
+  fully documented in both functions. It is similar to the cutline
+  functionality provided in `gdal.Warp`.
 
 1.2.3 (7/25/2018)
 -----------------
