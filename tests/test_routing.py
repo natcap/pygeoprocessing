@@ -1196,13 +1196,17 @@ class TestRouting(unittest.TestCase):
         def square(centerpoint_tuple):
             x, y = centerpoint_tuple
             return shapely.geometry.Polygon(
-                [(x-2, y-2), (x-2, y+2), (x+2, y+2), (x+2, y-2), (x-2, y-2)])
+                [(x-1.5, y-1.5),
+                 (x-1.5, y+1.5),
+                 (x+1.5, y+1.5),
+                 (x+1.5, y-1.5),
+                 (x-1.5, y-1.5)])
 
         watershed_geometries = [
             square((16, -8)),
             square((8, -10)),
             square((2, -8)),
-            #shapely.geometry.Point(11, -11),
+            square((14, -12)),
         ]
 
         outflow_vector = os.path.join(self.workspace_dir, 'outflow.gpkg')

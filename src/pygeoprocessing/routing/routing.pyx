@@ -2630,6 +2630,7 @@ def delineate_watersheds(
 
     # Create a new watershed scratch raster the size, shape of the flow dir raster
     # via rasterization.
+    # Type defaults to Float64.
     NO_WATERSHED = -1
     gdal.Rasterize(
         scratch_raster_path,
@@ -2649,10 +2650,10 @@ def delineate_watersheds(
     )
 
     # Create a new watershed scratch mask raster the size, shape of the flow dir raster
-    pygeoprocessing.raster_calculator(
-        [(scratch_raster_path, 1)],
-        lambda x: numpy.where(x == NO_WATERSHED, 0, 1),
-        mask_raster_path, gdal.GDT_Byte, 255, GTIFF_CREATION_OPTIONS)
+    pygeoprocessing.new_raster_from_base(
+        d8_flow_dir_raster_path_band[0], mask_raster_path, gdal.GDT_Byte,
+        [255], fill_value_list=[0],
+        gtiff_creation_options=GTIFF_CREATION_OPTIONS)
 
     # clean up vectors that are no longer needed.
     flow_dir_bbox_feature = None
@@ -2690,68 +2691,22 @@ def delineate_watersheds(
         feature_fid = outflow_feature.GetFID()
         geometry = outflow_feature.GetGeometryRef()
         if geometry.GetGeometryType() == ogr.wkbPoint:
-            point_in_geom = geometry
+            point = geometry
         else:  # assume it's a polygon.
             geometry = outflow_feature.GetGeometryRef()
-            point_in_geom = geometry.PointOnSurface()
+            point = geometry.PointOnSurface()
 
-        xi_outflow = (point_in_geom.GetX() - source_gt[0]) // source_gt[1]
-        yi_outflow = (point_in_geom.GetY() - source_gt[3]) // source_gt[5]
-
+        xi_outflow = (point.GetX() - source_gt[0]) // source_gt[1]
+        yi_outflow = (point.GetY() - source_gt[3]) // source_gt[5]
 
         outflow_pixel = CoordinatePair(xi_outflow, yi_outflow)
-        process_queue.push(outflow_pixel)
-        process_queue_set.insert(outflow_pixel)
-        while not process_queue.empty():
-            current_pixel = process_queue.front()
-            process_queue_set.erase(current_pixel)
-            process_queue.pop()
-
-            for neighbor_index in range(8):
-                neighbor_pixel = CoordinatePair(
-                    current_pixel.first + neighbor_col[neighbor_index],
-                    current_pixel.second + neighbor_row[neighbor_index])
-
-                if not 0 <= neighbor_pixel.first < flow_dir_n_cols:
-                    continue
-
-                if not 0 <= neighbor_pixel.second < flow_dir_n_rows:
-                    continue
-
-                # Is this pixel already queued to be processed?
-                if (process_queue_set.find(neighbor_pixel) !=
-                        process_queue_set.end()):
-                    continue
-
-                # Is this queue already a known member of this watershed?
-                if (pixels_in_geometry.find(neighbor_pixel) !=
-                        pixels_in_geometry.end()):
-                    continue
-
-                # Does this neighbor pixel belong to this feature?
-                if (scratch_managed_raster.get(
-                        neighbor_pixel.first,
-                        neighbor_pixel.second) == feature_fid):
-                    pixels_in_geometry.insert(neighbor_pixel)
-                    process_queue.push(neighbor_pixel)
-                    process_queue_set.insert(neighbor_pixel)
-                elif (not neighbor_index & 1):
-                    # If we're on one of the 4 cardinal directions and the
-                    # neighbor pixel DOES NOT belong to this feature, this
-                    # current pixel is an edge pixel.
-                    outflow_queue.push(current_pixel)
-                    outflow_queue_set.insert(current_pixel)
-                    outflow_id_map[current_pixel] = ws_id
+        scratch_managed_raster.set(
+            outflow_pixel.first, outflow_pixel.second, ws_id)
+        outflow_queue.push(outflow_pixel)
+        outflow_queue_set.insert(outflow_pixel)
+        outflow_id_map[feature_fid] = ws_id
 
         ws_id_to_fid[ws_id] = feature_fid
-
-        # Don't need to track pixels in this geometry any longer; clear the
-        # used sets and queues.
-        pixels_in_geometry.clear()
-        process_queue_set.clear()
-
-        while not process_queue.empty():
-            process_queue.pop()
 
     while not outflow_queue.empty():
         pixels_in_watershed = 0
@@ -2759,6 +2714,7 @@ def delineate_watersheds(
         outflow_queue.pop()
         ws_id = <int> scratch_managed_raster.get(current_pixel.first,
                                                  current_pixel.second)
+        rasterized_fid = ws_id_to_fid[ws_id]
 
         LOGGER.info('Delineating watershed %i of %i',
                     ws_id, features_in_layer)
@@ -2801,27 +2757,41 @@ def delineate_watersheds(
                         process_queue_set.end()):
                     continue
 
-                # Is the neighbor already within a watershed?
-                existing_ws_id = <int>scratch_managed_raster.get(
-                    neighbor_pixel.first, neighbor_pixel.second)
-                # Is the neighbor within the current watershed?
-                if existing_ws_id == ws_id:
-                    continue  # Already processed!
+                # Has the neighbor pixel already been visited?
+                # If yes, it's already been processed.  Skip it!
+                if <int>mask_managed_raster.get(
+                        neighbor_pixel.first, neighbor_pixel.second) == 1:
+                    continue
+
+                # Is the neighbor part of the current watershed?  If we have
+                # reached this point, the pixel has not been visited yet so add
+                # it to the processing queue.
+                if (<int>scratch_managed_raster.get(
+                        neighbor_pixel.first, neighbor_pixel.second) ==
+                        rasterized_fid):
+                    process_queue.push(neighbor_pixel)
+                    process_queue_set.insert(neighbor_pixel)
+                    continue
 
                 # Does the neighbor flow into the current pixel?
                 if (reverse_flow[neighbor_index] ==
                         <int>flow_dir_managed_raster.get(
                             neighbor_pixel.first, neighbor_pixel.second)):
 
-                    # Is the neighbor pixel the outflow point of another watershed?
-                    if (outflow_queue_set.find(neighbor_pixel) !=
-                            outflow_queue_set.end()):
+                    # Is the neighbor pixel part of another outflow geometry?
+                    if (scratch_managed_raster.get(
+                            neighbor_pixel.first,
+                            neighbor_pixel.second) != NO_WATERSHED):
                         # If it is, track the watershed connectivity, but otherwise
                         # skip this pixel.  Either we've already processed it, or
                         # else we will soon!
-                        nested_watershed_ids.add(outflow_id_map[neighbor_pixel])
+                        nested_watershed_ids.add(outflow_id_map[ws_id_to_fid[ws_id]])
                         continue
 
+                    # The neighbor flows into this watershed and is not part of
+                    # another outflow geometry, so it's part of this distinct
+                    # watershed fragment and should be added to the processing
+                    # queue.
                     process_queue.push(neighbor_pixel)
                     process_queue_set.insert(neighbor_pixel)
 
