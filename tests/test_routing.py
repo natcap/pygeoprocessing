@@ -1216,7 +1216,6 @@ class TestRouting(unittest.TestCase):
 
         target_fragments_vector = os.path.join(self.workspace_dir,
                                                'fragments.gpkg')
-
         pygeoprocessing.routing.delineate_watersheds(
             (flow_dir_path, 1), outflow_vector, target_fragments_vector,
             os.path.join(self.workspace_dir, 'scratch'))

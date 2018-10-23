@@ -2613,18 +2613,38 @@ def delineate_watersheds(
     flow_dir_bbox_layer.SyncToDisk()
 
     # Open the outflow geometries vector for later.
-    source_outlets_vector = ogr.Open(outflow_points_vector_path)
+    source_outlets_vector = gdal.OpenEx(outflow_points_vector_path,
+                                        gdal.OF_VECTOR)
     source_outlets_layer = source_outlets_vector.GetLayer()
 
     # clip the outlet geometries against the flow dir bbox vector.
     clipped_outlets_path = os.path.join(working_dir_path,
-                                        'clipped_outlets.shp')
-    shp_driver = ogr.GetDriverByName('ESRI Shapefile')
-    clipped_outlets_vector = shp_driver.CreateDataSource(clipped_outlets_path)
+                                        'clipped_outlets.gpkg')
+    clipped_outlets_vector = gpkg_driver.CreateDataSource(clipped_outlets_path)
     clipped_outlets_layer = clipped_outlets_vector.CreateLayer(
-        'clipped_outlets', flow_dir_srs, ogr.wkbUnknown)
+        'clipped_outlets', flow_dir_srs, source_outlets_layer.GetGeomType())
+
     source_outlets_layer.Clip(flow_dir_bbox_layer, clipped_outlets_layer)
-    cdef int features_in_layer = clipped_outlets_layer.GetFeatureCount()
+    clipped_outlets_vector.SyncToDisk()
+    source_outlets_layer = None
+    source_outlets_vector = None
+
+    # Add a new field to the clipped_outlets_layer to ensure we know what field
+    # values are bing rasterized.
+    cdef int ws_id
+    ws_id_fieldname = '__ws_id__'
+    ws_id_field_defn = ogr.FieldDefn(ws_id_fieldname, ogr.OFTInteger64)
+    clipped_outlets_layer.CreateField(ws_id_field_defn)
+
+    # Surround with transactions.
+    clipped_outlets_layer.StartTransaction()
+    for ws_id, feature in enumerate(clipped_outlets_layer, start=1):
+        feature.SetField(ws_id_fieldname, ws_id)
+        clipped_outlets_layer.SetFeature(feature)
+    clipped_outlets_layer.CommitTransaction()
+    feature = None
+    ws_id_field_defn = None
+    clipped_outlets_vector.SyncToDisk()
     clipped_outlets_layer = None
     clipped_outlets_vector = None
 
@@ -2642,9 +2662,9 @@ def delineate_watersheds(
         width=flow_dir_n_cols,
         height=flow_dir_n_rows,
         allTouched=True,
-        attribute='FID',
+        attribute=ws_id_fieldname,
         layers=['clipped_outlets'],
-        SQLStatement='SELECT FID, * FROM clipped_outlets',
+        SQLStatement='SELECT * FROM clipped_outlets',
         SQLDialect='OGRSQL',
         creationOptions=GTIFF_CREATION_OPTIONS
     )
@@ -2669,8 +2689,6 @@ def delineate_watersheds(
     cdef CoordinatePair current_pixel, neighbor_pixel, outflow_pixel
     cdef queue[CoordinatePair] process_queue, outflow_queue
     cdef cset[CoordinatePair] process_queue_set, outflow_queue_set
-    cdef cset[CoordinatePair] pixels_in_geometry
-    outflow_id_map = {}
 
     cdef int* neighbor_col = [1, 1, 0, -1, -1, -1, 0, 1]
     cdef int* neighbor_row = [0, -1, -1, -1, 0, 1, 1, 1]
@@ -2679,16 +2697,19 @@ def delineate_watersheds(
     # Map ws_id to the watersheds that nest within.
     nested_watersheds = {}
 
-    # Track outflow point FIDs against the WS_ID used.
+    # Track outflow geometry FIDs against the WS_ID used.
     ws_id_to_fid = {}
 
-    cdef int ws_id
-    cdef int pixels_in_watershed
-    clipped_outlets_vector = ogr.Open(clipped_outlets_path)
+    clipped_outlets_vector = gdal.OpenEx(clipped_outlets_path,
+                                         gdal.OF_VECTOR)
     clipped_outlets_layer = clipped_outlets_vector.GetLayer('clipped_outlets')
     outlet_layer_definition = clipped_outlets_layer.GetLayerDefn()
-    for ws_id, outflow_feature in enumerate(clipped_outlets_layer, start=1):
-        feature_fid = outflow_feature.GetFID()
+    cdef int features_in_layer = clipped_outlets_layer.GetFeatureCount()
+    cdef int pixels_in_watershed
+    for outflow_feature in clipped_outlets_layer:
+        # Casting to an int here makes it more explicit when GetField doesn't
+        # return an integer value.
+        ws_id = int(outflow_feature.GetField(ws_id_fieldname))
         geometry = outflow_feature.GetGeometryRef()
         if geometry.GetGeometryType() == ogr.wkbPoint:
             point = geometry
@@ -2704,9 +2725,7 @@ def delineate_watersheds(
             outflow_pixel.first, outflow_pixel.second, ws_id)
         outflow_queue.push(outflow_pixel)
         outflow_queue_set.insert(outflow_pixel)
-        outflow_id_map[feature_fid] = ws_id
-
-        ws_id_to_fid[ws_id] = feature_fid
+        ws_id_to_fid[ws_id] = outflow_feature.GetFID()
 
     while not outflow_queue.empty():
         pixels_in_watershed = 0
@@ -2714,7 +2733,6 @@ def delineate_watersheds(
         outflow_queue.pop()
         ws_id = <int> scratch_managed_raster.get(current_pixel.first,
                                                  current_pixel.second)
-        rasterized_fid = ws_id_to_fid[ws_id]
 
         LOGGER.info('Delineating watershed %i of %i',
                     ws_id, features_in_layer)
@@ -2766,9 +2784,9 @@ def delineate_watersheds(
                 # Is the neighbor part of the current watershed?  If we have
                 # reached this point, the pixel has not been visited yet so add
                 # it to the processing queue.
-                if (<int>scratch_managed_raster.get(
-                        neighbor_pixel.first, neighbor_pixel.second) ==
-                        rasterized_fid):
+                neighbor_ws_id = <int>scratch_managed_raster.get(
+                    neighbor_pixel.first, neighbor_pixel.second)
+                if (neighbor_ws_id == ws_id):
                     process_queue.push(neighbor_pixel)
                     process_queue_set.insert(neighbor_pixel)
                     continue
@@ -2779,13 +2797,12 @@ def delineate_watersheds(
                             neighbor_pixel.first, neighbor_pixel.second)):
 
                     # Is the neighbor pixel part of another outflow geometry?
-                    if (scratch_managed_raster.get(
-                            neighbor_pixel.first,
-                            neighbor_pixel.second) != NO_WATERSHED):
+                    if (neighbor_ws_id != NO_WATERSHED and
+                            neighbor_ws_id != ws_id):
                         # If it is, track the watershed connectivity, but otherwise
                         # skip this pixel.  Either we've already processed it, or
                         # else we will soon!
-                        nested_watershed_ids.add(outflow_id_map[ws_id_to_fid[ws_id]])
+                        nested_watershed_ids.add(neighbor_ws_id)
                         continue
 
                     # The neighbor flows into this watershed and is not part of
@@ -2850,6 +2867,9 @@ def delineate_watersheds(
     # outflow points vector
     for index in range(outlet_layer_definition.GetFieldCount()):
         field_defn = outlet_layer_definition.GetFieldDefn(index)
+        if field_defn == ws_id_field_defn:
+            continue
+
         field_type = field_defn.GetType()
 
         if field_type in (ogr.OFTInteger, ogr.OFTReal):
@@ -2864,12 +2884,12 @@ def delineate_watersheds(
     # Copy over the field values to the target vector
     for watershed_fragment in watershed_fragments_layer:
         fragment_ws_id = watershed_fragment.GetField('ws_id')
-        outflow_point_fid = ws_id_to_fid[fragment_ws_id]
+        outflow_geom_fid = ws_id_to_fid[fragment_ws_id]
 
         watershed_feature = ogr.Feature(watershed_layer_defn)
         watershed_feature.SetGeometry(watershed_fragment.GetGeometryRef())
 
-        outflow_point_feature = clipped_outlets_layer.GetFeature(outflow_point_fid)
+        outflow_point_feature = clipped_outlets_layer.GetFeature(outflow_geom_fid)
         for outflow_field_index in range(outlet_layer_definition.GetFieldCount()):
             watershed_feature.SetField(
                 outflow_field_index,
