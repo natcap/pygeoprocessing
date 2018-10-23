@@ -2867,7 +2867,7 @@ def delineate_watersheds(
     # outflow points vector
     for index in range(outlet_layer_definition.GetFieldCount()):
         field_defn = outlet_layer_definition.GetFieldDefn(index)
-        if field_defn == ws_id_field_defn:
+        if field_defn.GetName() == ws_id_fieldname:
             continue
 
         field_type = field_defn.GetType()
