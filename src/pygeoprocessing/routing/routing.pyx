@@ -2775,18 +2775,12 @@ def delineate_watersheds(
                         process_queue_set.end()):
                     continue
 
-                # Has the neighbor pixel already been visited?
-                # If yes, it's already been processed.  Skip it!
-                if <int>mask_managed_raster.get(
-                        neighbor_pixel.first, neighbor_pixel.second) == 1:
-                    continue
-
-                # Is the neighbor part of the current watershed?  If we have
-                # reached this point, the pixel has not been visited yet so add
-                # it to the processing queue.
+                # Is the neighbor an unvisited lake pixel in this watershed?
+                # If yes, enqueue it.
                 neighbor_ws_id = <int>scratch_managed_raster.get(
                     neighbor_pixel.first, neighbor_pixel.second)
-                if (neighbor_ws_id == ws_id):
+                if (neighbor_ws_id == ws_id and <int>mask_managed_raster.get(
+                        neighbor_pixel.first, neighbor_pixel.second) == 0):
                     process_queue.push(neighbor_pixel)
                     process_queue_set.insert(neighbor_pixel)
                     continue
@@ -2796,7 +2790,7 @@ def delineate_watersheds(
                         <int>flow_dir_managed_raster.get(
                             neighbor_pixel.first, neighbor_pixel.second)):
 
-                    # Is the neighbor pixel part of another outflow geometry?
+                    # Does the neighbor belong to a different outflow geometry?
                     if (neighbor_ws_id != NO_WATERSHED and
                             neighbor_ws_id != ws_id):
                         # If it is, track the watershed connectivity, but otherwise
