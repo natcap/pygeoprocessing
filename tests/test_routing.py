@@ -1219,3 +1219,19 @@ class TestRouting(unittest.TestCase):
         pygeoprocessing.routing.delineate_watersheds(
             (flow_dir_path, 1), outflow_vector, target_fragments_vector,
             os.path.join(self.workspace_dir, 'scratch'))
+
+        expected_field_values = [
+            {'ws_id': 1, 'upstream_fragments': '2,3'},
+            {'ws_id': 2, 'upstream_fragments': '3'},
+            {'ws_id': 3, 'upstream_fragments': ''},
+            {'ws_id': 4, 'upstream_fragments': '2'},
+        ]
+
+        fragments_vector = gdal.OpenEx(target_fragments_vector,
+                                       gdal.OF_VECTOR)
+        field_values = [feature.items() for feature in
+                        fragments_vector.GetLayer()]
+        for expected_fields, fields in zip(sorted(expected_field_values),
+                                           sorted(field_values)):
+            self.assertEqual(expected_fields, fields)
+
