@@ -1850,6 +1850,8 @@ def rasterize(
     if option_list is None:
         option_list = []
 
+    # TODO: check if rasterizelayer returns an error and raise an exception if
+    # so
     gdal.RasterizeLayer(
         raster, [1], layer, burn_values=burn_values, options=option_list,
         callback=rasterize_callback)
@@ -2862,7 +2864,11 @@ def _make_logger_callback(message):
             if ((current_time - logger_callback.last_time) > 5.0 or
                     (df_complete == 1.0 and
                      logger_callback.total_time >= 5.0)):
-                LOGGER.info(message, df_complete * 100, p_progress_arg[0])
+                if p_progress_arg is None:
+                    progress_arg = None
+                else:
+                    progress_arg = p_progress_arg[0]
+                LOGGER.info(message, df_complete * 100, progress_arg)
                 logger_callback.last_time = current_time
                 logger_callback.total_time += current_time
         except AttributeError:
