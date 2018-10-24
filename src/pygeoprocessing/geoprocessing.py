@@ -2868,6 +2868,10 @@ def _make_logger_callback(message):
         except AttributeError:
             logger_callback.last_time = time.time()
             logger_callback.total_time = 0.0
+        except:
+            LOGGER.exception("Unhandled error occurred while logging "
+                             "progress.  df_complete: %s, p_progress_arg: %s",
+                             df_complete, p_progress_arg)
 
     return logger_callback
 
