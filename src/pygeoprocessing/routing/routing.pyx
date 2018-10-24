@@ -2651,25 +2651,19 @@ def delineate_watersheds(
     # Create a new watershed scratch raster the size, shape of the flow dir raster
     # via rasterization.
     # Type defaults to Float64.
-    NO_WATERSHED = -1
-    gdal.Rasterize(
-        scratch_raster_path,
-        clipped_outlets_path,
-        format='GTiff',
-        noData=NO_WATERSHED,
-        initValues=NO_WATERSHED,
-        outputBounds=flow_dir_info['bounding_box'],
-        width=flow_dir_n_cols,
-        height=flow_dir_n_rows,
-        allTouched=True,
-        attribute=ws_id_fieldname,
-        layers=['clipped_outlets'],
-        SQLStatement='SELECT * FROM clipped_outlets',
-        SQLDialect='OGRSQL',
-        creationOptions=GTIFF_CREATION_OPTIONS
-    )
+    cdef unsigned int NO_WATERSHED = 0
+    LOGGER.info('Creating raster for tracking watershed fragments')
+    pygeoprocessing.new_raster_from_base(
+        d8_flow_dir_raster_path_band[0], scratch_raster_path, gdal.GDT_UInt32,
+        [NO_WATERSHED], fill_value_list=[NO_WATERSHED],
+        gtiff_creation_options=GTIFF_CREATION_OPTIONS)
+
+    pygeoprocessing.rasterize(
+        clipped_outlets_path, scratch_raster_path, None,
+        ['ALL_TOUCHED=TRUE', 'ATTRIBUTE=%s' % ws_id_fieldname])
 
     # Create a new watershed scratch mask raster the size, shape of the flow dir raster
+    LOGGER.info('Creating raster for tracking visited pixels')
     pygeoprocessing.new_raster_from_base(
         d8_flow_dir_raster_path_band[0], mask_raster_path, gdal.GDT_Byte,
         [255], fill_value_list=[0],
@@ -2684,7 +2678,6 @@ def delineate_watersheds(
     scratch_managed_raster = _ManagedRaster(scratch_raster_path, 1, 1)
     mask_managed_raster = _ManagedRaster(mask_raster_path, 1, 1)
 
-    cdef time_t last_log_time = ctime(NULL)
     cdef long yi_outflow, xi_outflow
     cdef CoordinatePair current_pixel, neighbor_pixel, outflow_pixel
     cdef queue[CoordinatePair] process_queue, outflow_queue
@@ -2707,7 +2700,14 @@ def delineate_watersheds(
     outlet_layer_definition = clipped_outlets_layer.GetLayerDefn()
     cdef int features_in_layer = clipped_outlets_layer.GetFeatureCount()
     cdef int pixels_in_watershed
+    cdef time_t last_log_time = ctime(NULL)
+    cdef unsigned int features_enqueued = 0
     for outflow_feature in clipped_outlets_layer:
+        if ctime(NULL) - last_log_time > 5.0:
+            last_log_time = ctime(NULL)
+            LOGGER.info('Enqueueing geometries, %s processed so far',
+                        features_enqueued)
+
         # Casting to an int here makes it more explicit when GetField doesn't
         # return an integer value.
         ws_id = int(outflow_feature.GetField(ws_id_fieldname))
@@ -2726,6 +2726,7 @@ def delineate_watersheds(
         outflow_queue.push(outflow_pixel)
         outflow_queue_set.insert(outflow_pixel)
         ws_id_to_fid[ws_id] = outflow_feature.GetFID()
+        features_enqueued += 1
 
     while not outflow_queue.empty():
         pixels_in_watershed = 0
