@@ -2627,6 +2627,7 @@ def delineate_watersheds(
         'clipped_outlets', flow_dir_srs, source_outlets_layer.GetGeomType())
 
     # TODO: can logging be improved here?
+    LOGGER.info('Clipping outlets against the DEM')
     source_outlets_layer.Clip(flow_dir_bbox_layer, clipped_outlets_layer)
     clipped_outlets_vector.SyncToDisk()
     source_outlets_layer = None
