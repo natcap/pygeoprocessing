@@ -2626,9 +2626,29 @@ def delineate_watersheds(
     clipped_outlets_layer = clipped_outlets_vector.CreateLayer(
         'clipped_outlets', flow_dir_srs, source_outlets_layer.GetGeomType())
 
-    # TODO: can logging be improved here?
-    LOGGER.info('Clipping outlets against the DEM')
-    source_outlets_layer.Clip(flow_dir_bbox_layer, clipped_outlets_layer)
+    def _clipping_callback(df_complete, psz_message, p_progress_arg):
+        """Log progress messages during long-running Clip calls.
+
+        The parameters for this function are defined by GDAL."""
+        try:
+            current_time = time.time()
+            if ((current_time - _clipping_callback.last_time) > 5.0 or
+                    (df_complete == 1.0 and _clipping_callback.total_time >= 5.0)):
+                LOGGER.info(
+                    'Clipping outlets against the DEM %.1f%% complete %s',
+                    df_complete * 100, psz_message)
+                _clipping_callback.last_time = time.time()
+                _clipping_callback.total_time += current_time
+        except AttributeError:
+            _clipping_callback.last_time = time.time()
+            _clipping_callback.total_time = 0.0
+        except:
+            # If an exception is uncaught from this callback, it will kill the
+            # gdal routine.  Just an FYI.
+            LOGGER.exception('Error in clipping progress callback')
+
+    source_outlets_layer.Clip(flow_dir_bbox_layer, clipped_outlets_layer,
+                              callback=_clipping_callback)
     clipped_outlets_vector.SyncToDisk()
     source_outlets_layer = None
     source_outlets_vector = None
