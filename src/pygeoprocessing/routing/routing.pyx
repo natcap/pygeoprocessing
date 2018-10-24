@@ -2733,20 +2733,24 @@ def delineate_watersheds(
         ws_id_to_fid[ws_id] = outflow_feature.GetFID()
         features_enqueued += 1
 
+    LOGGER.info('Delineating watersheds')
+    cdef int watersheds_started = 0
     while not outflow_queue.empty():
+        watersheds_started += 1
         pixels_in_watershed = 0
         current_pixel = outflow_queue.front()
         outflow_queue.pop()
         ws_id = <int> scratch_managed_raster.get(current_pixel.first,
                                                  current_pixel.second)
 
-        LOGGER.info('Delineating watershed %i of %i',
-                    ws_id, features_in_layer)
+        if ctime(NULL) - last_log_time > 5.0:
+            last_log_time = ctime(NULL)
+            LOGGER.info('Delineated %s watersheds of %s so far',
+                        watersheds_started, features_in_layer)
 
         process_queue.push(current_pixel)
         process_queue_set.insert(current_pixel)
         nested_watershed_ids.clear()  # clear the set for each watershed.
-        last_log_time = ctime(NULL)  # reset log time for each watershed.
 
         while not process_queue.empty():
             pixels_in_watershed += 1
