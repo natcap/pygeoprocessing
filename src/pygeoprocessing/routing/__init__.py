@@ -119,9 +119,15 @@ def join_watershed_fragments(watershed_fragments_vector,
             return shapely.ops.cascaded_union(geometries)
 
     # Iterate over the ws_ids that have upstream geometries and create the
-    # watershed geometries
-    for ws_id in set(upstream_fragments.keys()).difference(
-            set(watershed_geometries.keys())):
+    # watershed geometries.
+    # This iteration must happen in sorted order because real-world watersheds
+    # sometimes have thousands of nested watersheds, which will exhaust
+    # python's max recursion depth here if we're not careful.
+    # TODO: avoid max recursion depth here.
+    for ws_id in sorted(
+            set(upstream_fragments.keys()).difference(
+                set(watershed_geometries.keys())),
+            key=lambda ws_id_key: len(upstream_fragments[ws_id_key])):
         # The presence of a ws_id key in watershed_geometries could be
         # altered during a call to _recurse_watersheds.  This condition
         # ensures that we don't call _recurse_watersheds more than we need to.
