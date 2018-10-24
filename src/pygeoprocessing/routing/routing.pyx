@@ -2689,6 +2689,7 @@ def delineate_watersheds(
     cdef CoordinatePair current_pixel, neighbor_pixel, outflow_pixel
     cdef queue[CoordinatePair] process_queue, outflow_queue
     cdef cset[CoordinatePair] process_queue_set, outflow_queue_set
+    cdef cset[int] nested_watershed_ids
 
     cdef int* neighbor_col = [1, 1, 0, -1, -1, -1, 0, 1]
     cdef int* neighbor_row = [0, -1, -1, -1, 0, 1, 1, 1]
@@ -2714,7 +2715,6 @@ def delineate_watersheds(
         if geometry.GetGeometryType() == ogr.wkbPoint:
             point = geometry
         else:  # assume it's a polygon.
-            geometry = outflow_feature.GetGeometryRef()
             point = geometry.PointOnSurface()
 
         xi_outflow = (point.GetX() - source_gt[0]) // source_gt[1]
@@ -2739,7 +2739,7 @@ def delineate_watersheds(
 
         process_queue.push(current_pixel)
         process_queue_set.insert(current_pixel)
-        nested_watershed_ids = set([])
+        nested_watershed_ids.clear()  # clear the set for each watershed.
         last_log_time = ctime(NULL)  # reset log time for each watershed.
 
         while not process_queue.empty():
@@ -2796,7 +2796,7 @@ def delineate_watersheds(
                         # If it is, track the watershed connectivity, but otherwise
                         # skip this pixel.  Either we've already processed it, or
                         # else we will soon!
-                        nested_watershed_ids.add(neighbor_ws_id)
+                        nested_watershed_ids.insert(neighbor_ws_id)
                         continue
 
                     # The neighbor flows into this watershed and is not part of
@@ -2806,8 +2806,7 @@ def delineate_watersheds(
                     process_queue.push(neighbor_pixel)
                     process_queue_set.insert(neighbor_pixel)
 
-        nested_watersheds[ws_id] = nested_watershed_ids
-        ws_id += 1
+        nested_watersheds[ws_id] = set(nested_watershed_ids)
 
     flow_dir_managed_raster.close()  # Don't need this any more.
     scratch_managed_raster.close()  # flush the scratch raster.
