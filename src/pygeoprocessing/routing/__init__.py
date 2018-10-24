@@ -130,6 +130,7 @@ def join_watershed_fragments(watershed_fragments_vector,
 
     # Copy fields from the fragments vector and set the geometries to the
     # newly-created, unioned geometries.
+    # TODO: use transactions
     for ws_id, watershed_geometry in sorted(watershed_geometries.items(),
                                             key=lambda x: x[0]):
         # It's possible that this SQL query will return more than 1 feature.

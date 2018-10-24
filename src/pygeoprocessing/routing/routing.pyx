@@ -2565,6 +2565,8 @@ def delineate_watersheds(
             "%s is supposed to be a raster band tuple but it's not." % (
                 d8_flow_dir_raster_path_band))
 
+    # TODO: warn against mismatched projections.
+
     cdef _ManagedRaster flow_dir_managed_raster, scratch_managed_raster, mask_managed_raster
 
     flow_dir_managed_raster = _ManagedRaster(d8_flow_dir_raster_path_band[0],
@@ -2650,8 +2652,8 @@ def delineate_watersheds(
 
     # Create a new watershed scratch raster the size, shape of the flow dir raster
     # via rasterization.
-    # Type defaults to Float64.
-    cdef unsigned int NO_WATERSHED = 0
+    # TODO: make a byte and/or int managed raster class
+    cdef int NO_WATERSHED = 0
     LOGGER.info('Creating raster for tracking watershed fragments')
     pygeoprocessing.new_raster_from_base(
         d8_flow_dir_raster_path_band[0], scratch_raster_path, gdal.GDT_UInt32,
@@ -2702,6 +2704,8 @@ def delineate_watersheds(
     cdef int pixels_in_watershed
     cdef time_t last_log_time = ctime(NULL)
     cdef unsigned int features_enqueued = 0
+    # TODO: load these points into an rtree and pull them out by iterating over
+    # blocks in the raster.
     for outflow_feature in clipped_outlets_layer:
         if ctime(NULL) - last_log_time > 5.0:
             last_log_time = ctime(NULL)
@@ -2780,8 +2784,9 @@ def delineate_watersheds(
                 # If yes, enqueue it.
                 neighbor_ws_id = <int>scratch_managed_raster.get(
                     neighbor_pixel.first, neighbor_pixel.second)
-                if (neighbor_ws_id == ws_id and <int>mask_managed_raster.get(
-                        neighbor_pixel.first, neighbor_pixel.second) == 0):
+                pixel_visited = <int>mask_managed_raster.get(
+                        neighbor_pixel.first, neighbor_pixel.second)
+                if (neighbor_ws_id == ws_id and pixel_visited == 0):
                     process_queue.push(neighbor_pixel)
                     process_queue_set.insert(neighbor_pixel)
                     continue
@@ -2800,12 +2805,10 @@ def delineate_watersheds(
                         nested_watershed_ids.insert(neighbor_ws_id)
                         continue
 
-                    # The neighbor flows into this watershed and is not part of
-                    # another outflow geometry, so it's part of this distinct
-                    # watershed fragment and should be added to the processing
-                    # queue.
-                    process_queue.push(neighbor_pixel)
-                    process_queue_set.insert(neighbor_pixel)
+                    # If the pixel has not yet been visited, enqueue it.
+                    if pixel_visited == 0:
+                        process_queue.push(neighbor_pixel)
+                        process_queue_set.insert(neighbor_pixel)
 
         nested_watersheds[ws_id] = set(nested_watershed_ids)
 
