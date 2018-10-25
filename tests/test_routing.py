@@ -1170,6 +1170,42 @@ class TestRouting(unittest.TestCase):
             self.assertEqual(joined_feature.GetField('other'),
                              expected_other_values[ws_id])
 
+    def test_join_watersheds_with_cycles(self):
+        import pygeoprocessing.testing
+        import pygeoprocessing.routing
+
+        srs = osr.SpatialReference()
+        srs.ImportFromEPSG(32731)  # WGS84 / UTM zone 31s
+        srs_wkt = srs.ExportToWkt()
+
+        geoms = [
+            shapely.geometry.box(0, 0, 1, 1),
+            shapely.geometry.box(0, 1, 1, 2),
+        ]
+        fragments_vector_path = os.path.join(self.workspace_dir,
+                                             'ws_fragments.gpkg')
+        pygeoprocessing.testing.create_vector_on_disk(
+            geoms, srs_wkt, vector_format='GPKG',
+            filename=fragments_vector_path,
+            fields={'ws_id': 'int',
+                    'upstream_fragments': 'string'},
+            attributes=[
+                {'ws_id': 0, 'upstream_fragments': '1'},
+                {'ws_id': 1, 'upstream_fragments': '0'}])
+
+        watersheds_vector_path = os.path.join(self.workspace_dir,
+                                              'watersheds.gpkg')
+        pygeoprocessing.routing.join_watershed_fragments(
+            fragments_vector_path, watersheds_vector_path)
+
+        unioned_geometry = shapely.ops.cascaded_union(geoms)
+        watersheds_vector = gdal.OpenEx(watersheds_vector_path, gdal.OF_VECTOR)
+        watersheds_layer = watersheds_vector.GetLayer()
+        for feature in watersheds_layer:
+            shapely_geom = shapely.wkb.loads(feature.GetGeometryRef().ExportToWkb())
+            self.assertEquals(
+                0.0, unioned_geometry.difference(shapely_geom).area)
+
     def test_watershed_delineation_lakes(self):
         import pygeoprocessing.routing
         import pygeoprocessing.testing
