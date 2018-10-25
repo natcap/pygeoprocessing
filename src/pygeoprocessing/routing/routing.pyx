@@ -28,6 +28,7 @@ from osgeo import osr
 from osgeo import ogr
 import shapely.wkb
 import shapely.ops
+import rtree
 
 cimport numpy
 cimport cython
@@ -2703,9 +2704,9 @@ def delineate_watersheds(
     mask_managed_raster = _ManagedRaster(mask_raster_path, 1, 1)
 
     cdef long yi_outflow, xi_outflow
-    cdef CoordinatePair current_pixel, neighbor_pixel, outflow_pixel
-    cdef queue[CoordinatePair] process_queue, outflow_queue
-    cdef cset[CoordinatePair] process_queue_set, outflow_queue_set
+    cdef CoordinatePair current_pixel, neighbor_pixel
+    cdef queue[CoordinatePair] process_queue
+    cdef cset[CoordinatePair] process_queue_set
     cdef cset[int] nested_watershed_ids
 
     cdef int* neighbor_col = [1, 1, 0, -1, -1, -1, 0, 1]
@@ -2717,6 +2718,7 @@ def delineate_watersheds(
 
     # Track outflow geometry FIDs against the WS_ID used.
     ws_id_to_fid = {}
+    ws_id_to_outflow_point = {}
 
     clipped_outlets_vector = gdal.OpenEx(clipped_outlets_path,
                                          gdal.OF_VECTOR)
@@ -2728,6 +2730,7 @@ def delineate_watersheds(
     cdef unsigned int features_enqueued = 0
     # TODO: load these points into an rtree and pull them out by iterating over
     # blocks in the raster.
+    spatial_index = rtree.index.Index()
     for outflow_feature in clipped_outlets_layer:
         if ctime(NULL) - last_log_time > 5.0:
             last_log_time = ctime(NULL)
@@ -2746,97 +2749,99 @@ def delineate_watersheds(
         xi_outflow = (point.GetX() - source_gt[0]) // source_gt[1]
         yi_outflow = (point.GetY() - source_gt[3]) // source_gt[5]
 
-        outflow_pixel = CoordinatePair(xi_outflow, yi_outflow)
-        scratch_managed_raster.set(
-            outflow_pixel.first, outflow_pixel.second, ws_id)
-        outflow_queue.push(outflow_pixel)
-        outflow_queue_set.insert(outflow_pixel)
         ws_id_to_fid[ws_id] = outflow_feature.GetFID()
+        ws_id_to_outflow_point[ws_id] = (xi_outflow, yi_outflow)
+        spatial_index.insert(ws_id, (xi_outflow, yi_outflow,
+                                     xi_outflow, yi_outflow))
         features_enqueued += 1
 
     LOGGER.info('Delineating watersheds')
     cdef int watersheds_started = 0
-    while not outflow_queue.empty():
-        watersheds_started += 1
-        pixels_in_watershed = 0
-        current_pixel = outflow_queue.front()
-        outflow_queue.pop()
-        ws_id = <int> scratch_managed_raster.get(current_pixel.first,
-                                                 current_pixel.second)
+    for offset_dict in pygeoprocessing.iterblocks(d8_flow_dir_raster_path_band[0],
+                                                  offset_only=True):
+        for ws_id in spatial_index.intersection(
+                (offset_dict['xoff'], offset_dict['yoff'],
+                 offset_dict['xoff'] + offset_dict['win_xsize'],
+                 offset_dict['yoff'] + offset_dict['win_ysize'])):
 
-        if ctime(NULL) - last_log_time > 5.0:
-            last_log_time = ctime(NULL)
-            LOGGER.info('Delineated %s watersheds of %s so far',
-                        watersheds_started, features_in_layer)
+            watersheds_started += 1
+            pixels_in_watershed = 0
+            outflow_point = ws_id_to_outflow_point[ws_id]
+            current_pixel = CoordinatePair(outflow_point[0], outflow_point[1])
 
-        process_queue.push(current_pixel)
-        process_queue_set.insert(current_pixel)
-        nested_watershed_ids.clear()  # clear the set for each watershed.
-
-        while not process_queue.empty():
-            pixels_in_watershed += 1
             if ctime(NULL) - last_log_time > 5.0:
                 last_log_time = ctime(NULL)
-                LOGGER.info('Delineating watershed %i of %i, %i pixels '
-                            'found so far.', ws_id, features_in_layer,
-                            pixels_in_watershed)
+                LOGGER.info('Delineated %s watersheds of %s so far',
+                            watersheds_started, features_in_layer)
 
-            current_pixel = process_queue.front()
-            process_queue_set.erase(current_pixel)
-            process_queue.pop()
+            process_queue.push(current_pixel)
+            process_queue_set.insert(current_pixel)
+            nested_watershed_ids.clear()  # clear the set for each watershed.
 
-            mask_managed_raster.set(current_pixel.first,
-                                    current_pixel.second, 1)
-            scratch_managed_raster.set(current_pixel.first,
-                                       current_pixel.second, ws_id)
+            while not process_queue.empty():
+                pixels_in_watershed += 1
+                if ctime(NULL) - last_log_time > 5.0:
+                    last_log_time = ctime(NULL)
+                    LOGGER.info('Delineating watershed %i of %i, %i pixels '
+                                'found so far.', ws_id, features_in_layer,
+                                pixels_in_watershed)
 
-            for neighbor_index in range(8):
-                neighbor_pixel = CoordinatePair(
-                    current_pixel.first + neighbor_col[neighbor_index],
-                    current_pixel.second + neighbor_row[neighbor_index])
+                current_pixel = process_queue.front()
+                process_queue_set.erase(current_pixel)
+                process_queue.pop()
 
-                if not 0 <= neighbor_pixel.first < flow_dir_n_cols:
-                    continue
+                mask_managed_raster.set(current_pixel.first,
+                                        current_pixel.second, 1)
+                scratch_managed_raster.set(current_pixel.first,
+                                           current_pixel.second, ws_id)
 
-                if not 0 <= neighbor_pixel.second < flow_dir_n_rows:
-                    continue
+                for neighbor_index in range(8):
+                    neighbor_pixel = CoordinatePair(
+                        current_pixel.first + neighbor_col[neighbor_index],
+                        current_pixel.second + neighbor_row[neighbor_index])
 
-                # Is the neighbor pixel already in the queue?
-                if (process_queue_set.find(neighbor_pixel) !=
-                        process_queue_set.end()):
-                    continue
-
-                # Is the neighbor an unvisited lake pixel in this watershed?
-                # If yes, enqueue it.
-                neighbor_ws_id = <int>scratch_managed_raster.get(
-                    neighbor_pixel.first, neighbor_pixel.second)
-                pixel_visited = <int>mask_managed_raster.get(
-                        neighbor_pixel.first, neighbor_pixel.second)
-                if (neighbor_ws_id == ws_id and pixel_visited == 0):
-                    process_queue.push(neighbor_pixel)
-                    process_queue_set.insert(neighbor_pixel)
-                    continue
-
-                # Does the neighbor flow into the current pixel?
-                if (reverse_flow[neighbor_index] ==
-                        <int>flow_dir_managed_raster.get(
-                            neighbor_pixel.first, neighbor_pixel.second)):
-
-                    # Does the neighbor belong to a different outflow geometry?
-                    if (neighbor_ws_id != NO_WATERSHED and
-                            neighbor_ws_id != ws_id):
-                        # If it is, track the watershed connectivity, but otherwise
-                        # skip this pixel.  Either we've already processed it, or
-                        # else we will soon!
-                        nested_watershed_ids.insert(neighbor_ws_id)
+                    if not 0 <= neighbor_pixel.first < flow_dir_n_cols:
                         continue
 
-                    # If the pixel has not yet been visited, enqueue it.
-                    if pixel_visited == 0:
+                    if not 0 <= neighbor_pixel.second < flow_dir_n_rows:
+                        continue
+
+                    # Is the neighbor pixel already in the queue?
+                    if (process_queue_set.find(neighbor_pixel) !=
+                            process_queue_set.end()):
+                        continue
+
+                    # Is the neighbor an unvisited lake pixel in this watershed?
+                    # If yes, enqueue it.
+                    neighbor_ws_id = <int>scratch_managed_raster.get(
+                        neighbor_pixel.first, neighbor_pixel.second)
+                    pixel_visited = <int>mask_managed_raster.get(
+                            neighbor_pixel.first, neighbor_pixel.second)
+                    if (neighbor_ws_id == ws_id and pixel_visited == 0):
                         process_queue.push(neighbor_pixel)
                         process_queue_set.insert(neighbor_pixel)
+                        continue
 
-        nested_watersheds[ws_id] = set(nested_watershed_ids)
+                    # Does the neighbor flow into the current pixel?
+                    if (reverse_flow[neighbor_index] ==
+                            <int>flow_dir_managed_raster.get(
+                                neighbor_pixel.first, neighbor_pixel.second)):
+
+                        # Does the neighbor belong to a different outflow geometry?
+                        if (neighbor_ws_id != NO_WATERSHED and
+                                neighbor_ws_id != ws_id):
+                            # If it is, track the watershed connectivity, but otherwise
+                            # skip this pixel.  Either we've already processed it, or
+                            # else we will soon!
+                            nested_watershed_ids.insert(neighbor_ws_id)
+                            continue
+
+                        # If the pixel has not yet been visited, enqueue it.
+                        if pixel_visited == 0:
+                            process_queue.push(neighbor_pixel)
+                            process_queue_set.insert(neighbor_pixel)
+
+            nested_watersheds[ws_id] = set(nested_watershed_ids)
 
     flow_dir_managed_raster.close()  # Don't need this any more.
     scratch_managed_raster.close()  # flush the scratch raster.
