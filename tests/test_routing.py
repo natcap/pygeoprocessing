@@ -633,7 +633,8 @@ class TestRouting(unittest.TestCase):
             (flow_dir_d8_path, 1), (channel_path, 1),
             distance_to_channel_d8_path)
 
-        distance_to_channel_d8_raster = gdal.Open(distance_to_channel_d8_path)
+        distance_to_channel_d8_raster = gdal.OpenEx(
+            distance_to_channel_d8_path, gdal.OF_RASTER)
         distance_to_channel_d8_band = (
             distance_to_channel_d8_raster.GetRasterBand(1))
         distance_to_channel_d8_array = (
@@ -656,6 +657,7 @@ class TestRouting(unittest.TestCase):
 
         numpy.testing.assert_almost_equal(
             distance_to_channel_d8_array, expected_result)
+
 
     def test_distance_to_channel_d8_with_weights(self):
         """PGP.routing: test distance to channel D8."""
@@ -736,7 +738,8 @@ class TestRouting(unittest.TestCase):
             distance_to_channel_d8_path,
             weight_raster_path_band=(flow_dir_d8_weight_path, 1))
 
-        distance_to_channel_d8_raster = gdal.Open(distance_to_channel_d8_path)
+        distance_to_channel_d8_raster = gdal.OpenEx(
+            distance_to_channel_d8_path, gdal.OF_RASTER)
         distance_to_channel_d8_band = (
             distance_to_channel_d8_raster.GetRasterBand(1))
         distance_to_channel_d8_array = (
@@ -759,6 +762,40 @@ class TestRouting(unittest.TestCase):
 
         numpy.testing.assert_almost_equal(
             distance_to_channel_d8_array, expected_result)
+
+        # try with zero weights
+        zero_array = numpy.zeros(
+            distance_to_channel_d8_array.shape, dtype=numpy.float32)
+        zero_raster_path = os.path.join(self.workspace_dir, 'zero.tif')
+        zero_raster = driver.Create(
+            zero_raster_path, zero_array.shape[1],
+            zero_array.shape[0], 1, gdal.GDT_Float32, options=(
+                'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
+                'BLOCKXSIZE=32', 'BLOCKYSIZE=32'))
+        zero_band = zero_raster.GetRasterBand(1)
+        zero_band.WriteArray(zero_array)
+        zero_band.SetNoDataValue(0)
+        zero_band.FlushCache()
+        zero_raster.FlushCache()
+        zero_band = None
+        zero_raster = None
+        pygeoprocessing.routing.distance_to_channel_d8(
+            (flow_dir_d8_path, 1), (channel_path, 1),
+            distance_to_channel_d8_path,
+            weight_raster_path_band=(zero_raster_path, 1))
+
+        distance_to_channel_d8_raster = gdal.OpenEx(
+            distance_to_channel_d8_path, gdal.OF_RASTER)
+        distance_to_channel_d8_band = (
+            distance_to_channel_d8_raster.GetRasterBand(1))
+        distance_to_channel_d8_array = (
+            distance_to_channel_d8_band.ReadAsArray())
+        distance_to_channel_d8_band = None
+        distance_to_channel_d8_raster = None
+
+        numpy.testing.assert_almost_equal(
+            distance_to_channel_d8_array, zero_array)
+
 
     def test_distance_to_channel_mfd(self):
         """PGP.routing: test distance to channel mfd."""
@@ -837,8 +874,8 @@ class TestRouting(unittest.TestCase):
             (flow_dir_mfd_path, 1), (channel_path, 1),
             distance_to_channel_mfd_path)
 
-        distance_to_channel_mfd_raster = gdal.Open(
-            distance_to_channel_mfd_path)
+        distance_to_channel_mfd_raster = gdal.OpenEx(
+            distance_to_channel_mfd_path, gdal.OF_RASTER)
         distance_to_channel_mfd_band = (
             distance_to_channel_mfd_raster.GetRasterBand(1))
         distance_to_channel_mfd_array = (
@@ -976,8 +1013,8 @@ class TestRouting(unittest.TestCase):
             distance_to_channel_mfd_path,
             weight_raster_path_band=(flow_dir_mfd_weight_path, 1))
 
-        distance_to_channel_mfd_raster = gdal.Open(
-            distance_to_channel_mfd_path)
+        distance_to_channel_mfd_raster = gdal.OpenEx(
+            distance_to_channel_mfd_path, gdal.OF_RASTER)
         distance_to_channel_mfd_band = (
             distance_to_channel_mfd_raster.GetRasterBand(1))
         distance_to_channel_mfd_array = (
@@ -1003,3 +1040,36 @@ class TestRouting(unittest.TestCase):
 
         numpy.testing.assert_almost_equal(
             distance_to_channel_mfd_array, expected_result)
+
+        # try with zero weights
+        zero_array = numpy.zeros(
+            expected_result.shape, dtype=numpy.float32)
+        zero_raster_path = os.path.join(self.workspace_dir, 'zero.tif')
+        zero_raster = driver.Create(
+            zero_raster_path, zero_array.shape[1],
+            zero_array.shape[0], 1, gdal.GDT_Float32, options=(
+                'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
+                'BLOCKXSIZE=32', 'BLOCKYSIZE=32'))
+        zero_band = zero_raster.GetRasterBand(1)
+        zero_band.WriteArray(zero_array)
+        zero_band.SetNoDataValue(0)
+        zero_band.FlushCache()
+        zero_raster.FlushCache()
+        zero_band = None
+        zero_raster = None
+        pygeoprocessing.routing.distance_to_channel_mfd(
+            (flow_dir_mfd_path, 1), (channel_path, 1),
+            distance_to_channel_mfd_path,
+            weight_raster_path_band=(zero_raster_path, 1))
+
+        distance_to_channel_d8_raster = gdal.OpenEx(
+            distance_to_channel_mfd_path, gdal.OF_RASTER)
+        distance_to_channel_d8_band = (
+            distance_to_channel_d8_raster.GetRasterBand(1))
+        distance_to_channel_d8_array = (
+            distance_to_channel_d8_band.ReadAsArray())
+        distance_to_channel_d8_band = None
+        distance_to_channel_d8_raster = None
+
+        numpy.testing.assert_almost_equal(
+            distance_to_channel_d8_array, zero_array)
