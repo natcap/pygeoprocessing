@@ -2193,7 +2193,8 @@ def distance_to_channel_d8(
 
     # these area used to store custom per-pixel weights and per-pixel values
     # for distance updates
-    cdef float weight_val, pixel_val
+    cdef double weight_val, pixel_val
+    cdef double weight_nodata = IMPROBABLE_FLOAT_NODATA
 
     # used for time-delayed logging
     cdef time_t last_log_time
@@ -2221,6 +2222,11 @@ def distance_to_channel_d8(
     if weight_raster_path_band:
         weight_raster = _ManagedRaster(
             weight_raster_path_band[0], weight_raster_path_band[1], 0)
+        raw_weight_nodata = pygeoprocessing.get_raster_info(
+            weight_raster_path_band[0])['nodata'][
+                weight_raster_path_band[1]-1]
+        if raw_weight_nodata is not None:
+            weight_nodata = raw_weight_nodata
 
     channel_managed_raster = _ManagedRaster(
         channel_raster_path_band[0], channel_raster_path_band[1], 0)
@@ -2306,6 +2312,8 @@ def distance_to_channel_d8(
                             # for diagonal distance.
                             if weight_raster is not None:
                                 weight_val = weight_raster.get(xi_n, yi_n)
+                                if is_close(weight_val, weight_nodata):
+                                    weight_val = 0.0
                             else:
                                 weight_val = (SQRT2 if i_n % 2 else 1)
 
@@ -2366,6 +2374,7 @@ def distance_to_channel_mfd(
     # this value is used to store the current weight which might be 1 or
     # come from a predefined flow accumulation weight raster
     cdef double weight_val
+    cdef double weight_nodata = IMPROBABLE_FLOAT_NODATA
 
     # used for time-delayed logging
     cdef time_t last_log_time
@@ -2379,7 +2388,7 @@ def distance_to_channel_mfd(
                 "%s is supposed to be a raster band tuple but it's not." % (
                     path))
 
-    distance_nodata = -1
+    distance_nodata = IMPROBABLE_FLOAT_NODATA
     pygeoprocessing.new_raster_from_base(
         flow_dir_mfd_raster_path_band[0],
         target_distance_to_channel_raster_path,
@@ -2406,6 +2415,13 @@ def distance_to_channel_mfd(
     if weight_raster_path_band:
         weight_raster = _ManagedRaster(
             weight_raster_path_band[0], weight_raster_path_band[1], 0)
+        raw_weight_nodata = pygeoprocessing.get_raster_info(
+            weight_raster_path_band[0])['nodata'][
+                weight_raster_path_band[1]-1]
+        if raw_weight_nodata is not None:
+            weight_nodata = raw_weight_nodata
+        else:
+            weight_nodata = IMPROBABLE_FLOAT_NODATA
 
     flow_dir_raster_info = pygeoprocessing.get_raster_info(
         flow_dir_mfd_raster_path_band[0])
@@ -2516,6 +2532,8 @@ def distance_to_channel_mfd(
                         # for diagonal distance.
                         if weight_raster is not None:
                             weight_val = weight_raster.get(xi_n, yi_n)
+                            if is_close(weight_val, weight_nodata):
+                                weight_val = 0.0
                         else:
                             weight_val = (SQRT2 if i_n % 2 else 1)
 
