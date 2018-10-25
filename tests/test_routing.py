@@ -1052,7 +1052,7 @@ class TestRouting(unittest.TestCase):
             shapely.geometry.Point(5, -5),
             shapely.geometry.Point(3, -7),
             shapely.geometry.Point(0, 0),  # off edge of raster; skipped.
-            shapely.geometry.Point(3, -3),  # over nodata; skipped.
+            shapely.geometry.Point(3, -3),  # over nodata, still valid.
         ]
         pygeoprocessing.testing.create_vector_on_disk(
             points_geometry, srs_wkt, vector_format='GPKG',
@@ -1067,12 +1067,13 @@ class TestRouting(unittest.TestCase):
 
         watersheds_vector = ogr.Open(target_watersheds_vector)
         watersheds_layer = watersheds_vector.GetLayer()
-        self.assertEqual(watersheds_layer.GetFeatureCount(), 3)
+        self.assertEqual(watersheds_layer.GetFeatureCount(), 4)
 
         expected_ws_id_to_upstream_watersheds = {
             1: '2',
             2: '3',
             3: '',  # indicates no upstream watersheds
+            4: '',
         }
         ws_id_to_upstream_ws_id = dict(
             (f.GetField('ws_id'), f.GetField('upstream_fragments'))
@@ -1080,12 +1081,20 @@ class TestRouting(unittest.TestCase):
         self.assertEqual(expected_ws_id_to_upstream_watersheds,
                          ws_id_to_upstream_ws_id)
 
-        geometries = []
+        geometries = {}
         for watershed_feature in watersheds_vector.GetLayer():
-            geometries.append(shapely.wkb.loads(
-                watershed_feature.GetGeometryRef().ExportToWkb()))
+            ws_id = watershed_feature.GetField('ws_id')
+            shapely_geometry = shapely.wkb.loads(
+                watershed_feature.GetGeometryRef().ExportToWkb())
+            geometries[ws_id] = shapely_geometry
 
-        for ws_index, expected_area in enumerate([16, 12, 4]):
+        expected_areas = {
+            1: 16,
+            2: 12,
+            3: 4,
+            4: 4,
+        }
+        for ws_index, expected_area in expected_areas.items():
             self.assertEqual(geometries[ws_index].area, expected_area)
 
     def test_join_watershed_fragments(self):
