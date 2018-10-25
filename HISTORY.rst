@@ -1,8 +1,8 @@
 Release History
 ===============
 
-Unreleased Changes
-------------------
+1.3.0 10/25/2018
+-----------------
 * Fixed a handful of docstring errors.
 * Improved runtime of ``zonal_statistics`` by a couple of orders of magnitude
   for large vectors by using spatial indexes when calculating disjoint polygon
