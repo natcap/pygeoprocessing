@@ -152,6 +152,8 @@ cdef cppclass GreaterPixel nogil:
                 return 1
         return 0
 
+cdef int is_close(double x, double y):
+    return abs(x-y) <= (1e-8+1e-05*abs(y))
 
 # a class to allow fast random per-pixel access to a raster for both setting
 # and reading pixels.
@@ -1261,6 +1263,7 @@ def flow_accumulation_d8(
     # this value is used to store the current weight which might be 1 or
     # come from a predefined flow accumulation weight raster
     cdef double weight_val
+    cdef double weight_nodata = IMPROBABLE_FLOAT_NOATA  # set to something
 
     # `search_stack` is used to walk upstream to calculate flow accumulation
     # values
@@ -1304,6 +1307,11 @@ def flow_accumulation_d8(
     if weight_raster_path_band:
         weight_raster = _ManagedRaster(
             weight_raster_path_band[0], weight_raster_path_band[1], 0)
+        raw_weight_nodata = pygeoprocessing.get_raster_info(
+            weight_raster_path_band[0])['nodata'][
+                weight_raster_path_band[1]-1]
+        if raw_weight_nodata is not None:
+            weight_nodata = raw_weight_nodata
 
     flow_dir_raster_info = pygeoprocessing.get_raster_info(
         flow_dir_raster_path_band[0])
@@ -1363,6 +1371,8 @@ def flow_accumulation_d8(
                     if weight_raster is not None:
                         weight_val = <double>weight_raster.get(
                             xi_root, yi_root)
+                        if is_close(weight_val, weight_nodata):
+                            weight_val = 0.0
                     else:
                         weight_val = 1.0
                     search_stack.push(
@@ -1396,6 +1406,8 @@ def flow_accumulation_d8(
                             if weight_raster is not None:
                                 weight_val = <double>weight_raster.get(
                                     xi_n, yi_n)
+                                if is_close(weight_val, weight_nodata):
+                                    weight_val = 0.0
                             else:
                                 weight_val = 1.0
                             search_stack.push(
@@ -1923,7 +1935,8 @@ def flow_accumulation_mfd(
             raster that will be used as the per-pixel flow accumulation
             weight. If `None`, 1 is the default flow accumulation weight.
             This raster must be the same dimensions as
-            `flow_dir_mfd_raster_path_band`.
+            `flow_dir_mfd_raster_path_band`. If a weight nodata pixel is
+            encountered it will be treated as a weight value of 0.
 
     Returns:
         None.
@@ -1954,6 +1967,9 @@ def flow_accumulation_mfd(
     # to trigger a recursive uphill walk
     cdef double upstream_flow_accum
 
+    cdef double flow_accum_nodata = -1
+    cdef double weight_nodata = IMPROBABLE_FLOAT_NOATA
+
     # this value is used to store the current weight which might be 1 or
     # come from a predefined flow accumulation weight raster
     cdef double weight_val
@@ -1981,7 +1997,6 @@ def flow_accumulation_mfd(
             "%s is supposed to be a raster band tuple but it's not." % (
                 weight_raster_path_band))
 
-    flow_accum_nodata = -1
     pygeoprocessing.new_raster_from_base(
         flow_dir_mfd_raster_path_band[0], target_flow_accum_raster_path,
         gdal.GDT_Float64, [flow_accum_nodata],
@@ -2001,6 +2016,11 @@ def flow_accumulation_mfd(
     if weight_raster_path_band:
         weight_raster = _ManagedRaster(
             weight_raster_path_band[0], weight_raster_path_band[1], 0)
+        raw_weight_nodata = pygeoprocessing.get_raster_info(
+            weight_raster_path_band[0])['nodata'][
+                weight_raster_path_band[1]-1]
+        if raw_weight_nodata is not None:
+            weight_nodata = raw_weight_nodata
 
     flow_dir_raster_info = pygeoprocessing.get_raster_info(
         flow_dir_mfd_raster_path_band[0])
@@ -2062,6 +2082,8 @@ def flow_accumulation_mfd(
                         if weight_raster is not None:
                             weight_val = <double>weight_raster.get(
                                 xi_root, yi_root)
+                            if is_close(weight_val, weight_nodata):
+                                weight_val = 0.0
                         else:
                             weight_val = 1.0
                         search_stack.push(
@@ -2097,6 +2119,8 @@ def flow_accumulation_mfd(
                             if weight_raster is not None:
                                 weight_val = <double>weight_raster.get(
                                     xi_n, yi_n)
+                                if is_close(weight_val, weight_nodata):
+                                    weight_val = 0.0
                             else:
                                 weight_val = 1.0
                             search_stack.push(
