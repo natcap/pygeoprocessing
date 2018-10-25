@@ -188,6 +188,9 @@ cdef class _ManagedRaster:
         Returns:
             None.
         """
+        if not os.path.isfile(raster_path):
+            LOGGER.error("%s is not a file.", raster_path)
+            return
         raster_info = pygeoprocessing.get_raster_info(raster_path)
         self.raster_x_size, self.raster_y_size = raster_info['raster_size']
         self.block_xsize, self.block_ysize = raster_info['block_size']
@@ -984,7 +987,7 @@ def flow_dir_d8(
     dem_block_xsize, dem_block_ysize = dem_raster_info['block_size']
     if (dem_block_xsize & (dem_block_xsize - 1) != 0) or (
             dem_block_ysize & (dem_block_ysize - 1) != 0):
-        LOGGER.warn("dem is not a power of 2, creating a copy that is.")
+        LOGGER.warning("dem is not a power of 2, creating a copy that is.")
         compatable_dem_raster_path_band = (
             os.path.join(working_dir_path, 'compatable_dem.tif'),
             dem_raster_path_band[1])
@@ -1205,7 +1208,8 @@ def flow_dir_d8(
 
 
 def flow_accumulation_d8(
-        flow_dir_raster_path_band, target_flow_accum_raster_path):
+        flow_dir_raster_path_band, target_flow_accum_raster_path,
+        weight_raster_path_band=None):
     """D8 flow accumulation.
 
     Parameters:
@@ -1219,7 +1223,15 @@ def flow_accumulation_d8(
         target_flow_accum_raster_path (string): path to flow
             accumulation raster created by this call. After this call, the
             value of each pixel will be 1 plus the number of upstream pixels
-            that drain to that pixel.
+            that drain to that pixel. Note the target type of this raster
+            is a 64 bit float so there is minimal risk of overflow and the
+            possibility of handling a float dtype in
+            `weight_raster_path_band`.
+        weight_raster_path_band (tuple): optional path and band number to a
+            raster that will be used as the per-pixel flow accumulation
+            weight. If `None`, 1 is the default flow accumulation weight.
+            This raster must be the same dimensions as
+            `flow_dir_mfd_raster_path_band`.
 
     Returns:
         None.
@@ -1244,7 +1256,11 @@ def flow_accumulation_d8(
     cdef int flow_dir, upstream_flow_dir, flow_dir_nodata
 
     # used as a holder variable to account for upstream flow
-    cdef int upstream_flow_accum
+    cdef double upstream_flow_accum
+
+    # this value is used to store the current weight which might be 1 or
+    # come from a predefined flow accumulation weight raster
+    cdef double weight_val
 
     # `search_stack` is used to walk upstream to calculate flow accumulation
     # values
@@ -1258,10 +1274,20 @@ def flow_accumulation_d8(
     cdef time_t last_log_time
     last_log_time = ctime(NULL)
 
+    if not _is_raster_path_band_formatted(flow_dir_raster_path_band):
+        raise ValueError(
+            "%s is supposed to be a raster band tuple but it's not." % (
+                flow_dir_raster_path_band))
+    if weight_raster_path_band and not _is_raster_path_band_formatted(
+            weight_raster_path_band):
+        raise ValueError(
+            "%s is supposed to be a raster band tuple but it's not." % (
+                weight_raster_path_band))
+
     flow_accum_nodata = -1
     pygeoprocessing.new_raster_from_base(
         flow_dir_raster_path_band[0], target_flow_accum_raster_path,
-        gdal.GDT_Int32, [flow_accum_nodata],
+        gdal.GDT_Float64, [flow_accum_nodata],
         fill_value_list=[flow_accum_nodata],
         gtiff_creation_options=GTIFF_CREATION_OPTIONS)
     flow_accum_managed_raster = _ManagedRaster(
@@ -1273,6 +1299,11 @@ def flow_accumulation_d8(
         flow_dir_raster_path_band[0], gdal.OF_RASTER)
     flow_dir_band = flow_dir_raster.GetRasterBand(
         flow_dir_raster_path_band[1])
+
+    cdef _ManagedRaster weight_raster = None
+    if weight_raster_path_band:
+        weight_raster = _ManagedRaster(
+            weight_raster_path_band[0], weight_raster_path_band[1], 0)
 
     flow_dir_raster_info = pygeoprocessing.get_raster_info(
         flow_dir_raster_path_band[0])
@@ -1329,8 +1360,13 @@ def flow_accumulation_d8(
                     xi_root = xi-1+xoff
                     yi_root = yi-1+yoff
 
+                    if weight_raster is not None:
+                        weight_val = <double>weight_raster.get(
+                            xi_root, yi_root)
+                    else:
+                        weight_val = 1.0
                     search_stack.push(
-                        FlowPixelType(xi_root, yi_root, 0, 1))
+                        FlowPixelType(xi_root, yi_root, 0, weight_val))
 
                 while not search_stack.empty():
                     flow_pixel = search_stack.top()
@@ -1351,13 +1387,19 @@ def flow_accumulation_d8(
                                 D8_REVERSE_DIRECTION[i_n]):
                             # no upstream here
                             continue
-                        upstream_flow_accum = (
-                            <int>flow_accum_managed_raster.get(xi_n, yi_n))
+                        upstream_flow_accum = <double>(
+                            flow_accum_managed_raster.get(xi_n, yi_n))
                         if upstream_flow_accum == flow_accum_nodata:
                             # process upstream before this one
                             flow_pixel.last_flow_dir = i_n
                             search_stack.push(flow_pixel)
-                            search_stack.push(FlowPixelType(xi_n, yi_n, 0, 1))
+                            if weight_raster is not None:
+                                weight_val = <double>weight_raster.get(
+                                    xi_n, yi_n)
+                            else:
+                                weight_val = 1.0
+                            search_stack.push(
+                                FlowPixelType(xi_n, yi_n, 0, weight_val))
                             preempted = 1
                             break
                         flow_pixel.value += upstream_flow_accum
@@ -1365,6 +1407,7 @@ def flow_accumulation_d8(
                         flow_accum_managed_raster.set(
                             flow_pixel.xi, flow_pixel.yi,
                             flow_pixel.value)
+    flow_accum_managed_raster.close()
     LOGGER.info('%.2f%% complete', 100.0)
 
 
@@ -1540,7 +1583,7 @@ def flow_dir_mfd(
     dem_block_xsize, dem_block_ysize = dem_raster_info['block_size']
     if (dem_block_xsize & (dem_block_xsize - 1) != 0) or (
             dem_block_ysize & (dem_block_ysize - 1) != 0):
-        LOGGER.warn("dem is not a power of 2, creating a copy that is.")
+        LOGGER.warning("dem is not a power of 2, creating a copy that is.")
         compatable_dem_raster_path_band = (
             os.path.join(working_dir_path, 'compatable_dem.tif'),
             dem_raster_path_band[1])
@@ -1856,7 +1899,8 @@ def flow_dir_mfd(
 
 
 def flow_accumulation_mfd(
-        flow_dir_mfd_raster_path_band, target_flow_accum_raster_path):
+        flow_dir_mfd_raster_path_band, target_flow_accum_raster_path,
+        weight_raster_path_band=None):
     """Multiple flow direction accumulation.
 
     Parameters:
@@ -1871,7 +1915,15 @@ def flow_accumulation_mfd(
             flow into it. The proportion is determined as the value of the
             upstream flow dir pixel in the downslope direction pointing to
             the current pixel divided by the sum of all the flow weights
-            exiting that pixel.
+            exiting that pixel. Note the target type of this raster
+            is a 64 bit float so there is minimal risk of overflow and the
+            possibility of handling a float dtype in
+            `weight_raster_path_band`.
+        weight_raster_path_band (tuple): optional path and band number to a
+            raster that will be used as the per-pixel flow accumulation
+            weight. If `None`, 1 is the default flow accumulation weight.
+            This raster must be the same dimensions as
+            `flow_dir_mfd_raster_path_band`.
 
     Returns:
         None.
@@ -1902,6 +1954,10 @@ def flow_accumulation_mfd(
     # to trigger a recursive uphill walk
     cdef double upstream_flow_accum
 
+    # this value is used to store the current weight which might be 1 or
+    # come from a predefined flow accumulation weight raster
+    cdef double weight_val
+
     # `search_stack` is used to walk upstream to calculate flow accumulation
     # values represented in a flow pixel which stores the x/y position,
     # next direction to check, and running flow accumulation value.
@@ -1914,6 +1970,16 @@ def flow_accumulation_mfd(
     # used for time-delayed logging
     cdef time_t last_log_time
     last_log_time = ctime(NULL)
+
+    if not _is_raster_path_band_formatted(flow_dir_mfd_raster_path_band):
+        raise ValueError(
+            "%s is supposed to be a raster band tuple but it's not." % (
+                flow_dir_mfd_raster_path_band))
+    if weight_raster_path_band and not _is_raster_path_band_formatted(
+            weight_raster_path_band):
+        raise ValueError(
+            "%s is supposed to be a raster band tuple but it's not." % (
+                weight_raster_path_band))
 
     flow_accum_nodata = -1
     pygeoprocessing.new_raster_from_base(
@@ -1931,13 +1997,19 @@ def flow_accumulation_mfd(
     flow_dir_band = flow_dir_raster.GetRasterBand(
         flow_dir_mfd_raster_path_band[1])
 
+    cdef _ManagedRaster weight_raster = None
+    if weight_raster_path_band:
+        weight_raster = _ManagedRaster(
+            weight_raster_path_band[0], weight_raster_path_band[1], 0)
+
     flow_dir_raster_info = pygeoprocessing.get_raster_info(
         flow_dir_mfd_raster_path_band[0])
     raster_x_size, raster_y_size = flow_dir_raster_info['raster_size']
 
     # this outer loop searches for a pixel that is locally undrained
     for offset_dict in pygeoprocessing.iterblocks(
-            flow_dir_mfd_raster_path_band[0], offset_only=True, largest_block=0):
+            flow_dir_mfd_raster_path_band[0], offset_only=True,
+            largest_block=0):
         win_xsize = offset_dict['win_xsize']
         win_ysize = offset_dict['win_ysize']
         xoff = offset_dict['xoff']
@@ -1987,8 +2059,13 @@ def flow_accumulation_mfd(
                         # root must be a drain
                         xi_root = xi-1+xoff
                         yi_root = yi-1+yoff
+                        if weight_raster is not None:
+                            weight_val = <double>weight_raster.get(
+                                xi_root, yi_root)
+                        else:
+                            weight_val = 1.0
                         search_stack.push(
-                            FlowPixelType(xi_root, yi_root, 0, 1))
+                            FlowPixelType(xi_root, yi_root, 0, weight_val))
                         break
 
                 while not search_stack.empty():
@@ -2017,7 +2094,13 @@ def flow_accumulation_mfd(
                             # process upstream before this one
                             flow_pixel.last_flow_dir = i_n
                             search_stack.push(flow_pixel)
-                            search_stack.push(FlowPixelType(xi_n, yi_n, 0, 1))
+                            if weight_raster is not None:
+                                weight_val = <double>weight_raster.get(
+                                    xi_n, yi_n)
+                            else:
+                                weight_val = 1.0
+                            search_stack.push(
+                                FlowPixelType(xi_n, yi_n, 0, weight_val))
                             preempted = 1
                             break
                         upstream_flow_dir_sum = 0
@@ -2033,12 +2116,14 @@ def flow_accumulation_mfd(
                         flow_accum_managed_raster.set(
                             flow_pixel.xi, flow_pixel.yi,
                             flow_pixel.value)
+    flow_accum_managed_raster.close()
     LOGGER.info('%.2f%% complete', 100.0)
 
 
 def distance_to_channel_d8(
         flow_dir_d8_raster_path_band, channel_raster_path_band,
-        target_distance_to_channel_raster_path):
+        target_distance_to_channel_raster_path,
+        weight_raster_path_band=None):
     """Calculate distance to channel with D8 flow.
 
     Parameters:
@@ -2057,6 +2142,11 @@ def distance_to_channel_d8(
         target_distance_to_channel_raster_path (string): path to a raster
             created by this call that has per-pixel distances from a given
             pixel to the nearest downhill channel.
+        weight_raster_path_band (tuple): optional path and band number to a
+            raster that will be used as the per-pixel flow distance
+            weight. If `None`, 1 is the default distance between neighboring
+            pixels. This raster must be the same dimensions as
+            `flow_dir_mfd_raster_path_band`.
 
     Returns:
         None.
@@ -2077,9 +2167,21 @@ def distance_to_channel_d8(
     # properties of the parallel rasters
     cdef int raster_x_size, raster_y_size
 
+    # these area used to store custom per-pixel weights and per-pixel values
+    # for distance updates
+    cdef float weight_val, pixel_val
+
     # used for time-delayed logging
     cdef time_t last_log_time
     last_log_time = ctime(NULL)
+
+    for path in (
+            flow_dir_d8_raster_path_band, channel_raster_path_band,
+            weight_raster_path_band):
+        if path is not None and not _is_raster_path_band_formatted(path):
+            raise ValueError(
+                "%s is supposed to be a raster band tuple but it's not." % (
+                    path))
 
     distance_nodata = -1
     pygeoprocessing.new_raster_from_base(
@@ -2090,6 +2192,11 @@ def distance_to_channel_d8(
         gtiff_creation_options=GTIFF_CREATION_OPTIONS)
     distance_to_channel_managed_raster = _ManagedRaster(
         target_distance_to_channel_raster_path, 1, 1)
+
+    cdef _ManagedRaster weight_raster = None
+    if weight_raster_path_band:
+        weight_raster = _ManagedRaster(
+            weight_raster_path_band[0], weight_raster_path_band[1], 0)
 
     channel_managed_raster = _ManagedRaster(
         channel_raster_path_band[0], channel_raster_path_band[1], 0)
@@ -2143,15 +2250,15 @@ def distance_to_channel_d8(
                     continue
 
                 distance_to_channel_stack.push(
-                    PixelType(0.0, xi+xoff-1, yi+yoff-1, 0.0))
+                    PixelType(0.0, xi+xoff-1, yi+yoff-1, 0))
 
                 while not distance_to_channel_stack.empty():
                     xi_q = distance_to_channel_stack.top().xi
                     yi_q = distance_to_channel_stack.top().yi
-                    dist_q = distance_to_channel_stack.top().value
+                    pixel_val = distance_to_channel_stack.top().value
                     distance_to_channel_stack.pop()
 
-                    distance_to_channel_managed_raster.set(xi_q, yi_q, dist_q)
+                    distance_to_channel_managed_raster.set(xi_q, yi_q, pixel_val)
 
                     for i_n in xrange(8):
                         xi_n = xi_q+NEIGHBOR_OFFSET_ARRAY[2*i_n]
@@ -2168,15 +2275,24 @@ def distance_to_channel_d8(
 
                         if (flow_dir_d8_managed_raster.get(xi_n, yi_n) ==
                                 D8_REVERSE_DIRECTION[i_n]):
+                            # if a weight is passed we use it directly and do
+                            # not consider that a diagonal pixel is further
+                            # away than an adjacent one. If no weight is used
+                            # then "distance" is being calculated and we account
+                            # for diagonal distance.
+                            if weight_raster is not None:
+                                weight_val = weight_raster.get(xi_n, yi_n)
+                            else:
+                                weight_val = (SQRT2 if i_n % 2 else 1)
+
                             distance_to_channel_stack.push(
                                 PixelType(
-                                    SQRT2 + dist_q if i_n % 2 else dist_q + 1,
-                                    xi_n, yi_n, 0.0))
+                                    weight_val + pixel_val, xi_n, yi_n, 0))
 
 
 def distance_to_channel_mfd(
         flow_dir_mfd_raster_path_band, channel_raster_path_band,
-        target_distance_to_channel_raster_path):
+        target_distance_to_channel_raster_path, weight_raster_path_band=None):
     """Calculate distance to channel with multiple flow direction.
 
     Parameters:
@@ -2193,6 +2309,11 @@ def distance_to_channel_mfd(
         target_distance_to_channel_raster_path (string): path to a raster
             created by this call that has per-pixel distances from a given
             pixel to the nearest downhill channel.
+        weight_raster_path_band (tuple): optional path and band number to a
+            raster that will be used as the per-pixel flow distance
+            weight. If `None`, 1 is the default distance between neighboring
+            pixels. This raster must be the same dimensions as
+            `flow_dir_mfd_raster_path_band`.
 
     Returns:
         None.
@@ -2211,9 +2332,6 @@ def distance_to_channel_mfd(
     # used to remember if the current pixel is a channel for routing
     cdef int is_a_channel
 
-    # used when searching pixels to be fully upstream
-    cdef int inflow
-
     # `distance_to_channel_queue` is the data structure that walks upstream
     # from a defined flow distance pixel
     cdef stack[FlowPixelType] distance_to_channel_stack
@@ -2221,9 +2339,21 @@ def distance_to_channel_mfd(
     # properties of the parallel rasters
     cdef int raster_x_size, raster_y_size
 
+    # this value is used to store the current weight which might be 1 or
+    # come from a predefined flow accumulation weight raster
+    cdef double weight_val
+
     # used for time-delayed logging
     cdef time_t last_log_time
     last_log_time = ctime(NULL)
+
+    for path in (
+            flow_dir_mfd_raster_path_band, channel_raster_path_band,
+            weight_raster_path_band):
+        if path is not None and not _is_raster_path_band_formatted(path):
+            raise ValueError(
+                "%s is supposed to be a raster band tuple but it's not." % (
+                    path))
 
     distance_nodata = -1
     pygeoprocessing.new_raster_from_base(
@@ -2247,6 +2377,11 @@ def distance_to_channel_mfd(
         flow_dir_mfd_raster_path_band[0], gdal.OF_RASTER)
     flow_dir_mfd_band = flow_dir_mfd_raster.GetRasterBand(
         flow_dir_mfd_raster_path_band[1])
+
+    cdef _ManagedRaster weight_raster = None
+    if weight_raster_path_band:
+        weight_raster = _ManagedRaster(
+            weight_raster_path_band[0], weight_raster_path_band[1], 0)
 
     flow_dir_raster_info = pygeoprocessing.get_raster_info(
         flow_dir_mfd_raster_path_band[0])
@@ -2350,8 +2485,18 @@ def distance_to_channel_mfd(
                                 FlowPixelType(xi_n, yi_n, 0, 0.0))
                             break
 
+                        # if a weight is passed we use it directly and do
+                        # not consider that a diagonal pixel is further
+                        # away than an adjacent one. If no weight is used
+                        # then "distance" is being calculated and we account
+                        # for diagonal distance.
+                        if weight_raster is not None:
+                            weight_val = weight_raster.get(xi_n, yi_n)
+                        else:
+                            weight_val = (SQRT2 if i_n % 2 else 1)
+
                         pixel.value += flow_dir_weight * (
-                            (SQRT2 if i_n % 2 else 1) + n_distance)
+                            weight_val + n_distance)
 
                     if preempted:
                         continue
@@ -2368,3 +2513,17 @@ def distance_to_channel_mfd(
                     distance_to_channel_managed_raster.set(
                         pixel.xi, pixel.yi, pixel.value)
     LOGGER.info('%.2f%% complete', 100.0)
+
+
+def _is_raster_path_band_formatted(raster_path_band):
+    """Return true if raster path band is a (str, int) tuple/list."""
+    if not isinstance(raster_path_band, (list, tuple)):
+        return False
+    elif len(raster_path_band) != 2:
+        return False
+    elif not isinstance(raster_path_band[0], basestring):
+        return False
+    elif not isinstance(raster_path_band[1], int):
+        return False
+    else:
+        return True

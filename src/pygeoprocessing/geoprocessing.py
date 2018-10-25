@@ -9,17 +9,15 @@ from builtins import zip
 from builtins import range
 import logging
 import os
-import shutil
 import functools
 import math
-import heapq
 import time
 import tempfile
-import uuid
 import distutils.version
 import multiprocessing
 import multiprocessing.pool
 import threading
+import collections
 
 try:
     import queue
@@ -46,6 +44,7 @@ import pprint
 from osgeo import gdal
 from osgeo import osr
 from osgeo import ogr
+import rtree
 import numpy
 import numpy.ma
 import scipy.interpolate
@@ -53,7 +52,7 @@ import scipy.sparse
 import scipy.signal
 import scipy.ndimage
 import scipy.signal.signaltools
-import shapely.wkt
+import shapely.wkb
 import shapely.ops
 import shapely.prepared
 from . import geoprocessing_core
@@ -72,29 +71,6 @@ except ImportError:
 
 _LOGGING_PERIOD = 5.0  # min 5.0 seconds per update log message for the module
 _LARGEST_ITERBLOCK = 2**16  # largest block for iterblocks to read in cells
-
-# A dictionary to map the resampling method input string to the gdal type
-_RESAMPLE_DICT = {
-    "near": gdal.GRA_NearestNeighbour,
-    "bilinear": gdal.GRA_Bilinear,
-    "cubic": gdal.GRA_Cubic,
-    "cubic_spline": gdal.GRA_CubicSpline,
-    "lanczos": gdal.GRA_Lanczos,
-    'mode': gdal.GRA_Mode,
-    'average': gdal.GRA_Average,
-}
-
-
-# GDAL 2.2.3 added a couple of useful interpolation values.
-if (distutils.version.LooseVersion(gdal.__version__) >=
-        distutils.version.LooseVersion('2.2.3')):
-    _RESAMPLE_DICT.update({
-        'max': gdal.GRA_Max,
-        'min': gdal.GRA_Min,
-        'med': gdal.GRA_Med,
-        'q1': gdal.GRA_Q1,
-        'q3': gdal.GRA_Q3,
-    })
 
 
 def raster_calculator(
@@ -400,6 +376,15 @@ def raster_calculator(
             for value in base_canonical_arg_list:
                 if isinstance(value, gdal.Band):
                     data_blocks.append(value.ReadAsArray(**block_offset))
+                    # I've encountered the following error when a gdal raster
+                    # is corrupt, often from multiple threads writing to the
+                    # same file. This helps to catch the error early rather
+                    # than lead to confusing values of `data_blocks` later.
+                    if not isinstance(data_blocks[-1], numpy.ndarray):
+                        raise ValueError(
+                            "got a %s when trying to read %s at %s",
+                            data_blocks[-1], value.GetDataset().GetFileList(),
+                            block_offset)
                 elif isinstance(value, numpy.ndarray):
                     # must be numpy array and all have been conditioned to be
                     # 2d, so start with 0:1 slices and expand if possible
@@ -498,8 +483,9 @@ def raster_calculator(
 def align_and_resize_raster_stack(
         base_raster_path_list, target_raster_path_list, resample_method_list,
         target_pixel_size, bounding_box_mode, base_vector_path_list=None,
-        raster_align_index=None, target_sr_wkt=None,
-        gtiff_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS):
+        raster_align_index=None, base_sr_wkt_list=None, target_sr_wkt=None,
+        gtiff_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS,
+        vector_mask_options=None):
     """Generate rasters from a base such that they align geospatially.
 
     This function resizes base rasters that are in the same geospatial
@@ -514,15 +500,17 @@ def align_and_resize_raster_stack(
             box.
         target_raster_path_list (list): a list of raster paths that will be
             created to one-to-one map with `base_raster_path_list` as aligned
-            versions of those original rasters.
+            versions of those original rasters. If there are duplicate paths
+            in this list, the function will raise a ValueError.
         resample_method_list (list): a list of resampling methods which
             one to one map each path in `base_raster_path_list` during
             resizing.  Each element must be one of
-            "near|bilinear|cubic|cubic_spline|lanczos|mode".
+            "near|bilinear|cubic|cubicspline|lanczos|mode".
         target_pixel_size (tuple): the target raster's x and y pixel size
             example: [30, -30].
         bounding_box_mode (string): one of "union", "intersection", or
-            a list of floats of the form [minx, miny, maxx, maxy].  Depending
+            a list of floats of the form [minx, miny, maxx, maxy] in the
+            target projection coordinate system.  Depending
             on the value, output extents are defined as the union,
             intersection, or the explicit bounding box.
         base_vector_path_list (list): a list of base vector paths whose
@@ -537,15 +525,50 @@ def align_and_resize_raster_stack(
             grid layout.  If `None` then the bounding box of the target
             rasters is calculated as the precise intersection, union, or
             bounding box.
+        base_sr_wkt_list (list): if not None, this is a list of base
+            projections of the rasters in `base_raster_path_list`. If a value
+            is `None` the `base_sr` is assumed to be whatever is defined in
+            that raster. This value is useful if there are rasters with no
+            projection defined, but otherwise known.
         target_sr_wkt (string): if not None, this is the desired
             projection of all target rasters in Well Known Text format. If
             None, the base SRS will be passed to the target.
         gtiff_creation_options (list): list of strings that will be passed
             as GDAL "dataset" creation options to the GTIFF driver, or ignored
             if None.
+        vector_mask_options (dict): optional, if not None, this is a
+            dictionary of options to use an existing vector's geometry to
+            mask out pixels in the target raster that do not overlap the
+            vector's geometry. Keys to this dictionary are:
+                'mask_vector_path': (str) path to the mask vector file. This
+                    vector will be automatically projected to the target
+                    projection if its base coordinate system does not match
+                    the target.
+                'mask_layer_name': (str) the layer name to use for masking,
+                    if this key is not in the dictionary the default is to use
+                    the layer at index 0.
+                'mask_vector_where_filter': (str) an SQL WHERE string that can
+                    be used to filter the geometry in the mask. Ex:
+                    'id > 10' would use all features whose field value of
+                    'id' is > 10.
 
     Returns:
         None
+
+    Raises:
+        ValueError if any combination of the raw bounding boxes, raster
+            bounding boxes, vector bounding boxes, and/or vector_mask
+            bounding box does not overlap to produce a valid target.
+        ValueError if any of the input or target lists are of different
+            lengths.
+        ValueError if there are duplicate paths on the target list which would
+            risk corrupted output.
+        ValueError if some combination of base, target, and embedded source
+            reference systems results in an ambiguous target coordinate
+            system.
+        ValueError if `vector_mask_options` is not None but the
+            `mask_vector_path` is undefined or doesn't point to a valid
+            file.
 
     """
     # make sure that the input lists are of the same length
@@ -557,6 +580,20 @@ def align_and_resize_raster_stack(
             "base_raster_path_list, target_raster_path_list, and "
             "resample_method_list must be the same length "
             " current lengths are %s" % (str(list_lengths)))
+
+    unique_targets = set(target_raster_path_list)
+    if len(unique_targets) != len(target_raster_path_list):
+        seen = set()
+        duplicate_list = []
+        for path in target_raster_path_list:
+            if path not in seen:
+                seen.add(path)
+            else:
+                duplicate_list.append(path)
+        raise ValueError(
+            "There are duplicated paths on the target list. This is an "
+            "invalid state of `target_path_list`. Duplicates: %s" % (
+                duplicate_list))
 
     # we can accept 'union', 'intersection', or a 4 element list/tuple
     if bounding_box_mode not in ["union", "intersection"] and (
@@ -578,6 +615,9 @@ def align_and_resize_raster_stack(
 
     # get the literal or intersecting/unioned bounding box
     if isinstance(bounding_box_mode, (list, tuple)):
+        # if it's a list or tuple, it must be a manual bounding box
+        LOGGER.debug(
+            "assuming manual bounding box mode of %s", bounding_box_mode)
         target_bounding_box = bounding_box_mode
     else:
         # either intersection or union, get list of bounding boxes, reproject
@@ -590,21 +630,77 @@ def align_and_resize_raster_stack(
         else:
             vector_info_list = []
 
-        bounding_box_list = [
-            transform_bounding_box(
-                info['bounding_box'], info['projection'], target_sr_wkt)
-            if target_sr_wkt else info['bounding_box']
-            for info in raster_info_list + vector_info_list]
+        raster_bounding_box_list = []
+        for raster_index, raster_info in enumerate(raster_info_list):
+            # this block calculates the base projection of `raster_info` if
+            # `target_sr_wkt` is defined, thus implying a reprojection will
+            # be necessary.
+            if target_sr_wkt:
+                if base_sr_wkt_list and base_sr_wkt_list[raster_index]:
+                    # a base is defined, use that
+                    base_raster_sr_wkt = base_sr_wkt_list[raster_index]
+                else:
+                    # otherwise use the raster's projection and there must
+                    # be one since we're reprojecting
+                    base_raster_sr_wkt = raster_info['projection']
+                    if not base_raster_sr_wkt:
+                        raise ValueError(
+                            "no projection for raster %s" %
+                            base_raster_path_list[raster_index])
+                # since the base spatial reference is potentially different
+                # than the target, we need to transform the base bounding
+                # box into target coordinates so later we can calculate
+                # accurate bounding box overlaps in the target coordinate
+                # system
+                raster_bounding_box_list.append(
+                    transform_bounding_box(
+                        raster_info['bounding_box'], base_raster_sr_wkt,
+                        target_sr_wkt))
+            else:
+                raster_bounding_box_list.append(raster_info['bounding_box'])
 
-        target_bounding_box = reduce(
-            functools.partial(_merge_bounding_boxes, mode=bounding_box_mode),
-            bounding_box_list)
+        # include the vector bounding box information to make a global list
+        # of target bounding boxes
+        bounding_box_list = [
+            vector_info['bounding_box'] if target_sr_wkt is None else
+            transform_bounding_box(
+                vector_info['bounding_box'],
+                vector_info['projection'], target_sr_wkt)
+            for vector_info in vector_info_list] + raster_bounding_box_list
+
+        target_bounding_box = merge_bounding_box_list(
+            bounding_box_list, bounding_box_mode)
 
     if bounding_box_mode == "intersection" and (
             target_bounding_box[0] > target_bounding_box[2] or
             target_bounding_box[1] > target_bounding_box[3]):
         raise ValueError("The rasters' and vectors' intersection is empty "
                          "(not all rasters and vectors touch each other).")
+
+    if vector_mask_options:
+        # translate pygeoprocessing terminology into GDAL warp options.
+        if 'mask_vector_path' not in vector_mask_options:
+            raise ValueError(
+                'vector_mask_options passed, but no value for '
+                '"mask_vector_path": %s', vector_mask_options)
+        mask_vector_info = get_vector_info(
+            vector_mask_options['mask_vector_path'])
+        mask_vector_sr_wkt = mask_vector_info['projection']
+        if mask_vector_sr_wkt is not None and target_sr_wkt is not None:
+            mask_vector_bb = transform_bounding_box(
+                mask_vector_info['bounding_box'],
+                mask_vector_info['projection'], target_sr_wkt)
+        else:
+            mask_vector_bb = mask_vector_info['bounding_box']
+        mask_vector_intersect_box = merge_bounding_box_list(
+            [target_bounding_box, mask_vector_bb], 'intersection')
+
+        if (mask_vector_intersect_box[0] > mask_vector_intersect_box[2] or
+                mask_vector_intersect_box[1] > mask_vector_intersect_box[3]):
+            raise ValueError(
+                "The mask vector's bounding box does not overlap with the "
+                "target bounding box. (mask bb: %s, target bb: %s)" % (
+                    mask_vector_bb, target_bounding_box))
 
     if raster_align_index is not None and raster_align_index >= 0:
         # bounding box needs alignment
@@ -640,7 +736,7 @@ def align_and_resize_raster_stack(
                     try:
                         child.nice(PROCESS_LOW_PRIORITY)
                     except psutil.NoSuchProcess:
-                        LOGGER.warn(
+                        LOGGER.warning(
                             "NoSuchProcess exception encountered when trying "
                             "to nice %s. This might be a bug in `psutil` so "
                             "it should be okay to ignore." % parent)
@@ -653,7 +749,7 @@ def align_and_resize_raster_stack(
                 "to recover.")
             return
     else:
-        LOGGER.info("n_workers == 1 so a threadpool is sufficient")
+        LOGGER.debug("n_workers == 1 so a threadpool is sufficient")
         worker_pool = multiprocessing.pool.ThreadPool(n_workers)
 
     try:
@@ -669,7 +765,10 @@ def align_and_resize_raster_stack(
                     'target_bb': target_bounding_box,
                     'gtiff_creation_options': gtiff_creation_options,
                     'target_sr_wkt': target_sr_wkt,
-                    })
+                    'base_sr_wkt': (
+                        None if not base_sr_wkt_list else
+                        base_sr_wkt_list[index]),
+                    'vector_mask_options': vector_mask_options})
             result_list.append(result)
         worker_pool.close()
         for index, result in enumerate(result_list):
@@ -686,67 +785,6 @@ def align_and_resize_raster_stack(
         worker_pool.terminate()
 
     LOGGER.info("aligned all %d rasters.", n_rasters)
-
-
-def calculate_raster_stats(raster_path):
-    """Calculate and set min, max, stdev, and mean for all bands in raster.
-
-    Parameters:
-        raster_path (string): a path to a GDAL raster raster that will be
-            modified by having its band statistics set
-
-    Returns:
-        None
-
-    """
-    raster = gdal.OpenEx(raster_path, gdal.GA_Update)
-    raster_properties = get_raster_info(raster_path)
-    for band_index in range(raster.RasterCount):
-        target_min = None
-        target_max = None
-        target_n = 0
-        target_sum = 0.0
-        for _, target_block in iterblocks(
-                raster_path, band_index_list=[band_index+1]):
-            nodata_target = raster_properties['nodata'][band_index]
-            # guard against an undefined nodata target
-            valid_mask = numpy.ones(target_block.shape, dtype=bool)
-            if nodata_target is not None:
-                valid_mask[:] = target_block != nodata_target
-            valid_block = target_block[valid_mask]
-            if valid_block.size == 0:
-                continue
-            if target_min is None:
-                # initialize first min/max
-                target_min = target_max = valid_block[0]
-            target_sum += numpy.sum(valid_block)
-            target_min = min(numpy.min(valid_block), target_min)
-            target_max = max(numpy.max(valid_block), target_max)
-            target_n += valid_block.size
-
-        if target_min is not None:
-            target_mean = target_sum / float(target_n)
-            stdev_sum = 0.0
-            for _, target_block in iterblocks(
-                    raster_path, band_index_list=[band_index+1]):
-                # guard against an undefined nodata target
-                valid_mask = numpy.ones(target_block.shape, dtype=bool)
-                if nodata_target is not None:
-                    valid_mask = target_block != nodata_target
-                valid_block = target_block[valid_mask]
-                stdev_sum += numpy.sum((valid_block - target_mean) ** 2)
-            target_stddev = (stdev_sum / float(target_n)) ** 0.5
-
-            target_band = raster.GetRasterBand(band_index+1)
-            target_band.SetStatistics(
-                float(target_min), float(target_max), float(target_mean),
-                float(target_stddev))
-            target_band = None
-        else:
-            LOGGER.warn(
-                "Stats not calculated for %s band %d since no non-nodata "
-                "pixels were found.", raster_path, band_index+1)
-    raster = None
 
 
 def new_raster_from_base(
@@ -932,7 +970,7 @@ def create_raster_from_vector_extents(
                 # since it's valid to have a NULL entry in the attribute table
                 # this is expressed as a None value in the geometry reference
                 # this feature won't contribute
-                LOGGER.warn(error)
+                LOGGER.warning(error)
 
     # round up on the rows and cols so that the target raster encloses the
     # base vector
@@ -1039,21 +1077,21 @@ def interpolate_points(
 
 def zonal_statistics(
         base_raster_path_band, aggregate_vector_path,
-        aggregate_field_name, aggregate_layer_name=None,
-        ignore_nodata=True, all_touched=False, polygons_might_overlap=True,
-        working_dir=None):
+        aggregate_layer_name=None, ignore_nodata=True,
+        polygons_might_overlap=True, working_dir=None):
     """Collect stats on pixel values which lie within polygons.
 
     This function summarizes raster statistics including min, max,
-    mean, stddev, and pixel count over the regions on the raster that are
-    overlaped by the polygons in the vector layer.  This function can
-    handle cases where polygons overlap, which is notable since zonal stats
-    functions provided by ArcGIS or QGIS usually incorrectly aggregate
-    these areas.  Overlap avoidance is achieved by calculating a minimal set
-    of disjoint non-overlapping polygons from `aggregate_vector_path` and
-    rasterizing each set separately during the raster aggregation phase.  That
-    set of rasters are then used to calculate the zonal stats of all polygons
-    without aggregating vector overlap.
+    mean, and pixel count over the regions on the raster that are
+    overlapped by the polygons in the vector layer. Statistics are calculated
+    in two passes, where first polygons aggregate over pixels in the raster
+    whose centers intersect with the polygon. In the second pass, any polygons
+    that are not aggregated use their bounding box to intersect with the
+    raster for overlap statistics. Note there may be some degenerate
+    cases where the bounding box vs. actual geometry intersection would be
+    incorrect, but these are so unlikely as to be manually constructed. If
+    you encounter one of these please email the description and dataset
+    to richsharp@stanford.edu.
 
     Parameters:
         base_raster_path_band (tuple): a str/int tuple indicating the path to
@@ -1075,8 +1113,6 @@ def zonal_statistics(
             calculating min, max, count, or mean.  However, the value of
             `nodata_count` will always be the number of nodata pixels
             aggregated under the polygon.
-        all_touched (boolean): if true will account for any pixel whose
-            geometry passes through the pixel, not just the center point.
         polygons_might_overlap (boolean): if True the function calculates
             aggregation coverage close to optimally by rasterizing sets of
             polygons that don't overlap.  However, this step can be
@@ -1088,39 +1124,39 @@ def zonal_statistics(
 
     Returns:
         nested dictionary indexed by aggregating feature id, and then by one
-        of 'min' 'max' 'sum' 'mean' 'count' and 'nodata_count'.  Example:
-        {0: {'min': 0, 'max': 1, 'mean': 0.5, 'count': 2, 'nodata_count': 1}}
+        of 'min' 'max' 'sum' 'count' and 'nodata_count'.  Example:
+        {0: {'min': 0, 'max': 1, 'sum': 1.7, count': 3, 'nodata_count': 1}}
+
+    Raises:
+        ValueError if `base_raster_path_band` is incorrectly formatted.
+        RuntimeError(s) if the aggregate vector or layer cannot open.
 
     """
     if not _is_raster_path_band_formatted(base_raster_path_band):
         raise ValueError(
             "`base_raster_path_band` not formatted as expected.  Expects "
             "(path, band_index), recieved %s" % repr(base_raster_path_band))
-    aggregate_vector = gdal.OpenEx(aggregate_vector_path)
+    aggregate_vector = gdal.OpenEx(aggregate_vector_path, gdal.OF_VECTOR)
+    if aggregate_vector is None:
+        raise RuntimeError(
+            "Could not open aggregate vector at %s" % aggregate_vector_path)
+    LOGGER.debug(aggregate_vector)
     if aggregate_layer_name is not None:
         aggregate_layer = aggregate_vector.GetLayerByName(
             aggregate_layer_name)
     else:
         aggregate_layer = aggregate_vector.GetLayer()
-    aggregate_layer_defn = aggregate_layer.GetLayerDefn()
-    aggregate_field_index = aggregate_layer_defn.GetFieldIndex(
-        aggregate_field_name)
-    if aggregate_field_index == -1:  # -1 returned when field does not exist.
-        # Raise exception if user provided a field that's not in vector
-        raise ValueError(
-            'Vector %s must have a field named %s' %
-            (aggregate_vector_path, aggregate_field_name))
+    if aggregate_layer is None:
+        raise RuntimeError(
+            "Could not open layer %s on %s" % (
+                aggregate_layer_name, aggregate_vector_path))
 
     # create a new aggregate ID field to map base vector aggregate fields to
     # local ones that are guaranteed to be integers.
-    local_aggregate_field_name = str(uuid.uuid4())[-8:-1]
-    local_aggregate_field_def = ogr.FieldDefn(
-        local_aggregate_field_name, ogr.OFTInteger)
-
-    # Adding the rasterize by attribute option
+    local_aggregate_field_name = 'original_fid'
     rasterize_layer_args = {
         'options': [
-            'ALL_TOUCHED=%s' % str(all_touched).upper(),
+            'ALL_TOUCHED=FALSE',
             'ATTRIBUTE=%s' % local_aggregate_field_name]
         }
 
@@ -1139,70 +1175,91 @@ def zonal_statistics(
     clipped_raster = gdal.OpenEx(clipped_raster_path, gdal.OF_RASTER)
 
     # make a shapefile that non-overlapping layers can be added to
-    driver = ogr.GetDriverByName('ESRI Shapefile')
-    disjoint_vector_dir = tempfile.mkdtemp(dir=working_dir)
-    disjoint_vector = driver.CreateDataSource(
-        os.path.join(disjoint_vector_dir, 'disjoint_vector.shp'))
+    driver = ogr.GetDriverByName('MEMORY')
+    disjoint_vector = driver.CreateDataSource('disjoint_vector')
     spat_ref = aggregate_layer.GetSpatialRef()
 
     # Initialize these dictionaries to have the shapefile fields in the
     # original datasource even if we don't pick up a value later
-    base_to_local_aggregate_value = {}
-    for feature in aggregate_layer:
-        aggregate_field_value = feature.GetField(aggregate_field_name)
-        # this builds up a map of aggregate field values to unique ids
-        if aggregate_field_value not in base_to_local_aggregate_value:
-            base_to_local_aggregate_value[aggregate_field_value] = len(
-                base_to_local_aggregate_value)
-    aggregate_layer.ResetReading()
+    LOGGER.info("build a lookup of aggregate field value to FID")
+
+    aggregate_layer_fid_set = set(
+        [agg_feat.GetFID() for agg_feat in aggregate_layer])
 
     # Loop over each polygon and aggregate
     if polygons_might_overlap:
-        minimal_polygon_sets = calculate_disjoint_polygon_set(
+        LOGGER.info("creating disjoint polygon set")
+        disjoint_fid_sets = calculate_disjoint_polygon_set(
             aggregate_vector_path)
     else:
-        minimal_polygon_sets = [
-            set([feat.GetFID() for feat in aggregate_layer])]
+        disjoint_fid_sets = [aggregate_layer_fid_set]
 
     clipped_band = clipped_raster.GetRasterBand(base_raster_path_band[1])
 
     with tempfile.NamedTemporaryFile(
-            prefix='aggregate_id_raster',
-            delete=False, dir=working_dir) as aggregate_id_raster_file:
-        aggregate_id_raster_path = aggregate_id_raster_file.name
+            prefix='aggregate_fid_raster',
+            delete=False, dir=working_dir) as agg_fid_raster_file:
+        agg_fid_raster_path = agg_fid_raster_file.name
 
-    aggregate_id_nodata = len(base_to_local_aggregate_value)
+    agg_fid_nodata = -1
     new_raster_from_base(
-        clipped_raster_path, aggregate_id_raster_path, gdal.GDT_Int32,
-        [aggregate_id_nodata])
-    aggregate_id_raster = gdal.OpenEx(
-        aggregate_id_raster_path, gdal.GA_Update | gdal.OF_RASTER)
-    aggregate_stats = {}
-
-    for polygon_set in minimal_polygon_sets:
+        clipped_raster_path, agg_fid_raster_path, gdal.GDT_Int32,
+        [agg_fid_nodata])
+    agg_fid_raster = gdal.OpenEx(
+        agg_fid_raster_path, gdal.GA_Update | gdal.OF_RASTER)
+    aggregate_stats = collections.defaultdict(lambda: {
+        'min': None, 'max': None, 'count': 0, 'nodata_count': 0, 'sum': 0.0})
+    last_time = time.time()
+    LOGGER.info("processing %d disjoint polygon sets", len(disjoint_fid_sets))
+    for set_index, disjoint_fid_set in enumerate(disjoint_fid_sets):
+        last_time = _invoke_timed_callback(
+            last_time, lambda: LOGGER.info(
+                "zonal stats approximately %.1f%% complete on %s",
+                100.0 * float(set_index+1) / len(disjoint_fid_sets),
+                os.path.basename(aggregate_vector_path)),
+            _LOGGING_PERIOD)
         disjoint_layer = disjoint_vector.CreateLayer(
             'disjoint_vector', spat_ref, ogr.wkbPolygon)
-        disjoint_layer.CreateField(local_aggregate_field_def)
+        disjoint_layer.CreateField(
+            ogr.FieldDefn(local_aggregate_field_name, ogr.OFTInteger))
+        disjoint_layer_defn = disjoint_layer.GetLayerDefn()
         # add polygons to subset_layer
-        for index, poly_fid in enumerate(polygon_set):
-            poly_feat = aggregate_layer.GetFeature(poly_fid)
-            disjoint_layer.CreateFeature(poly_feat)
-            # we seem to need to reload the feature and set the index because
-            # just copying over the feature left indexes as all 0s.  Not sure
-            # why.
-            new_feat = disjoint_layer.GetFeature(index)
-            new_feat.SetField(
-                local_aggregate_field_name, base_to_local_aggregate_value[
-                    poly_feat.GetField(aggregate_field_name)])
-            disjoint_layer.SetFeature(new_feat)
-        disjoint_layer.SyncToDisk()
+        disjoint_layer.StartTransaction()
+        for index, feature_fid in enumerate(disjoint_fid_set):
+            last_time = _invoke_timed_callback(
+                last_time, lambda: LOGGER.info(
+                    "polygon set %d of %d approximately %.1f%% processed "
+                    "on %s", set_index+1, len(disjoint_fid_sets),
+                    100.0 * float(index+1) / len(disjoint_fid_set),
+                    os.path.basename(aggregate_vector_path)),
+                _LOGGING_PERIOD)
+            agg_feat = aggregate_layer.GetFeature(feature_fid)
+            disjoint_feat = ogr.Feature(disjoint_layer_defn)
+            disjoint_feat.SetGeometry(agg_feat.GetGeometryRef().Clone())
+            disjoint_feat.SetField(
+                local_aggregate_field_name, feature_fid)
+            disjoint_layer.CreateFeature(disjoint_feat)
+        disjoint_layer.CommitTransaction()
+
+        LOGGER.info(
+            "disjoint polygon set %d of %d 100.0%% processed on %s",
+            set_index+1, len(disjoint_fid_sets), os.path.basename(
+                aggregate_vector_path))
 
         # nodata out the mask
-        aggregate_id_band = aggregate_id_raster.GetRasterBand(1)
-        aggregate_id_band.Fill(aggregate_id_nodata)
+        agg_fid_band = agg_fid_raster.GetRasterBand(1)
+        agg_fid_band.Fill(agg_fid_nodata)
+        LOGGER.info(
+            "rasterizing disjoint polygon set %d of %d %s", set_index+1,
+            len(disjoint_fid_sets),
+            os.path.basename(aggregate_vector_path))
+        rasterize_callback = _make_logger_callback(
+            "rasterizing polygon " + str(set_index+1) + " of " +
+            str(len(disjoint_fid_set)) + " set %.1f%% complete")
         gdal.RasterizeLayer(
-            aggregate_id_raster, [1], disjoint_layer, **rasterize_layer_args)
-        aggregate_id_raster.FlushCache()
+            agg_fid_raster, [1], disjoint_layer,
+            callback=rasterize_callback, **rasterize_layer_args)
+        agg_fid_raster.FlushCache()
 
         # Delete the features we just added to the subset_layer
         disjoint_layer = None
@@ -1210,31 +1267,28 @@ def zonal_statistics(
 
         # create a key array
         # and parallel min, max, count, and nodata count arrays
-        for aggregate_id_offsets in iterblocks(
-                aggregate_id_raster_path, offset_only=True):
-            aggregate_id_block = aggregate_id_band.ReadAsArray(
-                **aggregate_id_offsets)
-            clipped_block = clipped_band.ReadAsArray(**aggregate_id_offsets)
-            # guard against a None nodata type
-            valid_mask = numpy.ones(aggregate_id_block.shape, dtype=bool)
-            if aggregate_id_nodata is not None:
-                valid_mask[:] = aggregate_id_block != aggregate_id_nodata
-            valid_aggregate_id = aggregate_id_block[valid_mask]
+        LOGGER.info(
+            "summarizing rasterized disjoint polygon set %d of %d %s",
+            set_index+1, len(disjoint_fid_sets),
+            os.path.basename(aggregate_vector_path))
+        for agg_fid_offsets in iterblocks(
+                agg_fid_raster_path, offset_only=True):
+            agg_fid_block = agg_fid_band.ReadAsArray(
+                **agg_fid_offsets)
+            clipped_block = clipped_band.ReadAsArray(**agg_fid_offsets)
+            valid_mask = (agg_fid_block != agg_fid_nodata)
+            valid_agg_fids = agg_fid_block[valid_mask]
             valid_clipped = clipped_block[valid_mask]
-            for aggregate_id in numpy.unique(valid_aggregate_id):
-                aggregate_mask = valid_aggregate_id == aggregate_id
-                masked_clipped_block = valid_clipped[aggregate_mask]
-                clipped_nodata_mask = numpy.isclose(
-                    masked_clipped_block, raster_nodata)
-                if aggregate_id not in aggregate_stats:
-                    aggregate_stats[aggregate_id] = {
-                        'min': None,
-                        'max': None,
-                        'count': 0,
-                        'nodata_count': 0,
-                        'sum': 0.0
-                    }
-                aggregate_stats[aggregate_id]['nodata_count'] += (
+            for agg_fid in numpy.unique(valid_agg_fids):
+                masked_clipped_block = valid_clipped[
+                    valid_agg_fids == agg_fid]
+                if raster_nodata:
+                    clipped_nodata_mask = numpy.isclose(
+                        masked_clipped_block, raster_nodata)
+                else:
+                    clipped_nodata_mask = numpy.zeros(
+                        masked_clipped_block.shape, dtype=numpy.bool)
+                aggregate_stats[agg_fid]['nodata_count'] += (
                     numpy.count_nonzero(clipped_nodata_mask))
                 if ignore_nodata:
                     masked_clipped_block = (
@@ -1242,41 +1296,95 @@ def zonal_statistics(
                 if masked_clipped_block.size == 0:
                     continue
 
-                if aggregate_stats[aggregate_id]['min'] is None:
-                    aggregate_stats[aggregate_id]['min'] = (
+                if aggregate_stats[agg_fid]['min'] is None:
+                    aggregate_stats[agg_fid]['min'] = (
                         masked_clipped_block[0])
-                    aggregate_stats[aggregate_id]['max'] = (
+                    aggregate_stats[agg_fid]['max'] = (
                         masked_clipped_block[0])
 
-                aggregate_stats[aggregate_id]['min'] = min(
+                aggregate_stats[agg_fid]['min'] = min(
                     numpy.min(masked_clipped_block),
-                    aggregate_stats[aggregate_id]['min'])
-                aggregate_stats[aggregate_id]['max'] = max(
+                    aggregate_stats[agg_fid]['min'])
+                aggregate_stats[agg_fid]['max'] = max(
                     numpy.max(masked_clipped_block),
-                    aggregate_stats[aggregate_id]['max'])
-                aggregate_stats[aggregate_id]['count'] += (
+                    aggregate_stats[agg_fid]['max'])
+                aggregate_stats[agg_fid]['count'] += (
                     masked_clipped_block.size)
-                aggregate_stats[aggregate_id]['sum'] += numpy.sum(
+                aggregate_stats[agg_fid]['sum'] += numpy.sum(
                     masked_clipped_block)
+    unset_fids = aggregate_layer_fid_set.difference(aggregate_stats)
+    LOGGER.debug(
+        "unset_fids: %s of %s ", len(unset_fids),
+        len(aggregate_layer_fid_set))
+    clipped_gt = numpy.array(
+        clipped_raster.GetGeoTransform(), dtype=numpy.float32)
+    for unset_fid in unset_fids:
+        unset_feat = aggregate_layer.GetFeature(unset_fid)
+        unset_geom_envelope = list(unset_feat.GetGeometryRef().GetEnvelope())
+        if clipped_gt[1] < 0:
+            unset_geom_envelope[0], unset_geom_envelope[1] = (
+                unset_geom_envelope[1], unset_geom_envelope[0])
+        if clipped_gt[5] < 0:
+            unset_geom_envelope[2], unset_geom_envelope[3] = (
+                unset_geom_envelope[3], unset_geom_envelope[2])
+        xoff = int((unset_geom_envelope[0] - clipped_gt[0]) / clipped_gt[1])
+        yoff = int((unset_geom_envelope[2] - clipped_gt[3]) / clipped_gt[5])
+        win_xsize = int(numpy.ceil(
+            (unset_geom_envelope[1] - clipped_gt[0]) /
+            clipped_gt[1])) - xoff
+        win_ysize = int(numpy.ceil(
+            (unset_geom_envelope[3] - clipped_gt[3]) /
+            clipped_gt[5])) - yoff
+        # here we consider the pixels that intersect with the geometry's
+        # bounding box as being the proxy for the intersection with the
+        # polygon itself. This is not a bad approximation since the case
+        # that caused the polygon to be skipped in the first phase is that it
+        # is as small as a pixel. There could be some degenerate cases that
+        # make this estimation very wrong, but we do not know of any that
+        # would come from natural data. If you do encounter such a dataset
+        # please email the description and datset to richsharp@stanford.edu.
+        unset_fid_block = clipped_band.ReadAsArray(
+            xoff=xoff, yoff=yoff, win_xsize=win_xsize, win_ysize=win_ysize)
+
+        if raster_nodata:
+            unset_fid_nodata_mask = numpy.isclose(
+                unset_fid_block, raster_nodata)
+        else:
+            unset_fid_nodata_mask = numpy.zeros(
+                unset_fid_block.shape, dtype=numpy.bool)
+
+        valid_unset_fid_block = unset_fid_block[~unset_fid_nodata_mask]
+        aggregate_stats[unset_fid]['min'] = numpy.min(valid_unset_fid_block)
+        aggregate_stats[unset_fid]['max'] = numpy.max(valid_unset_fid_block)
+        aggregate_stats[unset_fid]['sum'] = numpy.sum(valid_unset_fid_block)
+        aggregate_stats[unset_fid]['count'] = valid_unset_fid_block.size
+        aggregate_stats[unset_fid]['nodata_count'] = numpy.count_nonzero(
+            unset_fid_nodata_mask)
+
+    unset_fids = aggregate_layer_fid_set.difference(aggregate_stats)
+    LOGGER.debug(
+        "remaining unset_fids: %s of %s ", len(unset_fids),
+        len(aggregate_layer_fid_set))
+
+    LOGGER.info(
+        "all done processing polygon sets for %s", os.path.basename(
+            aggregate_vector_path))
 
     # clean up temporary files
+    gdal.Dataset.__swig_destroy__(agg_fid_raster)
+    gdal.Dataset.__swig_destroy__(aggregate_vector)
+    gdal.Dataset.__swig_destroy__(clipped_raster)
     clipped_band = None
     clipped_raster = None
-    aggregate_id_raster = None
+    agg_fid_raster = None
     disjoint_layer = None
     disjoint_vector = None
-    for filename in [aggregate_id_raster_path, clipped_raster_path]:
+    aggregate_layer = None
+    aggregate_vector = None
+    for filename in [agg_fid_raster_path, clipped_raster_path]:
         os.remove(filename)
-    shutil.rmtree(disjoint_vector_dir)
 
-    # map the local ids back to the original base value
-    local_to_base_aggregate_value = {
-        value: key for key, value in
-        base_to_local_aggregate_value.items()}
-
-    return {
-        local_to_base_aggregate_value[key]: value
-        for key, value in aggregate_stats.items()}
+    return dict(aggregate_stats)
 
 
 def get_vector_info(vector_path, layer_index=0):
@@ -1301,8 +1409,6 @@ def get_vector_info(vector_path, layer_index=0):
                 box in projected coordinates as [minx, miny, maxx, maxy].
 
     """
-    if not os.path.exists(vector_path):
-        raise ValueError("%s does not exist." % vector_path)
     vector = gdal.OpenEx(vector_path, gdal.OF_VECTOR)
     if not vector:
         raise ValueError(
@@ -1310,7 +1416,12 @@ def get_vector_info(vector_path, layer_index=0):
     vector_properties = {}
     layer = vector.GetLayer(iLayer=layer_index)
     # projection is same for all layers, so just use the first one
-    vector_properties['projection'] = layer.GetSpatialRef().ExportToWkt()
+    spatial_ref = layer.GetSpatialRef()
+    if spatial_ref:
+        vector_sr_wkt = spatial_ref.ExportToWkt()
+    else:
+        vector_sr_wkt = None
+    vector_properties['projection'] = vector_sr_wkt
     layer_bb = layer.GetExtent()
     layer = None
     vector = None
@@ -1355,14 +1466,15 @@ def get_raster_info(raster_path):
                 efficient reading.
 
     """
-    if not os.path.exists(raster_path):
-        raise ValueError("%s does not exist." % raster_path)
     raster = gdal.OpenEx(raster_path, gdal.OF_RASTER)
     if not raster:
         raise ValueError(
             "Could not open %s as a gdal.OF_RASTER" % raster_path)
     raster_properties = {}
-    raster_properties['projection'] = raster.GetProjection()
+    projection_wkt = raster.GetProjection()
+    if not projection_wkt:
+        projection_wkt = None
+    raster_properties['projection'] = projection_wkt
     geo_transform = raster.GetGeoTransform()
     raster_properties['geotransform'] = geo_transform
     raster_properties['pixel_size'] = (geo_transform[1], geo_transform[5])
@@ -1401,7 +1513,7 @@ def get_raster_info(raster_path):
 
 def reproject_vector(
         base_vector_path, target_wkt, target_path, layer_index=0,
-        driver_name='ESRI Shapefile'):
+        driver_name='ESRI Shapefile', copy_fields=True):
     """Reproject OGR DataSource (vector).
 
     Transforms the features of the base vector to the desired output
@@ -1416,6 +1528,11 @@ def reproject_vector(
             Defaults to 0.
         driver_name (string): String to pass to ogr.GetDriverByName, defaults
             to 'ESRI Shapefile'.
+        copy_fields (bool or iterable): If True, all the fields in
+            `base_vector_path` will be copied to `target_path` during the
+            reprojection step. If it is an iterable, it will contain the
+            field names to exclusively copy. An unmatched fieldname will be
+            ignored. If `False` no fields are copied into the new vector.
 
     Returns:
         None
@@ -1425,7 +1542,7 @@ def reproject_vector(
 
     # if this file already exists, then remove it
     if os.path.isfile(target_path):
-        LOGGER.warn(
+        LOGGER.warning(
             "%s already exists, removing and overwriting", target_path)
         os.remove(target_path)
 
@@ -1443,15 +1560,24 @@ def reproject_vector(
     target_layer = target_vector.CreateLayer(
         layer_dfn.GetName(), target_sr, layer_dfn.GetGeomType())
 
-    # Get the number of fields in original_layer
-    original_field_count = layer_dfn.GetFieldCount()
+    # this will map the target field index to the base index it came from
+    # in case we don't need to copy all the fields
+    target_to_base_field_id_map = {}
+    if copy_fields:
+        # Get the number of fields in original_layer
+        original_field_count = layer_dfn.GetFieldCount()
+        # For every field that's copying, create a duplicate field in the
+        # new layer
 
-    # For every field, create a duplicate field in the new layer
-    for fld_index in range(original_field_count):
-        original_field = layer_dfn.GetFieldDefn(fld_index)
-        target_field = ogr.FieldDefn(
-            original_field.GetName(), original_field.GetType())
-        target_layer.CreateField(target_field)
+        for fld_index in range(original_field_count):
+            original_field = layer_dfn.GetFieldDefn(fld_index)
+            field_name = original_field.GetName()
+            if copy_fields is True or field_name in copy_fields:
+                target_field = ogr.FieldDefn(
+                    field_name, original_field.GetType())
+                target_layer.CreateField(target_field)
+                target_to_base_field_id_map[fld_index] = len(
+                    target_to_base_field_id_map)
 
     # Get the SR of the original_layer to use in transforming
     base_sr = layer.GetSpatialRef()
@@ -1460,8 +1586,18 @@ def reproject_vector(
     coord_trans = osr.CoordinateTransformation(base_sr, target_sr)
 
     # Copy all of the features in layer to the new shapefile
+    target_layer.StartTransaction()
     error_count = 0
-    for base_feature in layer:
+    last_time = time.time()
+    LOGGER.info("starting reprojection")
+    for feature_index, base_feature in enumerate(layer):
+        last_time = _invoke_timed_callback(
+            last_time, lambda: LOGGER.info(
+                "reprojection approximately %.1f%% complete on %s",
+                100.0 * float(feature_index+1) / (layer.GetFeatureCount()),
+                os.path.basename(target_path)),
+            _LOGGING_PERIOD)
+
         geom = base_feature.GetGeometryRef()
         if geom is None:
             # we encountered this error occasionally when transforming clipped
@@ -1486,15 +1622,19 @@ def reproject_vector(
 
         # For all the fields in the feature set the field values from the
         # source field
-        for fld_index in range(target_feature.GetFieldCount()):
+        for target_index, base_index in (
+                target_to_base_field_id_map.items()):
             target_feature.SetField(
-                fld_index, base_feature.GetField(fld_index))
+                target_index, base_feature.GetField(base_index))
 
         target_layer.CreateFeature(target_feature)
         target_feature = None
         base_feature = None
+    target_layer.CommitTransaction()
+    LOGGER.info(
+        "reprojection 100.0%% complete on %s", os.path.basename(target_path))
     if error_count > 0:
-        LOGGER.warn(
+        LOGGER.warning(
             '%d features out of %d were unable to be transformed and are'
             ' not in the output vector at %s', error_count,
             layer.GetFeatureCount(), target_path)
@@ -1573,9 +1713,9 @@ def reclassify_raster(
 
 def warp_raster(
         base_raster_path, target_pixel_size, target_raster_path,
-        resample_method, target_bb=None, target_sr_wkt=None,
+        resample_method, target_bb=None, base_sr_wkt=None, target_sr_wkt=None,
         gtiff_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS,
-        n_threads=None):
+        n_threads=None, vector_mask_options=None):
     """Resize/resample raster to desired pixel size, bbox and projection.
 
     Parameters:
@@ -1591,35 +1731,53 @@ def warp_raster(
             source bounding box.  Otherwise it's a list of float describing
             target bounding box in target coordinate system as
             [minx, miny, maxx, maxy].
+        base_sr_wkt (string): if not None, interpret the projection of
+            `base_raster_path` as this.
         target_sr_wkt (string): if not None, desired target projection in Well
             Known Text format.
         gtiff_creation_options (list or tuple): list of strings that will be
             passed as GDAL "dataset" creation options to the GTIFF driver.
         n_threads (int): optional, if not None this sets the `N_THREADS`
             option for `gdal.Warp`.
+        vector_mask_options (dict): optional, if not None, this is a
+            dictionary of options to use an existing vector's geometry to
+            mask out pixels in the target raster that do not overlap the
+            vector's geometry. Keys to this dictionary are:
+                'mask_vector_path': (str) path to the mask vector file. This
+                    vector will be automatically projected to the target
+                    projection if its base coordinate system does not match
+                    the target.
+                'mask_layer_name': (str) the layer name to use for masking,
+                    if this key is not in the dictionary the default is to use
+                    the layer at index 0.
+                'mask_vector_where_filter': (str) an SQL WHERE string that can
+                    be used to filter the geometry in the mask. Ex:
+                    'id > 10' would use all features whose field value of
+                    'id' is > 10.
 
     Returns:
         None
 
     """
-    base_raster = gdal.OpenEx(base_raster_path, gdal.OF_RASTER)
-    base_sr = osr.SpatialReference()
-    base_sr.ImportFromWkt(base_raster.GetProjection())
+    base_raster_info = get_raster_info(base_raster_path)
+    if target_sr_wkt is None:
+        target_sr_wkt = base_raster_info['projection']
 
     if target_bb is None:
-        working_bb = get_raster_info(base_raster_path)['bounding_box']
+        # ensure it's a list so we can modify it
+        working_bb = list(get_raster_info(base_raster_path)['bounding_box'])
         # transform the working_bb if target_sr_wkt is not None
         if target_sr_wkt is not None:
             LOGGER.debug(
                 "transforming bounding box from %s ", working_bb)
             working_bb = transform_bounding_box(
-                get_raster_info(base_raster_path)['bounding_box'],
-                get_raster_info(base_raster_path)['projection'],
-                target_sr_wkt)
+                base_raster_info['bounding_box'],
+                base_raster_info['projection'], target_sr_wkt)
             LOGGER.debug(
                 "transforming bounding to %s ", working_bb)
     else:
-        working_bb = target_bb[:]
+        # ensure it's a list so we can modify it
+        working_bb = list(target_bb)
 
     # determine the raster size that bounds the input bounding box and then
     # adjust the bounding box to be that size
@@ -1641,12 +1799,12 @@ def warp_raster(
         target_y_size += 1
 
     if target_x_size == 0:
-        LOGGER.warn(
+        LOGGER.warning(
             "bounding_box is so small that x dimension rounds to 0; "
             "clamping to 1.")
         target_x_size = 1
     if target_y_size == 0:
-        LOGGER.warn(
+        LOGGER.warning(
             "bounding_box is so small that y dimension rounds to 0; "
             "clamping to 1.")
         target_y_size = 1
@@ -1663,6 +1821,25 @@ def warp_raster(
     if n_threads:
         warp_options.append('NUM_THREADS=%d' % n_threads)
 
+    mask_vector_path = None
+    mask_layer_name = None
+    mask_vector_where_filter = None
+    if vector_mask_options:
+        # translate pygeoprocessing terminology into GDAL warp options.
+        if 'mask_vector_path' not in vector_mask_options:
+            raise ValueError(
+                'vector_mask_options passed, but no value for '
+                '"mask_vector_path": %s', vector_mask_options)
+        mask_vector_path = vector_mask_options['mask_vector_path']
+        if not os.path.exists(mask_vector_path):
+            raise ValueError(
+                'The mask vector at %s was not found.', mask_vector_path)
+        if 'mask_layer_name' in vector_mask_options:
+            mask_layer_name = vector_mask_options['mask_layer_name']
+        if 'mask_vector_where_filter' in vector_mask_options:
+            mask_vector_where_filter = (
+                vector_mask_options['mask_vector_where_filter'])
+
     base_raster = gdal.OpenEx(base_raster_path, gdal.OF_RASTER)
     gdal.Warp(
         target_raster_path, base_raster,
@@ -1671,12 +1848,16 @@ def warp_raster(
         yRes=abs(target_pixel_size[1]),
         resampleAlg=resample_method,
         outputBoundsSRS=target_sr_wkt,
+        srcSRS=base_sr_wkt,
         dstSRS=target_sr_wkt,
         multithread=True if warp_options else False,
         warpOptions=warp_options,
         creationOptions=gtiff_creation_options,
         callback=reproject_callback,
-        callback_data=[target_raster_path])
+        callback_data=[target_raster_path],
+        cutlineDSName=mask_vector_path,
+        cutlineLayer=mask_layer_name,
+        cutlineWhere=mask_vector_where_filter)
 
 
 def rasterize(
@@ -1770,58 +1951,86 @@ def calculate_disjoint_polygon_set(vector_path, layer_index=0):
     """
     vector = gdal.OpenEx(vector_path)
     vector_layer = vector.GetLayer(layer_index)
+    feature_count = vector_layer.GetFeatureCount()
 
-    poly_intersect_lookup = {}
-    for poly_feat in vector_layer:
-        poly_wkt = poly_feat.GetGeometryRef().ExportToWkt()
-        shapely_polygon = shapely.wkt.loads(poly_wkt)
-        poly_wkt = None
-        poly_fid = poly_feat.GetFID()
-        poly_intersect_lookup[poly_fid] = {
-            'poly': shapely_polygon,
-            'intersects': set(),
-        }
+    last_time = time.time()
+    LOGGER.info("build shapely polygon list")
+
+    shapely_polygon_lookup = dict((
+        (poly_feat.GetFID(),
+         shapely.wkb.loads(poly_feat.GetGeometryRef().ExportToWkb()))
+        for poly_feat in vector_layer))
+
+    LOGGER.info("build shapely rtree index")
+    poly_rtree_index = rtree.index.Index(
+        ((poly_fid, poly.bounds, None)
+         for poly_fid, poly in shapely_polygon_lookup.items()))
+
     vector_layer = None
     vector = None
+    LOGGER.info(
+        'poly feature lookup 100.0%% complete on %s',
+        os.path.basename(vector_path))
 
-    for poly_fid in poly_intersect_lookup:
-        polygon = shapely.prepared.prep(
-            poly_intersect_lookup[poly_fid]['poly'])
-        for intersect_poly_fid in poly_intersect_lookup:
+    LOGGER.info('build poly intersection lookup')
+    poly_intersect_lookup = collections.defaultdict(set)
+    for poly_index, (poly_fid, poly_geom) in enumerate(
+            shapely_polygon_lookup.items()):
+        last_time = _invoke_timed_callback(
+            last_time, lambda: LOGGER.info(
+                "poly intersection lookup approximately %.1f%% complete "
+                "on %s", 100.0 * float(poly_index+1) / len(
+                    shapely_polygon_lookup), os.path.basename(vector_path)),
+            _LOGGING_PERIOD)
+        possible_intersection_set = list(poly_rtree_index.intersection(
+            poly_geom.bounds))
+        # no reason to prep the polygon to intersect itself
+        if len(possible_intersection_set) > 1:
+            polygon = shapely.prepared.prep(poly_geom)
+        else:
+            polygon = poly_geom
+        for intersect_poly_fid in possible_intersection_set:
             if intersect_poly_fid == poly_fid or polygon.intersects(
-                    poly_intersect_lookup[intersect_poly_fid]['poly']):
-                poly_intersect_lookup[poly_fid]['intersects'].add(
-                    intersect_poly_fid)
+                    shapely_polygon_lookup[intersect_poly_fid]):
+                poly_intersect_lookup[poly_fid].add(intersect_poly_fid)
         polygon = None
+    LOGGER.info(
+        'poly intersection feature lookup 100.0%% complete on %s',
+        os.path.basename(vector_path))
 
     # Build maximal subsets
     subset_list = []
     while len(poly_intersect_lookup) > 0:
         # sort polygons by increasing number of intersections
-        heap = []
-        for poly_fid, poly_dict in poly_intersect_lookup.items():
-            heapq.heappush(
-                heap, (len(poly_dict['intersects']), poly_fid, poly_dict))
+        intersections_list = [
+            (len(poly_intersect_set), poly_fid, poly_intersect_set)
+            for poly_fid, poly_intersect_set in
+            poly_intersect_lookup.items()]
+        intersections_list.sort()
 
         # build maximal subset
         maximal_set = set()
-        while len(heap) > 0:
-            _, poly_fid, poly_dict = heapq.heappop(heap)
-            for maxset_fid in maximal_set:
-                if maxset_fid in poly_intersect_lookup[poly_fid]['intersects']:
-                    # it intersects and can't be part of the maximal subset
-                    break
-            else:
-                # made it through without an intersection, add poly_fid to
-                # the maximal set
+        for _, poly_fid, poly_intersect_set in intersections_list:
+            last_time = _invoke_timed_callback(
+                last_time, lambda: LOGGER.info(
+                    "maximal subset build approximately %.1f%% complete "
+                    "on %s", 100.0 * float(
+                        feature_count - len(poly_intersect_lookup)) /
+                    feature_count, os.path.basename(vector_path)),
+                _LOGGING_PERIOD)
+            if not poly_intersect_set.intersection(maximal_set):
+                # no intersection, add poly_fid to the maximal set and remove
+                # the polygon from the lookup
                 maximal_set.add(poly_fid)
-                # remove that polygon and update the intersections
                 del poly_intersect_lookup[poly_fid]
         # remove all the polygons from intersections once they're computed
-        for maxset_fid in maximal_set:
-            for poly_dict in poly_intersect_lookup.values():
-                poly_dict['intersects'].discard(maxset_fid)
+        for poly_fid, poly_intersect_set in poly_intersect_lookup.items():
+            poly_intersect_lookup[poly_fid] = (
+                poly_intersect_set.difference(maximal_set))
         subset_list.append(maximal_set)
+    LOGGER.info(
+        'maximal subset build 100.0%% complete on %s',
+        os.path.basename(vector_path))
     return subset_list
 
 
@@ -1868,7 +2077,7 @@ def distance_transform_edt(
     try:
         os.remove(dt_mask_path)
     except OSError:
-        LOGGER.warn("couldn't remove file %s", dt_mask_path)
+        LOGGER.warning("couldn't remove file %s", dt_mask_path)
 
 
 def _next_regular(base):
@@ -2495,13 +2704,10 @@ def merge_rasters(
                 pixeltype_set))
 
     bounding_box_list = [x['bounding_box'] for x in raster_info_list]
-    target_bounding_box = reduce(
-        functools.partial(_merge_bounding_boxes, mode='union'),
-        bounding_box_list)
+    target_bounding_box = merge_bounding_box_list(bounding_box_list, 'union')
     if bounding_box is not None:
-        target_bounding_box = reduce(
-            functools.partial(_merge_bounding_boxes, mode='intersection'),
-            [target_bounding_box, bounding_box])
+        target_bounding_box = merge_bounding_box_list(
+            [target_bounding_box, bounding_box], 'intersection')
 
     driver = gdal.GetDriverByName('GTiff')
     target_pixel_size = pixel_size_set.pop()
@@ -2679,35 +2885,52 @@ def _gdal_to_numpy_type(band):
     return numpy.uint8
 
 
-def _merge_bounding_boxes(bb1, bb2, mode):
-    """Merge two bounding boxes through union or intersection.
+def merge_bounding_box_list(bounding_box_list, bounding_box_mode):
+    """Creates a single bounding box by union or intersection of the list.
 
     Parameters:
-        bb1, bb2 (list): list of float representing bounding box in the
-            form bb=[minx,miny,maxx,maxy]
-        mode (string); one of 'union' or 'intersection'
+        bounding_box_list (list): a list of bounding box tuples/lists of the
+            form [minx,miny,maxx,maxy].
+        mode (string): either 'union' or 'intersection' for the cooresponding
+            reduction mode.
 
     Returns:
-        Reduced bounding box of bb1/bb2 depending on mode.
+        A 4 tuple bounding box that is the combin
 
     """
-    def _less_than_or_equal(x_val, y_val):
-        return x_val if x_val <= y_val else y_val
+    def _merge_bounding_boxes(bb1, bb2, mode):
+        """Merge two bounding boxes through union or intersection.
 
-    def _greater_than(x_val, y_val):
-        return x_val if x_val > y_val else y_val
+        Parameters:
+            bb1, bb2 (list): list of float representing bounding box in the
+                form bb=[minx,miny,maxx,maxy]
+            mode (string); one of 'union' or 'intersection'
 
-    if mode == "union":
-        comparison_ops = [
-            _less_than_or_equal, _less_than_or_equal,
-            _greater_than, _greater_than]
-    if mode == "intersection":
-        comparison_ops = [
-            _greater_than, _greater_than,
-            _less_than_or_equal, _less_than_or_equal]
+        Returns:
+            Reduced bounding box of bb1/bb2 depending on mode.
 
-    bb_out = [op(x, y) for op, x, y in zip(comparison_ops, bb1, bb2)]
-    return bb_out
+        """
+        def _less_than_or_equal(x_val, y_val):
+            return x_val if x_val <= y_val else y_val
+
+        def _greater_than(x_val, y_val):
+            return x_val if x_val > y_val else y_val
+
+        if mode == "union":
+            comparison_ops = [
+                _less_than_or_equal, _less_than_or_equal,
+                _greater_than, _greater_than]
+        if mode == "intersection":
+            comparison_ops = [
+                _greater_than, _greater_than,
+                _less_than_or_equal, _less_than_or_equal]
+
+        bb_out = [op(x, y) for op, x, y in zip(comparison_ops, bb1, bb2)]
+        return bb_out
+
+    return reduce(
+        functools.partial(_merge_bounding_boxes, mode=bounding_box_mode),
+        bounding_box_list)
 
 
 def _make_logger_callback(message):
@@ -2730,7 +2953,17 @@ def _make_logger_callback(message):
             if ((current_time - logger_callback.last_time) > 5.0 or
                     (df_complete == 1.0 and
                      logger_callback.total_time >= 5.0)):
-                LOGGER.info(message, df_complete * 100, p_progress_arg[0])
+                # In some multiprocess applications I was encountering a
+                # `p_progress_arg` of None. This is unexpected and I suspect
+                # was an issue for some kind of GDAL race condition. So I'm
+                # guarding against it here and reporting an appropriate log
+                # if it occurs.
+                if p_progress_arg:
+                    LOGGER.info(message, df_complete * 100, p_progress_arg[0])
+                else:
+                    LOGGER.info(
+                        'p_progress_arg is None df_complete: %s, message: %s',
+                        df_complete, message)
                 logger_callback.last_time = current_time
                 logger_callback.total_time += current_time
         except AttributeError:

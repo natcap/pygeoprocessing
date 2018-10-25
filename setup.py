@@ -66,6 +66,5 @@ setup(
                  'src/pygeoprocessing/geoprocessing_core.pyx'],
              include_dirs=[numpy.get_include()],
              language="c++")],
-        compiler_directives={'linetrace': True, 'binding': True},
         )
 )
