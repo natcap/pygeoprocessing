@@ -1127,6 +1127,10 @@ def zonal_statistics(
         of 'min' 'max' 'sum' 'count' and 'nodata_count'.  Example:
         {0: {'min': 0, 'max': 1, 'sum': 1.7, count': 3, 'nodata_count': 1}}
 
+    Raises:
+        ValueError if `base_raster_path_band` is incorrectly formatted.
+        RuntimeError(s) if the aggregate vector or layer cannot open.
+
     """
     if not _is_raster_path_band_formatted(base_raster_path_band):
         raise ValueError(
