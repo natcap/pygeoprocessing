@@ -6,6 +6,9 @@ import unittest
 import shutil
 import types
 import sys
+import logging
+
+LOGGER = logging.getLogger(__name__)
 
 from osgeo import gdal
 from osgeo import ogr
@@ -228,6 +231,71 @@ class PyGeoprocessing10(unittest.TestCase):
             osr.SpatialReference(result_reference.ExportToWkt()).IsSame(
                 osr.SpatialReference(target_reference.ExportToWkt())))
 
+    def test_zonal_stats_for_small_polygons(self):
+        """PGP.geoprocessing: test small polygons for zonal stats."""
+        gpkg_driver = ogr.GetDriverByName('GPKG')
+        vector_path = os.path.join(self.workspace_dir, 'small_vector.gpkg')
+        vector = gpkg_driver.CreateDataSource(vector_path)
+
+        srs = osr.SpatialReference()
+        srs.ImportFromEPSG(4326)
+        layer = vector.CreateLayer('small_vector', srs=srs)
+        layer.CreateField(ogr.FieldDefn('expected_value', ogr.OFTInteger))
+        layer_defn = layer.GetLayerDefn()
+
+        # make an n x n raster with 2*m x 2*m polygons inside.
+        pixel_size = 1.0
+        subpixel_size = 1./5. * pixel_size
+        origin_x = 1.0
+        origin_y = -1.0
+        n = 16
+        layer.StartTransaction()
+        for row_index in range(n * 2):
+            for col_index in range(n * 2):
+                x_pos = origin_x + (
+                    col_index*2 + 1 + col_index // 2) * subpixel_size
+                y_pos = origin_y - (
+                    row_index*2 + 1 + row_index // 2) * subpixel_size
+                shapely_feature = shapely.geometry.Polygon([
+                    (x_pos, y_pos),
+                    (x_pos+subpixel_size, y_pos),
+                    (x_pos+subpixel_size, y_pos-subpixel_size),
+                    (x_pos, y_pos-subpixel_size),
+                    (x_pos, y_pos)])
+                new_feature = ogr.Feature(layer_defn)
+                new_geometry = ogr.CreateGeometryFromWkb(shapely_feature.wkb)
+                new_feature.SetGeometry(new_geometry)
+                expected_value = row_index // 2 * n + col_index // 2
+                new_feature.SetField('expected_value', expected_value)
+                layer.CreateFeature(new_feature)
+        layer.CommitTransaction()
+        layer.SyncToDisk()
+
+        gtiff_driver = gdal.GetDriverByName('GTiff')
+        raster_path = os.path.join(self.workspace_dir, 'small_raster.tif')
+        new_raster = gtiff_driver.Create(
+            raster_path, n, n, 1, gdal.GDT_Int32, options=[
+                'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
+                'BLOCKXSIZE=16', 'BLOCKYSIZE=16'])
+        new_raster.SetProjection(srs.ExportToWkt())
+        new_raster.SetGeoTransform([origin_x, 1.0, 0.0, origin_y, 0.0, -1.0])
+        new_band = new_raster.GetRasterBand(1)
+        new_band.SetNoDataValue(-1)
+        array = numpy.array(range(n*n), dtype=numpy.int32).reshape((n, n))
+        new_band.WriteArray(array)
+        new_raster.FlushCache()
+        new_band = None
+        new_raster = None
+
+        zonal_stats = pygeoprocessing.zonal_statistics(
+            (raster_path, 1), vector_path)
+        self.assertEqual(len(zonal_stats), 4*n*n)
+        for poly_id in zonal_stats:
+            feature = layer.GetFeature(poly_id)
+            self.assertEqual(
+                feature.GetField('expected_value'),
+                zonal_stats[poly_id]['sum'])
+
     def test_reproject_vector_partial_fields(self):
         """PGP.geoprocessing: reproject vector with partial field copy."""
         reference = sampledata.SRS_WILLAMETTE
@@ -314,11 +382,8 @@ class PyGeoprocessing10(unittest.TestCase):
             (reference.origin[0], reference.origin[1])])
         aggregating_vector_path = os.path.join(
             self.workspace_dir, 'aggregate_vector')
-        aggregate_field_name = 'id'
         pygeoprocessing.testing.create_vector_on_disk(
             [polygon_a, polygon_b], reference.projection,
-            fields={'id': 'int'}, attributes=[
-                {aggregate_field_name: 0}, {aggregate_field_name: 1}],
             vector_format='GeoJSON', filename=aggregating_vector_path)
         pixel_matrix = numpy.ones((n_pixels, n_pixels), numpy.float32)
         nodata_target = -1
@@ -328,8 +393,8 @@ class PyGeoprocessing10(unittest.TestCase):
             nodata_target, reference.pixel_size(30), filename=raster_path)
         result = pygeoprocessing.zonal_statistics(
             (raster_path, 1), aggregating_vector_path,
-            aggregate_field_name, aggregate_layer_name=None,
-            ignore_nodata=True, all_touched=False,
+            aggregate_layer_name=None,
+            ignore_nodata=True,
             polygons_might_overlap=True)
         expected_result = {
             0: {
@@ -376,8 +441,8 @@ class PyGeoprocessing10(unittest.TestCase):
             nodata_target, reference.pixel_size(30), filename=raster_path)
         result = pygeoprocessing.zonal_statistics(
             (raster_path, 1), aggregating_vector_path,
-            aggregate_field_name, aggregate_layer_name=None,
-            ignore_nodata=True, all_touched=False,
+            aggregate_layer_name=None,
+            ignore_nodata=True,
             polygons_might_overlap=False)
         expected_result = {
             0: {
@@ -403,22 +468,19 @@ class PyGeoprocessing10(unittest.TestCase):
             (reference.origin[0], reference.origin[1])])
         aggregating_vector_path = os.path.join(
             self.workspace_dir, 'aggregate_vector.shp')
-        aggregate_field_name = 'id'
         pygeoprocessing.testing.create_vector_on_disk(
             [polygon_a], reference.projection,
-            fields={'id': 'int'}, attributes=[
-                {aggregate_field_name: 0}],
             vector_format='ESRI Shapefile', filename=aggregating_vector_path)
         pixel_matrix = numpy.ones((n_pixels, n_pixels), numpy.float32)
-        nodata_target = -1
+        nodata_target = None
         raster_path = os.path.join(self.workspace_dir, 'raster.tif')
         pygeoprocessing.testing.create_raster_on_disk(
             [pixel_matrix], reference.origin, reference.projection,
             nodata_target, reference.pixel_size(30), filename=raster_path)
         result = pygeoprocessing.zonal_statistics(
             (raster_path, 1), aggregating_vector_path,
-            aggregate_field_name, aggregate_layer_name='aggregate_vector',
-            ignore_nodata=True, all_touched=False,
+            aggregate_layer_name='aggregate_vector',
+            ignore_nodata=True,
             polygons_might_overlap=True)
         expected_result = {
             0: {
@@ -428,46 +490,6 @@ class PyGeoprocessing10(unittest.TestCase):
                 'nodata_count': 0,
                 'sum': 81.0}}
         self.assertEqual(result, expected_result)
-
-    def test_zonal_statistics_missing_id(self):
-        """PGP.geoprocessing: test zonal stats function with missing id."""
-        # create aggregating polygon
-        reference = sampledata.SRS_COLOMBIA
-        pixel_size = 30.0
-        n_pixels = 9
-        polygon_a = shapely.geometry.Polygon([
-            (reference.origin[0], reference.origin[1]),
-            (reference.origin[0], -pixel_size * n_pixels+reference.origin[1]),
-            (reference.origin[0]+pixel_size * n_pixels,
-             -pixel_size * n_pixels+reference.origin[1]),
-            (reference.origin[0]+pixel_size * n_pixels, reference.origin[1]),
-            (reference.origin[0], reference.origin[1])])
-        polygon_b = shapely.geometry.Polygon([
-            (reference.origin[0], reference.origin[1]),
-            (reference.origin[0], -pixel_size+reference.origin[1]),
-            (reference.origin[0]+pixel_size, -pixel_size+reference.origin[1]),
-            (reference.origin[0]+pixel_size, reference.origin[1]),
-            (reference.origin[0], reference.origin[1])])
-        aggregating_vector_path = os.path.join(
-            self.workspace_dir, 'aggregate_vector')
-        aggregate_field_name = 'id'
-        pygeoprocessing.testing.create_vector_on_disk(
-            [polygon_a, polygon_b], reference.projection,
-            fields={'id': 'int'}, attributes=[
-                {aggregate_field_name: 0}, {aggregate_field_name: 1}],
-            vector_format='GeoJSON', filename=aggregating_vector_path)
-        pixel_matrix = numpy.ones((n_pixels, n_pixels), numpy.float32)
-        nodata_target = -1
-        raster_path = os.path.join(self.workspace_dir, 'raster.tif')
-        pygeoprocessing.testing.create_raster_on_disk(
-            [pixel_matrix], reference.origin, reference.projection,
-            nodata_target, reference.pixel_size(30), filename=raster_path)
-        with self.assertRaises(ValueError):
-            _ = pygeoprocessing.zonal_statistics(
-                (raster_path, 1), aggregating_vector_path,
-                'BAD ID', aggregate_layer_name=None,
-                ignore_nodata=True, all_touched=False,
-                polygons_might_overlap=False)
 
     def test_zonal_statistics_bad_raster_path_band(self):
         """PGP.geoprocessing: test zonal stats with bad raster/path type."""
@@ -505,8 +527,8 @@ class PyGeoprocessing10(unittest.TestCase):
             # intentionally not passing a (path, band) tuple as first arg
             _ = pygeoprocessing.zonal_statistics(
                 raster_path, aggregating_vector_path,
-                aggregate_field_name, aggregate_layer_name=None,
-                ignore_nodata=True, all_touched=False,
+                aggregate_layer_name=None,
+                ignore_nodata=True,
                 polygons_might_overlap=True)
 
     def test_interpolate_points(self):
@@ -1501,24 +1523,6 @@ class PyGeoprocessing10(unittest.TestCase):
         # we know signed bytes will convert
         self.assertEqual(target_matrix[0, 0], -1)
 
-    def test_calculate_raster_stats_empty(self):
-        """PGP.geoprocessing: test empty rasters don't calculate stats."""
-        pixel_matrix = numpy.ones((5, 5), numpy.byte)
-        pixel_matrix[0, 0] = 255  # 255 ubyte is -1 byte
-        reference = sampledata.SRS_COLOMBIA
-        nodata_base = -1
-        pixel_matrix[:] = nodata_base
-        base_path = os.path.join(self.workspace_dir, 'base.tif')
-        pygeoprocessing.testing.create_raster_on_disk(
-            [pixel_matrix], reference.origin, reference.projection,
-            nodata_base, reference.pixel_size(30), datatype=gdal.GDT_Byte,
-            filename=base_path, dataset_opts=['PIXELTYPE=SIGNEDBYTE'])
-
-        # this used to cause an error to be printed, now it won't though it
-        # doesn't bother setting any values in the raster
-        pygeoprocessing.calculate_raster_stats(base_path)
-        self.assertTrue(True)
-
     def test_new_raster_from_base_nodata_not_set(self):
         """PGP.geoprocessing: test new raster with nodata not set."""
         driver = gdal.GetDriverByName('GTiff')
@@ -2156,49 +2160,6 @@ class PyGeoprocessing10(unittest.TestCase):
         for regular_int in regular_ints:
             next_int = pygeoprocessing.geoprocessing._next_regular(next_int+1)
             self.assertEqual(next_int, regular_int)
-
-    def test_available_interpolation_values_gdal223(self):
-        """PGP.geoprocessing: available interpolation values: gdal 2.2.3."""
-        try:
-            from pygeoprocessing import geoprocessing
-            # artificially set the interpolation values
-            sys.modules['osgeo.gdal'].__version__ = '2.2.3'
-
-            # if our local installation of GDAL is below 2.2.3, we need to
-            # manually define these attributes.
-            for interpolation_mode in ('GRA_Max', 'GRA_Min', 'GRA_Med',
-                                       'GRA_Q1', 'GRA_Q3'):
-                setattr(sys.modules['osgeo.gdal'], interpolation_mode, None)
-
-            # Now that we've updated the GDAL module, reload pygeoprocessing
-            # and ensure that the right interpolation options are there.
-            geoprocessing = reload(geoprocessing)
-            self.assertEqual(sorted(geoprocessing._RESAMPLE_DICT.keys()),
-                             ['average', 'bilinear', 'cubic', 'cubicspline',
-                              'lanczos', 'max', 'med', 'min', 'mode',
-                              'near', 'q1', 'q3'])
-        finally:
-            # Regardless of test outcome, reload the modules so we don't mess
-            # with other tests.
-            sys.modules['osgeo.gdal'] = reload(sys.modules['osgeo.gdal'])
-            geoprocessing = reload(geoprocessing)
-
-    def test_available_interpolation_values_gdal200(self):
-        """PGP.geoprocessing: available interpolation values: gdal 2.0.0."""
-        try:
-            from pygeoprocessing import geoprocessing
-            # artificially set the interpolation values
-            sys.modules['osgeo.gdal'].__version__ = '2.0.0'
-            geoprocessing = reload(geoprocessing)
-
-            self.assertEqual(sorted(geoprocessing._RESAMPLE_DICT.keys()),
-                             ['average', 'bilinear', 'cubic', 'cubicspline',
-                              'lanczos', 'mode', 'near'])
-        finally:
-            # Regardless of test outcome, reload the modules so we don't mess
-            # with other tests.
-            sys.modules['osgeo.gdal'] = reload(sys.modules['osgeo.gdal'])
-            geoprocessing = reload(geoprocessing)
 
     def test_merge_rasters(self):
         """PGP.geoprocessing: test merge_rasters."""
