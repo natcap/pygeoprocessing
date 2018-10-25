@@ -56,7 +56,7 @@ GTIFF_CREATION_OPTIONS = (
 
 # if nodata is not defined for a float, it's a difficult choice. this number
 # probably won't collide with anything ever created by humans
-cdef double IMPROBABLE_FLOAT_NOATA = -1.23789789e29
+cdef double IMPROBABLE_FLOAT_NODATA = -1.23789789e29
 
 # a pre-computed square root of 2 constant
 cdef double SQRT2 = 1.4142135623730951
@@ -584,7 +584,7 @@ def fill_pits(
         dem_nodata = numpy.float64(base_nodata)
     else:
         # pick some very improbable value since it's hard to deal with NaNs
-        dem_nodata = IMPROBABLE_FLOAT_NOATA
+        dem_nodata = IMPROBABLE_FLOAT_NODATA
 
     # these are used to determine if a sample is within the raster
     raster_x_size, raster_y_size = dem_raster_info['raster_size']
@@ -933,7 +933,7 @@ def flow_dir_d8(
         dem_nodata = numpy.float64(base_nodata)
     else:
         # pick some very improbable value since it's hard to deal with NaNs
-        dem_nodata = IMPROBABLE_FLOAT_NOATA
+        dem_nodata = IMPROBABLE_FLOAT_NODATA
 
     # these are used to determine if a sample is within the raster
     raster_x_size, raster_y_size = dem_raster_info['raster_size']
@@ -1263,7 +1263,7 @@ def flow_accumulation_d8(
     # this value is used to store the current weight which might be 1 or
     # come from a predefined flow accumulation weight raster
     cdef double weight_val
-    cdef double weight_nodata = IMPROBABLE_FLOAT_NOATA  # set to something
+    cdef double weight_nodata = IMPROBABLE_FLOAT_NODATA  # set to something
 
     # `search_stack` is used to walk upstream to calculate flow accumulation
     # values
@@ -1287,7 +1287,7 @@ def flow_accumulation_d8(
             "%s is supposed to be a raster band tuple but it's not." % (
                 weight_raster_path_band))
 
-    flow_accum_nodata = -1
+    flow_accum_nodata = IMPROBABLE_FLOAT_NODATA
     pygeoprocessing.new_raster_from_base(
         flow_dir_raster_path_band[0], target_flow_accum_raster_path,
         gdal.GDT_Float64, [flow_accum_nodata],
@@ -1399,7 +1399,7 @@ def flow_accumulation_d8(
                             continue
                         upstream_flow_accum = <double>(
                             flow_accum_managed_raster.get(xi_n, yi_n))
-                        if upstream_flow_accum == flow_accum_nodata:
+                        if is_close(upstream_flow_accum, flow_accum_nodata):
                             # process upstream before this one
                             flow_pixel.last_flow_dir = i_n
                             search_stack.push(flow_pixel)
@@ -1528,7 +1528,7 @@ def flow_dir_mfd(
         dem_nodata = numpy.float64(base_nodata)
     else:
         # pick some very improbable value since it's hard to deal with NaNs
-        dem_nodata = IMPROBABLE_FLOAT_NOATA
+        dem_nodata = IMPROBABLE_FLOAT_NODATA
 
     # these are used to determine if a sample is within the raster
     raster_x_size, raster_y_size = dem_raster_info['raster_size']
@@ -1967,8 +1967,8 @@ def flow_accumulation_mfd(
     # to trigger a recursive uphill walk
     cdef double upstream_flow_accum
 
-    cdef double flow_accum_nodata = -1
-    cdef double weight_nodata = IMPROBABLE_FLOAT_NOATA
+    cdef double flow_accum_nodata = IMPROBABLE_FLOAT_NODATA
+    cdef double weight_nodata = IMPROBABLE_FLOAT_NODATA
 
     # this value is used to store the current weight which might be 1 or
     # come from a predefined flow accumulation weight raster
@@ -2112,7 +2112,7 @@ def flow_accumulation_mfd(
                             continue
                         upstream_flow_accum = (
                             flow_accum_managed_raster.get(xi_n, yi_n))
-                        if upstream_flow_accum == flow_accum_nodata:
+                        if is_close(upstream_flow_accum, flow_accum_nodata):
                             # process upstream before this one
                             flow_pixel.last_flow_dir = i_n
                             search_stack.push(flow_pixel)
