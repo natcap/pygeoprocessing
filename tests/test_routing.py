@@ -291,9 +291,8 @@ class TestRouting(unittest.TestCase):
 
         # this is a regression result saved by hand from a simple run but
         # multiplied by the flow weight constant so we know flow weights work.
-        zero_array = numpy.zeros((11, 11))
+        zero_array = numpy.zeros(flow_dir_array.shape)
         zero_raster_path = os.path.join(self.workspace_dir, 'zero.tif')
-        zero_array = numpy.empty(zero_array.shape)
         zero_raster = driver.Create(
             zero_raster_path, zero_array.shape[1],
             zero_array.shape[0], 1, gdal.GDT_Float32, options=(
@@ -301,6 +300,8 @@ class TestRouting(unittest.TestCase):
                 'BLOCKXSIZE=32', 'BLOCKYSIZE=32'))
         zero_band = zero_raster.GetRasterBand(1)
         zero_band.WriteArray(zero_array)
+        # doing this on purpose to make the weights as complicated as possible
+        zero_band.SetNoDataValue(0)
         zero_band.FlushCache()
         zero_band = None
         zero_raster = None
@@ -549,6 +550,7 @@ class TestRouting(unittest.TestCase):
                 'BLOCKXSIZE=32', 'BLOCKYSIZE=32'))
         zero_band = zero_raster.GetRasterBand(1)
         zero_band.WriteArray(zero_array)
+        zero_band.SetNoDataValue(0)
         zero_band.FlushCache()
         zero_raster.FlushCache()
         zero_band = None
