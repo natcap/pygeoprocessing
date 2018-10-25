@@ -4,7 +4,6 @@ import logging
 import time
 import sys
 import traceback
-import shapely
 
 cimport numpy
 import numpy
