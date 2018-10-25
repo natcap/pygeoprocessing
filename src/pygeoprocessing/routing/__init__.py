@@ -85,6 +85,7 @@ def join_watershed_fragments(watershed_fragments_vector,
         (ws_id, fragment_multipolygons[ws_id]) for (ws_id, upstream_fragments)
         in upstream_fragments.items() if not upstream_fragments)
 
+    encountered_ws_ids = set([])
     def _recurse_watersheds(ws_id):
         """Find or build geometries for the given ``ws_id``.
 
@@ -107,16 +108,21 @@ def join_watershed_fragments(watershed_fragments_vector,
                 of this fragment.
 
         """
-        try:
-            return watershed_geometries[ws_id]
-        except KeyError:
-            geometries = [fragment_multipolygons[ws_id]]
-            for upstream_fragment_id in upstream_fragments[ws_id]:
-                if upstream_fragment_id not in watershed_geometries:
-                    watershed_geometries[upstream_fragment_id] = (
-                        _recurse_watersheds(upstream_fragment_id))
-                geometries.append(watershed_geometries[upstream_fragment_id])
-            return shapely.ops.cascaded_union(geometries)
+        encountered_ws_ids.add(ws_id)
+
+        geometries = [fragment_multipolygons[ws_id]]
+        for upstream_fragment_id in upstream_fragments[ws_id]:
+            # If we've already encountered this upstream fragment on this
+            # run through the recursion, skip it.
+            if upstream_fragment_id in encountered_ws_ids:
+                continue
+
+            encountered_ws_ids.add(upstream_fragment_id)
+            if upstream_fragment_id not in watershed_geometries:
+                watershed_geometries[upstream_fragment_id] = (
+                    _recurse_watersheds(upstream_fragment_id))
+            geometries.append(watershed_geometries[upstream_fragment_id])
+        return shapely.ops.cascaded_union(geometries)
 
     # Iterate over the ws_ids that have upstream geometries and create the
     # watershed geometries.
@@ -131,8 +137,8 @@ def join_watershed_fragments(watershed_fragments_vector,
         # The presence of a ws_id key in watershed_geometries could be
         # altered during a call to _recurse_watersheds.  This condition
         # ensures that we don't call _recurse_watersheds more than we need to.
-        if ws_id not in watershed_geometries:
-            watershed_geometries[ws_id] = _recurse_watersheds(ws_id)
+        encountered_ws_ids.clear()
+        watershed_geometries[ws_id] = _recurse_watersheds(ws_id)
 
     # Copy fields from the fragments vector and set the geometries to the
     # newly-created, unioned geometries.
