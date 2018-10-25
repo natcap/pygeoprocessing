@@ -10,6 +10,18 @@ Unreleased Changes
 * Improved runtime performance of ``reproject_vector`` by using database
   transactions.
 * Improved logging for long runtimes in ``zonal_statistics``.
+* Changed ``zonal_statistics`` API and functionality to aggregate across the
+  FIDs of the aggregate vector. This is to be consistent with QGIS and other
+  zonal statistics functionality. Additionally, fixed a bug where very small
+  polygons might not get aggregated if they lie in the same pixel as another
+  polygon that does not intersect it. The algorithm now runs in two passes:
+    * aggregate pixels whose centers intersect the aggregate polygons
+    * any polygons that were not aggregated are geometrically intersected
+      with pixels to determine coverage.
+* Removed the ``calculate_raster_stats`` function since it duplicates GDAL
+  functionality, but with a slower runtime, and now functions in
+  ``pygeoprocessing`` that create rasters also calculate stats on the fly if
+  desired.
 * Fixes an issue in `get_raster_info` and `get_vector_info` where the path to
   the raster/vector includes non-standard OS pathing (such as a NETCDF), info
   will still calculate info.
