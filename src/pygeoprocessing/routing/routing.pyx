@@ -672,7 +672,7 @@ def fill_pits(
         for yi in xrange(1, win_ysize+1):
             for xi in xrange(1, win_xsize+1):
                 center_val = dem_buffer_array[yi, xi]
-                if center_val == dem_nodata:
+                if is_close(center_val, dem_nodata):
                     continue
 
                 # this value is set in case it turns out to be the root of a
@@ -699,7 +699,7 @@ def fill_pits(
                         nodata_neighbor = 1
                         break
                     n_height = filled_dem_managed_raster.get(xi_n, yi_n)
-                    if n_height == dem_nodata:
+                    if is_close(n_height, dem_nodata):
                         # it'll drain to nodata
                         nodata_neighbor = 1
                         break
@@ -739,13 +739,13 @@ def fill_pits(
                             continue
                         n_height = filled_dem_managed_raster.get(
                             xi_n, yi_n)
-                        if n_height == dem_nodata:
+                        if is_close(n_height, dem_nodata):
                             nodata_drain = 1
                             continue
                         if n_height < center_val:
                             downhill_drain = 1
                             continue
-                        if n_height == center_val and (
+                        if is_close(n_height, center_val) and (
                                 flat_region_mask_managed_raster.get(
                                     xi_n, yi_n) == mask_nodata):
                             # only grow if it's at the same level and not
@@ -798,7 +798,8 @@ def fill_pits(
                             xi_n, yi_n, feature_id)
 
                         n_height = filled_dem_managed_raster.get(xi_n, yi_n)
-                        if n_height == dem_nodata or n_height < fill_height:
+                        if is_close(n_height, dem_nodata) or (
+                                n_height < fill_height):
                             # we encounter a neighbor not processed that is
                             # lower than the current pixel or nodata
                             pour_point = 1
@@ -1046,7 +1047,7 @@ def flow_dir_d8(
         for yi in xrange(1, win_ysize+1):
             for xi in xrange(1, win_xsize+1):
                 root_height = dem_buffer_array[yi, xi]
-                if root_height == dem_nodata:
+                if is_close(root_height, dem_nodata):
                     continue
 
                 # this value is set in case it turns out to be the root of a
@@ -1070,7 +1071,7 @@ def flow_dir_d8(
                     xi_n = xi+NEIGHBOR_OFFSET_ARRAY[2*i_n]
                     yi_n = yi+NEIGHBOR_OFFSET_ARRAY[2*i_n+1]
                     n_height = dem_buffer_array[yi_n, xi_n]
-                    if n_height == dem_nodata:
+                    if is_close(n_height, dem_nodata):
                         continue
                     n_slope = root_height - n_height
                     if i_n & 1:
@@ -1112,7 +1113,7 @@ def flow_dir_d8(
                             n_height = dem_nodata
                         else:
                             n_height = dem_managed_raster.get(xi_n, yi_n)
-                        if n_height == dem_nodata:
+                        if is_close(n_height, dem_nodata):
                             if diagonal_nodata and largest_slope == 0.0:
                                 largest_slope_dir = i_n
                                 diagonal_nodata = i_n & 1
@@ -1654,7 +1655,7 @@ def flow_dir_mfd(
         for yi in xrange(1, win_ysize+1):
             for xi in xrange(1, win_xsize+1):
                 root_height = dem_buffer_array[yi, xi]
-                if root_height == dem_nodata:
+                if is_close(root_height, dem_nodata):
                     continue
 
                 # this value is set in case it turns out to be the root of a
@@ -1679,7 +1680,7 @@ def flow_dir_mfd(
                     xi_n = xi+NEIGHBOR_OFFSET_ARRAY[2*i_n]
                     yi_n = yi+NEIGHBOR_OFFSET_ARRAY[2*i_n+1]
                     n_height = dem_buffer_array[yi_n, xi_n]
-                    if n_height == dem_nodata:
+                    if is_close(n_height, dem_nodata):
                         continue
                     n_slope = root_height - n_height
                     if n_slope > 0.0:
@@ -1731,7 +1732,7 @@ def flow_dir_mfd(
                             n_height = dem_nodata
                         else:
                             n_height = dem_managed_raster.get(xi_n, yi_n)
-                        if n_height == dem_nodata:
+                        if is_close(n_height, dem_nodata):
                             n_slope = SQRT2_INV if i_n & 1 else 1.0
                             sum_of_nodata_slope_weights += n_slope
                             nodata_downhill_slope_array[i_n] = n_slope
@@ -1840,8 +1841,8 @@ def flow_dir_mfd(
                         n_drain_distance = drain_distance + (
                             SQRT2 if i_n&1 else 1.0)
 
-                        if dem_managed_raster.get(
-                                xi_n, yi_n) == root_height and (
+                        if is_close(dem_managed_raster.get(
+                                xi_n, yi_n), root_height) and (
                                 plateau_distance_managed_raster.get(
                                     xi_n, yi_n) > n_drain_distance):
                             # neighbor is at same level and has longer drain
@@ -2481,8 +2482,8 @@ def distance_to_channel_mfd(
                     # nodata flow, so we skip
                     continue
 
-                if distance_to_channel_managed_raster.get(
-                        xi_root, yi_root) == distance_nodata:
+                if is_close(distance_to_channel_managed_raster.get(
+                        xi_root, yi_root), distance_nodata):
                     distance_to_channel_stack.push(
                         FlowPixelType(xi_root, yi_root, 0, 0.0))
 
@@ -2517,7 +2518,7 @@ def distance_to_channel_mfd(
                         n_distance = distance_to_channel_managed_raster.get(
                             xi_n, yi_n)
 
-                        if n_distance == distance_nodata:
+                        if is_close(n_distance, distance_nodata):
                             preempted = 1
                             pixel.last_flow_dir = i_n
                             distance_to_channel_stack.push(pixel)
