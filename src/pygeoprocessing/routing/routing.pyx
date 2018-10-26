@@ -56,7 +56,7 @@ GTIFF_CREATION_OPTIONS = (
 
 # if nodata is not defined for a float, it's a difficult choice. this number
 # probably won't collide with anything ever created by humans
-cdef double IMPROBABLE_FLOAT_NOATA = -1.23789789e29
+cdef double IMPROBABLE_FLOAT_NODATA = -1.23789789e29
 
 # a pre-computed square root of 2 constant
 cdef double SQRT2 = 1.4142135623730951
@@ -152,6 +152,8 @@ cdef cppclass GreaterPixel nogil:
                 return 1
         return 0
 
+cdef int is_close(double x, double y):
+    return abs(x-y) <= (1e-8+1e-05*abs(y))
 
 # a class to allow fast random per-pixel access to a raster for both setting
 # and reading pixels.
@@ -582,7 +584,7 @@ def fill_pits(
         dem_nodata = numpy.float64(base_nodata)
     else:
         # pick some very improbable value since it's hard to deal with NaNs
-        dem_nodata = IMPROBABLE_FLOAT_NOATA
+        dem_nodata = IMPROBABLE_FLOAT_NODATA
 
     # these are used to determine if a sample is within the raster
     raster_x_size, raster_y_size = dem_raster_info['raster_size']
@@ -670,7 +672,7 @@ def fill_pits(
         for yi in xrange(1, win_ysize+1):
             for xi in xrange(1, win_xsize+1):
                 center_val = dem_buffer_array[yi, xi]
-                if center_val == dem_nodata:
+                if is_close(center_val, dem_nodata):
                     continue
 
                 # this value is set in case it turns out to be the root of a
@@ -697,7 +699,7 @@ def fill_pits(
                         nodata_neighbor = 1
                         break
                     n_height = filled_dem_managed_raster.get(xi_n, yi_n)
-                    if n_height == dem_nodata:
+                    if is_close(n_height, dem_nodata):
                         # it'll drain to nodata
                         nodata_neighbor = 1
                         break
@@ -737,13 +739,13 @@ def fill_pits(
                             continue
                         n_height = filled_dem_managed_raster.get(
                             xi_n, yi_n)
-                        if n_height == dem_nodata:
+                        if is_close(n_height, dem_nodata):
                             nodata_drain = 1
                             continue
                         if n_height < center_val:
                             downhill_drain = 1
                             continue
-                        if n_height == center_val and (
+                        if is_close(n_height, center_val) and (
                                 flat_region_mask_managed_raster.get(
                                     xi_n, yi_n) == mask_nodata):
                             # only grow if it's at the same level and not
@@ -796,7 +798,8 @@ def fill_pits(
                             xi_n, yi_n, feature_id)
 
                         n_height = filled_dem_managed_raster.get(xi_n, yi_n)
-                        if n_height == dem_nodata or n_height < fill_height:
+                        if is_close(n_height, dem_nodata) or (
+                                n_height < fill_height):
                             # we encounter a neighbor not processed that is
                             # lower than the current pixel or nodata
                             pour_point = 1
@@ -931,7 +934,7 @@ def flow_dir_d8(
         dem_nodata = numpy.float64(base_nodata)
     else:
         # pick some very improbable value since it's hard to deal with NaNs
-        dem_nodata = IMPROBABLE_FLOAT_NOATA
+        dem_nodata = IMPROBABLE_FLOAT_NODATA
 
     # these are used to determine if a sample is within the raster
     raster_x_size, raster_y_size = dem_raster_info['raster_size']
@@ -1044,7 +1047,7 @@ def flow_dir_d8(
         for yi in xrange(1, win_ysize+1):
             for xi in xrange(1, win_xsize+1):
                 root_height = dem_buffer_array[yi, xi]
-                if root_height == dem_nodata:
+                if is_close(root_height, dem_nodata):
                     continue
 
                 # this value is set in case it turns out to be the root of a
@@ -1068,7 +1071,7 @@ def flow_dir_d8(
                     xi_n = xi+NEIGHBOR_OFFSET_ARRAY[2*i_n]
                     yi_n = yi+NEIGHBOR_OFFSET_ARRAY[2*i_n+1]
                     n_height = dem_buffer_array[yi_n, xi_n]
-                    if n_height == dem_nodata:
+                    if is_close(n_height, dem_nodata):
                         continue
                     n_slope = root_height - n_height
                     if i_n & 1:
@@ -1110,7 +1113,7 @@ def flow_dir_d8(
                             n_height = dem_nodata
                         else:
                             n_height = dem_managed_raster.get(xi_n, yi_n)
-                        if n_height == dem_nodata:
+                        if is_close(n_height, dem_nodata):
                             if diagonal_nodata and largest_slope == 0.0:
                                 largest_slope_dir = i_n
                                 diagonal_nodata = i_n & 1
@@ -1261,6 +1264,7 @@ def flow_accumulation_d8(
     # this value is used to store the current weight which might be 1 or
     # come from a predefined flow accumulation weight raster
     cdef double weight_val
+    cdef double weight_nodata = IMPROBABLE_FLOAT_NODATA  # set to something
 
     # `search_stack` is used to walk upstream to calculate flow accumulation
     # values
@@ -1284,7 +1288,7 @@ def flow_accumulation_d8(
             "%s is supposed to be a raster band tuple but it's not." % (
                 weight_raster_path_band))
 
-    flow_accum_nodata = -1
+    flow_accum_nodata = IMPROBABLE_FLOAT_NODATA
     pygeoprocessing.new_raster_from_base(
         flow_dir_raster_path_band[0], target_flow_accum_raster_path,
         gdal.GDT_Float64, [flow_accum_nodata],
@@ -1304,6 +1308,11 @@ def flow_accumulation_d8(
     if weight_raster_path_band:
         weight_raster = _ManagedRaster(
             weight_raster_path_band[0], weight_raster_path_band[1], 0)
+        raw_weight_nodata = pygeoprocessing.get_raster_info(
+            weight_raster_path_band[0])['nodata'][
+                weight_raster_path_band[1]-1]
+        if raw_weight_nodata is not None:
+            weight_nodata = raw_weight_nodata
 
     flow_dir_raster_info = pygeoprocessing.get_raster_info(
         flow_dir_raster_path_band[0])
@@ -1363,6 +1372,8 @@ def flow_accumulation_d8(
                     if weight_raster is not None:
                         weight_val = <double>weight_raster.get(
                             xi_root, yi_root)
+                        if is_close(weight_val, weight_nodata):
+                            weight_val = 0.0
                     else:
                         weight_val = 1.0
                     search_stack.push(
@@ -1389,13 +1400,15 @@ def flow_accumulation_d8(
                             continue
                         upstream_flow_accum = <double>(
                             flow_accum_managed_raster.get(xi_n, yi_n))
-                        if upstream_flow_accum == flow_accum_nodata:
+                        if is_close(upstream_flow_accum, flow_accum_nodata):
                             # process upstream before this one
                             flow_pixel.last_flow_dir = i_n
                             search_stack.push(flow_pixel)
                             if weight_raster is not None:
                                 weight_val = <double>weight_raster.get(
                                     xi_n, yi_n)
+                                if is_close(weight_val, weight_nodata):
+                                    weight_val = 0.0
                             else:
                                 weight_val = 1.0
                             search_stack.push(
@@ -1516,7 +1529,7 @@ def flow_dir_mfd(
         dem_nodata = numpy.float64(base_nodata)
     else:
         # pick some very improbable value since it's hard to deal with NaNs
-        dem_nodata = IMPROBABLE_FLOAT_NOATA
+        dem_nodata = IMPROBABLE_FLOAT_NODATA
 
     # these are used to determine if a sample is within the raster
     raster_x_size, raster_y_size = dem_raster_info['raster_size']
@@ -1642,7 +1655,7 @@ def flow_dir_mfd(
         for yi in xrange(1, win_ysize+1):
             for xi in xrange(1, win_xsize+1):
                 root_height = dem_buffer_array[yi, xi]
-                if root_height == dem_nodata:
+                if is_close(root_height, dem_nodata):
                     continue
 
                 # this value is set in case it turns out to be the root of a
@@ -1667,7 +1680,7 @@ def flow_dir_mfd(
                     xi_n = xi+NEIGHBOR_OFFSET_ARRAY[2*i_n]
                     yi_n = yi+NEIGHBOR_OFFSET_ARRAY[2*i_n+1]
                     n_height = dem_buffer_array[yi_n, xi_n]
-                    if n_height == dem_nodata:
+                    if is_close(n_height, dem_nodata):
                         continue
                     n_slope = root_height - n_height
                     if n_slope > 0.0:
@@ -1719,7 +1732,7 @@ def flow_dir_mfd(
                             n_height = dem_nodata
                         else:
                             n_height = dem_managed_raster.get(xi_n, yi_n)
-                        if n_height == dem_nodata:
+                        if is_close(n_height, dem_nodata):
                             n_slope = SQRT2_INV if i_n & 1 else 1.0
                             sum_of_nodata_slope_weights += n_slope
                             nodata_downhill_slope_array[i_n] = n_slope
@@ -1828,8 +1841,8 @@ def flow_dir_mfd(
                         n_drain_distance = drain_distance + (
                             SQRT2 if i_n&1 else 1.0)
 
-                        if dem_managed_raster.get(
-                                xi_n, yi_n) == root_height and (
+                        if is_close(dem_managed_raster.get(
+                                xi_n, yi_n), root_height) and (
                                 plateau_distance_managed_raster.get(
                                     xi_n, yi_n) > n_drain_distance):
                             # neighbor is at same level and has longer drain
@@ -1923,7 +1936,8 @@ def flow_accumulation_mfd(
             raster that will be used as the per-pixel flow accumulation
             weight. If `None`, 1 is the default flow accumulation weight.
             This raster must be the same dimensions as
-            `flow_dir_mfd_raster_path_band`.
+            `flow_dir_mfd_raster_path_band`. If a weight nodata pixel is
+            encountered it will be treated as a weight value of 0.
 
     Returns:
         None.
@@ -1954,6 +1968,9 @@ def flow_accumulation_mfd(
     # to trigger a recursive uphill walk
     cdef double upstream_flow_accum
 
+    cdef double flow_accum_nodata = IMPROBABLE_FLOAT_NODATA
+    cdef double weight_nodata = IMPROBABLE_FLOAT_NODATA
+
     # this value is used to store the current weight which might be 1 or
     # come from a predefined flow accumulation weight raster
     cdef double weight_val
@@ -1981,7 +1998,6 @@ def flow_accumulation_mfd(
             "%s is supposed to be a raster band tuple but it's not." % (
                 weight_raster_path_band))
 
-    flow_accum_nodata = -1
     pygeoprocessing.new_raster_from_base(
         flow_dir_mfd_raster_path_band[0], target_flow_accum_raster_path,
         gdal.GDT_Float64, [flow_accum_nodata],
@@ -2001,6 +2017,11 @@ def flow_accumulation_mfd(
     if weight_raster_path_band:
         weight_raster = _ManagedRaster(
             weight_raster_path_band[0], weight_raster_path_band[1], 0)
+        raw_weight_nodata = pygeoprocessing.get_raster_info(
+            weight_raster_path_band[0])['nodata'][
+                weight_raster_path_band[1]-1]
+        if raw_weight_nodata is not None:
+            weight_nodata = raw_weight_nodata
 
     flow_dir_raster_info = pygeoprocessing.get_raster_info(
         flow_dir_mfd_raster_path_band[0])
@@ -2062,6 +2083,8 @@ def flow_accumulation_mfd(
                         if weight_raster is not None:
                             weight_val = <double>weight_raster.get(
                                 xi_root, yi_root)
+                            if is_close(weight_val, weight_nodata):
+                                weight_val = 0.0
                         else:
                             weight_val = 1.0
                         search_stack.push(
@@ -2090,13 +2113,15 @@ def flow_accumulation_mfd(
                             continue
                         upstream_flow_accum = (
                             flow_accum_managed_raster.get(xi_n, yi_n))
-                        if upstream_flow_accum == flow_accum_nodata:
+                        if is_close(upstream_flow_accum, flow_accum_nodata):
                             # process upstream before this one
                             flow_pixel.last_flow_dir = i_n
                             search_stack.push(flow_pixel)
                             if weight_raster is not None:
                                 weight_val = <double>weight_raster.get(
                                     xi_n, yi_n)
+                                if is_close(weight_val, weight_nodata):
+                                    weight_val = 0.0
                             else:
                                 weight_val = 1.0
                             search_stack.push(
@@ -2169,7 +2194,8 @@ def distance_to_channel_d8(
 
     # these area used to store custom per-pixel weights and per-pixel values
     # for distance updates
-    cdef float weight_val, pixel_val
+    cdef double weight_val, pixel_val
+    cdef double weight_nodata = IMPROBABLE_FLOAT_NODATA
 
     # used for time-delayed logging
     cdef time_t last_log_time
@@ -2197,6 +2223,11 @@ def distance_to_channel_d8(
     if weight_raster_path_band:
         weight_raster = _ManagedRaster(
             weight_raster_path_band[0], weight_raster_path_band[1], 0)
+        raw_weight_nodata = pygeoprocessing.get_raster_info(
+            weight_raster_path_band[0])['nodata'][
+                weight_raster_path_band[1]-1]
+        if raw_weight_nodata is not None:
+            weight_nodata = raw_weight_nodata
 
     channel_managed_raster = _ManagedRaster(
         channel_raster_path_band[0], channel_raster_path_band[1], 0)
@@ -2282,6 +2313,8 @@ def distance_to_channel_d8(
                             # for diagonal distance.
                             if weight_raster is not None:
                                 weight_val = weight_raster.get(xi_n, yi_n)
+                                if is_close(weight_val, weight_nodata):
+                                    weight_val = 0.0
                             else:
                                 weight_val = (SQRT2 if i_n % 2 else 1)
 
@@ -2342,6 +2375,7 @@ def distance_to_channel_mfd(
     # this value is used to store the current weight which might be 1 or
     # come from a predefined flow accumulation weight raster
     cdef double weight_val
+    cdef double weight_nodata = IMPROBABLE_FLOAT_NODATA
 
     # used for time-delayed logging
     cdef time_t last_log_time
@@ -2355,7 +2389,7 @@ def distance_to_channel_mfd(
                 "%s is supposed to be a raster band tuple but it's not." % (
                     path))
 
-    distance_nodata = -1
+    distance_nodata = IMPROBABLE_FLOAT_NODATA
     pygeoprocessing.new_raster_from_base(
         flow_dir_mfd_raster_path_band[0],
         target_distance_to_channel_raster_path,
@@ -2382,6 +2416,13 @@ def distance_to_channel_mfd(
     if weight_raster_path_band:
         weight_raster = _ManagedRaster(
             weight_raster_path_band[0], weight_raster_path_band[1], 0)
+        raw_weight_nodata = pygeoprocessing.get_raster_info(
+            weight_raster_path_band[0])['nodata'][
+                weight_raster_path_band[1]-1]
+        if raw_weight_nodata is not None:
+            weight_nodata = raw_weight_nodata
+        else:
+            weight_nodata = IMPROBABLE_FLOAT_NODATA
 
     flow_dir_raster_info = pygeoprocessing.get_raster_info(
         flow_dir_mfd_raster_path_band[0])
@@ -2441,8 +2482,8 @@ def distance_to_channel_mfd(
                     # nodata flow, so we skip
                     continue
 
-                if distance_to_channel_managed_raster.get(
-                        xi_root, yi_root) == distance_nodata:
+                if is_close(distance_to_channel_managed_raster.get(
+                        xi_root, yi_root), distance_nodata):
                     distance_to_channel_stack.push(
                         FlowPixelType(xi_root, yi_root, 0, 0.0))
 
@@ -2477,7 +2518,7 @@ def distance_to_channel_mfd(
                         n_distance = distance_to_channel_managed_raster.get(
                             xi_n, yi_n)
 
-                        if n_distance == distance_nodata:
+                        if is_close(n_distance, distance_nodata):
                             preempted = 1
                             pixel.last_flow_dir = i_n
                             distance_to_channel_stack.push(pixel)
@@ -2492,6 +2533,8 @@ def distance_to_channel_mfd(
                         # for diagonal distance.
                         if weight_raster is not None:
                             weight_val = weight_raster.get(xi_n, yi_n)
+                            if is_close(weight_val, weight_nodata):
+                                weight_val = 0.0
                         else:
                             weight_val = (SQRT2 if i_n % 2 else 1)
 
