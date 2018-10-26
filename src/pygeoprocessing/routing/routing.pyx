@@ -2672,13 +2672,9 @@ def delineate_watersheds(
     # Track outflow geometry FIDs against the WS_ID used.
     ws_id_to_fid = {}
 
-    working_outlets_vector = gdal.OpenEx(working_outlets_path,
-                                 gdal.OF_VECTOR)
-    working_outlets_layer = working_outlets_vector.GetLayer()
-    working_outlet_layer_definition = working_outlets_layer.GetLayerDefn()
-    cdef int features_in_layer = working_outlets_layer.GetFeatureCount()
     cdef int pixels_in_watershed
     cdef time_t last_log_time = ctime(NULL)
+    cdef time_t last_ws_log_time = ctime(NULL)
     cdef unsigned int features_enqueued = 0
     cdef double minx, maxx, miny, maxy
     cdef cmap[int, cset[CoordinatePair]] FooMap
@@ -2704,6 +2700,11 @@ def delineate_watersheds(
                                      max(origin_xcoord, win_xcoord),
                                      max(origin_ycoord, win_ycoord)))
 
+    working_outlets_vector = gdal.OpenEx(working_outlets_path,
+                                         gdal.OF_VECTOR)
+    working_outlets_layer = working_outlets_vector.GetLayer()
+    working_outlet_layer_definition = working_outlets_layer.GetLayerDefn()
+    cdef int features_in_layer = working_outlets_layer.GetFeatureCount()
     cdef cmap[int, cset[CoordinatePair]] points_in_blocks
     cdef cmap[CoordinatePair, int] point_ws_ids 
     cdef CoordinatePair ws_seed_coord
@@ -2739,6 +2740,7 @@ def delineate_watersheds(
     cdef cmap[int, cset[CoordinatePair]].iterator block_iterator = points_in_blocks.begin()
     cdef cset[CoordinatePair] coords_in_block
     cdef cset[CoordinatePair].iterator coord_iterator
+    cdef int pixels_visited = 0
     while block_iterator != points_in_blocks.end():
         block_index = deref(block_iterator).first
         coords_in_block = deref(block_iterator).second
@@ -2759,14 +2761,16 @@ def delineate_watersheds(
                 LOGGER.info('Delineated %s watersheds of %s so far',
                             watersheds_started, features_in_layer)
 
+            last_ws_log_time = ctime(NULL)
             process_queue.push(current_pixel)
             process_queue_set.insert(current_pixel)
             nested_watershed_ids.clear()  # clear the set for each watershed.
 
             while not process_queue.empty():
+                pixels_visited += 1
                 pixels_in_watershed += 1
-                if ctime(NULL) - last_log_time > 5.0:
-                    last_log_time = ctime(NULL)
+                if ctime(NULL) - last_ws_log_time > 5.0:
+                    last_ws_log_time = ctime(NULL)
                     LOGGER.info('Delineating watershed %i of %i, %i pixels '
                                 'found so far.', watersheds_started, features_in_layer,
                                 pixels_in_watershed)
@@ -2872,6 +2876,7 @@ def delineate_watersheds(
     # the union of all upstream sheds.
     # If a watershed is alone (does not contain nested watersheds), the
     # geometry should be written as-is.
+    LOGGER.info('Copying fields over to the new fragments vector.')
     watershed_vector = gpkg_driver.CreateDataSource(target_fragments_vector_path)
     watershed_layer = watershed_vector.CreateLayer(
         'watershed_fragments', flow_dir_srs, ogr.wkbPolygon)
