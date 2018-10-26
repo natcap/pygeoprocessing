@@ -1,6 +1,11 @@
 Release History
 ===============
 
+1.3.1 10/25/2018
+----------------
+* Hotfix to patch an infinite loop when aggregating upstream or downstream
+  with custom rasters.
+
 1.3.0 10/25/2018
 -----------------
 * Fixed a handful of docstring errors.
@@ -51,6 +56,9 @@ Release History
   coverage area. This parameter is called `vector_mask_options` and is
   fully documented in both functions. It is similar to the cutline
   functionality provided in `gdal.Warp`.
+* Fixed an issue in the `flow_accumulation_*` functions where a weight raster
+  whose values were equal to the nodata value of the flow accumulation raster
+  OR simply nodata would cause infinite loops.
 
 1.2.3 (7/25/2018)
 -----------------
