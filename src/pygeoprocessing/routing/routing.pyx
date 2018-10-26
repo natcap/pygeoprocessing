@@ -43,6 +43,7 @@ from libcpp.queue cimport queue
 from libcpp.stack cimport stack
 from libcpp.deque cimport deque
 from libcpp.set cimport set as cset
+from libcpp.map cimport map as cmap
 
 LOGGER = logging.getLogger(__name__)
 LOGGER.addHandler(logging.NullHandler())  # silence logging by default
@@ -2684,66 +2685,78 @@ def delineate_watersheds(
     cdef time_t last_log_time = ctime(NULL)
     cdef unsigned int features_enqueued = 0
     cdef double minx, maxx, miny, maxy
-
-    # When interleaved is True, coords are in (xmin, ymin, xmax, ymax)
-    spatial_index = rtree.index.Index(interleaved=True)
-    for outflow_feature in working_outlets_layer:
-        if ctime(NULL) - last_log_time > 5.0:
-            last_log_time = ctime(NULL)
-            LOGGER.info('Enqueueing geometries, %s processed so far',
-                        features_enqueued)
-
-        # Casting to an int here makes it more explicit when GetField doesn't
-        # return an integer value.
-        ws_id = int(outflow_feature.GetField(ws_id_fieldname))
-        geometry = outflow_feature.GetGeometryRef()
-        minx, maxx, miny, maxy = [float(x) for x in geometry.GetEnvelope()]
-
-        fid = outflow_feature.GetFID()
-        ws_id_to_fid[ws_id] = fid
-        spatial_index.insert(ws_id, (min(minx, maxx),
-                                     min(miny, maxy),
-                                     max(minx, maxx),
-                                     max(miny, maxy)))
-        features_enqueued += 1
-
-    LOGGER.info('Delineating watersheds')
-    cdef int watersheds_started = 0
+    cdef cmap[int, cset[CoordinatePair]] FooMap
+    cdef cmap[CoordinatePair, int] BarMap
     cdef double x_origin = source_gt[0]
     cdef double y_origin = source_gt[3]
     cdef double x_pixelwidth = source_gt[1]
     cdef double y_pixelwidth = source_gt[5]
-    cdef double origin_xcoord, origin_ycoord, win_xcoord, win_ycoord
+    cdef int block_index
 
-    for offset_dict in pygeoprocessing.iterblocks(d8_flow_dir_raster_path_band[0],
-                                                  offset_only=True):
+    # When interleaved is True, coords are in (xmin, ymin, xmax, ymax)
+    spatial_index = rtree.index.Index(interleaved=True)
+    for block_index, offset_dict in enumerate(
+            pygeoprocessing.iterblocks(d8_flow_dir_raster_path_band[0],
+                                       offset_only=True)):
         origin_xcoord = x_origin + offset_dict['xoff']*x_pixelwidth
         origin_ycoord = y_origin + offset_dict['yoff']*y_pixelwidth
         win_xcoord = origin_xcoord + offset_dict['win_xsize']*x_pixelwidth
         win_ycoord = origin_ycoord + offset_dict['win_ysize']*y_pixelwidth
-        for ws_id in spatial_index.intersection(
-                (min(origin_xcoord, win_xcoord),
-                 min(origin_ycoord, win_ycoord),
-                 max(origin_xcoord, win_xcoord),
-                 max(origin_ycoord, win_ycoord))):
+
+        spatial_index.insert(block_index, (min(origin_xcoord, win_xcoord),
+                                     min(origin_ycoord, win_ycoord),
+                                     max(origin_xcoord, win_xcoord),
+                                     max(origin_ycoord, win_ycoord)))
+
+    cdef cmap[int, cset[CoordinatePair]] points_in_blocks
+    cdef cmap[CoordinatePair, int] point_ws_ids 
+    cdef CoordinatePair ws_seed_coord
+
+    for outflow_feature in working_outlets_layer:
+        ws_id = int(outflow_feature.GetField(ws_id_fieldname))
+        ws_id_to_fid[ws_id] = outflow_feature.GetFID()
+        geometry = shapely.wkb.loads(
+            outflow_feature.GetGeometryRef().ExportToWkb())
+        if not flow_dir_bbox_geometry.contains(geometry):
+            geometry = flow_dir_bbox_geometry.intersection(geometry)
+            if geometry.is_empty:
+                continue
+
+        ws_seed_point = geometry.representative_point()
+        ws_seed_coord = CoordinatePair(
+            (ws_seed_point.x - x_origin) // x_pixelwidth,
+            (ws_seed_point.y - y_origin) // y_pixelwidth)
+
+        block_index = <int>next(spatial_index.nearest(
+                (ws_seed_coord.first, ws_seed_coord.second,
+                 ws_seed_coord.first, ws_seed_coord.second), num_results=1))
+
+        if (points_in_blocks.find(block_index) ==
+                points_in_blocks.end()):
+            points_in_blocks[block_index] = cset[CoordinatePair]()
+
+        points_in_blocks[block_index].insert(ws_seed_coord)
+        point_ws_ids[ws_seed_coord] = ws_id
+
+    LOGGER.info('Delineating watersheds')
+    cdef int watersheds_started = 0
+    cdef cmap[int, cset[CoordinatePair]].iterator block_iterator = points_in_blocks.begin()
+    cdef cset[CoordinatePair] coords_in_block
+    cdef cset[CoordinatePair].iterator coord_iterator
+    while block_iterator != points_in_blocks.end():
+        block_index = deref(block_iterator).first
+        coords_in_block = deref(block_iterator).second
+        inc(block_iterator)
+
+        coord_iterator = coords_in_block.begin()
+
+        while coord_iterator != coords_in_block.end():
+            current_pixel = deref(coord_iterator)
+            ws_id = point_ws_ids[current_pixel]
+            inc(coord_iterator)
 
             watersheds_started += 1
             pixels_in_watershed = 0
-
-            outflow_feature = working_outlets_layer.GetFeature(ws_id_to_fid[ws_id])
-            geometry = shapely.wkb.loads(
-                outflow_feature.GetGeometryRef().ExportToWkb())
-
-            if not flow_dir_bbox_geometry.contains(geometry):
-                geometry = flow_dir_bbox_geometry.intersection(geometry)
-                if geometry.is_empty:
-                    continue
-
-            point = geometry.representative_point()
-            xi_outflow = (point.x - x_origin) // x_pixelwidth
-            yi_outflow = (point.y - y_origin) // y_pixelwidth
-
-            current_pixel = CoordinatePair(xi_outflow, yi_outflow)
 
             if ctime(NULL) - last_log_time > 5.0:
                 last_log_time = ctime(NULL)
