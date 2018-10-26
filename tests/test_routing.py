@@ -995,7 +995,7 @@ class TestRouting(unittest.TestCase):
 
         pygeoprocessing.routing.delineate_watersheds(
             (flow_dir_path, 1), outflow_points, target_watersheds_vector,
-            work_dir, False)
+            work_dir)
 
         vector = ogr.Open(target_watersheds_vector)
         self.assertEqual(vector.GetLayerCount(), 1)

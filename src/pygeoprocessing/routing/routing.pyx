@@ -2533,7 +2533,7 @@ ctypedef pair[long, long] CoordinatePair
 
 def delineate_watersheds(
         d8_flow_dir_raster_path_band, outflow_points_vector_path,
-        target_fragments_vector_path, working_dir=None, remove_working_dir=True):
+        target_fragments_vector_path, working_dir=None):
     """Delineate watersheds from a D8 flow direction raster.
 
     This function produces a vector of watershed fragments, where each fragment
@@ -2645,10 +2645,6 @@ def delineate_watersheds(
         working_outlets_path, scratch_raster_path, None,
         ['ALL_TOUCHED=TRUE', 'ATTRIBUTE=%s' % ws_id_fieldname],
         layer_index=working_outlets_layer_name)
-
-    import shutil
-    shutil.copyfile(scratch_raster_path,
-                    'rasterized.tif')
 
     # Create a new watershed scratch mask raster the size, shape of the flow dir raster
     LOGGER.info('Creating raster for tracking visited pixels')
@@ -2931,8 +2927,7 @@ def delineate_watersheds(
     watershed_fragments_layer = None
     watershed_fragments_vector = None
 
-    if remove_working_dir:
-        shutil.rmtree(working_dir_path, ignore_errors=True)
+    shutil.rmtree(working_dir_path, ignore_errors=True)
 
 
 def _is_raster_path_band_formatted(raster_path_band):
