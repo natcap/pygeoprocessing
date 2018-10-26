@@ -2683,6 +2683,7 @@ def delineate_watersheds(
     cdef int pixels_in_watershed
     cdef time_t last_log_time = ctime(NULL)
     cdef unsigned int features_enqueued = 0
+    cdef double minx, maxx, miny, maxy
 
     # When interleaved is True, coords are in (xmin, ymin, xmax, ymax)
     spatial_index = rtree.index.Index(interleaved=True)
@@ -2698,7 +2699,8 @@ def delineate_watersheds(
         geometry = outflow_feature.GetGeometryRef()
         minx, maxx, miny, maxy = [float(x) for x in geometry.GetEnvelope()]
 
-        ws_id_to_fid[ws_id] = outflow_feature.GetFID()
+        fid = outflow_feature.GetFID()
+        ws_id_to_fid[ws_id] = fid
         spatial_index.insert(ws_id, (min(minx, maxx),
                                      min(miny, maxy),
                                      max(minx, maxx),
@@ -2707,13 +2709,18 @@ def delineate_watersheds(
 
     LOGGER.info('Delineating watersheds')
     cdef int watersheds_started = 0
+    cdef double x_origin = source_gt[0]
+    cdef double y_origin = source_gt[3]
+    cdef double x_pixelwidth = source_gt[1]
+    cdef double y_pixelwidth = source_gt[5]
+    cdef double origin_xcoord, origin_ycoord, win_xcoord, win_ycoord
+
     for offset_dict in pygeoprocessing.iterblocks(d8_flow_dir_raster_path_band[0],
-                                                  largest_block=0,
                                                   offset_only=True):
-        origin_xcoord = source_gt[0] + offset_dict['xoff']*source_gt[1]
-        origin_ycoord = source_gt[3] + offset_dict['yoff']*source_gt[5]
-        win_xcoord = origin_xcoord + offset_dict['win_xsize']*source_gt[1]
-        win_ycoord = origin_ycoord + offset_dict['win_ysize']*source_gt[5]
+        origin_xcoord = x_origin + offset_dict['xoff']*x_pixelwidth
+        origin_ycoord = y_origin + offset_dict['yoff']*y_pixelwidth
+        win_xcoord = origin_xcoord + offset_dict['win_xsize']*x_pixelwidth
+        win_ycoord = origin_ycoord + offset_dict['win_ysize']*y_pixelwidth
         for ws_id in spatial_index.intersection(
                 (min(origin_xcoord, win_xcoord),
                  min(origin_ycoord, win_ycoord),
@@ -2733,8 +2740,8 @@ def delineate_watersheds(
                     continue
 
             point = geometry.representative_point()
-            xi_outflow = (point.x - source_gt[0]) // source_gt[1]
-            yi_outflow = (point.y - source_gt[3]) // source_gt[5]
+            xi_outflow = (point.x - x_origin) // x_pixelwidth
+            yi_outflow = (point.y - y_origin) // y_pixelwidth
 
             current_pixel = CoordinatePair(xi_outflow, yi_outflow)
 
@@ -2746,7 +2753,6 @@ def delineate_watersheds(
             process_queue.push(current_pixel)
             process_queue_set.insert(current_pixel)
             nested_watershed_ids.clear()  # clear the set for each watershed.
-            last_log_time = ctime(NULL)  # reset for each watershed.
 
             while not process_queue.empty():
                 pixels_in_watershed += 1
