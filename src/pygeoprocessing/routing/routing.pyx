@@ -2880,7 +2880,7 @@ def delineate_watersheds(
     watershed_layer_defn = watershed_layer.GetLayerDefn()
 
     # Copy over the field values to the target vector
-    watershed_fragments_layer.StartTransaction()
+    watershed_layer.StartTransaction()
     for watershed_fragment in watershed_fragments_layer:
         fragment_ws_id = watershed_fragment.GetField('ws_id')
         outflow_geom_fid = ws_id_to_fid[fragment_ws_id]
@@ -2903,7 +2903,7 @@ def delineate_watersheds(
         watershed_feature.SetField('upstream_fragments', upstream_fragments)
 
         watershed_layer.CreateFeature(watershed_feature)
-    watershed_fragments_layer.CommitTransaction()
+    watershed_layer.CommitTransaction()
 
     scratch_band = None
     scratch_raster = None
