@@ -2746,6 +2746,7 @@ def delineate_watersheds(
             process_queue.push(current_pixel)
             process_queue_set.insert(current_pixel)
             nested_watershed_ids.clear()  # clear the set for each watershed.
+            last_log_time = ctime(NULL)  # reset for each watershed.
 
             while not process_queue.empty():
                 pixels_in_watershed += 1
