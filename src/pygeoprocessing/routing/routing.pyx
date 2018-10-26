@@ -2532,7 +2532,7 @@ ctypedef pair[long, long] CoordinatePair
 
 def delineate_watersheds(
         d8_flow_dir_raster_path_band, outflow_points_vector_path,
-        target_fragments_vector_path, working_dir=None):
+        target_fragments_vector_path, working_dir=None, remove_working_dir=True):
     """Delineate watersheds from a D8 flow direction raster.
 
     This function produces a vector of watershed fragments, where each fragment
@@ -2575,7 +2575,6 @@ def delineate_watersheds(
                                              0)  # read-only
     flow_dir_info = pygeoprocessing.get_raster_info(
         d8_flow_dir_raster_path_band[0])
-    flow_dir_nodata = flow_dir_info['nodata'][0]
     source_gt = flow_dir_info['geotransform']
     cdef long flow_dir_n_cols = flow_dir_info['raster_size'][0]
     cdef long flow_dir_n_rows = flow_dir_info['raster_size'][1]
@@ -2603,75 +2602,33 @@ def delineate_watersheds(
     ws_id_field.SetWidth(24)
     watershed_fragments_layer.CreateField(ws_id_field)
 
-    # Create a temporary vector for storing the flow direction raster's bbox.
-    flow_dir_bbox_vector = gpkg_driver.CreateDataSource(
-        os.path.join(working_dir_path, 'flow_dir_bbox.gpkg'))
-    flow_dir_bbox_layer = flow_dir_bbox_vector.CreateLayer(
-        'flow_dir_bbox', flow_dir_srs, ogr.wkbPolygon)
-    flow_dir_bbox_geom = ogr.CreateGeometryFromWkb(
-        shapely.wkb.dumps(shapely.geometry.box(*flow_dir_info['bounding_box'])))
-    flow_dir_bbox_feature = ogr.Feature(flow_dir_bbox_layer.GetLayerDefn())
-    flow_dir_bbox_feature.SetGeometry(flow_dir_bbox_geom)
-    flow_dir_bbox_layer.CreateFeature(flow_dir_bbox_feature)
-    flow_dir_bbox_layer.SyncToDisk()
+    flow_dir_bbox_geometry = shapely.geometry.box(*flow_dir_info['bounding_box'])
 
-    # Open the outflow geometries vector for later.
-    source_outlets_vector = gdal.OpenEx(outflow_points_vector_path,
-                                        gdal.OF_VECTOR)
+    source_outlets_vector = ogr.Open(outflow_points_vector_path)
     source_outlets_layer = source_outlets_vector.GetLayer()
 
-    # clip the outlet geometries against the flow dir bbox vector.
-    clipped_outlets_path = os.path.join(working_dir_path,
-                                        'clipped_outlets.gpkg')
-    clipped_outlets_vector = gpkg_driver.CreateDataSource(clipped_outlets_path)
-    clipped_outlets_layer = clipped_outlets_vector.CreateLayer(
-        'clipped_outlets', flow_dir_srs, source_outlets_layer.GetGeomType())
-
-    def _clipping_callback(df_complete, psz_message, p_progress_arg):
-        """Log progress messages during long-running Clip calls.
-
-        The parameters for this function are defined by GDAL."""
-        try:
-            current_time = time.time()
-            if ((current_time - _clipping_callback.last_time) > 5.0 or
-                    (df_complete == 1.0 and _clipping_callback.total_time >= 5.0)):
-                LOGGER.info(
-                    'Clipping outlets against the DEM %.1f%% complete %s',
-                    df_complete * 100, psz_message)
-                _clipping_callback.last_time = time.time()
-                _clipping_callback.total_time += current_time
-        except AttributeError:
-            _clipping_callback.last_time = time.time()
-            _clipping_callback.total_time = 0.0
-        except:
-            # If an exception is uncaught from this callback, it will kill the
-            # gdal routine.  Just an FYI.
-            LOGGER.exception('Error in clipping progress callback')
-
-    source_outlets_layer.Clip(flow_dir_bbox_layer, clipped_outlets_layer,
-                              callback=_clipping_callback)
-    clipped_outlets_vector.SyncToDisk()
-    source_outlets_layer = None
-    source_outlets_vector = None
-
+    working_outlets_path = os.path.join(working_dir_path, 'working_outlets.gpkg')
+    working_outlets_vector = gpkg_driver.CopyDataSource(source_outlets_vector,
+                                                        working_outlets_path)
+    working_outlets_layer = working_outlets_vector.GetLayer()
+    working_outlets_layer_name = working_outlets_layer.GetName()
     # Add a new field to the clipped_outlets_layer to ensure we know what field
     # values are bing rasterized.
     cdef int ws_id
     ws_id_fieldname = '__ws_id__'
     ws_id_field_defn = ogr.FieldDefn(ws_id_fieldname, ogr.OFTInteger64)
-    clipped_outlets_layer.CreateField(ws_id_field_defn)
+    working_outlets_layer.CreateField(ws_id_field_defn)
 
-    # Surround with transactions.
-    clipped_outlets_layer.StartTransaction()
-    for ws_id, feature in enumerate(clipped_outlets_layer, start=1):
+    working_outlets_layer.StartTransaction()
+    for ws_id, feature in enumerate(working_outlets_layer, start=1):
         feature.SetField(ws_id_fieldname, ws_id)
-        clipped_outlets_layer.SetFeature(feature)
-    clipped_outlets_layer.CommitTransaction()
+        working_outlets_layer.SetFeature(feature)
+    working_outlets_layer.CommitTransaction()
     feature = None
     ws_id_field_defn = None
-    clipped_outlets_vector.SyncToDisk()
-    clipped_outlets_layer = None
-    clipped_outlets_vector = None
+    working_outlets_vector.SyncToDisk()
+    working_outlets_layer = None
+    working_outlets_vector = None
 
     # Create a new watershed scratch raster the size, shape of the flow dir raster
     # via rasterization.
@@ -2684,8 +2641,13 @@ def delineate_watersheds(
         gtiff_creation_options=GTIFF_CREATION_OPTIONS)
 
     pygeoprocessing.rasterize(
-        clipped_outlets_path, scratch_raster_path, None,
-        ['ALL_TOUCHED=TRUE', 'ATTRIBUTE=%s' % ws_id_fieldname])
+        working_outlets_path, scratch_raster_path, None,
+        ['ALL_TOUCHED=TRUE', 'ATTRIBUTE=%s' % ws_id_fieldname],
+        layer_index=working_outlets_layer_name)
+
+    import shutil
+    shutil.copyfile(scratch_raster_path,
+                    'rasterized.tif')
 
     # Create a new watershed scratch mask raster the size, shape of the flow dir raster
     LOGGER.info('Creating raster for tracking visited pixels')
@@ -2693,12 +2655,6 @@ def delineate_watersheds(
         d8_flow_dir_raster_path_band[0], mask_raster_path, gdal.GDT_Byte,
         [255], fill_value_list=[0],
         gtiff_creation_options=GTIFF_CREATION_OPTIONS)
-
-    # clean up vectors that are no longer needed.
-    flow_dir_bbox_feature = None
-    flow_dir_bbox_geom = None
-    flow_dir_bbox_layer = None
-    flow_dir_bbox_vector = None
 
     scratch_managed_raster = _ManagedRaster(scratch_raster_path, 1, 1)
     mask_managed_raster = _ManagedRaster(mask_raster_path, 1, 1)
@@ -2718,20 +2674,19 @@ def delineate_watersheds(
 
     # Track outflow geometry FIDs against the WS_ID used.
     ws_id_to_fid = {}
-    ws_id_to_outflow_point = {}
 
-    clipped_outlets_vector = gdal.OpenEx(clipped_outlets_path,
-                                         gdal.OF_VECTOR)
-    clipped_outlets_layer = clipped_outlets_vector.GetLayer('clipped_outlets')
-    outlet_layer_definition = clipped_outlets_layer.GetLayerDefn()
-    cdef int features_in_layer = clipped_outlets_layer.GetFeatureCount()
+    working_outlets_vector = gdal.OpenEx(working_outlets_path,
+                                 gdal.OF_VECTOR)
+    working_outlets_layer = working_outlets_vector.GetLayer()
+    working_outlet_layer_definition = working_outlets_layer.GetLayerDefn()
+    cdef int features_in_layer = working_outlets_layer.GetFeatureCount()
     cdef int pixels_in_watershed
     cdef time_t last_log_time = ctime(NULL)
     cdef unsigned int features_enqueued = 0
-    # TODO: load these points into an rtree and pull them out by iterating over
-    # blocks in the raster.
-    spatial_index = rtree.index.Index()
-    for outflow_feature in clipped_outlets_layer:
+
+    # When interleaved is True, coords are in (xmin, ymin, xmax, ymax)
+    spatial_index = rtree.index.Index(interleaved=True)
+    for outflow_feature in working_outlets_layer:
         if ctime(NULL) - last_log_time > 5.0:
             last_log_time = ctime(NULL)
             LOGGER.info('Enqueueing geometries, %s processed so far',
@@ -2741,33 +2696,47 @@ def delineate_watersheds(
         # return an integer value.
         ws_id = int(outflow_feature.GetField(ws_id_fieldname))
         geometry = outflow_feature.GetGeometryRef()
-        if geometry.GetGeometryType() == ogr.wkbPoint:
-            point = geometry
-        else:  # assume it's a polygon.
-            point = geometry.PointOnSurface()
-
-        xi_outflow = (point.GetX() - source_gt[0]) // source_gt[1]
-        yi_outflow = (point.GetY() - source_gt[3]) // source_gt[5]
+        minx, maxx, miny, maxy = [float(x) for x in geometry.GetEnvelope()]
 
         ws_id_to_fid[ws_id] = outflow_feature.GetFID()
-        ws_id_to_outflow_point[ws_id] = (xi_outflow, yi_outflow)
-        spatial_index.insert(ws_id, (xi_outflow, yi_outflow,
-                                     xi_outflow, yi_outflow))
+        spatial_index.insert(ws_id, (min(minx, maxx),
+                                     min(miny, maxy),
+                                     max(minx, maxx),
+                                     max(miny, maxy)))
         features_enqueued += 1
 
     LOGGER.info('Delineating watersheds')
     cdef int watersheds_started = 0
     for offset_dict in pygeoprocessing.iterblocks(d8_flow_dir_raster_path_band[0],
+                                                  largest_block=0,
                                                   offset_only=True):
+        origin_xcoord = source_gt[0] + offset_dict['xoff']*source_gt[1]
+        origin_ycoord = source_gt[3] + offset_dict['yoff']*source_gt[5]
+        win_xcoord = origin_xcoord + offset_dict['win_xsize']*source_gt[1]
+        win_ycoord = origin_ycoord + offset_dict['win_ysize']*source_gt[5]
         for ws_id in spatial_index.intersection(
-                (offset_dict['xoff'], offset_dict['yoff'],
-                 offset_dict['xoff'] + offset_dict['win_xsize'],
-                 offset_dict['yoff'] + offset_dict['win_ysize'])):
+                (min(origin_xcoord, win_xcoord),
+                 min(origin_ycoord, win_ycoord),
+                 max(origin_xcoord, win_xcoord),
+                 max(origin_ycoord, win_ycoord))):
 
             watersheds_started += 1
             pixels_in_watershed = 0
-            outflow_point = ws_id_to_outflow_point[ws_id]
-            current_pixel = CoordinatePair(outflow_point[0], outflow_point[1])
+
+            outflow_feature = working_outlets_layer.GetFeature(ws_id_to_fid[ws_id])
+            geometry = shapely.wkb.loads(
+                outflow_feature.GetGeometryRef().ExportToWkb())
+
+            if not flow_dir_bbox_geometry.contains(geometry):
+                geometry = flow_dir_bbox_geometry.intersection(geometry)
+                if geometry.is_empty:
+                    continue
+
+            point = geometry.representative_point()
+            xi_outflow = (point.x - source_gt[0]) // source_gt[1]
+            yi_outflow = (point.y - source_gt[3]) // source_gt[5]
+
+            current_pixel = CoordinatePair(xi_outflow, yi_outflow)
 
             if ctime(NULL) - last_log_time > 5.0:
                 last_log_time = ctime(NULL)
@@ -2783,7 +2752,7 @@ def delineate_watersheds(
                 if ctime(NULL) - last_log_time > 5.0:
                     last_log_time = ctime(NULL)
                     LOGGER.info('Delineating watershed %i of %i, %i pixels '
-                                'found so far.', ws_id, features_in_layer,
+                                'found so far.', watersheds_started, features_in_layer,
                                 pixels_in_watershed)
 
                 current_pixel = process_queue.front()
@@ -2893,8 +2862,8 @@ def delineate_watersheds(
 
     # Create the fields in the target vector that already existed in the
     # outflow points vector
-    for index in range(outlet_layer_definition.GetFieldCount()):
-        field_defn = outlet_layer_definition.GetFieldDefn(index)
+    for index in range(working_outlet_layer_definition.GetFieldCount()):
+        field_defn = working_outlet_layer_definition.GetFieldDefn(index)
         if field_defn.GetName() == ws_id_fieldname:
             continue
 
@@ -2918,8 +2887,8 @@ def delineate_watersheds(
         watershed_feature = ogr.Feature(watershed_layer_defn)
         watershed_feature.SetGeometry(watershed_fragment.GetGeometryRef())
 
-        outflow_point_feature = clipped_outlets_layer.GetFeature(outflow_geom_fid)
-        for outflow_field_index in range(outlet_layer_definition.GetFieldCount()):
+        outflow_point_feature = working_outlets_layer.GetFeature(outflow_geom_fid)
+        for outflow_field_index in range(working_outlet_layer_definition.GetFieldCount()):
             watershed_feature.SetField(
                 outflow_field_index,
                 outflow_point_feature.GetField(outflow_field_index))
@@ -2942,7 +2911,8 @@ def delineate_watersheds(
     watershed_fragments_layer = None
     watershed_fragments_vector = None
 
-    shutil.rmtree(working_dir_path, ignore_errors=True)
+    if remove_working_dir:
+        shutil.rmtree(working_dir_path, ignore_errors=True)
 
 
 def _is_raster_path_band_formatted(raster_path_band):

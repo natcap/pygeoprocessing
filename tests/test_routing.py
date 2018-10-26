@@ -995,7 +995,7 @@ class TestRouting(unittest.TestCase):
 
         pygeoprocessing.routing.delineate_watersheds(
             (flow_dir_path, 1), outflow_points, target_watersheds_vector,
-            work_dir)
+            work_dir, False)
 
         vector = ogr.Open(target_watersheds_vector)
         self.assertEqual(vector.GetLayerCount(), 1)
@@ -1073,7 +1073,7 @@ class TestRouting(unittest.TestCase):
             1: '2',
             2: '3',
             3: '',  # indicates no upstream watersheds
-            4: '',
+            5: '',
         }
         ws_id_to_upstream_ws_id = dict(
             (f.GetField('ws_id'), f.GetField('upstream_fragments'))
@@ -1092,7 +1092,7 @@ class TestRouting(unittest.TestCase):
             1: 16,
             2: 12,
             3: 4,
-            4: 4,
+            5: 4,
         }
         for ws_index, expected_area in expected_areas.items():
             self.assertEqual(geometries[ws_index].area, expected_area)
@@ -1279,4 +1279,3 @@ class TestRouting(unittest.TestCase):
         for expected_fields, fields in zip(sorted(expected_field_values),
                                            sorted(field_values)):
             self.assertEqual(expected_fields, fields)
-
