@@ -2569,11 +2569,6 @@ def delineate_watersheds(
 
     # TODO: warn against mismatched projections.
 
-    cdef _ManagedRaster flow_dir_managed_raster, scratch_managed_raster, mask_managed_raster
-
-    flow_dir_managed_raster = _ManagedRaster(d8_flow_dir_raster_path_band[0],
-                                             d8_flow_dir_raster_path_band[1],
-                                             0)  # read-only
     flow_dir_info = pygeoprocessing.get_raster_info(
         d8_flow_dir_raster_path_band[0])
     source_gt = flow_dir_info['geotransform']
@@ -2652,9 +2647,6 @@ def delineate_watersheds(
         d8_flow_dir_raster_path_band[0], mask_raster_path, gdal.GDT_Byte,
         [255], fill_value_list=[0],
         gtiff_creation_options=GTIFF_CREATION_OPTIONS)
-
-    scratch_managed_raster = _ManagedRaster(scratch_raster_path, 1, 1)
-    mask_managed_raster = _ManagedRaster(mask_raster_path, 1, 1)
 
     cdef long yi_outflow, xi_outflow
     cdef CoordinatePair current_pixel, neighbor_pixel
@@ -2736,6 +2728,13 @@ def delineate_watersheds(
         point_ws_ids[ws_seed_coord] = ws_id
 
     LOGGER.info('Delineating watersheds')
+    cdef _ManagedRaster flow_dir_managed_raster, scratch_managed_raster, mask_managed_raster
+    flow_dir_managed_raster = _ManagedRaster(d8_flow_dir_raster_path_band[0],
+                                             d8_flow_dir_raster_path_band[1],
+                                             0)  # read-only
+    scratch_managed_raster = _ManagedRaster(scratch_raster_path, 1, 1)
+    mask_managed_raster = _ManagedRaster(mask_raster_path, 1, 1)
+
     cdef int watersheds_started = 0
     cdef cmap[int, cset[CoordinatePair]].iterator block_iterator = points_in_blocks.begin()
     cdef cset[CoordinatePair] coords_in_block
