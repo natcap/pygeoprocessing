@@ -60,6 +60,14 @@ setup(
                 'src/pygeoprocessing/routing'],
             language="c++",
         ),
+        Extension(
+            "pygeoprocessing.routing.watershed",
+            sources=["src/pygeoprocessing/routing/watershed.pyx"],
+            include_dirs=[
+                numpy.get_include(),
+                'src/pygeoprocessing/routing'],
+            language="c++",
+        ),
          Extension(
              "pygeoprocessing.geoprocessing_core",
              sources=[

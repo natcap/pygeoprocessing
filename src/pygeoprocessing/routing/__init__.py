@@ -1,4 +1,5 @@
 from pygeoprocessing.routing.routing import *
+from pygeoprocessing.routing.watershed import *
 
 from osgeo import gdal
 from osgeo import ogr
