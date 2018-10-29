@@ -23,7 +23,6 @@ from libc.time cimport time as ctime
 from libcpp.list cimport list as clist
 from libcpp.pair cimport pair
 from libcpp.queue cimport queue
-from libcpp.stack cimport stack
 from libcpp.deque cimport deque
 from libcpp.set cimport set as cset
 from libcpp.map cimport map as cmap
@@ -35,11 +34,12 @@ LOGGER.addHandler(logging.NullHandler())  # silence logging by default
 cdef int BLOCK_BITS = 8
 
 # Number of raster blocks to hold in memory at once per Managed Raster
-cdef int MANAGED_RASTER_N_BLOCKS = 2**6
+cdef int MANAGED_RASTER_N_BLOCKS = 2**7
 
 # these are the creation options that'll be used for all the rasters
 GTIFF_CREATION_OPTIONS = (
     'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
+    'SPARSE_OK=YES',
     'BLOCKXSIZE=%d' % (1 << BLOCK_BITS),
     'BLOCKYSIZE=%d' % (1 << BLOCK_BITS))
 
@@ -514,6 +514,7 @@ def delineate_watersheds(
     spatial_index = rtree.index.Index(interleaved=True)
     for block_index, offset_dict in enumerate(
             pygeoprocessing.iterblocks(d8_flow_dir_raster_path_band[0],
+                                       largest_block=0,
                                        offset_only=True)):
         origin_xcoord = x_origin + offset_dict['xoff']*x_pixelwidth
         origin_ycoord = y_origin + offset_dict['yoff']*y_pixelwidth
@@ -549,7 +550,7 @@ def delineate_watersheds(
             (ws_seed_point.x - x_origin) // x_pixelwidth,
             (ws_seed_point.y - y_origin) // y_pixelwidth)
 
-        block_index = <int>next(spatial_index.nearest(
+        block_index = next(spatial_index.nearest(
                 (ws_seed_coord.first, ws_seed_coord.second,
                  ws_seed_coord.first, ws_seed_coord.second), num_results=1))
 
@@ -573,6 +574,8 @@ def delineate_watersheds(
     cdef cset[CoordinatePair] coords_in_block
     cdef cset[CoordinatePair].iterator coord_iterator
     cdef int pixels_visited = 0
+    cdef int neighbor_ws_id
+    cdef unsigned char pixel_visited
     while block_iterator != points_in_blocks.end():
         block_index = deref(block_iterator).first
         coords_in_block = deref(block_iterator).second
@@ -634,10 +637,10 @@ def delineate_watersheds(
 
                     # Is the neighbor an unvisited lake pixel in this watershed?
                     # If yes, enqueue it.
-                    neighbor_ws_id = <int>scratch_managed_raster.get(
+                    neighbor_ws_id = scratch_managed_raster.get(
                         neighbor_pixel.first, neighbor_pixel.second)
-                    pixel_visited = <int>mask_managed_raster.get(
-                            neighbor_pixel.first, neighbor_pixel.second)
+                    pixel_visited = mask_managed_raster.get(
+                        neighbor_pixel.first, neighbor_pixel.second)
                     if (neighbor_ws_id == ws_id and pixel_visited == 0):
                         process_queue.push(neighbor_pixel)
                         process_queue_set.insert(neighbor_pixel)
@@ -645,7 +648,7 @@ def delineate_watersheds(
 
                     # Does the neighbor flow into the current pixel?
                     if (reverse_flow[neighbor_index] ==
-                            <int>flow_dir_managed_raster.get(
+                            flow_dir_managed_raster.get(
                                 neighbor_pixel.first, neighbor_pixel.second)):
 
                         # Does the neighbor belong to a different outflow geometry?
