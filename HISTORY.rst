@@ -1,6 +1,11 @@
 Release History
 ===============
 
+1.3.1 10/25/2018
+----------------
+* Hotfix to patch an infinite loop when aggregating upstream or downstream
+  with custom rasters.
+
 1.3.0 10/25/2018
 -----------------
 * Fixed a handful of docstring errors.
