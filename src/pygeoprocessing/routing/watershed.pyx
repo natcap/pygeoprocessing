@@ -434,7 +434,6 @@ def delineate_watersheds(
     flow_dir_bbox_geometry = shapely.geometry.box(*flow_dir_info['bounding_box'])
 
     source_outlets_vector = ogr.Open(outflow_points_vector_path)
-    source_outlets_layer = source_outlets_vector.GetLayer()
 
     working_outlets_path = os.path.join(working_dir_path, 'working_outlets.gpkg')
     working_outlets_vector = gpkg_driver.CopyDataSource(source_outlets_vector,
@@ -481,7 +480,6 @@ def delineate_watersheds(
         [255], fill_value_list=[0],
         gtiff_creation_options=GTIFF_CREATION_OPTIONS)
 
-    cdef long yi_outflow, xi_outflow
     cdef CoordinatePair current_pixel, neighbor_pixel
     cdef queue[CoordinatePair] process_queue
     cdef cset[CoordinatePair] process_queue_set
@@ -500,10 +498,6 @@ def delineate_watersheds(
     cdef int pixels_in_watershed
     cdef time_t last_log_time = ctime(NULL)
     cdef time_t last_ws_log_time = ctime(NULL)
-    cdef unsigned int features_enqueued = 0
-    cdef double minx, maxx, miny, maxy
-    cdef cmap[int, cset[CoordinatePair]] FooMap
-    cdef cmap[CoordinatePair, int] BarMap
     cdef double x_origin = source_gt[0]
     cdef double y_origin = source_gt[3]
     cdef double x_pixelwidth = source_gt[1]
