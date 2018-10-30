@@ -663,8 +663,8 @@ class PyGeoprocessing10(unittest.TestCase):
             expected_raster_path, target_raster_path)
 
 
-    def test_align_and_resize_raster_stack_bad_lengths(self):
-        """PGP.geoprocessing: align/resize raster bad list lengths."""
+    def test_align_and_resize_raster_stack_bad_values(self):
+        """PGP.geoprocessing: align/resize raster bad base values."""
         pixel_a_matrix = numpy.ones((5, 5), numpy.int16)
         reference = sampledata.SRS_COLOMBIA
         nodata_target = -1
@@ -678,18 +678,54 @@ class PyGeoprocessing10(unittest.TestCase):
             os.path.join(self.workspace_dir, 'target_%s.tif' % char)
             for char in ['a', 'b']]
 
-        resample_method_list = ['near'] * 2
+        resample_method_list = ['near']
         bounding_box_mode = 'intersection'
 
         base_a_raster_info = pygeoprocessing.get_raster_info(base_a_path)
 
-        with self.assertRaises(ValueError):
+        with self.assertRaises(ValueError) as cm:
             # here base_raster_path_list is length 1 but others are length 2
             pygeoprocessing.align_and_resize_raster_stack(
                 base_raster_path_list, target_raster_path_list,
                 resample_method_list,
                 base_a_raster_info['pixel_size'], bounding_box_mode,
                 base_vector_path_list=None, raster_align_index=0)
+        expected_message = 'must be the same length'
+        actual_message = str(cm.exception)
+        self.assertTrue(expected_message in actual_message, actual_message)
+
+        with self.assertRaises(ValueError) as cm:
+            # here pixel size is an invalid type
+            pygeoprocessing.align_and_resize_raster_stack(
+                base_raster_path_list, ['target_a.tif'],
+                resample_method_list,
+                100.0, bounding_box_mode,
+                base_vector_path_list=None, raster_align_index=0)
+        expected_message = 'target_pixel_size is not a tuple'
+        actual_message = str(cm.exception)
+        self.assertTrue(expected_message in actual_message, actual_message)
+
+        with self.assertRaises(ValueError) as cm:
+            # here pixel size has invalid values
+            pygeoprocessing.align_and_resize_raster_stack(
+                base_raster_path_list, ['target_a.tif'],
+                resample_method_list,
+                [100.0, "ten"], bounding_box_mode,
+                base_vector_path_list=None, raster_align_index=0)
+        expected_message = 'Invalid value for `target_pixel_size`'
+        actual_message = str(cm.exception)
+        self.assertTrue(expected_message in actual_message, actual_message)
+
+        with self.assertRaises(ValueError) as cm:
+            # here pixel size is too long
+            pygeoprocessing.align_and_resize_raster_stack(
+                base_raster_path_list, ['target_a.tif'],
+                resample_method_list,
+                [100.0, 100.0, 100.0], bounding_box_mode,
+                base_vector_path_list=None, raster_align_index=0)
+        expected_message = 'Invalid value for `target_pixel_size`'
+        actual_message = str(cm.exception)
+        self.assertTrue(expected_message in actual_message, actual_message)
 
     def test_align_and_resize_raster_stack_duplicate_outputs(self):
         """PGP.geoprocessing: align/resize raster duplicate outputs."""

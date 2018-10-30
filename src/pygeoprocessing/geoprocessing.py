@@ -507,7 +507,7 @@ def align_and_resize_raster_stack(
             resizing.  Each element must be one of
             "near|bilinear|cubic|cubicspline|lanczos|mode".
         target_pixel_size (tuple): the target raster's x and y pixel size
-            example: [30, -30].
+            example: (30, -30).
         bounding_box_mode (string): one of "union", "intersection", or
             a list of floats of the form [minx, miny, maxx, maxy] in the
             target projection coordinate system.  Depending
@@ -608,6 +608,17 @@ def align_and_resize_raster_stack(
         raise ValueError(
             "Alignment index is out of bounds of the datasets index: %s"
             " n_elements %s" % (raster_align_index, n_rasters))
+
+    if not isinstance(target_pixel_size, (list, tuple)):
+        raise ValueError(
+            "target_pixel_size is not a tuple, its value was '%s'",
+            repr(target_pixel_size))
+
+    if (len(target_pixel_size) != 2 or
+            not all([_is_number(x) for x in target_pixel_size])):
+        raise ValueError(
+            "Invalid value for `target_pixel_size`, expected two numerical "
+            "elements, got: %s", repr(target_pixel_size))
 
     # used to get bounding box, projection, and possible alignment info
     raster_info_list = [
@@ -3181,3 +3192,12 @@ def _convolve_2d_worker(
 
     # Indicates worker has terminated
     write_queue.put(None)
+
+
+def _is_number(x):
+    """Return true if x is a number."""
+    try:
+        float(x)
+        return True
+    except ValueError:
+        return False
