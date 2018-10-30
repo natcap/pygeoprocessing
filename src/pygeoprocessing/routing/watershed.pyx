@@ -27,6 +27,9 @@ from libcpp.deque cimport deque
 from libcpp.set cimport set as cset
 from libcpp.map cimport map as cmap
 
+import faulthandler
+faulthandler.enable()
+
 LOGGER = logging.getLogger(__name__)
 LOGGER.addHandler(logging.NullHandler())  # silence logging by default
 
@@ -442,13 +445,6 @@ def delineate_watersheds(
     gpkg_driver = ogr.GetDriverByName('GPKG')
     flow_dir_srs = osr.SpatialReference()
     flow_dir_srs.ImportFromWkt(flow_dir_info['projection'])
-    watershed_fragments_path = os.path.join(working_dir_path, 'watershed_fragments.gpkg')
-    watershed_fragments_vector = gpkg_driver.CreateDataSource(watershed_fragments_path)
-    watershed_fragments_layer = watershed_fragments_vector.CreateLayer(
-        'watershed_fragments', flow_dir_srs, ogr.wkbPolygon)
-    ws_id_field = ogr.FieldDefn('ws_id', ogr.OFTInteger)
-    ws_id_field.SetWidth(24)
-    watershed_fragments_layer.CreateField(ws_id_field)
 
     flow_dir_bbox_geometry = shapely.geometry.box(*flow_dir_info['bounding_box'])
 
@@ -471,21 +467,26 @@ def delineate_watersheds(
         feature.SetField(ws_id_fieldname, ws_id)
         working_outlets_layer.SetFeature(feature)
     working_outlets_layer.CommitTransaction()
+    working_outlets_layer = None
+    working_outlets_vector = None
 
     cdef int polygon_fid
-    cdef cset[int] disjoint_polygon_fid_set
     disjoint_vector_paths = []
     for set_index, disjoint_polygon_fid_set in enumerate(
             pygeoprocessing.calculate_disjoint_polygon_set(working_outlets_path), start=1):
         LOGGER.info("Creating a vector of %s disjoint polygon(s)",
                     len(disjoint_polygon_fid_set))
+        working_outlets_vector = gdal.OpenEx(working_outlets_path)
+        working_outlets_layer = working_outlets_vector.GetLayer()
+        outlets_schema = working_outlets_layer.schema
+
         disjoint_vector_path = os.path.join(
                 working_dir_path, 'disjoint_outflow_%s.gpkg' % set_index)
         disjoint_vector_paths.append(disjoint_vector_path)
         disjoint_vector = gpkg_driver.CreateDataSource(disjoint_vector_path)
         disjoint_layer = disjoint_vector.CreateLayer(
             'outlet_geometries', flow_dir_srs, ogr.wkbPolygon)
-        disjoint_layer.CreateFields(working_outlets_layer.schema)
+        disjoint_layer.CreateFields(outlets_schema)
 
         disjoint_layer.StartTransaction()
         for polygon_fid in disjoint_polygon_fid_set:
@@ -518,33 +519,14 @@ def delineate_watersheds(
     cdef cmap[int, cset[CoordinatePair]] points_in_blocks
     cdef cmap[CoordinatePair, int] point_ws_ids 
     cdef CoordinatePair ws_seed_coord
-
-
-    LOGGER.info('Creating raster for tracking watershed fragments')
-    scratch_raster_path = os.path.join(working_dir_path, 'scratch_raster.tif')
-    pygeoprocessing.new_raster_from_base(
-        d8_flow_dir_raster_path_band[0], scratch_raster_path, gdal.GDT_UInt32,
-        [NO_WATERSHED], fill_value_list=[NO_WATERSHED],
-        gtiff_creation_options=GTIFF_CREATION_OPTIONS)
-
-    pygeoprocessing.rasterize(
-        working_outlets_path, scratch_raster_path, None,
-        ['ALL_TOUCHED=TRUE', 'ATTRIBUTE=%s' % ws_id_fieldname],
-        layer_index=working_outlets_layer_name)
-
-    # Create a new watershed scratch mask raster the size, shape of the flow dir raster
-    LOGGER.info('Creating raster for tracking visited pixels')
-    mask_raster_path = os.path.join(working_dir_path, 'scratch_mask.tif')
-    pygeoprocessing.new_raster_from_base(
-        d8_flow_dir_raster_path_band[0], mask_raster_path, gdal.GDT_Byte,
-        [255], fill_value_list=[0],
-        gtiff_creation_options=GTIFF_CREATION_OPTIONS)
-
-    # Map ws_id to the watersheds that nest within.
-    nested_watersheds = {}
-
-    # Track outflow geometry FIDs against the WS_ID used.
-    ws_id_to_fid = {}
+    cdef _ManagedRaster flow_dir_managed_raster, scratch_managed_raster, mask_managed_raster
+    cdef int watersheds_started = 0
+    cdef cmap[int, cset[CoordinatePair]].iterator block_iterator
+    cdef cset[CoordinatePair] coords_in_block
+    cdef cset[CoordinatePair].iterator coord_iterator
+    cdef int pixels_visited = 0
+    cdef int neighbor_ws_id
+    cdef unsigned char pixel_visited
 
     # When interleaved is True, coords are in (xmin, ymin, xmax, ymax)
     spatial_index = rtree.index.Index(interleaved=True)
@@ -562,160 +544,193 @@ def delineate_watersheds(
                                      max(origin_xcoord, win_xcoord),
                                      max(origin_ycoord, win_ycoord)))
 
-    working_outlets_vector = gdal.OpenEx(working_outlets_path,
-                                         gdal.OF_VECTOR)
-    working_outlets_layer = working_outlets_vector.GetLayer()
-    working_outlet_layer_definition = working_outlets_layer.GetLayerDefn()
+    for disjoint_index, disjoint_vector_path in enumerate(disjoint_vector_paths, start=1):
+        LOGGER.info('Creating raster for tracking watershed fragments')
+        scratch_raster_path = os.path.join(working_dir_path,
+                                           'scratch_raster_%s.tif' % disjoint_index)
+        pygeoprocessing.new_raster_from_base(
+            d8_flow_dir_raster_path_band[0], scratch_raster_path, gdal.GDT_UInt32,
+            [NO_WATERSHED], fill_value_list=[NO_WATERSHED],
+            gtiff_creation_options=GTIFF_CREATION_OPTIONS)
 
-    for outflow_feature in working_outlets_layer:
-        ws_id = int(outflow_feature.GetField(ws_id_fieldname))
-        ws_id_to_fid[ws_id] = outflow_feature.GetFID()
-        geometry = shapely.wkb.loads(
-            outflow_feature.GetGeometryRef().ExportToWkb())
-        if not flow_dir_bbox_geometry.contains(geometry):
-            geometry = flow_dir_bbox_geometry.intersection(geometry)
-            if geometry.is_empty:
-                continue
+        pygeoprocessing.rasterize(
+            disjoint_vector_path, scratch_raster_path, None,
+            ['ALL_TOUCHED=TRUE', 'ATTRIBUTE=%s' % ws_id_fieldname],
+            layer_index='outlet_geometries')
 
-        ws_seed_point = geometry.representative_point()
-        ws_seed_coord = CoordinatePair(
-            (ws_seed_point.x - x_origin) // x_pixelwidth,
-            (ws_seed_point.y - y_origin) // y_pixelwidth)
+        # Create a new watershed scratch mask raster the size, shape of the flow dir raster
+        LOGGER.info('Creating raster for tracking visited pixels')
+        mask_raster_path = os.path.join(working_dir_path,
+                                        'scratch_mask_%s.tif' % disjoint_index)
+        pygeoprocessing.new_raster_from_base(
+            d8_flow_dir_raster_path_band[0], mask_raster_path, gdal.GDT_Byte,
+            [255], fill_value_list=[0],
+            gtiff_creation_options=GTIFF_CREATION_OPTIONS)
 
-        block_index = next(spatial_index.nearest(
-                (ws_seed_coord.first, ws_seed_coord.second,
-                 ws_seed_coord.first, ws_seed_coord.second), num_results=1))
+        # Map ws_id to the watersheds that nest within.
+        nested_watersheds = {}
 
-        if (points_in_blocks.find(block_index) ==
-                points_in_blocks.end()):
-            points_in_blocks[block_index] = cset[CoordinatePair]()
+        # Track outflow geometry FIDs against the WS_ID used.
+        ws_id_to_fid = {}
 
-        points_in_blocks[block_index].insert(ws_seed_coord)
-        point_ws_ids[ws_seed_coord] = ws_id
+        working_outlets_vector = gdal.OpenEx(disjoint_vector_path,
+                                             gdal.OF_VECTOR)
+        working_outlets_layer = working_outlets_vector.GetLayer()
+        working_outlet_layer_definition = working_outlets_layer.GetLayerDefn()
 
-    LOGGER.info('Delineating watersheds')
-    cdef _ManagedRaster flow_dir_managed_raster, scratch_managed_raster, mask_managed_raster
-    flow_dir_managed_raster = _ManagedRaster(d8_flow_dir_raster_path_band[0],
-                                             d8_flow_dir_raster_path_band[1],
-                                             0)  # read-only
-    scratch_managed_raster = _ManagedRaster(scratch_raster_path, 1, 1)
-    mask_managed_raster = _ManagedRaster(mask_raster_path, 1, 1)
+        for outflow_feature in working_outlets_layer:
+            ws_id = int(outflow_feature.GetField(ws_id_fieldname))
+            ws_id_to_fid[ws_id] = outflow_feature.GetFID()
+            geometry = shapely.wkb.loads(
+                outflow_feature.GetGeometryRef().ExportToWkb())
+            if not flow_dir_bbox_geometry.contains(geometry):
+                geometry = flow_dir_bbox_geometry.intersection(geometry)
+                if geometry.is_empty:
+                    continue
 
-    cdef int watersheds_started = 0
-    cdef cmap[int, cset[CoordinatePair]].iterator block_iterator = points_in_blocks.begin()
-    cdef cset[CoordinatePair] coords_in_block
-    cdef cset[CoordinatePair].iterator coord_iterator
-    cdef int pixels_visited = 0
-    cdef int neighbor_ws_id
-    cdef unsigned char pixel_visited
-    while block_iterator != points_in_blocks.end():
-        block_index = deref(block_iterator).first
-        coords_in_block = deref(block_iterator).second
-        inc(block_iterator)
+            ws_seed_point = geometry.representative_point()
+            ws_seed_coord = CoordinatePair(
+                (ws_seed_point.x - x_origin) // x_pixelwidth,
+                (ws_seed_point.y - y_origin) // y_pixelwidth)
 
-        coord_iterator = coords_in_block.begin()
+            block_index = next(spatial_index.nearest(
+                    (ws_seed_coord.first, ws_seed_coord.second,
+                     ws_seed_coord.first, ws_seed_coord.second), num_results=1))
 
-        while coord_iterator != coords_in_block.end():
-            current_pixel = deref(coord_iterator)
-            ws_id = point_ws_ids[current_pixel]
-            inc(coord_iterator)
+            if (points_in_blocks.find(block_index) ==
+                    points_in_blocks.end()):
+                points_in_blocks[block_index] = cset[CoordinatePair]()
 
-            watersheds_started += 1
-            pixels_in_watershed = 0
+            points_in_blocks[block_index].insert(ws_seed_coord)
+            point_ws_ids[ws_seed_coord] = ws_id
 
-            if ctime(NULL) - last_log_time > 5.0:
-                last_log_time = ctime(NULL)
-                LOGGER.info('Delineated %s watersheds of %s so far',
-                            watersheds_started, features_in_layer)
+        LOGGER.info('Delineating watersheds')
+        scratch_managed_raster = _ManagedRaster(scratch_raster_path, 1, 1)
+        mask_managed_raster = _ManagedRaster(mask_raster_path, 1, 1)
+        flow_dir_managed_raster = _ManagedRaster(d8_flow_dir_raster_path_band[0],
+                                                 d8_flow_dir_raster_path_band[1],
+                                                 0)  # read-only
 
-            last_ws_log_time = ctime(NULL)
-            process_queue.push(current_pixel)
-            process_queue_set.insert(current_pixel)
-            nested_watershed_ids.clear()  # clear the set for each watershed.
 
-            while not process_queue.empty():
-                pixels_visited += 1
-                pixels_in_watershed += 1
-                if ctime(NULL) - last_ws_log_time > 5.0:
-                    last_ws_log_time = ctime(NULL)
-                    LOGGER.info('Delineating watershed %i of %i, %i pixels '
-                                'found so far.', watersheds_started, features_in_layer,
-                                pixels_in_watershed)
+        block_iterator = points_in_blocks.begin()
+        while block_iterator != points_in_blocks.end():
+            block_index = deref(block_iterator).first
+            coords_in_block = deref(block_iterator).second
+            inc(block_iterator)
 
-                current_pixel = process_queue.front()
-                process_queue_set.erase(current_pixel)
-                process_queue.pop()
+            coord_iterator = coords_in_block.begin()
+            while coord_iterator != coords_in_block.end():
+                current_pixel = deref(coord_iterator)
+                ws_id = point_ws_ids[current_pixel]
+                inc(coord_iterator)
 
-                mask_managed_raster.set(current_pixel.first,
-                                        current_pixel.second, 1)
-                scratch_managed_raster.set(current_pixel.first,
-                                           current_pixel.second, ws_id)
+                watersheds_started += 1
+                pixels_in_watershed = 0
 
-                for neighbor_index in range(8):
-                    neighbor_pixel = CoordinatePair(
-                        current_pixel.first + neighbor_col[neighbor_index],
-                        current_pixel.second + neighbor_row[neighbor_index])
+                if ctime(NULL) - last_log_time > 5.0:
+                    last_log_time = ctime(NULL)
+                    LOGGER.info('Delineated %s watersheds of %s so far',
+                                watersheds_started, features_in_layer)
 
-                    if not 0 <= neighbor_pixel.first < flow_dir_n_cols:
-                        continue
+                last_ws_log_time = ctime(NULL)
+                process_queue.push(current_pixel)
+                process_queue_set.insert(current_pixel)
+                nested_watershed_ids.clear()  # clear the set for each watershed.
 
-                    if not 0 <= neighbor_pixel.second < flow_dir_n_rows:
-                        continue
+                while not process_queue.empty():
+                    pixels_visited += 1
+                    pixels_in_watershed += 1
+                    if ctime(NULL) - last_ws_log_time > 5.0:
+                        last_ws_log_time = ctime(NULL)
+                        LOGGER.info('Delineating watershed %i of %i, %i pixels '
+                                    'found so far.', watersheds_started, features_in_layer,
+                                    pixels_in_watershed)
 
-                    # Is the neighbor pixel already in the queue?
-                    if (process_queue_set.find(neighbor_pixel) !=
-                            process_queue_set.end()):
-                        continue
+                    current_pixel = process_queue.front()
+                    process_queue_set.erase(current_pixel)
+                    process_queue.pop()
 
-                    # Is the neighbor an unvisited lake pixel in this watershed?
-                    # If yes, enqueue it.
-                    neighbor_ws_id = scratch_managed_raster.get(
-                        neighbor_pixel.first, neighbor_pixel.second)
-                    pixel_visited = mask_managed_raster.get(
-                        neighbor_pixel.first, neighbor_pixel.second)
-                    if (neighbor_ws_id == ws_id and pixel_visited == 0):
-                        process_queue.push(neighbor_pixel)
-                        process_queue_set.insert(neighbor_pixel)
-                        continue
+                    mask_managed_raster.set(current_pixel.first,
+                                            current_pixel.second, 1)
+                    scratch_managed_raster.set(current_pixel.first,
+                                               current_pixel.second, ws_id)
 
-                    # Does the neighbor flow into the current pixel?
-                    if (reverse_flow[neighbor_index] ==
-                            flow_dir_managed_raster.get(
-                                neighbor_pixel.first, neighbor_pixel.second)):
+                    for neighbor_index in range(8):
+                        neighbor_pixel = CoordinatePair(
+                            current_pixel.first + neighbor_col[neighbor_index],
+                            current_pixel.second + neighbor_row[neighbor_index])
 
-                        # Does the neighbor belong to a different outflow geometry?
-                        if (neighbor_ws_id != NO_WATERSHED and
-                                neighbor_ws_id != ws_id):
-                            # If it is, track the watershed connectivity, but otherwise
-                            # skip this pixel.  Either we've already processed it, or
-                            # else we will soon!
-                            nested_watershed_ids.insert(neighbor_ws_id)
+                        if not 0 <= neighbor_pixel.first < flow_dir_n_cols:
                             continue
 
-                        # The pixel has not yet been visited, enqueue it.
-                        if pixel_visited == 0:
+                        if not 0 <= neighbor_pixel.second < flow_dir_n_rows:
+                            continue
+
+                        # Is the neighbor pixel already in the queue?
+                        if (process_queue_set.find(neighbor_pixel) !=
+                                process_queue_set.end()):
+                            continue
+
+                        # Is the neighbor an unvisited lake pixel in this watershed?
+                        # If yes, enqueue it.
+                        neighbor_ws_id = scratch_managed_raster.get(
+                            neighbor_pixel.first, neighbor_pixel.second)
+                        pixel_visited = mask_managed_raster.get(
+                            neighbor_pixel.first, neighbor_pixel.second)
+                        if (neighbor_ws_id == ws_id and pixel_visited == 0):
                             process_queue.push(neighbor_pixel)
                             process_queue_set.insert(neighbor_pixel)
+                            continue
 
-            nested_watersheds[ws_id] = set(nested_watershed_ids)
+                        # Does the neighbor flow into the current pixel?
+                        if (reverse_flow[neighbor_index] ==
+                                flow_dir_managed_raster.get(
+                                    neighbor_pixel.first, neighbor_pixel.second)):
 
-    flow_dir_managed_raster.close()  # Don't need this any more.
-    scratch_managed_raster.close()  # flush the scratch raster.
-    mask_managed_raster.close()  # flush the mask raster
+                            # Does the neighbor belong to a different outflow geometry?
+                            if (neighbor_ws_id != NO_WATERSHED and
+                                    neighbor_ws_id != ws_id):
+                                # If it is, track the watershed connectivity, but otherwise
+                                # skip this pixel.  Either we've already processed it, or
+                                # else we will soon!
+                                nested_watershed_ids.insert(neighbor_ws_id)
+                                continue
 
-    scratch_raster = gdal.OpenEx(scratch_raster_path, gdal.OF_RASTER)
-    scratch_band = scratch_raster.GetRasterBand(1)
-    mask_raster = gdal.OpenEx(mask_raster_path, gdal.OF_RASTER)
-    mask_band = mask_raster.GetRasterBand(1)
+                            # The pixel has not yet been visited, enqueue it.
+                            if pixel_visited == 0:
+                                process_queue.push(neighbor_pixel)
+                                process_queue_set.insert(neighbor_pixel)
 
-    gdal.Polygonize(
-        scratch_band,  # the source band to be analyzed
-        mask_band,  # the mask band indicating valid pixels
-        watershed_fragments_layer,  # polygons are added to this layer
-        0,  # field index into which to save the pixel value of watershed
-        ['8CONNECTED8'],  # use 8-connectedness algorithm.
-        _polygonize_callback
-    )
+                nested_watersheds[ws_id] = set(nested_watershed_ids)
+        points_in_blocks.clear()
+        coords_in_block.clear()
+
+        flow_dir_managed_raster.close()
+        scratch_managed_raster.close()  # flush the scratch raster.
+        mask_managed_raster.close()  # flush the mask raster
+
+        scratch_raster = gdal.OpenEx(scratch_raster_path, gdal.OF_RASTER)
+        scratch_band = scratch_raster.GetRasterBand(1)
+        mask_raster = gdal.OpenEx(mask_raster_path, gdal.OF_RASTER)
+        mask_band = mask_raster.GetRasterBand(1)
+
+        watershed_fragments_path = os.path.join(working_dir_path,
+                                                'watershed_fragments_%s.gpkg' % disjoint_index)
+        watershed_fragments_vector = gpkg_driver.CreateDataSource(watershed_fragments_path)
+        watershed_fragments_layer = watershed_fragments_vector.CreateLayer(
+            'watershed_fragments', flow_dir_srs, ogr.wkbPolygon)
+        ws_id_field = ogr.FieldDefn('ws_id', ogr.OFTInteger)
+        ws_id_field.SetWidth(24)
+        watershed_fragments_layer.CreateField(ws_id_field)
+
+        gdal.Polygonize(
+            scratch_band,  # the source band to be analyzed
+            mask_band,  # the mask band indicating valid pixels
+            watershed_fragments_layer,  # polygons are added to this layer
+            0,  # field index into which to save the pixel value of watershed
+            ['8CONNECTED8'],  # use 8-connectedness algorithm.
+            _polygonize_callback
+        )
 
     # create a new vector with new geometries in it
     # If watersheds have nested watersheds, the geometries written should be
