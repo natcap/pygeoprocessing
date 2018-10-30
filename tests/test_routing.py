@@ -997,16 +997,19 @@ class TestRouting(unittest.TestCase):
             (flow_dir_path, 1), outflow_points, target_watersheds_vector,
             work_dir)
 
-        vector = ogr.Open(target_watersheds_vector)
-        self.assertEqual(vector.GetLayerCount(), 1)
+        try:
+            vector = ogr.Open(target_watersheds_vector)
+            self.assertEqual(vector.GetLayerCount(), 1)
 
-        geometries = []
-        for watershed_feature in vector.GetLayer():
-            geometry = shapely.wkb.loads(
-                watershed_feature.GetGeometryRef().ExportToWkb())
-            geometries.append(geometry)
+            geometries = []
+            for watershed_feature in vector.GetLayer():
+                geometry = shapely.wkb.loads(
+                    watershed_feature.GetGeometryRef().ExportToWkb())
+                geometries.append(geometry)
 
-            # TODO: Assert that fields have been copied over
+                # TODO: Assert that fields have been copied over
+        finally:
+            vector = None
 
         # Check the areas of each individual polygon
         for ws_index, expected_area in enumerate([60.0, 40.0, 40.0, 56.0]):
@@ -1065,37 +1068,41 @@ class TestRouting(unittest.TestCase):
             target_watersheds_vector,
             os.path.join(self.workspace_dir, 'scratch'))
 
-        watersheds_vector = ogr.Open(target_watersheds_vector)
-        watersheds_layer = watersheds_vector.GetLayer()
-        self.assertEqual(watersheds_layer.GetFeatureCount(), 4)
+        try:
+            watersheds_vector = ogr.Open(target_watersheds_vector)
+            watersheds_layer = watersheds_vector.GetLayer()
+            self.assertEqual(watersheds_layer.GetFeatureCount(), 4)
 
-        expected_ws_id_to_upstream_watersheds = {
-            1: '2',
-            2: '3',
-            3: '',  # indicates no upstream watersheds
-            5: '',
-        }
-        ws_id_to_upstream_ws_id = dict(
-            (f.GetField('ws_id'), f.GetField('upstream_fragments'))
-            for f in watersheds_vector.GetLayer())
-        self.assertEqual(expected_ws_id_to_upstream_watersheds,
-                         ws_id_to_upstream_ws_id)
+            expected_ws_id_to_upstream_watersheds = {
+                1: '2',
+                2: '3',
+                3: '',  # indicates no upstream watersheds
+                5: '',
+            }
+            ws_id_to_upstream_ws_id = dict(
+                (f.GetField('ws_id'), f.GetField('upstream_fragments'))
+                for f in watersheds_vector.GetLayer())
+            self.assertEqual(expected_ws_id_to_upstream_watersheds,
+                             ws_id_to_upstream_ws_id)
 
-        geometries = {}
-        for watershed_feature in watersheds_vector.GetLayer():
-            ws_id = watershed_feature.GetField('ws_id')
-            shapely_geometry = shapely.wkb.loads(
-                watershed_feature.GetGeometryRef().ExportToWkb())
-            geometries[ws_id] = shapely_geometry
+            geometries = {}
+            for watershed_feature in watersheds_vector.GetLayer():
+                ws_id = watershed_feature.GetField('ws_id')
+                shapely_geometry = shapely.wkb.loads(
+                    watershed_feature.GetGeometryRef().ExportToWkb())
+                geometries[ws_id] = shapely_geometry
 
-        expected_areas = {
-            1: 16,
-            2: 12,
-            3: 4,
-            5: 4,
-        }
-        for ws_index, expected_area in expected_areas.items():
-            self.assertEqual(geometries[ws_index].area, expected_area)
+            expected_areas = {
+                1: 16,
+                2: 12,
+                3: 4,
+                5: 4,
+            }
+            for ws_index, expected_area in expected_areas.items():
+                self.assertEqual(geometries[ws_index].area, expected_area)
+        finally:
+            watersheds_layer = None
+            watersheds_vector = None
 
     def test_join_watershed_fragments(self):
         """PGP.routing: test joining of watershed fragments."""
@@ -1167,17 +1174,21 @@ class TestRouting(unittest.TestCase):
             5: 6.7,
         }
 
-        joined_vector = ogr.Open(joined_vector_path)
-        joined_layer = joined_vector.GetLayer()
-        for joined_feature in joined_layer:
-            ws_id = joined_feature.GetField('ws_id')
-            joined_geometry = shapely.wkb.loads(
-                joined_feature.GetGeometryRef().ExportToWkb())
-            self.assertTrue(expected_geoms[ws_id].equals(joined_geometry))
+        try:
+            joined_vector = ogr.Open(joined_vector_path)
+            joined_layer = joined_vector.GetLayer()
+            for joined_feature in joined_layer:
+                ws_id = joined_feature.GetField('ws_id')
+                joined_geometry = shapely.wkb.loads(
+                    joined_feature.GetGeometryRef().ExportToWkb())
+                self.assertTrue(expected_geoms[ws_id].equals(joined_geometry))
 
-            # Verify all fields are copied over.
-            self.assertEqual(joined_feature.GetField('other'),
-                             expected_other_values[ws_id])
+                # Verify all fields are copied over.
+                self.assertEqual(joined_feature.GetField('other'),
+                                 expected_other_values[ws_id])
+        finally:
+            joined_vector = None
+            joined_layer = None
 
     def test_join_watersheds_with_cycles(self):
         import pygeoprocessing.testing
