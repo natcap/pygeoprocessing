@@ -452,6 +452,31 @@ def delineate_watersheds(
         feature.SetField(ws_id_fieldname, ws_id)
         working_outlets_layer.SetFeature(feature)
     working_outlets_layer.CommitTransaction()
+
+    cdef int polygon_fid
+    cdef cset[int] disjoint_polygon_fid_set
+    disjoint_vector_paths = []
+    for set_index, disjoint_polygon_fid_set in enumerate(
+            pygeoprocessing.calculate_disjoint_polygon_set(working_outlets_path), start=1):
+        LOGGER.info("Creating a vector of %s disjoint polygon(s)",
+                    len(disjoint_polygon_fid_set))
+        disjoint_vector_path = os.path.join(
+                working_dir_path, 'disjoint_outflow_%s.gpkg' % set_index)
+        disjoint_vector_paths.append(disjoint_vector_path)
+        disjoint_vector = gpkg_driver.CreateDataSource(disjoint_vector_path)
+        disjoint_layer = disjoint_vector.CreateLayer(
+            'outlet_geometries', flow_dir_srs, ogr.wkbPolygon)
+        disjoint_layer.CreateFields(working_outlets_layer.schema)
+
+        disjoint_layer.StartTransaction()
+        for polygon_fid in disjoint_polygon_fid_set:
+            new_feature = working_outlets_layer.GetFeature(polygon_fid).Clone()
+            disjoint_layer.CreateFeature(new_feature)
+        disjoint_layer.CommitTransaction()
+
+        disjoint_layer = None
+        disjoint_vector = None
+
     feature = None
     ws_id_field_defn = None
     working_outlets_vector.SyncToDisk()
