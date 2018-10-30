@@ -496,12 +496,6 @@ def delineate_watersheds(
         disjoint_layer = None
         disjoint_vector = None
 
-    feature = None
-    ws_id_field_defn = None
-    working_outlets_vector.SyncToDisk()
-    working_outlets_layer = None
-    working_outlets_vector = None
-
     # Create a new watershed scratch raster the size, shape of the flow dir raster
     # via rasterization.
     cdef int NO_WATERSHED = 0
@@ -735,17 +729,8 @@ def delineate_watersheds(
 
     # Create the fields in the target vector that already existed in the
     # outflow points vector
-    for index in range(working_outlet_layer_definition.GetFieldCount()):
-        field_defn = working_outlet_layer_definition.GetFieldDefn(index)
-        if field_defn.GetName() == ws_id_fieldname:
-            continue
-
-        field_type = field_defn.GetType()
-
-        if field_type in (ogr.OFTInteger, ogr.OFTReal):
-            field_defn.SetWidth(24)
-        watershed_layer.CreateField(field_defn)
-
+    watershed_layer.CreateFields(
+            [f for f in working_outlets_layer.schema if f.GetName() != ws_id_fieldname])
     upstream_fragments_field = ogr.FieldDefn('upstream_fragments', ogr.OFTString)
     watershed_layer.CreateField(upstream_fragments_field)
     watershed_layer.CreateField(ws_id_field)
