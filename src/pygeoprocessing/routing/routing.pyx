@@ -1440,6 +1440,9 @@ def flow_accumulation_d8(
                             flow_pixel.xi, flow_pixel.yi,
                             flow_pixel.value)
     flow_accum_managed_raster.close()
+    flow_dir_managed_raster.close()
+    if weight_raster is not None:
+        weight_raster.close()
     LOGGER.info('%.2f%% complete', 100.0)
 
 
@@ -2169,6 +2172,9 @@ def flow_accumulation_mfd(
                             flow_pixel.xi, flow_pixel.yi,
                             flow_pixel.value)
     flow_accum_managed_raster.close()
+    flow_dir_managed_raster.close()
+    if weight_raster is not None:
+        weight_raster.close()
     LOGGER.info('%.2f%% complete', 100.0)
 
 
@@ -2352,6 +2358,12 @@ def distance_to_channel_d8(
                             distance_to_channel_stack.push(
                                 PixelType(
                                     weight_val + pixel_val, xi_n, yi_n, 0))
+
+    distance_to_channel_managed_raster.close()
+    flow_dir_d8_managed_raster.close()
+    channel_managed_raster.close()
+    if weight_raster is not None:
+        weight_raster.close()
 
 
 def distance_to_channel_mfd(
@@ -2590,6 +2602,12 @@ def distance_to_channel_mfd(
                         pixel.value = 0
                     distance_to_channel_managed_raster.set(
                         pixel.xi, pixel.yi, pixel.value)
+
+    distance_to_channel_managed_raster.close()
+    channel_managed_raster.close()
+    flow_dir_mfd_managed_raster.close()
+    if weight_raster is not None:
+        weight_raster.close()
     LOGGER.info('%.2f%% complete', 100.0)
 
 
