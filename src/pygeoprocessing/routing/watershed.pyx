@@ -388,7 +388,7 @@ ctypedef pair[long, long] CoordinatePair
 
 def delineate_watersheds(
         d8_flow_dir_raster_path_band, outflow_points_vector_path,
-        target_fragments_vector_path, working_dir=None):
+        target_fragments_vector_path, working_dir=None, rm_wd=True):
     """Delineate watersheds from a D8 flow direction raster.
 
     This function produces a vector of watershed fragments, where each fragment
@@ -769,7 +769,8 @@ def delineate_watersheds(
     watershed_fragments_layer = None
     watershed_fragments_vector = None
 
-    shutil.rmtree(working_dir_path, ignore_errors=True)
+    if rm_wd:
+        shutil.rmtree(working_dir_path, ignore_errors=True)
 
 
 def _is_raster_path_band_formatted(raster_path_band):
