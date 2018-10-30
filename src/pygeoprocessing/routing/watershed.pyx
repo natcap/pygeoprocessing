@@ -462,6 +462,7 @@ def delineate_watersheds(
     ws_id_field_defn = ogr.FieldDefn(ws_id_fieldname, ogr.OFTInteger64)
     working_outlets_layer.CreateField(ws_id_field_defn)
 
+    # TODO: if point geometry, snap to the nearest pixel and make a small circle..
     working_outlets_layer.StartTransaction()
     for ws_id, feature in enumerate(working_outlets_layer, start=1):
         feature.SetField(ws_id_fieldname, ws_id)
@@ -496,6 +497,21 @@ def delineate_watersheds(
 
         disjoint_layer = None
         disjoint_vector = None
+
+    watershed_vector = gpkg_driver.CreateDataSource(target_fragments_vector_path)
+    watershed_layer = watershed_vector.CreateLayer(
+        'watershed_fragments', flow_dir_srs, ogr.wkbPolygon)
+
+    # Create the fields in the target vector that already existed in the
+    # outflow points vector
+    watershed_layer.CreateFields(
+            [f for f in working_outlets_layer.schema if f.GetName() != ws_id_fieldname])
+    upstream_fragments_field = ogr.FieldDefn('upstream_fragments', ogr.OFTString)
+    watershed_layer.CreateField(upstream_fragments_field)
+    ws_id_field = ogr.FieldDefn('ws_id', ogr.OFTInteger)
+    ws_id_field.SetWidth(24)
+    watershed_layer.CreateField(ws_id_field)
+    watershed_layer_defn = watershed_layer.GetLayerDefn()
 
     # Create a new watershed scratch raster the size, shape of the flow dir raster
     # via rasterization.
@@ -719,8 +735,6 @@ def delineate_watersheds(
         watershed_fragments_vector = gpkg_driver.CreateDataSource(watershed_fragments_path)
         watershed_fragments_layer = watershed_fragments_vector.CreateLayer(
             'watershed_fragments', flow_dir_srs, ogr.wkbPolygon)
-        ws_id_field = ogr.FieldDefn('ws_id', ogr.OFTInteger)
-        ws_id_field.SetWidth(24)
         watershed_fragments_layer.CreateField(ws_id_field)
 
         gdal.Polygonize(
@@ -732,50 +746,38 @@ def delineate_watersheds(
             _polygonize_callback
         )
 
-    # create a new vector with new geometries in it
-    # If watersheds have nested watersheds, the geometries written should be
-    # the union of all upstream sheds.
-    # If a watershed is alone (does not contain nested watersheds), the
-    # geometry should be written as-is.
-    LOGGER.info('Copying fields over to the new fragments vector.')
-    watershed_vector = gpkg_driver.CreateDataSource(target_fragments_vector_path)
-    watershed_layer = watershed_vector.CreateLayer(
-        'watershed_fragments', flow_dir_srs, ogr.wkbPolygon)
+        # create a new vector with new geometries in it
+        # If watersheds have nested watersheds, the geometries written should be
+        # the union of all upstream sheds.
+        # If a watershed is alone (does not contain nested watersheds), the
+        # geometry should be written as-is.
+        LOGGER.info('Copying fields over to the new fragments vector.')
 
-    # Create the fields in the target vector that already existed in the
-    # outflow points vector
-    watershed_layer.CreateFields(
-            [f for f in working_outlets_layer.schema if f.GetName() != ws_id_fieldname])
-    upstream_fragments_field = ogr.FieldDefn('upstream_fragments', ogr.OFTString)
-    watershed_layer.CreateField(upstream_fragments_field)
-    watershed_layer.CreateField(ws_id_field)
-    watershed_layer_defn = watershed_layer.GetLayerDefn()
+        # Copy over the field values to the target vector
+        watershed_layer.StartTransaction()
+        for watershed_fragment in watershed_fragments_layer:
+            fragment_ws_id = watershed_fragment.GetField('ws_id')
+            outflow_geom_fid = ws_id_to_fid[fragment_ws_id]
 
-    # Copy over the field values to the target vector
-    watershed_layer.StartTransaction()
-    for watershed_fragment in watershed_fragments_layer:
-        fragment_ws_id = watershed_fragment.GetField('ws_id')
-        outflow_geom_fid = ws_id_to_fid[fragment_ws_id]
+            watershed_feature = ogr.Feature(watershed_layer_defn)
+            watershed_feature.SetGeometry(watershed_fragment.GetGeometryRef())
 
-        watershed_feature = ogr.Feature(watershed_layer_defn)
-        watershed_feature.SetGeometry(watershed_fragment.GetGeometryRef())
+            outflow_point_feature = working_outlets_layer.GetFeature(outflow_geom_fid)
+            for outflow_field_index in range(working_outlet_layer_definition.GetFieldCount()):
+                watershed_feature.SetField(
+                    outflow_field_index,
+                    outflow_point_feature.GetField(outflow_field_index))
 
-        outflow_point_feature = working_outlets_layer.GetFeature(outflow_geom_fid)
-        for outflow_field_index in range(working_outlet_layer_definition.GetFieldCount()):
-            watershed_feature.SetField(
-                outflow_field_index,
-                outflow_point_feature.GetField(outflow_field_index))
+            watershed_feature.SetField('ws_id', float(fragment_ws_id))
+            try:
+                upstream_fragments = ','.join(
+                    [str(s) for s in sorted(nested_watersheds[fragment_ws_id])])
+            except KeyError:
+                upstream_fragments = ''
+            watershed_feature.SetField('upstream_fragments', upstream_fragments)
 
-        watershed_feature.SetField('ws_id', float(fragment_ws_id))
-        try:
-            upstream_fragments = ','.join(
-                [str(s) for s in sorted(nested_watersheds[fragment_ws_id])])
-        except KeyError:
-            upstream_fragments = ''
-        watershed_feature.SetField('upstream_fragments', upstream_fragments)
-
-        watershed_layer.CreateFeature(watershed_feature)
-    watershed_layer.CommitTransaction()
+            watershed_layer.CreateFeature(watershed_feature)
+        watershed_layer.CommitTransaction()
 
     scratch_band = None
     scratch_raster = None
