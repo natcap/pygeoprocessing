@@ -3197,6 +3197,8 @@ def _assert_is_valid_pixel_size(target_pixel_size):
     def _is_number(x):
         """Return true if x is a number."""
         try:
+            if isinstance(x, basestring):
+                return False
             float(x)
             return True
         except ValueError:
