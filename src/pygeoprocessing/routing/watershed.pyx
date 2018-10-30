@@ -357,6 +357,28 @@ cdef class _ManagedRaster:
             raster = None
 
 
+def _polygonize_callback(df_complete, psz_message, p_progress_arg):
+    """Log progress messages during long-running polygonize calls.
+
+    The parameters for this function are defined by GDAL."""
+    try:
+        current_time = time.time()
+        if ((current_time - _polygonize_callback.last_time) > 5.0 or
+                (df_complete == 1.0 and _polygonize_callback.total_time >= 5.0)):
+            LOGGER.info(
+                'Fragment polygonization %.1f%% complete %s',
+                df_complete * 100, psz_message)
+            _polygonize_callback.last_time = time.time()
+            _polygonize_callback.total_time += current_time
+    except AttributeError:
+        _polygonize_callback.last_time = time.time()
+        _polygonize_callback.total_time = 0.0
+    except:
+        # If an exception is uncaught from this callback, it will kill the
+        # polygonize routine.  Just an FYI.
+        LOGGER.exception('Error in polygonize progress callback')
+
+
 # It's convenient to define a C++ pair here as a pair of longs to represent the
 # x,y coordinates of a pixel.  So, CoordinatePair().first is the x coordinate,
 # CoordinatePair().second is the y coordinate.  Both are in integer pixel
@@ -415,9 +437,6 @@ def delineate_watersheds(
     working_dir_path = tempfile.mkdtemp(
         dir=working_dir, prefix='watershed_delineation_%s_' % time.strftime(
             '%Y-%m-%d_%H_%M_%S', time.gmtime()))
-
-    scratch_raster_path = os.path.join(working_dir_path, 'scratch_raster.tif')
-    mask_raster_path = os.path.join(working_dir_path, 'scratch_mask.tif')
 
     # Create the watershed fragments layer for later.
     gpkg_driver = ogr.GetDriverByName('GPKG')
@@ -485,9 +504,30 @@ def delineate_watersheds(
 
     # Create a new watershed scratch raster the size, shape of the flow dir raster
     # via rasterization.
-    # TODO: make a byte and/or int managed raster class
     cdef int NO_WATERSHED = 0
+    cdef CoordinatePair current_pixel, neighbor_pixel
+    cdef queue[CoordinatePair] process_queue
+    cdef cset[CoordinatePair] process_queue_set
+    cdef cset[int] nested_watershed_ids
+    cdef int* neighbor_col = [1, 1, 0, -1, -1, -1, 0, 1]
+    cdef int* neighbor_row = [0, -1, -1, -1, 0, 1, 1, 1]
+    cdef int* reverse_flow = [4, 5, 6, 7, 0, 1, 2, 3]
+    cdef int pixels_in_watershed
+    cdef time_t last_log_time = ctime(NULL)
+    cdef time_t last_ws_log_time = ctime(NULL)
+    cdef double x_origin = source_gt[0]
+    cdef double y_origin = source_gt[3]
+    cdef double x_pixelwidth = source_gt[1]
+    cdef double y_pixelwidth = source_gt[5]
+    cdef int block_index
+    cdef int features_in_layer = working_outlets_layer.GetFeatureCount()
+    cdef cmap[int, cset[CoordinatePair]] points_in_blocks
+    cdef cmap[CoordinatePair, int] point_ws_ids 
+    cdef CoordinatePair ws_seed_coord
+
+
     LOGGER.info('Creating raster for tracking watershed fragments')
+    scratch_raster_path = os.path.join(working_dir_path, 'scratch_raster.tif')
     pygeoprocessing.new_raster_from_base(
         d8_flow_dir_raster_path_band[0], scratch_raster_path, gdal.GDT_UInt32,
         [NO_WATERSHED], fill_value_list=[NO_WATERSHED],
@@ -500,34 +540,17 @@ def delineate_watersheds(
 
     # Create a new watershed scratch mask raster the size, shape of the flow dir raster
     LOGGER.info('Creating raster for tracking visited pixels')
+    mask_raster_path = os.path.join(working_dir_path, 'scratch_mask.tif')
     pygeoprocessing.new_raster_from_base(
         d8_flow_dir_raster_path_band[0], mask_raster_path, gdal.GDT_Byte,
         [255], fill_value_list=[0],
         gtiff_creation_options=GTIFF_CREATION_OPTIONS)
-
-    cdef CoordinatePair current_pixel, neighbor_pixel
-    cdef queue[CoordinatePair] process_queue
-    cdef cset[CoordinatePair] process_queue_set
-    cdef cset[int] nested_watershed_ids
-
-    cdef int* neighbor_col = [1, 1, 0, -1, -1, -1, 0, 1]
-    cdef int* neighbor_row = [0, -1, -1, -1, 0, 1, 1, 1]
-    cdef int* reverse_flow = [4, 5, 6, 7, 0, 1, 2, 3]
 
     # Map ws_id to the watersheds that nest within.
     nested_watersheds = {}
 
     # Track outflow geometry FIDs against the WS_ID used.
     ws_id_to_fid = {}
-
-    cdef int pixels_in_watershed
-    cdef time_t last_log_time = ctime(NULL)
-    cdef time_t last_ws_log_time = ctime(NULL)
-    cdef double x_origin = source_gt[0]
-    cdef double y_origin = source_gt[3]
-    cdef double x_pixelwidth = source_gt[1]
-    cdef double y_pixelwidth = source_gt[5]
-    cdef int block_index
 
     # When interleaved is True, coords are in (xmin, ymin, xmax, ymax)
     spatial_index = rtree.index.Index(interleaved=True)
@@ -549,10 +572,6 @@ def delineate_watersheds(
                                          gdal.OF_VECTOR)
     working_outlets_layer = working_outlets_vector.GetLayer()
     working_outlet_layer_definition = working_outlets_layer.GetLayerDefn()
-    cdef int features_in_layer = working_outlets_layer.GetFeatureCount()
-    cdef cmap[int, cset[CoordinatePair]] points_in_blocks
-    cdef cmap[CoordinatePair, int] point_ws_ids 
-    cdef CoordinatePair ws_seed_coord
 
     for outflow_feature in working_outlets_layer:
         ws_id = int(outflow_feature.GetField(ws_id_fieldname))
@@ -679,7 +698,7 @@ def delineate_watersheds(
                             nested_watershed_ids.insert(neighbor_ws_id)
                             continue
 
-                        # If the pixel has not yet been visited, enqueue it.
+                        # The pixel has not yet been visited, enqueue it.
                         if pixel_visited == 0:
                             process_queue.push(neighbor_pixel)
                             process_queue_set.insert(neighbor_pixel)
@@ -694,27 +713,6 @@ def delineate_watersheds(
     scratch_band = scratch_raster.GetRasterBand(1)
     mask_raster = gdal.OpenEx(mask_raster_path, gdal.OF_RASTER)
     mask_band = mask_raster.GetRasterBand(1)
-
-    def _polygonize_callback(df_complete, psz_message, p_progress_arg):
-        """Log progress messages during long-running polygonize calls.
-
-        The parameters for this function are defined by GDAL."""
-        try:
-            current_time = time.time()
-            if ((current_time - _polygonize_callback.last_time) > 5.0 or
-                    (df_complete == 1.0 and _polygonize_callback.total_time >= 5.0)):
-                LOGGER.info(
-                    'Fragment polygonization %.1f%% complete %s',
-                    df_complete * 100, psz_message)
-                _polygonize_callback.last_time = time.time()
-                _polygonize_callback.total_time += current_time
-        except AttributeError:
-            _polygonize_callback.last_time = time.time()
-            _polygonize_callback.total_time = 0.0
-        except:
-            # If an exception is uncaught from this callback, it will kill the
-            # polygonize routine.  Just an FYI.
-            LOGGER.exception('Error in polygonize progress callback')
 
     gdal.Polygonize(
         scratch_band,  # the source band to be analyzed
