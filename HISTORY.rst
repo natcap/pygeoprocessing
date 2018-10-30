@@ -1,6 +1,12 @@
 Release History
 ===============
 
+Unreleased Changes
+------------------
+* Exposing GeoTIFF creation options for all the `pygeoprocessing.routing`
+  functions which create rasters. This is consistent with the creation
+  options exposed in the main `pygeoprocessing` API.
+
 1.3.1 10/25/2018
 ----------------
 * Hotfix to patch an infinite loop when aggregating upstream or downstream
