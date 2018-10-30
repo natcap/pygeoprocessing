@@ -1,6 +1,14 @@
 Release History
 ===============
 
+Unreleased changes
+------------------
+* Adding error checking to ensure that `target_pixel_size` passed to
+  `warp_raster` and `align_and_resize_raster_stack` are validated to ensure
+  they are in the correct format. This solves an issue where an incorrect
+  value, such as a single numerical value, resolve into readable exception
+  messages.
+
 1.3.1 10/25/2018
 ----------------
 * Hotfix to patch an infinite loop when aggregating upstream or downstream
