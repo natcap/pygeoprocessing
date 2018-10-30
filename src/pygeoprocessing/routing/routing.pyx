@@ -20,8 +20,6 @@ import os
 import logging
 import shutil
 import tempfile
-import traceback
-import sys
 
 import numpy
 import pygeoprocessing
@@ -387,15 +385,9 @@ cdef class _ManagedRaster:
 
         raster = gdal.OpenEx(self.raster_path, gdal.OF_RASTER)
         raster_band = raster.GetRasterBand(self.band_id)
-        raw_block = raster_band.ReadAsArray(
+        block_array = raster_band.ReadAsArray(
             xoff=xoff, yoff=yoff, win_xsize=win_xsize,
-            win_ysize=win_ysize)
-        if raw_block is not None:
-            block_array = raw_block.astype(numpy.float64)
-        else:
-            traceback.print_stack()
-            sys.exit(-1)
-
+            win_ysize=win_ysize).astype(numpy.float64)
         raster_band = None
         raster = None
         double_buffer = <double*>PyMem_Malloc(
