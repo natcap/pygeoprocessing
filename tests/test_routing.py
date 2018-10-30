@@ -1210,10 +1210,14 @@ class TestRouting(unittest.TestCase):
         unioned_geometry = shapely.ops.cascaded_union(geoms)
         watersheds_vector = gdal.OpenEx(watersheds_vector_path, gdal.OF_VECTOR)
         watersheds_layer = watersheds_vector.GetLayer()
-        for feature in watersheds_layer:
-            shapely_geom = shapely.wkb.loads(feature.GetGeometryRef().ExportToWkb())
-            self.assertEquals(
-                0.0, unioned_geometry.difference(shapely_geom).area)
+        try:
+            for feature in watersheds_layer:
+                shapely_geom = shapely.wkb.loads(feature.GetGeometryRef().ExportToWkb())
+                self.assertEquals(
+                    0.0, unioned_geometry.difference(shapely_geom).area)
+        finally:
+            watersheds_layer = None
+            watersheds_vector = None
 
     def test_watershed_delineation_lakes(self):
         import pygeoprocessing.routing
