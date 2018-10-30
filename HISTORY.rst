@@ -1,6 +1,12 @@
 Release History
 ===============
 
+Unreleased Changes
+------------------
+* Modified `rasterize` API call to make `burn_values` and `option_list` both
+  optional parameters, along with error checking to ensure a bad input's
+  behavior is understood.
+
 1.3.1 10/25/2018
 ----------------
 * Hotfix to patch an infinite loop when aggregating upstream or downstream
