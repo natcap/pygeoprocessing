@@ -609,16 +609,7 @@ def align_and_resize_raster_stack(
             "Alignment index is out of bounds of the datasets index: %s"
             " n_elements %s" % (raster_align_index, n_rasters))
 
-    if not isinstance(target_pixel_size, (list, tuple)):
-        raise ValueError(
-            "target_pixel_size is not a tuple, its value was '%s'",
-            repr(target_pixel_size))
-
-    if (len(target_pixel_size) != 2 or
-            not all([_is_number(x) for x in target_pixel_size])):
-        raise ValueError(
-            "Invalid value for `target_pixel_size`, expected two numerical "
-            "elements, got: %s", repr(target_pixel_size))
+    _assert_is_valid_pixel_size(target_pixel_size)
 
     # used to get bounding box, projection, and possible alignment info
     raster_info_list = [
@@ -1770,6 +1761,8 @@ def warp_raster(
         None
 
     """
+    _assert_is_valid_pixel_size(target_pixel_size)
+
     base_raster_info = get_raster_info(base_raster_path)
     if target_sr_wkt is None:
         target_sr_wkt = base_raster_info['projection']
@@ -3194,10 +3187,29 @@ def _convolve_2d_worker(
     write_queue.put(None)
 
 
-def _is_number(x):
-    """Return true if x is a number."""
-    try:
-        float(x)
-        return True
-    except ValueError:
-        return False
+def _assert_is_valid_pixel_size(target_pixel_size):
+    """Return true if `target_pixel_size` is a valid 2 element sequence.
+
+    Raises ValueError if not a two element list/tuple and/or the values in
+        the sequence are not numerical.
+
+    """
+    def _is_number(x):
+        """Return true if x is a number."""
+        try:
+            float(x)
+            return True
+        except ValueError:
+            return False
+
+    if not isinstance(target_pixel_size, (list, tuple)):
+        raise ValueError(
+            "target_pixel_size is not a tuple, its value was '%s'",
+            repr(target_pixel_size))
+
+    if (len(target_pixel_size) != 2 or
+            not all([_is_number(x) for x in target_pixel_size])):
+        raise ValueError(
+            "Invalid value for `target_pixel_size`, expected two numerical "
+            "elements, got: %s", repr(target_pixel_size))
+    return True
