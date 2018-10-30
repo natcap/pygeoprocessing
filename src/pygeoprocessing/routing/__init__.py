@@ -55,8 +55,10 @@ def join_watershed_fragments(watershed_fragments_vector,
 
     upstream_fragments = {}
     fragment_geometries = {}
+    fragment_field_values = {}
     for feature in fragments_layer:
         ws_id = feature.GetField('ws_id')
+        fragment_field_values[ws_id] = feature.items()
         upstream_fragments_string = feature.GetField('upstream_fragments')
         if upstream_fragments_string:
             upstream_fragments[ws_id] = [int(f) for f in
@@ -78,7 +80,7 @@ def join_watershed_fragments(watershed_fragments_vector,
     for ws_id, geometry_list in fragment_geometries.items():
         fragment_multipolygons[ws_id] = shapely.geometry.MultiPolygon(
             geometry_list)
-    del fragment_geometries  # don't need this dict any longer.
+    #del fragment_geometries  # don't need this dict any longer.
 
     # Populate the watershed geometries dict with fragments that are as
     # upstream as you can go.
@@ -109,9 +111,15 @@ def join_watershed_fragments(watershed_fragments_vector,
                 of this fragment.
 
         """
-        encountered_ws_ids.add(ws_id)
 
-        geometries = [fragment_multipolygons[ws_id]]
+        try:
+            geometries = [fragment_multipolygons[ws_id]]
+            encountered_ws_ids.add(ws_id)
+        except KeyError:
+            LOGGER.warn('Upstream watershed fragment %s not found. '
+                        'Do you have overlapping geometries?', ws_id)
+            return shapely.geometry.Polygon([])
+
         for upstream_fragment_id in upstream_fragments[ws_id]:
             # If we've already encountered this upstream fragment on this
             # run through the recursion, skip it.
@@ -144,28 +152,22 @@ def join_watershed_fragments(watershed_fragments_vector,
     # Copy fields from the fragments vector and set the geometries to the
     # newly-created, unioned geometries.
     # TODO: use transactions
+    watersheds_layer.StartTransaction()
     for ws_id, watershed_geometry in sorted(watershed_geometries.items(),
                                             key=lambda x: x[0]):
-        # It's possible that this SQL query will return more than 1 feature.
-        # That should be OK because all features with the same WS_ID will
-        # have the same field values if they were created by the
-        # pygeoprocessing watershed delineation function.
-        # In any case, there'll be at least one feature in the virtual layer
-        # returned by the SQL query, so we just grab the next one.
-        fragments_feature = next(fragments_vector.ExecuteSQL(
-            "SELECT * FROM %s WHERE ws_id = %s" % (
-                fragments_layer_name, ws_id)))
-
         # Creating the feature here works properly, unlike
         # fragments_feature.Clone(), which raised SQL errors.
         watershed_feature = ogr.Feature(watersheds_layer_defn)
-        for field_name, field_value in fragments_feature.items().items():
+        for field_name, field_value in fragment_field_values[ws_id].items():
             watershed_feature.SetField(field_name, field_value)
 
         watershed_feature.SetGeometry(ogr.CreateGeometryFromWkb(
             shapely.wkb.dumps(watershed_geometry)))
         watersheds_layer.CreateFeature(watershed_feature)
+    watersheds_layer.CommitTransaction()
 
+    fragments_srs = None
+    fragments_feature = None
     fragments_layer = None
     fragments_vector = None
 
