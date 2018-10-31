@@ -367,8 +367,8 @@ def _make_polygonize_callback(logging_adapter):
             if ((current_time - _polygonize_callback.last_time) > 5.0 or
                     (df_complete == 1.0 and _polygonize_callback.total_time >= 5.0)):
                 logging_adapter.info(
-                    'Fragment polygonization %.1f%% complete %s, %s',
-                    df_complete * 100, psz_message, df_complete)
+                    'Fragment polygonization %.1f%% complete %s',
+                    df_complete * 100, psz_message)
                 _polygonize_callback.last_time = time.time()
                 _polygonize_callback.total_time += current_time
         except AttributeError:
@@ -577,6 +577,9 @@ def delineate_watersheds(
     cdef int neighbor_ws_id
     cdef unsigned char pixel_visited
 
+    # This builds up a spatial index of raster blocks so we can figure out the
+    # order in which to start processing points to try to minimize disk
+    # accesses.
     # When interleaved is True, coords are in (xmin, ymin, xmax, ymax)
     spatial_index = rtree.index.Index(interleaved=True)
     for block_index, offset_dict in enumerate(
@@ -597,6 +600,8 @@ def delineate_watersheds(
         disjoint_logger = OverlappingWatershedContextAdapter(
             LOGGER, {'pass_index': disjoint_index, 'n_passes': len(disjoint_vector_paths)})
 
+        disjoint_logger.info('Delineating watersheds for disjoint vector #%s',
+                             disjoint_index)
         disjoint_logger.info('Creating raster for tracking watershed fragments')
         scratch_raster_path = os.path.join(working_dir_path,
                                            'scratch_raster_%s.tif' % disjoint_index)
