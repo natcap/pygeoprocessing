@@ -485,7 +485,7 @@ def align_and_resize_raster_stack(
         target_pixel_size, bounding_box_mode, base_vector_path_list=None,
         raster_align_index=None, base_sr_wkt_list=None, target_sr_wkt=None,
         gtiff_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS,
-        vector_mask_options=None):
+        vector_mask_options=None, gdal_warp_options=None):
     """Generate rasters from a base such that they align geospatially.
 
     This function resizes base rasters that are in the same geospatial
@@ -768,7 +768,8 @@ def align_and_resize_raster_stack(
                     'base_sr_wkt': (
                         None if not base_sr_wkt_list else
                         base_sr_wkt_list[index]),
-                    'vector_mask_options': vector_mask_options})
+                    'vector_mask_options': vector_mask_options,
+                    'gdal_warp_options': gdal_warp_options,})
             result_list.append(result)
         worker_pool.close()
         for index, result in enumerate(result_list):
@@ -1842,6 +1843,9 @@ def warp_raster(
         if 'mask_vector_where_filter' in vector_mask_options:
             mask_vector_where_filter = (
                 vector_mask_options['mask_vector_where_filter'])
+
+    if gdal_warp_options is None:
+        gdal_warp_options = []
 
     base_raster = gdal.OpenEx(base_raster_path, gdal.OF_RASTER)
     gdal.Warp(
