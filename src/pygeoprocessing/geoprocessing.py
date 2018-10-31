@@ -1715,7 +1715,8 @@ def warp_raster(
         base_raster_path, target_pixel_size, target_raster_path,
         resample_method, target_bb=None, base_sr_wkt=None, target_sr_wkt=None,
         gtiff_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS,
-        n_threads=None, vector_mask_options=None):
+        n_threads=None, vector_mask_options=None,
+        gdal_warp_options=None):
     """Resize/resample raster to desired pixel size, bbox and projection.
 
     Parameters:
@@ -1754,6 +1755,8 @@ def warp_raster(
                     be used to filter the geometry in the mask. Ex:
                     'id > 10' would use all features whose field value of
                     'id' is > 10.
+        gdal_warp_options (list): if present, this list is passed to
+            the `options` parameter of `gdal.Warp`.
 
     Returns:
         None
@@ -1857,7 +1860,8 @@ def warp_raster(
         callback_data=[target_raster_path],
         cutlineDSName=mask_vector_path,
         cutlineLayer=mask_layer_name,
-        cutlineWhere=mask_vector_where_filter)
+        cutlineWhere=mask_vector_where_filter,
+        options=gdal_warp_options)
 
 
 def rasterize(
