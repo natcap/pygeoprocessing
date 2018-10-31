@@ -1,6 +1,13 @@
 Release History
 ===============
 
+Unreleased Changes
+------------------
+* Added a `gdal_warp_options` parameter to `align_and_resize_raster_stack` and
+  `warp_raster` whose contents get passed to gdal.Warp's `warpOptions`
+  parameter. This was implemented to expose the CUTLINE_TOUCH_ALL
+  functionality but could be used for any gdal functionality.
+
 1.3.1 10/25/2018
 ----------------
 * Hotfix to patch an infinite loop when aggregating upstream or downstream

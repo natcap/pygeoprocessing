@@ -1756,8 +1756,9 @@ def warp_raster(
                     be used to filter the geometry in the mask. Ex:
                     'id > 10' would use all features whose field value of
                     'id' is > 10.
-        gdal_warp_options (list): if present, this list is passed to
-            the `options` parameter of `gdal.Warp`.
+        gdal_warp_options (list): if present, the contents of this list are
+            passed to the `warpOptions` parameter of `gdal.Warp`. See the
+            GDAL Warp documentation for details.
 
     Returns:
         None
