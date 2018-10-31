@@ -1345,11 +1345,12 @@ class TestRouting(unittest.TestCase):
             fragments_layer = fragments_vector.GetLayer()
             self.assertEqual(fragments_layer.GetFeatureCount(), 4)
 
-            expected_geometry = shapely.geometry.box(2, -4, 8, -6)
+            expected_geometry = shapely.geometry.box(2, -6, 8, -4)
             for feature in fragments_layer:
                 fragment_geometry = shapely.wkb.loads(
                     feature.GetGeometryRef().ExportToWkb())
-                self.assertEqual(fragment_geometry, expected_geometry)
+                self.assertEqual(fragment_geometry.difference(expected_geometry).area, 0)
+                self.assertEqual(fragment_geometry.symmetric_difference(expected_geometry).area, 0)
         finally:
             fragments_layer = None
             fragments_vector = None

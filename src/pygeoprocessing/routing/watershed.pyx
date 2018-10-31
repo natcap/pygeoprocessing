@@ -27,9 +27,6 @@ from libcpp.deque cimport deque
 from libcpp.set cimport set as cset
 from libcpp.map cimport map as cmap
 
-import faulthandler
-faulthandler.enable()
-
 LOGGER = logging.getLogger(__name__)
 LOGGER.addHandler(logging.NullHandler())  # silence logging by default
 
@@ -463,9 +460,33 @@ def delineate_watersheds(
     working_outlets_layer.CreateField(ws_id_field_defn)
 
     # TODO: if point geometry, snap to the nearest pixel and make a small circle..
+    cdef double x_origin = source_gt[0]
+    cdef double y_origin = source_gt[3]
+    cdef double x_pixelwidth = source_gt[1]
+    cdef double y_pixelwidth = source_gt[5]
     working_outlets_layer.StartTransaction()
     for ws_id, feature in enumerate(working_outlets_layer, start=1):
         feature.SetField(ws_id_fieldname, ws_id)
+
+        geometry = shapely.wkb.loads(
+            feature.GetGeometryRef().ExportToWkb())
+        if geometry.geom_type == 'Point':
+            # Snap the point to the nearest Flow Dir pixel and create a small
+            # polygon.
+            quarter_pixelwidth = x_pixelwidth/4.
+            quarter_pixelheight = y_pixelwidth/4.
+
+            x_coord = geometry.x - ((geometry.x - x_origin) % x_pixelwidth) + x_pixelwidth/2.
+            y_coord = geometry.y - ((geometry.y - y_origin) % y_pixelwidth) + y_pixelwidth/2.
+
+            new_geometry = shapely.geometry.box(
+                x_coord - quarter_pixelwidth,
+                y_coord - quarter_pixelheight,
+                x_coord + quarter_pixelwidth,
+                y_coord + quarter_pixelheight)
+
+            feature.SetGeometry(ogr.CreateGeometryFromWkb(new_geometry.wkb))
+
         working_outlets_layer.SetFeature(feature)
     working_outlets_layer.CommitTransaction()
     working_outlets_layer = None
@@ -526,10 +547,6 @@ def delineate_watersheds(
     cdef int pixels_in_watershed
     cdef time_t last_log_time = ctime(NULL)
     cdef time_t last_ws_log_time = ctime(NULL)
-    cdef double x_origin = source_gt[0]
-    cdef double y_origin = source_gt[3]
-    cdef double x_pixelwidth = source_gt[1]
-    cdef double y_pixelwidth = source_gt[5]
     cdef int block_index
     cdef int features_in_layer = working_outlets_layer.GetFeatureCount()
     cdef cmap[int, cset[CoordinatePair]] points_in_blocks
