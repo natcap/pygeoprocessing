@@ -1191,6 +1191,7 @@ class TestRouting(unittest.TestCase):
             joined_layer = None
 
     def test_join_watersheds_with_cycles(self):
+        """PGP.routing: Test that we can join mutually-upstream watersheds."""
         import pygeoprocessing.testing
         import pygeoprocessing.routing
 
@@ -1231,6 +1232,7 @@ class TestRouting(unittest.TestCase):
             watersheds_vector = None
 
     def test_watershed_delineation_lakes(self):
+        """PGP.routing: Test that we can delineate nested polygons/lakes."""
         import pygeoprocessing.routing
         import pygeoprocessing.testing
 
