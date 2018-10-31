@@ -1824,6 +1824,8 @@ def warp_raster(
     warp_options = []
     if n_threads:
         warp_options.append('NUM_THREADS=%d' % n_threads)
+    if gdal_warp_options:
+        warp_options.extend(gdal_warp_options)
 
     mask_vector_path = None
     mask_layer_name = None
@@ -1864,8 +1866,7 @@ def warp_raster(
         callback_data=[target_raster_path],
         cutlineDSName=mask_vector_path,
         cutlineLayer=mask_layer_name,
-        cutlineWhere=mask_vector_where_filter,
-        options=gdal_warp_options)
+        cutlineWhere=mask_vector_where_filter)
 
 
 def rasterize(
