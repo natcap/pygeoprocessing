@@ -357,26 +357,36 @@ cdef class _ManagedRaster:
             raster = None
 
 
-def _polygonize_callback(df_complete, psz_message, p_progress_arg):
-    """Log progress messages during long-running polygonize calls.
+def _make_polygonize_callback(logging_adapter):
+    def _polygonize_callback(df_complete, psz_message, p_progress_arg):
+        """Log progress messages during long-running polygonize calls.
 
-    The parameters for this function are defined by GDAL."""
-    try:
-        current_time = time.time()
-        if ((current_time - _polygonize_callback.last_time) > 5.0 or
-                (df_complete == 1.0 and _polygonize_callback.total_time >= 5.0)):
-            LOGGER.info(
-                'Fragment polygonization %.1f%% complete %s',
-                df_complete * 100, psz_message)
+        The parameters for this function are defined by GDAL."""
+        try:
+            current_time = time.time()
+            if ((current_time - _polygonize_callback.last_time) > 5.0 or
+                    (df_complete == 1.0 and _polygonize_callback.total_time >= 5.0)):
+                logging_adapter.info(
+                    'Fragment polygonization %.1f%% complete %s, %s',
+                    df_complete * 100, psz_message, df_complete)
+                _polygonize_callback.last_time = time.time()
+                _polygonize_callback.total_time += current_time
+        except AttributeError:
             _polygonize_callback.last_time = time.time()
-            _polygonize_callback.total_time += current_time
-    except AttributeError:
-        _polygonize_callback.last_time = time.time()
-        _polygonize_callback.total_time = 0.0
-    except:
-        # If an exception is uncaught from this callback, it will kill the
-        # polygonize routine.  Just an FYI.
-        LOGGER.exception('Error in polygonize progress callback')
+            _polygonize_callback.total_time = 0.0
+        except:
+            # If an exception is uncaught from this callback, it will kill the
+            # polygonize routine.  Just an FYI.
+            logging_adapter.exception('Error in polygonize progress callback')
+    return _polygonize_callback
+
+
+class OverlappingWatershedContextAdapter(logging.LoggerAdapter):
+    def process(self, msg, kwargs):
+        return (
+            '[pass %s of %s] %s' % (
+                self.extra['pass_index'], self.extra['n_passes'], msg),
+            kwargs)
 
 
 # It's convenient to define a C++ pair here as a pair of longs to represent the
@@ -459,11 +469,11 @@ def delineate_watersheds(
     ws_id_field_defn = ogr.FieldDefn(ws_id_fieldname, ogr.OFTInteger64)
     working_outlets_layer.CreateField(ws_id_field_defn)
 
-    # TODO: if point geometry, snap to the nearest pixel and make a small circle..
     cdef double x_origin = source_gt[0]
     cdef double y_origin = source_gt[3]
     cdef double x_pixelwidth = source_gt[1]
     cdef double y_pixelwidth = source_gt[5]
+    LOGGER.info("Preprocessing outlet geometries")
     working_outlets_layer.StartTransaction()
     for ws_id, feature in enumerate(working_outlets_layer, start=1):
         feature.SetField(ws_id_fieldname, ws_id)
@@ -494,6 +504,7 @@ def delineate_watersheds(
 
     cdef int polygon_fid
     disjoint_vector_paths = []
+    LOGGER.info('Determining sets of non-overlapping polygons')
     for set_index, disjoint_polygon_fid_set in enumerate(
             pygeoprocessing.calculate_disjoint_polygon_set(working_outlets_path), start=1):
         LOGGER.info("Creating a vector of %s disjoint polygon(s)",
@@ -520,6 +531,11 @@ def delineate_watersheds(
         disjoint_vector = None
 
     watershed_vector = gpkg_driver.CreateDataSource(target_fragments_vector_path)
+    if watershed_vector is None:
+        raise RuntimeError(
+            "Could not open target fragments vector for writing. Do you have "
+            "access to this path?  Is the file open in another program?")
+
     watershed_layer = watershed_vector.CreateLayer(
         'watershed_fragments', flow_dir_srs, ogr.wkbPolygon)
 
@@ -545,8 +561,8 @@ def delineate_watersheds(
     cdef int* neighbor_row = [0, -1, -1, -1, 0, 1, 1, 1]
     cdef int* reverse_flow = [4, 5, 6, 7, 0, 1, 2, 3]
     cdef int pixels_in_watershed
-    cdef time_t last_log_time = ctime(NULL)
-    cdef time_t last_ws_log_time = ctime(NULL)
+    cdef time_t last_log_time
+    cdef time_t last_ws_log_time
     cdef int block_index
     cdef int features_in_layer = working_outlets_layer.GetFeatureCount()
     cdef cmap[int, cset[CoordinatePair]] points_in_blocks
@@ -578,7 +594,10 @@ def delineate_watersheds(
                                      max(origin_ycoord, win_ycoord)))
 
     for disjoint_index, disjoint_vector_path in enumerate(disjoint_vector_paths, start=1):
-        LOGGER.info('Creating raster for tracking watershed fragments')
+        disjoint_logger = OverlappingWatershedContextAdapter(
+            LOGGER, {'pass_index': disjoint_index, 'n_passes': len(disjoint_vector_paths)})
+
+        disjoint_logger.info('Creating raster for tracking watershed fragments')
         scratch_raster_path = os.path.join(working_dir_path,
                                            'scratch_raster_%s.tif' % disjoint_index)
         pygeoprocessing.new_raster_from_base(
@@ -592,7 +611,7 @@ def delineate_watersheds(
             layer_index='outlet_geometries')
 
         # Create a new watershed scratch mask raster the size, shape of the flow dir raster
-        LOGGER.info('Creating raster for tracking visited pixels')
+        disjoint_logger.info('Creating raster for tracking visited pixels')
         mask_raster_path = os.path.join(working_dir_path,
                                         'scratch_mask_%s.tif' % disjoint_index)
         pygeoprocessing.new_raster_from_base(
@@ -637,14 +656,14 @@ def delineate_watersheds(
             points_in_blocks[block_index].insert(ws_seed_coord)
             point_ws_ids[ws_seed_coord] = ws_id
 
-        LOGGER.info('Delineating watersheds')
+        disjoint_logger.info('Delineating watersheds')
         scratch_managed_raster = _ManagedRaster(scratch_raster_path, 1, 1)
         mask_managed_raster = _ManagedRaster(mask_raster_path, 1, 1)
         flow_dir_managed_raster = _ManagedRaster(d8_flow_dir_raster_path_band[0],
                                                  d8_flow_dir_raster_path_band[1],
                                                  0)  # read-only
 
-
+        last_log_time = ctime(NULL)
         block_iterator = points_in_blocks.begin()
         while block_iterator != points_in_blocks.end():
             block_index = deref(block_iterator).first
@@ -662,7 +681,7 @@ def delineate_watersheds(
 
                 if ctime(NULL) - last_log_time > 5.0:
                     last_log_time = ctime(NULL)
-                    LOGGER.info('Delineated %s watersheds of %s so far',
+                    disjoint_logger.info('Delineated %s watersheds of %s so far',
                                 watersheds_started, features_in_layer)
 
                 last_ws_log_time = ctime(NULL)
@@ -675,7 +694,7 @@ def delineate_watersheds(
                     pixels_in_watershed += 1
                     if ctime(NULL) - last_ws_log_time > 5.0:
                         last_ws_log_time = ctime(NULL)
-                        LOGGER.info('Delineating watershed %i of %i, %i pixels '
+                        disjoint_logger.info('Delineating watershed %i of %i, %i pixels '
                                     'found so far.', watersheds_started, features_in_layer,
                                     pixels_in_watershed)
 
@@ -760,17 +779,12 @@ def delineate_watersheds(
             watershed_fragments_layer,  # polygons are added to this layer
             0,  # field index into which to save the pixel value of watershed
             ['8CONNECTED8'],  # use 8-connectedness algorithm.
-            _polygonize_callback
+            _make_polygonize_callback(disjoint_logger)
         )
 
-        # create a new vector with new geometries in it
-        # If watersheds have nested watersheds, the geometries written should be
-        # the union of all upstream sheds.
-        # If a watershed is alone (does not contain nested watersheds), the
-        # geometry should be written as-is.
-        LOGGER.info('Copying fields over to the new fragments vector.')
-
         # Copy over the field values to the target vector
+        # TODO: join multipart fragments into multipolygons?
+        disjoint_logger.info('Copying fields over to the new fragments vector.')
         watershed_layer.StartTransaction()
         for watershed_fragment in watershed_fragments_layer:
             fragment_ws_id = watershed_fragment.GetField('ws_id')
