@@ -1,10 +1,15 @@
 from pygeoprocessing.routing.routing import *
+import time
+
 from pygeoprocessing.routing.watershed import *
 
+import logging
 from osgeo import gdal
 from osgeo import ogr
 import shapely.wkb
 import shapely.geometry
+
+LOGGER = logging.getLogger(__name__)
 
 
 def join_watershed_fragments(watershed_fragments_vector,
@@ -56,6 +61,7 @@ def join_watershed_fragments(watershed_fragments_vector,
     upstream_fragments = {}
     fragment_geometries = {}
     fragment_field_values = {}
+    LOGGER.info('Loading fragment geometries.')
     for feature in fragments_layer:
         ws_id = feature.GetField('ws_id')
         fragment_field_values[ws_id] = feature.items()
@@ -118,7 +124,7 @@ def join_watershed_fragments(watershed_fragments_vector,
         except KeyError:
             LOGGER.warn('Upstream watershed fragment %s not found. '
                         'Do you have overlapping geometries?', ws_id)
-            return shapely.geometry.Polygon([])
+            return [shapely.geometry.Polygon([])]
 
         for upstream_fragment_id in upstream_fragments[ws_id]:
             # If we've already encountered this upstream fragment on this
@@ -129,9 +135,10 @@ def join_watershed_fragments(watershed_fragments_vector,
             encountered_ws_ids.add(upstream_fragment_id)
             if upstream_fragment_id not in watershed_geometries:
                 watershed_geometries[upstream_fragment_id] = (
-                    _recurse_watersheds(upstream_fragment_id))
+                    shapely.ops.cascaded_union(
+                        _recurse_watersheds(upstream_fragment_id)))
             geometries.append(watershed_geometries[upstream_fragment_id])
-        return shapely.ops.cascaded_union(geometries)
+        return geometries
 
     # Iterate over the ws_ids that have upstream geometries and create the
     # watershed geometries.
@@ -139,27 +146,41 @@ def join_watershed_fragments(watershed_fragments_vector,
     # sometimes have thousands of nested watersheds, which will exhaust
     # python's max recursion depth here if we're not careful.
     # TODO: avoid max recursion depth here.
+    last_log_time = time.time()
+    n_watersheds_processed = len(watershed_geometries)
+    n_features = len(upstream_fragments)
+    LOGGER.info('Joining watershed geometries')
     for ws_id in sorted(
             set(upstream_fragments.keys()).difference(
                 set(watershed_geometries.keys())),
             key=lambda ws_id_key: len(upstream_fragments[ws_id_key])):
+        current_time = time.time()
+        if current_time - last_log_time >= 5.0:
+            LOGGER.info("%s fragments of %s processed", n_watersheds_processed, n_features)
+            last_log_time = current_time
+
         # The presence of a ws_id key in watershed_geometries could be
         # altered during a call to _recurse_watersheds.  This condition
         # ensures that we don't call _recurse_watersheds more than we need to.
         encountered_ws_ids.clear()
-        watershed_geometries[ws_id] = _recurse_watersheds(ws_id)
+        watershed_geometries[ws_id] = shapely.ops.cascaded_union(
+            _recurse_watersheds(ws_id))
+        n_watersheds_processed +=1 
 
     # Copy fields from the fragments vector and set the geometries to the
     # newly-created, unioned geometries.
-    # TODO: use transactions
+    LOGGER.info('Copying field values to the target vector')
     watersheds_layer.StartTransaction()
     for ws_id, watershed_geometry in sorted(watershed_geometries.items(),
                                             key=lambda x: x[0]):
         # Creating the feature here works properly, unlike
         # fragments_feature.Clone(), which raised SQL errors.
         watershed_feature = ogr.Feature(watersheds_layer_defn)
-        for field_name, field_value in fragment_field_values[ws_id].items():
-            watershed_feature.SetField(field_name, field_value)
+        try:
+            for field_name, field_value in fragment_field_values[ws_id].items():
+                watershed_feature.SetField(field_name, field_value)
+        except KeyError:
+            LOGGER.info('Skipping ws_id %s', ws_id)
 
         watershed_feature.SetGeometry(ogr.CreateGeometryFromWkb(
             shapely.wkb.dumps(watershed_geometry)))
