@@ -2533,7 +2533,8 @@ class PyGeoprocessing10(unittest.TestCase):
             vector_mask_options={
                 'mask_vector_path': dual_poly_path,
                 'mask_layer_name': 'dual_poly',
-            })
+            },
+            gdal_warp_options=["CUTLINE_ALL_TOUCHED=FALSE"])
 
         target_raster = gdal.OpenEx(target_path, gdal.OF_RASTER)
         target_band = target_raster.GetRasterBand(1)
