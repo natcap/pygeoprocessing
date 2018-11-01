@@ -1846,9 +1846,6 @@ def warp_raster(
             mask_vector_where_filter = (
                 vector_mask_options['mask_vector_where_filter'])
 
-    if gdal_warp_options is None:
-        gdal_warp_options = []
-
     base_raster = gdal.OpenEx(base_raster_path, gdal.OF_RASTER)
     gdal.Warp(
         target_raster_path, base_raster,
