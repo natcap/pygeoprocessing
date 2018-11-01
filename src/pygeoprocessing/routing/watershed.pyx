@@ -511,7 +511,10 @@ def delineate_watersheds(
                 # To make sure we're catching all polygons, buffer everything by
                 # half the pixel width so that we can get the appropriate set
                 # of disjoint polygons.
-                new_geometry = geometry.buffer(half_pixelwidth)
+                if geometry.area <= abs(x_pixelwidth*y_pixelwidth):
+                    new_geometry = geometry.buffer(half_pixelwidth)
+                else:
+                    new_geometry = geometry
 
             feature.SetGeometry(ogr.CreateGeometryFromWkb(new_geometry.wkb))
 
