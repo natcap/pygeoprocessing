@@ -8,6 +8,9 @@ Unreleased changes
   they are in the correct format. This solves an issue where an incorrect
   value, such as a single numerical value, resolve into readable exception
   messages.
+* Modified `rasterize` API call to make `burn_values` and `option_list` both
+  optional parameters, along with error checking to ensure a bad input's
+  behavior is understood.
 * Exposing GeoTIFF creation options for all the `pygeoprocessing.routing`
   functions which create rasters. This is consistent with the creation
   options exposed in the main `pygeoprocessing` API.
