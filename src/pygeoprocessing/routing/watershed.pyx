@@ -3,6 +3,7 @@ import os
 import logging
 import shutil
 import tempfile
+import itertools 
 
 import numpy
 import pygeoprocessing
@@ -461,6 +462,8 @@ def delineate_watersheds(
     working_outlets_vector = gpkg_driver.CopyDataSource(source_outlets_vector,
                                                         working_outlets_path)
     working_outlets_layer = working_outlets_vector.GetLayer()
+    working_outlets_layer_definition = working_outlets_layer.GetLayerDefn()
+
     # Add a new field to the clipped_outlets_layer to ensure we know what field
     # values are bing rasterized.
     cdef int ws_id
@@ -482,6 +485,8 @@ def delineate_watersheds(
         working_outlets_layer.SetFeature(feature)
     working_outlets_layer.CommitTransaction()
 
+    duplicate_points = {}  # Map center of points to the ws_id of the first point found.
+    duplicate_ws_ids = {}  # Map origial ws_id to ws_ids of points over the same pixel.
     buffered_working_outlets_path = os.path.join(working_dir_path, 'working_outlets_buffered.gpkg')
     buffered_working_outlets_vector = gpkg_driver.CopyDataSource(working_outlets_vector,
                                                                  buffered_working_outlets_path)
@@ -500,6 +505,16 @@ def delineate_watersheds(
 
                 x_coord = geometry.x - ((geometry.x - x_origin) % x_pixelwidth) + x_pixelwidth/2.
                 y_coord = geometry.y - ((geometry.y - y_origin) % y_pixelwidth) + y_pixelwidth/2.
+
+                ws_id = feature.GetField(ws_id_fieldname)
+                coord_pair = (x_coord, y_coord)
+                if coord_pair not in duplicate_points:
+                    # This is the first occurrance of this point geometry
+                    duplicate_points[coord_pair] = ws_id
+                    duplicate_ws_ids[ws_id] = []
+                else:
+                    duplicate_ws_ids[duplicate_points[coord_pair]].append(ws_id)
+                    continue  # no need to create this geometry; we'll copy it over later.
 
                 new_geometry = shapely.geometry.box(
                     x_coord - quarter_pixelwidth,
@@ -521,18 +536,24 @@ def delineate_watersheds(
         buffered_working_outlets_layer.SetFeature(feature)
     buffered_working_outlets_layer.CommitTransaction()
     buffered_working_outlets_vector.SyncToDisk()
+    del duplicate_points  # don't need this any more.
+    duplicate_ws_ids_set = set(itertools.chain(*duplicate_ws_ids.values()))
 
     cdef int polygon_fid
     disjoint_vector_paths = []
+    working_outlets_vector = gdal.OpenEx(working_outlets_path)
+    working_outlets_layer = working_outlets_vector.GetLayer()
+    outlets_schema = working_outlets_layer.schema
+
     LOGGER.info('Determining sets of non-overlapping polygons')
     for set_index, disjoint_polygon_fid_set in enumerate(
             pygeoprocessing.calculate_disjoint_polygon_set(buffered_working_outlets_path), start=1):
+        disjoint_polygon_fid_set -= duplicate_ws_ids_set
+        if not disjoint_polygon_fid_set:
+            continue
+
         LOGGER.info("Creating a vector of %s disjoint polygon(s)",
                     len(disjoint_polygon_fid_set))
-        working_outlets_vector = gdal.OpenEx(working_outlets_path)
-        working_outlets_layer = working_outlets_vector.GetLayer()
-        outlets_schema = working_outlets_layer.schema
-
         disjoint_vector_path = os.path.join(
                 working_dir_path, 'disjoint_outflow_%s.gpkg' % set_index)
         disjoint_vector_paths.append(disjoint_vector_path)
@@ -603,6 +624,7 @@ def delineate_watersheds(
     cdef int pixels_visited = 0
     cdef int neighbor_ws_id
     cdef unsigned char pixel_visited
+    watershed_ws_id_to_fid = {}
 
     # This builds up a spatial index of raster blocks so we can figure out the
     # order in which to start processing points to try to minimize disk
@@ -655,16 +677,16 @@ def delineate_watersheds(
         nested_watersheds = {}
 
         # Track outflow geometry FIDs against the WS_ID used.
-        ws_id_to_fid = {}
+        ws_id_to_disjoint_fid = {}
 
-        working_outlets_vector = gdal.OpenEx(disjoint_vector_path,
+        disjoint_outlets_vector = gdal.OpenEx(disjoint_vector_path,
                                              gdal.OF_VECTOR)
-        working_outlets_layer = working_outlets_vector.GetLayer()
-        working_outlet_layer_definition = working_outlets_layer.GetLayerDefn()
+        disjoint_outlets_layer = disjoint_outlets_vector.GetLayer()
+        disjoint_outlet_layer_definition = disjoint_outlets_layer.GetLayerDefn()
 
-        for outflow_feature in working_outlets_layer:
+        for outflow_feature in disjoint_outlets_layer:
             ws_id = int(outflow_feature.GetField(ws_id_fieldname))
-            ws_id_to_fid[ws_id] = outflow_feature.GetFID()
+            ws_id_to_disjoint_fid[ws_id] = outflow_feature.GetFID()
             geometry = shapely.wkb.loads(
                 outflow_feature.GetGeometryRef().ExportToWkb())
             if not flow_dir_bbox_geometry.contains(geometry):
@@ -820,13 +842,13 @@ def delineate_watersheds(
         watershed_layer.StartTransaction()
         for watershed_fragment in watershed_fragments_layer:
             fragment_ws_id = watershed_fragment.GetField('ws_id')
-            outflow_geom_fid = ws_id_to_fid[fragment_ws_id]
+            outflow_geom_fid = ws_id_to_disjoint_fid[fragment_ws_id]
 
             watershed_feature = ogr.Feature(watershed_layer_defn)
             watershed_feature.SetGeometry(watershed_fragment.GetGeometryRef())
 
-            outflow_point_feature = working_outlets_layer.GetFeature(outflow_geom_fid)
-            for outflow_field_index in range(working_outlet_layer_definition.GetFieldCount()):
+            outflow_point_feature = disjoint_outlets_layer.GetFeature(outflow_geom_fid)
+            for outflow_field_index in range(disjoint_outlet_layer_definition.GetFieldCount()):
                 watershed_feature.SetField(
                     outflow_field_index,
                     outflow_point_feature.GetField(outflow_field_index))
@@ -840,6 +862,32 @@ def delineate_watersheds(
             watershed_feature.SetField('upstream_fragments', upstream_fragments)
 
             watershed_layer.CreateFeature(watershed_feature)
+            watershed_ws_id_to_fid[fragment_ws_id] = watershed_feature.GetFID()
+        watershed_layer.CommitTransaction()
+
+    # If there were any duplicate points, copy the geometry
+    if duplicate_ws_ids:
+        watershed_layer.StartTransaction()
+        for (source_ws_id, matching_ws_ids) in duplicate_ws_ids.items():
+            if not matching_ws_ids:
+                continue
+
+            source_feature = watershed_layer.GetFeature(
+                watershed_ws_id_to_fid[source_ws_id])
+            for duplicate_ws_id in matching_ws_ids:
+                watershed_feature = ogr.Feature(watershed_layer_defn)
+                watershed_feature.SetGeometry(source_feature.GetGeometryRef())
+                for outflow_fieldname, outflow_fieldvalue in watershed_feature.items().items():
+                    watershed_feature.SetField(outflow_fieldname, outflow_fieldvalue)
+
+                watershed_feature.SetField('ws_id', float(duplicate_ws_id))
+                try:
+                    upstream_fragments = ','.join(
+                        [str(s) for s in sorted(nested_watersheds[source_ws_id])])
+                except KeyError:
+                    upstream_fragments = ''
+                watershed_feature.SetField('upstream_fragments', upstream_fragments)
+                watershed_layer.CreateFeature(watershed_feature)
         watershed_layer.CommitTransaction()
 
     scratch_band = None
