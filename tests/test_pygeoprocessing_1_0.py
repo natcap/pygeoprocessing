@@ -2098,6 +2098,63 @@ class PyGeoprocessing10(unittest.TestCase):
         self.assertTrue(expected_message in actual_message, actual_message)
 
 
+    def test_rasterize_error_handling(self):
+        """PGP.geoprocessing: test rasterize error handling."""
+        reference = sampledata.SRS_COLOMBIA
+        n_pixels = 3
+        target_raster_array = numpy.ones((n_pixels, n_pixels), numpy.float32)
+        test_value = 0.5
+        target_raster_array[:] = test_value
+        target_raster_path = os.path.join(
+            self.workspace_dir, 'target_raster.tif')
+        pygeoprocessing.testing.create_raster_on_disk(
+            [target_raster_array], reference.origin, reference.projection,
+            -1, reference.pixel_size(30),
+            filename=target_raster_path)
+
+        # intentionally not making the raster on disk
+        reference = sampledata.SRS_COLOMBIA
+        pixel_size = 30.0
+        polygon = shapely.geometry.Polygon([
+            (reference.origin[0], reference.origin[1]),
+            (reference.origin[0], -pixel_size * n_pixels+reference.origin[1]),
+            (reference.origin[0]+pixel_size * n_pixels,
+             -pixel_size * n_pixels+reference.origin[1]),
+            (reference.origin[0]+pixel_size * n_pixels, reference.origin[1]),
+            (reference.origin[0], reference.origin[1])])
+        base_vector_path = os.path.join(
+            self.workspace_dir, 'base_vector.json')
+        pygeoprocessing.testing.create_vector_on_disk(
+            [polygon], reference.projection,
+            fields={'id': 'int'}, attributes=[{'id': 5}],
+            vector_format='GeoJSON', filename=base_vector_path)
+
+        with self.assertRaises(ValueError) as cm:
+            pygeoprocessing.rasterize(
+                base_vector_path, target_raster_path, None, None,
+                layer_index=0)
+        expected_message = (
+            "Neither `burn_values` nor `option_list` is set")
+        actual_message = str(cm.exception)
+        self.assertTrue(expected_message in actual_message, actual_message)
+
+        with self.assertRaises(ValueError) as cm:
+            pygeoprocessing.rasterize(
+                base_vector_path, target_raster_path, 1, None,
+                layer_index=0)
+        expected_message = "`burn_values` is not a list"
+        actual_message = str(cm.exception)
+        self.assertTrue(expected_message in actual_message, actual_message)
+
+        with self.assertRaises(ValueError) as cm:
+            pygeoprocessing.rasterize(
+                base_vector_path, target_raster_path, None, "ATTRIBUTE=id",
+                layer_index=0)
+        expected_message = "`option_list` is not a list"
+        actual_message = str(cm.exception)
+        self.assertTrue(expected_message in actual_message, actual_message)
+
+
     def test_distance_transform_edt(self):
         """PGP.geoprocessing: test distance transform EDT."""
         reference = sampledata.SRS_COLOMBIA
@@ -2608,3 +2665,4 @@ class PyGeoprocessing10(unittest.TestCase):
         expected_message = 'was not found'
         actual_message = str(cm.exception)
         self.assertTrue(expected_message in actual_message, actual_message)
+
