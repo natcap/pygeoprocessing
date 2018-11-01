@@ -313,7 +313,7 @@ cdef class _ManagedRaster:
             raster_band = raster.GetRasterBand(self.band_id)
 
         block_array = numpy.empty(
-            (self.block_ysize, self.block_xsize), dtype=numpy.int)
+            (self.block_ysize, self.block_xsize), dtype=numpy.uint32)
         while not removed_value_list.empty():
             # write the changed value back if desired
             int_buffer = removed_value_list.front().second
