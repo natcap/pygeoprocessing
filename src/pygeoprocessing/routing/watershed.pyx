@@ -461,7 +461,6 @@ def delineate_watersheds(
     working_outlets_vector = gpkg_driver.CopyDataSource(source_outlets_vector,
                                                         working_outlets_path)
     working_outlets_layer = working_outlets_vector.GetLayer()
-    working_outlets_layer_name = working_outlets_layer.GetName()
     # Add a new field to the clipped_outlets_layer to ensure we know what field
     # values are bing rasterized.
     cdef int ws_id
@@ -473,40 +472,58 @@ def delineate_watersheds(
     cdef double y_origin = source_gt[3]
     cdef double x_pixelwidth = source_gt[1]
     cdef double y_pixelwidth = source_gt[5]
+    cdef double half_pixelwidth = (abs(x_pixelwidth) + abs(y_pixelwidth)) / 4.
     LOGGER.info("Preprocessing outlet geometries")
     working_outlets_layer.StartTransaction()
+    working_vector_ws_id_to_fid = {}
     for ws_id, feature in enumerate(working_outlets_layer, start=1):
+        working_vector_ws_id_to_fid[ws_id] = feature.GetFID()
         feature.SetField(ws_id_fieldname, ws_id)
+        working_outlets_layer.SetFeature(feature)
+    working_outlets_layer.CommitTransaction()
 
-        geometry = shapely.wkb.loads(
-            feature.GetGeometryRef().ExportToWkb())
-        if geometry.geom_type == 'Point':
-            # Snap the point to the nearest Flow Dir pixel and create a small
-            # polygon.
-            quarter_pixelwidth = x_pixelwidth/4.
-            quarter_pixelheight = y_pixelwidth/4.
+    buffered_working_outlets_path = os.path.join(working_dir_path, 'working_outlets_buffered.gpkg')
+    buffered_working_outlets_vector = gpkg_driver.CopyDataSource(working_outlets_vector,
+                                                                 buffered_working_outlets_path)
+    buffered_working_outlets_layer = buffered_working_outlets_vector.GetLayer()
+    buffered_working_outlets_layer.StartTransaction()
+    for feature in buffered_working_outlets_layer:
+        ogr_geom = feature.GetGeometryRef()
 
-            x_coord = geometry.x - ((geometry.x - x_origin) % x_pixelwidth) + x_pixelwidth/2.
-            y_coord = geometry.y - ((geometry.y - y_origin) % y_pixelwidth) + y_pixelwidth/2.
+        if ogr_geom.GetGeometryName() in ('POINT', 'POLYGON'):
+            geometry = shapely.wkb.loads(ogr_geom.ExportToWkb())
+            if geometry.geom_type == 'Point':
+                # Snap the point to the nearest Flow Dir pixel and create a small
+                # polygon.
+                quarter_pixelwidth = x_pixelwidth/4.
+                quarter_pixelheight = y_pixelwidth/4.
 
-            new_geometry = shapely.geometry.box(
-                x_coord - quarter_pixelwidth,
-                y_coord - quarter_pixelheight,
-                x_coord + quarter_pixelwidth,
-                y_coord + quarter_pixelheight)
+                x_coord = geometry.x - ((geometry.x - x_origin) % x_pixelwidth) + x_pixelwidth/2.
+                y_coord = geometry.y - ((geometry.y - y_origin) % y_pixelwidth) + y_pixelwidth/2.
+
+                new_geometry = shapely.geometry.box(
+                    x_coord - quarter_pixelwidth,
+                    y_coord - quarter_pixelheight,
+                    x_coord + quarter_pixelwidth,
+                    y_coord + quarter_pixelheight)
+            else:
+                # It's a polygon!
+                # To make sure we're catching all polygons, buffer everything by
+                # half the pixel width so that we can get the appropriate set
+                # of disjoint polygons.
+                new_geometry = geometry.buffer(half_pixelwidth)
 
             feature.SetGeometry(ogr.CreateGeometryFromWkb(new_geometry.wkb))
 
-        working_outlets_layer.SetFeature(feature)
-    working_outlets_layer.CommitTransaction()
-    working_outlets_layer = None
-    working_outlets_vector = None
+        buffered_working_outlets_layer.SetFeature(feature)
+    buffered_working_outlets_layer.CommitTransaction()
+    buffered_working_outlets_vector.SyncToDisk()
 
     cdef int polygon_fid
     disjoint_vector_paths = []
     LOGGER.info('Determining sets of non-overlapping polygons')
     for set_index, disjoint_polygon_fid_set in enumerate(
-            pygeoprocessing.calculate_disjoint_polygon_set(working_outlets_path), start=1):
+            pygeoprocessing.calculate_disjoint_polygon_set(buffered_working_outlets_path), start=1):
         LOGGER.info("Creating a vector of %s disjoint polygon(s)",
                     len(disjoint_polygon_fid_set))
         working_outlets_vector = gdal.OpenEx(working_outlets_path)
@@ -522,8 +539,15 @@ def delineate_watersheds(
         disjoint_layer.CreateFields(outlets_schema)
 
         disjoint_layer.StartTransaction()
+        # Though the buffered working layer was used for determining the sets
+        # of nonoverlapping polygons, we want to use the original outflow
+        # geometries for rasterization.  This step gets the appropriate features
+        # from the correct vectors so we keep the correct geometries.
         for polygon_fid in disjoint_polygon_fid_set:
-            new_feature = working_outlets_layer.GetFeature(polygon_fid).Clone()
+            original_feature = buffered_working_outlets_layer.GetFeature(polygon_fid)
+            ws_id = original_feature.GetField(ws_id_fieldname)
+            new_feature = working_outlets_layer.GetFeature(
+                working_vector_ws_id_to_fid[ws_id]).Clone()
             disjoint_layer.CreateFeature(new_feature)
         disjoint_layer.CommitTransaction()
 
