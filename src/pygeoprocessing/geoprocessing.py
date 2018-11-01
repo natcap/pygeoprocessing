@@ -1860,7 +1860,7 @@ def warp_raster(
 
 
 def rasterize(
-        vector_path, target_raster_path, burn_values, option_list,
+        vector_path, target_raster_path, burn_values=None, option_list=None,
         layer_index=0):
     """Project a vector onto an existing raster.
 
@@ -1871,10 +1871,12 @@ def rasterize(
         vector_path (string): filepath to vector to rasterize.
         target_raster_path (string): path to an existing raster to burn vector
             into.  Can have multiple bands.
-        burn_values (list): list of values to burn into each band of the
-            raster.  If used, should have the same length as number of bands
-            at the `target_raster_path` raster.  Can otherwise be None.
-        option_list (list): a list of burn options (or None if not used), each
+        burn_values (list): optional list of values to burn into each band of
+            the raster.  If used, should have the same length as number of
+            bands at the `target_raster_path` raster.  If `None` then
+            `option_list` must have a valid value.
+        option_list (list): optional a list of burn options, if None then
+            a valid value for `burn_values` must exist. Otherwise, each
             element is a string of the form:
                 "ATTRIBUTE=?": Identifies an attribute field on the features
                     to be used for a burn in value. The value will be burned
@@ -1925,6 +1927,21 @@ def rasterize(
         burn_values = []
     if option_list is None:
         option_list = []
+
+    if not burn_values and not option_list:
+        raise ValueError(
+            "Neither `burn_values` nor `option_list` is set. At least one "
+            "must have a value.")
+
+    if not isinstance(burn_values, (list, tuple)):
+        raise ValueError(
+            "`burn_values` is not a list, the value passed is '%s'",
+            repr(burn_values))
+
+    if not isinstance(option_list, (list, tuple)):
+        raise ValueError(
+            "`option_list` is not a list, the value passed is '%s'",
+            repr(option_list))
 
     gdal.RasterizeLayer(
         raster, [1], layer, burn_values=burn_values, options=option_list,
