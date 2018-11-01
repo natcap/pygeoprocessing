@@ -8,6 +8,9 @@ Unreleased changes
   they are in the correct format. This solves an issue where an incorrect
   value, such as a single numerical value, resolve into readable exception
   messages.
+* Exposing GeoTIFF creation options for all the `pygeoprocessing.routing`
+  functions which create rasters. This is consistent with the creation
+  options exposed in the main `pygeoprocessing` API.
 
 1.3.1 10/25/2018
 ----------------

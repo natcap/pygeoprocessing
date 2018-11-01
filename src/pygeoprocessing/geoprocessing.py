@@ -13,7 +13,6 @@ import functools
 import math
 import time
 import tempfile
-import distutils.version
 import multiprocessing
 import multiprocessing.pool
 import threading
