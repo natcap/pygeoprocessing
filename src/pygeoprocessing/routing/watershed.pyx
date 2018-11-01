@@ -646,6 +646,9 @@ def delineate_watersheds(
                                      max(origin_xcoord, win_xcoord),
                                      max(origin_ycoord, win_ycoord)))
 
+    # Map ws_id to the watersheds that nest within.
+    nested_watersheds = {}
+
     for disjoint_index, disjoint_vector_path in enumerate(disjoint_vector_paths, start=1):
         disjoint_logger = OverlappingWatershedContextAdapter(
             LOGGER, {'pass_index': disjoint_index, 'n_passes': len(disjoint_vector_paths)})
@@ -673,9 +676,6 @@ def delineate_watersheds(
             d8_flow_dir_raster_path_band[0], mask_raster_path, gdal.GDT_Byte,
             [255], fill_value_list=[0],
             gtiff_creation_options=GTIFF_CREATION_OPTIONS)
-
-        # Map ws_id to the watersheds that nest within.
-        nested_watersheds = {}
 
         # Track outflow geometry FIDs against the WS_ID used.
         ws_id_to_disjoint_fid = {}
@@ -850,10 +850,10 @@ def delineate_watersheds(
             watershed_feature.SetGeometry(watershed_fragment.GetGeometryRef())
 
             outflow_point_feature = disjoint_outlets_layer.GetFeature(outflow_geom_fid)
-            for outflow_field_index in range(disjoint_outlet_layer_definition.GetFieldCount()):
-                watershed_feature.SetField(
-                    outflow_field_index,
-                    outflow_point_feature.GetField(outflow_field_index))
+            for outflow_fieldname, outflow_fieldvalue in outflow_point_feature.items().items():
+                if outflow_fieldname == ws_id_fieldname:
+                    continue
+                watershed_feature.SetField(outflow_fieldname, outflow_fieldvalue)
 
             watershed_feature.SetField('ws_id', float(fragment_ws_id))
             try:
@@ -864,32 +864,22 @@ def delineate_watersheds(
             watershed_feature.SetField('upstream_fragments', upstream_fragments)
 
             watershed_layer.CreateFeature(watershed_feature)
-            watershed_ws_id_to_fid[fragment_ws_id] = watershed_feature.GetFID()
-        watershed_layer.CommitTransaction()
 
-    # If there were any duplicate points, copy the geometry
-    if duplicate_ws_ids:
-        watershed_layer.StartTransaction()
-        for (source_ws_id, matching_ws_ids) in duplicate_ws_ids.items():
-            if not matching_ws_ids:
-                continue
+            # If there were any duplicate points, copy the geometry
+            if fragment_ws_id in duplicate_ws_ids:
+                for duplicate_ws_id in duplicate_ws_ids[fragment_ws_id]:
+                    duplicate_feature = ogr.Feature(watershed_layer_defn)
+                    duplicate_feature.SetGeometry(watershed_fragment.GetGeometryRef())
+                    duplicate_feature.SetField('upstream_fragments', upstream_fragments)
+                    source_feature = working_outlets_layer.GetFeature(
+                        working_vector_ws_id_to_fid[duplicate_ws_id])
 
-            source_feature = watershed_layer.GetFeature(
-                watershed_ws_id_to_fid[source_ws_id])
-            for duplicate_ws_id in matching_ws_ids:
-                watershed_feature = ogr.Feature(watershed_layer_defn)
-                watershed_feature.SetGeometry(source_feature.GetGeometryRef())
-                for outflow_fieldname, outflow_fieldvalue in watershed_feature.items().items():
-                    watershed_feature.SetField(outflow_fieldname, outflow_fieldvalue)
+                    for fieldname, fieldvalue in source_feature.items().items():
+                        if outflow_fieldname == ws_id_fieldname:
+                            continue
+                        duplicate_feature.SetField(fieldname, fieldvalue)
 
-                watershed_feature.SetField('ws_id', float(duplicate_ws_id))
-                try:
-                    upstream_fragments = ','.join(
-                        [str(s) for s in sorted(nested_watersheds[source_ws_id])])
-                except KeyError:
-                    upstream_fragments = ''
-                watershed_feature.SetField('upstream_fragments', upstream_fragments)
-                watershed_layer.CreateFeature(watershed_feature)
+                    watershed_layer.CreateFeature(duplicate_feature)
         watershed_layer.CommitTransaction()
 
     scratch_band = None
