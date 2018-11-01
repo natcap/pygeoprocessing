@@ -487,6 +487,7 @@ def delineate_watersheds(
 
     duplicate_points = {}  # Map center of points to the ws_id of the first point found.
     duplicate_ws_ids = {}  # Map origial ws_id to ws_ids of points over the same pixel.
+    duplicate_fids = set([])
     buffered_working_outlets_path = os.path.join(working_dir_path, 'working_outlets_buffered.gpkg')
     buffered_working_outlets_vector = gpkg_driver.CopyDataSource(working_outlets_vector,
                                                                  buffered_working_outlets_path)
@@ -513,6 +514,7 @@ def delineate_watersheds(
                     duplicate_points[coord_pair] = ws_id
                     duplicate_ws_ids[ws_id] = []
                 else:
+                    duplicate_fids.add(feature.GetFID())
                     duplicate_ws_ids[duplicate_points[coord_pair]].append(ws_id)
                     continue  # no need to create this geometry; we'll copy it over later.
 
@@ -537,7 +539,6 @@ def delineate_watersheds(
     buffered_working_outlets_layer.CommitTransaction()
     buffered_working_outlets_vector.SyncToDisk()
     del duplicate_points  # don't need this any more.
-    duplicate_ws_ids_set = set(itertools.chain(*duplicate_ws_ids.values()))
 
     cdef int polygon_fid
     disjoint_vector_paths = []
@@ -548,7 +549,7 @@ def delineate_watersheds(
     LOGGER.info('Determining sets of non-overlapping polygons')
     for set_index, disjoint_polygon_fid_set in enumerate(
             pygeoprocessing.calculate_disjoint_polygon_set(buffered_working_outlets_path), start=1):
-        disjoint_polygon_fid_set -= duplicate_ws_ids_set
+        disjoint_polygon_fid_set -= duplicate_fids
         if not disjoint_polygon_fid_set:
             continue
 
@@ -838,6 +839,7 @@ def delineate_watersheds(
 
         # Copy over the field values to the target vector
         # TODO: join multipart fragments into multipolygons?
+        # TODO: move this out of the disjoint loop?  Aren't we copying over field values for every iteration?
         disjoint_logger.info('Copying fields over to the new fragments vector.')
         watershed_layer.StartTransaction()
         for watershed_fragment in watershed_fragments_layer:
