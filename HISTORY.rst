@@ -8,6 +8,10 @@ Unreleased changes
   they are in the correct format. This solves an issue where an incorrect
   value, such as a single numerical value, resolve into readable exception
   messages.
+* Added a `gdal_warp_options` parameter to `align_and_resize_raster_stack` and
+  `warp_raster` whose contents get passed to gdal.Warp's `warpOptions`
+  parameter. This was implemented to expose the CUTLINE_TOUCH_ALL
+  functionality but could be used for any gdal functionality.
 * Modified `rasterize` API call to make `burn_values` and `option_list` both
   optional parameters, along with error checking to ensure a bad input's
   behavior is understood.
