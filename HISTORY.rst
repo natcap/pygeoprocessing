@@ -3,6 +3,28 @@ Release History
 
 Unreleased Changes
 ------------------
+* Added a `gdal_warp_options` parameter to `align_and_resize_raster_stack` and
+  `warp_raster` whose contents get passed to gdal.Warp's `warpOptions`
+  parameter. This was implemented to expose the CUTLINE_TOUCH_ALL
+  functionality but could be used for any gdal functionality.
+* Modified `rasterize` API call to make `burn_values` and `option_list` both
+  optional parameters, along with error checking to ensure a bad input's
+  behavior is understood.
+* Exposing GeoTIFF creation options for all the `pygeoprocessing.routing`
+  functions which create rasters. This is consistent with the creation
+  options exposed in the main `pygeoprocessing` API.
+* Removing ``'mean_pixel_size'`` as a return value from ``get_raster_info``,
+  this is because this parameter is easily misused and easily calculated if
+  needed. This is a "What good programmers need, not what bad programmers
+  want." feature.
+
+1.3.1 10/25/2018
+----------------
+* Hotfix to patch an infinite loop when aggregating upstream or downstream
+  with custom rasters.
+
+1.3.0 10/25/2018
+-----------------
 * Fixed a handful of docstring errors.
 * Improved runtime of ``zonal_statistics`` by a couple of orders of magnitude
   for large vectors by using spatial indexes when calculating disjoint polygon
@@ -10,6 +32,18 @@ Unreleased Changes
 * Improved runtime performance of ``reproject_vector`` by using database
   transactions.
 * Improved logging for long runtimes in ``zonal_statistics``.
+* Changed ``zonal_statistics`` API and functionality to aggregate across the
+  FIDs of the aggregate vector. This is to be consistent with QGIS and other
+  zonal statistics functionality. Additionally, fixed a bug where very small
+  polygons might not get aggregated if they lie in the same pixel as another
+  polygon that does not intersect it. The algorithm now runs in two passes:
+    * aggregate pixels whose centers intersect the aggregate polygons
+    * any polygons that were not aggregated are geometrically intersected
+      with pixels to determine coverage.
+* Removed the ``calculate_raster_stats`` function since it duplicates GDAL
+  functionality, but with a slower runtime, and now functions in
+  ``pygeoprocessing`` that create rasters also calculate stats on the fly if
+  desired.
 * Fixes an issue in `get_raster_info` and `get_vector_info` where the path to
   the raster/vector includes non-standard OS pathing (such as a NETCDF), info
   will still calculate info.
@@ -35,6 +69,20 @@ Unreleased Changes
   the results into a new GeoPackage.
 * Added an option to `reproject_vector` that allows a caller to specify which
   fields, if any, to copy to the target vector after reprojection.
+* Adding a check in `align_and_resize_raster_stack` for duplicate target
+  output paths to avoid problems where multiple rasters are being warped to
+  the same path.
+* Created a public `merge_bounding_box_list` function that's useful for union
+  or intersection of bounding boxes consistent with the format in
+  PyGeoprocessing.
+* Added functionality in `align_and_resize_raster_stack` and `warp_raster`
+  to use a vector to mask out pixel values that lie outside of the polygon
+  coverage area. This parameter is called `vector_mask_options` and is
+  fully documented in both functions. It is similar to the cutline
+  functionality provided in `gdal.Warp`.
+* Fixed an issue in the `flow_accumulation_*` functions where a weight raster
+  whose values were equal to the nodata value of the flow accumulation raster
+  OR simply nodata would cause infinite loops.
 
 1.2.3 (7/25/2018)
 -----------------

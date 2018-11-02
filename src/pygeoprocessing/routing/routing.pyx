@@ -55,14 +55,14 @@ cdef int BLOCK_BITS = 8
 cdef int MANAGED_RASTER_N_BLOCKS = 2**6
 
 # these are the creation options that'll be used for all the rasters
-GTIFF_CREATION_OPTIONS = (
+DEFAULT_GTIFF_CREATION_OPTIONS = (
     'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
     'BLOCKXSIZE=%d' % (1 << BLOCK_BITS),
     'BLOCKYSIZE=%d' % (1 << BLOCK_BITS))
 
 # if nodata is not defined for a float, it's a difficult choice. this number
 # probably won't collide with anything ever created by humans
-cdef double IMPROBABLE_FLOAT_NOATA = -1.23789789e29
+cdef double IMPROBABLE_FLOAT_NODATA = -1.23789789e29
 
 # a pre-computed square root of 2 constant
 cdef double SQRT2 = 1.4142135623730951
@@ -158,6 +158,8 @@ cdef cppclass GreaterPixel nogil:
                 return 1
         return 0
 
+cdef int is_close(double x, double y):
+    return abs(x-y) <= (1e-8+1e-05*abs(y))
 
 # a class to allow fast random per-pixel access to a raster for both setting
 # and reading pixels.
@@ -391,8 +393,7 @@ cdef class _ManagedRaster:
         raster_band = raster.GetRasterBand(self.band_id)
         block_array = raster_band.ReadAsArray(
             xoff=xoff, yoff=yoff, win_xsize=win_xsize,
-            win_ysize=win_ysize).astype(
-            numpy.float64)
+            win_ysize=win_ysize).astype(numpy.float64)
         raster_band = None
         raster = None
         double_buffer = <double*>PyMem_Malloc(
@@ -500,7 +501,8 @@ def _generate_read_bounds(offset_dict, raster_x_size, raster_y_size):
 
 def fill_pits(
         dem_raster_path_band, target_filled_dem_raster_path,
-        working_dir=None):
+        working_dir=None,
+        gtiff_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS):
     """Fill the pits in a DEM.
 
         This function defines pits as hydrologically connected regions that do
@@ -521,6 +523,9 @@ def fill_pits(
             it is created by this call. If None, a temporary directory is
             created by tempdir.mkdtemp which is removed after the function
             call completes successfully.
+        gtiff_creation_options (list): this is an argument list that will be
+            passed to the GTiff driver.  Useful for blocksizes, compression,
+            and more.
 
     Returns:
         None.
@@ -591,7 +596,7 @@ def fill_pits(
         dem_nodata = numpy.float64(base_nodata)
     else:
         # pick some very improbable value since it's hard to deal with NaNs
-        dem_nodata = IMPROBABLE_FLOAT_NOATA
+        dem_nodata = IMPROBABLE_FLOAT_NODATA
 
     # these are used to determine if a sample is within the raster
     raster_x_size, raster_y_size = dem_raster_info['raster_size']
@@ -619,7 +624,7 @@ def fill_pits(
     pygeoprocessing.new_raster_from_base(
         dem_raster_path_band[0], flat_region_mask_path, gdal.GDT_Byte,
         [mask_nodata], fill_value_list=[mask_nodata],
-        gtiff_creation_options=GTIFF_CREATION_OPTIONS)
+        gtiff_creation_options=gtiff_creation_options)
     flat_region_mask_managed_raster = _ManagedRaster(
         flat_region_mask_path, 1, 1)
 
@@ -630,7 +635,7 @@ def fill_pits(
     pygeoprocessing.new_raster_from_base(
         dem_raster_path_band[0], pit_mask_path, gdal.GDT_Int32,
         [mask_nodata], fill_value_list=[mask_nodata],
-        gtiff_creation_options=GTIFF_CREATION_OPTIONS)
+        gtiff_creation_options=gtiff_creation_options)
     pit_mask_managed_raster = _ManagedRaster(
         pit_mask_path, 1, 1)
 
@@ -639,7 +644,7 @@ def fill_pits(
     base_dem_raster = gdal.OpenEx(dem_raster_path_band[0], gdal.OF_RASTER)
     geotiff_driver.CreateCopy(
         target_filled_dem_raster_path, base_dem_raster,
-        options=GTIFF_CREATION_OPTIONS)
+        options=gtiff_creation_options)
     target_dem_raster = gdal.OpenEx(
         target_filled_dem_raster_path, gdal.OF_RASTER)
     target_dem_band = target_dem_raster.GetRasterBand(dem_raster_path_band[1])
@@ -679,7 +684,7 @@ def fill_pits(
         for yi in xrange(1, win_ysize+1):
             for xi in xrange(1, win_xsize+1):
                 center_val = dem_buffer_array[yi, xi]
-                if center_val == dem_nodata:
+                if is_close(center_val, dem_nodata):
                     continue
 
                 # this value is set in case it turns out to be the root of a
@@ -706,7 +711,7 @@ def fill_pits(
                         nodata_neighbor = 1
                         break
                     n_height = filled_dem_managed_raster.get(xi_n, yi_n)
-                    if n_height == dem_nodata:
+                    if is_close(n_height, dem_nodata):
                         # it'll drain to nodata
                         nodata_neighbor = 1
                         break
@@ -746,13 +751,13 @@ def fill_pits(
                             continue
                         n_height = filled_dem_managed_raster.get(
                             xi_n, yi_n)
-                        if n_height == dem_nodata:
+                        if is_close(n_height, dem_nodata):
                             nodata_drain = 1
                             continue
                         if n_height < center_val:
                             downhill_drain = 1
                             continue
-                        if n_height == center_val and (
+                        if is_close(n_height, center_val) and (
                                 flat_region_mask_managed_raster.get(
                                     xi_n, yi_n) == mask_nodata):
                             # only grow if it's at the same level and not
@@ -805,7 +810,8 @@ def fill_pits(
                             xi_n, yi_n, feature_id)
 
                         n_height = filled_dem_managed_raster.get(xi_n, yi_n)
-                        if n_height == dem_nodata or n_height < fill_height:
+                        if is_close(n_height, dem_nodata) or (
+                                n_height < fill_height):
                             # we encounter a neighbor not processed that is
                             # lower than the current pixel or nodata
                             pour_point = 1
@@ -860,7 +866,8 @@ def fill_pits(
 
 def flow_dir_d8(
         dem_raster_path_band, target_flow_dir_path,
-        working_dir=None):
+        working_dir=None,
+        gtiff_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS):
     """D8 flow direction.
 
     Parameters:
@@ -880,6 +887,9 @@ def flow_dir_d8(
         working_dir (string): If not None, indicates where temporary files
             should be created during this run. If this directory doesn't exist
             it is created by this call.
+        gtiff_creation_options (list): this is an argument list that will be
+            passed to the GTiff driver.  Useful for blocksizes, compression,
+            and more.
 
     Returns:
         None.
@@ -940,7 +950,7 @@ def flow_dir_d8(
         dem_nodata = numpy.float64(base_nodata)
     else:
         # pick some very improbable value since it's hard to deal with NaNs
-        dem_nodata = IMPROBABLE_FLOAT_NOATA
+        dem_nodata = IMPROBABLE_FLOAT_NODATA
 
     # these are used to determine if a sample is within the raster
     raster_x_size, raster_y_size = dem_raster_info['raster_size']
@@ -966,7 +976,7 @@ def flow_dir_d8(
     pygeoprocessing.new_raster_from_base(
         dem_raster_path_band[0], flat_region_mask_path, gdal.GDT_Byte,
         [mask_nodata], fill_value_list=[mask_nodata],
-        gtiff_creation_options=GTIFF_CREATION_OPTIONS)
+        gtiff_creation_options=gtiff_creation_options)
     flat_region_mask_managed_raster = _ManagedRaster(
         flat_region_mask_path, 1, 1)
 
@@ -974,7 +984,7 @@ def flow_dir_d8(
     pygeoprocessing.new_raster_from_base(
         dem_raster_path_band[0], target_flow_dir_path, gdal.GDT_Byte,
         [flow_dir_nodata], fill_value_list=[flow_dir_nodata],
-        gtiff_creation_options=GTIFF_CREATION_OPTIONS)
+        gtiff_creation_options=gtiff_creation_options)
     flow_dir_managed_raster = _ManagedRaster(target_flow_dir_path, 1, 1)
 
     # this creates a raster that's used for a dynamic programming solution to
@@ -986,7 +996,7 @@ def flow_dir_d8(
     pygeoprocessing.new_raster_from_base(
         dem_raster_path_band[0], plateau_distance_path, gdal.GDT_Float64,
         [-1], fill_value_list=[raster_x_size * raster_y_size],
-        gtiff_creation_options=GTIFF_CREATION_OPTIONS)
+        gtiff_creation_options=gtiff_creation_options)
     plateau_distance_managed_raster = _ManagedRaster(
         plateau_distance_path, 1, 1)
 
@@ -1004,7 +1014,7 @@ def flow_dir_d8(
         dem_raster = gdal.OpenEx(dem_raster_path_band[0], gdal.OF_RASTER)
         geotiff_driver.CreateCopy(
             compatable_dem_raster_path_band[0], dem_raster,
-            options=GTIFF_CREATION_OPTIONS)
+            options=gtiff_creation_options)
         dem_raster = None
         LOGGER.info("compatible dem complete")
     else:
@@ -1053,7 +1063,7 @@ def flow_dir_d8(
         for yi in xrange(1, win_ysize+1):
             for xi in xrange(1, win_xsize+1):
                 root_height = dem_buffer_array[yi, xi]
-                if root_height == dem_nodata:
+                if is_close(root_height, dem_nodata):
                     continue
 
                 # this value is set in case it turns out to be the root of a
@@ -1077,7 +1087,7 @@ def flow_dir_d8(
                     xi_n = xi+NEIGHBOR_OFFSET_ARRAY[2*i_n]
                     yi_n = yi+NEIGHBOR_OFFSET_ARRAY[2*i_n+1]
                     n_height = dem_buffer_array[yi_n, xi_n]
-                    if n_height == dem_nodata:
+                    if is_close(n_height, dem_nodata):
                         continue
                     n_slope = root_height - n_height
                     if i_n & 1:
@@ -1119,7 +1129,7 @@ def flow_dir_d8(
                             n_height = dem_nodata
                         else:
                             n_height = dem_managed_raster.get(xi_n, yi_n)
-                        if n_height == dem_nodata:
+                        if is_close(n_height, dem_nodata):
                             if diagonal_nodata and largest_slope == 0.0:
                                 largest_slope_dir = i_n
                                 diagonal_nodata = i_n & 1
@@ -1218,7 +1228,8 @@ def flow_dir_d8(
 
 def flow_accumulation_d8(
         flow_dir_raster_path_band, target_flow_accum_raster_path,
-        weight_raster_path_band=None):
+        weight_raster_path_band=None,
+        gtiff_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS):
     """D8 flow accumulation.
 
     Parameters:
@@ -1241,6 +1252,9 @@ def flow_accumulation_d8(
             weight. If `None`, 1 is the default flow accumulation weight.
             This raster must be the same dimensions as
             `flow_dir_mfd_raster_path_band`.
+        gtiff_creation_options (list): this is an argument list that will be
+            passed to the GTiff driver.  Useful for blocksizes, compression,
+            and more.
 
     Returns:
         None.
@@ -1270,6 +1284,7 @@ def flow_accumulation_d8(
     # this value is used to store the current weight which might be 1 or
     # come from a predefined flow accumulation weight raster
     cdef double weight_val
+    cdef double weight_nodata = IMPROBABLE_FLOAT_NODATA  # set to something
 
     # `search_stack` is used to walk upstream to calculate flow accumulation
     # values
@@ -1293,12 +1308,12 @@ def flow_accumulation_d8(
             "%s is supposed to be a raster band tuple but it's not." % (
                 weight_raster_path_band))
 
-    flow_accum_nodata = -1
+    flow_accum_nodata = IMPROBABLE_FLOAT_NODATA
     pygeoprocessing.new_raster_from_base(
         flow_dir_raster_path_band[0], target_flow_accum_raster_path,
         gdal.GDT_Float64, [flow_accum_nodata],
         fill_value_list=[flow_accum_nodata],
-        gtiff_creation_options=GTIFF_CREATION_OPTIONS)
+        gtiff_creation_options=gtiff_creation_options)
     flow_accum_managed_raster = _ManagedRaster(
         target_flow_accum_raster_path, 1, 1)
 
@@ -1313,6 +1328,11 @@ def flow_accumulation_d8(
     if weight_raster_path_band:
         weight_raster = _ManagedRaster(
             weight_raster_path_band[0], weight_raster_path_band[1], 0)
+        raw_weight_nodata = pygeoprocessing.get_raster_info(
+            weight_raster_path_band[0])['nodata'][
+                weight_raster_path_band[1]-1]
+        if raw_weight_nodata is not None:
+            weight_nodata = raw_weight_nodata
 
     flow_dir_raster_info = pygeoprocessing.get_raster_info(
         flow_dir_raster_path_band[0])
@@ -1372,6 +1392,8 @@ def flow_accumulation_d8(
                     if weight_raster is not None:
                         weight_val = <double>weight_raster.get(
                             xi_root, yi_root)
+                        if is_close(weight_val, weight_nodata):
+                            weight_val = 0.0
                     else:
                         weight_val = 1.0
                     search_stack.push(
@@ -1398,13 +1420,15 @@ def flow_accumulation_d8(
                             continue
                         upstream_flow_accum = <double>(
                             flow_accum_managed_raster.get(xi_n, yi_n))
-                        if upstream_flow_accum == flow_accum_nodata:
+                        if is_close(upstream_flow_accum, flow_accum_nodata):
                             # process upstream before this one
                             flow_pixel.last_flow_dir = i_n
                             search_stack.push(flow_pixel)
                             if weight_raster is not None:
                                 weight_val = <double>weight_raster.get(
                                     xi_n, yi_n)
+                                if is_close(weight_val, weight_nodata):
+                                    weight_val = 0.0
                             else:
                                 weight_val = 1.0
                             search_stack.push(
@@ -1417,11 +1441,15 @@ def flow_accumulation_d8(
                             flow_pixel.xi, flow_pixel.yi,
                             flow_pixel.value)
     flow_accum_managed_raster.close()
+    flow_dir_managed_raster.close()
+    if weight_raster is not None:
+        weight_raster.close()
     LOGGER.info('%.2f%% complete', 100.0)
 
 
 def flow_dir_mfd(
-        dem_raster_path_band, target_flow_dir_path, working_dir=None):
+        dem_raster_path_band, target_flow_dir_path, working_dir=None,
+        gtiff_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS):
     """Multiple flow direction.
 
     Parameters:
@@ -1447,6 +1475,9 @@ def flow_dir_mfd(
         working_dir (string): If not None, indicates where temporary files
             should be created during this run. If this directory doesn't exist
             it is created by this call.
+        gtiff_creation_options (list): this is an argument list that will be
+            passed to the GTiff driver.  Useful for blocksizes, compression,
+            and more.
 
     Returns:
         None.
@@ -1525,7 +1556,7 @@ def flow_dir_mfd(
         dem_nodata = numpy.float64(base_nodata)
     else:
         # pick some very improbable value since it's hard to deal with NaNs
-        dem_nodata = IMPROBABLE_FLOAT_NOATA
+        dem_nodata = IMPROBABLE_FLOAT_NODATA
 
     # these are used to determine if a sample is within the raster
     raster_x_size, raster_y_size = dem_raster_info['raster_size']
@@ -1552,7 +1583,7 @@ def flow_dir_mfd(
     pygeoprocessing.new_raster_from_base(
         dem_raster_path_band[0], flat_region_mask_path, gdal.GDT_Byte,
         [mask_nodata], fill_value_list=[mask_nodata],
-        gtiff_creation_options=GTIFF_CREATION_OPTIONS)
+        gtiff_creation_options=gtiff_creation_options)
     flat_region_mask_managed_raster = _ManagedRaster(
         flat_region_mask_path, 1, 1)
 
@@ -1560,7 +1591,7 @@ def flow_dir_mfd(
     pygeoprocessing.new_raster_from_base(
         dem_raster_path_band[0], target_flow_dir_path, gdal.GDT_Int32,
         [flow_dir_nodata], fill_value_list=[flow_dir_nodata],
-        gtiff_creation_options=GTIFF_CREATION_OPTIONS)
+        gtiff_creation_options=gtiff_creation_options)
     flow_dir_managed_raster = _ManagedRaster(target_flow_dir_path, 1, 1)
 
     plateu_drain_mask_path = os.path.join(
@@ -1568,7 +1599,7 @@ def flow_dir_mfd(
     pygeoprocessing.new_raster_from_base(
         dem_raster_path_band[0], plateu_drain_mask_path, gdal.GDT_Byte,
         [mask_nodata], fill_value_list=[mask_nodata],
-        gtiff_creation_options=GTIFF_CREATION_OPTIONS)
+        gtiff_creation_options=gtiff_creation_options)
     plateau_drain_mask_managed_raster = _ManagedRaster(
         plateu_drain_mask_path, 1, 1)
 
@@ -1583,7 +1614,7 @@ def flow_dir_mfd(
         dem_raster_path_band[0], plateau_distance_path, gdal.GDT_Float64,
         [plateau_distance_nodata], fill_value_list=[
             raster_x_size * raster_y_size],
-        gtiff_creation_options=GTIFF_CREATION_OPTIONS)
+        gtiff_creation_options=gtiff_creation_options)
     plateau_distance_managed_raster = _ManagedRaster(
         plateau_distance_path, 1, 1)
 
@@ -1600,7 +1631,7 @@ def flow_dir_mfd(
         dem_raster = gdal.OpenEx(dem_raster_path_band[0], gdal.OF_RASTER)
         geotiff_driver.CreateCopy(
             compatable_dem_raster_path_band[0], dem_raster,
-            options=GTIFF_CREATION_OPTIONS)
+            options=gtiff_creation_options)
         dem_raster = None
         LOGGER.info("compatible dem complete")
     else:
@@ -1651,7 +1682,7 @@ def flow_dir_mfd(
         for yi in xrange(1, win_ysize+1):
             for xi in xrange(1, win_xsize+1):
                 root_height = dem_buffer_array[yi, xi]
-                if root_height == dem_nodata:
+                if is_close(root_height, dem_nodata):
                     continue
 
                 # this value is set in case it turns out to be the root of a
@@ -1676,7 +1707,7 @@ def flow_dir_mfd(
                     xi_n = xi+NEIGHBOR_OFFSET_ARRAY[2*i_n]
                     yi_n = yi+NEIGHBOR_OFFSET_ARRAY[2*i_n+1]
                     n_height = dem_buffer_array[yi_n, xi_n]
-                    if n_height == dem_nodata:
+                    if is_close(n_height, dem_nodata):
                         continue
                     n_slope = root_height - n_height
                     if n_slope > 0.0:
@@ -1728,7 +1759,7 @@ def flow_dir_mfd(
                             n_height = dem_nodata
                         else:
                             n_height = dem_managed_raster.get(xi_n, yi_n)
-                        if n_height == dem_nodata:
+                        if is_close(n_height, dem_nodata):
                             n_slope = SQRT2_INV if i_n & 1 else 1.0
                             sum_of_nodata_slope_weights += n_slope
                             nodata_downhill_slope_array[i_n] = n_slope
@@ -1837,8 +1868,8 @@ def flow_dir_mfd(
                         n_drain_distance = drain_distance + (
                             SQRT2 if i_n&1 else 1.0)
 
-                        if dem_managed_raster.get(
-                                xi_n, yi_n) == root_height and (
+                        if is_close(dem_managed_raster.get(
+                                xi_n, yi_n), root_height) and (
                                 plateau_distance_managed_raster.get(
                                     xi_n, yi_n) > n_drain_distance):
                             # neighbor is at same level and has longer drain
@@ -1909,7 +1940,8 @@ def flow_dir_mfd(
 
 def flow_accumulation_mfd(
         flow_dir_mfd_raster_path_band, target_flow_accum_raster_path,
-        weight_raster_path_band=None):
+        weight_raster_path_band=None,
+        gtiff_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS):
     """Multiple flow direction accumulation.
 
     Parameters:
@@ -1932,8 +1964,11 @@ def flow_accumulation_mfd(
             raster that will be used as the per-pixel flow accumulation
             weight. If `None`, 1 is the default flow accumulation weight.
             This raster must be the same dimensions as
-            `flow_dir_mfd_raster_path_band`.
-
+            `flow_dir_mfd_raster_path_band`. If a weight nodata pixel is
+            encountered it will be treated as a weight value of 0.
+        gtiff_creation_options (list): this is an argument list that will be
+            passed to the GTiff driver.  Useful for blocksizes, compression,
+            and more.
     Returns:
         None.
     """
@@ -1963,6 +1998,9 @@ def flow_accumulation_mfd(
     # to trigger a recursive uphill walk
     cdef double upstream_flow_accum
 
+    cdef double flow_accum_nodata = IMPROBABLE_FLOAT_NODATA
+    cdef double weight_nodata = IMPROBABLE_FLOAT_NODATA
+
     # this value is used to store the current weight which might be 1 or
     # come from a predefined flow accumulation weight raster
     cdef double weight_val
@@ -1990,12 +2028,12 @@ def flow_accumulation_mfd(
             "%s is supposed to be a raster band tuple but it's not." % (
                 weight_raster_path_band))
 
-    flow_accum_nodata = -1
     pygeoprocessing.new_raster_from_base(
         flow_dir_mfd_raster_path_band[0], target_flow_accum_raster_path,
         gdal.GDT_Float64, [flow_accum_nodata],
         fill_value_list=[flow_accum_nodata],
-        gtiff_creation_options=GTIFF_CREATION_OPTIONS)
+        gtiff_creation_options=gtiff_creation_options)
+
     flow_accum_managed_raster = _ManagedRaster(
         target_flow_accum_raster_path, 1, 1)
 
@@ -2010,6 +2048,11 @@ def flow_accumulation_mfd(
     if weight_raster_path_band:
         weight_raster = _ManagedRaster(
             weight_raster_path_band[0], weight_raster_path_band[1], 0)
+        raw_weight_nodata = pygeoprocessing.get_raster_info(
+            weight_raster_path_band[0])['nodata'][
+                weight_raster_path_band[1]-1]
+        if raw_weight_nodata is not None:
+            weight_nodata = raw_weight_nodata
 
     flow_dir_raster_info = pygeoprocessing.get_raster_info(
         flow_dir_mfd_raster_path_band[0])
@@ -2071,6 +2114,8 @@ def flow_accumulation_mfd(
                         if weight_raster is not None:
                             weight_val = <double>weight_raster.get(
                                 xi_root, yi_root)
+                            if is_close(weight_val, weight_nodata):
+                                weight_val = 0.0
                         else:
                             weight_val = 1.0
                         search_stack.push(
@@ -2099,13 +2144,15 @@ def flow_accumulation_mfd(
                             continue
                         upstream_flow_accum = (
                             flow_accum_managed_raster.get(xi_n, yi_n))
-                        if upstream_flow_accum == flow_accum_nodata:
+                        if is_close(upstream_flow_accum, flow_accum_nodata):
                             # process upstream before this one
                             flow_pixel.last_flow_dir = i_n
                             search_stack.push(flow_pixel)
                             if weight_raster is not None:
                                 weight_val = <double>weight_raster.get(
                                     xi_n, yi_n)
+                                if is_close(weight_val, weight_nodata):
+                                    weight_val = 0.0
                             else:
                                 weight_val = 1.0
                             search_stack.push(
@@ -2126,13 +2173,17 @@ def flow_accumulation_mfd(
                             flow_pixel.xi, flow_pixel.yi,
                             flow_pixel.value)
     flow_accum_managed_raster.close()
+    flow_dir_managed_raster.close()
+    if weight_raster is not None:
+        weight_raster.close()
     LOGGER.info('%.2f%% complete', 100.0)
 
 
 def distance_to_channel_d8(
         flow_dir_d8_raster_path_band, channel_raster_path_band,
         target_distance_to_channel_raster_path,
-        weight_raster_path_band=None):
+        weight_raster_path_band=None,
+        gtiff_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS):
     """Calculate distance to channel with D8 flow.
 
     Parameters:
@@ -2156,6 +2207,9 @@ def distance_to_channel_d8(
             weight. If `None`, 1 is the default distance between neighboring
             pixels. This raster must be the same dimensions as
             `flow_dir_mfd_raster_path_band`.
+        gtiff_creation_options (list): this is an argument list that will be
+            passed to the GTiff driver.  Useful for blocksizes, compression,
+            and more.
 
     Returns:
         None.
@@ -2178,7 +2232,8 @@ def distance_to_channel_d8(
 
     # these area used to store custom per-pixel weights and per-pixel values
     # for distance updates
-    cdef float weight_val, pixel_val
+    cdef double weight_val, pixel_val
+    cdef double weight_nodata = IMPROBABLE_FLOAT_NODATA
 
     # used for time-delayed logging
     cdef time_t last_log_time
@@ -2198,7 +2253,7 @@ def distance_to_channel_d8(
         target_distance_to_channel_raster_path,
         gdal.GDT_Float64, [distance_nodata],
         fill_value_list=[distance_nodata],
-        gtiff_creation_options=GTIFF_CREATION_OPTIONS)
+        gtiff_creation_options=gtiff_creation_options)
     distance_to_channel_managed_raster = _ManagedRaster(
         target_distance_to_channel_raster_path, 1, 1)
 
@@ -2206,6 +2261,11 @@ def distance_to_channel_d8(
     if weight_raster_path_band:
         weight_raster = _ManagedRaster(
             weight_raster_path_band[0], weight_raster_path_band[1], 0)
+        raw_weight_nodata = pygeoprocessing.get_raster_info(
+            weight_raster_path_band[0])['nodata'][
+                weight_raster_path_band[1]-1]
+        if raw_weight_nodata is not None:
+            weight_nodata = raw_weight_nodata
 
     channel_managed_raster = _ManagedRaster(
         channel_raster_path_band[0], channel_raster_path_band[1], 0)
@@ -2291,6 +2351,8 @@ def distance_to_channel_d8(
                             # for diagonal distance.
                             if weight_raster is not None:
                                 weight_val = weight_raster.get(xi_n, yi_n)
+                                if is_close(weight_val, weight_nodata):
+                                    weight_val = 0.0
                             else:
                                 weight_val = (SQRT2 if i_n % 2 else 1)
 
@@ -2298,10 +2360,17 @@ def distance_to_channel_d8(
                                 PixelType(
                                     weight_val + pixel_val, xi_n, yi_n, 0))
 
+    distance_to_channel_managed_raster.close()
+    flow_dir_d8_managed_raster.close()
+    channel_managed_raster.close()
+    if weight_raster is not None:
+        weight_raster.close()
+
 
 def distance_to_channel_mfd(
         flow_dir_mfd_raster_path_band, channel_raster_path_band,
-        target_distance_to_channel_raster_path, weight_raster_path_band=None):
+        target_distance_to_channel_raster_path, weight_raster_path_band=None,
+        gtiff_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS):
     """Calculate distance to channel with multiple flow direction.
 
     Parameters:
@@ -2323,6 +2392,9 @@ def distance_to_channel_mfd(
             weight. If `None`, 1 is the default distance between neighboring
             pixels. This raster must be the same dimensions as
             `flow_dir_mfd_raster_path_band`.
+        gtiff_creation_options (list): this is an argument list that will be
+            passed to the GTiff driver.  Useful for blocksizes, compression,
+            and more.
 
     Returns:
         None.
@@ -2351,6 +2423,7 @@ def distance_to_channel_mfd(
     # this value is used to store the current weight which might be 1 or
     # come from a predefined flow accumulation weight raster
     cdef double weight_val
+    cdef double weight_nodata = IMPROBABLE_FLOAT_NODATA
 
     # used for time-delayed logging
     cdef time_t last_log_time
@@ -2364,13 +2437,13 @@ def distance_to_channel_mfd(
                 "%s is supposed to be a raster band tuple but it's not." % (
                     path))
 
-    distance_nodata = -1
+    distance_nodata = IMPROBABLE_FLOAT_NODATA
     pygeoprocessing.new_raster_from_base(
         flow_dir_mfd_raster_path_band[0],
         target_distance_to_channel_raster_path,
         gdal.GDT_Float64, [distance_nodata],
         fill_value_list=[distance_nodata],
-        gtiff_creation_options=GTIFF_CREATION_OPTIONS)
+        gtiff_creation_options=gtiff_creation_options)
     distance_to_channel_managed_raster = _ManagedRaster(
         target_distance_to_channel_raster_path, 1, 1)
 
@@ -2391,6 +2464,13 @@ def distance_to_channel_mfd(
     if weight_raster_path_band:
         weight_raster = _ManagedRaster(
             weight_raster_path_band[0], weight_raster_path_band[1], 0)
+        raw_weight_nodata = pygeoprocessing.get_raster_info(
+            weight_raster_path_band[0])['nodata'][
+                weight_raster_path_band[1]-1]
+        if raw_weight_nodata is not None:
+            weight_nodata = raw_weight_nodata
+        else:
+            weight_nodata = IMPROBABLE_FLOAT_NODATA
 
     flow_dir_raster_info = pygeoprocessing.get_raster_info(
         flow_dir_mfd_raster_path_band[0])
@@ -2450,8 +2530,8 @@ def distance_to_channel_mfd(
                     # nodata flow, so we skip
                     continue
 
-                if distance_to_channel_managed_raster.get(
-                        xi_root, yi_root) == distance_nodata:
+                if is_close(distance_to_channel_managed_raster.get(
+                        xi_root, yi_root), distance_nodata):
                     distance_to_channel_stack.push(
                         FlowPixelType(xi_root, yi_root, 0, 0.0))
 
@@ -2486,7 +2566,7 @@ def distance_to_channel_mfd(
                         n_distance = distance_to_channel_managed_raster.get(
                             xi_n, yi_n)
 
-                        if n_distance == distance_nodata:
+                        if is_close(n_distance, distance_nodata):
                             preempted = 1
                             pixel.last_flow_dir = i_n
                             distance_to_channel_stack.push(pixel)
@@ -2501,6 +2581,8 @@ def distance_to_channel_mfd(
                         # for diagonal distance.
                         if weight_raster is not None:
                             weight_val = weight_raster.get(xi_n, yi_n)
+                            if is_close(weight_val, weight_nodata):
+                                weight_val = 0.0
                         else:
                             weight_val = (SQRT2 if i_n % 2 else 1)
 
@@ -2521,6 +2603,12 @@ def distance_to_channel_mfd(
                         pixel.value = 0
                     distance_to_channel_managed_raster.set(
                         pixel.xi, pixel.yi, pixel.value)
+
+    distance_to_channel_managed_raster.close()
+    channel_managed_raster.close()
+    flow_dir_mfd_managed_raster.close()
+    if weight_raster is not None:
+        weight_raster.close()
     LOGGER.info('%.2f%% complete', 100.0)
 
 

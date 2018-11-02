@@ -9,13 +9,14 @@ from setuptools import setup
 _REQUIREMENTS = [
     x for x in open('requirements.txt').read().split('\n')
     if not x.startswith('#') and len(x) > 0]
-README = open('README.rst').read().format(
+LONG_DESCRIPTION = open('README.rst').read().format(
     requirements='\n'.join(['    ' + r for r in _REQUIREMENTS]))
+LONG_DESCRIPTION += '\n' + open('HISTORY.rst').read() + '\n'
 
 setup(
     name='pygeoprocessing',
     description="PyGeoprocessing: Geoprocessing routines for GIS",
-    long_description=README,
+    long_description=LONG_DESCRIPTION,
     maintainer='Rich Sharp',
     maintainer_email='richpsharp@gmail.com',
     url='https://bitbucket.org/natcap/pygeoprocessing',
