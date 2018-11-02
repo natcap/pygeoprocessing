@@ -1446,8 +1446,6 @@ def get_raster_info(raster_path):
 
             'pixel_size' (tuple): (pixel x-size, pixel y-size) from
                 geotransform.
-            'mean_pixel_size' (float): the average size of the absolute value
-                of each pixel size element.
             'raster_size' (tuple):  number of raster pixels in (x, y)
                 direction.
             'nodata' (list): a list of the nodata values in the bands of the
@@ -1478,8 +1476,6 @@ def get_raster_info(raster_path):
     geo_transform = raster.GetGeoTransform()
     raster_properties['geotransform'] = geo_transform
     raster_properties['pixel_size'] = (geo_transform[1], geo_transform[5])
-    raster_properties['mean_pixel_size'] = (
-        (abs(geo_transform[1]) + abs(geo_transform[5])) / 2.0)
     raster_properties['raster_size'] = (
         raster.GetRasterBand(1).XSize,
         raster.GetRasterBand(1).YSize)
