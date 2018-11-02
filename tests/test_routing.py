@@ -1412,3 +1412,64 @@ class TestRouting(unittest.TestCase):
         finally:
             fragments_layer = None
             fragments_vector = None
+
+    def test_watershed_delineation_overlapping_linestrings(self):
+        """PGP.routing: assert geometries when outflow linestrings overlap."""
+        import pygeoprocessing.routing
+        import pygeoprocessing.testing
+
+        srs = osr.SpatialReference()
+        srs.ImportFromEPSG(32731)  # WGS84 / UTM zone 31s
+        srs_wkt = srs.ExportToWkt()
+
+        flow_dir_array = numpy.zeros((4, 4), dtype=numpy.uint8)
+        flow_dir_path = os.path.join(self.workspace_dir, 'flow_dir.tif')
+        driver = gdal.GetDriverByName('GTiff')
+        flow_dir_raster = driver.Create(
+            flow_dir_path, flow_dir_array.shape[1], flow_dir_array.shape[0],
+            1, gdal.GDT_Byte, options=(
+                'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
+                'BLOCKXSIZE=256', 'BLOCKYSIZE=256'))
+        flow_dir_raster.SetProjection(srs_wkt)
+        flow_dir_band = flow_dir_raster.GetRasterBand(1)
+        flow_dir_band.WriteArray(flow_dir_array)
+        flow_dir_geotransform = [2, 2, 0, -2, 0, -2]
+        flow_dir_raster.SetGeoTransform(flow_dir_geotransform)
+        flow_dir_raster = None
+
+        # These two linestrings are different.
+        # They do, however, overlap at multiple points and should have the same
+        # watershed geometries.
+        watershed_geometries = [
+            shapely.geometry.LineString(
+                [(5, -3), (5, -9), (9, -9), (9, -3)]),
+            shapely.geometry.LineString(
+                [(9, -3), (7, -7), (9, -7), (9, -9)])
+        ]
+
+        outflow_vector = os.path.join(self.workspace_dir, 'outflow.gpkg')
+        pygeoprocessing.testing.create_vector_on_disk(
+            watershed_geometries, srs_wkt, vector_format='GPKG',
+            filename=outflow_vector)
+
+        target_fragments_vector = os.path.join(self.workspace_dir,
+                                               'fragments.gpkg')
+        pygeoprocessing.routing.delineate_watersheds(
+            (flow_dir_path, 1), outflow_vector, target_fragments_vector,
+            os.path.join(self.workspace_dir, 'scratch'))
+
+        try:
+            fragments_vector = gdal.OpenEx(target_fragments_vector,
+                                           gdal.OF_VECTOR)
+            fragments_layer = fragments_vector.GetLayer()
+            self.assertEqual(fragments_layer.GetFeatureCount(), 2)
+
+            expected_geometry = shapely.geometry.box(2, -10, 10, -2)
+            for feature in fragments_layer:
+                fragment_geometry = shapely.wkb.loads(
+                    feature.GetGeometryRef().ExportToWkb())
+                self.assertEqual(fragment_geometry.difference(expected_geometry).area, 0)
+                self.assertEqual(fragment_geometry.symmetric_difference(expected_geometry).area, 0)
+        finally:
+            fragments_layer = None
+            fragments_vector = None
