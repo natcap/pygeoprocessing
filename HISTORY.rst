@@ -13,6 +13,10 @@ Unreleased Changes
 * Exposing GeoTIFF creation options for all the `pygeoprocessing.routing`
   functions which create rasters. This is consistent with the creation
   options exposed in the main `pygeoprocessing` API.
+* Removing ``'mean_pixel_size'`` as a return value from ``get_raster_info``,
+  this is because this parameter is easily misused and easily calculated if
+  needed. This is a "What good programmers need, not what bad programmers
+  want." feature.
 
 1.3.1 10/25/2018
 ----------------
