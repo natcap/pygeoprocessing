@@ -359,6 +359,15 @@ cdef class _ManagedRaster:
 
 
 def _make_polygonize_callback(logging_adapter):
+    """Create a callback function for gdal.Polygonize.
+    
+    Parameters:
+        logging_adapter (logging.Logger): A logging.Logger or context adapter
+            to which records will be logged.
+            
+    Returns:
+        A callback compatible with gdal.Polygonize.
+    """
     def _polygonize_callback(df_complete, psz_message, p_progress_arg):
         """Log progress messages during long-running polygonize calls.
 
@@ -383,7 +392,19 @@ def _make_polygonize_callback(logging_adapter):
 
 
 class OverlappingWatershedContextAdapter(logging.LoggerAdapter):
+    """Contextual logger for noting where we are in disjoint set iteration."""
+
     def process(self, msg, kwargs):
+        """Prepare contextual information for passed log messages.
+        
+        Parameters:
+            msg (string): The templated string log message to prepend to.
+            kwargs (dict): Keyword arguments for logging, passed through.
+            
+        Returns:
+            A tuple of (string log message, kwargs).  The log message has some
+            extra information about which pass we're in the middle of.
+        """
         return (
             '[pass %s of %s] %s' % (
                 self.extra['pass_index'], self.extra['n_passes'], msg),
@@ -398,8 +419,8 @@ ctypedef pair[long, long] CoordinatePair
 
 
 def delineate_watersheds(
-        d8_flow_dir_raster_path_band, outflow_points_vector_path,
-        target_fragments_vector_path, working_dir=None, rm_wd=True):
+        d8_flow_dir_raster_path_band, outflow_vector_path,
+        target_fragments_vector_path, working_dir=None):
     """Delineate watersheds from a D8 flow direction raster.
 
     This function produces a vector of watershed fragments, where each fragment
@@ -410,10 +431,9 @@ def delineate_watersheds(
         d8_flow_dir_raster_path_band (tuple): A two-tuple representing the
             string path to the D8 flow direction raster to use and the band
             index to use.
-        outflow_points_vector_path (string): Path to a vector of points on
-            disk representing outflow points for a watershed.  This vector
-            must have one layer, only contain point geometries, and must be
-            in the same projection as the flow direction raster.
+        outflow_vector_path (string): Path to a vector on disk representing
+            outflow geometries for watersheds.  This vector must have one layer
+            and must be in the same projection as the flow direction raster.
         target_fragments_vector_path (string): Path to where the watershed
             fragments vector will be stored on disk.  This filepath must end
             with the 'gpkg' extension, and will be created as a GeoPackage.
@@ -433,8 +453,6 @@ def delineate_watersheds(
             "%s is supposed to be a raster band tuple but it's not." % (
                 d8_flow_dir_raster_path_band))
 
-    # TODO: warn against mismatched projections.
-
     flow_dir_info = pygeoprocessing.get_raster_info(
         d8_flow_dir_raster_path_band[0])
     source_gt = flow_dir_info['geotransform']
@@ -453,11 +471,9 @@ def delineate_watersheds(
     gpkg_driver = ogr.GetDriverByName('GPKG')
     flow_dir_srs = osr.SpatialReference()
     flow_dir_srs.ImportFromWkt(flow_dir_info['projection'])
-
     flow_dir_bbox_geometry = shapely.geometry.box(*flow_dir_info['bounding_box'])
 
-    source_outlets_vector = ogr.Open(outflow_points_vector_path)
-
+    source_outlets_vector = ogr.Open(outflow_vector_path)
     working_outlets_path = os.path.join(working_dir_path, 'working_outlets.gpkg')
     working_outlets_vector = gpkg_driver.CopyDataSource(source_outlets_vector,
                                                         working_outlets_path)
@@ -475,6 +491,8 @@ def delineate_watersheds(
     cdef double x_pixelwidth = source_gt[1]
     cdef double y_pixelwidth = source_gt[5]
     cdef double half_pixelwidth = (abs(x_pixelwidth) + abs(y_pixelwidth)) / 4.
+
+    # FIDs are unreliable, so we use the ws_id field to identify geometries.
     LOGGER.info("Preprocessing outlet geometries")
     working_outlets_layer.StartTransaction()
     working_vector_ws_id_to_fid = {}
@@ -484,9 +502,29 @@ def delineate_watersheds(
         working_outlets_layer.SetFeature(feature)
     working_outlets_layer.CommitTransaction()
 
+    # Because of the realities of real-world data, there are a couple cases
+    # that need to be handled before we determine the nonoverlapping sets
+    # of geometries:
+    #    * Points are unlikely to overlap as-is, so their geometries need to be
+    #      buffered.  Otherwise, we won't know which point will end up being
+    #      rasterized.  Solution: create a small square in the center of the pixel
+    #      that overlaps with the point.
+    #      As a convenient optimization, we also track which points have duplicate
+    #      geometries so that we avoid making more passes than absolutely necessary.
+    #      Duplicate fragments have new rows created for them at the end of delineation.
+    #    * Polygons only need some extra attention when they are very small. The
+    #      Montana lakes dataset had several examples of very small lake polygons
+    #      overlapping the same pixel, resulting in a race condition for which would be
+    #      rasterized.  The solution here is to buffer small polygons so we can more
+    #      accurately determine sets of disjoint polygons, and then we'll use the actual
+    #      geometries for the watershed calculations.
+    #
+    # Other geometric types are likely to work here, but I don't have sample data for them.
+    # If you find something doesn't work right, please email your sample data to
+    # jdouglass@stanford.edu.
     duplicate_points = {}  # Map center of points to the ws_id of the first point found.
-    duplicate_ws_ids = {}  # Map origial ws_id to ws_ids of points over the same pixel.
-    duplicate_fids = set([])
+    duplicate_point_ws_ids = {}  # Map origial ws_id to ws_ids of points over the same pixel.
+    duplicate_point_fids = set([])
     buffered_working_outlets_path = os.path.join(working_dir_path, 'working_outlets_buffered.gpkg')
     buffered_working_outlets_vector = gpkg_driver.CopyDataSource(working_outlets_vector,
                                                                  buffered_working_outlets_path)
@@ -495,6 +533,10 @@ def delineate_watersheds(
     for feature in buffered_working_outlets_layer:
         ogr_geom = feature.GetGeometryRef()
 
+        # We have some known, explicit special cases for points and polygons
+        # that are useful to handle here.  If someone throws a different geometry type at this,
+        # it should work ... though there's likely to be some strangeness if geometries are
+        # both very small and very close together.
         if ogr_geom.GetGeometryName() in ('POINT', 'POLYGON'):
             geometry = shapely.wkb.loads(ogr_geom.ExportToWkb())
             if geometry.geom_type == 'Point':
@@ -511,10 +553,10 @@ def delineate_watersheds(
                 if coord_pair not in duplicate_points:
                     # This is the first occurrance of this point geometry
                     duplicate_points[coord_pair] = ws_id
-                    duplicate_ws_ids[ws_id] = []
+                    duplicate_point_ws_ids[ws_id] = []
                 else:
-                    duplicate_fids.add(feature.GetFID())
-                    duplicate_ws_ids[duplicate_points[coord_pair]].append(ws_id)
+                    duplicate_point_fids.add(feature.GetFID())
+                    duplicate_point_ws_ids[duplicate_points[coord_pair]].append(ws_id)
                     continue  # no need to create this geometry; we'll copy it over later.
 
                 new_geometry = shapely.geometry.box(
@@ -524,9 +566,12 @@ def delineate_watersheds(
                     y_coord + quarter_pixelheight)
             else:
                 # It's a polygon!
-                # To make sure we're catching all polygons, buffer everything by
-                # half the pixel width so that we can get the appropriate set
-                # of disjoint polygons.
+                # If the polygon is really small (smaller than a pixel), it's
+                # helpful to buffer it a bit so that we are sure to separate it
+                # out via the sets of disjoint polygons.
+                # The decision to buffer by half the mean pixelwidth is
+                # arbitrary, but it was enough to resolve this issue on the
+                # Montana Lakes dataset I had to work with.
                 if geometry.area <= abs(x_pixelwidth*y_pixelwidth):
                     new_geometry = geometry.buffer(half_pixelwidth)
                 else:
@@ -545,10 +590,12 @@ def delineate_watersheds(
     working_outlets_layer = working_outlets_vector.GetLayer()
     outlets_schema = working_outlets_layer.schema
 
-    LOGGER.info('Determining sets of non-overlapping polygons')
+    LOGGER.info('Determining sets of non-overlapping geometries')
     for set_index, disjoint_polygon_fid_set in enumerate(
             pygeoprocessing.calculate_disjoint_polygon_set(buffered_working_outlets_path), start=1):
-        disjoint_polygon_fid_set -= duplicate_fids
+        # Remove any of the duplicate points.  This set will be empty if
+        # the geometries aren't points or if all points are disjoint.
+        disjoint_polygon_fid_set -= duplicate_point_fids
         if not disjoint_polygon_fid_set:
             continue
 
@@ -564,7 +611,7 @@ def delineate_watersheds(
 
         disjoint_layer.StartTransaction()
         # Though the buffered working layer was used for determining the sets
-        # of nonoverlapping polygons, we want to use the original outflow
+        # of nonoverlapping polygons, we want to use the *original* outflow
         # geometries for rasterization.  This step gets the appropriate features
         # from the correct vectors so we keep the correct geometries.
         for polygon_fid in disjoint_polygon_fid_set:
@@ -580,7 +627,7 @@ def delineate_watersheds(
 
     target_fragments_vector = gpkg_driver.CreateDataSource(target_fragments_vector_path)
     if target_fragments_vector is None:
-        raise RuntimeError(
+        raise RuntimeError(  # Because I frequently have this open in QGIS when I shouldn't.
             "Could not open target fragments vector for writing. Do you have "
             "access to this path?  Is the file open in another program?")
 
@@ -598,38 +645,35 @@ def delineate_watersheds(
     target_fragments_layer.CreateField(ws_id_field)
     target_fragments_layer_defn = target_fragments_layer.GetLayerDefn()
 
-    # Create a new watershed scratch raster the size, shape of the flow dir raster
-    # via rasterization.
     cdef int NO_WATERSHED = 0
-    cdef CoordinatePair current_pixel, neighbor_pixel
+    cdef CoordinatePair current_pixel, neighbor_pixel, ws_seed_coord
     cdef queue[CoordinatePair] process_queue
-    cdef cset[CoordinatePair] process_queue_set
+    cdef cset[CoordinatePair] process_queue_set, coords_in_block
+    cdef cset[CoordinatePair].iterator coord_iterator
     cdef cset[int] nested_watershed_ids
+    cdef cmap[CoordinatePair, int] point_ws_ids 
+    cdef cmap[int, cset[CoordinatePair]] points_in_blocks
+    cdef cmap[int, cset[CoordinatePair]].iterator block_iterator
     cdef int* neighbor_col = [1, 1, 0, -1, -1, -1, 0, 1]
     cdef int* neighbor_row = [0, -1, -1, -1, 0, 1, 1, 1]
     cdef int* reverse_flow = [4, 5, 6, 7, 0, 1, 2, 3]
     cdef int pixels_in_watershed
-    cdef time_t last_log_time
-    cdef time_t last_ws_log_time
+    cdef time_t last_log_time, last_ws_log_time
     cdef int block_index
-    cdef int n_outlet_features = working_outlets_layer.GetFeatureCount()
-    cdef cmap[int, cset[CoordinatePair]] points_in_blocks
-    cdef cmap[CoordinatePair, int] point_ws_ids 
-    cdef CoordinatePair ws_seed_coord
     cdef _ManagedRaster flow_dir_managed_raster, scratch_managed_raster, mask_managed_raster
     cdef int watersheds_started = 0
+    cdef int n_outlet_features = working_outlets_layer.GetFeatureCount()
     cdef int n_disjoint_features = 0
     cdef int n_disjoint_features_started = 0
-    cdef cmap[int, cset[CoordinatePair]].iterator block_iterator
-    cdef cset[CoordinatePair] coords_in_block
-    cdef cset[CoordinatePair].iterator coord_iterator
     cdef int pixels_visited = 0
     cdef int neighbor_ws_id
     cdef unsigned char pixel_visited
 
     # This builds up a spatial index of raster blocks so we can figure out the
     # order in which to start processing points to try to minimize disk
-    # accesses.
+    # accesses.  There will likely be fewer blocks than there will be outflow
+    # geometries.
+    # 
     # When interleaved is True, coords are in (xmin, ymin, xmax, ymax)
     spatial_index = rtree.index.Index(interleaved=True)
     for block_index, offset_dict in enumerate(
@@ -649,7 +693,13 @@ def delineate_watersheds(
     # Map ws_id to the watersheds that nest within.
     nested_watersheds = {}
 
+    flow_dir_managed_raster = _ManagedRaster(d8_flow_dir_raster_path_band[0],
+                                             d8_flow_dir_raster_path_band[1],
+                                             0)  # read-only
+
     for disjoint_index, disjoint_vector_path in enumerate(disjoint_vector_paths, start=1):
+        # This contextual logger allows us to have extra information in log messages
+        # about where we are in the iteration over n disjoint sets.
         disjoint_logger = OverlappingWatershedContextAdapter(
             LOGGER, {'pass_index': disjoint_index, 'n_passes': len(disjoint_vector_paths)})
 
@@ -695,11 +745,15 @@ def delineate_watersheds(
                 if geometry.is_empty:
                     continue
 
+            # Since we know that our polygons don't overlap, any point within a
+            # geometry should work as a starting point.
             ws_seed_point = geometry.representative_point()
             ws_seed_coord = CoordinatePair(
                 (ws_seed_point.x - x_origin) // x_pixelwidth,
                 (ws_seed_point.y - y_origin) // y_pixelwidth)
 
+            # This is the numeric index of the raster block that intersects
+            # with this seed point.
             block_index = next(spatial_index.nearest(
                     (ws_seed_coord.first, ws_seed_coord.second,
                      ws_seed_coord.first, ws_seed_coord.second), num_results=1))
@@ -707,16 +761,12 @@ def delineate_watersheds(
             if (points_in_blocks.find(block_index) ==
                     points_in_blocks.end()):
                 points_in_blocks[block_index] = cset[CoordinatePair]()
-
             points_in_blocks[block_index].insert(ws_seed_coord)
             point_ws_ids[ws_seed_coord] = ws_id
 
         disjoint_logger.info('Delineating watersheds')
         scratch_managed_raster = _ManagedRaster(scratch_raster_path, 1, 1)
         mask_managed_raster = _ManagedRaster(mask_raster_path, 1, 1)
-        flow_dir_managed_raster = _ManagedRaster(d8_flow_dir_raster_path_band[0],
-                                                 d8_flow_dir_raster_path_band[1],
-                                                 0)  # read-only
 
         last_log_time = ctime(NULL)
         block_iterator = points_in_blocks.begin()
@@ -772,6 +822,8 @@ def delineate_watersheds(
                             current_pixel.first + neighbor_col[neighbor_index],
                             current_pixel.second + neighbor_row[neighbor_index])
 
+                        # Is the neighbor off the bounds of the raster?
+                        # skip if so.
                         if not 0 <= neighbor_pixel.first < flow_dir_n_cols:
                             continue
 
@@ -779,6 +831,7 @@ def delineate_watersheds(
                             continue
 
                         # Is the neighbor pixel already in the queue?
+                        # Skip if so.
                         if (process_queue_set.find(neighbor_pixel) !=
                                 process_queue_set.end()):
                             continue
@@ -808,7 +861,7 @@ def delineate_watersheds(
                                 nested_watershed_ids.insert(neighbor_ws_id)
                                 continue
 
-                            # The pixel has not yet been visited, enqueue it.
+                            # If the pixel has not yet been visited, enqueue it.
                             if pixel_visited == 0:
                                 process_queue.push(neighbor_pixel)
                                 process_queue_set.insert(neighbor_pixel)
@@ -817,7 +870,6 @@ def delineate_watersheds(
         points_in_blocks.clear()
         coords_in_block.clear()
 
-        flow_dir_managed_raster.close()
         scratch_managed_raster.close()  # flush the scratch raster.
         mask_managed_raster.close()  # flush the mask raster
 
@@ -870,8 +922,8 @@ def delineate_watersheds(
             target_fragments_layer.CreateFeature(target_fragment_feature)
 
             # If there were any duplicate points, copy the geometry
-            if fragment_ws_id in duplicate_ws_ids:
-                for duplicate_ws_id in duplicate_ws_ids[fragment_ws_id]:
+            if fragment_ws_id in duplicate_point_ws_ids:
+                for duplicate_ws_id in duplicate_point_ws_ids[fragment_ws_id]:
                     duplicate_feature = ogr.Feature(target_fragments_layer_defn)
                     duplicate_feature.SetGeometry(created_fragment.GetGeometryRef())
                     duplicate_feature.SetField('upstream_fragments', upstream_fragments)
@@ -890,13 +942,13 @@ def delineate_watersheds(
         watershed_fragments_layer = None
         watershed_fragments_vector = None
 
+    flow_dir_managed_raster.close()
     scratch_band = None
     scratch_raster = None
     mask_band = None
     mask_raster = None
 
-    if rm_wd:
-        shutil.rmtree(working_dir_path, ignore_errors=True)
+    shutil.rmtree(working_dir_path, ignore_errors=True)
 
 
 def join_watershed_fragments(watershed_fragments_vector,
