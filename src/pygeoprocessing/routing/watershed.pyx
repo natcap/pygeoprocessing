@@ -837,10 +837,9 @@ def delineate_watersheds(
             _make_polygonize_callback(disjoint_logger)
         )
 
-        # Copy over the field values to the target vector
-        # TODO: join multipart fragments into multipolygons?
-        # TODO: move this out of the disjoint loop?  Aren't we copying over field values for every iteration?
-        disjoint_logger.info('Copying fields over to the new fragments vector.')
+        # Iterate through all of the features we just created in this disjoint
+        # fragments vector and copy them over into the target fragments vector.
+        disjoint_logger.info('Copying fragments to the output vector.')
         watershed_layer.StartTransaction()
         for watershed_fragment in watershed_fragments_layer:
             fragment_ws_id = watershed_fragment.GetField('ws_id')
@@ -882,12 +881,14 @@ def delineate_watersheds(
                     watershed_layer.CreateFeature(duplicate_feature)
         watershed_layer.CommitTransaction()
 
+        # Close the watershed fragments vector from this disjoint geometry set.
+        watershed_fragments_layer = None
+        watershed_fragments_vector = None
+
     scratch_band = None
     scratch_raster = None
     mask_band = None
     mask_raster = None
-    watershed_fragments_layer = None
-    watershed_fragments_vector = None
 
     if rm_wd:
         shutil.rmtree(working_dir_path, ignore_errors=True)
