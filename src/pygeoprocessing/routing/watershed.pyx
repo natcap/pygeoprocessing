@@ -978,7 +978,7 @@ def join_watershed_fragments(watershed_fragments_vector,
     watershed_geometries = dict(
         (ws_id, fragment_multipolygons[ws_id]) for (ws_id, upstream_fragments_list)
         in upstream_fragments.items() if len(upstream_fragments_list) == 0)
-    LOGGER.info('%s watersheds have no upstream fragments',
+    LOGGER.info('%s watersheds have no upstream fragments and can be created directly.',
         len(watershed_geometries))
 
     encountered_ws_ids = set([])
@@ -1033,18 +1033,19 @@ def join_watershed_fragments(watershed_fragments_vector,
     # This iteration must happen in sorted order because real-world watersheds
     # sometimes have thousands of nested watersheds, which will exhaust
     # python's max recursion depth here if we're not careful.
-    # TODO: avoid max recursion depth here.
     last_log_time = time.time()
-    n_watersheds_processed = len(watershed_geometries)
-    n_features = len(upstream_fragments)
-    LOGGER.info('Joining watershed geometries')
+    LOGGER.info('%s geometries have upstream fragments.',
+                len(upstream_fragments) - len(watershed_geometries))
+    n_watersheds_processed = 0
+    n_watersheds_total = len(upstream_fragments) - len(watershed_geometries)
     for ws_id in sorted(
             set(upstream_fragments.keys()).difference(
                 set(watershed_geometries.keys())),
             key=lambda ws_id_key: len(upstream_fragments[ws_id_key])):
         current_time = time.time()
         if current_time - last_log_time >= 5.0:
-            LOGGER.info("%s fragments of %s processed", n_watersheds_processed, n_features)
+            LOGGER.info("Joined %s of %s watersheds so far.",
+                n_watersheds_processed, n_watersheds_total)
             last_log_time = current_time
 
         # The presence of a ws_id key in watershed_geometries could be
