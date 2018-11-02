@@ -77,6 +77,6 @@ setup(
         compiler_directives={
             'linetrace': True,
             'binding': True,
-            'language_level': 3},
+            'language_level': 2},
         )
 )

@@ -462,7 +462,6 @@ def delineate_watersheds(
     working_outlets_vector = gpkg_driver.CopyDataSource(source_outlets_vector,
                                                         working_outlets_path)
     working_outlets_layer = working_outlets_vector.GetLayer()
-    working_outlets_layer_definition = working_outlets_layer.GetLayerDefn()
 
     # Add a new field to the clipped_outlets_layer to ensure we know what field
     # values are bing rasterized.
@@ -613,19 +612,20 @@ def delineate_watersheds(
     cdef time_t last_log_time
     cdef time_t last_ws_log_time
     cdef int block_index
-    cdef int features_in_layer = working_outlets_layer.GetFeatureCount()
+    cdef int n_outlet_features = working_outlets_layer.GetFeatureCount()
     cdef cmap[int, cset[CoordinatePair]] points_in_blocks
     cdef cmap[CoordinatePair, int] point_ws_ids 
     cdef CoordinatePair ws_seed_coord
     cdef _ManagedRaster flow_dir_managed_raster, scratch_managed_raster, mask_managed_raster
     cdef int watersheds_started = 0
+    cdef int n_disjoint_features = 0
+    cdef int n_disjoint_features_started = 0
     cdef cmap[int, cset[CoordinatePair]].iterator block_iterator
     cdef cset[CoordinatePair] coords_in_block
     cdef cset[CoordinatePair].iterator coord_iterator
     cdef int pixels_visited = 0
     cdef int neighbor_ws_id
     cdef unsigned char pixel_visited
-    target_fragments_ws_id_to_fid = {}
 
     # This builds up a spatial index of raster blocks so we can figure out the
     # order in which to start processing points to try to minimize disk
@@ -683,7 +683,7 @@ def delineate_watersheds(
         disjoint_outlets_vector = gdal.OpenEx(disjoint_vector_path,
                                              gdal.OF_VECTOR)
         disjoint_outlets_layer = disjoint_outlets_vector.GetLayer()
-        disjoint_outlet_layer_definition = disjoint_outlets_layer.GetLayerDefn()
+        n_disjoint_features = disjoint_outlets_layer.GetFeatureCount()
 
         for outflow_feature in disjoint_outlets_layer:
             ws_id = int(outflow_feature.GetField(ws_id_fieldname))
@@ -720,6 +720,7 @@ def delineate_watersheds(
 
         last_log_time = ctime(NULL)
         block_iterator = points_in_blocks.begin()
+        n_disjoint_features_started = 0
         while block_iterator != points_in_blocks.end():
             block_index = deref(block_iterator).first
             coords_in_block = deref(block_iterator).second
@@ -732,12 +733,15 @@ def delineate_watersheds(
                 inc(coord_iterator)
 
                 watersheds_started += 1
+                n_disjoint_features_started += 1
                 pixels_in_watershed = 0
 
                 if ctime(NULL) - last_log_time > 5.0:
                     last_log_time = ctime(NULL)
-                    disjoint_logger.info('Delineated %s watersheds of %s so far',
-                                watersheds_started, features_in_layer)
+                    disjoint_logger.info(
+                        'Delineated %s watersheds of %s (%s of %s total)',
+                        n_disjoint_features_started, n_disjoint_features,
+                        watersheds_started, n_outlet_features)
 
                 last_ws_log_time = ctime(NULL)
                 process_queue.push(current_pixel)
@@ -749,9 +753,10 @@ def delineate_watersheds(
                     pixels_in_watershed += 1
                     if ctime(NULL) - last_ws_log_time > 5.0:
                         last_ws_log_time = ctime(NULL)
-                        disjoint_logger.info('Delineating watershed %i of %i, %i pixels '
-                                    'found so far.', watersheds_started, features_in_layer,
-                                    pixels_in_watershed)
+                        disjoint_logger.info(
+                            'Delineating watershed %i of %i, %i pixels found so far.',
+                            n_disjoint_features_started, n_disjoint_features,
+                            pixels_in_watershed)
 
                     current_pixel = process_queue.front()
                     process_queue_set.erase(current_pixel)
@@ -874,7 +879,7 @@ def delineate_watersheds(
                         working_vector_ws_id_to_fid[duplicate_ws_id])
 
                     for fieldname, fieldvalue in source_feature.items().items():
-                        if outflow_fieldname == ws_id_fieldname:
+                        if fieldname == ws_id_fieldname:
                             continue
                         duplicate_feature.SetField(fieldname, fieldvalue)
 
@@ -924,7 +929,6 @@ def join_watershed_fragments(watershed_fragments_vector,
     """
     fragments_vector = ogr.Open(watershed_fragments_vector)
     fragments_layer = fragments_vector.GetLayer()
-    fragments_layer_name = fragments_layer.GetName()
     fragments_srs = fragments_layer.GetSpatialRef()
 
     driver = gdal.GetDriverByName('GPKG')
@@ -965,7 +969,6 @@ def join_watershed_fragments(watershed_fragments_vector,
             fragment_geometries[ws_id] = [shapely_polygon]
 
     # Create multipolygons from each of the lists of fragment geometries.
-    fragment_multipolygons = {}
     fragment_multipolygons = dict(
         (ws_id, shapely.geometry.MultiPolygon(geom_list)) for (ws_id, geom_list) in
         fragment_geometries.items())
@@ -1073,7 +1076,6 @@ def join_watershed_fragments(watershed_fragments_vector,
     watersheds_layer.CommitTransaction()
 
     fragments_srs = None
-    fragments_feature = None
     fragments_layer = None
     fragments_vector = None
 
