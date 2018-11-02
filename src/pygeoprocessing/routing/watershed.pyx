@@ -579,25 +579,25 @@ def delineate_watersheds(
         disjoint_layer = None
         disjoint_vector = None
 
-    watershed_vector = gpkg_driver.CreateDataSource(target_fragments_vector_path)
-    if watershed_vector is None:
+    target_fragments_vector = gpkg_driver.CreateDataSource(target_fragments_vector_path)
+    if target_fragments_vector is None:
         raise RuntimeError(
             "Could not open target fragments vector for writing. Do you have "
             "access to this path?  Is the file open in another program?")
 
-    watershed_layer = watershed_vector.CreateLayer(
+    target_fragments_layer = target_fragments_vector.CreateLayer(
         'watershed_fragments', flow_dir_srs, ogr.wkbPolygon)
 
     # Create the fields in the target vector that already existed in the
     # outflow points vector
-    watershed_layer.CreateFields(
+    target_fragments_layer.CreateFields(
             [f for f in working_outlets_layer.schema if f.GetName() != ws_id_fieldname])
     upstream_fragments_field = ogr.FieldDefn('upstream_fragments', ogr.OFTString)
-    watershed_layer.CreateField(upstream_fragments_field)
+    target_fragments_layer.CreateField(upstream_fragments_field)
     ws_id_field = ogr.FieldDefn('ws_id', ogr.OFTInteger)
     ws_id_field.SetWidth(24)
-    watershed_layer.CreateField(ws_id_field)
-    watershed_layer_defn = watershed_layer.GetLayerDefn()
+    target_fragments_layer.CreateField(ws_id_field)
+    target_fragments_layer_defn = target_fragments_layer.GetLayerDefn()
 
     # Create a new watershed scratch raster the size, shape of the flow dir raster
     # via rasterization.
@@ -625,7 +625,7 @@ def delineate_watersheds(
     cdef int pixels_visited = 0
     cdef int neighbor_ws_id
     cdef unsigned char pixel_visited
-    watershed_ws_id_to_fid = {}
+    target_fragments_ws_id_to_fid = {}
 
     # This builds up a spatial index of raster blocks so we can figure out the
     # order in which to start processing points to try to minimize disk
@@ -840,35 +840,35 @@ def delineate_watersheds(
         # Iterate through all of the features we just created in this disjoint
         # fragments vector and copy them over into the target fragments vector.
         disjoint_logger.info('Copying fragments to the output vector.')
-        watershed_layer.StartTransaction()
-        for watershed_fragment in watershed_fragments_layer:
-            fragment_ws_id = watershed_fragment.GetField('ws_id')
+        target_fragments_layer.StartTransaction()
+        for created_fragment in watershed_fragments_layer:
+            fragment_ws_id = created_fragment.GetField('ws_id')
             outflow_geom_fid = ws_id_to_disjoint_fid[fragment_ws_id]
 
-            watershed_feature = ogr.Feature(watershed_layer_defn)
-            watershed_feature.SetGeometry(watershed_fragment.GetGeometryRef())
+            target_fragment_feature = ogr.Feature(target_fragments_layer_defn)
+            target_fragment_feature.SetGeometry(created_fragment.GetGeometryRef())
 
             outflow_point_feature = disjoint_outlets_layer.GetFeature(outflow_geom_fid)
             for outflow_fieldname, outflow_fieldvalue in outflow_point_feature.items().items():
                 if outflow_fieldname == ws_id_fieldname:
                     continue
-                watershed_feature.SetField(outflow_fieldname, outflow_fieldvalue)
+                target_fragment_feature.SetField(outflow_fieldname, outflow_fieldvalue)
 
-            watershed_feature.SetField('ws_id', float(fragment_ws_id))
+            target_fragment_feature.SetField('ws_id', float(fragment_ws_id))
             try:
                 upstream_fragments = ','.join(
                     [str(s) for s in sorted(nested_watersheds[fragment_ws_id])])
             except KeyError:
                 upstream_fragments = ''
-            watershed_feature.SetField('upstream_fragments', upstream_fragments)
+            target_fragment_feature.SetField('upstream_fragments', upstream_fragments)
 
-            watershed_layer.CreateFeature(watershed_feature)
+            target_fragments_layer.CreateFeature(target_fragment_feature)
 
             # If there were any duplicate points, copy the geometry
             if fragment_ws_id in duplicate_ws_ids:
                 for duplicate_ws_id in duplicate_ws_ids[fragment_ws_id]:
-                    duplicate_feature = ogr.Feature(watershed_layer_defn)
-                    duplicate_feature.SetGeometry(watershed_fragment.GetGeometryRef())
+                    duplicate_feature = ogr.Feature(target_fragments_layer_defn)
+                    duplicate_feature.SetGeometry(created_fragment.GetGeometryRef())
                     duplicate_feature.SetField('upstream_fragments', upstream_fragments)
                     source_feature = working_outlets_layer.GetFeature(
                         working_vector_ws_id_to_fid[duplicate_ws_id])
@@ -878,8 +878,8 @@ def delineate_watersheds(
                             continue
                         duplicate_feature.SetField(fieldname, fieldvalue)
 
-                    watershed_layer.CreateFeature(duplicate_feature)
-        watershed_layer.CommitTransaction()
+                    target_fragments_layer.CreateFeature(duplicate_feature)
+        target_fragments_layer.CommitTransaction()
 
         # Close the watershed fragments vector from this disjoint geometry set.
         watershed_fragments_layer = None
