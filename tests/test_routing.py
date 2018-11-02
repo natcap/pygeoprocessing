@@ -1358,7 +1358,7 @@ class TestRouting(unittest.TestCase):
             fragments_vector = None
 
     def test_watershed_delineation_overlapping_polygons(self):
-        """PGP.routing: assert geometries when outflow geometries overlap."""
+        """PGP.routing: assert geometries when outflow polygons overlap."""
         import pygeoprocessing.routing
         import pygeoprocessing.testing
 
@@ -1385,7 +1385,6 @@ class TestRouting(unittest.TestCase):
         # All 4 should be included in the fragments vector.
         watershed_geometries = [
             shapely.geometry.box(4.1, -7.9, 7.9, -4.1) for i in range(4)]
-        print watershed_geometries
 
         outflow_vector = os.path.join(self.workspace_dir, 'outflow.gpkg')
         pygeoprocessing.testing.create_vector_on_disk(
@@ -1404,7 +1403,7 @@ class TestRouting(unittest.TestCase):
             fragments_layer = fragments_vector.GetLayer()
             self.assertEqual(fragments_layer.GetFeatureCount(), 4)
 
-            expected_geometry = shapely.geometry.box(2, -6, 8, -8)
+            expected_geometry = shapely.geometry.box(2, -8, 8, -4)
             for feature in fragments_layer:
                 fragment_geometry = shapely.wkb.loads(
                     feature.GetGeometryRef().ExportToWkb())
