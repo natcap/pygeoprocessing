@@ -1620,3 +1620,65 @@ class TestRouting(unittest.TestCase):
         finally:
             fragments_layer = None
             fragments_vector = None
+
+    def test_watershed_delineation_multipolygons(self):
+        """PGP.routing: assert watershed when given a multipolygon."""
+        import pygeoprocessing.routing
+        import pygeoprocessing.testing
+
+        srs = osr.SpatialReference()
+        srs.ImportFromEPSG(32731)  # WGS84 / UTM zone 31s
+        srs_wkt = srs.ExportToWkt()
+
+        flow_dir_array = numpy.zeros((3, 3), dtype=numpy.uint8)
+        flow_dir_path = os.path.join(self.workspace_dir, 'flow_dir.tif')
+        driver = gdal.GetDriverByName('GTiff')
+        flow_dir_raster = driver.Create(
+            flow_dir_path, flow_dir_array.shape[1], flow_dir_array.shape[0],
+            1, gdal.GDT_Byte, options=(
+                'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
+                'BLOCKXSIZE=256', 'BLOCKYSIZE=256'))
+        flow_dir_raster.SetProjection(srs_wkt)
+        flow_dir_band = flow_dir_raster.GetRasterBand(1)
+        flow_dir_band.WriteArray(flow_dir_array)
+        flow_dir_geotransform = [2, 2, 0, -2, 0, -2]
+        flow_dir_raster.SetGeoTransform(flow_dir_geotransform)
+        flow_dir_raster = None
+
+        # The two component geometries of this multipolygon are discontinuous
+        watershed_geometries = [
+            shapely.geometry.MultiPolygon([
+                shapely.geometry.box(6.1, -3.9, 7.9, -2.1),
+                shapely.geometry.box(6.1, -7.9, 7.9, -6.1),
+            ])]
+
+        outflow_vector = os.path.join(self.workspace_dir, 'outflow.gpkg')
+        pygeoprocessing.testing.create_vector_on_disk(
+            watershed_geometries, srs_wkt, vector_format='GPKG',
+            filename=outflow_vector)
+
+        target_fragments_vector = os.path.join(self.workspace_dir,
+                                               'fragments.gpkg')
+        pygeoprocessing.routing.delineate_watersheds(
+            (flow_dir_path, 1), outflow_vector, target_fragments_vector,
+            os.path.join(self.workspace_dir, 'scratch'))
+
+        try:
+            fragments_vector = gdal.OpenEx(target_fragments_vector,
+                                           gdal.OF_VECTOR)
+            fragments_layer = fragments_vector.GetLayer()
+            self.assertEqual(fragments_layer.GetFeatureCount(), 2)
+
+            expected_geometries = [
+                shapely.geometry.box(2, -4, 8, -2),
+                shapely.geometry.box(2, -8, 8, -6),
+            ]
+            for feature, expected_geometry in zip(fragments_layer,
+                                                  expected_geometries):
+                fragment_geometry = shapely.wkb.loads(
+                    feature.GetGeometryRef().ExportToWkb())
+                self.assertEqual(fragment_geometry.difference(expected_geometry).area, 0)
+                self.assertEqual(fragment_geometry.symmetric_difference(expected_geometry).area, 0)
+        finally:
+            fragments_layer = None
+            fragments_vector = None

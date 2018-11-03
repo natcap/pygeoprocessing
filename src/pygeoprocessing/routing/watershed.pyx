@@ -745,24 +745,31 @@ def delineate_watersheds(
                 if geometry.is_empty:
                     continue
 
-            # Since we know that our polygons don't overlap, any point within a
-            # geometry should work as a starting point.
-            ws_seed_point = geometry.representative_point()
-            ws_seed_coord = CoordinatePair(
-                (ws_seed_point.x - x_origin) // x_pixelwidth,
-                (ws_seed_point.y - y_origin) // y_pixelwidth)
+            try:
+                # If a multi-collection
+                geometries = geometry.geoms
+            except AttributeError:
+                geometries = [geometry]
 
-            # This is the numeric index of the raster block that intersects
-            # with this seed point.
-            block_index = next(spatial_index.nearest(
-                    (ws_seed_coord.first, ws_seed_coord.second,
-                     ws_seed_coord.first, ws_seed_coord.second), num_results=1))
+            for geometry in geometries:
+                # Since we know that our polygons don't overlap, any point within a
+                # geometry should work as a starting point.
+                ws_seed_point = geometry.representative_point()
+                ws_seed_coord = CoordinatePair(
+                    (ws_seed_point.x - x_origin) // x_pixelwidth,
+                    (ws_seed_point.y - y_origin) // y_pixelwidth)
 
-            if (points_in_blocks.find(block_index) ==
-                    points_in_blocks.end()):
-                points_in_blocks[block_index] = cset[CoordinatePair]()
-            points_in_blocks[block_index].insert(ws_seed_coord)
-            point_ws_ids[ws_seed_coord] = ws_id
+                # This is the numeric index of the raster block that intersects
+                # with this seed point.
+                block_index = next(spatial_index.nearest(
+                        (ws_seed_coord.first, ws_seed_coord.second,
+                         ws_seed_coord.first, ws_seed_coord.second), num_results=1))
+
+                if (points_in_blocks.find(block_index) ==
+                        points_in_blocks.end()):
+                    points_in_blocks[block_index] = cset[CoordinatePair]()
+                points_in_blocks[block_index].insert(ws_seed_coord)
+                point_ws_ids[ws_seed_coord] = ws_id
 
         disjoint_logger.info('Delineating watersheds')
         scratch_managed_raster = _ManagedRaster(scratch_raster_path, 1, 1)
