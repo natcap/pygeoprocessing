@@ -1440,8 +1440,9 @@ class TestRouting(unittest.TestCase):
                                        gdal.OF_VECTOR)
         field_values = [feature.items() for feature in
                         fragments_vector.GetLayer()]
-        for expected_fields, fields in zip(sorted(expected_field_values),
-                                           sorted(field_values)):
+        for expected_fields, fields in zip(
+                sorted(expected_field_values, key=lambda x: x['ws_id']),
+                sorted(field_values, key=lambda x: x['ws_id'])):
             self.assertEqual(expected_fields, fields)
 
     def test_watershed_delineation_overlapping_points(self):
