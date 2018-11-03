@@ -1372,7 +1372,7 @@ class TestRouting(unittest.TestCase):
         try:
             for feature in watersheds_layer:
                 shapely_geom = shapely.wkb.loads(feature.GetGeometryRef().ExportToWkb())
-                self.assertEquals(
+                self.assertEqual(
                     0.0, unioned_geometry.difference(shapely_geom).area)
         finally:
             watersheds_layer = None
