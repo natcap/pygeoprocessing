@@ -2678,7 +2678,8 @@ def extract_streams(
     cdef int xi, yi, xi_root, yi_root, i_n, xi_n, yi_n, i_sn, xi_sn, yi_sn
     cdef unsigned char n_stream_val, sn_stream_val
     cdef double dem_center, dem_n, dem_sn
-
+    cdef double dem_nodata = <double>pygeoprocessing.get_raster_info(
+        dem_raster_path_band[0])['nodata'][dem_raster_path_band[1]-1]
     cdef int stack_top = -1
     cdef int stack_index = 0
     # this stack will contain xi, yi, next_dir "tuples", hence the "* 3"
@@ -2737,7 +2738,7 @@ def extract_streams(
                             stack_top -= 1
                         continue
                     dem_sn = dem_raster.get(xi_sn, yi_sn)
-                    if dem_sn > dem_n:
+                    if dem_sn > dem_n or is_close(dem_sn, dem_nodata):
                         if i_sn < 7:
                             # advance the direction
                             index_search_stack[stack_top*3+2] += 1
@@ -2751,13 +2752,12 @@ def extract_streams(
                     if sn_stream_val == 1 and n_stream_val != 1:
                         # there's a downstream connection!
                         # turn on all the upstream pixels and pop the stack
-                        for stack_index in reversed(range(stack_top)):
+                        LOGGER.debug("found a connection at %d %d", xi_n, yi_n)
+                        for stack_index in reversed(range(stack_top+1)):
                             xi_n = index_search_stack[stack_index*3+0]
                             yi_n = index_search_stack[stack_index*3+1]
-                            if stream_raster.get(xi_n, yi_n) == 1:
-                                break
                             stream_raster.set(xi_n, yi_n, 1)
-                        stack_top -= 1
+                        break
                     elif stack_top < max_stacksize-1 and i_sn < 7:
                         # there might be a downstream connection,
                         # advance the direction and push on stack
