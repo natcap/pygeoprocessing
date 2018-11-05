@@ -2690,7 +2690,7 @@ def extract_streams(
     #cdef int* index_search_stack = <int*>PyMem_Malloc(
     #    sizeof(int) * divergent_search_distance * 3)
     cdef numpy.ndarray[int, ndim=1] index_search_stack = numpy.empty(
-        ((max_stacksize+1)*2,), dtype=numpy.int)
+        (max_stacksize*2,), dtype=numpy.int)
 
     for block_offsets, stream_block in pygeoprocessing.iterblocks(
             target_stream_raster_path):
@@ -2755,11 +2755,12 @@ def extract_streams(
 
                         dem_sn = dem_raster.get(xi_sn, yi_sn)
                         if is_close(dem_sn, dem_nodata):
-                            # could drain to nodata
+                            # drain to nodata
                             connect = 1
                             break
 
                         if dem_sn > dem_n:
+                            # don't walk uphill
                             continue
 
                         sn_stream_val = (
@@ -2771,7 +2772,7 @@ def extract_streams(
 
                         cur_flow = flow_accum_raster.get(xi_sn, yi_sn)
                         if is_close(cur_flow, flow_accum_nodata):
-                            # could drain to nodata
+                            # drain to nodata
                             connect = 1
                             break
                         if cur_flow > max_n_flow and (
