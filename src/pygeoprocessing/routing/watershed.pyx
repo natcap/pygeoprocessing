@@ -468,15 +468,15 @@ def delineate_watersheds(
             '%Y-%m-%d_%H_%M_%S', time.gmtime()))
 
     # Create the watershed fragments layer for later.
-    gpkg_driver = ogr.GetDriverByName('GPKG')
+    gpkg_driver = gdal.GetDriverByName('GPKG')
     flow_dir_srs = osr.SpatialReference()
     flow_dir_srs.ImportFromWkt(flow_dir_info['projection'])
     flow_dir_bbox_geometry = shapely.geometry.box(*flow_dir_info['bounding_box'])
 
-    source_outlets_vector = ogr.Open(outflow_vector_path)
+    source_outlets_vector = gdal.OpenEx(outflow_vector_path, gdal.OF_VECTOR)
     working_outlets_path = os.path.join(working_dir_path, 'working_outlets.gpkg')
-    working_outlets_vector = gpkg_driver.CopyDataSource(source_outlets_vector,
-                                                        working_outlets_path)
+    working_outlets_vector = gpkg_driver.CreateCopy(working_outlets_path,
+                                                    source_outlets_vector)
     working_outlets_layer = working_outlets_vector.GetLayer()
 
     # Add a new field to the clipped_outlets_layer to ensure we know what field
@@ -526,8 +526,8 @@ def delineate_watersheds(
     duplicate_point_ws_ids = {}  # Map origial ws_id to ws_ids of points over the same pixel.
     duplicate_point_fids = set([])
     buffered_working_outlets_path = os.path.join(working_dir_path, 'working_outlets_buffered.gpkg')
-    buffered_working_outlets_vector = gpkg_driver.CopyDataSource(working_outlets_vector,
-                                                                 buffered_working_outlets_path)
+    buffered_working_outlets_vector = gpkg_driver.CreateCopy(buffered_working_outlets_path,
+                                                             working_outlets_vector)
     buffered_working_outlets_layer = buffered_working_outlets_vector.GetLayer()
     buffered_working_outlets_layer.StartTransaction()
     for feature in buffered_working_outlets_layer:
@@ -581,7 +581,7 @@ def delineate_watersheds(
 
         buffered_working_outlets_layer.SetFeature(feature)
     buffered_working_outlets_layer.CommitTransaction()
-    buffered_working_outlets_vector.SyncToDisk()
+    buffered_working_outlets_vector.FlushCache()
     del duplicate_points  # don't need this any more.
 
     cdef int polygon_fid
@@ -604,7 +604,8 @@ def delineate_watersheds(
         disjoint_vector_path = os.path.join(
                 working_dir_path, 'disjoint_outflow_%s.gpkg' % set_index)
         disjoint_vector_paths.append(disjoint_vector_path)
-        disjoint_vector = gpkg_driver.CreateDataSource(disjoint_vector_path)
+        disjoint_vector = gpkg_driver.Create(disjoint_vector_path, 0, 0, 0,
+                                             gdal.GDT_Unknown)
         disjoint_layer = disjoint_vector.CreateLayer(
             'outlet_geometries', flow_dir_srs, ogr.wkbPolygon)
         disjoint_layer.CreateFields(outlets_schema)
@@ -625,7 +626,8 @@ def delineate_watersheds(
         disjoint_layer = None
         disjoint_vector = None
 
-    target_fragments_vector = gpkg_driver.CreateDataSource(target_fragments_vector_path)
+    target_fragments_vector = gpkg_driver.Create(target_fragments_vector_path,
+                                                 0, 0, 0, gdal.GDT_Unknown)
     if target_fragments_vector is None:
         raise RuntimeError(  # Because I frequently have this open in QGIS when I shouldn't.
             "Could not open target fragments vector for writing. Do you have "
@@ -887,7 +889,7 @@ def delineate_watersheds(
 
         watershed_fragments_path = os.path.join(working_dir_path,
                                                 'watershed_fragments_%s.gpkg' % disjoint_index)
-        watershed_fragments_vector = gpkg_driver.CreateDataSource(watershed_fragments_path)
+        watershed_fragments_vector = gpkg_driver.Create(watershed_fragments_path, 0, 0, 0, gdal.GDT_Unknown)
         watershed_fragments_layer = watershed_fragments_vector.CreateLayer(
             'watershed_fragments', flow_dir_srs, ogr.wkbPolygon)
         watershed_fragments_layer.CreateField(ws_id_field)
@@ -986,7 +988,7 @@ def join_watershed_fragments(watershed_fragments_vector,
         ``None``
 
     """
-    fragments_vector = ogr.Open(watershed_fragments_vector)
+    fragments_vector = gdal.OpenEx(watershed_fragments_vector, gdal.OF_VECTOR)
     fragments_layer = fragments_vector.GetLayer()
     fragments_srs = fragments_layer.GetSpatialRef()
 
