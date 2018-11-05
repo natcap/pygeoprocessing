@@ -3,6 +3,13 @@ Release History
 
 Unreleased Changes
 ------------------
+* Adding an implementation of watershed delineation based on D8 flow direction
+  as ``pygeoprocessing.routing.delineate_watersheds``.  This function writes a
+  GeoPackage of polygons representing the regions that flow exclusively
+  into outflow points.  Another function,
+  ``pygeoprocessing.routing.join_watershed_fragments``, will take the delineated
+  watershed fragments and join nested watersheds into new geometries, writing
+  the results into a new GeoPackage.
 * Added a `gdal_warp_options` parameter to `align_and_resize_raster_stack` and
   `warp_raster` whose contents get passed to gdal.Warp's `warpOptions`
   parameter. This was implemented to expose the CUTLINE_TOUCH_ALL
@@ -60,13 +67,6 @@ Unreleased Changes
   caller to use per-pixel weights from a parallel raster as opposed to
   assuming a distance of 1 between neighboring pixels or sqrt(2) between
   diagonal ones.
-* Adding an implementation of watershed delineation based on D8 flow direction
-  as ``pygeoprocessing.routing.delineate_watersheds``.  This function writes a
-  GeoPackage of polygons representing the regions that flow exclusively
-  into outflow points.  Another function,
-  ``pygeoprocessing.routing.join_watershed_fragments``, will take the delineated
-  watershed fragments and join nested watersheds into new geometries, writing
-  the results into a new GeoPackage.
 * Added an option to `reproject_vector` that allows a caller to specify which
   fields, if any, to copy to the target vector after reprojection.
 * Adding a check in `align_and_resize_raster_stack` for duplicate target

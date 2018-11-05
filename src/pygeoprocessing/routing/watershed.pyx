@@ -1000,7 +1000,7 @@ def delineate_watersheds(
 
 def join_watershed_fragments(watershed_fragments_vector,
                              target_watersheds_vector):
-    """Join watershed fragments by their IDs.
+    """Join watershed fragments by their WS IDs.
 
     This function takes a watershed fragments vector and creates a new vector
     where all geometries represent the full watershed represented by any nested
