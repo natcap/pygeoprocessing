@@ -491,6 +491,7 @@ def delineate_watersheds(
     cdef double y_origin = source_gt[3]
     cdef double x_pixelwidth = source_gt[1]
     cdef double y_pixelwidth = source_gt[5]
+    cdef int n_outlet_features = working_outlets_layer.GetFeatureCount()
 
     # FIDs are unreliable, so we use the ws_id field to identify geometries.
     LOGGER.info("Preprocessing outlet geometries")
@@ -540,13 +541,22 @@ def delineate_watersheds(
     # that's *just* slightly smaller than a full pixel should ensure that we don't
     # have small/point geometries that touch.
     cdef double x_half_boxwidth = half_pixelwidth * 0.95
-    cdef double y_half boxheight = half_pixelhwight * 0.95
+    cdef double y_half_boxheight = half_pixelheight * 0.95
 
     # Using slightly more than half the hypotenuse of the pixel's height and
     # width should guarantee that we won't have disjoint polygons that cover
     # the same pixel.
-    cdef double buffer_dist = math.hypot(x_pixelwidth, y_pixelheight) / 2. * 1.1
+    cdef double buffer_dist = math.hypot(x_pixelwidth, y_pixelwidth) / 2. * 1.1
+    cdef time_t last_log_time, last_ws_log_time
+    last_log_time = ctime(NULL)
+    cdef int n_features_preprocessed = 0
     for feature in buffered_working_outlets_layer:
+        if ctime(NULL) - last_log_time > 5.0:
+            last_log_time = ctime(NULL)
+            LOGGER.info('Preprocessing outlet geometries approx %.1f%% complete',
+                        (n_features_preprocessed / <float>n_outlet_features) * 100.)
+        n_features_preprocessed += 1
+
         geometry = shapely.wkb.loads(feature.GetGeometryRef().ExportToWkb())
 
         minx, miny, maxx, maxy = geometry.bounds
@@ -567,7 +577,6 @@ def delineate_watersheds(
             y_coord = geometry.y - ((geometry.y - y_origin) % y_pixelwidth) + y_pixelwidth/2.
 
             ws_id = feature.GetField(ws_id_fieldname)
-            LOGGER.info('WS_ID %s is a single pixel', ws_id)
             coord_pair = (x_coord, y_coord)
             if coord_pair not in duplicate_points:
                 # This is the first occurrance of this point geometry
@@ -685,11 +694,9 @@ def delineate_watersheds(
     cdef int* neighbor_row = [0, -1, -1, -1, 0, 1, 1, 1]
     cdef int* reverse_flow = [4, 5, 6, 7, 0, 1, 2, 3]
     cdef int pixels_in_watershed
-    cdef time_t last_log_time, last_ws_log_time
     cdef int block_index
     cdef _ManagedRaster flow_dir_managed_raster, scratch_managed_raster, mask_managed_raster
     cdef int watersheds_started = 0
-    cdef int n_outlet_features = working_outlets_layer.GetFeatureCount()
     cdef int n_disjoint_features = 0
     cdef int n_disjoint_features_started = 0
     cdef int pixels_visited = 0
