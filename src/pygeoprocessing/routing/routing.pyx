@@ -2644,7 +2644,7 @@ def extract_streams(
     """
     flow_accum_info = pygeoprocessing.get_raster_info(
         flow_accum_raster_path_band[0])
-    flow_accum_nodata = flow_accum_info['nodata'][
+    cdef double flow_accum_nodata = flow_accum_info['nodata'][
         flow_accum_raster_path_band[1]-1]
     stream_nodata = 2
 
@@ -2666,27 +2666,31 @@ def extract_streams(
 
     if divergent_search_distance <= 0:
         return
-    cdef int max_stacksize = (divergent_search_distance+8)*3
+    cdef int max_stacksize = divergent_search_distance
 
     cdef _ManagedRaster stream_raster = _ManagedRaster(
             target_stream_raster_path, 1, 1)
     cdef _ManagedRaster dem_raster = _ManagedRaster(
         dem_raster_path_band[0], dem_raster_path_band[1], 0)
+    cdef _ManagedRaster flow_accum_raster = _ManagedRaster(
+        flow_accum_raster_path_band[0], flow_accum_raster_path_band[1], 0)
 
     cdef numpy.ndarray[unsigned char, ndim=2] stream_block
     cdef int xoff, yoff, win_xsize, win_ysize
     cdef int xi, yi, xi_root, yi_root, i_n, xi_n, yi_n, i_sn, xi_sn, yi_sn
     cdef unsigned char sn_stream_val
-    cdef double dem_center, dem_n, dem_sn
+    cdef double dem_center, dem_n
     cdef double dem_nodata = <double>pygeoprocessing.get_raster_info(
         dem_raster_path_band[0])['nodata'][dem_raster_path_band[1]-1]
-    cdef int stack_top=-1, candidate_top=-1
+    cdef int stack_top=-1
     cdef int stack_index = 0
+    cdef int n_iterations = 0
+    cdef double max_n_flow = -1
     # this stack will contain xi, yi, next_dir "tuples", hence the "* 3"
     #cdef int* index_search_stack = <int*>PyMem_Malloc(
     #    sizeof(int) * divergent_search_distance * 3)
     cdef numpy.ndarray[int, ndim=1] index_search_stack = numpy.empty(
-        (max_stacksize,), dtype=numpy.int)
+        ((max_stacksize+1)*2,), dtype=numpy.int)
 
     for block_offsets, stream_block in pygeoprocessing.iterblocks(
             target_stream_raster_path):
@@ -2703,7 +2707,8 @@ def extract_streams(
                     continue
                 dem_center = dem_raster.get(xi_root, yi_root)
                 stack_top = -1
-                candidate_top = -1
+                max_n_flow = -1
+                cur_flow = -1
                 for i_n in range(8):
                     xi_n = xi_root+NEIGHBOR_OFFSET_ARRAY[2*i_n]
                     yi_n = yi_root+NEIGHBOR_OFFSET_ARRAY[2*i_n+1]
@@ -2716,73 +2721,70 @@ def extract_streams(
                         continue
                     if stream_raster.get(xi_n, yi_n) == 1:
                         # this pixel is connected to a stream, so quit
-                        candidate_top = -1
+                        stack_top = -1
                         break
-                    # otherwise, a divergent stream might be found
-                    candidate_top += 1
-                    index_search_stack[candidate_top*3+0] = xi_n
-                    index_search_stack[candidate_top*3+1] = yi_n
-                    index_search_stack[candidate_top*3+2] = 0
+                    # otherwise, a divergent stream might be found, walk in
+                    # the direction of max flow
+                    cur_flow = flow_accum_raster.get(xi_n, yi_n)
+                    if cur_flow > max_n_flow or max_n_flow == -1:
+                        stack_top = 0
+                        max_n_flow = cur_flow
+                        index_search_stack[0] = xi_n
+                        index_search_stack[1] = yi_n
 
-                stack_top = candidate_top
+                n_iterations = 0
                 while stack_top >= 0:
-                    if stack_top < candidate_top:
-                        # we might have finished with a candidate,
-                        # update if so
-                        candidate_top = stack_top
-                    xi_n = index_search_stack[stack_top*3+0]
-                    yi_n = index_search_stack[stack_top*3+1]
-                    i_sn = index_search_stack[stack_top*3+2]
-                    xi_sn = xi_n+NEIGHBOR_OFFSET_ARRAY[2*i_sn]
-                    yi_sn = yi_n+NEIGHBOR_OFFSET_ARRAY[2*i_sn+1]
-                    if (xi_sn < 0 or xi_sn >= raster_x_size or
-                            yi_sn < 0 or yi_sn >= raster_y_size):
-                        # it'll drain off the edge of the raster
-                        if i_sn < 7:
-                            # advance the direction
-                            index_search_stack[stack_top*3+2] = i_sn+1
-                        else:
-                            # otherwise we checked all the directions, pop
-                            # back down a level
-                            stack_top -= 1
-                        continue
-                    dem_n = dem_raster.get(xi_n, yi_n)
-                    dem_sn = dem_raster.get(xi_sn, yi_sn)
-                    if dem_sn > dem_n or is_close(dem_sn, dem_nodata):
-                        if i_sn < 7:
-                            # advance the direction
-                            index_search_stack[stack_top*3+2] += 1
-                        else:
-                            stack_top -= 1
-                        continue
-                    sn_stream_val = (
-                        <unsigned char>stream_raster.get(xi_sn, yi_sn))
-                    if sn_stream_val == 1:
+                    xi_n = index_search_stack[stack_top*2+0]
+                    yi_n = index_search_stack[stack_top*2+1]
+                    if n_iterations > 50000:
+                        LOGGER.debug("stuck in loop %s %s", xi_n, yi_n)
+                    n_iterations += 1
+                    max_n_flow = -1
+                    cur_flow = -1
+                    connect = 0
+                    for i_sn in range(8):
+                        xi_sn = xi_n+NEIGHBOR_OFFSET_ARRAY[2*i_sn]
+                        yi_sn = yi_n+NEIGHBOR_OFFSET_ARRAY[2*i_sn+1]
+                        if (xi_sn < 0 or xi_sn >= raster_x_size or
+                                yi_sn < 0 or yi_sn >= raster_y_size):
+                            # drain to edge
+                            connect = 1
+                            break
+                        sn_stream_val = (
+                            <unsigned char>stream_raster.get(xi_sn, yi_sn))
+                        if sn_stream_val == 1:
+                            # found a down-stream
+                            connect = 1
+                            break
+                        cur_flow = flow_accum_raster.get(xi_sn, yi_sn)
+                        if is_close(cur_flow, flow_accum_nodata):
+                            # could drain to nodata
+                            connect = 1
+                            break
+                        if cur_flow > max_n_flow:
+                            # we might walk downstream in this direction
+                            max_n_flow = cur_flow
+                            index_search_stack[(stack_top+1)*2+0] = xi_sn
+                            index_search_stack[(stack_top+1)*2+1] = yi_sn
+
+                    if connect:
                         # there's a downstream connection!
                         # turn on all the upstream pixels and pop the stack
                         LOGGER.debug("found connection at %d %d", xi_n, yi_n)
-                        for stack_index in reversed(range(stack_top+1)):
-                            xi_n = index_search_stack[stack_index*3+0]
-                            yi_n = index_search_stack[stack_index*3+1]
+                        for stack_index in range(stack_top+1):
+                            xi_n = index_search_stack[stack_index*2+0]
+                            yi_n = index_search_stack[stack_index*2+1]
                             stream_raster.set(xi_n, yi_n, 1)
-                        candidate_top -= 1
-                        stack_top = candidate_top
+                        stack_top = -1
                         break
-                    elif stack_top*3 < max_stacksize-4 and i_sn < 7:
-                        # there might be a downstream connection,
-                        # advance the direction and push on stack
-                        index_search_stack[stack_top*3+2] = i_sn+1
+                    elif stack_top+1 < max_stacksize:
+                        # try the next pixel down
                         stack_top += 1
-                        index_search_stack[stack_top*3+0] = xi_sn
-                        index_search_stack[stack_top*3+1] = yi_sn
-                        index_search_stack[stack_top*3+2] = 0
-
                     else:
-                        # advance the direction or pop
-                        if i_sn < 7:
-                            index_search_stack[stack_top*3+2] = i_sn+1
-                        else:
-                            stack_top -= 1
+                        # no connection and hit the bottom of the stack
+                        stack_top = -1
+                        break
+
     stream_raster.close()
 
 
