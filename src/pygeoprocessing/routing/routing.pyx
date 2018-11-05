@@ -2704,7 +2704,6 @@ def extract_streams(
                 dem_center = dem_raster.get(xi_root, yi_root)
                 stack_top = -1
                 candidate_top = -1
-                dem_n = dem_nodata
                 for i_n in range(8):
                     xi_n = xi_root+NEIGHBOR_OFFSET_ARRAY[2*i_n]
                     yi_n = yi_root+NEIGHBOR_OFFSET_ARRAY[2*i_n+1]
@@ -2747,6 +2746,7 @@ def extract_streams(
                             # back down a level
                             stack_top -= 1
                         continue
+                    dem_n = dem_raster.get(xi_n, yi_n)
                     dem_sn = dem_raster.get(xi_sn, yi_sn)
                     if dem_sn > dem_n or is_close(dem_sn, dem_nodata):
                         if i_sn < 7:
@@ -2760,7 +2760,8 @@ def extract_streams(
                     if sn_stream_val == 1:
                         # there's a downstream connection!
                         # turn on all the upstream pixels and pop the stack
-                        LOGGER.debug("found a connection at %d %d", xi_n, yi_n)
+                        LOGGER.debug(
+                            "found a connection at %d %d", xi_n, yi_n)
                         for stack_index in reversed(range(stack_top+1)):
                             xi_n = index_search_stack[stack_index*3+0]
                             yi_n = index_search_stack[stack_index*3+1]
