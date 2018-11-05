@@ -2603,6 +2603,64 @@ def distance_to_channel_mfd(
     LOGGER.info('%.2f%% complete', 100.0)
 
 
+def extract_streams(
+        dem_raster_path_band, flow_accum_raster_path_band, flow_threshold,
+        target_stream_raster_path, divergent_search_distance=10,
+        gtiff_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS):
+    """Classify a stream raster.
+
+    This function classifies pixels as streams that have a flow accumulation
+    value >= `flow_threshold`. In the case of divergent streams, the function
+    will trace potential streams downhill for up to
+    `divergent_search_distance` pixels away.
+
+    Parameters:
+        dem_raster_path_band (tuple): a string/integer tuple indicating the
+            digital elevation model to classify the streams on.
+        flow_accum_raster_path_band (tuple): a string/integer tuple indicating
+            the flow accumulation raster to use as a basis for thresholding
+            a stream. Values in this raster that are >= flow_threshold will
+            be classified as streams. This raster should be derived from
+            `dem_raster_path_band` and at the least match the dimensions,
+            projections, and nodata pixels.
+        flow_threshold (float): the value in
+            `flow_accum_raster_path_band` to indicate where a stream
+            exists.
+        target_stream_raster_path (str): path to the target stream raster.
+            This raster will be the same dimensions and projection as
+            `dem_raster_path_band`.
+        divergent_search_distance (int): when a stream terminates with a
+            divergent flow, this algorithm will search up to
+            `divergent_search_distance` downhill pixels away to find a
+            connecting downhill stream. If one is found the stream is traced
+            through the least cost path from the divergent flow to the
+            downhill new flow.
+        gtiff_creation_options (list): this is an argument list that will be
+            passed to the GTiff driver.  Useful for blocksizes, compression,
+            and more.
+
+    Returns:
+        None.
+    """
+    flow_accum_nodata = pygeoprocessing.get_raster_info(
+        flow_accum_raster_path_band[0])['nodata'][
+        flow_accum_raster_path_band[1]-1]
+    stream_nodata = 2
+
+    def classify_stream_op(flow_accum_array):
+        """Simple flow accumulation thresholding."""
+        result = numpy.zeros(flow_accum_array.shape, dtype=numpy.int8)
+        result[:] = stream_nodata
+        valid_mask = ~numpy.isclose(flow_accum_array, flow_accum_nodata)
+        result[valid_mask] = flow_accum_array[valid_mask] >= flow_threshold
+        return result
+
+    pygeoprocessing.raster_calculator(
+        [flow_accum_raster_path_band], classify_stream_op,
+        target_stream_raster_path, gdal.GDT_Byte, stream_nodata,
+        gtiff_creation_options=gtiff_creation_options)
+
+
 def _is_raster_path_band_formatted(raster_path_band):
     """Return true if raster path band is a (str, int) tuple/list."""
     if not isinstance(raster_path_band, (list, tuple)):
