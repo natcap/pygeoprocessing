@@ -1047,7 +1047,6 @@ def join_watershed_fragments(watershed_fragments_vector,
     fragment_geometries = {}
     fragment_field_values = {}
     LOGGER.info('Loading fragment geometries.')
-    cdef int ws_id
     for feature in fragments_layer:
         ws_id = feature.GetField('ws_id')
         fragment_field_values[ws_id] = feature.items()
