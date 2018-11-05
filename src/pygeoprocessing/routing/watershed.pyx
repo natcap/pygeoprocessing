@@ -1079,7 +1079,7 @@ def join_watershed_fragments(watershed_fragments_vector,
         len(watershed_geometries))
 
     encountered_ws_ids = set([])
-    def _recurse_watersheds(int ws_id):
+    def _recurse_watersheds(ws_id):
         """Find or build geometries for the given ``ws_id``.
 
         This is a dynamic programming, recursive approach to determining
