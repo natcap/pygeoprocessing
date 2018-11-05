@@ -2736,6 +2736,11 @@ def extract_streams(
                 while stack_top >= 0:
                     xi_n = index_search_stack[stack_top*2+0]
                     yi_n = index_search_stack[stack_top*2+1]
+
+                    dem_n = dem_raster.get(xi_n, yi_n)
+                    if dem_n > dem_center or is_close(dem_n, dem_nodata):
+                        continue
+
                     if n_iterations > 50000:
                         LOGGER.debug("stuck in loop %s %s", xi_n, yi_n)
                     n_iterations += 1
@@ -2745,17 +2750,28 @@ def extract_streams(
                     for i_sn in range(8):
                         xi_sn = xi_n+NEIGHBOR_OFFSET_ARRAY[2*i_sn]
                         yi_sn = yi_n+NEIGHBOR_OFFSET_ARRAY[2*i_sn+1]
+
                         if (xi_sn < 0 or xi_sn >= raster_x_size or
                                 yi_sn < 0 or yi_sn >= raster_y_size):
                             # drain to edge
                             connect = 1
                             break
+
+                        dem_sn = dem_raster.get(xi_sn, yi_sn)
+                        if dem_sn > dem_center:
+                            continue
+                        if is_close(dem_sn, dem_nodata):
+                            # could drain to nodata
+                            connect = 1
+                            break
+
                         sn_stream_val = (
                             <unsigned char>stream_raster.get(xi_sn, yi_sn))
                         if sn_stream_val == 1:
                             # found a down-stream
                             connect = 1
                             break
+
                         cur_flow = flow_accum_raster.get(xi_sn, yi_sn)
                         if is_close(cur_flow, flow_accum_nodata):
                             # could drain to nodata
