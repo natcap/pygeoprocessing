@@ -2666,7 +2666,7 @@ def extract_streams(
 
     if divergent_search_distance <= 0:
         return
-    cdef int max_stacksize = divergent_search_distance
+    cdef int max_stacksize = (divergent_search_distance+8)*3
 
     cdef _ManagedRaster stream_raster = _ManagedRaster(
             target_stream_raster_path, 1, 1)
@@ -2686,7 +2686,7 @@ def extract_streams(
     #cdef int* index_search_stack = <int*>PyMem_Malloc(
     #    sizeof(int) * divergent_search_distance * 3)
     cdef numpy.ndarray[int, ndim=1] index_search_stack = numpy.empty(
-        (max_stacksize*3,), dtype=numpy.int)
+        (max_stacksize,), dtype=numpy.int)
 
     for block_offsets, stream_block in pygeoprocessing.iterblocks(
             target_stream_raster_path):
@@ -2760,8 +2760,7 @@ def extract_streams(
                     if sn_stream_val == 1:
                         # there's a downstream connection!
                         # turn on all the upstream pixels and pop the stack
-                        LOGGER.debug(
-                            "found a connection at %d %d", xi_n, yi_n)
+                        LOGGER.debug("found connection at %d %d", xi_n, yi_n)
                         for stack_index in reversed(range(stack_top+1)):
                             xi_n = index_search_stack[stack_index*3+0]
                             yi_n = index_search_stack[stack_index*3+1]
@@ -2769,7 +2768,7 @@ def extract_streams(
                         candidate_top -= 1
                         stack_top = candidate_top
                         break
-                    elif stack_top < max_stacksize-1 and i_sn < 7:
+                    elif stack_top*3 < max_stacksize-4 and i_sn < 7:
                         # there might be a downstream connection,
                         # advance the direction and push on stack
                         index_search_stack[stack_top*3+2] = i_sn+1
@@ -2777,12 +2776,14 @@ def extract_streams(
                         index_search_stack[stack_top*3+0] = xi_sn
                         index_search_stack[stack_top*3+1] = yi_sn
                         index_search_stack[stack_top*3+2] = 0
+
                     else:
                         # advance the direction or pop
                         if i_sn < 7:
                             index_search_stack[stack_top*3+2] = i_sn+1
                         else:
                             stack_top -= 1
+    stream_raster.close()
 
 
 def _is_raster_path_band_formatted(raster_path_band):
