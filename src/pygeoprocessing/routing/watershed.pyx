@@ -4,6 +4,7 @@ import logging
 import shutil
 import tempfile
 import itertools 
+import math
 
 import numpy
 import pygeoprocessing
@@ -490,7 +491,6 @@ def delineate_watersheds(
     cdef double y_origin = source_gt[3]
     cdef double x_pixelwidth = source_gt[1]
     cdef double y_pixelwidth = source_gt[5]
-    cdef double half_pixelwidth = (abs(x_pixelwidth) + abs(y_pixelwidth)) / 4.
 
     # FIDs are unreliable, so we use the ws_id field to identify geometries.
     LOGGER.info("Preprocessing outlet geometries")
@@ -530,56 +530,81 @@ def delineate_watersheds(
                                                              working_outlets_vector)
     buffered_working_outlets_layer = buffered_working_outlets_vector.GetLayer()
     buffered_working_outlets_layer.StartTransaction()
+    cdef int minx_pixelcoord, maxx_pixelcoord, miny_pixelcoord, maxy_pixelcoord
+    cdef double pixel_area = abs(x_pixelwidth * y_pixelwidth)
+    cdef double half_pixelwidth = x_pixelwidth / 2.
+    cdef double half_pixelheight = y_pixelwidth / 2.
+
+    # The disjoint_polygon_set determination process returns sets of polygons
+    # that do not touch at all. With points, having a half-pixel height and width
+    # that's *just* slightly smaller than a full pixel should ensure that we don't
+    # have small/point geometries that touch.
+    cdef double x_half_boxwidth = half_pixelwidth * 0.95
+    cdef double y_half boxheight = half_pixelhwight * 0.95
+
+    # Using slightly more than half the hypotenuse of the pixel's height and
+    # width should guarantee that we won't have disjoint polygons that cover
+    # the same pixel.
+    cdef double buffer_dist = math.hypot(x_pixelwidth, y_pixelheight) / 2. * 1.1
     for feature in buffered_working_outlets_layer:
-        ogr_geom = feature.GetGeometryRef()
+        geometry = shapely.wkb.loads(feature.GetGeometryRef().ExportToWkb())
 
-        # We have some known, explicit special cases for points and polygons
-        # that are useful to handle here.  If someone throws a different geometry type at this,
-        # it should work ... though there's likely to be some strangeness if geometries are
-        # both very small and very close together.
-        if ogr_geom.GetGeometryName() in ('POINT', 'POLYGON'):
-            geometry = shapely.wkb.loads(ogr_geom.ExportToWkb())
-            if geometry.geom_type == 'Point':
-                # Snap the point to the nearest Flow Dir pixel and create a small
-                # polygon.
-                quarter_pixelwidth = x_pixelwidth/4.
-                quarter_pixelheight = y_pixelwidth/4.
+        minx, miny, maxx, maxy = geometry.bounds
+        minx_pixelcoord = (minx - x_origin) // x_pixelwidth
+        miny_pixelcoord = (miny - y_origin) // y_pixelwidth
+        maxx_pixelcoord = (maxx - x_origin) // x_pixelwidth
+        maxy_pixelcoord = (maxy - y_origin) // y_pixelwidth
 
-                x_coord = geometry.x - ((geometry.x - x_origin) % x_pixelwidth) + x_pixelwidth/2.
-                y_coord = geometry.y - ((geometry.y - y_origin) % y_pixelwidth) + y_pixelwidth/2.
+        # If the geometry only intersects a single pixel, we can treat it as a point,
+        # which allows us to trivially check for functionally-duplicate geometries and
+        # avoid recomputing some watersheds.
+        if minx_pixelcoord == maxx_pixelcoord and miny_pixelcoord == maxy_pixelcoord:
+            # Snap the point to the nearest Flow Dir pixel and create a small
+            # polygon.
+            geometry = geometry.representative_point()
 
-                ws_id = feature.GetField(ws_id_fieldname)
-                coord_pair = (x_coord, y_coord)
-                if coord_pair not in duplicate_points:
-                    # This is the first occurrance of this point geometry
-                    duplicate_points[coord_pair] = ws_id
-                    duplicate_point_ws_ids[ws_id] = []
-                else:
-                    duplicate_point_fids.add(feature.GetFID())
-                    duplicate_point_ws_ids[duplicate_points[coord_pair]].append(ws_id)
-                    continue  # no need to create this geometry; we'll copy it over later.
+            x_coord = geometry.x - ((geometry.x - x_origin) % x_pixelwidth) + x_pixelwidth/2.
+            y_coord = geometry.y - ((geometry.y - y_origin) % y_pixelwidth) + y_pixelwidth/2.
 
-                new_geometry = shapely.geometry.box(
-                    x_coord - quarter_pixelwidth,
-                    y_coord - quarter_pixelheight,
-                    x_coord + quarter_pixelwidth,
-                    y_coord + quarter_pixelheight)
+            ws_id = feature.GetField(ws_id_fieldname)
+            LOGGER.info('WS_ID %s is a single pixel', ws_id)
+            coord_pair = (x_coord, y_coord)
+            if coord_pair not in duplicate_points:
+                # This is the first occurrance of this point geometry
+                duplicate_points[coord_pair] = ws_id
+                duplicate_point_ws_ids[ws_id] = []
             else:
-                # It's a polygon!
-                # If the polygon is really small (smaller than a pixel), it's
-                # helpful to buffer it a bit so that we are sure to separate it
-                # out via the sets of disjoint polygons.
-                # The decision to buffer by half the mean pixelwidth is
-                # arbitrary, but it was enough to resolve this issue on the
-                # Montana Lakes dataset I had to work with.
-                if geometry.area <= abs(x_pixelwidth*y_pixelwidth):
-                    new_geometry = geometry.buffer(half_pixelwidth)
-                else:
-                    new_geometry = geometry
+                duplicate_point_fids.add(feature.GetFID())
+                duplicate_point_ws_ids[duplicate_points[coord_pair]].append(ws_id)
+                continue  # no need to create this geometry; we'll copy it over later.
 
-            feature.SetGeometry(ogr.CreateGeometryFromWkb(new_geometry.wkb))
+            new_geometry = shapely.geometry.box(
+                x_coord - x_half_boxwidth,
+                y_coord - y_half_boxheight,
+                x_coord + x_half_boxwidth,
+                y_coord + y_half_boxheight)
 
+        # If we can't fit the geometry into a single pixel, there remain
+        # two special cases that warrant buffering:
+        #     * It's a line (lines don't have area). We want to avoid a
+        #       situation where multiple lines cover the same pixels
+        #       but don't intersect.  Such geometries should be handled
+        #       in disjoint sets.
+        #     * It's a polygon that has area smaller than a pixel. This
+        #       came up in real-world sample data (the Montana Lakes
+        #       example, specifically), where some very small lakes were
+        #       disjoint but both overlapped only one pixel, the same pixel.
+        #       This lead to a race condition in rasterization where only
+        #       one of them would be in the output vector.
+        elif (geometry.area == 0.0 or geometry.area <= pixel_area):
+            new_geometry = geometry.buffer(buffer_dist)
+        else:
+            # No need to set the geometry, just continue.
+            continue
+
+        feature.SetGeometry(ogr.CreateGeometryFromWkb(new_geometry.wkb))
         buffered_working_outlets_layer.SetFeature(feature)
+
     buffered_working_outlets_layer.CommitTransaction()
     buffered_working_outlets_vector.FlushCache()
     del duplicate_points  # don't need this any more.
@@ -876,12 +901,18 @@ def delineate_watersheds(
                                 process_queue_set.insert(neighbor_pixel)
 
                 nested_watersheds[ws_id] = set(nested_watershed_ids)
+        disjoint_logger.info(
+            'Delineated %s watersheds of %s (%s of %s total)',
+            n_disjoint_features_started, n_disjoint_features,
+            watersheds_started, n_outlet_features)
+
         points_in_blocks.clear()
         coords_in_block.clear()
 
         scratch_managed_raster.close()  # flush the scratch raster.
         mask_managed_raster.close()  # flush the mask raster
 
+        disjoint_logger.info('Polygonizing fragments')
         scratch_raster = gdal.OpenEx(scratch_raster_path, gdal.OF_RASTER)
         scratch_band = scratch_raster.GetRasterBand(1)
         mask_raster = gdal.OpenEx(mask_raster_path, gdal.OF_RASTER)
