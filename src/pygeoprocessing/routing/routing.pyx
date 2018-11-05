@@ -2726,7 +2726,7 @@ def extract_streams(
                     # otherwise, a divergent stream might be found, walk in
                     # the direction of max flow
                     cur_flow = flow_accum_raster.get(xi_n, yi_n)
-                    if cur_flow > max_n_flow or max_n_flow == -1:
+                    if cur_flow > max_n_flow:
                         stack_top = 0
                         max_n_flow = cur_flow
                         index_search_stack[0] = xi_n
@@ -2736,11 +2736,7 @@ def extract_streams(
                 while stack_top >= 0:
                     xi_n = index_search_stack[stack_top*2+0]
                     yi_n = index_search_stack[stack_top*2+1]
-
                     dem_n = dem_raster.get(xi_n, yi_n)
-                    if dem_n > dem_center or is_close(dem_n, dem_nodata):
-                        continue
-
                     if n_iterations > 50000:
                         LOGGER.debug("stuck in loop %s %s", xi_n, yi_n)
                     n_iterations += 1
@@ -2758,12 +2754,13 @@ def extract_streams(
                             break
 
                         dem_sn = dem_raster.get(xi_sn, yi_sn)
-                        if dem_sn > dem_center:
-                            continue
                         if is_close(dem_sn, dem_nodata):
                             # could drain to nodata
                             connect = 1
                             break
+
+                        if dem_sn > dem_n:
+                            continue
 
                         sn_stream_val = (
                             <unsigned char>stream_raster.get(xi_sn, yi_sn))
@@ -2777,11 +2774,12 @@ def extract_streams(
                             # could drain to nodata
                             connect = 1
                             break
-                        if cur_flow > max_n_flow:
-                            # we might walk downstream in this direction
-                            max_n_flow = cur_flow
-                            index_search_stack[(stack_top+1)*2+0] = xi_sn
-                            index_search_stack[(stack_top+1)*2+1] = yi_sn
+                        if cur_flow > max_n_flow and (
+                                    stack_top+1 < max_stacksize):
+                                # we might walk downstream in this direction
+                                max_n_flow = cur_flow
+                                index_search_stack[(stack_top+1)*2+0] = xi_sn
+                                index_search_stack[(stack_top+1)*2+1] = yi_sn
 
                     if connect:
                         # there's a downstream connection!
