@@ -677,6 +677,8 @@ def delineate_watersheds(
 
         disjoint_layer = None
         disjoint_vector = None
+    buffered_working_outlets_layer = None
+    buffered_working_outlets_vector = None
 
     target_fragments_vector = gpkg_driver.Create(target_fragments_vector_path,
                                                  0, 0, 0, gdal.GDT_Unknown)
@@ -1004,6 +1006,8 @@ def delineate_watersheds(
         target_fragments_layer.CommitTransaction()
 
         # Close the watershed fragments vector from this disjoint geometry set.
+        disjoint_outlets_layer = None
+        disjoint_outlets_vector = None
         watershed_fragments_layer = None
         watershed_fragments_vector = None
 
@@ -1012,6 +1016,8 @@ def delineate_watersheds(
     scratch_raster = None
     mask_band = None
     mask_raster = None
+    working_outlets_layer = None
+    working_outlets_vector = None
 
     shutil.rmtree(working_dir_path, ignore_errors=True)
 
