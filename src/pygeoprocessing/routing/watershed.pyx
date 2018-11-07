@@ -29,6 +29,11 @@ from libcpp.deque cimport deque
 from libcpp.set cimport set as cset
 from libcpp.map cimport map as cmap
 
+try:
+    from shapely.geos import ReadingError
+except ImportError:
+    from shapely.errors import ReadingError
+
 LOGGER = logging.getLogger(__name__)
 LOGGER.addHandler(logging.NullHandler())  # silence logging by default
 
@@ -500,6 +505,19 @@ def delineate_watersheds(
     for ws_id, feature in enumerate(working_outlets_layer, start=1):
         working_vector_ws_id_to_fid[ws_id] = feature.GetFID()
         feature.SetField(ws_id_fieldname, ws_id)
+
+        try:
+            ogr_geom = feature.GetGeometryRef()
+            geometry = shapely.wkb.loads(ogr_geom.ExportToWkb())
+        except ReadingError:
+            # Attempt to load the geometry as a shapely object. If this fails, try
+            # to fix the geometry.  The most common reason for this to fail is
+            # when polygons don't form closed rings.
+            ogr_geom.CloseRings()
+            ogr_geom.Buffer(0)
+            geometry = shapely.wkb.loads(ogr_geom.ExportToWkb())
+            feature.SetGeometry(ogr_geom)
+
         working_outlets_layer.SetFeature(feature)
     working_outlets_layer.CommitTransaction()
 
@@ -633,7 +651,7 @@ def delineate_watersheds(
         if not disjoint_polygon_fid_set:
             continue
 
-        LOGGER.info("Creating a vector of %s disjoint polygon(s)",
+        LOGGER.info("Creating a vector of %s disjoint geometries",
                     len(disjoint_polygon_fid_set))
         disjoint_vector_path = os.path.join(
                 working_dir_path, 'disjoint_outflow_%s.gpkg' % set_index)
