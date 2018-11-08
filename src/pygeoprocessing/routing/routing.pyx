@@ -24,11 +24,6 @@ import tempfile
 import numpy
 import pygeoprocessing
 from osgeo import gdal
-from osgeo import osr
-from osgeo import ogr
-import shapely.wkb
-import shapely.ops
-import rtree
 
 cimport numpy
 cimport cython
@@ -43,7 +38,6 @@ from libcpp.queue cimport queue
 from libcpp.stack cimport stack
 from libcpp.deque cimport deque
 from libcpp.set cimport set as cset
-from libcpp.map cimport map as cmap
 
 LOGGER = logging.getLogger(__name__)
 LOGGER.addHandler(logging.NullHandler())  # silence logging by default
@@ -530,9 +524,6 @@ def fill_pits(
     Returns:
         None.
     """
-    if not _is_raster_path_band_formatted(dem_raster_path_band):
-        raise ValueError('Parameter dem_raster_path_band must be a tuple of '
-                         '(raster path, band index).')
     # These variables are used to iterate over the DEM using `iterblock`
     # indexes, a numpy.float64 type is used since we need to statically cast
     # and it's the most complex numerical type and will be compatible without
