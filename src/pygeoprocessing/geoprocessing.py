@@ -826,7 +826,7 @@ def new_raster_from_base(
         None
 
     """
-    base_raster = gdal.OpenEx(base_path)
+    base_raster = gdal.OpenEx(base_path, gdal.OF_RASTER)
     if n_rows is None:
         n_rows = base_raster.RasterYSize
     if n_cols is None:
@@ -954,7 +954,7 @@ def create_raster_from_vector_extents(
     """
     # Determine the width and height of the tiff in pixels based on the
     # maximum size of the combined envelope of all the features
-    vector = gdal.OpenEx(base_vector_path)
+    vector = gdal.OpenEx(base_vector_path, gdal.OF_VECTOR)
     shp_extent = None
     for layer_index in range(vector.GetLayerCount()):
         layer = vector.GetLayer(layer_index)
@@ -1041,7 +1041,7 @@ def interpolate_points(
        None
 
     """
-    source_vector = gdal.OpenEx(base_vector_path)
+    source_vector = gdal.OpenEx(base_vector_path, gdal.OF_VECTOR)
     point_list = []
     value_list = []
     for layer_index in range(source_vector.GetLayerCount()):
@@ -1058,7 +1058,8 @@ def interpolate_points(
     point_array = numpy.array(point_list)
     value_array = numpy.array(value_list)
 
-    target_raster = gdal.OpenEx(target_raster_path_band[0], gdal.GA_Update)
+    target_raster = gdal.OpenEx(
+        target_raster_path_band[0], gdal.OF_RASTER | gdal.GA_Update)
     band = target_raster.GetRasterBand(target_raster_path_band[1])
     nodata = band.GetNoDataValue()
     geotransform = target_raster.GetGeoTransform()
@@ -1545,7 +1546,7 @@ def reproject_vector(
         None
 
     """
-    base_vector = gdal.OpenEx(base_vector_path)
+    base_vector = gdal.OpenEx(base_vector_path, gdal.OF_VECTOR)
 
     # if this file already exists, then remove it
     if os.path.isfile(target_path):
@@ -1937,7 +1938,7 @@ def rasterize(
     if raster is None:
         raise ValueError(
             "%s doesn't exist, but needed to rasterize." % target_raster_path)
-    vector = gdal.OpenEx(vector_path)
+    vector = gdal.OpenEx(vector_path, gdal.OF_VECTOR)
     layer = vector.GetLayer(layer_index)
 
     rasterize_callback = _make_logger_callback(
@@ -1985,7 +1986,7 @@ def calculate_disjoint_polygon_set(vector_path, layer_index=0):
         subset_list (sequence): sequence of sets of FIDs from vector_path
 
     """
-    vector = gdal.OpenEx(vector_path)
+    vector = gdal.OpenEx(vector_path, gdal.OF_VECTOR)
     vector_layer = vector.GetLayer(layer_index)
     feature_count = vector_layer.GetFeatureCount()
 
@@ -2259,9 +2260,9 @@ def convolve_2d(
     # we need the original signal raster info because we want the output to
     # be clipped and NODATA masked to it
     base_signal_nodata = signal_raster_info['nodata']
-    signal_raster = gdal.OpenEx(signal_path_band[0])
+    signal_raster = gdal.OpenEx(signal_path_band[0], gdal.OF_RASTER)
     signal_band = signal_raster.GetRasterBand(signal_path_band[1])
-    target_raster = gdal.OpenEx(target_path, gdal.GA_Update)
+    target_raster = gdal.OpenEx(target_path, gdal.OF_RASTER | gdal.GA_Update)
     target_band = target_raster.GetRasterBand(1)
 
     # if we're ignoring nodata, we need to make a parallel convolved signal
