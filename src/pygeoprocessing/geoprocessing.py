@@ -568,6 +568,7 @@ def align_and_resize_raster_stack(
         ValueError if `vector_mask_options` is not None but the
             `mask_vector_path` is undefined or doesn't point to a valid
             file.
+        ValueError if `pixel_size` is not a 2 element sequence of numbers.
 
     """
     # make sure that the input lists are of the same length
@@ -1764,6 +1765,11 @@ def warp_raster(
     Returns:
         None
 
+    Raises:
+        ValueError if `pixel_size` is not a 2 element sequence of numbers.
+        ValueError if `vector_mask_options` is not None but the
+            `mask_vector_path` is undefined or doesn't point to a valid
+            file.
     """
     _assert_is_valid_pixel_size(target_pixel_size)
 
