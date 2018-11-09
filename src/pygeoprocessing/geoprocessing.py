@@ -1892,11 +1892,11 @@ def rasterize(
         vector_path (string): filepath to vector to rasterize.
         target_raster_path (string): path to an existing raster to burn vector
             into.  Can have multiple bands.
-        burn_values (sequence): optional list of values to burn into each band
-            of the raster.  If used, should have the same length as number of
-            bands at the `target_raster_path` raster.  If `None` then
-            `option_list` must have a valid value.
-        option_list (sequence): optional a sequence of burn options, if None
+        burn_values (list/tuple): optional sequence of values to burn into
+            each band of the raster.  If used, should have the same length as
+            number of bands at the `target_raster_path` raster.  If `None`
+            then `option_list` must have a valid value.
+        option_list (list/tuple): optional a sequence of burn options, if None
             then a valid value for `burn_values` must exist. Otherwise, each
             element is a string of the form:
                 "ATTRIBUTE=?": Identifies an attribute field on the features
@@ -1955,12 +1955,12 @@ def rasterize(
 
     if not isinstance(burn_values, (list, tuple)):
         raise ValueError(
-            "`burn_values` is not a sequence, the value passed is '%s'",
+            "`burn_values` is not a list/tuple, the value passed is '%s'",
             repr(burn_values))
 
     if not isinstance(option_list, (list, tuple)):
         raise ValueError(
-            "`option_list` is not a sequence, the value passed is '%s'",
+            "`option_list` is not a list/tuple, the value passed is '%s'",
             repr(option_list))
 
     gdal.RasterizeLayer(

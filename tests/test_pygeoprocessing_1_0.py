@@ -2179,7 +2179,7 @@ class PyGeoprocessing10(unittest.TestCase):
             pygeoprocessing.rasterize(
                 base_vector_path, target_raster_path, 1, None,
                 layer_index=0)
-        expected_message = "`burn_values` is not a sequence"
+        expected_message = "`burn_values` is not a list/tuple"
         actual_message = str(cm.exception)
         self.assertTrue(expected_message in actual_message, actual_message)
 
@@ -2187,7 +2187,7 @@ class PyGeoprocessing10(unittest.TestCase):
             pygeoprocessing.rasterize(
                 base_vector_path, target_raster_path, None, "ATTRIBUTE=id",
                 layer_index=0)
-        expected_message = "`option_list` is not a sequence"
+        expected_message = "`option_list` is not a list/tuple"
         actual_message = str(cm.exception)
         self.assertTrue(expected_message in actual_message, actual_message)
 
