@@ -1165,7 +1165,8 @@ class PyGeoprocessing10(unittest.TestCase):
                     bad_raster_path_band_list, passthrough, target_path,
                     gdal.GDT_Int32, nodata_target, calc_raster_stats=True)
             expected_message = (
-                'Expected a list of path / integer band tuples, ndarrays, ')
+                'Expected a sequence of path / integer band tuples, '
+                'ndarrays, ')
             actual_message = str(cm.exception)
             self.assertTrue(
                 expected_message in actual_message, actual_message)
@@ -1380,7 +1381,7 @@ class PyGeoprocessing10(unittest.TestCase):
             pygeoprocessing.raster_calculator(
                 [(base_path, 1), ("raw",)], lambda a, z: a*z,
                 target_path, gdal.GDT_Float32, None)
-        expected_message = ('Expected a list of path / integer band tuples')
+        expected_message = 'Expected a sequence of path / integer band tuples'
         actual_message = str(cm.exception)
         self.assertTrue(expected_message in actual_message, actual_message)
 
@@ -2178,7 +2179,7 @@ class PyGeoprocessing10(unittest.TestCase):
             pygeoprocessing.rasterize(
                 base_vector_path, target_raster_path, 1, None,
                 layer_index=0)
-        expected_message = "`burn_values` is not a list"
+        expected_message = "`burn_values` is not a sequence"
         actual_message = str(cm.exception)
         self.assertTrue(expected_message in actual_message, actual_message)
 
@@ -2186,7 +2187,7 @@ class PyGeoprocessing10(unittest.TestCase):
             pygeoprocessing.rasterize(
                 base_vector_path, target_raster_path, None, "ATTRIBUTE=id",
                 layer_index=0)
-        expected_message = "`option_list` is not a list"
+        expected_message = "`option_list` is not a sequence"
         actual_message = str(cm.exception)
         self.assertTrue(expected_message in actual_message, actual_message)
 
