@@ -504,7 +504,7 @@ def align_and_resize_raster_stack(
             which one to one map each path in `base_raster_path_list` during
             resizing.  Each element must be one of
             "near|bilinear|cubic|cubicspline|lanczos|mode".
-        target_pixel_size (sequence): the target raster's x and y pixel size
+        target_pixel_size (list/tuple): the target raster's x and y pixel size
             example: (30, -30).
         bounding_box_mode (string): one of "union", "intersection", or
             a sequence of floats of the form [minx, miny, maxx, maxy] in the
@@ -937,7 +937,7 @@ def create_raster_from_vector_extents(
             whether the pixel size divides evenly into the source bounding
             box; if not coordinates will be rounded up to contain the original
             extent.
-        target_pixel_size (sequence): the x/y pixel size as a sequence
+        target_pixel_size (list/tuple): the x/y pixel size as a sequence
             ex: [30.0, -30.0]
         target_pixel_type (int): gdal GDT pixel type of target raster
         target_nodata (numeric): target nodata value. Can be None if no nodata
@@ -1729,7 +1729,7 @@ def warp_raster(
 
     Parameters:
         base_raster_path (string): path to base raster.
-        target_pixel_size (sequence): a two element sequence indicating
+        target_pixel_size (list/tuple): a two element sequence indicating
             the x and y pixel size in projected units.
         target_raster_path (string): the location of the resized and
             resampled raster.
