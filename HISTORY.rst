@@ -1,8 +1,8 @@
 Release History
 ===============
 
-Unreleased changes
-------------------
+1.4.0 11/12/2018
+----------------
 * Adding error checking to ensure that `target_pixel_size` passed to
   `warp_raster` and `align_and_resize_raster_stack` are validated to ensure
   they are in the correct format. This solves an issue where an incorrect
