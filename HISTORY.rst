@@ -1,6 +1,28 @@
 Release History
 ===============
 
+1.4.0 11/12/2018
+----------------
+* Adding error checking to ensure that `target_pixel_size` passed to
+  `warp_raster` and `align_and_resize_raster_stack` are validated to ensure
+  they are in the correct format. This solves an issue where an incorrect
+  value, such as a single numerical value, resolve into readable exception
+  messages.
+* Added a `gdal_warp_options` parameter to `align_and_resize_raster_stack` and
+  `warp_raster` whose contents get passed to gdal.Warp's `warpOptions`
+  parameter. This was implemented to expose the CUTLINE_TOUCH_ALL
+  functionality but could be used for any gdal functionality.
+* Modified `rasterize` API call to make `burn_values` and `option_list` both
+  optional parameters, along with error checking to ensure a bad input's
+  behavior is understood.
+* Exposing GeoTIFF creation options for all the `pygeoprocessing.routing`
+  functions which create rasters. This is consistent with the creation
+  options exposed in the main `pygeoprocessing` API.
+* Removing ``'mean_pixel_size'`` as a return value from ``get_raster_info``,
+  this is because this parameter is easily misused and easily calculated if
+  needed. This is a "What good programmers need, not what bad programmers
+  want." feature.
+
 1.3.1 10/25/2018
 ----------------
 * Hotfix to patch an infinite loop when aggregating upstream or downstream
