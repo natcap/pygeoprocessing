@@ -2568,13 +2568,13 @@ def iterblocks(
     if astype_list is not None:
         if not isinstance(astype_list, (list, tuple)):
             raise ValueError(
-                "`astype_list` should be a list or tuple instead it is %s",
-                repr(astype_list))
+                "`astype_list` should be a list or tuple instead it is %s" % (
+                    repr(astype_list)))
         if len(band_index_list) != len(astype_list):
             raise ValueError(
                 "`band_index_list` and `astype_list` should be the same "
-                "length, instead they are sizes %d and %d",
-                len(band_index_list), len(astype_list))
+                "length, instead they are sizes %d and %d" % (
+                    len(band_index_list), len(astype_list)))
         block_type_list = astype_list
     else:
         block_type_list = [
