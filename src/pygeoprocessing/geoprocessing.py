@@ -1196,7 +1196,7 @@ def zonal_statistics(
     if polygons_might_overlap:
         LOGGER.info("creating disjoint polygon set")
         disjoint_fid_sets = calculate_disjoint_polygon_set(
-            aggregate_vector_path)
+            aggregate_vector_path, bounding_box=raster_info['bounding_box'])
     else:
         disjoint_fid_sets = [aggregate_layer_fid_set]
 
@@ -1333,18 +1333,33 @@ def zonal_statistics(
         if clipped_gt[5] < 0:
             unset_geom_envelope[2], unset_geom_envelope[3] = (
                 unset_geom_envelope[3], unset_geom_envelope[2])
+
         xoff = int((unset_geom_envelope[0] - clipped_gt[0]) / clipped_gt[1])
-        if not 0 <= xoff < clipped_band.XSize:
-            continue
         yoff = int((unset_geom_envelope[2] - clipped_gt[3]) / clipped_gt[5])
-        if not 0 <= yoff < clipped_band.YSize:
-            continue
         win_xsize = int(numpy.ceil(
             (unset_geom_envelope[1] - clipped_gt[0]) /
             clipped_gt[1])) - xoff
         win_ysize = int(numpy.ceil(
             (unset_geom_envelope[3] - clipped_gt[3]) /
             clipped_gt[5])) - yoff
+
+        # clamp offset to the side of the raster if it's negative
+        if xoff < 0:
+            win_xsize += xoff
+            xoff = 0
+        if yoff < 0:
+            win_ysize += yoff
+            yoff = 0
+
+        # clamp the window to the side of the raster if too big
+        if xoff+win_xsize > clipped_band.XSize:
+            win_xsize = clipped_band.XSize-xoff
+        if yoff+win_ysize > clipped_band.YSize:
+            win_ysize = clipped_band.YSize-yoff
+
+        if win_xsize <= 0 or win_ysize <= 0:
+            continue
+
         # here we consider the pixels that intersect with the geometry's
         # bounding box as being the proxy for the intersection with the
         # polygon itself. This is not a bad approximation since the case
@@ -1976,7 +1991,8 @@ def rasterize(
     gdal.Dataset.__swig_destroy__(raster)
 
 
-def calculate_disjoint_polygon_set(vector_path, layer_index=0):
+def calculate_disjoint_polygon_set(
+        vector_path, layer_index=0, bounding_box=None):
     """Create a sequence of sets of polygons that don't overlap.
 
     Determining the minimal number of those sets is an np-complete problem so
@@ -1986,6 +2002,11 @@ def calculate_disjoint_polygon_set(vector_path, layer_index=0):
         vector_path (string): a path to an OGR vector.
         layer_index (int): index of underlying layer in `vector_path` to
             calculate disjoint set. Defaults to 0.
+        bounding_box (sequence): sequence of floats representing a bounding
+            box to filter any polygons by. If a feature in `vector_path`
+            does not intersect this bounding box it will not be considered
+            in the disjoint calculation. Coordinates are in the order
+            [minx, miny, maxx, maxy].
 
     Returns:
         subset_list (sequence): sequence of sets of FIDs from vector_path
@@ -1998,6 +2019,7 @@ def calculate_disjoint_polygon_set(vector_path, layer_index=0):
     last_time = time.time()
     LOGGER.info("build shapely polygon list")
 
+    bounding_box = shapely.prepared.prep(shapely.geometry.box(*bounding_box))
     shapely_polygon_lookup = dict((
         (poly_feat.GetFID(),
          shapely.wkb.loads(poly_feat.GetGeometryRef().ExportToWkb()))
@@ -2006,7 +2028,8 @@ def calculate_disjoint_polygon_set(vector_path, layer_index=0):
     LOGGER.info("build shapely rtree index")
     poly_rtree_index = rtree.index.Index(
         ((poly_fid, poly.bounds, None)
-         for poly_fid, poly in shapely_polygon_lookup.items()))
+         for poly_fid, poly in shapely_polygon_lookup.items()
+         if bounding_box.intersects(poly)))
 
     vector_layer = None
     vector = None
@@ -2553,7 +2576,6 @@ def iterblocks(
         row_block_width = n_rows - row_offset
         if row_block_width > rows_per_block:
             row_block_width = rows_per_block
-
         for col_block_index in range(n_col_blocks):
             col_offset = col_block_index * cols_per_block
             col_block_width = n_cols - col_offset
