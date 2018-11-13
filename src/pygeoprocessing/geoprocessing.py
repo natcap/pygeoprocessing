@@ -1334,7 +1334,11 @@ def zonal_statistics(
             unset_geom_envelope[2], unset_geom_envelope[3] = (
                 unset_geom_envelope[3], unset_geom_envelope[2])
         xoff = int((unset_geom_envelope[0] - clipped_gt[0]) / clipped_gt[1])
+        if not 0 <= xoff < clipped_band.XSize:
+            continue
         yoff = int((unset_geom_envelope[2] - clipped_gt[3]) / clipped_gt[5])
+        if not 0 <= yoff < clipped_band.YSize:
+            continue
         win_xsize = int(numpy.ceil(
             (unset_geom_envelope[1] - clipped_gt[0]) /
             clipped_gt[1])) - xoff
@@ -1360,9 +1364,14 @@ def zonal_statistics(
                 unset_fid_block.shape, dtype=numpy.bool)
 
         valid_unset_fid_block = unset_fid_block[~unset_fid_nodata_mask]
-        aggregate_stats[unset_fid]['min'] = numpy.min(valid_unset_fid_block)
-        aggregate_stats[unset_fid]['max'] = numpy.max(valid_unset_fid_block)
-        aggregate_stats[unset_fid]['sum'] = numpy.sum(valid_unset_fid_block)
+        if valid_unset_fid_block.size == 0:
+            aggregate_stats[unset_fid]['min'] = 0.0
+            aggregate_stats[unset_fid]['max'] = 0.0
+            aggregate_stats[unset_fid]['sum'] = 0.0
+        else:
+            aggregate_stats[unset_fid]['min'] = numpy.min(valid_unset_fid_block)
+            aggregate_stats[unset_fid]['max'] = numpy.max(valid_unset_fid_block)
+            aggregate_stats[unset_fid]['sum'] = numpy.sum(valid_unset_fid_block)
         aggregate_stats[unset_fid]['count'] = valid_unset_fid_block.size
         aggregate_stats[unset_fid]['nodata_count'] = numpy.count_nonzero(
             unset_fid_nodata_mask)
