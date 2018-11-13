@@ -380,10 +380,16 @@ class PyGeoprocessing10(unittest.TestCase):
             (reference.origin[0]+pixel_size, -pixel_size+reference.origin[1]),
             (reference.origin[0]+pixel_size, reference.origin[1]),
             (reference.origin[0], reference.origin[1])])
+        polygon_c = shapely.geometry.Polygon([
+            (reference.origin[1]*2, reference.origin[1]*3),
+            (reference.origin[1]*2, -pixel_size+reference.origin[1]*3),
+            (reference.origin[1]*2+pixel_size, -pixel_size+reference.origin[1]*3),
+            (reference.origin[1]*2+pixel_size, reference.origin[1]*3),
+            (reference.origin[1]*2, reference.origin[1]*3)])
         aggregating_vector_path = os.path.join(
             self.workspace_dir, 'aggregate_vector')
         pygeoprocessing.testing.create_vector_on_disk(
-            [polygon_a, polygon_b], reference.projection,
+            [polygon_a, polygon_b, polygon_c], reference.projection,
             vector_format='GeoJSON', filename=aggregating_vector_path)
         pixel_matrix = numpy.ones((n_pixels, n_pixels), numpy.float32)
         nodata_target = -1
