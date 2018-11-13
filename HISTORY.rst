@@ -1,6 +1,11 @@
 Release History
 ===============
 
+1.4.1 11/12/2018
+----------------
+* Hotfix that fixes an issue that would cause `zonal_statistics` to crash if
+  a polygon were outside of the raster's bounding box.
+
 1.4.0 11/12/2018
 ----------------
 * Adding error checking to ensure that `target_pixel_size` passed to
