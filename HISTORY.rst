@@ -1,8 +1,18 @@
 Release History
 ===============
 
-Unreleased Changes
-------------------
+1.4.1 11/12/2018
+----------------
+* Hotfix that fixes an issue that would cause `zonal_statistics` to crash if
+  a polygon were outside of the raster's bounding box.
+
+1.4.0 11/12/2018
+----------------
+* Adding error checking to ensure that `target_pixel_size` passed to
+  `warp_raster` and `align_and_resize_raster_stack` are validated to ensure
+  they are in the correct format. This solves an issue where an incorrect
+  value, such as a single numerical value, resolve into readable exception
+  messages.
 * Added a `gdal_warp_options` parameter to `align_and_resize_raster_stack` and
   `warp_raster` whose contents get passed to gdal.Warp's `warpOptions`
   parameter. This was implemented to expose the CUTLINE_TOUCH_ALL
