@@ -2743,6 +2743,7 @@ def extract_streams(
                 while open_set.size() > 0:
                     xi_n = open_set.front().xi
                     yi_n = open_set.front().yi
+                    stream_mr.set(xi_n, yi_n, 3)
                     open_set.pop()
                     dem_n = dem_mr.get(xi_n, yi_n)
                     if n_iterations > 50000:
