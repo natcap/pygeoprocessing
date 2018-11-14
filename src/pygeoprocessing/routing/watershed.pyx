@@ -1204,7 +1204,41 @@ def join_watershed_fragments(watershed_fragments_vector,
             for field_name, field_value in fragment_field_values[ws_id].items():
                 watershed_feature.SetField(field_name, field_value)
         except KeyError:
-            LOGGER.info('Skipping ws_id %s', ws_id)
+            # KeyError happens when an upstream geometry was expected but
+            # wasn't found in the fragments vector.  This typically happens
+            # because of a sequence of events:
+            #
+            #  1. Two nonoverlapping features (with area < 1 pixel) overlap the
+            #     same pixel.
+            #  2. Because these two features are disjoint, disjoint_polygon_set
+            #     includes both of these features ina single disjoint set.
+            #  3. The two polygons are rasterized, and there's a race condition
+            #     where we don't know which feature will be rasterized on top
+            #     of the other.
+            #  4. In the delineation of nearby watershed fragments, some
+            #     watersheds are determined to be downstream of whichever
+            #     feature was rasterized in step 3.
+            #  5. At some point, the watershed delineation processes the second
+            #     feature that overlaps the pixel, setting that pixel to the new
+            #     ws_id, erasing any record of the first feature's ws_id in
+            #     the process.
+            #  6. Eventually, the fragments vector is polygonized from the
+            #     resulting raster.
+            #  7. When we come here to join watershed fragments, some fragments
+            #     delineated in step 4 look for their upstream fragments, but
+            #     because this small fragment was overwritten in step 5
+            #     the ws_id was never included in the fragments vector and we
+            #     get a KeyError.
+            #
+            # The solution here is to ensure that very small features are
+            # handled properly when determining sets of disjoint polygons.
+            #
+            # If this warning is ever encountered, send your inputs to
+            # jdouglass@stanford.edu so we can fix it!
+            LOGGER.warn(
+                "Skipping ws_id %s, which shouldn't happen. This means "
+                "that at least one watershed was not delineated correctly."
+                ws_id)
 
         watershed_feature.SetGeometry(ogr.CreateGeometryFromWkb(
             shapely.wkb.dumps(watershed_geometry)))
