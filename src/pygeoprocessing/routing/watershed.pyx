@@ -751,20 +751,22 @@ def delineate_watersheds(
                                              d8_flow_dir_raster_path_band[1],
                                              0)  # read-only
 
-    for disjoint_index, disjoint_vector_path in enumerate(disjoint_vector_paths, start=1):
+    for disjoint_index, disjoint_vector_path in enumerate(
+                disjoint_vector_paths, start=1):
         # This contextual logger allows us to have extra information in log messages
         # about where we are in the iteration over n disjoint sets.
         disjoint_logger = OverlappingWatershedContextAdapter(
-            LOGGER, {'pass_index': disjoint_index, 'n_passes': len(disjoint_vector_paths)})
+            LOGGER, {'pass_index': disjoint_index,
+                     'n_passes': len(disjoint_vector_paths)})
 
         disjoint_logger.info('Delineating watersheds for disjoint vector #%s',
                              disjoint_index)
         disjoint_logger.info('Creating raster for tracking watershed fragments')
-        scratch_raster_path = os.path.join(working_dir_path,
-                                           'scratch_raster_%s.tif' % disjoint_index)
+        scratch_raster_path = os.path.join(
+                working_dir_path, 'scratch_raster_%s.tif' % disjoint_index)
         pygeoprocessing.new_raster_from_base(
-            d8_flow_dir_raster_path_band[0], scratch_raster_path, gdal.GDT_UInt32,
-            [NO_WATERSHED], fill_value_list=[NO_WATERSHED],
+            d8_flow_dir_raster_path_band[0], scratch_raster_path,
+            gdal.GDT_UInt32, [NO_WATERSHED], fill_value_list=[NO_WATERSHED],
             gtiff_creation_options=GTIFF_CREATION_OPTIONS)
 
         pygeoprocessing.rasterize(
@@ -772,7 +774,8 @@ def delineate_watersheds(
             ['ALL_TOUCHED=TRUE', 'ATTRIBUTE=%s' % ws_id_fieldname],
             layer_index='outlet_geometries')
 
-        # Create a new watershed scratch mask raster the size, shape of the flow dir raster
+        # Create a new watershed scratch mask raster the size, shape of the
+        # flow dir raster
         disjoint_logger.info('Creating raster for tracking visited pixels')
         mask_raster_path = os.path.join(working_dir_path,
                                         'scratch_mask_%s.tif' % disjoint_index)
@@ -806,8 +809,8 @@ def delineate_watersheds(
                 geometries = [geometry]
 
             for geometry in geometries:
-                # Since we know that our polygons don't overlap, any point within a
-                # geometry should work as a starting point.
+                # Since we know that our polygons don't overlap, any point
+                # within a geometry should work as a starting point.
                 ws_seed_point = geometry.representative_point()
                 ws_seed_coord = CoordinatePair(
                     (ws_seed_point.x - x_origin) // x_pixelwidth,
@@ -817,7 +820,8 @@ def delineate_watersheds(
                 # with this seed point.
                 block_index = next(spatial_index.nearest(
                         (ws_seed_coord.first, ws_seed_coord.second,
-                         ws_seed_coord.first, ws_seed_coord.second), num_results=1))
+                         ws_seed_coord.first, ws_seed_coord.second),
+                        num_results=1))
 
                 if (points_in_blocks.find(block_index) ==
                         points_in_blocks.end()):
@@ -865,9 +869,9 @@ def delineate_watersheds(
                     if ctime(NULL) - last_ws_log_time > 5.0:
                         last_ws_log_time = ctime(NULL)
                         disjoint_logger.info(
-                            'Delineating watershed %i of %i, %i pixels found so far.',
-                            n_disjoint_features_started, n_disjoint_features,
-                            pixels_in_watershed)
+                            'Delineating watershed %i of %i, %i pixels found '
+                            'so far.', n_disjoint_features_started,
+                            n_disjoint_features, pixels_in_watershed)
 
                     current_pixel = process_queue.front()
                     process_queue_set.erase(current_pixel)
@@ -897,8 +901,8 @@ def delineate_watersheds(
                                 process_queue_set.end()):
                             continue
 
-                        # Is the neighbor an unvisited lake pixel in this watershed?
-                        # If yes, enqueue it.
+                        # Is the neighbor an unvisited lake pixel in this
+                        # watershed?  If yes, enqueue it.
                         neighbor_ws_id = scratch_managed_raster.get(
                             neighbor_pixel.first, neighbor_pixel.second)
                         pixel_visited = mask_managed_raster.get(
@@ -913,12 +917,13 @@ def delineate_watersheds(
                                 flow_dir_managed_raster.get(
                                     neighbor_pixel.first, neighbor_pixel.second)):
 
-                            # Does the neighbor belong to a different outflow geometry?
+                            # Does the neighbor belong to a different outflow
+                            # geometry?
                             if (neighbor_ws_id != NO_WATERSHED and
                                     neighbor_ws_id != ws_id):
-                                # If it is, track the watershed connectivity, but otherwise
-                                # skip this pixel.  Either we've already processed it, or
-                                # else we will soon!
+                                # If it is, track the watershed connectivity,
+                                # but otherwise skip this pixel.  Either we've
+                                # already processed it, or else we will soon!
                                 nested_watershed_ids.insert(neighbor_ws_id)
                                 continue
 
@@ -945,9 +950,10 @@ def delineate_watersheds(
         mask_raster = gdal.OpenEx(mask_raster_path, gdal.OF_RASTER)
         mask_band = mask_raster.GetRasterBand(1)
 
-        watershed_fragments_path = os.path.join(working_dir_path,
-                                                'watershed_fragments_%s.gpkg' % disjoint_index)
-        watershed_fragments_vector = gpkg_driver.Create(watershed_fragments_path, 0, 0, 0, gdal.GDT_Unknown)
+        watershed_fragments_path = os.path.join(
+            working_dir_path, 'watershed_fragments_%s.gpkg' % disjoint_index)
+        watershed_fragments_vector = gpkg_driver.Create(
+            watershed_fragments_path, 0, 0, 0, gdal.GDT_Unknown)
         watershed_fragments_layer = watershed_fragments_vector.CreateLayer(
             'watershed_fragments', flow_dir_srs, ogr.wkbPolygon)
         watershed_fragments_layer.CreateField(ws_id_field)
@@ -970,13 +976,17 @@ def delineate_watersheds(
             outflow_geom_fid = ws_id_to_disjoint_fid[fragment_ws_id]
 
             target_fragment_feature = ogr.Feature(target_fragments_layer_defn)
-            target_fragment_feature.SetGeometry(created_fragment.GetGeometryRef())
+            target_fragment_feature.SetGeometry(
+                created_fragment.GetGeometryRef())
 
-            outflow_point_feature = disjoint_outlets_layer.GetFeature(outflow_geom_fid)
-            for outflow_fieldname, outflow_fieldvalue in outflow_point_feature.items().items():
+            outflow_point_feature = disjoint_outlets_layer.GetFeature(
+                outflow_geom_fid)
+            for outflow_fieldname, outflow_fieldvalue in (
+                    outflow_point_feature.items().items()):
                 if outflow_fieldname == ws_id_fieldname:
                     continue
-                target_fragment_feature.SetField(outflow_fieldname, outflow_fieldvalue)
+                target_fragment_feature.SetField(outflow_fieldname,
+                                                 outflow_fieldvalue)
 
             target_fragment_feature.SetField('ws_id', float(fragment_ws_id))
             try:
@@ -984,7 +994,8 @@ def delineate_watersheds(
                     [str(s) for s in sorted(nested_watersheds[fragment_ws_id])])
             except KeyError:
                 upstream_fragments = ''
-            target_fragment_feature.SetField('upstream_fragments', upstream_fragments)
+            target_fragment_feature.SetField('upstream_fragments',
+                                             upstream_fragments)
 
             target_fragments_layer.CreateFeature(target_fragment_feature)
 
@@ -992,8 +1003,10 @@ def delineate_watersheds(
             if fragment_ws_id in duplicate_point_ws_ids:
                 for duplicate_ws_id in duplicate_point_ws_ids[fragment_ws_id]:
                     duplicate_feature = ogr.Feature(target_fragments_layer_defn)
-                    duplicate_feature.SetGeometry(created_fragment.GetGeometryRef())
-                    duplicate_feature.SetField('upstream_fragments', upstream_fragments)
+                    duplicate_feature.SetGeometry(
+                        created_fragment.GetGeometryRef())
+                    duplicate_feature.SetField('upstream_fragments',
+                                               upstream_fragments)
                     source_feature = working_outlets_layer.GetFeature(
                         working_vector_ws_id_to_fid[duplicate_ws_id])
 
