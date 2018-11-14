@@ -1933,8 +1933,6 @@ def rasterize(
     if option_list is None:
         option_list = []
 
-    # TODO: check if rasterizelayer returns an error and raise an exception if
-    # so
     if not burn_values and not option_list:
         raise ValueError(
             "Neither `burn_values` nor `option_list` is set. At least one "
@@ -1950,11 +1948,14 @@ def rasterize(
             "`option_list` is not a list, the value passed is '%s'",
             repr(option_list))
 
-    gdal.RasterizeLayer(
+    result = gdal.RasterizeLayer(
         raster, [1], layer, burn_values=burn_values, options=option_list,
         callback=rasterize_callback)
     raster.FlushCache()
     gdal.Dataset.__swig_destroy__(raster)
+
+    if result != 0:
+        raise RuntimeError('Rasterize returned a nonzero exit code.')
 
 
 def calculate_disjoint_polygon_set(vector_path, layer_index=0):

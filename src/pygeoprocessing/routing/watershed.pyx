@@ -1239,7 +1239,7 @@ def join_watershed_fragments(watershed_fragments_vector,
             # jdouglass@stanford.edu so we can fix it!
             LOGGER.warn(
                 "Skipping ws_id %s, which shouldn't happen. This means "
-                "that at least one watershed was not delineated correctly."
+                "that at least one watershed was not delineated correctly.",
                 ws_id)
 
         watershed_feature.SetGeometry(ogr.CreateGeometryFromWkb(

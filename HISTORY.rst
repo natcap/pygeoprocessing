@@ -10,6 +10,8 @@ Unreleased Changes
   ``pygeoprocessing.routing.join_watershed_fragments``, will take the delineated
   watershed fragments and join nested watersheds into new geometries, writing
   the results into a new GeoPackage.
+* ``pygeoprocessing.rasterize`` will now raise ``RuntimeError`` if the
+  underlying call to ``gdal.RasterizeLayer`` encounters an error.
 * Added a `gdal_warp_options` parameter to `align_and_resize_raster_stack` and
   `warp_raster` whose contents get passed to gdal.Warp's `warpOptions`
   parameter. This was implemented to expose the CUTLINE_TOUCH_ALL

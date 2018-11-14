@@ -2060,6 +2060,50 @@ class PyGeoprocessing10(unittest.TestCase):
         target_raster = None
         self.assertTrue((result == 5).all())
 
+    def test_rasterize_error(self):
+        """PGP.geoprocessing: test rasterize when error encountered."""
+        reference = sampledata.SRS_COLOMBIA
+        n_pixels = 3
+        target_raster_array = numpy.ones((n_pixels, n_pixels), numpy.float32)
+        test_value = 0.5
+        target_raster_array[:] = test_value
+        nodata_target = -1
+        target_raster_path = os.path.join(
+            self.workspace_dir, 'target_raster.tif')
+        pygeoprocessing.testing.create_raster_on_disk(
+            [target_raster_array], reference.origin, reference.projection,
+            nodata_target, reference.pixel_size(30), filename=target_raster_path)
+
+        reference = sampledata.SRS_COLOMBIA
+        pixel_size = 30.0
+        polygon = shapely.geometry.Polygon([
+            (reference.origin[0], reference.origin[1]),
+            (reference.origin[0], -pixel_size * n_pixels+reference.origin[1]),
+            (reference.origin[0]+pixel_size * n_pixels,
+             -pixel_size * n_pixels+reference.origin[1]),
+            (reference.origin[0]+pixel_size * n_pixels, reference.origin[1]),
+            (reference.origin[0], reference.origin[1])])
+        base_vector_path = os.path.join(
+            self.workspace_dir, 'base_vector.json')
+
+        pygeoprocessing.testing.create_vector_on_disk(
+            [polygon], reference.projection,
+            fields={'id': 'int'}, attributes=[{'id': 5}],
+            vector_format='GeoJSON', filename=base_vector_path)
+
+        with self.assertRaises(RuntimeError) as cm:
+            # Patching the function that makes a logger callback so that
+            # it will raise an exception (ZeroDivisionError in this case,
+            # but any exception should do).
+            with mock.patch(
+                    'pygeoprocessing.geoprocessing._make_logger_callback',
+                    return_value=lambda x, y, z: 1/0.):
+                pygeoprocessing.rasterize(
+                    base_vector_path, target_raster_path, [test_value], None,
+                    layer_index=0)
+
+        self.assertTrue('nonzero exit code' in str(cm.exception))
+
     def test_rasterize_missing_file(self):
         """PGP.geoprocessing: test rasterize with no target raster."""
         reference = sampledata.SRS_COLOMBIA
