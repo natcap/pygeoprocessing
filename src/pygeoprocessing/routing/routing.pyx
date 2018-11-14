@@ -139,7 +139,6 @@ ctypedef queue[int] IntQueueType
 # type used to store x/y coordinates and a queue to put them in
 ctypedef queue[CoordinateType] CoordinateQueueType
 
-
 # functor for priority queue of pixels
 cdef cppclass GreaterPixel nogil:
     bint get "operator()"(PixelType& lhs, PixelType& rhs):
@@ -329,6 +328,10 @@ cdef class _ManagedRaster:
 
     cdef inline void set(self, int xi, int yi, double value):
         """Set the pixel at `xi,yi` to `value`."""
+        if xi < 0 or xi >= self.raster_x_size:
+            LOGGER.error("x out of bounds %s" % xi)
+        if yi < 0 or yi >= self.raster_y_size:
+            LOGGER.error("y out of bounds %s" % yi)
         cdef int block_xi = xi >> self.block_xbits
         cdef int block_yi = yi >> self.block_ybits
         # this is the flat index for the block
@@ -346,6 +349,10 @@ cdef class _ManagedRaster:
 
     cdef inline double get(self, int xi, int yi):
         """Return the value of the pixel at `xi,yi`."""
+        if xi < 0 or xi >= self.raster_x_size:
+            LOGGER.error("x out of bounds %s" % xi)
+        if yi < 0 or yi >= self.raster_y_size:
+            LOGGER.error("y out of bounds %s" % yi)
         cdef int block_xi = xi >> self.block_xbits
         cdef int block_yi = yi >> self.block_ybits
         # this is the flat index for the block
@@ -2667,27 +2674,11 @@ def extract_streams(
     if divergent_search_distance <= 0:
         return
 
-    geotiff_driver = gdal.GetDriverByName('GTiff')
-    divergent_gtiff_options = [
-        x for x in gtiff_creation_options
-        if 'SPARSE_OK' not in x] + ['SPARSE_OK=TRUE']
-    divergent_upstream_raster_path = 'divergent_upstream_raster.tif'
-    divergent_upstream_raster = geotiff_driver.Create(
-        divergent_upstream_raster_path, raster_x_size, raster_y_size, 1,
-        gdal.GDT_Byte, options=gtiff_creation_options)
-    divergent_upstream_raster.SetProjection(flow_accum_info['projection'])
-    divergent_upstream_raster.SetGeoTransform(flow_accum_info['geotransform'])
-    divergent_upstream_band = divergent_upstream_raster.GetRasterBand(1)
-    divergent_upstream_band.SetNoDataValue(0)
-    divergent_upstream_raster = None
-
-    cdef int max_stacksize = divergent_search_distance
-
-    cdef _ManagedRaster stream_raster = _ManagedRaster(
-            target_stream_raster_path, 1, 1)
-    cdef _ManagedRaster dem_raster = _ManagedRaster(
+    cdef _ManagedRaster stream_mr = _ManagedRaster(
+        target_stream_raster_path, 1, 1)
+    cdef _ManagedRaster dem_mr = _ManagedRaster(
         dem_raster_path_band[0], dem_raster_path_band[1], 0)
-    cdef _ManagedRaster flow_accum_raster = _ManagedRaster(
+    cdef _ManagedRaster flow_accum_mr = _ManagedRaster(
         flow_accum_raster_path_band[0], flow_accum_raster_path_band[1], 0)
 
     cdef numpy.ndarray[unsigned char, ndim=2] stream_block
@@ -2697,15 +2688,19 @@ def extract_streams(
     cdef double dem_center, dem_n
     cdef double dem_nodata = <double>pygeoprocessing.get_raster_info(
         dem_raster_path_band[0])['nodata'][dem_raster_path_band[1]-1]
-    cdef int stack_top = -1
-    cdef int stack_index = 0
     cdef int n_iterations = 0
-    cdef double max_n_flow = -1
-    # this stack will contain xi, yi, next_dir "tuples", hence the "* 3"
-    #cdef int* index_search_stack = <int*>PyMem_Malloc(
-    #    sizeof(int) * divergent_search_distance * 3)
-    cdef numpy.ndarray[int, ndim=1] index_search_stack = numpy.empty(
-        (max_stacksize*2,), dtype=numpy.int)
+
+    # this queue is used to march the front from the stream pixel
+    cdef CoordinateQueueType open_set
+
+    # this array is used to record the backflow directions
+    cdef numpy.ndarray[numpy.int_t, ndim=2] backflow_direction = numpy.empty(
+            (divergent_search_distance*2+1, divergent_search_distance*2+1),
+            dtype=numpy.int)
+    backflow_direction[:] = -1
+    cdef int backflow_x_center, backflow_y_center
+    backflow_x_center = divergent_search_distance
+    backflow_y_center = divergent_search_distance
 
     for block_offsets, stream_block in pygeoprocessing.iterblocks(
             target_stream_raster_path):
@@ -2720,10 +2715,7 @@ def extract_streams(
                 xi_root = xi+xoff
                 if stream_block[yi, xi] != 1:
                     continue
-                dem_center = dem_raster.get(xi_root, yi_root)
-                stack_top = -1
-                max_n_flow = -1
-                cur_flow = -1
+                dem_center = dem_mr.get(xi_root, yi_root)
                 for i_n in range(8):
                     xi_n = xi_root+NEIGHBOR_OFFSET_ARRAY[2*i_n]
                     yi_n = yi_root+NEIGHBOR_OFFSET_ARRAY[2*i_n+1]
@@ -2731,32 +2723,31 @@ def extract_streams(
                             yi_n < 0 or yi_n >= raster_y_size):
                         # it'll drain off the edge of the raster
                         continue
-                    dem_n = dem_raster.get(xi_n, yi_n)
+                    dem_n = dem_mr.get(xi_n, yi_n)
                     if dem_n > dem_center or is_close(dem_n, dem_nodata):
                         continue
-                    if stream_raster.get(xi_n, yi_n) == 1:
+                    if stream_mr.get(xi_n, yi_n) == 1:
                         # this pixel is connected to a stream, so quit
-                        stack_top = -1
+                        open_set = CoordinateQueueType()
                         break
-                    # otherwise, a divergent stream might be found, walk in
-                    # the direction of max flow
-                    cur_flow = flow_accum_raster.get(xi_n, yi_n)
-                    if cur_flow > max_n_flow:
-                        stack_top = 0
-                        max_n_flow = cur_flow
-                        index_search_stack[0] = xi_n
-                        index_search_stack[1] = yi_n
+
+                    # otherwise, a divergent stream might be found, add to
+                    # the queue
+                    open_set.push(CoordinateType(xi_n, yi_n))
+                    backflow_x = (xi_n-xi_root)+backflow_x_center
+                    backflow_y = (yi_n-yi_root)+backflow_y_center
+                    backflow_direction[backflow_y, backflow_x] = (
+                        D8_REVERSE_DIRECTION[i_n])
 
                 n_iterations = 0
-                while stack_top >= 0:
-                    xi_n = index_search_stack[stack_top*2+0]
-                    yi_n = index_search_stack[stack_top*2+1]
-                    dem_n = dem_raster.get(xi_n, yi_n)
+                while open_set.size() > 0:
+                    xi_n = open_set.front().xi
+                    yi_n = open_set.front().yi
+                    open_set.pop()
+                    dem_n = dem_mr.get(xi_n, yi_n)
                     if n_iterations > 50000:
                         LOGGER.debug("stuck in loop %s %s", xi_n, yi_n)
                     n_iterations += 1
-                    max_n_flow = -1
-                    cur_flow = -1
                     connect = 0
                     for i_sn in range(8):
                         xi_sn = xi_n+NEIGHBOR_OFFSET_ARRAY[2*i_sn]
@@ -2768,7 +2759,7 @@ def extract_streams(
                             connect = 1
                             break
 
-                        dem_sn = dem_raster.get(xi_sn, yi_sn)
+                        dem_sn = dem_mr.get(xi_sn, yi_sn)
                         if is_close(dem_sn, dem_nodata):
                             # drain to nodata
                             connect = 1
@@ -2779,43 +2770,46 @@ def extract_streams(
                             continue
 
                         sn_stream_val = (
-                            <unsigned char>stream_raster.get(xi_sn, yi_sn))
+                            <unsigned char>stream_mr.get(xi_sn, yi_sn))
                         if sn_stream_val == 1:
                             # found a down-stream
                             connect = 1
                             break
 
-                        cur_flow = flow_accum_raster.get(xi_sn, yi_sn)
+                        cur_flow = flow_accum_mr.get(xi_sn, yi_sn)
                         if is_close(cur_flow, flow_accum_nodata):
                             # drain to nodata
                             connect = 1
                             break
-                        if cur_flow > max_n_flow and (
-                                    stack_top+1 < max_stacksize):
-                                # we might walk downstream in this direction
-                                max_n_flow = cur_flow
-                                index_search_stack[(stack_top+1)*2+0] = xi_sn
-                                index_search_stack[(stack_top+1)*2+1] = yi_sn
+
+                        backflow_x = (xi_sn-xi_root)+backflow_x_center
+                        if (backflow_x < 0 or
+                                backflow_x >= divergent_search_distance*2):
+                            # searched too far
+                            continue
+                        backflow_y = (yi_sn-yi_root)+backflow_y_center
+                        if (backflow_y < 0 or
+                                backflow_y >= divergent_search_distance*2):
+                            # searched too far
+                            continue
+                        if backflow_direction[backflow_y, backflow_x] == -1:
+                            open_set.push(CoordinateType(xi_sn, yi_sn))
+                            backflow_direction[backflow_y, backflow_x] = (
+                                D8_REVERSE_DIRECTION[i_sn])
 
                     if connect:
                         # there's a downstream connection!
                         # turn on all the upstream pixels and pop the stack
-                        LOGGER.debug("found connection at %d %d", xi_n, yi_n)
-                        for stack_index in range(stack_top+1):
-                            xi_n = index_search_stack[stack_index*2+0]
-                            yi_n = index_search_stack[stack_index*2+1]
-                            stream_raster.set(xi_n, yi_n, 1)
-                        stack_top = -1
-                        break
-                    elif stack_top+1 < max_stacksize:
-                        # try the next pixel down
-                        stack_top += 1
-                    else:
-                        # no connection and hit the bottom of the stack
-                        stack_top = -1
+                        LOGGER.debug("there's a downstream connection!")
+                        backflow_x = (xi_n-xi_root)+backflow_x_center
+                        backflow_y = (yi_n-yi_root)+backflow_y_center
+                        stream_mr.set(xi_n, yi_n, 1)
+                        backflow_direction[backflow_y, backflow_x]
+                        # clear the queue
+                        open_set = CoordinateQueueType()
                         break
 
-    stream_raster.close()
+    stream_mr.close()
 
 
 def _is_raster_path_band_formatted(raster_path_band):
