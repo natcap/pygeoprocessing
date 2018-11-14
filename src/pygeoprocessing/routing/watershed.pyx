@@ -555,9 +555,11 @@ def delineate_watersheds(
     cdef double half_pixelheight = y_pixelwidth / 2.
 
     # The disjoint_polygon_set determination process returns sets of polygons
-    # that do not touch at all. With points, having a half-pixel height and width
-    # that's *just* slightly smaller than a full pixel should ensure that we don't
-    # have small/point geometries that touch.
+    # where the geometries in the set share no vertices whatsoever. When we
+    # calculate sets of disjoint polygons on geometries that overlap exactly
+    # one pixel, we need to use geometries that 1) cover almost all of the
+    # pixel and 2) do not intersect with the neighboring pixels.
+    # This way, we can have include more small geometries into a disjoint set.
     cdef double x_half_boxwidth = half_pixelwidth * 0.95
     cdef double y_half_boxheight = half_pixelheight * 0.95
 
