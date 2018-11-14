@@ -2653,7 +2653,7 @@ def extract_streams(
         flow_accum_raster_path_band[0])
     cdef double flow_accum_nodata = flow_accum_info['nodata'][
         flow_accum_raster_path_band[1]-1]
-    stream_nodata = 2
+    stream_nodata = 4
 
     cdef int raster_x_size, raster_y_size
     raster_x_size, raster_y_size = flow_accum_info['raster_size']
@@ -2743,7 +2743,7 @@ def extract_streams(
                 while open_set.size() > 0:
                     xi_n = open_set.front().xi
                     yi_n = open_set.front().yi
-                    stream_mr.set(xi_n, yi_n, 3)
+                    stream_mr.set(xi_n, yi_n, 2)
                     open_set.pop()
                     dem_n = dem_mr.get(xi_n, yi_n)
                     if n_iterations > 50000:
@@ -2807,7 +2807,7 @@ def extract_streams(
                                backflow_y != backflow_y_center):
                             stream_mr.set(
                                 (backflow_x - backflow_x_center) + xi_root,
-                                (backflow_y - backflow_y_center) + yi_root, 1)
+                                (backflow_y - backflow_y_center) + yi_root, 3)
                             upstream_dir = (
                                 backflow_direction[backflow_y, backflow_x])
                             backflow_x += (
