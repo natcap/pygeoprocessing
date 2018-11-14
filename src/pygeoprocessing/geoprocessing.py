@@ -976,6 +976,7 @@ def create_raster_from_vector_extents(
                 # this is expressed as a None value in the geometry reference
                 # this feature won't contribute
                 LOGGER.warning(error)
+        layer = None
 
     # round up on the rows and cols so that the target raster encloses the
     # base vector
@@ -1016,6 +1017,7 @@ def create_raster_from_vector_extents(
         band.FlushCache()
         band = None
     raster = None
+    vector = None
 
 
 def interpolate_points(

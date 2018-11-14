@@ -2666,6 +2666,21 @@ def extract_streams(
 
     if divergent_search_distance <= 0:
         return
+
+    geotiff_driver = gdal.GetDriverByName('GTiff')
+    divergent_gtiff_options = [
+        x for x in gtiff_creation_options
+        if 'SPARSE_OK' not in x] + ['SPARSE_OK=TRUE']
+    divergent_upstream_raster_path = 'divergent_upstream_raster.tif'
+    divergent_upstream_raster = geotiff_driver.Create(
+        divergent_upstream_raster_path, raster_x_size, raster_y_size, 1,
+        gdal.GDT_Byte, options=gtiff_creation_options)
+    divergent_upstream_raster.SetProjection(flow_accum_info['projection'])
+    divergent_upstream_raster.SetGeoTransform(flow_accum_info['geotransform'])
+    divergent_upstream_band = divergent_upstream_raster.GetRasterBand(1)
+    divergent_upstream_band.SetNoDataValue(0)
+    divergent_upstream_raster = None
+
     cdef int max_stacksize = divergent_search_distance
 
     cdef _ManagedRaster stream_raster = _ManagedRaster(
@@ -2682,7 +2697,7 @@ def extract_streams(
     cdef double dem_center, dem_n
     cdef double dem_nodata = <double>pygeoprocessing.get_raster_info(
         dem_raster_path_band[0])['nodata'][dem_raster_path_band[1]-1]
-    cdef int stack_top=-1
+    cdef int stack_top = -1
     cdef int stack_index = 0
     cdef int n_iterations = 0
     cdef double max_n_flow = -1

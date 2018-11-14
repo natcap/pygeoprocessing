@@ -1657,8 +1657,7 @@ class PyGeoprocessing10(unittest.TestCase):
         source_vector_path = os.path.join(self.workspace_dir, 'vector.json')
         source_vector = vector_driver.CreateDataSource(source_vector_path)
         srs = osr.SpatialReference(reference.projection)
-        source_layer = source_vector.CreateLayer(
-            'vector', srs=srs)
+        source_layer = source_vector.CreateLayer('vector', srs=srs)
 
         layer_defn = source_layer.GetLayerDefn()
 
@@ -1682,6 +1681,7 @@ class PyGeoprocessing10(unittest.TestCase):
         source_layer.CreateFeature(null_feature)
         source_layer.SyncToDisk()
         source_layer = None
+        ogr.DataSource.__swig_destroy__(source_vector)
         source_vector = None
 
         target_raster_path = os.path.join(
