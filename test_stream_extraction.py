@@ -43,7 +43,7 @@ def main():
     target_stream_connect_raster_path = 'streams_connect.tif'
     pygeoprocessing.routing.extract_streams(
         (filled_dem, 1), (flow_accum_path, 1), flow_threshold,
-        target_stream_connect_raster_path, divergent_search_distance=20)
+        target_stream_connect_raster_path, divergent_search_distance=40)
 
 
 if __name__ == '__main__':

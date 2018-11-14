@@ -2694,7 +2694,7 @@ def extract_streams(
     cdef CoordinateQueueType open_set
 
     # this array is used to record the backflow directions
-    cdef numpy.ndarray[numpy.int_t, ndim=2] backflow_direction = numpy.empty(
+    cdef int[:, :] backflow_direction = numpy.empty(
             (divergent_search_distance*2+1, divergent_search_distance*2+1),
             dtype=numpy.int)
     backflow_direction[:] = -1
@@ -2800,13 +2800,22 @@ def extract_streams(
                     if connect:
                         # there's a downstream connection!
                         # turn on all the upstream pixels and pop the stack
-                        LOGGER.debug("there's a downstream connection!")
                         backflow_x = (xi_n-xi_root)+backflow_x_center
                         backflow_y = (yi_n-yi_root)+backflow_y_center
-                        stream_mr.set(xi_n, yi_n, 1)
-                        backflow_direction[backflow_y, backflow_x]
+                        while (backflow_x != backflow_x_center and
+                               backflow_y != backflow_y_center):
+                            stream_mr.set(
+                                (backflow_x - backflow_x_center) + xi_root,
+                                (backflow_y - backflow_y_center) + yi_root, 1)
+                            upstream_dir = (
+                                backflow_direction[backflow_y, backflow_x])
+                            backflow_x += (
+                                NEIGHBOR_OFFSET_ARRAY[2*upstream_dir])
+                            backflow_y += (
+                                NEIGHBOR_OFFSET_ARRAY[2*upstream_dir+1])
                         # clear the queue
                         open_set = CoordinateQueueType()
+                        backflow_direction[:] = -1
                         break
 
     stream_mr.close()
