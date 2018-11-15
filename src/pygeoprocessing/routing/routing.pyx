@@ -2618,8 +2618,8 @@ def extract_streams_mfd(
     """Classify a stream raster from MFD flow accumulation.
 
     This function classifies pixels as streams that have a flow accumulation
-    value >= `flow_threshold`. In the case of divergent streams, the function
-    will trace potential streams.
+    value >= `flow_threshold` and can trace further upstream with a fuzzy
+    propotion if `trace_threshold_proportion` is set < 1.0
 
     Parameters:
         flow_accum_raster_path_band (tuple): a string/integer tuple indicating
@@ -2630,12 +2630,13 @@ def extract_streams_mfd(
             projections, and nodata pixels.
         flow_dir_mfd_path_band (str): optional path to multiple flow direction
             raster, required to join divergent streams.
-        flow_threshold (float): the value in
-            `flow_accum_raster_path_band` to indicate where a stream
-            exists.
+        flow_threshold (float): the value in `flow_accum_raster_path_band` to
+            indicate where a stream exists.
         target_stream_raster_path (str): path to the target stream raster.
             This raster will be the same dimensions and projection as
-            `dem_raster_path_band`.
+            `dem_raster_path_band` and will contain 1s where a stream is
+            defined, 0 where the flow accumulation layer is defined but no
+            stream exists, and nodata otherwise.
         trace_threshold_proportion (float): this value indicates what
             proportion of the flow_threshold is enough to classify a pixel
             as a stream after the stream has been traced from a
@@ -2694,10 +2695,14 @@ def extract_streams_mfd(
             yi_root = yi+yoff
             for xi in range(win_xsize):
                 xi_root = xi+xoff
-                flow_accum = flow_accum_mr.get(xi_root, yi_root)
-                if (is_close(flow_accum, flow_accum_nodata) or
-                        flow_accum < flow_threshold_typed):
+                if stream_mr.get(xi_root, yi_root) != stream_nodata:
                     continue
+                flow_accum = flow_accum_mr.get(xi_root, yi_root)
+                if is_close(flow_accum, flow_accum_nodata):
+                    continue
+                if flow_accum < flow_threshold_typed:
+                    stream_mr.set(xi_sn, yi_sn, 0)
+
                 flow_dir_mfd = <int>flow_dir_mfd_mr.get(xi_root, yi_root)
                 is_outlet = 0
                 for i_n in range(8):
