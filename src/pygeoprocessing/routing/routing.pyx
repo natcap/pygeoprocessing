@@ -2695,13 +2695,14 @@ def extract_streams_mfd(
             yi_root = yi+yoff
             for xi in range(win_xsize):
                 xi_root = xi+xoff
-                if stream_mr.get(xi_root, yi_root) != stream_nodata:
-                    continue
                 flow_accum = flow_accum_mr.get(xi_root, yi_root)
                 if is_close(flow_accum, flow_accum_nodata):
                     continue
+                if stream_mr.get(xi_root, yi_root) != stream_nodata:
+                    continue
+                stream_mr.set(xi_root, yi_root, 0)
                 if flow_accum < flow_threshold_typed:
-                    stream_mr.set(xi_sn, yi_sn, 0)
+                    continue
 
                 flow_dir_mfd = <int>flow_dir_mfd_mr.get(xi_root, yi_root)
                 is_outlet = 0
@@ -2732,19 +2733,17 @@ def extract_streams_mfd(
                     for i_sn in range(8):
                         xi_sn = xi_n+NEIGHBOR_OFFSET_ARRAY[2*i_sn]
                         yi_sn = yi_n+NEIGHBOR_OFFSET_ARRAY[2*i_sn+1]
-
                         if (xi_sn < 0 or xi_sn >= raster_x_size or
                                 yi_sn < 0 or yi_sn >= raster_y_size):
                             continue
-
                         flow_dir_mfd = <int>flow_dir_mfd_mr.get(xi_sn, yi_sn)
                         if flow_dir_mfd == flow_dir_nodata:
                             continue
                         if ((flow_dir_mfd >>
                                 (D8_REVERSE_DIRECTION[i_sn] * 4)) & 0xF) > 0:
                             # upstream pixel flows into this one
-                            if stream_mr.get(xi_sn, yi_sn) == stream_nodata:
-                                if (flow_accum_mr.get(xi_sn, yi_sn) >
+                            if stream_mr.get(xi_sn, yi_sn) != 1:
+                                if (flow_accum_mr.get(xi_sn, yi_sn) >=
                                         flow_threshold_typed *
                                         trace_threshold_proportion):
                                     stream_mr.set(xi_sn, yi_sn, 1)
