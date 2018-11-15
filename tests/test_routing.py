@@ -570,6 +570,61 @@ class TestRouting(unittest.TestCase):
         numpy.testing.assert_almost_equal(
             numpy.sum(flow_accum_array), numpy.sum(zero_array), 6)
 
+    def test_extract_streams_mfd(self):
+        """PGP.routing: stream extraction on multiple flow direction."""
+        import pygeoprocessing.routing
+        driver = gdal.GetDriverByName('GTiff')
+
+        n = 11
+        dem_path = 'dem.tif'
+        dem_array = numpy.zeros((n, n))
+        dem_raster = driver.Create(
+            dem_path, dem_array.shape[1], dem_array.shape[0], 1,
+            gdal.GDT_Float32, options=(
+                'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
+                'BLOCKXSIZE=32', 'BLOCKYSIZE=32'))
+        dem_raster.SetGeoTransform([0, 1, 0, 0, 0, -1])
+        dem_array[int(n/2), :] = -1
+        dem_band = dem_raster.GetRasterBand(1)
+        dem_band.WriteArray(dem_array)
+        dem_band.FlushCache()
+        dem_band = None
+        dem_raster = None
+
+        flow_dir_path = 'flow_dir.tif'
+        pygeoprocessing.routing.flow_dir_mfd(
+            (dem_path, 1), flow_dir_path)
+
+        target_flow_accum_path = 'flow_accum_mfd.tif'
+
+        pygeoprocessing.routing.flow_accumulation_mfd(
+            (flow_dir_path, 1), target_flow_accum_path)
+        target_stream_raster_path = 'stream.tif'
+        pygeoprocessing.routing.extract_streams_mfd(
+            (target_flow_accum_path, 1), (flow_dir_path, 1), 30,
+            target_stream_raster_path, trace_threshold_proportion=0.5)
+
+        stream_raster = gdal.OpenEx(target_stream_raster_path, gdal.OF_RASTER)
+        stream_band = stream_raster.GetRasterBand(1)
+        stream_nodata = stream_band.GetNoDataValue()
+        stream_array = stream_band.ReadAsArray()
+        stream_band = None
+        stream_raster = None
+        expected_stream_array = numpy.array(
+            [[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+             [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+             [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+             [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+             [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+             [1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1],
+             [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+             [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+             [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+             [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+             [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]])
+
+        expected_stream_array[expected_stream_array == 0] = stream_nodata
+        numpy.testing.assert_almost_equal(stream_array, expected_stream_array)
 
     def test_distance_to_channel_d8(self):
         """PGP.routing: test distance to channel D8."""

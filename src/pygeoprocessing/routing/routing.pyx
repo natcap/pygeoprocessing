@@ -2637,7 +2637,7 @@ def extract_streams_mfd(
             `dem_raster_path_band`.
         trace_threshold_proportion (float): this value indicates what
             proportion of the flow_threshold is enough to classify a pixel
-            as a stream after the stream has been started from a
+            as a stream after the stream has been traced from a
             `flow_threshold` drain. Setting this value < 1.0 is useful for
             classifying streams in regions that have highly divergent flow
             directions.
