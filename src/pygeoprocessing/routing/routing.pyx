@@ -340,7 +340,7 @@ cdef class _ManagedRaster:
             self._load_block(block_index)
         self.lru_cache.get(
             block_index)[
-                ((yi & (self.block_ymod))<<self.block_xbits) +
+                ((yi & (self.block_ymod)) << self.block_xbits) +
                 (xi & (self.block_xmod))] = value
         if self.write_mode:
             dirty_itr = self.dirty_blocks.find(block_index)
@@ -361,7 +361,7 @@ cdef class _ManagedRaster:
             self._load_block(block_index)
         return self.lru_cache.get(
             block_index)[
-                ((yi & (self.block_ymod))<<self.block_xbits) +
+                ((yi & (self.block_ymod)) << self.block_xbits) +
                 (xi & (self.block_xmod))]
 
     cdef void _load_block(self, int block_index) except *:
@@ -401,7 +401,7 @@ cdef class _ManagedRaster:
             (sizeof(double) << self.block_xbits) * win_ysize)
         for xi_copy in range(win_xsize):
             for yi_copy in range(win_ysize):
-                double_buffer[(yi_copy<<self.block_xbits)+xi_copy] = (
+                double_buffer[(yi_copy << self.block_xbits)+xi_copy] = (
                     block_array[yi_copy, xi_copy])
         self.lru_cache.put(
             <int>block_index, <double*>double_buffer, removed_value_list)
@@ -1201,7 +1201,7 @@ def flow_dir_d8(
                             continue
 
                         n_drain_distance = drain_distance + (
-                            SQRT2 if i_n&1 else 1.0)
+                            SQRT2 if i_n & 1 else 1.0)
 
                         if dem_managed_raster.get(
                                 xi_n, yi_n) == root_height and (
@@ -1864,7 +1864,7 @@ def flow_dir_mfd(
                             continue
 
                         n_drain_distance = drain_distance + (
-                            SQRT2 if i_n&1 else 1.0)
+                            SQRT2 if i_n & 1 else 1.0)
 
                         if is_close(dem_managed_raster.get(
                                 xi_n, yi_n), root_height) and (
@@ -2325,7 +2325,8 @@ def distance_to_channel_d8(
                     pixel_val = distance_to_channel_stack.top().value
                     distance_to_channel_stack.pop()
 
-                    distance_to_channel_managed_raster.set(xi_q, yi_q, pixel_val)
+                    distance_to_channel_managed_raster.set(
+                        xi_q, yi_q, pixel_val)
 
                     for i_n in range(8):
                         xi_n = xi_q+NEIGHBOR_OFFSET_ARRAY[2*i_n]
@@ -2345,8 +2346,8 @@ def distance_to_channel_d8(
                             # if a weight is passed we use it directly and do
                             # not consider that a diagonal pixel is further
                             # away than an adjacent one. If no weight is used
-                            # then "distance" is being calculated and we account
-                            # for diagonal distance.
+                            # then "distance" is being calculated and we
+                            # account for diagonal distance.
                             if weight_raster is not None:
                                 weight_val = weight_raster.get(xi_n, yi_n)
                                 if is_close(weight_val, weight_nodata):
