@@ -12,6 +12,7 @@ import logging
 
 LOGGER = logging.getLogger(__name__)
 
+
 class TestRouting(unittest.TestCase):
     """Tests for pygeoprocessing.routing."""
 
@@ -540,7 +541,7 @@ class TestRouting(unittest.TestCase):
 
         numpy.testing.assert_almost_equal(flow_array, expected_result, 1e-6)
 
-         # try with zero weights
+        # try with zero weights
         zero_array = numpy.zeros(expected_result.shape, dtype=numpy.float32)
         zero_raster_path = os.path.join(self.workspace_dir, 'zero.tif')
         zero_raster = driver.Create(
@@ -649,7 +650,7 @@ class TestRouting(unittest.TestCase):
             flow_dir_d8_path, flow_dir_d8_array.shape[1],
             flow_dir_d8_array.shape[0], 1, gdal.GDT_Byte, options=(
                 'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
-                    'BLOCKXSIZE=32', 'BLOCKYSIZE=32'))
+                'BLOCKXSIZE=32', 'BLOCKYSIZE=32'))
         flow_dir_d8_band = flow_dir_d8_raster.GetRasterBand(1)
         flow_dir_d8_band.WriteArray(flow_dir_d8_array)
         flow_dir_d8_band.FlushCache()
@@ -675,7 +676,7 @@ class TestRouting(unittest.TestCase):
             channel_path, channel_array.shape[1],
             channel_array.shape[0], 1, gdal.GDT_Byte, options=(
                 'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
-                    'BLOCKXSIZE=32', 'BLOCKYSIZE=32'))
+                'BLOCKXSIZE=32', 'BLOCKYSIZE=32'))
         channel_band = channel_raster.GetRasterBand(1)
         channel_band.WriteArray(channel_array)
         channel_band.FlushCache()
@@ -713,7 +714,6 @@ class TestRouting(unittest.TestCase):
         numpy.testing.assert_almost_equal(
             distance_to_channel_d8_array, expected_result)
 
-
     def test_distance_to_channel_d8_with_weights(self):
         """PGP.routing: test distance to channel D8."""
         import pygeoprocessing.routing
@@ -737,7 +737,7 @@ class TestRouting(unittest.TestCase):
             flow_dir_d8_path, flow_dir_d8_array.shape[1],
             flow_dir_d8_array.shape[0], 1, gdal.GDT_Byte, options=(
                 'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
-                    'BLOCKXSIZE=32', 'BLOCKYSIZE=32'))
+                'BLOCKXSIZE=32', 'BLOCKYSIZE=32'))
         flow_dir_d8_band = flow_dir_d8_raster.GetRasterBand(1)
         flow_dir_d8_band.WriteArray(flow_dir_d8_array)
         flow_dir_d8_band.FlushCache()
@@ -763,7 +763,7 @@ class TestRouting(unittest.TestCase):
             channel_path, channel_array.shape[1],
             channel_array.shape[0], 1, gdal.GDT_Byte, options=(
                 'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
-                    'BLOCKXSIZE=32', 'BLOCKYSIZE=32'))
+                'BLOCKXSIZE=32', 'BLOCKYSIZE=32'))
         channel_band = channel_raster.GetRasterBand(1)
         channel_band.WriteArray(channel_array)
         channel_band.FlushCache()
@@ -779,7 +779,7 @@ class TestRouting(unittest.TestCase):
             flow_dir_d8_weight_path, flow_weight_array.shape[1],
             flow_weight_array.shape[0], 1, gdal.GDT_Int32, options=(
                 'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
-                    'BLOCKXSIZE=32', 'BLOCKYSIZE=32'))
+                'BLOCKXSIZE=32', 'BLOCKYSIZE=32'))
         flow_dir_d8_weight_band = flow_dir_d8_weight_raster.GetRasterBand(1)
         flow_dir_d8_weight_band.WriteArray(flow_weight_array)
         flow_dir_d8_weight_band.FlushCache()
@@ -851,7 +851,6 @@ class TestRouting(unittest.TestCase):
         numpy.testing.assert_almost_equal(
             distance_to_channel_d8_array, zero_array)
 
-
     def test_distance_to_channel_mfd(self):
         """PGP.routing: test distance to channel mfd."""
         import pygeoprocessing.routing
@@ -890,7 +889,7 @@ class TestRouting(unittest.TestCase):
             flow_dir_mfd_path, flow_dir_mfd_array.shape[1],
             flow_dir_mfd_array.shape[0], 1, gdal.GDT_Int32, options=(
                 'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
-                    'BLOCKXSIZE=32', 'BLOCKYSIZE=32'))
+                'BLOCKXSIZE=32', 'BLOCKYSIZE=32'))
         flow_dir_mfd_band = flow_dir_mfd_raster.GetRasterBand(1)
         flow_dir_mfd_band.WriteArray(flow_dir_mfd_array)
         flow_dir_mfd_band.FlushCache()
@@ -916,7 +915,7 @@ class TestRouting(unittest.TestCase):
             channel_path, channel_array.shape[1],
             channel_array.shape[0], 1, gdal.GDT_Byte, options=(
                 'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
-                    'BLOCKXSIZE=32', 'BLOCKYSIZE=32'))
+                'BLOCKXSIZE=32', 'BLOCKYSIZE=32'))
         channel_band = channel_raster.GetRasterBand(1)
         channel_band.WriteArray(channel_array)
         channel_band.FlushCache()
@@ -1013,7 +1012,7 @@ class TestRouting(unittest.TestCase):
             flow_dir_mfd_path, flow_dir_mfd_array.shape[1],
             flow_dir_mfd_array.shape[0], 1, gdal.GDT_Int32, options=(
                 'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
-                    'BLOCKXSIZE=32', 'BLOCKYSIZE=32'))
+                'BLOCKXSIZE=32', 'BLOCKYSIZE=32'))
         flow_dir_mfd_band = flow_dir_mfd_raster.GetRasterBand(1)
         flow_dir_mfd_band.WriteArray(flow_dir_mfd_array)
         flow_dir_mfd_band.FlushCache()
@@ -1028,7 +1027,7 @@ class TestRouting(unittest.TestCase):
             flow_dir_mfd_weight_path, flow_weight_array.shape[1],
             flow_weight_array.shape[0], 1, gdal.GDT_Int32, options=(
                 'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
-                    'BLOCKXSIZE=32', 'BLOCKYSIZE=32'))
+                'BLOCKXSIZE=32', 'BLOCKYSIZE=32'))
         flow_dir_mfd_weight_band = flow_dir_mfd_weight_raster.GetRasterBand(1)
         flow_dir_mfd_weight_band.WriteArray(flow_weight_array)
         flow_dir_mfd_weight_band.FlushCache()
@@ -1054,7 +1053,7 @@ class TestRouting(unittest.TestCase):
             channel_path, channel_array.shape[1],
             channel_array.shape[0], 1, gdal.GDT_Byte, options=(
                 'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
-                    'BLOCKXSIZE=32', 'BLOCKYSIZE=32'))
+                'BLOCKXSIZE=32', 'BLOCKYSIZE=32'))
         channel_band = channel_raster.GetRasterBand(1)
         channel_band.WriteArray(channel_array)
         channel_band.FlushCache()
