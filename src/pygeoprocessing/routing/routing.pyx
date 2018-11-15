@@ -2900,22 +2900,13 @@ def extract_streams_mfd(
     cdef int raster_x_size, raster_y_size
     raster_x_size, raster_y_size = flow_accum_info['raster_size']
 
-    def classify_stream_op(flow_accum_array):
-        """Simple flow accumulation thresholding."""
-        result = numpy.zeros(flow_accum_array.shape, dtype=numpy.int8)
-        result[:] = stream_nodata
-        valid_mask = ~numpy.isclose(flow_accum_array, flow_accum_nodata)
-        result[valid_mask] = flow_accum_array[valid_mask] >= flow_threshold
-        return result
-
-    pygeoprocessing.raster_calculator(
-        [flow_accum_raster_path_band], classify_stream_op,
-        target_stream_raster_path, gdal.GDT_Byte, stream_nodata,
+    pygeoprocessing.new_raster_from_base(
+        flow_accum_raster_path_band[0], target_stream_raster_path,
+        gdal.GDT_Byte, [stream_nodata], fill_value_list=[stream_nodata],
         gtiff_creation_options=gtiff_creation_options)
 
-    if not remove_stream_fragments:
-        return
-
+    cdef _ManagedRaster flow_accum_mr = _ManagedRaster(
+        flow_accum_raster_path_band[0], flow_accum_raster_path_band[1], 0)
     cdef _ManagedRaster stream_mr = _ManagedRaster(
         target_stream_raster_path, 1, 1)
     cdef _ManagedRaster flow_dir_mfd_mr = _ManagedRaster(
@@ -2923,8 +2914,10 @@ def extract_streams_mfd(
 
     cdef int xoff, yoff, win_xsize, win_ysize
     cdef int xi, yi, xi_root, yi_root, i_n, xi_n, yi_n, i_sn, xi_sn, yi_sn
-    cdef int flow_dir_mfd
+    cdef int flow_dir_mfd, stream_val
+    cdef double flow_accum, flow_threshold_typed = flow_threshold
     cdef int n_iterations = 0
+    cdef int is_outlet
 
     # this queue is used to march the front from the stream pixel
     cdef CoordinateQueueType open_set
@@ -2940,10 +2933,12 @@ def extract_streams_mfd(
             yi_root = yi+yoff
             for xi in range(win_xsize):
                 xi_root = xi+xoff
-                if stream_mr.get(xi, yi) != 1:
+                flow_accum = flow_accum_mr.get(xi_root, yi_root)
+                if (is_close(flow_accum, flow_accum_nodata) or
+                        flow_accum < flow_threshold_typed):
                     continue
                 flow_dir_mfd = <int>flow_dir_mfd_mr.get(xi_root, yi_root)
-                downstream_connected = 0
+                is_outlet = 0
                 for i_n in range(8):
                     if ((flow_dir_mfd >> (i_n * 4)) & 0xF) == 0:
                         # no flow in that direction
@@ -2953,22 +2948,24 @@ def extract_streams_mfd(
                     if (xi_n < 0 or xi_n >= raster_x_size or
                             yi_n < 0 or yi_n >= raster_y_size):
                         # it'll drain off the edge of the raster
-                        continue
-                    if stream_mr.get(xi_n, yi_n) == 1:
-                        # this pixel is connected to a stream, so quit
-                        downstream_connected = 1
+                        is_outlet = 1
                         break
-                if not downstream_connected:
+                    if flow_accum_mr.get(xi_n, yi_n) == flow_accum_nodata:
+                        is_outlet = 1
+                        break
+                if is_outlet:
                     open_set.push(CoordinateType(xi_root, yi_root))
-                    stream_mr.set(xi_root, yi_root, 2)
-
+                    stream_mr.set(xi_root, yi_root, 1)
+                continue
                 n_iterations = 0
                 while open_set.size() > 0:
                     xi_n = open_set.front().xi
                     yi_n = open_set.front().yi
                     open_set.pop()
+                    """
                     if n_iterations > 50000:
                         LOGGER.debug("stuck in loop %s %s", xi_n, yi_n)
+                    """
                     n_iterations += 1
                     for i_sn in range(8):
                         xi_sn = xi_n+NEIGHBOR_OFFSET_ARRAY[2*i_sn]
@@ -2977,12 +2974,9 @@ def extract_streams_mfd(
                         if (xi_sn < 0 or xi_sn >= raster_x_size or
                                 yi_sn < 0 or yi_sn >= raster_y_size):
                             continue
-                        if stream_mr.get(xi_sn, yi_sn) != 1:
-                            continue
-
-                        # otherwise, wipe out stream and walk to that pixel
-                        stream_mr.set(xi_sn, yi_sn, 2)
-                        open_set.push(CoordinateType(xi_sn, yi_sn))
+                        if stream_mr.get(xi_sn, yi_sn) == 1:
+                            stream_mr.set(xi_sn, yi_sn, 2)
+                            open_set.push(CoordinateType(xi_sn, yi_sn))
 
     stream_mr.close()
 

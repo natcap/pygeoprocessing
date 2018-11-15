@@ -41,7 +41,7 @@ def main():
         target_stream_raster_path,
         flow_dir_mfd_path_band=(flow_dir_mfd_path, 1),
         remove_stream_fragments=False)
-
+    return
     target_stream_connect_raster_path = 'streams_connect.tif'
     pygeoprocessing.routing.extract_streams_mfd(
         (flow_accum_path, 1), flow_threshold,
