@@ -36,18 +36,19 @@ def main():
 
     flow_threshold = 1000
     target_stream_raster_path = 'streams_non.tif'
-    pygeoprocessing.routing.extract_streams(
+    pygeoprocessing.routing.extract_streams_mfd(
         (flow_accum_path, 1), flow_threshold,
         target_stream_raster_path,
         flow_dir_mfd_path_band=(flow_dir_mfd_path, 1),
-        divergent_search_distance=0)
+        remove_stream_fragments=False)
 
     target_stream_connect_raster_path = 'streams_connect.tif'
-    pygeoprocessing.routing.extract_streams(
+    pygeoprocessing.routing.extract_streams_mfd(
         (flow_accum_path, 1), flow_threshold,
         target_stream_connect_raster_path,
         flow_dir_mfd_path_band=(flow_dir_mfd_path, 1),
-        divergent_search_distance=40)
+        remove_stream_fragments=True)
+
 
 if __name__ == '__main__':
     main()
