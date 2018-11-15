@@ -2611,8 +2611,9 @@ def distance_to_channel_mfd(
 
 
 def extract_streams(
-        dem_raster_path_band, flow_accum_raster_path_band, flow_threshold,
-        target_stream_raster_path, divergent_search_distance=10,
+        flow_accum_raster_path_band, flow_threshold,
+        target_stream_raster_path, divergent_search_distance=0,
+        flow_dir_mfd_path_band=None,
         gtiff_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS):
     """Classify a stream raster.
 
@@ -2622,8 +2623,6 @@ def extract_streams(
     `divergent_search_distance` pixels away.
 
     Parameters:
-        dem_raster_path_band (tuple): a string/integer tuple indicating the
-            digital elevation model to classify the streams on.
         flow_accum_raster_path_band (tuple): a string/integer tuple indicating
             the flow accumulation raster to use as a basis for thresholding
             a stream. Values in this raster that are >= flow_threshold will
@@ -2641,7 +2640,10 @@ def extract_streams(
             `divergent_search_distance` downhill pixels away to find a
             connecting downhill stream. If one is found the stream is traced
             through the least cost path from the divergent flow to the
-            downhill new flow.
+            downhill new flow. If this value is > 0 then
+            `flow_dir_mfd_path_band` must be defined.
+        flow_dir_mfd_path_band (str): optional path to multiple flow direction
+            raster, required to join divergent streams.
         gtiff_creation_options (list): this is an argument list that will be
             passed to the GTiff driver.  Useful for blocksizes, compression,
             and more.
@@ -2676,8 +2678,8 @@ def extract_streams(
 
     cdef _ManagedRaster stream_mr = _ManagedRaster(
         target_stream_raster_path, 1, 1)
-    cdef _ManagedRaster dem_mr = _ManagedRaster(
-        dem_raster_path_band[0], dem_raster_path_band[1], 0)
+    cdef _ManagedRaster flow_dir_mfd_mr = _ManagedRaster(
+        flow_dir_mfd_path_band[0], flow_dir_mfd_path_band[1], 0)
     cdef _ManagedRaster flow_accum_mr = _ManagedRaster(
         flow_accum_raster_path_band[0], flow_accum_raster_path_band[1], 0)
 
@@ -2685,20 +2687,24 @@ def extract_streams(
     cdef int xoff, yoff, win_xsize, win_ysize
     cdef int xi, yi, xi_root, yi_root, i_n, xi_n, yi_n, i_sn, xi_sn, yi_sn
     cdef unsigned char sn_stream_val
-    cdef double dem_center, dem_n
-    cdef double dem_nodata = <double>pygeoprocessing.get_raster_info(
-        dem_raster_path_band[0])['nodata'][dem_raster_path_band[1]-1]
+    cdef int flow_dir_mfd, flow_dir_mfd_s, upstream_dir
+    cdef int flow_dir_mfd_nodata = <int>pygeoprocessing.get_raster_info(
+        flow_dir_mfd_path_band[0])['nodata'][flow_dir_mfd_path_band[1]-1]
     cdef int n_iterations = 0
 
     # this queue is used to march the front from the stream pixel
     cdef CoordinateQueueType open_set
+    cdef int array_tail = 0
+    cdef int[:] possible_candidate_array = numpy.empty(8*3, dtype=numpy.int)
 
     # this array is used to record the backflow directions
     cdef int[:, :] backflow_direction = numpy.empty(
             (divergent_search_distance*2+1, divergent_search_distance*2+1),
             dtype=numpy.int)
     backflow_direction[:] = -1
+
     cdef int backflow_x_center, backflow_y_center
+    cdef int backflow_x, backflow_y
     backflow_x_center = divergent_search_distance
     backflow_y_center = divergent_search_distance
 
@@ -2715,29 +2721,49 @@ def extract_streams(
                 xi_root = xi+xoff
                 if stream_block[yi, xi] != 1:
                     continue
-                dem_center = dem_mr.get(xi_root, yi_root)
+                flow_dir_mfd = <int>flow_dir_mfd_mr.get(xi_root, yi_root)
+                if is_close(flow_dir_mfd, flow_dir_mfd_nodata):
+                    continue
+                array_tail = 0
                 for i_n in range(8):
+                    if ((flow_dir_mfd >> (i_n * 4)) & 0xF) == 0:
+                        # no flow in that direction
+                        continue
                     xi_n = xi_root+NEIGHBOR_OFFSET_ARRAY[2*i_n]
                     yi_n = yi_root+NEIGHBOR_OFFSET_ARRAY[2*i_n+1]
                     if (xi_n < 0 or xi_n >= raster_x_size or
                             yi_n < 0 or yi_n >= raster_y_size):
                         # it'll drain off the edge of the raster
                         continue
-                    dem_n = dem_mr.get(xi_n, yi_n)
-                    if dem_n > dem_center or is_close(dem_n, dem_nodata):
-                        continue
                     if stream_mr.get(xi_n, yi_n) == 1:
                         # this pixel is connected to a stream, so quit
-                        open_set = CoordinateQueueType()
+                        array_tail = 0
                         break
 
                     # otherwise, a divergent stream might be found, add to
                     # the queue
-                    open_set.push(CoordinateType(xi_n, yi_n))
-                    backflow_x = (xi_n-xi_root)+backflow_x_center
-                    backflow_y = (yi_n-yi_root)+backflow_y_center
-                    backflow_direction[backflow_y, backflow_x] = (
-                        D8_REVERSE_DIRECTION[i_n])
+                    possible_candidate_array[array_tail+0] = xi
+                    possible_candidate_array[array_tail+1] = yi
+                    possible_candidate_array[array_tail+2] = i_n
+                    array_tail += 3
+
+                if open_set.size() > 0:
+                    backflow_direction[:] = -1
+                    # mark the center as visited with garbage direction
+                    backflow_direction[
+                        backflow_y_center, backflow_x_center] = 9
+                    while array_tail != 0:
+                        array_tail -= 3
+                        backflow_x = (
+                            possible_candidate_array[array_tail+0] -
+                            xi_root) + backflow_x_center
+                        backflow_y = (
+                            possible_candidate_array[array_tail+1] -
+                            yi_root) + backflow_y_center
+                        open_set.push(CoordinateType(backflow_x, backflow_y))
+                        backflow_direction[backflow_y, backflow_x] = (
+                            D8_REVERSE_DIRECTION[
+                                possible_candidate_array[array_tail+2]])
 
                 n_iterations = 0
                 while open_set.size() > 0:
@@ -2745,12 +2771,15 @@ def extract_streams(
                     yi_n = open_set.front().yi
                     stream_mr.set(xi_n, yi_n, 2)
                     open_set.pop()
-                    dem_n = dem_mr.get(xi_n, yi_n)
                     if n_iterations > 50000:
                         LOGGER.debug("stuck in loop %s %s", xi_n, yi_n)
                     n_iterations += 1
                     connect = 0
+                    flow_dir_mfd = <int>flow_dir_mfd_mr.get(xi_root, yi_root)
                     for i_sn in range(8):
+                        if ((flow_dir_mfd >> (i_sn * 4)) & 0xF) == 0:
+                            # no flow in that direction
+                            continue
                         xi_sn = xi_n+NEIGHBOR_OFFSET_ARRAY[2*i_sn]
                         yi_sn = yi_n+NEIGHBOR_OFFSET_ARRAY[2*i_sn+1]
 
@@ -2760,14 +2789,25 @@ def extract_streams(
                             connect = 1
                             break
 
-                        dem_sn = dem_mr.get(xi_sn, yi_sn)
-                        if is_close(dem_sn, dem_nodata):
+                        flow_dir_mfd_s = <int>flow_dir_mfd_mr.get(
+                            xi_sn, yi_sn)
+                        if flow_dir_mfd_s == flow_dir_mfd_nodata:
                             # drain to nodata
                             connect = 1
                             break
 
-                        if dem_sn > dem_n:
-                            # don't walk uphill
+                        backflow_x = (xi_sn-xi_root)+backflow_x_center
+                        if (backflow_x < 0 or
+                                backflow_x >= backflow_x_center*2+1):
+                            # searched too far
+                            continue
+                        backflow_y = (yi_sn-yi_root)+backflow_y_center
+                        if (backflow_y < 0 or
+                                backflow_y >= backflow_y_center*2+1):
+                            # searched too far
+                            continue
+                        if backflow_direction[backflow_y, backflow_x] > -1:
+                            # already visited this pixel
                             continue
 
                         sn_stream_val = (
@@ -2783,20 +2823,10 @@ def extract_streams(
                             connect = 1
                             break
 
-                        backflow_x = (xi_sn-xi_root)+backflow_x_center
-                        if (backflow_x < 0 or
-                                backflow_x >= divergent_search_distance*2):
-                            # searched too far
-                            continue
-                        backflow_y = (yi_sn-yi_root)+backflow_y_center
-                        if (backflow_y < 0 or
-                                backflow_y >= divergent_search_distance*2):
-                            # searched too far
-                            continue
-                        if backflow_direction[backflow_y, backflow_x] == -1:
-                            open_set.push(CoordinateType(xi_sn, yi_sn))
-                            backflow_direction[backflow_y, backflow_x] = (
-                                D8_REVERSE_DIRECTION[i_sn])
+                        # otherwise it's okay to visit this pixel downhill
+                        open_set.push(CoordinateType(xi_sn, yi_sn))
+                        backflow_direction[backflow_y, backflow_x] = (
+                            D8_REVERSE_DIRECTION[i_sn])
 
                     if connect:
                         # there's a downstream connection!
