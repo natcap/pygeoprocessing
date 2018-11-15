@@ -624,7 +624,6 @@ class TestRouting(unittest.TestCase):
              [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
              [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]])
 
-        expected_stream_array[expected_stream_array == 0] = stream_nodata
         numpy.testing.assert_almost_equal(stream_array, expected_stream_array)
 
     def test_distance_to_channel_d8(self):
