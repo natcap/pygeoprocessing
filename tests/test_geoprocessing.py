@@ -1773,6 +1773,42 @@ class PyGeoprocessing10(unittest.TestCase):
             total += numpy.sum(block)
         self.assertEqual(total, test_value * n_pixels**2)
 
+    def test_iterblocks_bad_astype(self):
+        """PGP.geoprocessing: test iterblocks with bad `astype_list`s."""
+        reference = sampledata.SRS_COLOMBIA
+        n_pixels = 100
+        pixel_matrix = numpy.ones((n_pixels, n_pixels), numpy.float32)
+        test_value = 0.5
+        pixel_matrix[:] = test_value
+        nodata_target = None
+        raster_path = os.path.join(self.workspace_dir, 'raster.tif')
+        pygeoprocessing.testing.create_raster_on_disk(
+            [pixel_matrix], reference.origin,
+            reference.projection, nodata_target, reference.pixel_size(30), filename=raster_path,
+            dataset_opts=[
+                'TILED=YES',
+                'BLOCKXSIZE=64',
+                'BLOCKYSIZE=64'])
+
+        total = 0
+        with self.assertRaises(ValueError) as cm:
+            for _, block in pygeoprocessing.iterblocks(
+                    raster_path, astype_list=numpy.float32, largest_block=0):
+                total += numpy.sum(block)
+        expected_message = (
+            '`astype_list` should be a list or tuple instead it is ')
+        actual_message = str(cm.exception)
+        self.assertTrue(expected_message in actual_message, actual_message)
+
+        with self.assertRaises(ValueError) as cm:
+            for _, block in pygeoprocessing.iterblocks(
+                    raster_path, astype_list=[numpy.float32, numpy.float32],
+                    largest_block=0):
+                total += numpy.sum(block)
+        expected_message = 'should be the same length'
+        actual_message = str(cm.exception)
+        self.assertTrue(expected_message in actual_message, actual_message)
+
     def test_convolve_2d_single_thread(self):
         """PGP.geoprocessing: test convolve 2d (single thread)."""
         reference = sampledata.SRS_COLOMBIA
