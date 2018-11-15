@@ -2680,7 +2680,7 @@ def extract_streams_mfd(
         flow_dir_mfd_path_band[0])['nodata'][flow_dir_mfd_path_band[1]-1]
 
     # this queue is used to march the front from the stream pixel
-    cdef CoordinateQueueType open_set, possible_stream_set
+    cdef CoordinateQueueType open_set
 
     for block_offsets in pygeoprocessing.iterblocks(
             target_stream_raster_path, offset_only=True):
@@ -2718,7 +2718,6 @@ def extract_streams_mfd(
                     stream_mr.set(xi_root, yi_root, 1)
 
                 n_iterations = 0
-                bonus_search_depth = 0
                 while open_set.size() > 0:
                     xi_n = open_set.front().xi
                     yi_n = open_set.front().yi
