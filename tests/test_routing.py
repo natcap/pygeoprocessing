@@ -577,7 +577,7 @@ class TestRouting(unittest.TestCase):
         driver = gdal.GetDriverByName('GTiff')
 
         n = 11
-        dem_path = 'dem.tif'
+        dem_path = os.path.join(self.workspace_dir, 'dem.tif')
         dem_array = numpy.zeros((n, n))
         dem_raster = driver.Create(
             dem_path, dem_array.shape[1], dem_array.shape[0], 1,
@@ -592,22 +592,23 @@ class TestRouting(unittest.TestCase):
         dem_band = None
         dem_raster = None
 
-        flow_dir_path = 'flow_dir.tif'
+        flow_dir_path = os.path.join(self.workspace_dir, 'flow_dir.tif')
         pygeoprocessing.routing.flow_dir_mfd(
             (dem_path, 1), flow_dir_path)
 
-        target_flow_accum_path = 'flow_accum_mfd.tif'
+        target_flow_accum_path = os.path.join(
+            self.workspace_dir, 'flow_accum_mfd.tif')
 
         pygeoprocessing.routing.flow_accumulation_mfd(
             (flow_dir_path, 1), target_flow_accum_path)
-        target_stream_raster_path = 'stream.tif'
+        target_stream_raster_path = os.path.join(
+            self.workspace_dir, 'stream.tif')
         pygeoprocessing.routing.extract_streams_mfd(
             (target_flow_accum_path, 1), (flow_dir_path, 1), 30,
             target_stream_raster_path, trace_threshold_proportion=0.5)
 
         stream_raster = gdal.OpenEx(target_stream_raster_path, gdal.OF_RASTER)
         stream_band = stream_raster.GetRasterBand(1)
-        stream_nodata = stream_band.GetNoDataValue()
         stream_array = stream_band.ReadAsArray()
         stream_band = None
         stream_raster = None

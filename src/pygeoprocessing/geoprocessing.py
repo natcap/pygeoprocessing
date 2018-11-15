@@ -771,7 +771,7 @@ def align_and_resize_raster_stack(
                         None if not base_sr_wkt_list else
                         base_sr_wkt_list[index]),
                     'vector_mask_options': vector_mask_options,
-                    'gdal_warp_options': gdal_warp_options,})
+                    'gdal_warp_options': gdal_warp_options})
             result_list.append(result)
         worker_pool.close()
         for index, result in enumerate(result_list):
@@ -1386,9 +1386,12 @@ def zonal_statistics(
             aggregate_stats[unset_fid]['max'] = 0.0
             aggregate_stats[unset_fid]['sum'] = 0.0
         else:
-            aggregate_stats[unset_fid]['min'] = numpy.min(valid_unset_fid_block)
-            aggregate_stats[unset_fid]['max'] = numpy.max(valid_unset_fid_block)
-            aggregate_stats[unset_fid]['sum'] = numpy.sum(valid_unset_fid_block)
+            aggregate_stats[unset_fid]['min'] = numpy.min(
+                valid_unset_fid_block)
+            aggregate_stats[unset_fid]['max'] = numpy.max(
+                valid_unset_fid_block)
+            aggregate_stats[unset_fid]['sum'] = numpy.sum(
+                valid_unset_fid_block)
         aggregate_stats[unset_fid]['count'] = valid_unset_fid_block.size
         aggregate_stats[unset_fid]['nodata_count'] = numpy.count_nonzero(
             unset_fid_nodata_mask)
@@ -1797,6 +1800,7 @@ def warp_raster(
         ValueError if `vector_mask_options` is not None but the
             `mask_vector_path` is undefined or doesn't point to a valid
             file.
+
     """
     _assert_is_valid_pixel_size(target_pixel_size)
 
@@ -2962,7 +2966,7 @@ def _gdal_to_numpy_type(band):
 
 
 def merge_bounding_box_list(bounding_box_list, bounding_box_mode):
-    """Creates a single bounding box by union or intersection of the list.
+    """Create a single bounding box by union or intersection of the list.
 
     Parameters:
         bounding_box_list (sequence): a sequence of bounding box coordinates
