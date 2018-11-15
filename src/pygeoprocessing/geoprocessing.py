@@ -2502,10 +2502,10 @@ def iterblocks(
             overhead dominates the iteration.  Defaults to 2**20.  A value of
             anything less than the original blocksize of the raster will
             result in blocksizes equal to the original size.
-        astype_list (list of numpy types): If none, output blocks are in the
-            native type of the raster bands.  Otherwise this parameter is a
-            sequence of len(band_index_list) length that contains the desired
-            output types that iterblock generates for each band.
+        astype_list (list/tuple of numpy types): If none, output blocks are in
+            the native type of the raster bands.  Otherwise this parameter is
+            a list/tuple of len(band_index_list) length that contains the
+            desired output types that iterblock generates for each band.
         offset_only (boolean): defaults to False, if True `iterblocks` only
             returns offset dictionary and doesn't read any binary data from
             the raster.  This can be useful when iterating over writing to
@@ -2566,6 +2566,15 @@ def iterblocks(
     last_col_block_width = None
 
     if astype_list is not None:
+        if not isinstance(astype_list, (list, tuple)):
+            raise ValueError(
+                "`astype_list` should be a list or tuple instead it is %s" % (
+                    repr(astype_list)))
+        if len(band_index_list) != len(astype_list):
+            raise ValueError(
+                "`band_index_list` and `astype_list` should be the same "
+                "length, instead they are sizes %d and %d" % (
+                    len(band_index_list), len(astype_list)))
         block_type_list = astype_list
     else:
         block_type_list = [

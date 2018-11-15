@@ -1,6 +1,12 @@
 Release History
 ===============
 
+Unreleased Changes
+------------------
+* Specific type checking for `astype_list` in `iterblocks` to avoid confusing
+  Exceptions.
+* Renamed test suite to be consistent with the pattern `test_[component].tif`.
+
 1.4.1 11/12/2018
 ----------------
 * Hotfix that fixes an issue that would cause `zonal_statistics` to crash if
