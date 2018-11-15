@@ -663,7 +663,7 @@ def fill_pits(
         if ctime(NULL) - last_log_time > 5.0:
             last_log_time = ctime(NULL)
             current_pixel = xoff + yoff * raster_x_size
-            LOGGER.info('%.2f%% complete', 100.0 * current_pixel / <float>(
+            LOGGER.info('%.1f%% complete', 100.0 * current_pixel / <float>(
                 raster_x_size * raster_y_size))
 
         # make a buffer big enough to capture block and boundaries around it
@@ -859,7 +859,7 @@ def fill_pits(
     pit_mask_managed_raster.close()
     flat_region_mask_managed_raster.close()
     shutil.rmtree(working_dir_path)
-    LOGGER.info('%.2f%% complete', 100.0)
+    LOGGER.info('%.1f%% complete', 100.0)
 
 
 def flow_dir_d8(
@@ -1038,7 +1038,7 @@ def flow_dir_d8(
         if ctime(NULL) - last_log_time > 5.0:
             last_log_time = ctime(NULL)
             current_pixel = xoff + yoff * raster_x_size
-            LOGGER.info('%.2f%% complete', 100.0 * current_pixel / <float>(
+            LOGGER.info('%.1f%% complete', 100.0 * current_pixel / <float>(
                 raster_x_size * raster_y_size))
 
         # make a buffer big enough to capture block and boundaries around it
@@ -1221,7 +1221,7 @@ def flow_dir_d8(
     dem_managed_raster.close()
     plateau_distance_managed_raster.close()
     shutil.rmtree(working_dir_path)
-    LOGGER.info('%.2f%% complete', 100.0)
+    LOGGER.info('%.1f%% complete', 100.0)
 
 
 def flow_accumulation_d8(
@@ -1354,7 +1354,7 @@ def flow_accumulation_d8(
         if ctime(NULL) - last_log_time > 5.0:
             last_log_time = ctime(NULL)
             current_pixel = xoff + yoff * raster_x_size
-            LOGGER.info('%.2f%% complete', 100.0 * current_pixel / <float>(
+            LOGGER.info('%.1f%% complete', 100.0 * current_pixel / <float>(
                 raster_x_size * raster_y_size))
 
         # make a buffer big enough to capture block and boundaries around it
@@ -1442,7 +1442,7 @@ def flow_accumulation_d8(
     flow_dir_managed_raster.close()
     if weight_raster is not None:
         weight_raster.close()
-    LOGGER.info('%.2f%% complete', 100.0)
+    LOGGER.info('%.1f%% complete', 100.0)
 
 
 def flow_dir_mfd(
@@ -1656,7 +1656,7 @@ def flow_dir_mfd(
         if ctime(NULL) - last_log_time > 5.0:
             last_log_time = ctime(NULL)
             current_pixel = xoff + yoff * raster_x_size
-            LOGGER.info('%.2f%% complete', 100.0 * current_pixel / <float>(
+            LOGGER.info('%.1f%% complete', 100.0 * current_pixel / <float>(
                 raster_x_size * raster_y_size))
 
         # make a buffer big enough to capture block and boundaries around it
@@ -1933,7 +1933,7 @@ def flow_dir_mfd(
     dem_managed_raster.close()
     plateau_distance_managed_raster.close()
     shutil.rmtree(working_dir_path)
-    LOGGER.info('%.2f%% complete', 100.0)
+    LOGGER.info('%.1f%% complete', 100.0)
 
 
 def flow_accumulation_mfd(
@@ -2068,7 +2068,7 @@ def flow_accumulation_mfd(
         if ctime(NULL) - last_log_time > 5.0:
             last_log_time = ctime(NULL)
             current_pixel = xoff + yoff * raster_x_size
-            LOGGER.info('%.2f%% complete', 100.0 * current_pixel / <float>(
+            LOGGER.info('%.1f%% complete', 100.0 * current_pixel / <float>(
                 raster_x_size * raster_y_size))
 
         # make a buffer big enough to capture block and boundaries around it
@@ -2174,7 +2174,7 @@ def flow_accumulation_mfd(
     flow_dir_managed_raster.close()
     if weight_raster is not None:
         weight_raster.close()
-    LOGGER.info('%.2f%% complete', 100.0)
+    LOGGER.info('%.1f%% complete', 100.0)
 
 
 def distance_to_channel_d8(
@@ -2289,7 +2289,7 @@ def distance_to_channel_d8(
         if ctime(NULL) - last_log_time > 5.0:
             last_log_time = ctime(NULL)
             current_pixel = xoff + yoff * raster_x_size
-            LOGGER.info('%.2f%% complete', 100.0 * current_pixel / <float>(
+            LOGGER.info('%.1f%% complete', 100.0 * current_pixel / <float>(
                 raster_x_size * raster_y_size))
 
         # make a buffer big enough to capture block and boundaries around it
@@ -2487,7 +2487,7 @@ def distance_to_channel_mfd(
         if ctime(NULL) - last_log_time > 5.0:
             last_log_time = ctime(NULL)
             current_pixel = xoff + yoff * raster_x_size
-            LOGGER.info('%.2f%% complete', 100.0 * current_pixel / <float>(
+            LOGGER.info('%.1f%% complete', 100.0 * current_pixel / <float>(
                 raster_x_size * raster_y_size))
 
         # make a buffer big enough to capture block and boundaries around it
@@ -2608,7 +2608,7 @@ def distance_to_channel_mfd(
     flow_dir_mfd_managed_raster.close()
     if weight_raster is not None:
         weight_raster.close()
-    LOGGER.info('%.2f%% complete', 100.0)
+    LOGGER.info('%.1f%% complete', 100.0)
 
 
 def extract_streams_mfd(
@@ -2684,15 +2684,21 @@ def extract_streams_mfd(
     # this queue is used to march the front from the stream pixel
     cdef CoordinateQueueType open_set
 
+    cdef time_t last_log_time = ctime(NULL)
+
     for block_offsets in pygeoprocessing.iterblocks(
             target_stream_raster_path, offset_only=True):
         xoff = block_offsets['xoff']
         yoff = block_offsets['yoff']
         win_xsize = block_offsets['win_xsize']
         win_ysize = block_offsets['win_ysize']
-        LOGGER.debug(block_offsets)
         for yi in range(win_ysize):
             yi_root = yi+yoff
+            if ctime(NULL) - last_log_time > 5.0:
+                last_log_time = ctime(NULL)
+                current_pixel = xoff + yoff * raster_x_size
+                LOGGER.info('%.1f%% complete', 100.0 * current_pixel / <float>(
+                    raster_x_size * raster_y_size))
             for xi in range(win_xsize):
                 xi_root = xi+xoff
                 flow_accum = flow_accum_mr.get(xi_root, yi_root)
@@ -2751,6 +2757,7 @@ def extract_streams_mfd(
                                         CoordinateType(xi_sn, yi_sn))
 
     stream_mr.close()
+    LOGGER.info('100.0% complete')
 
 
 def _is_raster_path_band_formatted(raster_path_band):
