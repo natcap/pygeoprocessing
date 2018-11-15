@@ -914,7 +914,7 @@ def new_raster_from_base(
 
                 last_time = _invoke_timed_callback(
                     last_time, lambda: LOGGER.info(
-                        '%.2f%% complete',
+                        '%.1f%% complete',
                         float(pixels_processed) / n_pixels * 100.0),
                     _LOGGING_PERIOD)
             target_band = None
