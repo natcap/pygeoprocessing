@@ -2914,7 +2914,7 @@ def extract_streams_mfd(
 
     cdef int xoff, yoff, win_xsize, win_ysize
     cdef int xi, yi, xi_root, yi_root, i_n, xi_n, yi_n, i_sn, xi_sn, yi_sn
-    cdef int flow_dir_mfd, stream_val
+    cdef int flow_dir_mfd
     cdef double flow_accum, flow_threshold_typed = flow_threshold
     cdef int n_iterations = 0
     cdef int is_outlet
@@ -2956,7 +2956,7 @@ def extract_streams_mfd(
                 if is_outlet:
                     open_set.push(CoordinateType(xi_root, yi_root))
                     stream_mr.set(xi_root, yi_root, 1)
-                continue
+
                 n_iterations = 0
                 while open_set.size() > 0:
                     xi_n = open_set.front().xi
@@ -2974,9 +2974,16 @@ def extract_streams_mfd(
                         if (xi_sn < 0 or xi_sn >= raster_x_size or
                                 yi_sn < 0 or yi_sn >= raster_y_size):
                             continue
-                        if stream_mr.get(xi_sn, yi_sn) == 1:
-                            stream_mr.set(xi_sn, yi_sn, 2)
-                            open_set.push(CoordinateType(xi_sn, yi_sn))
+
+                        flow_dir_mfd = <int>flow_dir_mfd_mr.get(xi_sn, yi_sn)
+                        if ((flow_dir_mfd >>
+                                (D8_REVERSE_DIRECTION[i_sn] * 4)) & 0xF) > 0:
+                            # upstream pixel flows into this one
+                            if (flow_accum_mr.get(xi_sn, yi_sn) >
+                                flow_threshold_typed and stream_mr.get(
+                                    xi_sn, yi_sn) == stream_nodata):
+                                open_set.push(CoordinateType(xi_sn, yi_sn))
+                                stream_mr.set(xi_sn, yi_sn, 1)
 
     stream_mr.close()
 
