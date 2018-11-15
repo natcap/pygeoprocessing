@@ -2610,261 +2610,15 @@ def distance_to_channel_mfd(
     LOGGER.info('%.2f%% complete', 100.0)
 
 
-def extract_streams(
-        flow_accum_raster_path_band, flow_threshold,
-        target_stream_raster_path, divergent_search_distance=0,
-        flow_dir_mfd_path_band=None,
-        gtiff_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS):
-    """Classify a stream raster.
-
-    This function classifies pixels as streams that have a flow accumulation
-    value >= `flow_threshold`. In the case of divergent streams, the function
-    will trace potential streams downhill for up to
-    `divergent_search_distance` pixels away.
-
-    Parameters:
-        flow_accum_raster_path_band (tuple): a string/integer tuple indicating
-            the flow accumulation raster to use as a basis for thresholding
-            a stream. Values in this raster that are >= flow_threshold will
-            be classified as streams. This raster should be derived from
-            `dem_raster_path_band` and at the least match the dimensions,
-            projections, and nodata pixels.
-        flow_threshold (float): the value in
-            `flow_accum_raster_path_band` to indicate where a stream
-            exists.
-        target_stream_raster_path (str): path to the target stream raster.
-            This raster will be the same dimensions and projection as
-            `dem_raster_path_band`.
-        divergent_search_distance (int): when a stream terminates with a
-            divergent flow, this algorithm will search up to
-            `divergent_search_distance` downhill pixels away to find a
-            connecting downhill stream. If one is found the stream is traced
-            through the least cost path from the divergent flow to the
-            downhill new flow. If this value is > 0 then
-            `flow_dir_mfd_path_band` must be defined.
-        flow_dir_mfd_path_band (str): optional path to multiple flow direction
-            raster, required to join divergent streams.
-        gtiff_creation_options (list): this is an argument list that will be
-            passed to the GTiff driver.  Useful for blocksizes, compression,
-            and more.
-
-    Returns:
-        None.
-    """
-    flow_accum_info = pygeoprocessing.get_raster_info(
-        flow_accum_raster_path_band[0])
-    cdef double flow_accum_nodata = flow_accum_info['nodata'][
-        flow_accum_raster_path_band[1]-1]
-    stream_nodata = 4
-
-    cdef int raster_x_size, raster_y_size
-    raster_x_size, raster_y_size = flow_accum_info['raster_size']
-
-    def classify_stream_op(flow_accum_array):
-        """Simple flow accumulation thresholding."""
-        result = numpy.zeros(flow_accum_array.shape, dtype=numpy.int8)
-        result[:] = stream_nodata
-        valid_mask = ~numpy.isclose(flow_accum_array, flow_accum_nodata)
-        result[valid_mask] = flow_accum_array[valid_mask] >= flow_threshold
-        return result
-
-    pygeoprocessing.raster_calculator(
-        [flow_accum_raster_path_band], classify_stream_op,
-        target_stream_raster_path, gdal.GDT_Byte, stream_nodata,
-        gtiff_creation_options=gtiff_creation_options)
-
-    if divergent_search_distance <= 0:
-        return
-
-    cdef _ManagedRaster stream_mr = _ManagedRaster(
-        target_stream_raster_path, 1, 1)
-    cdef _ManagedRaster flow_dir_mfd_mr = _ManagedRaster(
-        flow_dir_mfd_path_band[0], flow_dir_mfd_path_band[1], 0)
-    cdef _ManagedRaster flow_accum_mr = _ManagedRaster(
-        flow_accum_raster_path_band[0], flow_accum_raster_path_band[1], 0)
-
-    cdef numpy.ndarray[unsigned char, ndim=2] stream_block
-    cdef int xoff, yoff, win_xsize, win_ysize
-    cdef int xi, yi, xi_root, yi_root, i_n, xi_n, yi_n, i_sn, xi_sn, yi_sn
-    cdef unsigned char sn_stream_val
-    cdef int flow_dir_mfd, flow_dir_mfd_s, upstream_dir
-    cdef int flow_dir_mfd_nodata = <int>pygeoprocessing.get_raster_info(
-        flow_dir_mfd_path_band[0])['nodata'][flow_dir_mfd_path_band[1]-1]
-    cdef int n_iterations = 0
-
-    # this queue is used to march the front from the stream pixel
-    cdef CoordinateQueueType open_set
-    cdef int array_tail = 0
-    cdef int[:] possible_candidate_array = numpy.empty(8*3, dtype=numpy.int)
-
-    # this array is used to record the backflow directions
-    cdef int[:, :] backflow_direction = numpy.empty(
-            (divergent_search_distance*2+1, divergent_search_distance*2+1),
-            dtype=numpy.int)
-    backflow_direction[:] = -1
-
-    cdef int backflow_x_center, backflow_y_center
-    cdef int backflow_x, backflow_y
-    backflow_x_center = divergent_search_distance
-    backflow_y_center = divergent_search_distance
-
-    for block_offsets, stream_block in pygeoprocessing.iterblocks(
-            target_stream_raster_path):
-        xoff = block_offsets['xoff']
-        yoff = block_offsets['yoff']
-        win_xsize = block_offsets['win_xsize']
-        win_ysize = block_offsets['win_ysize']
-        LOGGER.debug(block_offsets)
-        for yi in range(win_ysize):
-            yi_root = yi+yoff
-            for xi in range(win_xsize):
-                xi_root = xi+xoff
-                if stream_block[yi, xi] != 1:
-                    continue
-                flow_dir_mfd = <int>flow_dir_mfd_mr.get(xi_root, yi_root)
-                if is_close(flow_dir_mfd, flow_dir_mfd_nodata):
-                    continue
-                array_tail = 0
-                for i_n in range(8):
-                    if ((flow_dir_mfd >> (i_n * 4)) & 0xF) == 0:
-                        # no flow in that direction
-                        continue
-                    xi_n = xi_root+NEIGHBOR_OFFSET_ARRAY[2*i_n]
-                    yi_n = yi_root+NEIGHBOR_OFFSET_ARRAY[2*i_n+1]
-                    if (xi_n < 0 or xi_n >= raster_x_size or
-                            yi_n < 0 or yi_n >= raster_y_size):
-                        # it'll drain off the edge of the raster
-                        continue
-                    if stream_mr.get(xi_n, yi_n) == 1:
-                        # this pixel is connected to a stream, so quit
-                        array_tail = 0
-                        break
-
-                    # otherwise, a divergent stream might be found, add to
-                    # the queue
-                    possible_candidate_array[array_tail+0] = xi_n
-                    possible_candidate_array[array_tail+1] = yi_n
-                    possible_candidate_array[array_tail+2] = i_n
-                    array_tail += 3
-
-                if array_tail > 0:
-                    backflow_direction[:] = -1
-                    # mark the center as visited with garbage direction
-                    backflow_direction[
-                        backflow_y_center, backflow_x_center] = 9
-                    while array_tail != 0:
-                        array_tail -= 3
-                        backflow_x = (
-                            possible_candidate_array[array_tail+0] -
-                            xi_root) + backflow_x_center
-                        backflow_y = (
-                            possible_candidate_array[array_tail+1] -
-                            yi_root) + backflow_y_center
-                        open_set.push(CoordinateType(
-                            possible_candidate_array[array_tail+0],
-                            possible_candidate_array[array_tail+1]))
-                        backflow_direction[backflow_y, backflow_x] = (
-                            D8_REVERSE_DIRECTION[
-                                possible_candidate_array[array_tail+2]])
-
-                n_iterations = 0
-                while open_set.size() > 0:
-                    xi_n = open_set.front().xi
-                    yi_n = open_set.front().yi
-                    stream_mr.set(xi_n, yi_n, 2)
-                    open_set.pop()
-                    if n_iterations > 50000:
-                        LOGGER.debug("stuck in loop %s %s", xi_n, yi_n)
-                    n_iterations += 1
-                    connect = 0
-                    flow_dir_mfd = <int>flow_dir_mfd_mr.get(xi_root, yi_root)
-                    for i_sn in range(8):
-                        if ((flow_dir_mfd >> (i_sn * 4)) & 0xF) == 0:
-                            # no flow in that direction
-                            continue
-                        xi_sn = xi_n+NEIGHBOR_OFFSET_ARRAY[2*i_sn]
-                        yi_sn = yi_n+NEIGHBOR_OFFSET_ARRAY[2*i_sn+1]
-
-                        if (xi_sn < 0 or xi_sn >= raster_x_size or
-                                yi_sn < 0 or yi_sn >= raster_y_size):
-                            # drain to edge
-                            connect = 1
-                            break
-
-                        flow_dir_mfd_s = <int>flow_dir_mfd_mr.get(
-                            xi_sn, yi_sn)
-                        if flow_dir_mfd_s == flow_dir_mfd_nodata:
-                            # drain to nodata
-                            connect = 1
-                            break
-
-                        backflow_x = (xi_sn-xi_root)+backflow_x_center
-                        if (backflow_x < 0 or
-                                backflow_x >= backflow_x_center*2+1):
-                            # searched too far
-                            continue
-                        backflow_y = (yi_sn-yi_root)+backflow_y_center
-                        if (backflow_y < 0 or
-                                backflow_y >= backflow_y_center*2+1):
-                            # searched too far
-                            continue
-                        if backflow_direction[backflow_y, backflow_x] > -1:
-                            # already visited this pixel
-                            continue
-
-                        sn_stream_val = (
-                            <unsigned char>stream_mr.get(xi_sn, yi_sn))
-                        if sn_stream_val == 1:
-                            # found a down-stream
-                            connect = 1
-                            break
-
-                        cur_flow = flow_accum_mr.get(xi_sn, yi_sn)
-                        if is_close(cur_flow, flow_accum_nodata):
-                            # drain to nodata
-                            connect = 1
-                            break
-
-                        # otherwise it's okay to visit this pixel downhill
-                        open_set.push(CoordinateType(xi_sn, yi_sn))
-                        backflow_direction[backflow_y, backflow_x] = (
-                            D8_REVERSE_DIRECTION[i_sn])
-
-                    if connect:
-                        # there's a downstream connection!
-                        # turn on all the upstream pixels and pop the stack
-                        backflow_x = (xi_n-xi_root)+backflow_x_center
-                        backflow_y = (yi_n-yi_root)+backflow_y_center
-                        while (backflow_x != backflow_x_center and
-                               backflow_y != backflow_y_center):
-                            stream_mr.set(
-                                (backflow_x - backflow_x_center) + xi_root,
-                                (backflow_y - backflow_y_center) + yi_root, 3)
-                            upstream_dir = (
-                                backflow_direction[backflow_y, backflow_x])
-                            backflow_x += (
-                                NEIGHBOR_OFFSET_ARRAY[2*upstream_dir])
-                            backflow_y += (
-                                NEIGHBOR_OFFSET_ARRAY[2*upstream_dir+1])
-                        # clear the queue
-                        open_set = CoordinateQueueType()
-                        backflow_direction[:] = -1
-                        break
-
-    stream_mr.close()
-
-
 def extract_streams_mfd(
-        flow_accum_raster_path_band, flow_threshold,
-        target_stream_raster_path, remove_stream_fragments=False,
-        flow_dir_mfd_path_band=None,
+        flow_accum_raster_path_band, flow_dir_mfd_path_band, flow_threshold,
+        target_stream_raster_path, trace_threshold_proportion=1.0,
         gtiff_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS):
-    """Classify a stream raster.
+    """Classify a stream raster from MFD flow accumulation.
 
     This function classifies pixels as streams that have a flow accumulation
     value >= `flow_threshold`. In the case of divergent streams, the function
-    will trace potential streams downhill for up to
-    `divergent_search_distance` pixels away.
+    will trace potential streams.
 
     Parameters:
         flow_accum_raster_path_band (tuple): a string/integer tuple indicating
@@ -2873,17 +2627,20 @@ def extract_streams_mfd(
             be classified as streams. This raster should be derived from
             `dem_raster_path_band` and at the least match the dimensions,
             projections, and nodata pixels.
+        flow_dir_mfd_path_band (str): optional path to multiple flow direction
+            raster, required to join divergent streams.
         flow_threshold (float): the value in
             `flow_accum_raster_path_band` to indicate where a stream
             exists.
         target_stream_raster_path (str): path to the target stream raster.
             This raster will be the same dimensions and projection as
             `dem_raster_path_band`.
-        remove_stream_fragments (bool): if True, any stream fragments which
-            diverge (drain to pixels that aren't streams) will be removed. If
-            this value is True then `flow_dir_mfd_path_band` must be defined.
-        flow_dir_mfd_path_band (str): optional path to multiple flow direction
-            raster, required to join divergent streams.
+        trace_threshold_proportion (float): this value indicates what
+            proportion of the flow_threshold is enough to classify a pixel
+            as a stream after the stream has been started from a
+            `flow_threshold` drain. Setting this value < 1.0 is useful for
+            classifying streams in regions that have highly divergent flow
+            directions.
         gtiff_creation_options (list): this is an argument list that will be
             passed to the GTiff driver.  Useful for blocksizes, compression,
             and more.
@@ -2919,8 +2676,11 @@ def extract_streams_mfd(
     cdef int n_iterations = 0
     cdef int is_outlet
 
+    cdef int flow_dir_nodata = pygeoprocessing.get_raster_info(
+        flow_dir_mfd_path_band[0])['nodata'][flow_dir_mfd_path_band[1]-1]
+
     # this queue is used to march the front from the stream pixel
-    cdef CoordinateQueueType open_set
+    cdef CoordinateQueueType open_set, possible_stream_set
 
     for block_offsets in pygeoprocessing.iterblocks(
             target_stream_raster_path, offset_only=True):
@@ -2958,14 +2718,11 @@ def extract_streams_mfd(
                     stream_mr.set(xi_root, yi_root, 1)
 
                 n_iterations = 0
+                bonus_search_depth = 0
                 while open_set.size() > 0:
                     xi_n = open_set.front().xi
                     yi_n = open_set.front().yi
                     open_set.pop()
-                    """
-                    if n_iterations > 50000:
-                        LOGGER.debug("stuck in loop %s %s", xi_n, yi_n)
-                    """
                     n_iterations += 1
                     for i_sn in range(8):
                         xi_sn = xi_n+NEIGHBOR_OFFSET_ARRAY[2*i_sn]
@@ -2976,14 +2733,18 @@ def extract_streams_mfd(
                             continue
 
                         flow_dir_mfd = <int>flow_dir_mfd_mr.get(xi_sn, yi_sn)
+                        if flow_dir_mfd == flow_dir_nodata:
+                            continue
                         if ((flow_dir_mfd >>
                                 (D8_REVERSE_DIRECTION[i_sn] * 4)) & 0xF) > 0:
                             # upstream pixel flows into this one
-                            if (flow_accum_mr.get(xi_sn, yi_sn) >
-                                flow_threshold_typed and stream_mr.get(
-                                    xi_sn, yi_sn) == stream_nodata):
-                                open_set.push(CoordinateType(xi_sn, yi_sn))
-                                stream_mr.set(xi_sn, yi_sn, 1)
+                            if stream_mr.get(xi_sn, yi_sn) == stream_nodata:
+                                if (flow_accum_mr.get(xi_sn, yi_sn) >
+                                        flow_threshold_typed *
+                                        trace_threshold_proportion):
+                                    stream_mr.set(xi_sn, yi_sn, 1)
+                                    open_set.push(
+                                        CoordinateType(xi_sn, yi_sn))
 
     stream_mr.close()
 
