@@ -2675,6 +2675,8 @@ def extract_streams_mfd(
     cdef int xi, yi, xi_root, yi_root, i_n, xi_n, yi_n, i_sn, xi_sn, yi_sn
     cdef int flow_dir_mfd
     cdef double flow_accum, flow_threshold_typed = flow_threshold
+    cdef double trace_flow_threshold = (
+        trace_threshold_proportion * flow_threshold)
     cdef int n_iterations = 0
     cdef int is_outlet
 
@@ -2750,8 +2752,7 @@ def extract_streams_mfd(
                             # upstream pixel flows into this one
                             if stream_mr.get(xi_sn, yi_sn) != 1:
                                 if (flow_accum_mr.get(xi_sn, yi_sn) >=
-                                        flow_threshold_typed *
-                                        trace_threshold_proportion):
+                                        trace_flow_threshold):
                                     stream_mr.set(xi_sn, yi_sn, 1)
                                     open_set.push(
                                         CoordinateType(xi_sn, yi_sn))
