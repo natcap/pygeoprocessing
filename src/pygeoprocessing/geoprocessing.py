@@ -1986,9 +1986,11 @@ def calculate_disjoint_polygon_set(vector_path, layer_index=0):
         for poly_feat in vector_layer))
 
     LOGGER.info("build shapely rtree index")
+    # Specifying the stream kwarg addresses some low-level exceptions on
+    # Windows when faulthandler is enabled.
     poly_rtree_index = rtree.index.Index(
-        ((poly_fid, poly.bounds, None)
-         for poly_fid, poly in shapely_polygon_lookup.items()))
+        stream=((poly_fid, poly.bounds, None)
+                for poly_fid, poly in shapely_polygon_lookup.items()))
 
     vector_layer = None
     vector = None
