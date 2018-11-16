@@ -2790,3 +2790,24 @@ class PyGeoprocessing10(unittest.TestCase):
         actual_message = str(cm.exception)
         self.assertTrue(expected_message in actual_message, actual_message)
 
+    def test_disjoint_polygon_set_no_features_error(self):
+        """PGP.geoprocessing: raise an error when a vector has no features."""
+        import pygeoprocessing
+        import pygeoprocessing.testing
+
+        srs = osr.SpatialReference()
+        srs.ImportFromEPSG(4623)
+
+        empty_vector_path = os.path.join(self.workspace_dir, 'empty.geojson')
+        pygeoprocessing.testing.create_vector_on_disk(
+            geometries=[],
+            projection=srs.ExportToWkt(),
+            fields=None,
+            vector_format='GeoJSON',
+            filename=empty_vector_path)
+
+        with self.assertRaises(RuntimeError) as cm:
+            pygeoprocessing.calculate_disjoint_polygon_set(empty_vector_path)
+
+        self.assertTrue('Vector must have geometries but does not'
+                        in str(cm.exception))

@@ -2021,6 +2021,10 @@ def calculate_disjoint_polygon_set(
     vector_layer = vector.GetLayer(layer_index)
     feature_count = vector_layer.GetFeatureCount()
 
+    if feature_count == 0:
+        raise RuntimeError('Vector must have geometries but does not: %s'
+                           % vector_path)
+
     last_time = time.time()
     LOGGER.info("build shapely polygon list")
 
