@@ -424,7 +424,7 @@ class OverlappingWatershedContextAdapter(logging.LoggerAdapter):
 ctypedef pair[long, long] CoordinatePair
 
 
-def delineate_watersheds(
+def delineate_watersheds_d8(
         d8_flow_dir_raster_path_band, outflow_vector_path,
         target_fragments_vector_path, working_dir=None):
     """Delineate watersheds from a D8 flow direction raster.

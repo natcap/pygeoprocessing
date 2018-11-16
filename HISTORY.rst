@@ -4,7 +4,7 @@ Release History
 Unreleased Changes
 ------------------
 * Adding an implementation of watershed delineation based on D8 flow direction
-  as ``pygeoprocessing.routing.delineate_watersheds``.  This function writes a
+  as ``pygeoprocessing.routing.delineate_watersheds_d8``.  This function writes a
   GeoPackage of polygons representing the regions that flow exclusively
   into outflow points.  Another function,
   ``pygeoprocessing.routing.join_watershed_fragments``, will take the delineated

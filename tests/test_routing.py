@@ -1140,7 +1140,7 @@ class TestRouting(unittest.TestCase):
         target_watersheds_vector = os.path.join(self.workspace_dir,
                                                 'sheds.gpkg')
 
-        pygeoprocessing.routing.delineate_watersheds(
+        pygeoprocessing.routing.delineate_watersheds_d8(
             (flow_dir_path, 1), outflow_points, target_watersheds_vector,
             work_dir)
 
@@ -1210,7 +1210,7 @@ class TestRouting(unittest.TestCase):
 
         target_watersheds_vector = os.path.join(self.workspace_dir,
                                                 'sheds.gpkg')
-        pygeoprocessing.routing.delineate_watersheds(
+        pygeoprocessing.routing.delineate_watersheds_d8(
             (flow_dir_path, 1), outflow_points,
             target_watersheds_vector,
             os.path.join(self.workspace_dir, 'scratch'))
@@ -1425,7 +1425,7 @@ class TestRouting(unittest.TestCase):
 
         target_fragments_vector = os.path.join(self.workspace_dir,
                                                'fragments.gpkg')
-        pygeoprocessing.routing.delineate_watersheds(
+        pygeoprocessing.routing.delineate_watersheds_d8(
             (flow_dir_path, 1), outflow_vector, target_fragments_vector,
             os.path.join(self.workspace_dir, 'scratch'))
 
@@ -1485,7 +1485,7 @@ class TestRouting(unittest.TestCase):
 
         target_fragments_vector = os.path.join(self.workspace_dir,
                                                'fragments.gpkg')
-        pygeoprocessing.routing.delineate_watersheds(
+        pygeoprocessing.routing.delineate_watersheds_d8(
             (flow_dir_path, 1), outflow_vector, target_fragments_vector,
             os.path.join(self.workspace_dir, 'scratch'))
 
@@ -1541,7 +1541,7 @@ class TestRouting(unittest.TestCase):
 
         target_fragments_vector = os.path.join(self.workspace_dir,
                                                'fragments.gpkg')
-        pygeoprocessing.routing.delineate_watersheds(
+        pygeoprocessing.routing.delineate_watersheds_d8(
             (flow_dir_path, 1), outflow_vector, target_fragments_vector,
             os.path.join(self.workspace_dir, 'scratch'))
 
@@ -1602,7 +1602,7 @@ class TestRouting(unittest.TestCase):
 
         target_fragments_vector = os.path.join(self.workspace_dir,
                                                'fragments.gpkg')
-        pygeoprocessing.routing.delineate_watersheds(
+        pygeoprocessing.routing.delineate_watersheds_d8(
             (flow_dir_path, 1), outflow_vector, target_fragments_vector,
             os.path.join(self.workspace_dir, 'scratch'))
 
@@ -1660,7 +1660,7 @@ class TestRouting(unittest.TestCase):
 
         target_fragments_vector = os.path.join(self.workspace_dir,
                                                'fragments.gpkg')
-        pygeoprocessing.routing.delineate_watersheds(
+        pygeoprocessing.routing.delineate_watersheds_d8(
             (flow_dir_path, 1), outflow_vector, target_fragments_vector,
             os.path.join(self.workspace_dir, 'scratch'))
 
