@@ -2628,7 +2628,7 @@ def extract_streams_mfd(
             be classified as streams. This raster should be derived from
             `dem_raster_path_band` using
             `pygeoprocessing.routing.flow_accumulation_mfd`.
-        flow_dir_mfd_path_band (str): optional path to multiple flow direction
+        flow_dir_mfd_path_band (str): path to multiple flow direction
             raster, required to join divergent streams.
         flow_threshold (float): the value in `flow_accum_raster_path_band` to
             indicate where a stream exists.
