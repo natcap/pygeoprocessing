@@ -424,6 +424,45 @@ class OverlappingWatershedContextAdapter(logging.LoggerAdapter):
 ctypedef pair[long, long] CoordinatePair
 
 
+# Phase 0: preprocess working geometries
+#    * Attempt to repair invalid geometries.
+#    * Create new WS_ID field, set field value.
+#    * Exclude any geometries that do not intersect the DEM bbox (prepared geometry op)
+#
+# Phase 1: Prepare working geometries for determining sets of disjoint polygons.
+#    * Points and very small geometries can be removed, as we already know their seed coords.
+#         * Track these in a {CoordinatePair: set of ws_ids} structure
+#    * Alter geometries of remaining polygons and lines as needed
+#
+# Phase 2: Determine disjoint sets
+#    * Write out new vectors
+#
+# Phase 3: determine seed coordinates for remaining geometries
+#    * For each disjoint vector:
+#        * Create a new UInt32 raster (new raster is for debugging)
+#        * rasterize the vector's ws_id column.
+#        * iterblocks over the resulting raster, tracking seed coordinates
+#            * If a seed is over nodata, skip it.
+#
+# Phase 4: Cluster seeds by flow direction block
+#    * Use a spatial index to find which block a seed coordinate belongs to.
+#
+# Phase 5: Iteration.
+#    * For each blockwise seed coordinate cluster:
+#        * Process neighbors.
+#        * If a neighbor is upstream and is a known seed, mark connectivity between seeds.
+# 
+# Phase 6: Polygonization
+#    * Polygonize the seeds fragments.
+#
+# Phase 7: Copy field values over to the new fragments.
+
+
+# In join_watershed_fragments:
+# Phase 1: Take the union of all fragments with the same ws_id, noting union of all upstream seeds.
+# Phase 2: Recurse the data structure, building nested geometries.
+
+
 def delineate_watersheds_d8(
         d8_flow_dir_raster_path_band, outflow_vector_path,
         target_fragments_vector_path, working_dir=None):
@@ -516,7 +555,7 @@ def delineate_watersheds_d8(
             ogr_geom.CloseRings()
             ogr_geom.Buffer(0)
             geometry = shapely.wkb.loads(ogr_geom.ExportToWkb())
-            feature.SetGeometry(ogr_geom)
+            feature.SetGeometry(ogr.CreateGeometryFromWkb(geometry.wkb))
 
         working_outlets_layer.SetFeature(feature)
     working_outlets_layer.CommitTransaction()
@@ -646,7 +685,10 @@ def delineate_watersheds_d8(
 
     LOGGER.info('Determining sets of non-overlapping geometries')
     for set_index, disjoint_polygon_fid_set in enumerate(
-            pygeoprocessing.calculate_disjoint_polygon_set(buffered_working_outlets_path), start=1):
+            pygeoprocessing.calculate_disjoint_polygon_set(
+                buffered_working_outlets_path,
+                bounding_box=flow_dir_info['bounding_box']),
+            start=1):
         # Remove any of the duplicate points.  This set will be empty if
         # the geometries aren't points or if all points are disjoint.
         disjoint_polygon_fid_set -= duplicate_point_fids
