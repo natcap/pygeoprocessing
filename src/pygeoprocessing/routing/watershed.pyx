@@ -462,6 +462,82 @@ ctypedef pair[long, long] CoordinatePair
 # Phase 1: Take the union of all fragments with the same ws_id, noting union of all upstream seeds.
 # Phase 2: Recurse the data structure, building nested geometries.
 
+def new_delineation(
+        d8_flow_dir_raster_path_band, outflow_vector_path,
+        target_fragments_vector_path, working_dir=None):
+    if (d8_flow_dir_raster_path_band is not None and not
+            _is_raster_path_band_formatted(d8_flow_dir_raster_path_band)):
+        raise ValueError(
+            "%s is supposed to be a raster band tuple but it's not." % (
+                d8_flow_dir_raster_path_band))
+
+    flow_dir_info = pygeoprocessing.get_raster_info(
+        d8_flow_dir_raster_path_band[0])
+    source_gt = flow_dir_info['geotransform']
+    cdef long flow_dir_n_cols = flow_dir_info['raster_size'][0]
+    cdef long flow_dir_n_rows = flow_dir_info['raster_size'][1]
+    try:
+        if working_dir is not None:
+            os.makedirs(working_dir)
+    except OSError:
+        pass
+    working_dir_path = tempfile.mkdtemp(
+        dir=working_dir, prefix='watershed_delineation_%s_' % time.strftime(
+            '%Y-%m-%d_%H_%M_%S', time.gmtime()))
+
+    gpkg_driver = gdal.GetDriverByName('GPKG')
+    flow_dir_srs = osr.SpatialReference()
+    flow_dir_srs.ImportFromWkt(flow_dir_info['projection'])
+    flow_dir_bbox_geometry = shapely.prepared.prep(
+        shapely.geometry.box(*flow_dir_info['bounding_box']))
+
+    source_outlets_vector = gdal.OpenEx(outflow_vector_path, gdal.OF_VECTOR)
+    working_outlets_path = os.path.join(working_dir_path, 'working_outlets.gpkg')
+    working_outlets_vector = gpkg_driver.CreateCopy(working_outlets_path,
+                                                    source_outlets_vector)
+    working_outlets_layer = working_outlets_vector.GetLayer()
+
+    # Add a new field to the clipped_outlets_layer to ensure we know what field
+    # values are bing rasterized.
+    cdef int ws_id
+    ws_id_fieldname = '__ws_id__'
+    ws_id_field_defn = ogr.FieldDefn(ws_id_fieldname, ogr.OFTInteger32)
+    working_outlets_layer.CreateField(ws_id_field_defn)
+
+    # Phase 0: preprocess working geometries.
+    #    * Attempt to repair invalid geometries.
+    #    * Create new WS_ID field, set field value.
+    #    * Exclude any geometries that do not intersect the DEM bbox (prepared geometry op)
+    ws_id = 0
+    working_vector_ws_id_to_fid = {}
+    working_outlets_layer.StartTransaction()
+    for feature in working_outlets_layer:
+        ogr_geom = feature.GetGeometryRef()
+        try:
+            geometry = shapely.wkb.loads(ogr_geom.ExportToWkb())
+        except ReadingError:
+            # This happens when a polygon isn't a closed ring.
+            ogr_geom.CloseRings()
+            ogr_geom.Buffer(0)
+            geometry = shapely.wkb.loads(ogr_geom.ExportToWkb())
+            feature.SetGeometry(ogr.CreateGeometryFromWkb(geometry.wkb))
+
+        # If the geometry doesn't intersect the flow direction bounding box,
+        # no need to include it in any of the watershed processing.
+        if not flow_dir_bbox_geometry.intersects(geometry):
+            working_outlets_layer.DeleteFeature(feature)
+            continue
+
+        working_vector_ws_id_to_fid[feature.GetFID()] = ws_id
+        feature.SetField(ws_id_fieldname, ws_id)
+        working_outlets_layer.SetFeature(feature)
+        ws_id += 1  # only track ws_ids that end up in the vector.
+    working_outlets_layer.CommitTransaction()
+
+        
+
+
+
 
 def delineate_watersheds_d8(
         d8_flow_dir_raster_path_band, outflow_vector_path,
@@ -609,6 +685,7 @@ def delineate_watersheds_d8(
     cdef time_t last_log_time, last_ws_log_time
     last_log_time = ctime(NULL)
     cdef int n_features_preprocessed = 0
+
     for feature in buffered_working_outlets_layer:
         if ctime(NULL) - last_log_time > 5.0:
             last_log_time = ctime(NULL)
