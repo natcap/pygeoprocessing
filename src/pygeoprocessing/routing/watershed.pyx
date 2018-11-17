@@ -534,7 +534,76 @@ def new_delineation(
         ws_id += 1  # only track ws_ids that end up in the vector.
     working_outlets_layer.CommitTransaction()
 
-        
+    # Phase 1: Prepare working geometries for determining sets of disjoint polygons.
+    #    * Points and very small geometries can be removed, as we already know their seed coords.
+    #         * Track these in a {CoordinatePair: set of ws_ids} structure
+    #    * Alter geometries of remaining polygons and lines as needed
+    cdef cmap[CoordinatePair, cset[int]] seed_watersheds
+    cdef CoordinatePair seed
+
+    buffered_working_outlets_path = os.path.join(working_dir_path,
+                                                 'working_outlets_buffered.gpkg')
+    buffered_working_outlets_vector = gpkg_driver.CreateCopy(buffered_working_outlets_path,
+                                                             working_outlets_vector)
+    buffered_working_outlets_layer = buffered_working_outlets_vector.GetLayer()
+    buffered_working_outlets_layer.StartTransaction()
+    for feature in buffered_working_outlets_layer:
+        geometry = shapely.wkb.loads(feature.GetGeometryRef().ExportToWkb())
+
+        minx, miny, maxx, maxy = geometry.bounds
+        minx_pixelcoord = (minx - x_origin) // x_pixelwidth
+        miny_pixelcoord = (miny - y_origin) // y_pixelwidth
+        maxx_pixelcoord = (maxx - x_origin) // x_pixelwidth
+        maxy_pixelcoord = (maxy - y_origin) // y_pixelwidth
+
+        # If the geometry only intersects a single pixel, we can treat it
+        # as a single point, which means that we can track it directly in our
+        # seeds data structure and not have to include it in the disjoint set
+        # determination.
+        if minx_pixelcoord == maxx_pixelcoord and miny_pixelcoord == maxy_pixelcoord:
+            # Repr. point allows this geometry to be of any type.
+            geometry = geometry.representative_point()
+
+            x_coord = geometry.x - ((geometry.x - x_origin) % x_pixelwidth) + x_pixelwidth/2.
+            y_coord = geometry.y - ((geometry.y - y_origin) % y_pixelwidth) + y_pixelwidth/2.
+
+            ws_id = feature.GetField(ws_id_fieldname)
+            seed = CoordinatePair(minx_pixelcoord, minx_pixelcoord)
+
+            if (seed_watersheds.find(seed) == seed_watersheds.end()):
+                seed_watersheds[seed] = cset[int]()
+            seed_watersheds[seed].insert(ws_id)
+
+            # Don't need the feature any more!
+            buffered_working_outlets_layer.DeleteFeature(feature)
+            continue
+
+        # If we can't fit the geometry into a single pixel, there remain
+        # two special cases that warrant buffering:
+        #     * It's a line (lines don't have area). We want to avoid a
+        #       situation where multiple lines cover the same pixels
+        #       but don't intersect.  Such geometries should be handled
+        #       in disjoint sets.
+        #     * It's a polygon that has area smaller than a pixel. This
+        #       came up in real-world sample data (the Montana Lakes
+        #       example, specifically), where some very small lakes were
+        #       disjoint but both overlapped only one pixel, the same pixel.
+        #       This lead to a race condition in rasterization where only
+        #       one of them would be in the output vector.
+        elif (geometry.area == 0.0 or geometry.area <= pixel_area):
+            new_geometry = geometry.buffer(buffer_dist)
+        else:
+            # No need to set the geometry, just continue.
+            continue
+
+        feature.SetGeometry(ogr.CreateGeometryFromWkb(new_geometry.wkb))
+        buffered_working_outlets_layer.SetFeature(feature)
+
+    buffered_working_outlets_layer.CommitTransaction()
+
+    # Phase 2: Determine disjoint sets
+    #    * Write out new vectors
+    #
 
 
 
