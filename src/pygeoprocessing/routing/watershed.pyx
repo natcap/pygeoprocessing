@@ -601,9 +601,77 @@ def new_delineation(
 
     buffered_working_outlets_layer.CommitTransaction()
 
-    # Phase 2: Determine disjoint sets
+    # Phase 2: Determine disjoint sets for any remaining geometries.
     #    * Write out new vectors
-    #
+    cdef int NO_WATERSHED = 0
+    if buffered_working_outlets_layer.GetFeatureCount() > 0:
+        LOGGER.info('Determining sets of non-overlapping geometries')
+        for set_index, disjoint_polygon_fid_set in enumerate(
+                pygeoprocessing.calculate_disjoint_polygon_set(
+                    buffered_working_outlets_path,
+                    bounding_box=flow_dir_info['bounding_box']),
+                start=1):
+
+            LOGGER.info("Creating a vector of %s disjoint geometries",
+                        len(disjoint_polygon_fid_set))
+            disjoint_vector_path = os.path.join(
+                    working_dir_path, 'disjoint_outflow_%s.gpkg' % set_index)
+            disjoint_vector_paths.append(disjoint_vector_path)
+            disjoint_vector = gpkg_driver.Create(disjoint_vector_path, 0, 0, 0,
+                                                 gdal.GDT_Unknown)
+            disjoint_layer = disjoint_vector.CreateLayer(
+                'outlet_geometries', flow_dir_srs, ogr.wkbPolygon)
+            disjoint_layer.CreateFields(outlets_schema)
+
+            disjoint_layer.StartTransaction()
+            # Though the buffered working layer was used for determining the sets
+            # of nonoverlapping polygons, we want to use the *original* outflow
+            # geometries for rasterization.  This step gets the appropriate features
+            # from the correct vectors so we keep the correct geometries.
+            for polygon_fid in disjoint_polygon_fid_set:
+                original_feature = buffered_working_outlets_layer.GetFeature(polygon_fid)
+                ws_id = original_feature.GetField(ws_id_fieldname)
+                new_feature = working_outlets_layer.GetFeature(
+                    working_vector_ws_id_to_fid[ws_id]).Clone()
+                disjoint_layer.CreateFeature(new_feature)
+            disjoint_layer.CommitTransaction()
+
+            disjoint_layer = None
+            disjoint_vector = None
+
+            # Phase 3: determine seed coordinates for remaining geometries
+            #    * For each disjoint vector:
+            #        * Create a new UInt32 raster (new raster is for debugging)
+            #        * rasterize the vector's ws_id column.
+            #        * iterblocks over the resulting raster, tracking seed coordinates
+            #            * If a seed is over nodata, skip it.
+            tmp_seed_raster_path = os.path.join(working_path_dir,
+                                                'disjoint_outflow_%s.tif' % set_index)
+            pygeoprocessing.new_raster_from_base(
+                d8_flow_dir_raster_path_band[0], tmp_seed_raster_path,
+                gdal.GDT_UInt32, [NO_WATERSHED], fill_value_list=[NO_WATERSHED],
+                gtiff_creation_options=GTIFF_CREATION_OPTIONS)
+
+            pygeoprocessing.rasterize(
+                disjoint_vector_path, tmp_seed_raster_path, None,
+                ['ALL_TOUCHED=TRUE', 'ATTRIBUTE=%s' % ws_id_fieldname],
+                layer_index='outlet_geometries')
+
+            cdef int row, col
+            for block_info, block in pygeoprocessing.iterblocks(tmp_seed_raster_path):
+                for (row, col) in zip(*numpy.nonzero(block)):
+                    ws_id = block[row, col]
+                    seed = CoordinatePair(row + block_info['xoff'],
+                                          col + block_info['yoff'])
+
+                    # Insert the seed into the seed_watersheds structure.
+                    if (seed_watersheds.find(seed) == seed_watersheds.end()):
+                        seed_watersheds[seed] = cset[int]()
+                    seed_watersheds[seed].insert(ws_id)
+
+        buffered_working_outlets_layer = None
+    buffered_working_outlets_vector = None
+
 
 
 
