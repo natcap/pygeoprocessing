@@ -462,7 +462,7 @@ ctypedef pair[long, long] CoordinatePair
 # Phase 1: Take the union of all fragments with the same ws_id, noting union of all upstream seeds.
 # Phase 2: Recurse the data structure, building nested geometries.
 
-def new_delineation(
+def delineate_watersheds_d8(
         d8_flow_dir_raster_path_band, outflow_vector_path,
         target_fragments_vector_path, working_dir=None):
     """Delineate watersheds from a D8 flow direction raster.
@@ -533,7 +533,7 @@ def new_delineation(
     # values are bing rasterized.
     cdef int ws_id
     ws_id_fieldname = '__ws_id__'
-    ws_id_field_defn = ogr.FieldDefn(ws_id_fieldname, ogr.OFTInteger32)
+    ws_id_field_defn = ogr.FieldDefn(ws_id_fieldname, ogr.OFTInteger64)
     working_outlets_layer.CreateField(ws_id_field_defn)
 
     # Phase 0: preprocess working geometries.
@@ -554,13 +554,15 @@ def new_delineation(
             geometry = shapely.wkb.loads(ogr_geom.ExportToWkb())
             feature.SetGeometry(ogr.CreateGeometryFromWkb(geometry.wkb))
 
+        fid = feature.GetFID()
+
         # If the geometry doesn't intersect the flow direction bounding box,
         # no need to include it in any of the watershed processing.
         if not flow_dir_bbox_geometry.intersects(geometry):
-            working_outlets_layer.DeleteFeature(feature)
+            working_outlets_layer.DeleteFeature(fid)
             continue
 
-        working_vector_ws_id_to_fid[feature.GetFID()] = ws_id
+        working_vector_ws_id_to_fid[ws_id] = fid
         feature.SetField(ws_id_fieldname, ws_id)
         working_outlets_layer.SetFeature(feature)
         ws_id += 1  # only track ws_ids that end up in the vector.
@@ -571,7 +573,10 @@ def new_delineation(
     #         * Track these in a {CoordinatePair: set of ws_ids} structure
     #    * Alter geometries of remaining polygons and lines as needed
     cdef cmap[CoordinatePair, cset[int]] seed_watersheds
+    cdef cmap[CoordinatePair, int] seed_ids  # {CoordinatePair: seed id}
+    cdef cmap[int, int] seed_id_to_ws_id
     cdef CoordinatePair seed
+    cdef int seed_id = 1
     cdef double buffer_dist = math.hypot(x_pixelwidth, y_pixelwidth) / 2. * 1.1
 
     buffered_working_outlets_path = os.path.join(working_dir_path,
@@ -606,9 +611,12 @@ def new_delineation(
             if (seed_watersheds.find(seed) == seed_watersheds.end()):
                 seed_watersheds[seed] = cset[int]()
             seed_watersheds[seed].insert(ws_id)
+            seed_id_to_ws_id[seed_id] = ws_id
+            seed_ids[seed] = seed_id
+            seed_id += 1
 
             # Don't need the feature any more!
-            buffered_working_outlets_layer.DeleteFeature(feature)
+            buffered_working_outlets_layer.DeleteFeature(feature.GetFID())
             continue
 
         # If we can't fit the geometry into a single pixel, there remain
@@ -700,6 +708,9 @@ def new_delineation(
                     if (seed_watersheds.find(seed) == seed_watersheds.end()):
                         seed_watersheds[seed] = cset[int]()
                     seed_watersheds[seed].insert(ws_id)
+                    seed_id_to_ws_id[seed_id] = ws_id
+                    seed_ids[seed] = seed_id
+                    seed_id += 1
 
         buffered_working_outlets_layer = None
     buffered_working_outlets_vector = None
@@ -729,14 +740,11 @@ def new_delineation(
     # build up a map of which seeds are in which block and
     # identify seeds by an integer index.
     cdef cmap[int, cset[CoordinatePair]] seeds_in_block
-    cdef cmap[CoordinatePair, int] seed_ids  # {CoordinatePair: seed id}
-    cdef int seed_id = 1
     cdef cmap[CoordinatePair, cset[int]].iterator seeds_in_watersheds_iterator = seed_watersheds.begin()
     while seeds_in_watersheds_iterator != seed_watersheds.end():
         # Only need the seed at present; don't need the member ws_ids.
         seed = deref(seeds_in_watersheds_iterator).first
         inc(seeds_in_watersheds_iterator)
-        seed_ids[seed] = seed_id
     
         block_index = next(spatial_index.nearest(
             (seed.first, seed.second, seed.first, seed.second),
@@ -768,7 +776,7 @@ def new_delineation(
     mask_raster_path = os.path.join(working_dir_path, 'mask_raster.tif')
     pygeoprocessing.new_raster_from_base(
         d8_flow_dir_raster_path_band[0], mask_raster_path,
-        gdal.GDT_UInt32, [NO_WATERSHED], fill_value_list=[NO_WATERSHED],
+        gdal.GDT_Byte, [255], fill_value_list=[0],
         gtiff_creation_options=GTIFF_CREATION_OPTIONS)
     mask_managed_raster = _ManagedRaster(mask_raster_path, 1, 1)
 
@@ -780,6 +788,7 @@ def new_delineation(
     last_log_time = ctime(NULL)
     block_iterator = seeds_in_block.begin()
     cdef cset[CoordinatePair].iterator seed_iterator
+    cdef CoordinatePair current_pixel, neighbor_pixel
     for block_index in range(n_blocks):
         seeds_in_current_block = seeds_in_block[block_index]
         seed_iterator = seeds_in_current_block.begin()
@@ -846,10 +855,118 @@ def new_delineation(
                             process_queue_set.insert(neighbor_pixel)
 
             nested_fragments[seed_id] = set(nested_fragment_ids)
+    scratch_managed_raster.close()  # flush the scratch raster.
+    mask_managed_raster.close()  # flush the mask raster
+
+    # Phase 6: Polygonization
+    #    * Polygonize the seeds fragments.
+    LOGGER.info('Polygonizing fragments')
+    scratch_raster = gdal.OpenEx(scratch_raster_path, gdal.OF_RASTER)
+    scratch_band = scratch_raster.GetRasterBand(1)
+    mask_raster = gdal.OpenEx(mask_raster_path, gdal.OF_RASTER)
+    mask_band = mask_raster.GetRasterBand(1)
+
+    target_fragments_vector = gpkg_driver.Create(target_fragments_vector_path,
+                                                 0, 0, 0, gdal.GDT_Unknown)
+    if target_fragments_vector is None:
+        raise RuntimeError(  # Because I frequently have this open in QGIS when I shouldn't.
+            "Could not open target fragments vector for writing. Do you have "
+            "access to this path?  Is the file open in another program?")
+
+    target_fragments_layer = target_fragments_vector.CreateLayer(
+        'watershed_fragments', flow_dir_srs, ogr.wkbPolygon)
+
+    # Create the fields in the target vector that already existed in the
+    # outflow points vector
+    target_fragments_layer.CreateFields(
+            [f for f in working_outlets_layer.schema if f.GetName() != ws_id_fieldname])
+    upstream_fragments_field = ogr.FieldDefn('upstream_fragments', ogr.OFTString)
+    target_fragments_layer.CreateField(upstream_fragments_field)
+    for new_id_fieldname in ('fragment_id', 'ws_id'):
+        new_field = ogr.FieldDefn(new_id_fieldname, ogr.OFTInteger64)
+        target_fragments_layer.CreateField(new_field)
+    target_fragments_layer_defn = target_fragments_layer.GetLayerDefn()
+
+    polygonized_fragments_path = os.path.join(working_dir_path,
+        'polygonized_fragments.gpkg')
+    polygonized_fragments_vector = gpkg_driver.Create(
+        polygonized_fragments_path, 0, 0, 0, gdal.GDT_Unknown)
+    polygonized_fragments_layer = polygonized_fragments_vector.CreateLayer(
+        'polygonized_fragments', flow_dir_srs, ogr.wkbPolygon)
+    polygonized_fragments_layer.CreateField(
+        ogr.FieldDefn('fragment_id', ogr.OFTInteger64))
+    gdal.Polygonize(
+        scratch_band,  # the source band to be analyzed
+        mask_band,  # the mask band indicating valid pixels
+        polygonized_fragments_layer,  # polygons are added to this layer
+        0,  # field index of 'fragment_id' field.
+        ['8CONNECTED8'],  # use 8-connectedness algorithm.
+        _make_polygonize_callback(LOGGER)
+    )
+
+    # Iterate through all of the features we just created in this disjoint
+    # fragments vector and copy them over into the target fragments vector.
+    LOGGER.info('Copying fragments to the output vector.')
+    target_fragments_layer.StartTransaction()
+    cdef int fragment_id
+    for created_fragment in polygonized_fragments_layer:
+        fragment_id = created_fragment.GetFieldAsInteger('fragment_id')
+        fragment_ws_id = seed_id_to_ws_id[fragment_id]
+        outflow_geom_fid = working_vector_ws_id_to_fid[fragment_ws_id]
+
+        target_fragment_feature = ogr.Feature(target_fragments_layer_defn)
+        target_fragment_feature.SetGeometry(
+            created_fragment.GetGeometryRef())
+
+        outflow_point_feature = working_outlets_layer.GetFeature(
+            outflow_geom_fid)
+        for outflow_fieldname, outflow_fieldvalue in (
+                outflow_point_feature.items().items()):
+            if outflow_fieldname == ws_id_fieldname:
+                continue
+            target_fragment_feature.SetField(outflow_fieldname,
+                                             outflow_fieldvalue)
+
+        target_fragment_feature.SetField('fragment_id', float(fragment_id))
+        target_fragment_feature.SetField('ws_id', float(fragment_ws_id))
+        try:
+            upstream_fragments = ','.join(
+                [str(s) for s in sorted(nested_fragments[fragment_ws_id])])
+        except KeyError:
+            upstream_fragments = ''
+        target_fragment_feature.SetField('upstream_fragments',
+                                         upstream_fragments)
+
+        target_fragments_layer.CreateFeature(target_fragment_feature)
+
+        # If there were any duplicate points, copy the geometry
+        #if fragment_ws_id in duplicate_point_ws_ids:
+        #    for duplicate_ws_id in duplicate_point_ws_ids[fragment_ws_id]:
+        #        duplicate_feature = ogr.Feature(target_fragments_layer_defn)
+        #        duplicate_feature.SetGeometry(
+        #            created_fragment.GetGeometryRef())
+        #        duplicate_feature.SetField('upstream_fragments',
+        #                                   upstream_fragments)
+        #        source_feature = working_outlets_layer.GetFeature(
+        #            working_vector_ws_id_to_fid[duplicate_ws_id])
+        #
+        #        for fieldname, fieldvalue in source_feature.items().items():
+        #            if fieldname == ws_id_fieldname:
+        #                continue
+        #            duplicate_feature.SetField(fieldname, fieldvalue)
+        #
+        #        target_fragments_layer.CreateFeature(duplicate_feature)
+    target_fragments_layer.CommitTransaction()
+
+    # Close the watershed fragments vector from this disjoint geometry set.
+    disjoint_outlets_layer = None
+    disjoint_outlets_vector = None
+    watershed_fragments_layer = None
+    watershed_fragments_vector = None
 
 
 
-def delineate_watersheds_d8(
+def old_delineation(
         d8_flow_dir_raster_path_band, outflow_vector_path,
         target_fragments_vector_path, working_dir=None):
     """Delineate watersheds from a D8 flow direction raster.
