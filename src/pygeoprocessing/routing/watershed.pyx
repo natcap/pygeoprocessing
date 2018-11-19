@@ -465,6 +465,32 @@ ctypedef pair[long, long] CoordinatePair
 def new_delineation(
         d8_flow_dir_raster_path_band, outflow_vector_path,
         target_fragments_vector_path, working_dir=None):
+    """Delineate watersheds from a D8 flow direction raster.
+
+    This function produces a vector of watershed fragments, where each fragment
+    represents the area that flows into each outflow point.  Nested watersheds
+    are represented by the field
+
+    Parameters:
+        d8_flow_dir_raster_path_band (tuple): A two-tuple representing the
+            string path to the D8 flow direction raster to use and the band
+            index to use.
+        outflow_vector_path (string): Path to a vector on disk representing
+            outflow geometries for watersheds.  This vector must have one layer
+            and must be in the same projection as the flow direction raster.
+        target_fragments_vector_path (string): Path to where the watershed
+            fragments vector will be stored on disk.  This filepath must end
+            with the 'gpkg' extension, and will be created as a GeoPackage.
+        working_dir=None (string or None): The path to a directory on disk
+            where intermediate files will be stored.  This directory will be
+            created if it does not exist, and intermediate files created will
+            be removed.  If ``None``, a new temporary folder will be created
+            within the system temp directory.
+
+    Returns:
+        ``None``
+
+    """
     if (d8_flow_dir_raster_path_band is not None and not
             _is_raster_path_band_formatted(d8_flow_dir_raster_path_band)):
         raise ValueError(
