@@ -476,6 +476,11 @@ def new_delineation(
     source_gt = flow_dir_info['geotransform']
     cdef long flow_dir_n_cols = flow_dir_info['raster_size'][0]
     cdef long flow_dir_n_rows = flow_dir_info['raster_size'][1]
+    cdef double x_origin = source_gt[0]
+    cdef double y_origin = source_gt[3]
+    cdef double x_pixelwidth = source_gt[1]
+    cdef double y_pixelwidth = source_gt[5]
+    cdef double pixel_area = abs(x_pixelwidth * y_pixelwidth)
     try:
         if working_dir is not None:
             os.makedirs(working_dir)
@@ -496,6 +501,7 @@ def new_delineation(
     working_outlets_vector = gpkg_driver.CreateCopy(working_outlets_path,
                                                     source_outlets_vector)
     working_outlets_layer = working_outlets_vector.GetLayer()
+    outlets_schema = working_outlets_layer.schema
 
     # Add a new field to the clipped_outlets_layer to ensure we know what field
     # values are bing rasterized.
@@ -540,6 +546,7 @@ def new_delineation(
     #    * Alter geometries of remaining polygons and lines as needed
     cdef cmap[CoordinatePair, cset[int]] seed_watersheds
     cdef CoordinatePair seed
+    cdef double buffer_dist = math.hypot(x_pixelwidth, y_pixelwidth) / 2. * 1.1
 
     buffered_working_outlets_path = os.path.join(working_dir_path,
                                                  'working_outlets_buffered.gpkg')
@@ -604,6 +611,7 @@ def new_delineation(
     # Phase 2: Determine disjoint sets for any remaining geometries.
     #    * Write out new vectors
     cdef int NO_WATERSHED = 0
+    cdef int row, col
     if buffered_working_outlets_layer.GetFeatureCount() > 0:
         LOGGER.info('Determining sets of non-overlapping geometries')
         for set_index, disjoint_polygon_fid_set in enumerate(
@@ -616,7 +624,6 @@ def new_delineation(
                         len(disjoint_polygon_fid_set))
             disjoint_vector_path = os.path.join(
                     working_dir_path, 'disjoint_outflow_%s.gpkg' % set_index)
-            disjoint_vector_paths.append(disjoint_vector_path)
             disjoint_vector = gpkg_driver.Create(disjoint_vector_path, 0, 0, 0,
                                                  gdal.GDT_Unknown)
             disjoint_layer = disjoint_vector.CreateLayer(
@@ -645,7 +652,7 @@ def new_delineation(
             #        * rasterize the vector's ws_id column.
             #        * iterblocks over the resulting raster, tracking seed coordinates
             #            * If a seed is over nodata, skip it.
-            tmp_seed_raster_path = os.path.join(working_path_dir,
+            tmp_seed_raster_path = os.path.join(working_dir_path,
                                                 'disjoint_outflow_%s.tif' % set_index)
             pygeoprocessing.new_raster_from_base(
                 d8_flow_dir_raster_path_band[0], tmp_seed_raster_path,
@@ -657,7 +664,6 @@ def new_delineation(
                 ['ALL_TOUCHED=TRUE', 'ATTRIBUTE=%s' % ws_id_fieldname],
                 layer_index='outlet_geometries')
 
-            cdef int row, col
             for block_info, block in pygeoprocessing.iterblocks(tmp_seed_raster_path):
                 for (row, col) in zip(*numpy.nonzero(block)):
                     ws_id = block[row, col]
@@ -672,7 +678,148 @@ def new_delineation(
         buffered_working_outlets_layer = None
     buffered_working_outlets_vector = None
 
+    # Phase 4: Cluster seeds by flow direction block
+    #    * Use a spatial index to find which block a seed coordinate belongs to.
+    #
+    # When interleaved is True, coords are in (xmin, ymin, xmax, ymax)
+    spatial_index = rtree.index.Index(interleaved=True)
+    cdef int block_index
+    cdef int n_blocks = 0
+    for block_index, offset_dict in enumerate(
+            pygeoprocessing.iterblocks(d8_flow_dir_raster_path_band[0],
+                                       largest_block=0,
+                                       offset_only=True)):
+        n_blocks += 1
+        origin_xcoord = x_origin + offset_dict['xoff']*x_pixelwidth
+        origin_ycoord = y_origin + offset_dict['yoff']*y_pixelwidth
+        win_xcoord = origin_xcoord + offset_dict['win_xsize']*x_pixelwidth
+        win_ycoord = origin_ycoord + offset_dict['win_ysize']*y_pixelwidth
 
+        spatial_index.insert(block_index, (min(origin_xcoord, win_xcoord),
+                                     min(origin_ycoord, win_ycoord),
+                                     max(origin_xcoord, win_xcoord),
+                                     max(origin_ycoord, win_ycoord)))
+
+    # build up a map of which seeds are in which block and
+    # identify seeds by an integer index.
+    cdef cmap[int, cset[CoordinatePair]] seeds_in_block
+    cdef cmap[CoordinatePair, int] seed_ids  # {CoordinatePair: seed id}
+    cdef int seed_id = 1
+    cdef cmap[CoordinatePair, cset[int]].iterator seeds_in_watersheds_iterator = seed_watersheds.begin()
+    while seeds_in_watersheds_iterator != seed_watersheds.end():
+        # Only need the seed at present; don't need the member ws_ids.
+        seed = deref(seeds_in_watersheds_iterator).first
+        inc(seeds_in_watersheds_iterator)
+        seed_ids[seed] = seed_id
+    
+        block_index = next(spatial_index.nearest(
+            (seed.first, seed.second, seed.first, seed.second),
+            num_results=1))
+        if (seeds_in_block.find(block_index) == seeds_in_block.end()):
+            seeds_in_block[block_index] = cset[CoordinatePair]()
+        seeds_in_block[block_index].insert(seed)
+
+    # Phase 5: Iteration.
+    #    * For each blockwise seed coordinate cluster:
+    #        * Process neighbors.
+    #        * If a neighbor is upstream and is a known seed, mark connectivity between seeds.
+    cdef cmap[int, cset[int]] upstream_seed_ids  # {int seed_id: int upstream seed_id}
+    cdef cset[int] nested_fragment_ids
+    cdef int* neighbor_col = [1, 1, 0, -1, -1, -1, 0, 1]
+    cdef int* neighbor_row = [0, -1, -1, -1, 0, 1, 1, 1]
+    cdef int* reverse_flow = [4, 5, 6, 7, 0, 1, 2, 3]
+    cdef cset[CoordinatePair] process_queue_set
+    cdef queue[CoordinatePair] process_queue
+
+    scratch_raster_path = os.path.join(
+            working_dir_path, 'scratch_raster.tif')
+    pygeoprocessing.new_raster_from_base(
+        d8_flow_dir_raster_path_band[0], scratch_raster_path,
+        gdal.GDT_UInt32, [NO_WATERSHED], fill_value_list=[NO_WATERSHED],
+        gtiff_creation_options=GTIFF_CREATION_OPTIONS)
+    scratch_managed_raster = _ManagedRaster(scratch_raster_path, 1, 1)
+
+    mask_raster_path = os.path.join(working_dir_path, 'mask_raster.tif')
+    pygeoprocessing.new_raster_from_base(
+        d8_flow_dir_raster_path_band[0], mask_raster_path,
+        gdal.GDT_UInt32, [NO_WATERSHED], fill_value_list=[NO_WATERSHED],
+        gtiff_creation_options=GTIFF_CREATION_OPTIONS)
+    mask_managed_raster = _ManagedRaster(mask_raster_path, 1, 1)
+
+    flow_dir_managed_raster = _ManagedRaster(d8_flow_dir_raster_path_band[0],
+                                             d8_flow_dir_raster_path_band[1],
+                                             0)  # read-only
+
+    nested_fragments = {}
+    last_log_time = ctime(NULL)
+    block_iterator = seeds_in_block.begin()
+    cdef cset[CoordinatePair].iterator seed_iterator
+    for block_index in range(n_blocks):
+        seeds_in_current_block = seeds_in_block[block_index]
+        seed_iterator = seeds_in_current_block.begin()
+
+        while seed_iterator != seeds_in_current_block.end():
+            current_pixel = deref(seed_iterator)
+            seed_id = seed_ids[current_pixel]
+            inc(seed_iterator)
+
+            last_ws_log_time = ctime(NULL)
+            process_queue.push(current_pixel)
+            process_queue_set.insert(current_pixel)
+            nested_fragment_ids.clear()  # clear the set for each fragment.
+
+            while not process_queue.empty():
+                current_pixel = process_queue.front()
+                process_queue_set.erase(current_pixel)
+                process_queue.pop()
+
+                mask_managed_raster.set(current_pixel.first,
+                                        current_pixel.second, 1)
+                scratch_managed_raster.set(current_pixel.first,
+                                           current_pixel.second, seed_id)
+
+                for neighbor_index in range(8):
+                    neighbor_pixel = CoordinatePair(
+                        current_pixel.first + neighbor_col[neighbor_index],
+                        current_pixel.second + neighbor_row[neighbor_index])
+
+                    # Is the neighbor off the bounds of the raster?
+                    # skip if so.
+                    if not 0 <= neighbor_pixel.first < flow_dir_n_cols:
+                        continue
+
+                    if not 0 <= neighbor_pixel.second < flow_dir_n_rows:
+                        continue
+
+                    # Is the neighbor pixel already in the queue?
+                    # Skip if so.
+                    if (process_queue_set.find(neighbor_pixel) !=
+                            process_queue_set.end()):
+                        continue
+
+                    pixel_visited = mask_managed_raster.get(
+                        neighbor_pixel.first, neighbor_pixel.second)
+
+                    # Does the neighbor flow into the current pixel?
+                    if (reverse_flow[neighbor_index] ==
+                            flow_dir_managed_raster.get(
+                                neighbor_pixel.first, neighbor_pixel.second)):
+
+                        # Does the neighbor belong to a different outflow
+                        # geometry (is it a seed)?
+                        if (seed_ids.find(neighbor_pixel) != seed_ids.end()):
+                            # If it is, track the fragment connectivity,
+                            # but otherwise skip this pixel.  Either we've
+                            # already processed it, or else we will soon!
+                            nested_fragment_ids.insert(seed_ids[neighbor_pixel])
+                            continue
+
+                        # If the pixel has not yet been visited, enqueue it.
+                        if pixel_visited == 0:
+                            process_queue.push(neighbor_pixel)
+                            process_queue_set.insert(neighbor_pixel)
+
+            nested_fragments[seed_id] = set(nested_fragment_ids)
 
 
 
