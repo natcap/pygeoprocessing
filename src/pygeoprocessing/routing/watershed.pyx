@@ -601,12 +601,8 @@ def delineate_watersheds_d8(
         if minx_pixelcoord == maxx_pixelcoord and miny_pixelcoord == maxy_pixelcoord:
             # Repr. point allows this geometry to be of any type.
             geometry = geometry.representative_point()
-
-            x_coord = geometry.x - ((geometry.x - x_origin) % x_pixelwidth) + x_pixelwidth/2.
-            y_coord = geometry.y - ((geometry.y - y_origin) % y_pixelwidth) + y_pixelwidth/2.
-
             ws_id = feature.GetField(ws_id_fieldname)
-            seed = CoordinatePair(minx_pixelcoord, minx_pixelcoord)
+            seed = CoordinatePair(minx_pixelcoord, miny_pixelcoord)
 
             if (seed_watersheds.find(seed) == seed_watersheds.end()):
                 seed_watersheds[seed] = cset[int]()
@@ -701,8 +697,8 @@ def delineate_watersheds_d8(
             for block_info, block in pygeoprocessing.iterblocks(tmp_seed_raster_path):
                 for (row, col) in zip(*numpy.nonzero(block)):
                     ws_id = block[row, col]
-                    seed = CoordinatePair(row + block_info['xoff'],
-                                          col + block_info['yoff'])
+                    seed = CoordinatePair(col + block_info['xoff'],
+                                          row + block_info['yoff'])
 
                     # Insert the seed into the seed_watersheds structure.
                     if (seed_watersheds.find(seed) == seed_watersheds.end()):
@@ -733,9 +729,9 @@ def delineate_watersheds_d8(
         win_ycoord = origin_ycoord + offset_dict['win_ysize']*y_pixelwidth
 
         spatial_index.insert(block_index, (min(origin_xcoord, win_xcoord),
-                                     min(origin_ycoord, win_ycoord),
-                                     max(origin_xcoord, win_xcoord),
-                                     max(origin_ycoord, win_ycoord)))
+                                           min(origin_ycoord, win_ycoord),
+                                           max(origin_xcoord, win_xcoord),
+                                           max(origin_ycoord, win_ycoord)))
 
     # build up a map of which seeds are in which block and
     # identify seeds by an integer index.
@@ -832,9 +828,6 @@ def delineate_watersheds_d8(
                             process_queue_set.end()):
                         continue
 
-                    pixel_visited = mask_managed_raster.get(
-                        neighbor_pixel.first, neighbor_pixel.second)
-
                     # Does the neighbor flow into the current pixel?
                     if (reverse_flow[neighbor_index] ==
                             flow_dir_managed_raster.get(
@@ -850,6 +843,8 @@ def delineate_watersheds_d8(
                             continue
 
                         # If the pixel has not yet been visited, enqueue it.
+                        pixel_visited = mask_managed_raster.get(
+                            neighbor_pixel.first, neighbor_pixel.second)
                         if pixel_visited == 0:
                             process_queue.push(neighbor_pixel)
                             process_queue_set.insert(neighbor_pixel)

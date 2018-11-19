@@ -1149,7 +1149,9 @@ class TestRouting(unittest.TestCase):
             self.assertEqual(vector.GetLayerCount(), 1)
 
             geometries = []
-            for watershed_feature in vector.GetLayer():
+            layer = vector.GetLayer()
+            self.assertEqual(layer.GetFeatureCount(), 4)
+            for watershed_feature in layer:
                 geometry = shapely.wkb.loads(
                     watershed_feature.GetGeometryRef().ExportToWkb())
                 geometries.append(geometry)
