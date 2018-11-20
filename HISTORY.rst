@@ -6,6 +6,11 @@ Unreleased Changes
 * Specific type checking for `astype_list` in `iterblocks` to avoid confusing
   Exceptions.
 * Renamed test suite to be consistent with the pattern `test_[component].tif`.
+* Added a function `pygeoprocessing.routing.extract_streams_mfd` that creates
+  a contiguous stream layer raster to accounts for the divergent flow that
+  can occur with multiple flow direction. If the flow direction raster is
+  otherwise directly thresholded, small disjoint streams can appear where
+  the downstream flow drops below the threshold level.
 
 1.4.1 11/12/2018
 ----------------
