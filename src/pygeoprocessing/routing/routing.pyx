@@ -2654,15 +2654,20 @@ def extract_streams_mfd(
         flow_accum_raster_path_band[0])
     cdef double flow_accum_nodata = flow_accum_info['nodata'][
         flow_accum_raster_path_band[1]-1]
-    stream_nodata = 4
+    stream_nodata = -1
 
     cdef int raster_x_size, raster_y_size
     raster_x_size, raster_y_size = flow_accum_info['raster_size']
 
+    # override any pixeltype if it exists
+    gtiff_creation_options_copy = [
+        x for x in gtiff_creation_options if 'PIXELTYPE' not in x]
+    gtiff_creation_options_copy.append('PIXELTYPE=SIGNEDBYTE')
+
     pygeoprocessing.new_raster_from_base(
         flow_accum_raster_path_band[0], target_stream_raster_path,
         gdal.GDT_Byte, [stream_nodata], fill_value_list=[stream_nodata],
-        gtiff_creation_options=gtiff_creation_options)
+        gtiff_creation_options=gtiff_creation_options_copy)
 
     cdef _ManagedRaster flow_accum_mr = _ManagedRaster(
         flow_accum_raster_path_band[0], flow_accum_raster_path_band[1], 0)
@@ -2750,10 +2755,15 @@ def extract_streams_mfd(
                         if ((flow_dir_mfd >>
                                 (D8_REVERSE_DIRECTION[i_sn] * 4)) & 0xF) > 0:
                             # upstream pixel flows into this one
-                            if stream_mr.get(xi_sn, yi_sn) != 1:
-                                if (flow_accum_mr.get(xi_sn, yi_sn) >=
-                                        trace_flow_threshold):
+                            if stream_mr.get(xi_sn, yi_sn) <= 0:
+                                flow_accum = flow_accum_mr.get(
+                                    xi_sn, yi_sn)
+                                if flow_accum >= flow_threshold_typed:
                                     stream_mr.set(xi_sn, yi_sn, 1)
+                                    open_set.push(
+                                        CoordinateType(xi_sn, yi_sn))
+                                elif flow_accum >= trace_flow_threshold:
+                                    stream_mr.set(xi_sn, yi_sn, 2)
                                     open_set.push(
                                         CoordinateType(xi_sn, yi_sn))
 
