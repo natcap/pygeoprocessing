@@ -2684,7 +2684,9 @@ def extract_streams_mfd(
         flow_dir_mfd_path_band[0])['nodata'][flow_dir_mfd_path_band[1]-1]
 
     # this queue is used to march the front from the stream pixel
-    cdef CoordinateQueueType open_set
+    cdef CoordinateQueueType open_set, backtrace_set
+    cdef int potential_stream_level
+    cdef int xi_bn, yi_bn
 
     cdef time_t last_log_time = ctime(NULL)
 
@@ -2733,7 +2735,11 @@ def extract_streams_mfd(
                     stream_mr.set(xi_root, yi_root, 1)
 
                 n_iterations = 0
+                potential_stream_level = -1
                 while open_set.size() > 0:
+                    if potential_stream_level > open_set.size():
+                        # done backtracing that stream
+                        potential_stream_level = -1
                     xi_n = open_set.front().xi
                     yi_n = open_set.front().yi
                     open_set.pop()
@@ -2751,14 +2757,37 @@ def extract_streams_mfd(
                                 (D8_REVERSE_DIRECTION[i_sn] * 4)) & 0xF) > 0:
                             # upstream pixel flows into this one
                             stream_val = <int>stream_mr.get(xi_sn, yi_sn)
-                            if stream_val != 1 and stream_val != 2:
+                            if stream_val != 1 and stream_val != 2 and stream_val != 3:
                                 flow_accum = flow_accum_mr.get(
                                     xi_sn, yi_sn)
                                 if flow_accum >= flow_threshold_typed:
                                     stream_mr.set(xi_sn, yi_sn, 1)
                                     open_set.push(
                                         CoordinateType(xi_sn, yi_sn))
+                                    if potential_stream_level >= 0:
+                                        backtrace_set.push(
+                                            CoordinateType(xi_sn, yi_sn))
+                                        while backtrace_set.size() > 0:
+                                            xi_bn = backtrace_set.front().xi
+                                            yi_bn = backtrace_set.front().yi
+                                            backtrace_set.pop()
+                                            flow_dir_mfd = <int>flow_dir_mfd_mr.get(xi_bn, yi_bn)
+                                            for i_sn in range(8):
+                                                if (flow_dir_mfd >> (i_sn*4)) & 0xF > 0:
+                                                    xi_sn = xi_bn+NEIGHBOR_OFFSET_ARRAY[2*i_sn]
+                                                    yi_sn = yi_bn+NEIGHBOR_OFFSET_ARRAY[2*i_sn+1]
+                                                    if (xi_sn < 0 or xi_sn >= raster_x_size or
+                                                            yi_sn < 0 or yi_sn >= raster_y_size):
+                                                        continue
+                                                    if stream_mr.get(xi_sn, yi_sn) == 2:
+                                                        stream_mr.set(xi_sn, yi_sn, 3)
+                                                        backtrace_set.push(
+                                                            CoordinateType(xi_sn, yi_sn))
+                                        potential_stream_level = -1
                                 elif flow_accum >= trace_flow_threshold:
+                                    if potential_stream_level < 0:
+                                        potential_stream_level = (
+                                            open_set.size())
                                     stream_mr.set(xi_sn, yi_sn, 2)
                                     open_set.push(
                                         CoordinateType(xi_sn, yi_sn))
