@@ -11,6 +11,8 @@ Unreleased Changes
   can occur with multiple flow direction. If the flow direction raster is
   otherwise directly thresholded, small disjoint streams can appear where
   the downstream flow drops below the threshold level.
+* Fixed an issue that could cause some custom arguments to geotiff creation
+  options to be ignored.
 
 1.4.1 11/12/2018
 ----------------

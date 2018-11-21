@@ -876,7 +876,7 @@ def new_raster_from_base(
     n_bands = len(band_nodata_list)
     target_raster = driver.Create(
         target_path, n_cols, n_rows, n_bands, datatype,
-        options=gtiff_creation_options)
+        options=local_gtiff_creation_options)
     target_raster.SetProjection(base_raster.GetProjection())
     target_raster.SetGeoTransform(base_raster.GetGeoTransform())
     base_raster = None
