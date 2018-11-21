@@ -10,7 +10,7 @@ logging.basicConfig(level=logging.DEBUG)
 def main():
     """Entry point."""
     task_graph = taskgraph.TaskGraph('stream_testing_dir', 4)
-    dem_path = r"C:\Users\rpsharp\Dropbox\big_dems_for_testing_routing\DEM.tif"
+    dem_path = r"D:\Dropbox\big_dems_for_testing_routing\DEM.tif"
     filled_dem = 'filled_dem.tif'
     fill_pits_task = task_graph.add_task(
         func=pygeoprocessing.routing.fill_pits,
