@@ -2612,8 +2612,8 @@ def distance_to_channel_mfd(
 
 
 def extract_streams_mfd(
-        flow_accum_raster_path_band, flow_dir_mfd_path_band, flow_threshold,
-        target_stream_raster_path, trace_threshold_proportion=1.0,
+        flow_accum_raster_path_band, flow_dir_mfd_path_band, double flow_threshold,
+        target_stream_raster_path, double trace_threshold_proportion=1.0,
         gtiff_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS):
     """Classify a stream raster from MFD flow accumulation.
 
@@ -2650,6 +2650,11 @@ def extract_streams_mfd(
     Returns:
         None.
     """
+    if trace_threshold_proportion < 0.or trace_threshold_proportion > 1.0:
+        raise ValueError(
+            "trace_threshold_proportion should be in the range [0.0, 1.0] "
+            "actual value is: %s" % trace_threshold_proportion)
+
     flow_accum_info = pygeoprocessing.get_raster_info(
         flow_accum_raster_path_band[0])
     cdef double flow_accum_nodata = flow_accum_info['nodata'][
@@ -2674,7 +2679,7 @@ def extract_streams_mfd(
     cdef int xoff, yoff, win_xsize, win_ysize
     cdef int xi, yi, xi_root, yi_root, i_n, xi_n, yi_n, i_sn, xi_sn, yi_sn
     cdef int flow_dir_mfd
-    cdef double flow_accum, flow_threshold_typed = flow_threshold
+    cdef double flow_accum,
     cdef double trace_flow_threshold = (
         trace_threshold_proportion * flow_threshold)
     cdef int n_iterations = 0
@@ -2683,10 +2688,10 @@ def extract_streams_mfd(
     cdef int flow_dir_nodata = pygeoprocessing.get_raster_info(
         flow_dir_mfd_path_band[0])['nodata'][flow_dir_mfd_path_band[1]-1]
 
-    # this queue is used to march the front from the stream pixel
+    # this queue is used to march the front from the stream pixel or the
+    # backwards front for tracing downstream
     cdef CoordinateQueueType open_set, backtrace_set
-    cdef int potential_stream_level
-    cdef int xi_bn, yi_bn
+    cdef int xi_bn, yi_bn # used for backtrace neighbor coordinates
 
     cdef time_t last_log_time = ctime(NULL)
 
@@ -2711,7 +2716,7 @@ def extract_streams_mfd(
                 if stream_mr.get(xi_root, yi_root) != stream_nodata:
                     continue
                 stream_mr.set(xi_root, yi_root, 0)
-                if flow_accum < flow_threshold_typed:
+                if flow_accum < flow_threshold:
                     continue
 
                 flow_dir_mfd = <int>flow_dir_mfd_mr.get(xi_root, yi_root)
@@ -2735,11 +2740,7 @@ def extract_streams_mfd(
                     stream_mr.set(xi_root, yi_root, 1)
 
                 n_iterations = 0
-                potential_stream_level = -1
                 while open_set.size() > 0:
-                    if potential_stream_level > open_set.size():
-                        # done backtracing that stream
-                        potential_stream_level = -1
                     xi_n = open_set.front().xi
                     yi_n = open_set.front().yi
                     open_set.pop()
@@ -2757,42 +2758,53 @@ def extract_streams_mfd(
                                 (D8_REVERSE_DIRECTION[i_sn] * 4)) & 0xF) > 0:
                             # upstream pixel flows into this one
                             stream_val = <int>stream_mr.get(xi_sn, yi_sn)
-                            if stream_val != 1 and stream_val != 2 and stream_val != 3:
+                            if stream_val != 1 and stream_val != 2:
                                 flow_accum = flow_accum_mr.get(
                                     xi_sn, yi_sn)
-                                if flow_accum >= flow_threshold_typed:
+                                if flow_accum >= flow_threshold:
                                     stream_mr.set(xi_sn, yi_sn, 1)
                                     open_set.push(
                                         CoordinateType(xi_sn, yi_sn))
-                                    if potential_stream_level >= 0:
-                                        backtrace_set.push(
-                                            CoordinateType(xi_sn, yi_sn))
-                                        while backtrace_set.size() > 0:
-                                            xi_bn = backtrace_set.front().xi
-                                            yi_bn = backtrace_set.front().yi
-                                            backtrace_set.pop()
-                                            flow_dir_mfd = <int>flow_dir_mfd_mr.get(xi_bn, yi_bn)
-                                            for i_sn in range(8):
-                                                if (flow_dir_mfd >> (i_sn*4)) & 0xF > 0:
-                                                    xi_sn = xi_bn+NEIGHBOR_OFFSET_ARRAY[2*i_sn]
-                                                    yi_sn = yi_bn+NEIGHBOR_OFFSET_ARRAY[2*i_sn+1]
-                                                    if (xi_sn < 0 or xi_sn >= raster_x_size or
-                                                            yi_sn < 0 or yi_sn >= raster_y_size):
-                                                        continue
-                                                    if stream_mr.get(xi_sn, yi_sn) == 2:
-                                                        stream_mr.set(xi_sn, yi_sn, 3)
-                                                        backtrace_set.push(
-                                                            CoordinateType(xi_sn, yi_sn))
-                                        potential_stream_level = -1
+                                    # see if we're in a potential stream and
+                                    # found a connection
+                                    backtrace_set.push(
+                                        CoordinateType(xi_sn, yi_sn))
+                                    while backtrace_set.size() > 0:
+                                        xi_bn = backtrace_set.front().xi
+                                        yi_bn = backtrace_set.front().yi
+                                        backtrace_set.pop()
+                                        flow_dir_mfd = <int>(
+                                            flow_dir_mfd_mr.get(xi_bn, yi_bn))
+                                        for i_sn in range(8):
+                                            if (flow_dir_mfd >> (i_sn*4)) & 0xF > 0:
+                                                xi_sn = xi_bn+NEIGHBOR_OFFSET_ARRAY[2*i_sn]
+                                                yi_sn = yi_bn+NEIGHBOR_OFFSET_ARRAY[2*i_sn+1]
+                                                if (xi_sn < 0 or xi_sn >= raster_x_size or
+                                                        yi_sn < 0 or yi_sn >= raster_y_size):
+                                                    continue
+                                                if stream_mr.get(xi_sn, yi_sn) == 2:
+                                                    stream_mr.set(xi_sn, yi_sn, 1)
+                                                    backtrace_set.push(
+                                                        CoordinateType(xi_sn, yi_sn))
                                 elif flow_accum >= trace_flow_threshold:
-                                    if potential_stream_level < 0:
-                                        potential_stream_level = (
-                                            open_set.size())
                                     stream_mr.set(xi_sn, yi_sn, 2)
                                     open_set.push(
                                         CoordinateType(xi_sn, yi_sn))
 
     stream_mr.close()
+    LOGGER.info('filter out incomplete divergent streams')
+    stream_raster = gdal.OpenEx(
+        target_stream_raster_path, gdal.OF_RASTER | gdal.GA_Update)
+    stream_band = stream_raster.GetRasterBand(1)
+    for block_offsets in pygeoprocessing.iterblocks(
+                target_stream_raster_path, offset_only=True):
+        stream_array = stream_band.ReadAsArray(**block_offsets)
+        stream_array[stream_array == 2] = 0
+        stream_band.WriteArray(
+            stream_array, xoff=block_offsets['xoff'],
+            yoff=block_offsets['yoff'])
+    stream_band = None
+    stream_raster = None
     LOGGER.info('100.0% complete')
 
 

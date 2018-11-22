@@ -56,7 +56,7 @@ def main():
             target_stream_connect_raster_path),
         kwargs={
             'trace_threshold_proportion': flow_threshold_prop},
-        target_path_list=[target_stream_raster_path],
+        target_path_list=[target_stream_connect_raster_path],
         dependent_task_list=[flow_accum_task],
         task_name='stream threshold flow_threshold_prop')
 
