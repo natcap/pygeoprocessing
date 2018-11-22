@@ -2679,7 +2679,7 @@ def extract_streams_mfd(
     cdef int xoff, yoff, win_xsize, win_ysize
     cdef int xi, yi, xi_root, yi_root, i_n, xi_n, yi_n, i_sn, xi_sn, yi_sn
     cdef int flow_dir_mfd
-    cdef double flow_accum,
+    cdef double flow_accum
     cdef double trace_flow_threshold = (
         trace_threshold_proportion * flow_threshold)
     cdef int n_iterations = 0
