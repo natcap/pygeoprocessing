@@ -527,7 +527,6 @@ def delineate_watersheds_d8(
     working_outlets_vector = gpkg_driver.CreateCopy(working_outlets_path,
                                                     source_outlets_vector)
     working_outlets_layer = working_outlets_vector.GetLayer()
-    outlets_schema = working_outlets_layer.schema
 
     # Add a new field to the clipped_outlets_layer to ensure we know what field
     # values are bing rasterized.
@@ -535,12 +534,13 @@ def delineate_watersheds_d8(
     ws_id_fieldname = '__ws_id__'
     ws_id_field_defn = ogr.FieldDefn(ws_id_fieldname, ogr.OFTInteger64)
     working_outlets_layer.CreateField(ws_id_field_defn)
+    outlets_schema = working_outlets_layer.schema
 
     # Phase 0: preprocess working geometries.
     #    * Attempt to repair invalid geometries.
     #    * Create new WS_ID field, set field value.
     #    * Exclude any geometries that do not intersect the DEM bbox (prepared geometry op)
-    ws_id = 0
+    ws_id = 1  # start indexing ws_id at 1
     working_vector_ws_id_to_fid = {}
     working_outlets_layer.StartTransaction()
     for feature in working_outlets_layer:
@@ -574,7 +574,6 @@ def delineate_watersheds_d8(
     #    * Alter geometries of remaining polygons and lines as needed
     cdef cmap[CoordinatePair, cset[int]] seed_watersheds
     cdef cmap[CoordinatePair, int] seed_ids  # {CoordinatePair: seed id}
-    cdef cmap[int, int] seed_id_to_ws_id
     cdef CoordinatePair seed
     cdef int seed_id = 1
     cdef double buffer_dist = math.hypot(x_pixelwidth, y_pixelwidth) / 2. * 1.1
@@ -607,7 +606,6 @@ def delineate_watersheds_d8(
             if (seed_watersheds.find(seed) == seed_watersheds.end()):
                 seed_watersheds[seed] = cset[int]()
             seed_watersheds[seed].insert(ws_id)
-            seed_id_to_ws_id[seed_id] = ws_id
             seed_ids[seed] = seed_id
             seed_id += 1
 
@@ -704,7 +702,6 @@ def delineate_watersheds_d8(
                     if (seed_watersheds.find(seed) == seed_watersheds.end()):
                         seed_watersheds[seed] = cset[int]()
                     seed_watersheds[seed].insert(ws_id)
-                    seed_id_to_ws_id[seed_id] = ws_id
                     seed_ids[seed] = seed_id
                     seed_id += 1
 
@@ -868,89 +865,68 @@ def delineate_watersheds_d8(
             "Could not open target fragments vector for writing. Do you have "
             "access to this path?  Is the file open in another program?")
 
+    # Create a non-spatial database layer for storing all of the watershed
+    # attributes without the geometries.  This is important because we need to
+    # know the ws_id of each outlet feature.
+    # TODO: don't include watersheds that are not represented in the fragments
+    target_fragments_watershed_attrs_layer = target_fragments_vector.CreateLayer(
+        'watershed_attributes', geom_type=ogr.wkbNone,
+        options=['ASPATIAL_VARIANT=OGR_ASPATIAL'])
+    target_fragments_watershed_attrs_layer.CreateFields(working_outlets_layer.schema)
+    target_fragments_watershed_attrs_layer.StartTransaction()
+    working_outlets_layer.ResetReading()
+    for working_feature in working_outlets_layer:
+        new_feature = ogr.Feature(
+            target_fragments_watershed_attrs_layer.GetLayerDefn())
+        for attr_name, attr_value in working_feature.items().items():
+            new_feature.SetField(attr_name, attr_value)
+        target_fragments_watershed_attrs_layer.CreateFeature(new_feature)
+    target_fragments_watershed_attrs_layer.CommitTransaction()
+
+    # Create a spatial layer for the fragment geometries.
+    # This layer only needs to know which fragments are upstream of a given fragment.
     target_fragments_layer = target_fragments_vector.CreateLayer(
         'watershed_fragments', flow_dir_srs, ogr.wkbPolygon)
 
     # Create the fields in the target vector that already existed in the
     # outflow points vector
-    target_fragments_layer.CreateFields(
-            [f for f in working_outlets_layer.schema if f.GetName() != ws_id_fieldname])
-    upstream_fragments_field = ogr.FieldDefn('upstream_fragments', ogr.OFTString)
-    target_fragments_layer.CreateField(upstream_fragments_field)
-    for new_id_fieldname in ('fragment_id', 'ws_id'):
-        new_field = ogr.FieldDefn(new_id_fieldname, ogr.OFTInteger64)
-        target_fragments_layer.CreateField(new_field)
-    target_fragments_layer_defn = target_fragments_layer.GetLayerDefn()
+    target_fragments_layer.CreateField(ogr.FieldDefn('fragment_id', ogr.OFTInteger64))
+    target_fragments_layer.CreateField(ogr.FieldDefn('upstream_fragments', ogr.OFTString))
+    target_fragments_layer.CreateField(ogr.FieldDefn('member_ws_ids', ogr.OFTString))
 
-    polygonized_fragments_path = os.path.join(working_dir_path,
-        'polygonized_fragments.gpkg')
-    polygonized_fragments_vector = gpkg_driver.Create(
-        polygonized_fragments_path, 0, 0, 0, gdal.GDT_Unknown)
-    polygonized_fragments_layer = polygonized_fragments_vector.CreateLayer(
-        'polygonized_fragments', flow_dir_srs, ogr.wkbPolygon)
-    polygonized_fragments_layer.CreateField(
-        ogr.FieldDefn('fragment_id', ogr.OFTInteger64))
     gdal.Polygonize(
         scratch_band,  # the source band to be analyzed
         mask_band,  # the mask band indicating valid pixels
-        polygonized_fragments_layer,  # polygons are added to this layer
+        target_fragments_layer,  # polygons are added to this layer
         0,  # field index of 'fragment_id' field.
         ['8CONNECTED8'],  # use 8-connectedness algorithm.
         _make_polygonize_callback(LOGGER)
     )
 
-    # Iterate through all of the features we just created in this disjoint
-    # fragments vector and copy them over into the target fragments vector.
+    # Reverse the {seed: seed ID} mapping for use in retrieving features.
+    cdef cmap[int, CoordinatePair] seed_id_to_seed  # {seed id: CoordinatePair}
+    cdef cmap[CoordinatePair, int].iterator seed_to_id_iterator = seed_ids.begin()
+    while seed_to_id_iterator != seed_ids.end():
+        seed = deref(seed_to_id_iterator).first
+        seed_id = deref(seed_to_id_iterator).second
+        seed_id_to_seed[seed_id] = seed
+        inc(seed_to_id_iterator)
+
+    # Polygonization only copies the fragment IDs. Copy over the relevant
+    # attributes that will link the fragments into whole watersheds.
     LOGGER.info('Copying fragments to the output vector.')
     target_fragments_layer.StartTransaction()
     cdef int fragment_id
-    for created_fragment in polygonized_fragments_layer:
+    cdef CoordinatePair fragment_seed
+    cdef cset[int].iterator ws_id_iterator
+    for created_fragment in target_fragments_layer:
         fragment_id = created_fragment.GetFieldAsInteger('fragment_id')
-        fragment_ws_id = seed_id_to_ws_id[fragment_id]
-        outflow_geom_fid = working_vector_ws_id_to_fid[fragment_ws_id]
+        fragment_seed = seed_id_to_seed[fragment_id]
+        created_fragment.SetField('upstream_fragments',
+            ','.join([str(s) for s in sorted(nested_fragments[fragment_id])]))
+        created_fragment.SetField('member_ws_ids',
+            ','.join([str(s) for s in sorted(set(seed_watersheds[fragment_seed]))]))
 
-        target_fragment_feature = ogr.Feature(target_fragments_layer_defn)
-        target_fragment_feature.SetGeometry(
-            created_fragment.GetGeometryRef())
-
-        outflow_point_feature = working_outlets_layer.GetFeature(
-            outflow_geom_fid)
-        for outflow_fieldname, outflow_fieldvalue in (
-                outflow_point_feature.items().items()):
-            if outflow_fieldname == ws_id_fieldname:
-                continue
-            target_fragment_feature.SetField(outflow_fieldname,
-                                             outflow_fieldvalue)
-
-        target_fragment_feature.SetField('fragment_id', float(fragment_id))
-        target_fragment_feature.SetField('ws_id', float(fragment_ws_id))
-        try:
-            upstream_fragments = ','.join(
-                [str(s) for s in sorted(nested_fragments[fragment_ws_id])])
-        except KeyError:
-            upstream_fragments = ''
-        target_fragment_feature.SetField('upstream_fragments',
-                                         upstream_fragments)
-
-        target_fragments_layer.CreateFeature(target_fragment_feature)
-
-        # If there were any duplicate points, copy the geometry
-        #if fragment_ws_id in duplicate_point_ws_ids:
-        #    for duplicate_ws_id in duplicate_point_ws_ids[fragment_ws_id]:
-        #        duplicate_feature = ogr.Feature(target_fragments_layer_defn)
-        #        duplicate_feature.SetGeometry(
-        #            created_fragment.GetGeometryRef())
-        #        duplicate_feature.SetField('upstream_fragments',
-        #                                   upstream_fragments)
-        #        source_feature = working_outlets_layer.GetFeature(
-        #            working_vector_ws_id_to_fid[duplicate_ws_id])
-        #
-        #        for fieldname, fieldvalue in source_feature.items().items():
-        #            if fieldname == ws_id_fieldname:
-        #                continue
-        #            duplicate_feature.SetField(fieldname, fieldvalue)
-        #
-        #        target_fragments_layer.CreateFeature(duplicate_feature)
     target_fragments_layer.CommitTransaction()
 
     # Close the watershed fragments vector from this disjoint geometry set.
