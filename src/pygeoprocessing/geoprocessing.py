@@ -2028,19 +2028,26 @@ def calculate_disjoint_polygon_set(
     last_time = time.time()
     LOGGER.info("build shapely polygon list")
 
+    if not bounding_box:
+        bounding_box = [float('-inf'), float('-inf'), float('inf'), float('inf')]
+
     bounding_box = shapely.prepared.prep(shapely.geometry.box(*bounding_box))
     shapely_polygon_lookup = dict((
         (poly_feat.GetFID(),
          shapely.wkb.loads(poly_feat.GetGeometryRef().ExportToWkb()))
         for poly_feat in vector_layer))
 
-    LOGGER.info("build shapely rtree index")
-    # Specifying the stream kwarg addresses some low-level exceptions on
-    # Windows when faulthandler is enabled.
+    LOGGER.info("build shapely rtree index for %s geometries",
+                len(shapely_polygon_lookup))
+
+    # Using the stream generator causes a bunch of low-level windows exceptions
+    # to be printed when using faulthandler.  There does not appear to be a
+    # solution for this.  See https://github.com/Toblerity/rtree/issues/80
     poly_rtree_index = rtree.index.Index(
-        stream=((poly_fid, poly.bounds, None)
-                for poly_fid, poly in shapely_polygon_lookup.items()
-                if bounding_box.intersects(poly)))
+        ((poly_fid, poly.bounds, None)
+          for poly_fid, poly in shapely_polygon_lookup.items()
+          if bounding_box.intersects(poly)),
+        interleaved=True)  # (xmin, ymin, xmax, ymax)
 
     vector_layer = None
     vector = None

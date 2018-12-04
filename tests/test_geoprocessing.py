@@ -2790,6 +2790,41 @@ class PyGeoprocessing10(unittest.TestCase):
         actual_message = str(cm.exception)
         self.assertTrue(expected_message in actual_message, actual_message)
 
+    def test_disjoint_polygon_set_no_bounding_box(self):
+        """PGP.geoprocessing: check disjoint sets."""
+        import pygeoprocessing
+
+        srs = osr.SpatialReference()
+        srs.ImportFromEPSG(32731)  # WGS84 / UTM zone 31s
+        srs_wkt = srs.ExportToWkt()
+
+        def square(centerpoint_tuple):
+            x, y = centerpoint_tuple
+            return shapely.geometry.Polygon(
+                [(x-1.5, y-1.5),
+                 (x-1.5, y+1.5),
+                 (x+1.5, y+1.5),
+                 (x+1.5, y-1.5),
+                 (x-1.5, y-1.5)])
+
+        watershed_geometries = [
+            square((16, -8)),
+            square((8, -10)),
+            square((2, -8)),  # overlap with FID 4
+            square((2, -7)),  # overlap with FID 3
+            square((14, -12)),
+        ]
+
+        outflow_vector = os.path.join(self.workspace_dir, 'outflow.gpkg')
+        pygeoprocessing.testing.create_vector_on_disk(
+            watershed_geometries, srs_wkt, vector_format='GPKG',
+            filename=outflow_vector)
+
+        disjoint_sets = pygeoprocessing.calculate_disjoint_polygon_set(outflow_vector)
+        self.assertEqual(
+            disjoint_sets,
+            [set([1, 2, 3, 5]), set([4])])
+
     def test_disjoint_polygon_set_no_features_error(self):
         """PGP.geoprocessing: raise an error when a vector has no features."""
         import pygeoprocessing
