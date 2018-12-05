@@ -342,14 +342,14 @@ class PyGeoprocessing10(unittest.TestCase):
         target_mask_raster_path = 'test_mask.tif'
         pygeoprocessing.mask_raster(
             (raster_path, 1), vector_path, target_mask_raster_path,
-            target_mask_value=-1, working_dir=self.workspace_dir)
+            target_mask_value=None, working_dir=self.workspace_dir)
 
         mask_raster = gdal.OpenEx(target_mask_raster_path, gdal.OF_RASTER)
         mask_band = mask_raster.GetRasterBand(1)
         mask_array = mask_band.ReadAsArray()
         expected_result = numpy.empty((16, 16))
         expected_result[0:8, :] = 2
-        expected_result[8::, :] = -1
+        expected_result[8::, :] = 0
         self.assertTrue(
             numpy.count_nonzero(numpy.isclose(
                 mask_array, expected_result)) == 16**2)

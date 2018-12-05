@@ -2938,9 +2938,9 @@ def mask_raster(
         gtiff_creation_options (sequence): this is an argument list that will
             be passed to the GTiff driver defined by the GDAL GTiff spec.
 
-
     Returns:
         None.
+
     """
     with tempfile.NamedTemporaryFile(
             prefix='mask_raster', delete=False, suffix='.tif',
