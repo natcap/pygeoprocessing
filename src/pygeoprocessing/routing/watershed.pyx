@@ -503,6 +503,8 @@ def delineate_watersheds_d8(
     source_gt = flow_dir_info['geotransform']
     cdef long flow_dir_n_cols = flow_dir_info['raster_size'][0]
     cdef long flow_dir_n_rows = flow_dir_info['raster_size'][1]
+    cdef int flow_dir_block_x_size = flow_dir_info['block_size'][0]
+    cdef int flow_dir_block_y_size = flow_dir_info['block_size'][1]
     cdef double x_origin = source_gt[0]
     cdef double y_origin = source_gt[3]
     cdef double x_pixelwidth = source_gt[1]
@@ -714,47 +716,38 @@ def delineate_watersheds_d8(
 
         buffered_working_outlets_layer = None
     buffered_working_outlets_vector = None
+    del disjoint_polygon_fid_set
 
     # Phase 4: Cluster seeds by flow direction block
-    #    * Use a spatial index to find which block a seed coordinate belongs to.
+    #    * Use math to find which block a seed coordinate belongs to.
+    #      Calculating the index directly is a constant-time operation, which is
+    #      much cheaper than using a spatial index.
     #
-    # When interleaved is True, coords are in (xmin, ymin, xmax, ymax)
-    spatial_index = rtree.index.Index(interleaved=True)
-    cdef int block_index
-    cdef int n_blocks = 0
-    for block_index, offset_dict in enumerate(
-            pygeoprocessing.iterblocks(d8_flow_dir_raster_path_band[0],
-                                       largest_block=0,
-                                       offset_only=True)):
-        n_blocks += 1
-        origin_xcoord = x_origin + offset_dict['xoff']*x_pixelwidth
-        origin_ycoord = y_origin + offset_dict['yoff']*y_pixelwidth
-        win_xcoord = origin_xcoord + offset_dict['win_xsize']*x_pixelwidth
-        win_ycoord = origin_ycoord + offset_dict['win_ysize']*y_pixelwidth
-
-        spatial_index.insert(block_index, (min(origin_xcoord, win_xcoord),
-                                           min(origin_ycoord, win_ycoord),
-                                           max(origin_xcoord, win_xcoord),
-                                           max(origin_ycoord, win_ycoord)))
-
     # build up a map of which seeds are in which block and
     # identify seeds by an integer index.
     LOGGER.info('Splitting seeds into their blocks.')
+    cdef int block_index
+    cdef int n_blocks = (
+        ((flow_dir_n_cols // flow_dir_block_x_size) + 1) *
+        ((flow_dir_n_rows // flow_dir_block_y_size) + 1))
     cdef cmap[int, cset[CoordinatePair]] seeds_in_block
     cdef cmap[CoordinatePair, cset[int]].iterator seeds_in_watersheds_iterator = seed_watersheds.begin()
+
+    # Initialize the seeds_in_block data structure
+    for block_index in range(n_blocks):
+        seeds_in_block[block_index] = cset[CoordinatePair]()
+
     while seeds_in_watersheds_iterator != seed_watersheds.end():
         # Only need the seed at present; don't need the member ws_ids.
         seed = deref(seeds_in_watersheds_iterator).first
         inc(seeds_in_watersheds_iterator)
-    
-        block_index = next(spatial_index.nearest(
-            (seed.first, seed.second, seed.first, seed.second),
-            num_results=1))
-        if (seeds_in_block.find(block_index) == seeds_in_block.end()):
-            seeds_in_block[block_index] = cset[CoordinatePair]()
-        seeds_in_block[block_index].insert(seed)
 
-    del spatial_index
+        # Determine the block index mathematically.  We only need to be able to
+        # group pixels together, so the specific number used does not matter.
+        block_index = (
+            (seed.first // flow_dir_block_x_size) * flow_dir_block_x_size + 
+            (seed.second // flow_dir_block_y_size))
+        seeds_in_block[block_index].insert(seed)
 
     # Phase 5: Iteration.
     #    * For each blockwise seed coordinate cluster:
@@ -937,6 +930,7 @@ def delineate_watersheds_d8(
     cdef int fragment_id
     cdef CoordinatePair fragment_seed
     cdef cset[int].iterator ws_id_iterator
+    # TODO: progress logging here.
     for created_fragment in target_fragments_layer:
         fragment_id = created_fragment.GetFieldAsInteger('fragment_id')
         fragment_seed = seed_id_to_seed[fragment_id]
