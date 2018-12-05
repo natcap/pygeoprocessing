@@ -1000,7 +1000,7 @@ def join_watershed_fragments_d8(watershed_fragments_vector, target_watersheds_pa
         # Copy the upstream fragments list to a new list so we don't mutate the
         # original one.
         stack = upstream_fragments[starter_fragment_id][:]
-        geometries = []
+        geometries = [fragment_geometries[starter_fragment_id]]
         while len(stack) > 0:
             fragment_id = stack.pop()
             
@@ -1035,7 +1035,6 @@ def join_watershed_fragments_d8(watershed_fragments_vector, target_watersheds_pa
 
     watersheds_layer.StartTransaction()
     for ws_id, fragments_set in fragments_in_watershed.items():
-        print ws_id, fragments_set
         target_feature = ogr.Feature(watersheds_layer_defn)
 
         # Compile the geometry from all member fragments.
