@@ -2907,6 +2907,7 @@ def merge_rasters(
 def mask_raster(
         base_raster_path_band, mask_vector_path, target_mask_raster_path,
         mask_layer_index=0, target_mask_value=None, working_dir=None,
+        all_touched=False,
         gtiff_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS):
     """
     Mask a raster band with a given vector.
@@ -2931,6 +2932,9 @@ def mask_raster(
             `base_raster_path_band` is used.
         working_dir (str): this is a path to a directory that can be used to
             hold temporary files required to complete this operation.
+        all_touched (bool): if False, a pixel is only masked if its centroid
+            intersects with the mask. If True a pixel is masked if any point
+            of the pixel intersects the polygon mask.
         gtiff_creation_options (sequence): this is an argument list that will
             be passed to the GTiff driver defined by the GDAL GTiff spec.
 
@@ -2951,7 +2955,8 @@ def mask_raster(
 
     rasterize(
         mask_vector_path, mask_raster_path, burn_values=[1],
-        layer_index=mask_layer_index)
+        layer_index=mask_layer_index,
+        option_list=[('ALL_TOUCHED=%s' % all_touched).upper()])
 
     base_nodata = base_raster_info['nodata'][base_raster_path_band[1]-1]
 
