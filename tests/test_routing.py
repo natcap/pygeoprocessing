@@ -1429,7 +1429,7 @@ class TestRouting(unittest.TestCase):
                  (x-1.5, y-1.5)])
 
         watershed_geometries = [
-            square((14, -6)),  # TODO: why is this polygon not included?
+            square((14, -6)),
             square((8, -10)),
             square((2, -8)),
             square((14, -12)),
@@ -1452,6 +1452,26 @@ class TestRouting(unittest.TestCase):
                                                 'watersheds.gpkg')
         pygeoprocessing.routing.join_watershed_fragments_d8(
             target_fragments_vector, target_watersheds_vector)
+
+        # Mapping ws_id to geometry type
+        expected_geometries = {
+            1: shapely.geometry.box(2, -4, 16, -8),
+            2: shapely.geometry.box(2, -8, 10, -12),
+            3: shapely.geometry.box(2, -6, 4, -10),
+            4: shapely.geometry.box(2, -10, 16, -14),
+        }
+        watersheds_vector = gdal.OpenEx(target_watersheds_vector, gdal.OF_VECTOR)
+        watersheds_layer = watersheds_vector.GetLayer()
+        self.assertEqual(watersheds_layer.GetFeatureCount(), len(watershed_geometries))
+
+        for watershed_feature in watersheds_layer:
+            ws_id = watershed_feature.GetField('__ws_id__')
+            shapely_geom = shapely.wkb.loads(watershed_feature.GetGeometryRef().ExportToWkb())
+            self.assertEqual(
+                expected_geometries[ws_id].intersection(shapely_geom).area,
+                shapely_geom.area)
+            self.assertEqual(
+                expected_geometries[ws_id].difference(shapely_geom).area, 0)
 
     def test_watershed_delineation_lakes(self):
         """PGP.routing: Test that we can delineate nested polygons/lakes."""

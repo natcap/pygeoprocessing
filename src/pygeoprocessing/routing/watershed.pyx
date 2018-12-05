@@ -941,9 +941,7 @@ def delineate_watersheds_d8(
 def join_watershed_fragments_d8(watershed_fragments_vector, target_watersheds_path):
     fragments_vector = gdal.OpenEx(watershed_fragments_vector, gdal.OF_VECTOR)
     fragments_layer = fragments_vector.GetLayer('watershed_fragments')
-    print [f.GetName() for f in fragments_layer.schema]
     outflow_attributes_layer = fragments_vector.GetLayer('watershed_attributes')
-    print [f.GetName() for f in outflow_attributes_layer.schema]
     fragments_srs = fragments_layer.GetSpatialRef()
 
     driver = gdal.GetDriverByName('GPKG')
