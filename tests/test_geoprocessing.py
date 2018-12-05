@@ -296,6 +296,64 @@ class PyGeoprocessing10(unittest.TestCase):
                 feature.GetField('expected_value'),
                 zonal_stats[poly_id]['sum'])
 
+    def test_mask_raster(self):
+        """PGP.geoprocessing: test mask raster."""
+        gpkg_driver = ogr.GetDriverByName('GPKG')
+        vector_path = os.path.join(self.workspace_dir, 'small_vector.gpkg')
+        vector = gpkg_driver.CreateDataSource(vector_path)
+
+        srs = osr.SpatialReference()
+        srs.ImportFromEPSG(4326)
+        layer = vector.CreateLayer('small_vector', srs=srs)
+        layer_defn = layer.GetLayerDefn()
+
+        origin_x = 1.0
+        origin_y = -1.0
+        n = 16
+
+        layer.StartTransaction()
+        shapely_feature = shapely.geometry.Polygon([
+            (origin_x, origin_y),
+            (origin_x+n, origin_y),
+            (origin_x+n, origin_y-n//2),
+            (origin_x, origin_y-n//2),
+            (origin_x, origin_y)])
+        new_feature = ogr.Feature(layer_defn)
+        new_geometry = ogr.CreateGeometryFromWkb(shapely_feature.wkb)
+        new_feature.SetGeometry(new_geometry)
+        layer.CreateFeature(new_feature)
+        layer.CommitTransaction()
+        layer.SyncToDisk()
+
+        gtiff_driver = gdal.GetDriverByName('GTiff')
+        raster_path = os.path.join(self.workspace_dir, 'small_raster.tif')
+        new_raster = gtiff_driver.Create(
+            raster_path, n, n, 1, gdal.GDT_Int32, options=[
+                'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
+                'BLOCKXSIZE=16', 'BLOCKYSIZE=16'])
+        new_raster.SetProjection(srs.ExportToWkt())
+        new_raster.SetGeoTransform([origin_x, 1.0, 0.0, origin_y, 0.0, -1.0])
+        new_band = new_raster.GetRasterBand(1)
+        new_band.Fill(2)
+        new_raster.FlushCache()
+        new_band = None
+        new_raster = None
+
+        target_mask_raster_path = 'test_mask.tif'
+        pygeoprocessing.mask_raster(
+            (raster_path, 1), vector_path, target_mask_raster_path,
+            target_mask_value=-1, working_dir=self.workspace_dir)
+
+        mask_raster = gdal.OpenEx(target_mask_raster_path, gdal.OF_RASTER)
+        mask_band = mask_raster.GetRasterBand(1)
+        mask_array = mask_band.ReadAsArray()
+        expected_result = numpy.empty((16, 16))
+        expected_result[0:8, :] = 2
+        expected_result[8::, :] = -1
+        self.assertTrue(
+            numpy.count_nonzero(numpy.isclose(
+                mask_array, expected_result)) == 16**2)
+
     def test_reproject_vector_partial_fields(self):
         """PGP.geoprocessing: reproject vector with partial field copy."""
         reference = sampledata.SRS_WILLAMETTE
