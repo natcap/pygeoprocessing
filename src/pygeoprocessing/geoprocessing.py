@@ -1173,7 +1173,7 @@ def zonal_statistics(
     # -1 here because bands are 1 indexed
     raster_nodata = raster_info['nodata'][base_raster_path_band[1]-1]
     with tempfile.NamedTemporaryFile(
-            prefix='clipped_raster', delete=False,
+            prefix='clipped_raster', suffix='.tif', delete=False,
             dir=working_dir) as clipped_raster_file:
         clipped_raster_path = clipped_raster_file.name
     align_and_resize_raster_stack(
@@ -1205,7 +1205,7 @@ def zonal_statistics(
     clipped_band = clipped_raster.GetRasterBand(base_raster_path_band[1])
 
     with tempfile.NamedTemporaryFile(
-            prefix='aggregate_fid_raster',
+            prefix='aggregate_fid_raster', suffix='.tif',
             delete=False, dir=working_dir) as agg_fid_raster_file:
         agg_fid_raster_path = agg_fid_raster_file.name
 
@@ -2129,7 +2129,8 @@ def distance_transform_edt(
 
     """
     with tempfile.NamedTemporaryFile(
-            prefix='dt_mask', delete=False, dir=working_dir) as dt_mask_file:
+            prefix='dt_mask', suffix='.tif', delete=False,
+            dir=working_dir) as dt_mask_file:
         dt_mask_path = dt_mask_file.name
     raster_info = get_raster_info(base_mask_raster_path_band[0])
     nodata = raster_info['nodata'][base_mask_raster_path_band[1]-1]
@@ -2905,7 +2906,8 @@ def merge_rasters(
 
 def mask_raster(
         base_raster_path_band, mask_vector_path, target_mask_raster_path,
-        mask_layer_name=None, target_mask_value=None, working_dir=None):
+        mask_layer_index=0, target_mask_value=None, working_dir=None,
+        gtiff_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS):
     """
     Mask a raster band with a given vector.
 
@@ -2921,19 +2923,59 @@ def mask_raster(
             not intersect with `mask_vector_path` are set to
             `target_mask_value` or `base_raster_path_band`'s nodata value if
             `target_mask_value` is None.
-        mask_layer_name (str): if not None, this layer is used as the mask
-            geometry layer in `mask_vector_path`, otherwise layer 0 is used.
+        mask_layer_index (str): this layer is used as the mask geometry layer
+            in `mask_vector_path`, defautl is 0.
         target_mask_value (numeric): If not None, this value is written to
             any pixel in `base_raster_path_band` that does not intersect with
             `mask_vector_path`. Otherwise the nodata value of
             `base_raster_path_band` is used.
         working_dir (str): this is a path to a directory that can be used to
             hold temporary files required to complete this operation.
+        gtiff_creation_options (sequence): this is an argument list that will
+            be passed to the GTiff driver defined by the GDAL GTiff spec.
+
 
     Returns:
         None.
     """
-    pass
+    with tempfile.NamedTemporaryFile(
+            prefix='mask_raster', delete=False, suffix='.tif',
+            dir=working_dir) as mask_raster_file:
+        mask_raster_path = mask_raster_file.name
+
+    new_raster_from_base(
+        base_raster_path_band[0], mask_raster_path, gdal.GDT_Byte, [255],
+        fill_value_list=[0], gtiff_creation_options=gtiff_creation_options)
+
+    base_raster_info = get_raster_info(base_raster_path_band[0])
+
+    rasterize(
+        mask_vector_path, mask_raster_path, burn_values=[1],
+        layer_index=mask_layer_index)
+
+    base_nodata = base_raster_info['nodata'][base_raster_path_band[1]-1]
+
+    if target_mask_value is None:
+        mask_value = base_nodata
+        if mask_value is None:
+            LOGGER.warn(
+                "No mask value was passed and target nodata is undefined, "
+                "defaulting to 0 as the target mask value.")
+            mask_value = 0
+    else:
+        mask_value = target_mask_value
+
+    def mask_op(base_array, mask_array):
+        result = numpy.copy(base_array)
+        result[mask_array == 0] = mask_value
+        return result
+
+    raster_calculator(
+        [base_raster_path_band, (mask_raster_path, 1)], mask_op,
+        target_mask_raster_path, base_raster_info['datatype'], base_nodata,
+        gtiff_creation_options=gtiff_creation_options)
+
+    os.remove(mask_raster_path)
 
 
 def _invoke_timed_callback(
