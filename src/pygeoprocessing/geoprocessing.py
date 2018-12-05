@@ -2903,6 +2903,39 @@ def merge_rasters(
     target_raster = None
 
 
+def mask_raster(
+        base_raster_path_band, mask_vector_path, target_mask_raster_path,
+        mask_layer_name=None, target_mask_value=None, working_dir=None):
+    """
+    Mask a raster band with a given vector.
+
+    Parameters:
+        base_raster_path_band (tuple): a (path, band number) tuple indicating
+            the data to mask.
+        mask_vector_path (path): path to a vector that will be used to mask
+            anything outside of the polygon that overlaps with
+            `base_raster_path_band` to `target_mask_value` if defined or
+            else `base_raster_path_band`'s nodata value.
+        target_mask_raster_path (str): path to desired target raster that
+            is a copy of `base_raster_path_band` except any pixels that do
+            not intersect with `mask_vector_path` are set to
+            `target_mask_value` or `base_raster_path_band`'s nodata value if
+            `target_mask_value` is None.
+        mask_layer_name (str): if not None, this layer is used as the mask
+            geometry layer in `mask_vector_path`, otherwise layer 0 is used.
+        target_mask_value (numeric): If not None, this value is written to
+            any pixel in `base_raster_path_band` that does not intersect with
+            `mask_vector_path`. Otherwise the nodata value of
+            `base_raster_path_band` is used.
+        working_dir (str): this is a path to a directory that can be used to
+            hold temporary files required to complete this operation.
+
+    Returns:
+        None.
+    """
+    pass
+
+
 def _invoke_timed_callback(
         reference_time, callback_lambda, callback_period):
     """Invoke callback if a certain amount of time has passed.
