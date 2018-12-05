@@ -544,6 +544,8 @@ def delineate_watersheds_d8(
     ws_id = 1  # start indexing ws_id at 1
     working_vector_ws_id_to_fid = {}
     working_outlets_layer.StartTransaction()
+    # TODO: add progress logging
+    LOGGER.info('Preprocessing outflow geometries.')
     for feature in working_outlets_layer:
         ogr_geom = feature.GetGeometryRef()
         try:
@@ -585,6 +587,8 @@ def delineate_watersheds_d8(
                                                              working_outlets_vector)
     buffered_working_outlets_layer = buffered_working_outlets_vector.GetLayer()
     buffered_working_outlets_layer.StartTransaction()
+    # TODO: add progress logging
+    LOGGER.info('First pass over outflow features')
     for feature in buffered_working_outlets_layer:
         geometry = shapely.wkb.loads(feature.GetGeometryRef().ExportToWkb())
 
@@ -705,6 +709,8 @@ def delineate_watersheds_d8(
                     seed_watersheds[seed].insert(ws_id)
                     seed_ids[seed] = seed_id
                     seed_id += 1
+            del block
+            del block_info
 
         buffered_working_outlets_layer = None
     buffered_working_outlets_vector = None
@@ -733,6 +739,7 @@ def delineate_watersheds_d8(
 
     # build up a map of which seeds are in which block and
     # identify seeds by an integer index.
+    LOGGER.info('Splitting seeds into their blocks.')
     cdef cmap[int, cset[CoordinatePair]] seeds_in_block
     cdef cmap[CoordinatePair, cset[int]].iterator seeds_in_watersheds_iterator = seed_watersheds.begin()
     while seeds_in_watersheds_iterator != seed_watersheds.end():
@@ -746,6 +753,8 @@ def delineate_watersheds_d8(
         if (seeds_in_block.find(block_index) == seeds_in_block.end()):
             seeds_in_block[block_index] = cset[CoordinatePair]()
         seeds_in_block[block_index].insert(seed)
+
+    del spatial_index
 
     # Phase 5: Iteration.
     #    * For each blockwise seed coordinate cluster:
@@ -778,7 +787,8 @@ def delineate_watersheds_d8(
                                              d8_flow_dir_raster_path_band[1],
                                              0)  # read-only
 
-    nested_fragments = {}
+    LOGGER.info('Starting delineation from %s seeds', seed_id)
+    cdef cmap[int, cset[int]] nested_fragments
     last_log_time = ctime(NULL)
     block_iterator = seeds_in_block.begin()
     cdef cset[CoordinatePair].iterator seed_iterator
@@ -798,6 +808,10 @@ def delineate_watersheds_d8(
             nested_fragment_ids.clear()  # clear the set for each fragment.
 
             while not process_queue.empty():
+                if ctime(NULL) - last_log_time > 5.0:
+                    LOGGER.info('Delineating watersheds')
+                    last_log_time = ctime(NULL)
+
                 current_pixel = process_queue.front()
                 process_queue_set.erase(current_pixel)
                 process_queue.pop()
@@ -847,9 +861,12 @@ def delineate_watersheds_d8(
                             process_queue.push(neighbor_pixel)
                             process_queue_set.insert(neighbor_pixel)
 
-            nested_fragments[seed_id] = set(nested_fragment_ids)
+            nested_fragments[seed_id] = nested_fragment_ids
     scratch_managed_raster.close()  # flush the scratch raster.
     mask_managed_raster.close()  # flush the mask raster
+    flow_dir_managed_raster.close()  # don't need this any longer.
+
+    seeds_in_block.clear()
 
     # Phase 6: Polygonization
     #    * Polygonize the seeds fragments.
