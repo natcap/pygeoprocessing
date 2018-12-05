@@ -1380,6 +1380,79 @@ class TestRouting(unittest.TestCase):
             watersheds_layer = None
             watersheds_vector = None
 
+    def test_watershed_delineation_polygons(self):
+        """PGP.routing: Test that we can delineatte nested polygons."""
+        import pygeoprocessing.routing
+        import pygeoprocessing.testing
+
+        srs = osr.SpatialReference()
+        srs.ImportFromEPSG(32731)  # WGS84 / UTM zone 31s
+        srs_wkt = srs.ExportToWkt()
+
+        pixels_array = numpy.arange(49, dtype=numpy.uint8).reshape((7, 7))
+        pixels_path = os.path.join(self.workspace_dir, 'pixels.tif')
+        driver = gdal.GetDriverByName('GTiff')
+        pixels_raster = driver.Create(
+            pixels_path, pixels_array.shape[1], pixels_array.shape[0],
+            1, gdal.GDT_Byte, options=(
+                'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
+                'BLOCKXSIZE=256', 'BLOCKYSIZE=256'))
+        pixels_raster.SetProjection(srs_wkt)
+        pixels_band = pixels_raster.GetRasterBand(1)
+        pixels_band.WriteArray(pixels_array)
+        pixels_geotransform = [2, 2, 0, -2, 0, -2]
+        pixels_raster.SetGeoTransform(pixels_geotransform)
+        pixels_raster = None
+
+        flow_dir_array = numpy.zeros((7, 7), dtype=numpy.uint8)
+        flow_dir_path = os.path.join(self.workspace_dir, 'flow_dir.tif')
+        driver = gdal.GetDriverByName('GTiff')
+        flow_dir_raster = driver.Create(
+            flow_dir_path, flow_dir_array.shape[1], flow_dir_array.shape[0],
+            1, gdal.GDT_Byte, options=(
+                'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
+                'BLOCKXSIZE=256', 'BLOCKYSIZE=256'))
+        flow_dir_raster.SetProjection(srs_wkt)
+        flow_dir_band = flow_dir_raster.GetRasterBand(1)
+        flow_dir_band.WriteArray(flow_dir_array)
+        flow_dir_geotransform = [2, 2, 0, -2, 0, -2]
+        flow_dir_raster.SetGeoTransform(flow_dir_geotransform)
+        flow_dir_raster = None
+
+        def square(centerpoint_tuple):
+            x, y = centerpoint_tuple
+            return shapely.geometry.Polygon(
+                [(x-1.5, y-1.5),
+                 (x-1.5, y+1.5),
+                 (x+1.5, y+1.5),
+                 (x+1.5, y-1.5),
+                 (x-1.5, y-1.5)])
+
+        watershed_geometries = [
+            square((14, -6)),  # TODO: why is this polygon not included?
+            square((8, -10)),
+            square((2, -8)),
+            square((14, -12)),
+        ]
+
+        outflow_vector = os.path.join(self.workspace_dir, 'outflow.gpkg')
+        pygeoprocessing.testing.create_vector_on_disk(
+            watershed_geometries, srs_wkt, vector_format='GPKG',
+            filename=outflow_vector)
+
+        target_fragments_vector = os.path.join(self.workspace_dir,
+                                               'fragments.gpkg')
+        pygeoprocessing.routing.delineate_watersheds_d8(
+            (flow_dir_path, 1), outflow_vector, target_fragments_vector,
+            os.path.join(self.workspace_dir, 'scratch'))
+
+        # Now, join up the watershed fragments so we can verify everything's
+        # been delineated as expected.
+        target_watersheds_vector = os.path.join(self.workspace_dir,
+                                                'watersheds.gpkg')
+        pygeoprocessing.routing.join_watershed_fragments_d8(
+            target_fragments_vector, target_watersheds_vector)
+
     def test_watershed_delineation_lakes(self):
         """PGP.routing: Test that we can delineate nested polygons/lakes."""
         import pygeoprocessing.routing
