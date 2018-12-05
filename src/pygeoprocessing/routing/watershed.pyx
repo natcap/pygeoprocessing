@@ -5,6 +5,7 @@ import shutil
 import tempfile
 import itertools 
 import math
+import collections
 
 import numpy
 import pygeoprocessing
@@ -926,6 +927,7 @@ def delineate_watersheds_d8(
             ','.join([str(s) for s in sorted(nested_fragments[fragment_id])]))
         created_fragment.SetField('member_ws_ids',
             ','.join([str(s) for s in sorted(set(seed_watersheds[fragment_seed]))]))
+        target_fragments_layer.SetFeature(created_fragment)
 
     target_fragments_layer.CommitTransaction()
 
@@ -935,6 +937,120 @@ def delineate_watersheds_d8(
     watershed_fragments_layer = None
     watershed_fragments_vector = None
 
+
+def join_watershed_fragments_d8(watershed_fragments_vector, target_watersheds_path):
+    fragments_vector = gdal.OpenEx(watershed_fragments_vector, gdal.OF_VECTOR)
+    fragments_layer = fragments_vector.GetLayer('watershed_fragments')
+    print [f.GetName() for f in fragments_layer.schema]
+    outflow_attributes_layer = fragments_vector.GetLayer('watershed_attributes')
+    print [f.GetName() for f in outflow_attributes_layer.schema]
+    fragments_srs = fragments_layer.GetSpatialRef()
+
+    driver = gdal.GetDriverByName('GPKG')
+    watersheds_vector = driver.Create(target_watersheds_path, 0, 0, 0,
+                                      gdal.GDT_Unknown)
+    watersheds_layer = watersheds_vector.CreateLayer(
+        'watersheds', fragments_srs, ogr.wkbPolygon)
+    watersheds_layer_defn = watersheds_layer.GetLayerDefn()
+
+    for field_defn in outflow_attributes_layer.schema:
+        field_type = field_defn.GetType()
+        if field_type in (ogr.OFTInteger, ogr.OFTReal):
+            field_defn.SetWidth(24)
+        watersheds_layer.CreateField(field_defn)
+
+    # Phase 1: Load in all of the fragments
+    upstream_fragments = collections.defaultdict(list)
+    fragment_geometries = {}
+    fragments_in_watershed = collections.defaultdict(set)  # {ws_id: set(fragment_ids)}
+    for fragment in fragments_layer:
+        fragment_id = fragment.GetField('fragment_id')
+        member_ws_ids = set([int(ws_id) for ws_id in
+                             fragment.GetField('member_ws_ids').split(',')])
+        for ws_id in member_ws_ids:
+            fragments_in_watershed[ws_id].add(fragment_id)
+
+        try:
+            upstream_fragments[fragment_id] = [
+                int(f) for f in fragment.GetField('upstream_fragments').split(',')]
+        except ValueError:
+            # If no upstream fragments the string will be '', and ''.split(',')
+            # turns into [''], which crashes when you cast it to an int.
+            # We're using a defaultdict(list) here, so no need to do anything.
+            # AttributeError when field value is None.
+            pass
+
+        fragment_geometries[fragment_id] = shapely.wkb.loads(
+            fragment.GetGeometryRef().ExportToWkb())
+
+    # Construct the base geometries for each watershed.
+    # Whatever is in this dict is assumed to be a complete geometry for this fragment.
+    # Initialize this dict with any fragments that do not have any upstream fragments.
+    compiled_upstream_geometries = {}  # {fragment_id: shapely geometry}
+    for fragment_id in fragment_geometries.keys():
+        if not upstream_fragments[fragment_id]:
+            compiled_upstream_geometries[fragment_id] = fragment_geometries[fragment_id]
+
+    # prepopulate the stack. Cast to list for python3 compatibility.
+    for starter_fragment_id in fragment_geometries.keys():
+        # If the geometry has already been compiled, we can skip the stack step.
+        if starter_fragment_id in compiled_upstream_geometries:
+            continue
+        
+        # Copy the upstream fragments list to a new list so we don't mutate the
+        # original one.
+        stack = upstream_fragments[starter_fragment_id][:]
+        geometries = []
+        while len(stack) > 0:
+            fragment_id = stack.pop()
+            
+            try:
+                # Base case: this fragment already has geometry in compiled dict
+                geometries.append(compiled_upstream_geometries[fragment_id])
+            except KeyError:
+                # Fragment geometry has not yet been compiled.
+                # Get the fragment's geometry and push it onto the stack.
+
+                # Are all of the geometries upstream of this fragment in the compiled dict?
+                # If yes, cascade-union them and save.
+                upstream_fragment_ids = upstream_fragments[fragment_id]
+                if all(k in compiled_upstream_geometries
+                       for k in upstream_fragment_ids):
+                    compiled_upstream_geometries[fragment_id] = (
+                        shapely.ops.cascaded_union(
+                            [compiled_upstream_geometries[f]
+                             for f in upstream_fragment_ids]))
+                    geometries.append(compiled_upstream_geometries[fragment_id])
+                            
+                # If not, push the current fragment to the stack (so we visit it later)
+                else:
+                    stack.append(fragment_id)
+                    stack += upstream_fragment_ids
+        compiled_upstream_geometries[starter_fragment_id] = shapely.ops.cascaded_union(geometries)
+
+    # Load the attributes table into a dict for easier accesses
+    watershed_attributes = {}
+    for feature in outflow_attributes_layer:
+        watershed_attributes[feature.GetField('__ws_id__')] = feature.items()
+
+    watersheds_layer.StartTransaction()
+    for ws_id, fragments_set in fragments_in_watershed.items():
+        print ws_id, fragments_set
+        target_feature = ogr.Feature(watersheds_layer_defn)
+
+        # Compile the geometry from all member fragments.
+        watershed_geometry = shapely.ops.cascaded_union([
+            compiled_upstream_geometries[fragment_id]
+            for fragment_id in fragments_set])
+        target_feature.SetGeometry(
+            ogr.CreateGeometryFromWkb(watershed_geometry.wkb))
+
+        # Copy field values over to the new feature.
+        for field_name, field_value in watershed_attributes[ws_id].items():
+            target_feature.SetField(field_name, field_value)
+
+        watersheds_layer.CreateFeature(target_feature)
+    watersheds_layer.CommitTransaction()
 
 
 def old_delineation(
