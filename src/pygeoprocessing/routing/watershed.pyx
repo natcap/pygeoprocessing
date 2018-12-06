@@ -646,7 +646,9 @@ def delineate_watersheds_d8(
     # Phase 2: Determine disjoint sets for any remaining geometries.
     #    * Write out new vectors
     cdef int NO_WATERSHED = 0
-    cdef int row, col
+    cdef int row, col, neighbor_x, neighbor_y
+    cdef int* neighbor_col = [1, 1, 0, -1, -1, -1, 0, 1]
+    cdef int* neighbor_row = [0, -1, -1, -1, 0, 1, 1, 1]
     if buffered_working_outlets_layer.GetFeatureCount() > 0:
         LOGGER.info('Determining sets of non-overlapping geometries')
         for set_index, disjoint_polygon_fid_set in enumerate(
@@ -699,18 +701,39 @@ def delineate_watersheds_d8(
                 ['ALL_TOUCHED=TRUE', 'ATTRIBUTE=%s' % ws_id_fieldname],
                 layer_index='outlet_geometries')
 
+            mr = _ManagedRaster(tmp_seed_raster_path, 1, 0)
             for block_info, block in pygeoprocessing.iterblocks(tmp_seed_raster_path):
                 for (row, col) in zip(*numpy.nonzero(block)):
                     ws_id = block[row, col]
                     seed = CoordinatePair(col + block_info['xoff'],
                                           row + block_info['yoff'])
 
-                    # Insert the seed into the seed_watersheds structure.
-                    if (seed_watersheds.find(seed) == seed_watersheds.end()):
-                        seed_watersheds[seed] = cset[int]()
-                    seed_watersheds[seed].insert(ws_id)
-                    seed_ids[seed] = seed_id
-                    seed_id += 1
+                    is_edge = False
+                    for neighbor_index in range(8):
+                        neighbor_x = seed.first + neighbor_col[neighbor_index]
+                        neighbor_y = seed.second + neighbor_row[neighbor_index]
+
+                        # Is the neighbor off the bounds of the raster?
+                        # skip if so.
+                        if not 0 <= neighbor_x < flow_dir_n_cols:
+                            continue
+
+                        if not 0 <= neighbor_y < flow_dir_n_rows:
+                            continue
+
+                        if mr.get(neighbor_x, neighbor_y) != ws_id:
+                            is_edge = True
+                            break
+
+                    # Insert the seed into the seed_watersheds structure
+                    # if the seed is on a boundary of the geometry.
+                    if is_edge:
+                        if (seed_watersheds.find(seed) == seed_watersheds.end()):
+                            seed_watersheds[seed] = cset[int]()
+                        seed_watersheds[seed].insert(ws_id)
+                        seed_ids[seed] = seed_id
+                        seed_id += 1
+            mr.close()
             del block
             del block_info
 
@@ -730,6 +753,7 @@ def delineate_watersheds_d8(
     cdef int n_blocks = (
         ((flow_dir_n_cols // flow_dir_block_x_size) + 1) *
         ((flow_dir_n_rows // flow_dir_block_y_size) + 1))
+    print n_blocks
     cdef cmap[int, cset[CoordinatePair]] seeds_in_block
     cdef cmap[CoordinatePair, cset[int]].iterator seeds_in_watersheds_iterator = seed_watersheds.begin()
 
@@ -745,8 +769,10 @@ def delineate_watersheds_d8(
         # Determine the block index mathematically.  We only need to be able to
         # group pixels together, so the specific number used does not matter.
         block_index = (
-            (seed.first // flow_dir_block_x_size) * flow_dir_block_x_size + 
-            (seed.second // flow_dir_block_y_size))
+            (seed.first // flow_dir_block_x_size) + 
+            ((seed.second // flow_dir_block_y_size) * (flow_dir_n_cols // flow_dir_block_x_size)))
+        if block_index > n_blocks:
+            print 'block_index %s > %s' % (block_index, n_blocks)
         seeds_in_block[block_index].insert(seed)
 
     # Phase 5: Iteration.
@@ -755,8 +781,6 @@ def delineate_watersheds_d8(
     #        * If a neighbor is upstream and is a known seed, mark connectivity between seeds.
     cdef cmap[int, cset[int]] upstream_seed_ids  # {int seed_id: int upstream seed_id}
     cdef cset[int] nested_fragment_ids
-    cdef int* neighbor_col = [1, 1, 0, -1, -1, -1, 0, 1]
-    cdef int* neighbor_row = [0, -1, -1, -1, 0, 1, 1, 1]
     cdef int* reverse_flow = [4, 5, 6, 7, 0, 1, 2, 3]
     cdef cset[CoordinatePair] process_queue_set
     cdef queue[CoordinatePair] process_queue
