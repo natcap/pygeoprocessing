@@ -13,6 +13,8 @@ Unreleased Changes
   the downstream flow drops below the threshold level.
 * Fixed an issue that could cause some custom arguments to geotiff creation
   options to be ignored.
+* Added a `mask_raster` function that can be used to mask out pixels in
+  an existing raster that don't overlap with a given vector.
 
 1.4.1 11/12/2018
 ----------------
