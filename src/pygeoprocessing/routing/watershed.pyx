@@ -739,7 +739,6 @@ def delineate_watersheds_d8(
 
         buffered_working_outlets_layer = None
     buffered_working_outlets_vector = None
-    del disjoint_polygon_fid_set
 
     # Phase 4: Cluster seeds by flow direction block
     #    * Use math to find which block a seed coordinate belongs to.

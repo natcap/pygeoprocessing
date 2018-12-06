@@ -1090,6 +1090,7 @@ class TestRouting(unittest.TestCase):
         numpy.testing.assert_almost_equal(
             distance_to_channel_d8_array, zero_array)
 
+    @unittest.skip('deprecated')
     def test_watershed_delineation(self):
         """PGP.routing: test delineation of disjoint watersheds."""
         import pygeoprocessing.routing
@@ -1170,6 +1171,7 @@ class TestRouting(unittest.TestCase):
         self.assertEqual(sum(geometry.area for geometry in geometries),
                          abs(raster_area))
 
+    @unittest.skip('deprecated')
     def test_watershed_delineation_nested(self):
         """PGP.routing: test delineation of nested watersheds."""
         import pygeoprocessing.routing
@@ -1473,6 +1475,7 @@ class TestRouting(unittest.TestCase):
             self.assertEqual(
                 expected_geometries[ws_id].difference(shapely_geom).area, 0)
 
+    @unittest.skip('deprecated')
     def test_watershed_delineation_lakes(self):
         """PGP.routing: Test that we can delineate nested polygons/lakes."""
         import pygeoprocessing.routing
@@ -1540,6 +1543,7 @@ class TestRouting(unittest.TestCase):
                 sorted(field_values, key=lambda x: x['ws_id'])):
             self.assertEqual(expected_fields, fields)
 
+    @unittest.skip('deprecated')
     def test_watershed_delineation_overlapping_points(self):
         """PGP.routing: assert geometries when outflow points overlap."""
         import pygeoprocessing.routing
@@ -1600,6 +1604,7 @@ class TestRouting(unittest.TestCase):
             fragments_layer = None
             fragments_vector = None
 
+    @unittest.skip('deprecated')
     def test_watershed_delineation_overlapping_polygons(self):
         """PGP.routing: assert geometries when outflow polygons overlap."""
         import pygeoprocessing.routing
@@ -1656,6 +1661,7 @@ class TestRouting(unittest.TestCase):
             fragments_layer = None
             fragments_vector = None
 
+    @unittest.skip('deprecated')
     def test_watershed_delineation_overlapping_linestrings(self):
         """PGP.routing: assert geometries when outflow linestrings overlap."""
         import pygeoprocessing.routing
@@ -1717,6 +1723,7 @@ class TestRouting(unittest.TestCase):
             fragments_layer = None
             fragments_vector = None
 
+    @unittest.skip('deprecated')
     def test_watershed_delineation_multipolygons(self):
         """PGP.routing: assert watershed when given a multipolygon."""
         import pygeoprocessing.routing
