@@ -1464,7 +1464,8 @@ class TestRouting(unittest.TestCase):
             8: shapely.geometry.box(2, -10, 16, -14),
         }
         watersheds_vector = gdal.OpenEx(target_watersheds_vector, gdal.OF_VECTOR)
-        watersheds_layer = watersheds_vector.GetLayer()
+        watersheds_layer = watersheds_vector.GetLayer('watersheds')
+        # TODO: ensure that the temporary working layer has been removed.
         self.assertEqual(watersheds_layer.GetFeatureCount(), len(watershed_geometries))
 
         for watershed_feature in watersheds_layer:

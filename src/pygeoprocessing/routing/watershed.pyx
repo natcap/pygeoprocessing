@@ -29,6 +29,7 @@ from libcpp.queue cimport queue
 from libcpp.deque cimport deque
 from libcpp.set cimport set as cset
 from libcpp.map cimport map as cmap
+from libcpp.stack cimport stack as cstack
 
 try:
     from shapely.geos import ReadingError
@@ -1000,6 +1001,9 @@ def join_watershed_fragments_d8(watershed_fragments_vector, target_watersheds_pa
         'watersheds', fragments_srs, ogr.wkbPolygon)
     watersheds_layer_defn = watersheds_layer.GetLayerDefn()
 
+    working_fragments_layer = watersheds_vector.CreateLayer(
+        'working_fragments', fragments_srs, ogr.wkbPolygon)
+
     for field_defn in outflow_attributes_layer.schema:
         field_type = field_defn.GetType()
         if field_type in (ogr.OFTInteger, ogr.OFTReal):
@@ -1009,11 +1013,16 @@ def join_watershed_fragments_d8(watershed_fragments_vector, target_watersheds_pa
     # Phase 1: Load in all of the fragments
     LOGGER.info('Loading fragments')
     upstream_fragments = collections.defaultdict(list)
-    fragment_geometries = {}
+    n_fragments = fragments_layer.GetFeatureCount()
+    fragment_ids = set([])
+    original_fragment_fids = {}  # map fragment ids to original feature IDs.
+    fragment_fids = {}  # map compiled fragment FIDs to their feature IDs.
     fragments_in_watershed = collections.defaultdict(set)  # {ws_id: set(fragment_ids)}
-    cdef int fragment_id, starter_fragment_id
+    cdef int fragment_id, starter_fragment_id, upstream_fragment_id
     for fragment in fragments_layer:
         fragment_id = fragment.GetField('fragment_id')
+        original_fragment_fids[fragment_id] = fragment.GetFID()
+        fragment_ids.add(fragment_id)
         member_ws_ids = set([int(ws_id) for ws_id in
                              fragment.GetField('member_ws_ids').split(',')])
         for ws_id in member_ws_ids:
@@ -1026,44 +1035,49 @@ def join_watershed_fragments_d8(watershed_fragments_vector, target_watersheds_pa
             # If no upstream fragments the string will be '', and ''.split(',')
             # turns into [''], which crashes when you cast it to an int.
             # We're using a defaultdict(list) here, so no need to do anything.
-            # AttributeError when field value is None.
-            pass
-
-        fragment_geometries[fragment_id] = shapely.wkb.loads(
-            fragment.GetGeometryRef().ExportToWkb())
+            working_fragment_feature = ogr.Feature(
+                working_fragments_layer.GetLayerDefn())
+            working_fragment_feature.SetGeometry(fragment.GetGeometryRef())
+            working_fragments_layer.CreateFeature(working_fragment_feature)
+            fragment_fids[fragment_id] = working_fragment_feature.GetFID()
 
     # Construct the base geometries for each watershed.
-    # Whatever is in this dict is assumed to be a complete geometry for this fragment.
-    # Initialize this dict with any fragments that do not have any upstream fragments.
-    compiled_upstream_geometries = {}  # {fragment_id: shapely geometry}
-    for fragment_id in fragment_geometries.keys():
-        if not upstream_fragments[fragment_id]:
-            compiled_upstream_geometries[fragment_id] = fragment_geometries[fragment_id]
-
     LOGGER.info('Joining upstream fragments')
     cdef last_log_time = ctime(NULL)
-    for starter_fragment_id in fragment_geometries.keys():
+    cdef cstack[int] stack
+    cdef cset[int] stack_set
+    cdef clist[int] upstream_fragment_ids
+    for starter_fragment_id in fragment_ids:
         # If the geometry has already been compiled, we can skip the stack step.
-        if starter_fragment_id in compiled_upstream_geometries:
+        if starter_fragment_id in fragment_fids:
             continue
 
         if ctime(NULL) - last_log_time > 5.0:
             last_log_time = ctime(NULL)
-            n_complete = len(compiled_upstream_geometries)
-            n_total = len(fragment_geometries)
-            LOGGER.info('%s of %s fragments complete (%.1f %%)',
-                n_complete, n_total, (float(n_complete)/n_total)*100)
+            n_complete = working_fragments_layer.GetFeatureCount()
+            LOGGER.info('%s of %s fragments complete (%.3f %%)',
+                n_complete, n_fragments, (float(n_complete)/n_fragments)*100)
         
-        # Copy the upstream fragments list to a new list so we don't mutate the
-        # original one.
-        stack = upstream_fragments[starter_fragment_id][:]
-        geometries = [fragment_geometries[starter_fragment_id]]
-        while len(stack) > 0:
-            fragment_id = stack.pop()
+        for fragment_id in upstream_fragments[starter_fragment_id]:
+            stack.push(fragment_id)
+            stack_set.insert(fragment_id)
+
+        starter_fragment = fragments_layer.GetFeature(starter_fragment_id)
+        starter_geom = starter_fragment.GetGeometryRef()
+        geometries = [shapely.wkb.loads(starter_geom.ExportToWkb())]
+        working_fragments_layer.StartTransaction()
+        while not stack.empty():
+            fragment_id = stack.top()
+            stack.pop()
+            stack_set.erase(fragment_id)
             
             try:
-                # Base case: this fragment already has geometry in compiled dict
-                geometries.append(compiled_upstream_geometries[fragment_id])
+                # Base case: this fragment already has geometry in the working layer. 
+                fragment_feature = working_fragments_layer.GetFeature(
+                    fragment_fids[fragment_id])
+                fragment_geom = fragment_feature.GetGeometryRef()
+                geometries.append(
+                    shapely.wkb.loads(fragment_geom.ExportToWkb()))
             except KeyError:
                 # Fragment geometry has not yet been compiled.
                 # Get the fragment's geometry and push it onto the stack.
@@ -1071,24 +1085,53 @@ def join_watershed_fragments_d8(watershed_fragments_vector, target_watersheds_pa
                 # Are all of the geometries upstream of this fragment in the compiled dict?
                 # If yes, cascade-union them and save.
                 upstream_fragment_ids = upstream_fragments[fragment_id]
-                if all(k in compiled_upstream_geometries
-                       for k in upstream_fragment_ids):
-                    compiled_upstream_geometries[fragment_id] = (
-                        shapely.ops.cascaded_union(
-                            [compiled_upstream_geometries[f]
-                             for f in upstream_fragment_ids]))
-                    geometries.append(compiled_upstream_geometries[fragment_id])
-                            
+                all_upstream_fragments_complete = True
+                for upstream_fragment_id in upstream_fragment_ids:
+                    if upstream_fragment_id not in fragment_fids:
+                        all_upstream_fragments_complete = False
+                        break
+
+                if all_upstream_fragments_complete:
+                    upstream_fragment_feature = ogr.Feature(
+                        working_fragments_layer.GetLayerDefn())
+
+                    local_geometries = []
+                    for upstream_fragment_id in upstream_fragments:
+                        upstream_feature = working_fragments_layer.GetFeature(
+                            fragment_fids[upstream_fragment_id])
+                        upstream_geom = upstream_feature.GetGeometryRef()
+                        local_geometries.append(shapely.wkb.loads(upstream_geom.ExportToWkb()))
+                    unioned_geometry = shapely.ops.cascaded_union(local_geometries)
+
+                    upstream_fragment_feature.SetGeometry(
+                        ogr.CreateGeometryFromWkb(unioned_geometry.wkb))
+                    working_fragments_layer.CreateFeature(upstream_fragment_feature)
+                    fragment_fids[fragment_id] = upstream_fragment_feature.GetFID()
+                    geometries.append(unioned_geometry)
                 # If not, push the current fragment to the stack (so we visit it later)
                 else:
-                    stack.append(fragment_id)
-                    stack += upstream_fragment_ids
+                    if stack_set.find(fragment_id) != stack_set.end():
+                        stack.push(fragment_id)
+                        stack_set.insert(fragment_id)
+                    for upstream_fragment_id in upstream_fragment_ids:
+                        # Don't push a geometry that's already been calculated
+                        if upstream_fragment_id in fragment_fids:
+                            continue
+
+                        if stack_set.find(upstream_fragment_id) != stack_set.end():
+                            stack.push(upstream_fragment_id)
+                            stack_set.insert(upstream_fragment_id)
         try:
-            compiled_upstream_geometries[starter_fragment_id] = shapely.ops.cascaded_union(geometries)
+            fragment_feature = ogr.Feature(working_fragments_layer.GetLayerDefn())
+            fragment_feature.SetGeometry(ogr.CreateGeometryFromWkb(
+                shapely.ops.cascaded_union(geometries).wkb))
+            working_fragments_layer.CreateFeature(fragment_feature)
+            fragment_fids[starter_fragment_id] = fragment_feature.GetFID()
         except ValueError:
             LOGGER.info('Failed on fragment %s', starter_fragment_id)
             LOGGER.info(geometries)
             raise
+        working_fragments_layer.CommitTransaction()
 
     # Load the attributes table into a dict for easier accesses
     watershed_attributes = {}
@@ -1101,9 +1144,15 @@ def join_watershed_fragments_d8(watershed_fragments_vector, target_watersheds_pa
         target_feature = ogr.Feature(watersheds_layer_defn)
 
         # Compile the geometry from all member fragments.
-        watershed_geometry = shapely.ops.cascaded_union([
-            compiled_upstream_geometries[fragment_id]
-            for fragment_id in fragments_set])
+        fragment_geometries = []
+        for fragment_id in fragments_set:
+            fragment_feature = working_fragments_layer.GetFeature(
+                fragment_fids[fragment_id])
+            fragment_geom = fragment_feature.GetGeometryRef()
+            fragment_geometries.append(shapely.wkb.loads(
+                fragment_geom.ExportToWkb()))
+
+        watershed_geometry = shapely.ops.cascaded_union(fragment_geometries)
         target_feature.SetGeometry(
             ogr.CreateGeometryFromWkb(watershed_geometry.wkb))
 
