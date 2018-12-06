@@ -477,8 +477,9 @@ def delineate_watersheds_d8(
             string path to the D8 flow direction raster to use and the band
             index to use.
         outflow_vector_path (string): Path to a vector on disk representing
-            outflow geometries for watersheds.  This vector must have one layer
-            and must be in the same projection as the flow direction raster.
+            geometries for features of interest.  This vector must have one
+            layer and must be in the same projection as the flow direction
+            raster.
         target_fragments_vector_path (string): Path to where the watershed
             fragments vector will be stored on disk.  This filepath must end
             with the 'gpkg' extension, and will be created as a GeoPackage.
@@ -1006,9 +1007,11 @@ def join_watershed_fragments_d8(watershed_fragments_vector, target_watersheds_pa
         watersheds_layer.CreateField(field_defn)
 
     # Phase 1: Load in all of the fragments
+    LOGGER.info('Loading fragments')
     upstream_fragments = collections.defaultdict(list)
     fragment_geometries = {}
     fragments_in_watershed = collections.defaultdict(set)  # {ws_id: set(fragment_ids)}
+    cdef int fragment_id, starter_fragment_id
     for fragment in fragments_layer:
         fragment_id = fragment.GetField('fragment_id')
         member_ws_ids = set([int(ws_id) for ws_id in
@@ -1037,11 +1040,19 @@ def join_watershed_fragments_d8(watershed_fragments_vector, target_watersheds_pa
         if not upstream_fragments[fragment_id]:
             compiled_upstream_geometries[fragment_id] = fragment_geometries[fragment_id]
 
-    # prepopulate the stack. Cast to list for python3 compatibility.
+    LOGGER.info('Joining upstream fragments')
+    cdef last_log_time = ctime(NULL)
     for starter_fragment_id in fragment_geometries.keys():
         # If the geometry has already been compiled, we can skip the stack step.
         if starter_fragment_id in compiled_upstream_geometries:
             continue
+
+        if ctime(NULL) - last_log_time > 5.0:
+            last_log_time = ctime(NULL)
+            n_complete = len(compiled_upstream_geometries)
+            n_total = len(fragment_geometries)
+            LOGGER.info('%s of %s fragments complete (%.1f %%)',
+                n_complete, n_total, (float(n_complete)/n_total)*100)
         
         # Copy the upstream fragments list to a new list so we don't mutate the
         # original one.
@@ -1072,13 +1083,19 @@ def join_watershed_fragments_d8(watershed_fragments_vector, target_watersheds_pa
                 else:
                     stack.append(fragment_id)
                     stack += upstream_fragment_ids
-        compiled_upstream_geometries[starter_fragment_id] = shapely.ops.cascaded_union(geometries)
+        try:
+            compiled_upstream_geometries[starter_fragment_id] = shapely.ops.cascaded_union(geometries)
+        except ValueError:
+            LOGGER.info('Failed on fragment %s', starter_fragment_id)
+            LOGGER.info(geometries)
+            raise
 
     # Load the attributes table into a dict for easier accesses
     watershed_attributes = {}
     for feature in outflow_attributes_layer:
         watershed_attributes[feature.GetField('__ws_id__')] = feature.items()
 
+    LOGGER.info('Copying attributes')
     watersheds_layer.StartTransaction()
     for ws_id, fragments_set in fragments_in_watershed.items():
         target_feature = ogr.Feature(watersheds_layer_defn)
