@@ -1019,7 +1019,14 @@ def join_watershed_fragments_d8(watershed_fragments_vector, target_watersheds_pa
     fragment_fids = {}  # map compiled fragment FIDs to their feature IDs.
     fragments_in_watershed = collections.defaultdict(set)  # {ws_id: set(fragment_ids)}
     cdef int fragment_id, starter_fragment_id, upstream_fragment_id
+    cdef last_log_time = ctime(NULL)
+    working_fragments_layer.StartTransaction()
     for fragment in fragments_layer:
+        if ctime(NULL) - last_log_time > 5.0:
+            last_log_time = ctime(NULL)
+            LOGGER.info('%s of %s fragments loaded',
+                len(original_fragment_fids), n_fragments)
+
         fragment_id = fragment.GetField('fragment_id')
         original_fragment_fids[fragment_id] = fragment.GetFID()
         fragment_ids.add(fragment_id)
@@ -1040,13 +1047,17 @@ def join_watershed_fragments_d8(watershed_fragments_vector, target_watersheds_pa
             working_fragment_feature.SetGeometry(fragment.GetGeometryRef())
             working_fragments_layer.CreateFeature(working_fragment_feature)
             fragment_fids[fragment_id] = working_fragment_feature.GetFID()
+    working_fragments_layer.CommitTransaction()
+
+    LOGGER.info('%s fragments have no upstream fragments',
+        working_fragments_layer.GetFeatureCount())
 
     # Construct the base geometries for each watershed.
     LOGGER.info('Joining upstream fragments')
-    cdef last_log_time = ctime(NULL)
     cdef cstack[int] stack
     cdef cset[int] stack_set
     cdef clist[int] upstream_fragment_ids
+    last_log_time = ctime(NULL)
     for starter_fragment_id in fragment_ids:
         # If the geometry has already been compiled, we can skip the stack step.
         if starter_fragment_id in fragment_fids:
@@ -1096,7 +1107,7 @@ def join_watershed_fragments_d8(watershed_fragments_vector, target_watersheds_pa
                         working_fragments_layer.GetLayerDefn())
 
                     local_geometries = []
-                    for upstream_fragment_id in upstream_fragments:
+                    for upstream_fragment_id in upstream_fragment_ids:
                         upstream_feature = working_fragments_layer.GetFeature(
                             fragment_fids[upstream_fragment_id])
                         upstream_geom = upstream_feature.GetGeometryRef()
@@ -1140,7 +1151,16 @@ def join_watershed_fragments_d8(watershed_fragments_vector, target_watersheds_pa
 
     LOGGER.info('Copying attributes')
     watersheds_layer.StartTransaction()
+    # TODO: time this against OGR SQL ST_UNION
+    last_log_time = ctime(NULL)
     for ws_id, fragments_set in fragments_in_watershed.items():
+        if ctime(NULL) - last_log_time > 5.0:
+            last_log_time = ctime(NULL)
+            n_compiled = watersheds_layer.GetFeatureCount()
+            n_watersheds = len(fragments_in_watershed)
+            LOGGER.info('Compiled %s of %s watersheds (%.2f %%)',
+                n_compiled, n_watersheds, (float(n_compiled)/n_watersheds)*100.)
+
         target_feature = ogr.Feature(watersheds_layer_defn)
 
         # Compile the geometry from all member fragments.
