@@ -1446,7 +1446,8 @@ class TestRouting(unittest.TestCase):
                                                'fragments.gpkg')
         pygeoprocessing.routing.delineate_watersheds_d8(
             (flow_dir_path, 1), outflow_vector, target_fragments_vector,
-            os.path.join(self.workspace_dir, 'scratch'))
+            os.path.join(self.workspace_dir, 'scratch'),
+            starting_ws_id=5)
 
         # Now, join up the watershed fragments so we can verify everything's
         # been delineated as expected.
@@ -1457,10 +1458,10 @@ class TestRouting(unittest.TestCase):
 
         # Mapping ws_id to geometry type
         expected_geometries = {
-            1: shapely.geometry.box(2, -4, 16, -8),
-            2: shapely.geometry.box(2, -8, 10, -12),
-            3: shapely.geometry.box(2, -6, 4, -10),
-            4: shapely.geometry.box(2, -10, 16, -14),
+            5: shapely.geometry.box(2, -4, 16, -8),
+            6: shapely.geometry.box(2, -8, 10, -12),
+            7: shapely.geometry.box(2, -6, 4, -10),
+            8: shapely.geometry.box(2, -10, 16, -14),
         }
         watersheds_vector = gdal.OpenEx(target_watersheds_vector, gdal.OF_VECTOR)
         watersheds_layer = watersheds_vector.GetLayer()
@@ -1474,6 +1475,77 @@ class TestRouting(unittest.TestCase):
                 shapely_geom.area)
             self.assertEqual(
                 expected_geometries[ws_id].difference(shapely_geom).area, 0)
+
+    def test_watershed_delineation_invalid_starting_ws_id(self):
+        """PGP.routing: error when invalid starting ws_id."""
+        import pygeoprocessing.routing
+        import pygeoprocessing.testing
+
+        srs = osr.SpatialReference()
+        srs.ImportFromEPSG(32731)  # WGS84 / UTM zone 31s
+        srs_wkt = srs.ExportToWkt()
+
+        pixels_array = numpy.arange(49, dtype=numpy.uint8).reshape((7, 7))
+        pixels_path = os.path.join(self.workspace_dir, 'pixels.tif')
+        driver = gdal.GetDriverByName('GTiff')
+        pixels_raster = driver.Create(
+            pixels_path, pixels_array.shape[1], pixels_array.shape[0],
+            1, gdal.GDT_Byte, options=(
+                'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
+                'BLOCKXSIZE=256', 'BLOCKYSIZE=256'))
+        pixels_raster.SetProjection(srs_wkt)
+        pixels_band = pixels_raster.GetRasterBand(1)
+        pixels_band.WriteArray(pixels_array)
+        pixels_geotransform = [2, 2, 0, -2, 0, -2]
+        pixels_raster.SetGeoTransform(pixels_geotransform)
+        pixels_raster = None
+
+        flow_dir_array = numpy.zeros((7, 7), dtype=numpy.uint8)
+        flow_dir_path = os.path.join(self.workspace_dir, 'flow_dir.tif')
+        driver = gdal.GetDriverByName('GTiff')
+        flow_dir_raster = driver.Create(
+            flow_dir_path, flow_dir_array.shape[1], flow_dir_array.shape[0],
+            1, gdal.GDT_Byte, options=(
+                'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
+                'BLOCKXSIZE=256', 'BLOCKYSIZE=256'))
+        flow_dir_raster.SetProjection(srs_wkt)
+        flow_dir_band = flow_dir_raster.GetRasterBand(1)
+        flow_dir_band.WriteArray(flow_dir_array)
+        flow_dir_geotransform = [2, 2, 0, -2, 0, -2]
+        flow_dir_raster.SetGeoTransform(flow_dir_geotransform)
+        flow_dir_raster = None
+
+        def square(centerpoint_tuple):
+            x, y = centerpoint_tuple
+            return shapely.geometry.Polygon(
+                [(x-1.5, y-1.5),
+                 (x-1.5, y+1.5),
+                 (x+1.5, y+1.5),
+                 (x+1.5, y-1.5),
+                 (x-1.5, y-1.5)])
+
+        watershed_geometries = [
+            square((14, -6)),
+            square((8, -10)),
+            square((2, -8)),
+            square((14, -12)),
+        ]
+
+        outflow_vector = os.path.join(self.workspace_dir, 'outflow.gpkg')
+        pygeoprocessing.testing.create_vector_on_disk(
+            watershed_geometries, srs_wkt, vector_format='GPKG',
+            filename=outflow_vector)
+
+        target_fragments_vector = os.path.join(self.workspace_dir,
+                                               'fragments.gpkg')
+        for invalid_value in (-100, 'foobar', 123.456):
+            with self.assertRaises(ValueError) as cm:
+                pygeoprocessing.routing.delineate_watersheds_d8(
+                    (flow_dir_path, 1), outflow_vector, target_fragments_vector,
+                    os.path.join(self.workspace_dir, 'scratch'),
+                    starting_ws_id=-100)
+            self.assertTrue('positive, nonzero integer'
+                            in repr(cm.exception).lower())
 
     @unittest.skip('deprecated')
     def test_watershed_delineation_lakes(self):

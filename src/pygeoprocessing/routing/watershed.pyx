@@ -465,7 +465,7 @@ ctypedef pair[long, long] CoordinatePair
 
 def delineate_watersheds_d8(
         d8_flow_dir_raster_path_band, outflow_vector_path,
-        target_fragments_vector_path, working_dir=None):
+        target_fragments_vector_path, working_dir=None, starting_ws_id=None):
     """Delineate watersheds from a D8 flow direction raster.
 
     This function produces a vector of watershed fragments, where each fragment
@@ -487,6 +487,11 @@ def delineate_watersheds_d8(
             created if it does not exist, and intermediate files created will
             be removed.  If ``None``, a new temporary folder will be created
             within the system temp directory.
+        starting_ws_id=None (int or None): A numeric identifier to start
+            counting outflow geometries from.  Useful when splitting
+            delineation across multiple runs and having consistent watershed
+            indexes.  If provided, must be a positive, nonzero integer. If
+            None, the ``ws_id`` field will begin indexing from 1.
 
     Returns:
         ``None``
@@ -497,6 +502,17 @@ def delineate_watersheds_d8(
         raise ValueError(
             "%s is supposed to be a raster band tuple but it's not." % (
                 d8_flow_dir_raster_path_band))
+
+    cdef int ws_id  # start indexing ws_id at 1
+    if starting_ws_id is None:
+        ws_id = 1
+    else:
+        if not isinstance(starting_ws_id, int) or starting_ws_id <= 0:
+            raise ValueError(
+                'starting_ws_id must be a positive, nonzero integer; %s found'
+                % starting_ws_id)
+        else:
+            ws_id = starting_ws_id
 
     flow_dir_info = pygeoprocessing.get_raster_info(
         d8_flow_dir_raster_path_band[0])
@@ -533,7 +549,6 @@ def delineate_watersheds_d8(
 
     # Add a new field to the clipped_outlets_layer to ensure we know what field
     # values are bing rasterized.
-    cdef int ws_id
     ws_id_fieldname = '__ws_id__'
     ws_id_field_defn = ogr.FieldDefn(ws_id_fieldname, ogr.OFTInteger64)
     working_outlets_layer.CreateField(ws_id_field_defn)
@@ -543,7 +558,6 @@ def delineate_watersheds_d8(
     #    * Attempt to repair invalid geometries.
     #    * Create new WS_ID field, set field value.
     #    * Exclude any geometries that do not intersect the DEM bbox (prepared geometry op)
-    ws_id = 1  # start indexing ws_id at 1
     working_vector_ws_id_to_fid = {}
     working_outlets_layer.StartTransaction()
     # TODO: add progress logging
