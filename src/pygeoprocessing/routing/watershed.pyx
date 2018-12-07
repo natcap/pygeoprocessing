@@ -998,11 +998,11 @@ def join_watershed_fragments_d8(watershed_fragments_vector, target_watersheds_pa
     watersheds_vector = driver.Create(target_watersheds_path, 0, 0, 0,
                                       gdal.GDT_Unknown)
     watersheds_layer = watersheds_vector.CreateLayer(
-        'watersheds', fragments_srs, ogr.wkbPolygon)
+        'watersheds', fragments_srs, ogr.wkbMultiPolygon)
     watersheds_layer_defn = watersheds_layer.GetLayerDefn()
 
     working_fragments_layer = watersheds_vector.CreateLayer(
-        'working_fragments', fragments_srs, ogr.wkbPolygon)
+        'working_fragments', fragments_srs, ogr.wkbMultiPolygon)
 
     for field_defn in outflow_attributes_layer.schema:
         field_type = field_defn.GetType()
@@ -1045,7 +1045,9 @@ def join_watershed_fragments_d8(watershed_fragments_vector, target_watersheds_pa
             # We're using a defaultdict(list) here, so no need to do anything.
             working_fragment_feature = ogr.Feature(
                 working_fragments_layer.GetLayerDefn())
-            working_fragment_feature.SetGeometry(fragment.GetGeometryRef())
+            working_fragment_geometry = ogr.Geometry(ogr.wkbMultiPolygon)
+            working_fragment_geometry.AddGeometry(fragment.GetGeometryRef())
+            working_fragment_feature.SetGeometry(working_fragment_geometry)
             working_fragments_layer.CreateFeature(working_fragment_feature)
             fragment_fids[fragment_id] = working_fragment_feature.GetFID()
     working_fragments_layer.CommitTransaction()
@@ -1070,7 +1072,7 @@ def join_watershed_fragments_d8(watershed_fragments_vector, target_watersheds_pa
             last_log_time = ctime(NULL)
             n_complete = working_fragments_layer.GetFeatureCount()
             LOGGER.info('%s of %s fragments complete (%.3f %%)',
-                n_complete, n_solo_fragments, (float(n_complete-n_solo_fragments)/n_solo_fragments)*100)
+                n_complete, n_fragments, (float(n_complete-n_solo_fragments)/n_solo_fragments)*100)
         
         for fragment_id in upstream_fragments[starter_fragment_id]:
             stack.push(fragment_id)
@@ -1088,7 +1090,15 @@ def join_watershed_fragments_d8(watershed_fragments_vector, target_watersheds_pa
                 # Base case: this fragment already has geometry in the working layer. 
                 fragment_feature = working_fragments_layer.GetFeature(
                     fragment_fids[fragment_id])
-                geometries.AddGeometry(fragment_feature.GetGeometryRef())
+                fragment_geometry = fragment_feature.GetGeometryRef()
+
+                # The subgeometry of a Polygon is a LineString.
+                if fragment_geometry.GetGeometryCount() == 0:
+                    geometries.AddGeometry(fragment_geometry)
+                else:
+                    # Subgeometries of a MultiPolygon are polygons.
+                    for sub_geometry in fragment_geometry:
+                        geometries.AddGeometry(sub_geometry)
             except KeyError:
                 # Fragment geometry has not yet been compiled.
                 # Get the fragment's geometry and push it onto the stack.
@@ -1111,9 +1121,13 @@ def join_watershed_fragments_d8(watershed_fragments_vector, target_watersheds_pa
                         upstream_feature = working_fragments_layer.GetFeature(
                             fragment_fids[upstream_fragment_id])
                         upstream_geom = upstream_feature.GetGeometryRef()
-                        local_geometry.AddGeometry(upstream_geom)
+                        if upstream_geom.GetGeometryCount() == 0:
+                            local_geometry.AddGeometry(upstream_geom)
+                        else:
+                            for sub_geometry in upstream_geom:
+                                local_geometry.AddGeometry(sub_geometry)
 
-                    upstream_fragment_feature.SetGeometry(local_geometry.UnionCascaded())
+                    upstream_fragment_feature.SetGeometry(local_geometry)
                     working_fragments_layer.CreateFeature(upstream_fragment_feature)
                     fragment_fids[fragment_id] = upstream_fragment_feature.GetFID()
                 # If not, push the current fragment to the stack (so we visit it later)
@@ -1129,8 +1143,9 @@ def join_watershed_fragments_d8(watershed_fragments_vector, target_watersheds_pa
                         if stack_set.find(upstream_fragment_id) != stack_set.end():
                             stack.push(upstream_fragment_id)
                             stack_set.insert(upstream_fragment_id)
+
         fragment_feature = ogr.Feature(working_fragments_layer.GetLayerDefn())
-        fragment_feature.SetGeometry(geometries.UnionCascaded())
+        fragment_feature.SetGeometry(geometries)
         working_fragments_layer.CreateFeature(fragment_feature)
         fragment_fids[starter_fragment_id] = fragment_feature.GetFID()
     working_fragments_layer.CommitTransaction()
@@ -1158,7 +1173,12 @@ def join_watershed_fragments_d8(watershed_fragments_vector, target_watersheds_pa
         for fragment_id in fragments_set:
             fragment_feature = working_fragments_layer.GetFeature(
                 fragment_fids[fragment_id])
-            new_geometry.AddGeometry(fragment_feature.GetGeometryRef())
+            fragment_geometry = fragment_feature.GetGeometryRef()
+            if fragment_geometry.GetGeometryCount() == 0:
+                new_geometry.AddGeometry(fragment_feature.GetGeometryRef())
+            else:
+                for sub_geometry in fragment_geometry:
+                    new_geometry.AddGeometry(sub_geometry)
 
         target_feature.SetGeometry(new_geometry.UnionCascaded())
 
