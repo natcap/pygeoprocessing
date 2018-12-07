@@ -1024,8 +1024,9 @@ def join_watershed_fragments_d8(watershed_fragments_vector, target_watersheds_pa
     for fragment in fragments_layer:
         if ctime(NULL) - last_log_time > 5.0:
             last_log_time = ctime(NULL)
-            LOGGER.info('%s of %s fragments loaded',
-                len(original_fragment_fids), n_fragments)
+            LOGGER.info('%s of %s fragments loaded (%.2f %%)',
+                len(original_fragment_fids), n_fragments,
+                (float(len(original_fragment_fids))/n_fragments)*100.)
 
         fragment_id = fragment.GetField('fragment_id')
         original_fragment_fids[fragment_id] = fragment.GetFID()
@@ -1049,8 +1050,9 @@ def join_watershed_fragments_d8(watershed_fragments_vector, target_watersheds_pa
             fragment_fids[fragment_id] = working_fragment_feature.GetFID()
     working_fragments_layer.CommitTransaction()
 
+    n_solo_fragments = working_fragments_layer.GetFeatureCount()
     LOGGER.info('%s fragments have no upstream fragments',
-        working_fragments_layer.GetFeatureCount())
+        n_solo_fragments)
 
     # Construct the base geometries for each watershed.
     LOGGER.info('Joining upstream fragments')
@@ -1067,7 +1069,7 @@ def join_watershed_fragments_d8(watershed_fragments_vector, target_watersheds_pa
             last_log_time = ctime(NULL)
             n_complete = working_fragments_layer.GetFeatureCount()
             LOGGER.info('%s of %s fragments complete (%.3f %%)',
-                n_complete, n_fragments, (float(n_complete)/n_fragments)*100)
+                n_complete, n_solo_fragments, (float(n_complete-n_solo_fragments)/n_solo_fragments)*100)
         
         for fragment_id in upstream_fragments[starter_fragment_id]:
             stack.push(fragment_id)
