@@ -1060,6 +1060,7 @@ def join_watershed_fragments_d8(watershed_fragments_vector, target_watersheds_pa
     cdef cset[int] stack_set
     cdef clist[int] upstream_fragment_ids
     last_log_time = ctime(NULL)
+    working_fragments_layer.StartTransaction()
     for starter_fragment_id in fragment_ids:
         # If the geometry has already been compiled, we can skip the stack step.
         if starter_fragment_id in fragment_fids:
@@ -1078,7 +1079,6 @@ def join_watershed_fragments_d8(watershed_fragments_vector, target_watersheds_pa
         starter_fragment = fragments_layer.GetFeature(starter_fragment_id)
         geometries = ogr.Geometry(ogr.wkbMultiPolygon)
         geometries.AddGeometry(starter_fragment.GetGeometryRef())
-        working_fragments_layer.StartTransaction()
         while not stack.empty():
             fragment_id = stack.top()
             stack.pop()
@@ -1133,7 +1133,7 @@ def join_watershed_fragments_d8(watershed_fragments_vector, target_watersheds_pa
         fragment_feature.SetGeometry(geometries.UnionCascaded())
         working_fragments_layer.CreateFeature(fragment_feature)
         fragment_fids[starter_fragment_id] = fragment_feature.GetFID()
-        working_fragments_layer.CommitTransaction()
+    working_fragments_layer.CommitTransaction()
 
     # Load the attributes table into a dict for easier accesses
     watershed_attributes = {}
