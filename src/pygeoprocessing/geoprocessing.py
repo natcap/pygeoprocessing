@@ -2536,6 +2536,8 @@ def iterblocks(
 
     """
     raster = gdal.OpenEx(raster_path, gdal.OF_RASTER)
+    if raster is None:
+        raise ValueError("Raster %s could not be opened." % raster_path)
 
     if band_index_list is None:
         band_index_list = range(1, raster.RasterCount + 1)
