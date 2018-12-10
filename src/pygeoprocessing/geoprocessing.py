@@ -2146,6 +2146,28 @@ def distance_transform_edt(
         dt_mask_path, gdal.GDT_Byte, nodata_out, calc_raster_stats=False)
     geoprocessing_core.distance_transform_edt(
         (dt_mask_path, 1), target_distance_raster_path)
+
+    distance_nodata = get_raster_info(
+        target_distance_raster_path)['nodata'][0]
+
+    def mask_nodata(distance_array, base_array):
+        result = numpy.copy(distance_array)
+        result[numpy.isclose(base_array, nodata)] = distance_nodata
+        return result
+
+    distance_raster = gdal.OpenEx(
+        target_distance_raster_path, gdal.OF_RASTER | gdal.GA_Update)
+    distance_band = distance_raster.GetRasterBand(1)
+    distance_nodata = distance_band.GetNoDataValue()
+
+    for distance_offset in iterblocks(
+            target_distance_raster_path, offset_only=True):
+        distance_raster = distance_band.ReadAsArray(
+            **distance_offset)
+        distance_raster[numpy.isclose(distance_raster, distance_nodata)] = (
+            )
+        pass
+
     """try:
                     os.remove(dt_mask_path)
                 except OSError:
