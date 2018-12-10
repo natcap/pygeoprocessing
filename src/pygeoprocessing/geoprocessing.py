@@ -2138,19 +2138,19 @@ def distance_transform_edt(
 
     def mask_op(base_array):
         """Convert base_array to 1 if >0, 0 if == 0 or nodata."""
-        return numpy.where(
-            base_array == nodata, nodata_out, base_array != 0)
+        return ~numpy.isclose(base_array, nodata) & (base_array != 0)
 
+    dt_mask_path = 'tmp_mask.tif'
     raster_calculator(
         [base_mask_raster_path_band], mask_op,
         dt_mask_path, gdal.GDT_Byte, nodata_out, calc_raster_stats=False)
     geoprocessing_core.distance_transform_edt(
         (dt_mask_path, 1), target_distance_raster_path)
-    try:
-        os.remove(dt_mask_path)
-    except OSError:
-        LOGGER.warning("couldn't remove file %s", dt_mask_path)
-
+    """try:
+                    os.remove(dt_mask_path)
+                except OSError:
+                    LOGGER.warning("couldn't remove file %s", dt_mask_path)
+    """
 
 def _next_regular(base):
     """
