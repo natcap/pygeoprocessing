@@ -2155,7 +2155,10 @@ def distance_transform_edt(
 
     def mask_op(base_array):
         """Convert base_array to 1 if not 0 and nodata, 0 otherwise."""
-        return ~numpy.isclose(base_array, nodata) & (base_array != 0)
+        if nodata is not None:
+            return ~numpy.isclose(base_array, nodata) & (base_array != 0)
+        else:
+            return base_array != 0
 
     raster_calculator(
         [base_mask_raster_path_band], mask_op,
