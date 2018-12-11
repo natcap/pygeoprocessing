@@ -2148,8 +2148,8 @@ def distance_transform_edt(
                 prefix=raster_prefix, suffix='.tif', delete=False,
                 dir=working_dir) as tmp_file:
             working_raster_paths[raster_prefix] = tmp_file.name
-    nodata = (get_raster_info(base_region_raster_path_band[0])['nodata'])(
-        [base_region_raster_path_band[1]-1])
+    nodata = (get_raster_info(base_region_raster_path_band[0])['nodata'])[
+        base_region_raster_path_band[1]-1]
     nodata_out = 255
 
     def mask_op(base_array):
