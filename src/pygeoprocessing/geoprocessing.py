@@ -2106,7 +2106,7 @@ def calculate_disjoint_polygon_set(
 
 
 def distance_transform_edt(
-        base_mask_raster_path_band, target_distance_raster_path,
+        base_region_raster_path_band, target_distance_raster_path,
         sampling_distance=1.0, working_dir=None):
     """Calculate the euclidean distance transform on base raster.
 
@@ -2124,9 +2124,10 @@ def distance_transform_edt(
     transform values even in pixels that are nodata in the base.
 
     Parameters:
-        base_raster_path_band (tuple): a tuple including file path to a raster
-            and the band index to define the base region. Any pixel that is
-            not 0 and nodata are considered to be the base region.
+        base_region_raster_path_band (tuple): a tuple including file path to a
+            raster and the band index to define the base region pixels. Any
+            pixel  that is not 0 and nodata are considered to be part of the
+            region.
         target_distance_raster_path (string): path to the target raster that
             is the exact euclidean distance transform from any pixel in the
             base raster that is not nodata and not 0. The units are in
@@ -2141,16 +2142,14 @@ def distance_transform_edt(
         None
 
     """
-    with tempfile.NamedTemporaryFile(
-            prefix='dt_mask', suffix='.tif', delete=False,
-            dir=working_dir) as dt_mask_file:
-        dt_mask_raster_path = dt_mask_file.name
-    with tempfile.NamedTemporaryFile(
-            prefix='g_raster', suffix='.tif', delete=False,
-            dir=working_dir) as g_file:
-        g_raster_path = g_file.name
-    raster_info = get_raster_info(base_mask_raster_path_band[0])
-    nodata = raster_info['nodata'][base_mask_raster_path_band[1]-1]
+    working_raster_paths = {}
+    for raster_prefix in ['region_mask_raster', 'g_raster']:
+        with tempfile.NamedTemporaryFile(
+                prefix=raster_prefix, suffix='.tif', delete=False,
+                dir=working_dir) as tmp_file:
+            working_raster_paths[raster_prefix] = tmp_file.name
+    nodata = (get_raster_info(base_region_raster_path_band[0])['nodata'])(
+        [base_region_raster_path_band[1]-1])
     nodata_out = 255
 
     def mask_op(base_array):
@@ -2161,14 +2160,15 @@ def distance_transform_edt(
             return base_array != 0
 
     raster_calculator(
-        [base_mask_raster_path_band], mask_op,
-        dt_mask_raster_path, gdal.GDT_Byte, nodata_out,
+        [base_region_raster_path_band], mask_op,
+        working_raster_paths['region_mask_raster'], gdal.GDT_Byte, nodata_out,
         calc_raster_stats=False)
     geoprocessing_core._distance_transform_edt(
-        dt_mask_raster_path, g_raster_path, sampling_distance,
+        working_raster_paths['region_mask_raster'],
+        working_raster_paths['g_raster'], sampling_distance,
         target_distance_raster_path)
 
-    for path in [dt_mask_raster_path, g_raster_path]:
+    for path in working_raster_paths.values():
         try:
             os.remove(path)
         except OSError:

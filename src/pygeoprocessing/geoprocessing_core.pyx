@@ -29,7 +29,7 @@ cdef float NODATA = -1.0
 @cython.wraparound(False)
 @cython.cdivision(True)
 def _distance_transform_edt(
-        mask_raster_path, g_raster_path, sampling_distance,
+        region_raster_path, g_raster_path, sampling_distance,
         target_distance_raster_path):
     """Calculate the euclidean distance transform on base raster.
 
@@ -47,7 +47,7 @@ def _distance_transform_edt(
     transform values even in pixels that are nodata in the base.
 
     Parameters:
-        mask_raster_path (string): path to a byte raster where region pixels
+        region_raster_path (string): path to a byte raster where region pixels
             are indicated by a 1 and 0 otherwise.
         g_raster_path (string): path to a raster created by this call that
             is used as the intermediate "g" variable described in Meijster
@@ -73,15 +73,15 @@ def _distance_transform_edt(
     cdef numpy.ndarray[numpy.float32_t, ndim=2] dt
     cdef numpy.ndarray[numpy.int8_t, ndim=2] mask_block
 
-    mask_raster = gdal.OpenEx(mask_raster_path, gdal.OF_RASTER)
+    mask_raster = gdal.OpenEx(region_raster_path, gdal.OF_RASTER)
     mask_band = mask_raster.GetRasterBand(1)
 
     n_cols = mask_raster.RasterXSize
     n_rows = mask_raster.RasterYSize
 
-    raster_info = pygeoprocessing.get_raster_info(mask_raster_path)
+    raster_info = pygeoprocessing.get_raster_info(region_raster_path)
     pygeoprocessing.new_raster_from_base(
-        mask_raster_path, g_raster_path, gdal.GDT_Int32, [NODATA],
+        region_raster_path, g_raster_path, gdal.GDT_Int32, [NODATA],
         fill_value_list=None)
     g_raster = gdal.OpenEx(g_raster_path, gdal.OF_RASTER | gdal.GA_Update)
     g_band = g_raster.GetRasterBand(1)
@@ -132,7 +132,7 @@ def _distance_transform_edt(
         distance_nodata = 1.0
 
     pygeoprocessing.new_raster_from_base(
-        mask_raster_path, target_distance_raster_path.encode('utf-8'),
+        region_raster_path, target_distance_raster_path.encode('utf-8'),
         gdal.GDT_Float32, [distance_nodata], fill_value_list=None)
     target_distance_raster = gdal.OpenEx(
         target_distance_raster_path, gdal.OF_RASTER | gdal.GA_Update)
