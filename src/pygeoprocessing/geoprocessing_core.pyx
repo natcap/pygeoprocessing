@@ -125,13 +125,12 @@ def _distance_transform_edt(
             break
     g_band.FlushCache()
 
-    cdef float distance_nodata
+    cdef float distance_nodata = -1.0
     # just in case sampling distance is negative we don't want to have an
     # "valid" nodata value.
-    if sampling_distance > 0:
-        distance_nodata = -1.0
-    else:
+    if sampling_distance < 0:
         distance_nodata = 1.0
+
     pygeoprocessing.new_raster_from_base(
         mask_raster_path, target_distance_raster_path.encode('utf-8'),
         gdal.GDT_Float32, [distance_nodata], fill_value_list=None)
