@@ -15,6 +15,10 @@ Unreleased Changes
   options to be ignored.
 * Added a `mask_raster` function that can be used to mask out pixels in
   an existing raster that don't overlap with a given vector.
+* Changed the behavior of `zonal_statistics` for polygons that that do not
+  intersect any pixels. These FIDs are now also included in the result from
+  `zonal_statistics` where previously they were absent. This is to remain
+  consistent with how other GIS libraries calculate zonal stats.
 
 1.4.1 11/12/2018
 ----------------
