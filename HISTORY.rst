@@ -20,7 +20,7 @@ Unreleased Changes
   region raster. The algorithm has been modified to treat nodata as though
   pixel values were 0 (non-region) and the distance transform will be defined
   for the entire raster.
-* Added a `sampling_distance` variable to `distance_transform_edt` that
+* Added a `sampling_distance` parameter to `distance_transform_edt` that
   linearly scales the distance transform by this value.
 
 1.4.1 11/12/2018
