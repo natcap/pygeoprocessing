@@ -66,8 +66,9 @@ def _distance_transform_edt(
     cdef int yoff, row_index, block_ysize, win_ysize, n_rows
     cdef int xoff, block_xsize, win_xsize, n_cols
     cdef int q_index, local_x_index, local_y_index, u_index
-    cdef int gu, gsq, tq, sq
-    cdef numpy.ndarray[numpy.int32_t, ndim=2] g_block
+    cdef int tq, sq
+    cdef float gu, gsq
+    cdef numpy.ndarray[numpy.float32_t, ndim=2] g_block
     cdef numpy.ndarray[numpy.int32_t, ndim=1] s_array
     cdef numpy.ndarray[numpy.int32_t, ndim=1] t_array
     cdef numpy.ndarray[numpy.float32_t, ndim=2] dt
@@ -81,26 +82,26 @@ def _distance_transform_edt(
 
     raster_info = pygeoprocessing.get_raster_info(region_raster_path)
     pygeoprocessing.new_raster_from_base(
-        region_raster_path, g_raster_path, gdal.GDT_Int32, [NODATA],
+        region_raster_path, g_raster_path, gdal.GDT_Float32, [NODATA],
         fill_value_list=None)
     g_raster = gdal.OpenEx(g_raster_path, gdal.OF_RASTER | gdal.GA_Update)
     g_band = g_raster.GetRasterBand(1)
     g_band_blocksize = g_band.GetBlockSize()
 
     # distances can't be larger than half the perimeter of the raster.
-    numerical_inf = (
+    cdef float numerical_inf = sample_d_x * sample_d_y * (
         raster_info['raster_size'][0] + raster_info['raster_size'][1])
     # scan 1
     done = False
     block_xsize = raster_info['block_size'][0]
     mask_block = numpy.empty((n_rows, block_xsize), dtype=numpy.int8)
-    g_block = numpy.empty((n_rows, block_xsize), dtype=numpy.int32)
+    g_block = numpy.empty((n_rows, block_xsize), dtype=numpy.float32)
     for xoff in numpy.arange(0, n_cols, block_xsize):
         win_xsize = block_xsize
         if xoff + win_xsize > n_cols:
             win_xsize = n_cols - xoff
             mask_block = numpy.empty((n_rows, win_xsize), dtype=numpy.int8)
-            g_block = numpy.empty((n_rows, win_xsize), dtype=numpy.int32)
+            g_block = numpy.empty((n_rows, win_xsize), dtype=numpy.float32)
             done = True
         mask_band.ReadAsArray(
             xoff=xoff, yoff=0, win_xsize=win_xsize, win_ysize=n_rows,
@@ -140,7 +141,7 @@ def _distance_transform_edt(
 
     done = False
     block_ysize = g_band_blocksize[1]
-    g_block = numpy.empty((block_ysize, n_cols), dtype=numpy.int32)
+    g_block = numpy.empty((block_ysize, n_cols), dtype=numpy.float32)
     dt = numpy.empty((block_ysize, n_cols), dtype=numpy.float32)
     sq = 0  # initialize so compiler doesn't complain
     gsq = 0
@@ -148,7 +149,7 @@ def _distance_transform_edt(
         win_ysize = block_ysize
         if yoff + win_ysize >= n_rows:
             win_ysize = n_rows - yoff
-            g_block = numpy.empty((win_ysize, n_cols), dtype=numpy.int32)
+            g_block = numpy.empty((win_ysize, n_cols), dtype=numpy.float32)
             dt = numpy.empty((win_ysize, n_cols), dtype=numpy.float32)
             done = True
         g_band.ReadAsArray(
