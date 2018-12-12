@@ -114,13 +114,13 @@ def _distance_transform_edt(
                     g_block[row_index, local_x_index] = 0
                 else:
                     g_block[row_index, local_x_index] = (
-                        g_block[row_index-1, local_x_index] + 1)
+                        g_block[row_index-1, local_x_index] + sample_d_y)
         for row_index in range(n_rows-2, -1, -1):
             for local_x_index in range(win_xsize):
                 if (g_block[row_index+1, local_x_index] <
                         g_block[row_index, local_x_index]):
                     g_block[row_index, local_x_index] = (
-                        1 + g_block[row_index+1, local_x_index])
+                        sample_d_y + g_block[row_index+1, local_x_index])
         g_band.WriteArray(g_block, xoff=xoff, yoff=0)
         if done:
             break
