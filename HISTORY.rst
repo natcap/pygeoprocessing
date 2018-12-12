@@ -15,6 +15,8 @@ Unreleased Changes
   options to be ignored.
 * Added a `mask_raster` function that can be used to mask out pixels in
   an existing raster that don't overlap with a given vector.
+* Fixed an issue in `calculate_slope` that would raise an exception if the
+  input dem did not have a nodata value defined.
 
 1.4.1 11/12/2018
 ----------------
