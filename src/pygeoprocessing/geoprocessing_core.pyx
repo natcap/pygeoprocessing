@@ -22,7 +22,7 @@ DEFAULT_GTIFF_CREATION_OPTIONS = (
     'BLOCKXSIZE=256', 'BLOCKYSIZE=256')
 LOGGER = logging.getLogger('pygeoprocessing.geoprocessing_core')
 
-cdef float NODATA = -1.0
+cdef float _NODATA = -1.0
 
 
 class MaskWrapper(object):
@@ -31,7 +31,7 @@ class MaskWrapper(object):
 
     def __call__(self, base_array):
         result = numpy.empty(base_array.shape, dtype=numpy.int8)
-        result[:] = NODATA
+        result[:] = _NODATA
         valid_mask = base_array != self.base_nodata
         result[valid_mask] = base_array[valid_mask] != 0
         return result
@@ -73,7 +73,7 @@ def distance_transform_edt(base_mask_raster_path_band, target_distance_path):
     pygeoprocessing.raster_calculator(
         [base_mask_raster_path_band], MaskWrapper(base_nodata),
         base_mask_path,
-        gdal.GDT_Byte, NODATA, calc_raster_stats=False)
+        gdal.GDT_Byte, _NODATA, calc_raster_stats=False)
 
     base_mask_raster = gdal.OpenEx(base_mask_path)
     base_mask_band = base_mask_raster.GetRasterBand(1)
@@ -86,7 +86,7 @@ def distance_transform_edt(base_mask_raster_path_band, target_distance_path):
     raster_info = pygeoprocessing.get_raster_info(
         base_mask_raster_path_band[0])
     pygeoprocessing.new_raster_from_base(
-        base_mask_raster_path_band[0], g_path, gdal.GDT_Int32, [NODATA],
+        base_mask_raster_path_band[0], g_path, gdal.GDT_Int32, [_NODATA],
         fill_value_list=None)
     g_raster = gdal.OpenEx(g_path, gdal.GA_Update)
     g_band = g_raster.GetRasterBand(1)
@@ -131,7 +131,7 @@ def distance_transform_edt(base_mask_raster_path_band, target_distance_path):
 
     pygeoprocessing.new_raster_from_base(
         base_mask_raster_path_band[0], target_distance_path.encode('utf-8'),
-        gdal.GDT_Float32, [NODATA], fill_value_list=None)
+        gdal.GDT_Float32, [_NODATA], fill_value_list=None)
     target_distance_raster = gdal.OpenEx(target_distance_path, gdal.GA_Update)
     target_distance_band = target_distance_raster.GetRasterBand(1)
 
@@ -194,9 +194,9 @@ def distance_transform_edt(base_mask_raster_path_band, target_distance_path):
                         gsq = g_block[local_y_index, sq]**2
                         tq = t_array[q_index]
 
-        valid_mask = g_block != NODATA
+        valid_mask = g_block != _NODATA
         dt[valid_mask] = numpy.sqrt(dt[valid_mask])
-        dt[~valid_mask] = NODATA
+        dt[~valid_mask] = _NODATA
         target_distance_band.WriteArray(dt, xoff=0, yoff=yoff)
 
         # we do this in the case where the blocksize is many times larger than
@@ -270,14 +270,20 @@ def calculate_slope(
 
     dem_raster = gdal.OpenEx(base_elevation_raster_path_band[0])
     dem_band = dem_raster.GetRasterBand(base_elevation_raster_path_band[1])
-    dem_info = pygeoprocessing.get_raster_info(base_elevation_raster_path_band[0])
-    dem_nodata = dem_info['nodata'][0]
+    dem_info = pygeoprocessing.get_raster_info(
+        base_elevation_raster_path_band[0])
+    raw_nodata = dem_info['nodata'][0]
+    if raw_nodata is None:
+        # if nodata is undefined, choose most negative 32 bit float
+        raw_nodata = numpy.finfo(numpy.float32).min
+    dem_nodata = raw_nodata
     x_cell_size, y_cell_size = dem_info['pixel_size']
     n_cols, n_rows = dem_info['raster_size']
     cdef numpy.npy_float64 slope_nodata = numpy.finfo(numpy.float32).min
     pygeoprocessing.new_raster_from_base(
-        base_elevation_raster_path_band[0], target_slope_path, gdal.GDT_Float32,
-        [slope_nodata], fill_value_list=[float(slope_nodata)],
+        base_elevation_raster_path_band[0], target_slope_path,
+        gdal.GDT_Float32, [slope_nodata],
+        fill_value_list=[float(slope_nodata)],
         gtiff_creation_options=gtiff_creation_options)
     target_slope_raster = gdal.OpenEx(target_slope_path, gdal.GA_Update)
     target_slope_band = target_slope_raster.GetRasterBand(1)
