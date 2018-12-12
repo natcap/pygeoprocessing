@@ -1,8 +1,8 @@
 Release History
 ===============
 
-Unreleased Changes
-------------------
+1.5.0 12/12/2018
+----------------
 * Specific type checking for `astype_list` in `iterblocks` to avoid confusing
   Exceptions.
 * Renamed test suite to be consistent with the pattern `test_[component].tif`.
