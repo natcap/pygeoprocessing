@@ -29,8 +29,8 @@ cdef float NODATA = -1.0
 @cython.wraparound(False)
 @cython.cdivision(True)
 def _distance_transform_edt(
-        region_raster_path, g_raster_path, double sample_d_x, double sample_d_y,
-        target_distance_raster_path):
+        region_raster_path, g_raster_path, double sample_d_x,
+        double sample_d_y, target_distance_raster_path):
     """Calculate the euclidean distance transform on base raster.
 
     Calculates the euclidean distance transform on the base raster in units of
@@ -67,9 +67,9 @@ def _distance_transform_edt(
     cdef int xoff, block_xsize, win_xsize, n_cols
     cdef int q_index, local_x_index, local_y_index, u_index
     cdef int gu, gsq, tq, sq
-    cdef numpy.ndarray[numpy.float32_t, ndim=2] g_block
-    cdef numpy.ndarray[numpy.float32_t, ndim=1] s_array
-    cdef numpy.ndarray[numpy.float32_t, ndim=1] t_array
+    cdef numpy.ndarray[numpy.int32_t, ndim=2] g_block
+    cdef numpy.ndarray[numpy.int32_t, ndim=1] s_array
+    cdef numpy.ndarray[numpy.int32_t, ndim=1] t_array
     cdef numpy.ndarray[numpy.float32_t, ndim=2] dt
     cdef numpy.ndarray[numpy.int8_t, ndim=2] mask_block
 
@@ -81,7 +81,7 @@ def _distance_transform_edt(
 
     raster_info = pygeoprocessing.get_raster_info(region_raster_path)
     pygeoprocessing.new_raster_from_base(
-        region_raster_path, g_raster_path, gdal.GDT_Float32, [NODATA],
+        region_raster_path, g_raster_path, gdal.GDT_Int32, [NODATA],
         fill_value_list=None)
     g_raster = gdal.OpenEx(g_raster_path, gdal.OF_RASTER | gdal.GA_Update)
     g_band = g_raster.GetRasterBand(1)
@@ -94,13 +94,13 @@ def _distance_transform_edt(
     done = False
     block_xsize = raster_info['block_size'][0]
     mask_block = numpy.empty((n_rows, block_xsize), dtype=numpy.int8)
-    g_block = numpy.empty((n_rows, block_xsize), dtype=numpy.float32)
+    g_block = numpy.empty((n_rows, block_xsize), dtype=numpy.int32)
     for xoff in numpy.arange(0, n_cols, block_xsize):
         win_xsize = block_xsize
         if xoff + win_xsize > n_cols:
             win_xsize = n_cols - xoff
             mask_block = numpy.empty((n_rows, win_xsize), dtype=numpy.int8)
-            g_block = numpy.empty((n_rows, win_xsize), dtype=numpy.float32)
+            g_block = numpy.empty((n_rows, win_xsize), dtype=numpy.int32)
             done = True
         mask_band.ReadAsArray(
             xoff=xoff, yoff=0, win_xsize=win_xsize, win_ysize=n_rows,
@@ -113,32 +113,34 @@ def _distance_transform_edt(
                     g_block[row_index, local_x_index] = 0
                 else:
                     g_block[row_index, local_x_index] = (
-                        g_block[row_index-1, local_x_index] + sample_d_y)
+                        g_block[row_index-1, local_x_index] + 1)
         for row_index in range(n_rows-2, -1, -1):
             for local_x_index in range(win_xsize):
                 if (g_block[row_index+1, local_x_index] <
                         g_block[row_index, local_x_index]):
                     g_block[row_index, local_x_index] = (
-                        sample_d_y + g_block[row_index+1, local_x_index])
+                        1 + g_block[row_index+1, local_x_index])
         g_band.WriteArray(g_block, xoff=xoff, yoff=0)
         if done:
             break
     g_band.FlushCache()
 
+    cdef float distance_nodata = -1.0
+
     pygeoprocessing.new_raster_from_base(
         region_raster_path, target_distance_raster_path.encode('utf-8'),
-        gdal.GDT_Float32, [NODATA], fill_value_list=None)
+        gdal.GDT_Float32, [distance_nodata], fill_value_list=None)
     target_distance_raster = gdal.OpenEx(
         target_distance_raster_path, gdal.OF_RASTER | gdal.GA_Update)
     target_distance_band = target_distance_raster.GetRasterBand(1)
 
     LOGGER.info('Distance Transform Phase 2')
-    s_array = numpy.empty(n_cols, dtype=numpy.float32)
-    t_array = numpy.empty(n_cols, dtype=numpy.float32)
+    s_array = numpy.empty(n_cols, dtype=numpy.int32)
+    t_array = numpy.empty(n_cols, dtype=numpy.int32)
 
     done = False
     block_ysize = g_band_blocksize[1]
-    g_block = numpy.empty((block_ysize, n_cols), dtype=numpy.float32)
+    g_block = numpy.empty((block_ysize, n_cols), dtype=numpy.int32)
     dt = numpy.empty((block_ysize, n_cols), dtype=numpy.float32)
     sq = 0  # initialize so compiler doesn't complain
     gsq = 0
@@ -146,7 +148,7 @@ def _distance_transform_edt(
         win_ysize = block_ysize
         if yoff + win_ysize >= n_rows:
             win_ysize = n_rows - yoff
-            g_block = numpy.empty((win_ysize, n_cols), dtype=numpy.float32)
+            g_block = numpy.empty((win_ysize, n_cols), dtype=numpy.int32)
             dt = numpy.empty((win_ysize, n_cols), dtype=numpy.float32)
             done = True
         g_band.ReadAsArray(
@@ -159,10 +161,10 @@ def _distance_transform_edt(
             for u_index in range(1, n_cols):
                 gu = g_block[local_y_index, u_index]**2
                 while (q_index >= 0):
-                    tq = t_array[q_index]*sample_d_y
-                    sq = s_array[q_index]*sample_d_x
+                    tq = t_array[q_index]
+                    sq = s_array[q_index]
                     gsq = g_block[local_y_index, sq]**2
-                    if ((tq-sq)**2 + gsq <= (tq-u_index*sample_d_x)**2 + gu):
+                    if ((tq-sq)**2 + gsq <= (tq-u_index)**2 + gu):
                         break
                     q_index -= 1
                 if q_index < 0:
@@ -172,8 +174,7 @@ def _distance_transform_edt(
                     gsq = g_block[local_y_index, sq]**2
                 else:
                     w = 1 + (
-                        (u_index*sample_d_x)**2 - sq**2 + gu - gsq) / (
-                            2*(u_index*sample_d_x-sq))
+                        u_index**2 - sq**2 + gu - gsq) / (2*(u_index-sq))
                     if w < n_cols:
                         q_index += 1
                         s_array[q_index] = u_index
@@ -183,8 +184,7 @@ def _distance_transform_edt(
             gsq = g_block[local_y_index, sq]**2
             tq = t_array[q_index]
             for u_index in range(n_cols-1, -1, -1):
-                dt[local_y_index, u_index] = (
-                    (u_index*sample_d_x-sq))**2 + gsq
+                dt[local_y_index, u_index] = (u_index-sq)**2+gsq
                 if u_index == tq:
                     q_index -= 1
                     if q_index >= 0:
@@ -210,7 +210,6 @@ def _distance_transform_edt(
     target_distance_raster = None
     mask_raster = None
     g_raster = None
-
 
 @cython.boundscheck(False)
 @cython.wraparound(False)
