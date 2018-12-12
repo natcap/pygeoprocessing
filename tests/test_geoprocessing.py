@@ -472,7 +472,13 @@ class PyGeoprocessing10(unittest.TestCase):
                 'max': 1.0,
                 'min': 1.0,
                 'nodata_count': 0,
-                'sum': 1.0}}
+                'sum': 1.0},
+            2: {
+                'min': None,
+                'max': None,
+                'count': 0,
+                'nodata_count': 0,
+                'sum': 0.0}}
         self.assertEqual(result, expected_result)
 
     def test_zonal_statistics_nodata(self):
