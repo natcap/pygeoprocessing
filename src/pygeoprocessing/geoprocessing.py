@@ -2110,21 +2110,38 @@ def calculate_disjoint_polygon_set(
 
 
 def distance_transform_edt(
-        base_mask_raster_path_band, target_distance_raster_path,
-        working_dir=None):
+        base_region_raster_path_band, target_distance_raster_path,
+        sampling_distance=(1., 1.), working_dir=None):
     """Calculate the euclidean distance transform on base raster.
 
     Calculates the euclidean distance transform on the base raster in units of
-    pixels.
+    pixels multiplied by an optional scalar constant. The implementation is
+    based off the algorithm described in:  Meijster, Arnold, Jos BTM Roerdink,
+    and Wim H. Hesselink. "A general algorithm for computing distance
+    transforms in linear time." Mathematical Morphology and its applications
+    to image and signal processing. Springer, Boston, MA, 2002. 331-340.
+
+    The base mask raster represents the area to distance transform from as
+    any pixel that is not 0 or nodata. It is computationally convenient to
+    calculate the distance transform on the entire raster irrespective of
+    nodata placement and thus produces a raster that will have distance
+    transform values even in pixels that are nodata in the base.
 
     Parameters:
-        base_raster_path_band (tuple): a tuple including file path to a raster
-            and the band index to operate over. eg: (path, band_index)
-        target_distance_raster_path (string): will make a float raster w/ same
-            dimensions and projection as base_mask_raster_path_band where all
-            zero values of base_mask_raster_path_band are equal to the
-            euclidean distance to the
-            closest non-zero pixel.
+        base_region_raster_path_band (tuple): a tuple including file path to a
+            raster and the band index to define the base region pixels. Any
+            pixel  that is not 0 and nodata are considered to be part of the
+            region.
+        target_distance_raster_path (string): path to the target raster that
+            is the exact euclidean distance transform from any pixel in the
+            base raster that is not nodata and not 0. The units are in
+            (pixel distance * `sampling_distance`).
+        sampling_distance (tuple/list): an optional parameter used to scale
+            the pixel distances when calculating the distance transform.
+            Defaults to (1.0, 1.0). First element indicates the distance
+            traveled in the x direction when changing a column index, and the
+            second element in y when changing a row index. Both values must
+            be > 0.
          working_dir (string): If not None, indicates where temporary files
             should be created during this run.
 
@@ -2132,28 +2149,48 @@ def distance_transform_edt(
         None
 
     """
-    with tempfile.NamedTemporaryFile(
-            prefix='dt_mask', suffix='.tif', delete=False,
-            dir=working_dir) as dt_mask_file:
-        dt_mask_path = dt_mask_file.name
-    raster_info = get_raster_info(base_mask_raster_path_band[0])
-    nodata = raster_info['nodata'][base_mask_raster_path_band[1]-1]
+    working_raster_paths = {}
+    for raster_prefix in ['region_mask_raster', 'g_raster']:
+        with tempfile.NamedTemporaryFile(
+                prefix=raster_prefix, suffix='.tif', delete=False,
+                dir=working_dir) as tmp_file:
+            working_raster_paths[raster_prefix] = tmp_file.name
+    nodata = (get_raster_info(base_region_raster_path_band[0])['nodata'])[
+        base_region_raster_path_band[1]-1]
     nodata_out = 255
 
     def mask_op(base_array):
-        """Convert base_array to 1 if >0, 0 if == 0 or nodata."""
-        return numpy.where(
-            base_array == nodata, nodata_out, base_array != 0)
+        """Convert base_array to 1 if not 0 and nodata, 0 otherwise."""
+        if nodata is not None:
+            return ~numpy.isclose(base_array, nodata) & (base_array != 0)
+        else:
+            return base_array != 0
+
+    if not isinstance(sampling_distance, (tuple, list)):
+        raise ValueError(
+            "`sampling_distance` should be a tuple/list, instead it's %s" % (
+                type(sampling_distance)))
+
+    sample_d_x, sample_d_y = sampling_distance
+    if sample_d_x <= 0. or sample_d_y <= 0.:
+        raise ValueError(
+            "Sample distances must be > 0.0, instead got %s",
+            sampling_distance)
 
     raster_calculator(
-        [base_mask_raster_path_band], mask_op,
-        dt_mask_path, gdal.GDT_Byte, nodata_out, calc_raster_stats=False)
-    geoprocessing_core.distance_transform_edt(
-        (dt_mask_path, 1), target_distance_raster_path)
-    try:
-        os.remove(dt_mask_path)
-    except OSError:
-        LOGGER.warning("couldn't remove file %s", dt_mask_path)
+        [base_region_raster_path_band], mask_op,
+        working_raster_paths['region_mask_raster'], gdal.GDT_Byte, nodata_out,
+        calc_raster_stats=False)
+    geoprocessing_core._distance_transform_edt(
+        working_raster_paths['region_mask_raster'],
+        working_raster_paths['g_raster'], sampling_distance[0],
+        sampling_distance[1], target_distance_raster_path)
+
+    for path in working_raster_paths.values():
+        try:
+            os.remove(path)
+        except OSError:
+            LOGGER.warning("couldn't remove file %s", path)
 
 
 def _next_regular(base):

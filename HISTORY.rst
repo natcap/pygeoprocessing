@@ -15,6 +15,13 @@ Unreleased Changes
   options to be ignored.
 * Added a `mask_raster` function that can be used to mask out pixels in
   an existing raster that don't overlap with a given vector.
+* Fixed a bug in the `distance_transform_edt` function that would cause
+  incorrect distances to be calculated in the case of nodata pixels in the
+  region raster. The algorithm has been modified to treat nodata as though
+  pixel values were 0 (non-region) and the distance transform will be defined
+  for the entire raster.
+* Added a `sampling_distance` parameter to `distance_transform_edt` that
+  linearly scales the distance transform by this value.
 * Fixed an issue in `calculate_slope` that would raise an exception if the
   input dem did not have a nodata value defined.
 * Changed the behavior of `zonal_statistics` for polygons that that do not
