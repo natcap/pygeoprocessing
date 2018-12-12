@@ -339,7 +339,8 @@ class PyGeoprocessing10(unittest.TestCase):
         new_band = None
         new_raster = None
 
-        target_mask_raster_path = 'test_mask.tif'
+        target_mask_raster_path = os.path.join(
+            self.workspace_dir, 'test_mask.tif')
         pygeoprocessing.mask_raster(
             (raster_path, 1), vector_path, target_mask_raster_path,
             target_mask_value=None, working_dir=self.workspace_dir)
