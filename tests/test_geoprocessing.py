@@ -473,7 +473,13 @@ class PyGeoprocessing10(unittest.TestCase):
                 'max': 1.0,
                 'min': 1.0,
                 'nodata_count': 0,
-                'sum': 1.0}}
+                'sum': 1.0},
+            2: {
+                'min': None,
+                'max': None,
+                'count': 0,
+                'nodata_count': 0,
+                'sum': 0.0}}
         self.assertEqual(result, expected_result)
 
     def test_zonal_statistics_nodata(self):
@@ -2118,34 +2124,76 @@ class PyGeoprocessing10(unittest.TestCase):
 
     def test_calculate_slope(self):
         """PGP.geoprocessing: test calculate slope."""
-        reference = sampledata.SRS_COLOMBIA
         n_pixels = 9
-        pixel_matrix = numpy.ones((n_pixels, n_pixels), numpy.float32)
-        pixel_matrix[:] = numpy.arange((n_pixels))
+        dem_array = numpy.ones((n_pixels, n_pixels), numpy.float32)
+        dem_array[:] = numpy.arange((n_pixels))
         nodata_value = -1
         # make a nodata hole in the middle to test boundary cases
-        pixel_matrix[int(n_pixels/2), int(n_pixels/2)] = nodata_value
+        dem_array[int(n_pixels/2), int(n_pixels/2)] = nodata_value
         dem_path = os.path.join(self.workspace_dir, 'dem.tif')
         target_slope_path = os.path.join(self.workspace_dir, 'slope.tif')
-        pygeoprocessing.testing.create_raster_on_disk(
-            [pixel_matrix], reference.origin, reference.projection,
-            nodata_value, reference.pixel_size(1), filename=dem_path)
+        driver = gdal.GetDriverByName('GTiff')
+        wgs84_ref = osr.SpatialReference()
+        wgs84_ref.ImportFromEPSG(4326)  # WGS84 EPSG
+        dem_raster = driver.Create(
+            dem_path, dem_array.shape[1], dem_array.shape[0],
+            2, gdal.GDT_Int32)
+        dem_raster_geotransform = [0.1, 1., 0., 0., 0., -1.]
+        dem_raster.SetGeoTransform(dem_raster_geotransform)
+        dem_raster.SetProjection(wgs84_ref.ExportToWkt())
+        dem_band = dem_raster.GetRasterBand(1)
+        dem_band.SetNoDataValue(nodata_value)
+        dem_band.WriteArray(dem_array)
+        dem_band.FlushCache()
+        dem_band = None
+        dem_raster = None
 
-        pygeoprocessing.calculate_slope(
-            (dem_path, 1), target_slope_path)
-        target_slope_raster = gdal.OpenEx(target_slope_path, gdal.OF_RASTER)
-        target_nodata = target_slope_raster.GetRasterBand(1).GetNoDataValue()
-        target_slope_raster = None
+        pygeoprocessing.calculate_slope((dem_path, 1), target_slope_path)
+        slope_raster = gdal.OpenEx(target_slope_path, gdal.OF_RASTER)
+        slope_band = slope_raster.GetRasterBand(1)
+        target_nodata = slope_band.GetNoDataValue()
         count = 0
         expected_slope = 100.0
         for _, block in pygeoprocessing.iterblocks(target_slope_path):
-            bad_mask = (block != target_nodata) & (block != expected_slope)
+            bad_mask = (
+                ~numpy.isclose(block, target_nodata) &
+                (block != expected_slope))
             if numpy.any(bad_mask):
                 self.fail(
                     "Unexpected value in slope raster: %s" % block[bad_mask])
             count += numpy.count_nonzero(block == expected_slope)
         # all slopes should be 1 except center pixel
         self.assertEqual(count, n_pixels**2 - 1)
+
+    def test_calculate_slope_undefined_nodata(self):
+        """PGP.geoprocessing: test calculate slope with no nodata."""
+        n_pixels = 9
+        dem_array = numpy.ones((n_pixels, n_pixels), numpy.float32)
+        dem_path = os.path.join(self.workspace_dir, 'dem.tif')
+        target_slope_path = os.path.join(self.workspace_dir, 'slope.tif')
+        driver = gdal.GetDriverByName('GTiff')
+        wgs84_ref = osr.SpatialReference()
+        wgs84_ref.ImportFromEPSG(4326)  # WGS84 EPSG
+        dem_raster = driver.Create(
+            dem_path, dem_array.shape[1], dem_array.shape[0],
+            1, gdal.GDT_Int32)
+        dem_raster_geotransform = [0.1, 1., 0., 0., 0., -1.]
+        dem_raster.SetGeoTransform(dem_raster_geotransform)
+        dem_raster.SetProjection(wgs84_ref.ExportToWkt())
+        dem_band = dem_raster.GetRasterBand(1)
+        dem_band.WriteArray(dem_array)
+        dem_band.FlushCache()
+        dem_band = None
+        dem_raster = None
+
+        pygeoprocessing.calculate_slope((dem_path, 1), target_slope_path)
+        slope_raster = gdal.OpenEx(target_slope_path, gdal.OF_RASTER)
+        slope_band = slope_raster.GetRasterBand(1)
+        actual_slope = slope_band.ReadAsArray()
+        slope_band = None
+        slope_raster = None
+        expected_slope = numpy.zeros((n_pixels, n_pixels), numpy.float32)
+        numpy.testing.assert_almost_equal(expected_slope, actual_slope)
 
     def test_rasterize(self):
         """PGP.geoprocessing: test rasterize."""

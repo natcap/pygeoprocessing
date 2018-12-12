@@ -1400,6 +1400,10 @@ def zonal_statistics(
     LOGGER.debug(
         "remaining unset_fids: %s of %s ", len(unset_fids),
         len(aggregate_layer_fid_set))
+    # fill in the missing polygon fids in the aggregate stats by invoking the
+    # accessor in the defaultdict
+    for fid in unset_fids:
+        _ = aggregate_stats[fid]
 
     LOGGER.info(
         "all done processing polygon sets for %s", os.path.basename(

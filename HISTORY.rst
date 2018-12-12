@@ -22,6 +22,12 @@ Unreleased Changes
   for the entire raster.
 * Added a `sampling_distance` parameter to `distance_transform_edt` that
   linearly scales the distance transform by this value.
+* Fixed an issue in `calculate_slope` that would raise an exception if the
+  input dem did not have a nodata value defined.
+* Changed the behavior of `zonal_statistics` for polygons that that do not
+  intersect any pixels. These FIDs are now also included in the result from
+  `zonal_statistics` where previously they were absent. This is to remain
+  consistent with how other GIS libraries calculate zonal stats.
 
 1.4.1 11/12/2018
 ----------------

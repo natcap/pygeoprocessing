@@ -22,8 +22,7 @@ DEFAULT_GTIFF_CREATION_OPTIONS = (
     'BLOCKXSIZE=256', 'BLOCKYSIZE=256')
 LOGGER = logging.getLogger('pygeoprocessing.geoprocessing_core')
 
-cdef float NODATA = -1.0
-
+cdef float _NODATA = -1.0
 
 @cython.boundscheck(False)
 @cython.wraparound(False)
@@ -82,7 +81,7 @@ def _distance_transform_edt(
 
     raster_info = pygeoprocessing.get_raster_info(region_raster_path)
     pygeoprocessing.new_raster_from_base(
-        region_raster_path, g_raster_path, gdal.GDT_Float32, [NODATA],
+        region_raster_path, g_raster_path, gdal.GDT_Float32, [_NODATA],
         fill_value_list=None)
     g_raster = gdal.OpenEx(g_raster_path, gdal.OF_RASTER | gdal.GA_Update)
     g_band = g_raster.GetRasterBand(1)
@@ -195,9 +194,9 @@ def _distance_transform_edt(
                         gsq = g_block[local_y_index, sq]**2
                         tq = t_array[q_index]
 
-        valid_mask = g_block != NODATA
+        valid_mask = g_block != _NODATA
         dt[valid_mask] = numpy.sqrt(dt[valid_mask])
-        dt[~valid_mask] = NODATA
+        dt[~valid_mask] = _NODATA
         target_distance_band.WriteArray(dt, xoff=0, yoff=yoff)
 
         # we do this in the case where the blocksize is many times larger than
@@ -270,14 +269,20 @@ def calculate_slope(
 
     dem_raster = gdal.OpenEx(base_elevation_raster_path_band[0])
     dem_band = dem_raster.GetRasterBand(base_elevation_raster_path_band[1])
-    dem_info = pygeoprocessing.get_raster_info(base_elevation_raster_path_band[0])
-    dem_nodata = dem_info['nodata'][0]
+    dem_info = pygeoprocessing.get_raster_info(
+        base_elevation_raster_path_band[0])
+    raw_nodata = dem_info['nodata'][0]
+    if raw_nodata is None:
+        # if nodata is undefined, choose most negative 32 bit float
+        raw_nodata = numpy.finfo(numpy.float32).min
+    dem_nodata = raw_nodata
     x_cell_size, y_cell_size = dem_info['pixel_size']
     n_cols, n_rows = dem_info['raster_size']
     cdef numpy.npy_float64 slope_nodata = numpy.finfo(numpy.float32).min
     pygeoprocessing.new_raster_from_base(
-        base_elevation_raster_path_band[0], target_slope_path, gdal.GDT_Float32,
-        [slope_nodata], fill_value_list=[float(slope_nodata)],
+        base_elevation_raster_path_band[0], target_slope_path,
+        gdal.GDT_Float32, [slope_nodata],
+        fill_value_list=[float(slope_nodata)],
         gtiff_creation_options=gtiff_creation_options)
     target_slope_raster = gdal.OpenEx(target_slope_path, gdal.GA_Update)
     target_slope_band = target_slope_raster.GetRasterBand(1)
