@@ -165,7 +165,8 @@ def _distance_transform_edt(
                     tq = t_array[q_index]
                     sq = s_array[q_index]
                     gsq = g_block[local_y_index, sq]**2
-                    if ((tq-sq)**2 + gsq <= (tq-u_index)**2 + gu):
+                    if ((sample_d_x*(tq-sq))**2 + gsq <= (
+                            sample_d_x*(tq-u_index))**2 + gu):
                         break
                     q_index -= 1
                 if q_index < 0:
@@ -174,18 +175,19 @@ def _distance_transform_edt(
                     sq = u_index
                     gsq = g_block[local_y_index, sq]**2
                 else:
-                    w = 1 + (
-                        u_index**2 - sq**2 + gu - gsq) / (2*(u_index-sq))
-                    if w < n_cols:
+                    w = sample_d_x + (
+                        (sample_d_x*u_index)**2 - (sample_d_x*sq)**2 +
+                        gu - gsq) / (2*sample_d_x*(u_index-sq))
+                    if w < n_cols*sample_d_x:
                         q_index += 1
                         s_array[q_index] = u_index
-                        t_array[q_index] = w
+                        t_array[q_index] = <int>(w / sample_d_x)
 
             sq = s_array[q_index]
             gsq = g_block[local_y_index, sq]**2
             tq = t_array[q_index]
             for u_index in range(n_cols-1, -1, -1):
-                dt[local_y_index, u_index] = (u_index-sq)**2+gsq
+                dt[local_y_index, u_index] = (sample_d_x*(u_index-sq))**2+gsq
                 if u_index == tq:
                     q_index -= 1
                     if q_index >= 0:

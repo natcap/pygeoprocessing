@@ -2135,8 +2135,8 @@ def distance_transform_edt(
         sampling_distance (tuple): an optional parameter used to scale the
             pixel distances when calculating the distance transform. Defaults
             to (1.0, 1.0). First element indicates the distance traveled in
-            the x direction, and the second element in y. Both values must be
-            > 0.0.
+            the x direction when changing a column index, and the second
+            element in y when changing a row index. Both values must be > 0.
          working_dir (string): If not None, indicates where temporary files
             should be created during this run.
 

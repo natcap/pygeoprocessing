@@ -2327,7 +2327,7 @@ class PyGeoprocessing10(unittest.TestCase):
 
         target_distance_raster_path = 'target_distance.tif'
 
-        sampling_distance = (1.0, 3.5)
+        sampling_distance = (200.0, 1.5)
         pygeoprocessing.distance_transform_edt(
             (base_raster_path, 1), target_distance_raster_path,
             sampling_distance=sampling_distance)
