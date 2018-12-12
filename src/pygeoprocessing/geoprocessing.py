@@ -2107,7 +2107,7 @@ def calculate_disjoint_polygon_set(
 
 def distance_transform_edt(
         base_region_raster_path_band, target_distance_raster_path,
-        sampling_distance=1.0, working_dir=None):
+        sampling_distance=(1., 1.), working_dir=None):
     """Calculate the euclidean distance transform on base raster.
 
     Calculates the euclidean distance transform on the base raster in units of
@@ -2132,9 +2132,11 @@ def distance_transform_edt(
             is the exact euclidean distance transform from any pixel in the
             base raster that is not nodata and not 0. The units are in
             (pixel distance * `sampling_distance`).
-        sampling_distance (float): an optional parameter used to scale the
+        sampling_distance (tuple): an optional parameter used to scale the
             pixel distances when calculating the distance transform. Defaults
-            to 1.0.
+            to (1.0, 1.0). First element indicates the distance traveled in
+            the x direction, and the second element in y. Both values must be
+            > 0.0.
          working_dir (string): If not None, indicates where temporary files
             should be created during this run.
 
@@ -2159,14 +2161,25 @@ def distance_transform_edt(
         else:
             return base_array != 0
 
+    if not isinstance(sampling_distance, tuple):
+        raise ValueError(
+            "sampling_distance should be a tuple, instead it's %s" % (
+                type(sampling_distance)))
+
+    sample_d_x, sample_d_y = sampling_distance
+    if sample_d_x <= 0. or sample_d_y <= 0.:
+        raise ValueError(
+            "Sample distances must be > 0.0, instead got %s",
+            sampling_distance)
+
     raster_calculator(
         [base_region_raster_path_band], mask_op,
         working_raster_paths['region_mask_raster'], gdal.GDT_Byte, nodata_out,
         calc_raster_stats=False)
     geoprocessing_core._distance_transform_edt(
         working_raster_paths['region_mask_raster'],
-        working_raster_paths['g_raster'], sampling_distance,
-        target_distance_raster_path)
+        working_raster_paths['g_raster'], sampling_distance[0],
+        sampling_distance[1], target_distance_raster_path)
 
     for path in working_raster_paths.values():
         try:

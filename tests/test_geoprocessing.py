@@ -2329,7 +2329,7 @@ class PyGeoprocessing10(unittest.TestCase):
 
         pygeoprocessing.distance_transform_edt(
             (base_raster_path, 1), target_distance_raster_path,
-            sampling_distance=-11.5)
+            sampling_distance=(2.0, 3.5))
         target_raster = gdal.OpenEx(
             target_distance_raster_path, gdal.OF_RASTER)
         target_band = target_raster.GetRasterBand(1)
@@ -2338,16 +2338,16 @@ class PyGeoprocessing10(unittest.TestCase):
         target_raster = None
 
         expected_result = scipy.ndimage.morphology.distance_transform_edt(
-            1 - (base_raster_array == 1)) * -11.5
+            1 - (base_raster_array == 1), sampling=(3.5, 2.0))
         numpy.testing.assert_array_almost_equal(
-            target_array, expected_result, decimal=3)
+            target_array, expected_result, decimal=2)
 
         target_nodata = pygeoprocessing.get_raster_info(
             target_distance_raster_path)['nodata'][0]
         self.assertTrue(target_nodata > 0)
 
-    def test_distance_transform_edt_nodata(self):
-        """PGP.geoprocessing: test distance transform EDT with no nodata."""
+    def test_distance_transform_edt_bad_data(self):
+        """PGP.geoprocessing: test distance transform EDT with bad values."""
         reference = sampledata.SRS_COLOMBIA
         n_pixels = 10
         base_raster_array = numpy.zeros(
@@ -2391,12 +2391,7 @@ class PyGeoprocessing10(unittest.TestCase):
 
         expected_result = scipy.ndimage.morphology.distance_transform_edt(
             1 - (base_raster_array == 1))
-        numpy.testing.assert_array_almost_equal(
-            target_array, expected_result, decimal=3)
 
-        target_nodata = pygeoprocessing.get_raster_info(
-            target_distance_raster_path)['nodata'][0]
-        self.assertTrue(target_nodata < 0)
 
     def test_next_regular(self):
         """PGP.geoprocessing: test next regular number generator."""
