@@ -2325,19 +2325,17 @@ class PyGeoprocessing10(unittest.TestCase):
         target_distance_raster_path = os.path.join(
             self.workspace_dir, 'target_distance.tif')
 
-        target_distance_raster_path = 'target_distance.tif'
-
         sampling_distance = (200.0, 1.5)
         pygeoprocessing.distance_transform_edt(
             (base_raster_path, 1), target_distance_raster_path,
-            sampling_distance=sampling_distance)
+            sampling_distance=sampling_distance,
+            working_dir=self.workspace_dir)
         target_raster = gdal.OpenEx(
             target_distance_raster_path, gdal.OF_RASTER)
         target_band = target_raster.GetRasterBand(1)
         target_array = target_band.ReadAsArray()
         target_band = None
         target_raster = None
-
         expected_result = scipy.ndimage.morphology.distance_transform_edt(
             1 - (base_raster_array == 1), sampling=(
                 sampling_distance[1], sampling_distance[0]))
@@ -2376,20 +2374,23 @@ class PyGeoprocessing10(unittest.TestCase):
         target_distance_raster_path = os.path.join(
             self.workspace_dir, 'target_distance.tif')
 
-        target_distance_raster_path = 'target_distance.tif'
+        with self.assertRaises(ValueError) as cm:
+            pygeoprocessing.distance_transform_edt(
+                (base_raster_path, 1), target_distance_raster_path,
+                working_dir=self.workspace_dir,
+                sampling_distance=1.0)
+        expected_message = '`sampling_distance` should be a tuple/list'
+        actual_message = str(cm.exception)
+        self.assertTrue(expected_message in actual_message, actual_message)
 
-        pygeoprocessing.distance_transform_edt(
-            (base_raster_path, 1), target_distance_raster_path)
-        target_raster = gdal.OpenEx(
-            target_distance_raster_path, gdal.OF_RASTER)
-        target_band = target_raster.GetRasterBand(1)
-        target_array = target_band.ReadAsArray()
-        target_band = None
-        target_raster = None
-
-        expected_result = scipy.ndimage.morphology.distance_transform_edt(
-            1 - (base_raster_array == 1))
-
+        with self.assertRaises(ValueError) as cm:
+            pygeoprocessing.distance_transform_edt(
+                (base_raster_path, 1), target_distance_raster_path,
+                working_dir=self.workspace_dir,
+                sampling_distance=(1.0, -1.0))
+        expected_message = 'Sample distances must be > 0.0'
+        actual_message = str(cm.exception)
+        self.assertTrue(expected_message in actual_message, actual_message)
 
     def test_next_regular(self):
         """PGP.geoprocessing: test next regular number generator."""
