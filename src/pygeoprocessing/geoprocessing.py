@@ -2358,7 +2358,6 @@ def convolve_2d(
 
     # we need the original signal raster info because we want the output to
     # be clipped and NODATA masked to it
-    base_signal_nodata = signal_raster_info['nodata']
     signal_raster = gdal.OpenEx(signal_path_band[0], gdal.OF_RASTER)
     signal_band = signal_raster.GetRasterBand(signal_path_band[1])
     target_raster = gdal.OpenEx(target_path, gdal.OF_RASTER | gdal.GA_Update)
@@ -2369,10 +2368,9 @@ def convolve_2d(
     if s_nodata is not None and ignore_nodata:
         mask_dir = tempfile.mkdtemp(dir=working_dir)
         mask_raster_path = os.path.join(mask_dir, 'convolved_mask.tif')
-        mask_nodata = -1.0
         new_raster_from_base(
             signal_path_band[0], mask_raster_path, gdal.GDT_Float32,
-            [mask_nodata], fill_value_list=[0],
+            [-1.0], fill_value_list=[0],
             gtiff_creation_options=gtiff_creation_options)
         mask_raster = gdal.OpenEx(
             mask_raster_path, gdal.GA_Update | gdal.OF_RASTER)
@@ -2451,9 +2449,9 @@ def convolve_2d(
         valid_mask = numpy.ones(
             potential_nodata_signal_array.shape, dtype=bool)
         # guard against a None nodata value
-        if base_signal_nodata is not None and mask_nodata:
+        if s_nodata is not None and mask_nodata:
             valid_mask[:] = (
-                potential_nodata_signal_array != base_signal_nodata)
+                potential_nodata_signal_array != s_nodata)
         output_array[:] = target_nodata
         output_array[valid_mask] = (
             (result[top_index_result:bottom_index_result,
@@ -2501,7 +2499,7 @@ def convolve_2d(
                 **target_offset_data).astype(
                     _gdal_type_to_numpy_lookup[target_datatype])
             mask_block = mask_band.ReadAsArray(**target_offset_data)
-            if base_signal_nodata is not None and mask_nodata:
+            if mask_nodata:
                 valid_mask = ~numpy.isclose(target_block, target_nodata)
             else:
                 valid_mask = numpy.ones(target_block.shape, dtype=numpy.bool)

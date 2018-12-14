@@ -489,7 +489,6 @@ class PyGeoprocessing10(unittest.TestCase):
 
         raster_path = os.path.join(
             self.workspace_dir, 'nonodata_small_raster.tif')
-        raster_path = 'nonodata_small_raster.tif'
         new_raster = gtiff_driver.Create(
             raster_path, n, n, 1, gdal.GDT_Int32, options=[
                 'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
@@ -2166,11 +2165,11 @@ class PyGeoprocessing10(unittest.TestCase):
         kernel_array = numpy.ones((3, 3), numpy.float32)
         pygeoprocessing.testing.create_raster_on_disk(
             [kernel_array], reference.origin, reference.projection,
-            nodata_target, reference.pixel_size(30), filename=kernel_path)
+            None, reference.pixel_size(30), filename=kernel_path)
         target_path = os.path.join(self.workspace_dir, 'target.tif')
         pygeoprocessing.convolve_2d(
             (signal_path, 1), (kernel_path, 1), target_path,
-            n_threads=1)
+            n_threads=1, ignore_nodata=False)
         target_raster = gdal.OpenEx(target_path, gdal.OF_RASTER)
         target_band = target_raster.GetRasterBand(1)
         target_array = target_band.ReadAsArray()
@@ -2234,14 +2233,17 @@ class PyGeoprocessing10(unittest.TestCase):
             [kernel_array], reference.origin, reference.projection,
             nodata_target, reference.pixel_size(30), filename=kernel_path)
         target_path = os.path.join(self.workspace_dir, 'target.tif')
+        target_path = 'target.tif'
         pygeoprocessing.convolve_2d(
             (signal_path, 1), (kernel_path, 1), target_path,
-            ignore_nodata=True, normalize_kernel=True)
+            mask_nodata=False, ignore_nodata=True, normalize_kernel=True)
         target_raster = gdal.OpenEx(target_path, gdal.OF_RASTER)
         target_band = target_raster.GetRasterBand(1)
         target_array = target_band.ReadAsArray()
         target_band = None
         target_raster = None
+        expected_result = test_value * n_pixels ** 2
+        self.assertEqual(numpy.sum(target_array), expected_result)
 
     def test_convolve_2d_ignore_nodata(self):
         """PGP.geoprocessing: test convolve 2d w/ normalize and ignore."""
