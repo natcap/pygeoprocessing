@@ -2432,7 +2432,8 @@ class PyGeoprocessing10(unittest.TestCase):
         target_nodata = slope_band.GetNoDataValue()
         count = 0
         expected_slope = 100.0
-        for _, block in pygeoprocessing.iterblocks(target_slope_path):
+        for _, block in pygeoprocessing.iterblocks(
+                target_slope_path, astype_list=[numpy.float32]):
             bad_mask = (
                 ~numpy.isclose(block, target_nodata) &
                 (block != expected_slope))
