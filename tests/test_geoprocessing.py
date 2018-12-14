@@ -421,7 +421,6 @@ class PyGeoprocessing10(unittest.TestCase):
 
         gtiff_driver = gdal.GetDriverByName('GTiff')
         raster_path = os.path.join(self.workspace_dir, 'small_raster.tif')
-        raster_path = 'small_raster.tif'
         new_raster = gtiff_driver.Create(
             raster_path, n, n, 1, gdal.GDT_Int32, options=[
                 'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
@@ -446,14 +445,18 @@ class PyGeoprocessing10(unittest.TestCase):
 
         raster_path = os.path.join(
             self.workspace_dir, 'nonodata_small_raster.tif')
+        raster_path = 'nonodata_small_raster.tif'
         new_raster = gtiff_driver.Create(
             raster_path, n, n, 1, gdal.GDT_Int32, options=[
                 'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
                 'BLOCKXSIZE=16', 'BLOCKYSIZE=16'])
         new_raster.SetProjection(srs.ExportToWkt())
-        new_raster.SetGeoTransform([origin_x, 1.0, 0.0, origin_y, 0.0, -1.0])
+        new_raster.SetGeoTransform(
+            [origin_x+n, -1.0, 0.0, origin_y-n, 0.0, 1.0])
         new_band = new_raster.GetRasterBand(1)
-        array = numpy.array(range(n*n), dtype=numpy.int32).reshape((n, n))
+        array = numpy.flip(numpy.flip(
+            numpy.array(range(n*n), dtype=numpy.int32).reshape((n, n)),
+            axis=1), axis=0)
         # this will catch a polygon that barely intersects the upper left
         # hand corner but is nodata.
         new_band.WriteArray(array)

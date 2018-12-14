@@ -1343,6 +1343,7 @@ def zonal_statistics(
         len(aggregate_layer_fid_set))
     clipped_gt = numpy.array(
         clipped_raster.GetGeoTransform(), dtype=numpy.float32)
+    LOGGER.debug("gt %s for %s", clipped_gt, base_raster_path_band)
     for unset_fid in unset_fids:
         unset_feat = aggregate_layer.GetFeature(unset_fid)
         unset_geom_envelope = list(unset_feat.GetGeometryRef().GetEnvelope())
