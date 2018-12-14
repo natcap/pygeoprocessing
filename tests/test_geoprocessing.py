@@ -733,7 +733,6 @@ class PyGeoprocessing10(unittest.TestCase):
         pygeoprocessing.testing.assert_rasters_equal(
             expected_raster_path, target_raster_path)
 
-
     def test_align_and_resize_raster_stack_bad_values(self):
         """PGP.geoprocessing: align/resize raster bad base values."""
         pixel_a_matrix = numpy.ones((5, 5), numpy.int16)
@@ -902,12 +901,29 @@ class PyGeoprocessing10(unittest.TestCase):
             [pixel_b_matrix], reference.origin, reference.projection,
             nodata_target, reference.pixel_size(60), filename=base_b_path)
 
-        base_raster_path_list = [base_a_path, base_b_path]
+        pixel_c_matrix = numpy.ones((15, 5), numpy.int16)
+        reference = sampledata.SRS_COLOMBIA
+        nodata_target = -1
+        base_c_path = os.path.join(self.workspace_dir, 'base_c.tif')
+        pygeoprocessing.testing.create_raster_on_disk(
+            [pixel_c_matrix], reference.origin, reference.projection,
+            nodata_target, reference.pixel_size(45), filename=base_c_path)
+
+        pixel_d_matrix = numpy.ones((5, 10), numpy.int16)
+        reference = sampledata.SRS_COLOMBIA
+        nodata_target = -1
+        base_d_path = os.path.join(self.workspace_dir, 'base_d.tif')
+        pygeoprocessing.testing.create_raster_on_disk(
+            [pixel_d_matrix], reference.origin, reference.projection,
+            nodata_target, reference.pixel_size(45), filename=base_d_path)
+
+        base_raster_path_list = [
+            base_a_path, base_b_path, base_c_path, base_d_path]
         target_raster_path_list = [
             os.path.join(self.workspace_dir, 'target_%s.tif' % char)
-            for char in ['a', 'b']]
+            for char in ['a', 'b', 'c', 'd']]
 
-        resample_method_list = ['near'] * 2
+        resample_method_list = ['near'] * len(target_raster_path_list)
         bounding_box_mode = 'intersection'
 
         base_a_raster_info = pygeoprocessing.get_raster_info(base_a_path)
@@ -918,10 +934,11 @@ class PyGeoprocessing10(unittest.TestCase):
             base_a_raster_info['pixel_size'], bounding_box_mode,
             base_vector_path_list=None, raster_align_index=0)
 
-        for raster_index in range(2):
+        for raster_index in range(len(target_raster_path_list)):
             target_raster_info = pygeoprocessing.get_raster_info(
                 target_raster_path_list[raster_index])
-            target_raster = gdal.OpenEx(target_raster_path_list[raster_index], gdal.OF_RASTER)
+            target_raster = gdal.OpenEx(
+                target_raster_path_list[raster_index], gdal.OF_RASTER)
             target_band = target_raster.GetRasterBand(1)
             target_array = target_band.ReadAsArray()
             numpy.testing.assert_array_equal(pixel_a_matrix, target_array)
