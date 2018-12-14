@@ -229,6 +229,50 @@ class PyGeoprocessing10(unittest.TestCase):
             osr.SpatialReference(result_reference.ExportToWkt()).IsSame(
                 osr.SpatialReference(target_reference.ExportToWkt())))
 
+    def test_calculate_disjoint_polygon_set_null_coverage(self):
+        """PGP.geoprocessing: test that calc_disjoint_poly no intersection."""
+        gpkg_driver = ogr.GetDriverByName('GPKG')
+        vector_path = os.path.join(self.workspace_dir, 'small_vector.gpkg')
+        vector = gpkg_driver.CreateDataSource(vector_path)
+
+        srs = osr.SpatialReference()
+        srs.ImportFromEPSG(4326)
+        layer = vector.CreateLayer('small_vector', srs=srs)
+        layer.CreateField(ogr.FieldDefn('expected_value', ogr.OFTInteger))
+        layer_defn = layer.GetLayerDefn()
+
+        # make an n x n raster with 2*m x 2*m polygons inside.
+        pixel_size = 1.0
+        subpixel_size = 1./5. * pixel_size
+        origin_x = 1.0
+        origin_y = -1.0
+        n = 16
+        layer.StartTransaction()
+        for row_index in range(n * 2):
+            for col_index in range(n * 2):
+                x_pos = origin_x + (
+                    col_index*2 + 1 + col_index // 2) * subpixel_size
+                y_pos = origin_y - (
+                    row_index*2 + 1 + row_index // 2) * subpixel_size
+                shapely_feature = shapely.geometry.Polygon([
+                    (x_pos, y_pos),
+                    (x_pos+subpixel_size, y_pos),
+                    (x_pos+subpixel_size, y_pos-subpixel_size),
+                    (x_pos, y_pos-subpixel_size),
+                    (x_pos, y_pos)])
+                new_feature = ogr.Feature(layer_defn)
+                new_geometry = ogr.CreateGeometryFromWkb(shapely_feature.wkb)
+                new_feature.SetGeometry(new_geometry)
+                expected_value = row_index // 2 * n + col_index // 2
+                new_feature.SetField('expected_value', expected_value)
+                layer.CreateFeature(new_feature)
+        layer.CommitTransaction()
+        layer.SyncToDisk()
+
+        result = pygeoprocessing.calculate_disjoint_polygon_set(
+            vector_path, bounding_box=[-10, -10, -9, -9])
+        self.assertTrue(result == ())
+
     def test_zonal_stats_for_small_polygons(self):
         """PGP.geoprocessing: test small polygons for zonal stats."""
         gpkg_driver = ogr.GetDriverByName('GPKG')
@@ -884,7 +928,7 @@ class PyGeoprocessing10(unittest.TestCase):
 
         pygeoprocessing.warp_raster(
             base_a_path, base_a_raster_info['pixel_size'], target_raster_path,
-            'near', target_sr_wkt=reference.projection)
+            'near', target_sr_wkt=reference.projection, n_threads=1)
 
         pygeoprocessing.testing.assert_rasters_equal(
             base_a_path, target_raster_path)
