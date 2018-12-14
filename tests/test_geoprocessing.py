@@ -5,10 +5,8 @@ import os
 import unittest
 import shutil
 import types
-import sys
 import logging
 
-LOGGER = logging.getLogger(__name__)
 
 from osgeo import gdal
 from osgeo import ogr
@@ -28,7 +26,7 @@ except ImportError:
 
 
 def passthrough(x):
-    """Used in testing simple raster calculator calls."""
+    """Use in testing simple raster calculator calls."""
     return x
 
 
@@ -68,7 +66,7 @@ class PyGeoprocessing10(unittest.TestCase):
             import pygeoprocessing
             # Verifies that there's a version attribute and it has a value.
             self.assertTrue(len(pygeoprocessing.__version__) > 0)
-        except Exception as error:
+        except Exception:
             self.fail('Could not load pygeoprocessing version.')
 
     def test_version_not_loaded(self):
@@ -561,6 +559,51 @@ class PyGeoprocessing10(unittest.TestCase):
                 'nodata_count': 0,
                 'sum': 81.0}}
         self.assertEqual(result, expected_result)
+
+    def test_zonal_statistics_bad_vector(self):
+        """PGP.geoprocessing: zonal stats raises exception on bad vectors."""
+        # create aggregating polygon
+        reference = sampledata.SRS_COLOMBIA
+        n_pixels = 9
+        missing_aggregating_vector_path = os.path.join(
+            self.workspace_dir, 'not_exists.shp')
+        pixel_matrix = numpy.ones((n_pixels, n_pixels), numpy.float32)
+        nodata_target = None
+        raster_path = os.path.join(self.workspace_dir, 'raster.tif')
+        pygeoprocessing.testing.create_raster_on_disk(
+            [pixel_matrix], reference.origin, reference.projection,
+            nodata_target, reference.pixel_size(30), filename=raster_path)
+        with self.assertRaises(RuntimeError) as cm:
+            _ = pygeoprocessing.zonal_statistics(
+                (raster_path, 1), missing_aggregating_vector_path,
+                ignore_nodata=True,
+                polygons_might_overlap=True)
+        expected_message = 'Could not open aggregate vector'
+        actual_message = str(cm.exception)
+        self.assertTrue(expected_message in actual_message, actual_message)
+
+        pixel_size = 30.0
+        polygon_a = shapely.geometry.Polygon([
+            (reference.origin[0], reference.origin[1]),
+            (reference.origin[0], -pixel_size * n_pixels+reference.origin[1]),
+            (reference.origin[0]+pixel_size * n_pixels,
+             -pixel_size * n_pixels+reference.origin[1]),
+            (reference.origin[0]+pixel_size * n_pixels, reference.origin[1]),
+            (reference.origin[0], reference.origin[1])])
+        aggregating_vector_path = os.path.join(
+            self.workspace_dir, 'aggregate_vector.shp')
+        pygeoprocessing.testing.create_vector_on_disk(
+            [polygon_a], reference.projection,
+            vector_format='ESRI Shapefile', filename=aggregating_vector_path)
+        with self.assertRaises(RuntimeError) as cm:
+            _ = pygeoprocessing.zonal_statistics(
+                (raster_path, 1), aggregating_vector_path,
+                ignore_nodata=True,
+                aggregate_layer_name='not a layer name',
+                polygons_might_overlap=True)
+        expected_message = 'Could not open layer not a layer name'
+        actual_message = str(cm.exception)
+        self.assertTrue(expected_message in actual_message, actual_message)
 
     def test_zonal_statistics_bad_raster_path_band(self):
         """PGP.geoprocessing: test zonal stats with bad raster/path type."""
