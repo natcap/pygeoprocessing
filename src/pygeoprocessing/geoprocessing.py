@@ -1176,11 +1176,30 @@ def zonal_statistics(
             prefix='clipped_raster', suffix='.tif', delete=False,
             dir=working_dir) as clipped_raster_file:
         clipped_raster_path = clipped_raster_file.name
-    align_and_resize_raster_stack(
-        [base_raster_path_band[0]], [clipped_raster_path], ['near'],
-        raster_info['pixel_size'], 'intersection',
-        base_vector_path_list=[aggregate_vector_path], raster_align_index=0)
-    clipped_raster = gdal.OpenEx(clipped_raster_path, gdal.OF_RASTER)
+    try:
+        align_and_resize_raster_stack(
+            [base_raster_path_band[0]], [clipped_raster_path], ['near'],
+            raster_info['pixel_size'], 'intersection',
+            base_vector_path_list=[aggregate_vector_path],
+            raster_align_index=0)
+        clipped_raster = gdal.OpenEx(clipped_raster_path, gdal.OF_RASTER)
+        clipped_band = clipped_raster.GetRasterBand(base_raster_path_band[1])
+    except ValueError as e:
+        if 'intersection is empty' in str(e):
+            LOGGER.error(
+                "aggregate vector %s does not intersect with the raster %s",
+                aggregate_vector_path, base_raster_path_band)
+            aggregate_stats = collections.defaultdict(
+                lambda: {
+                    'min': None, 'max': None, 'count': 0, 'nodata_count': 0,
+                    'sum': 0.0})
+            for feature in aggregate_layer:
+                _ = aggregate_stats[feature.GetFID()]
+            return aggregate_stats
+        else:
+            # this would be very unexpected to get here, but if it happened
+            # and we didn't raise an exception, execution could get weird.
+            raise
 
     # make a shapefile that non-overlapping layers can be added to
     driver = ogr.GetDriverByName('MEMORY')
@@ -1201,8 +1220,6 @@ def zonal_statistics(
             aggregate_vector_path, bounding_box=raster_info['bounding_box'])
     else:
         disjoint_fid_sets = [aggregate_layer_fid_set]
-
-    clipped_band = clipped_raster.GetRasterBand(base_raster_path_band[1])
 
     with tempfile.NamedTemporaryFile(
             prefix='aggregate_fid_raster', suffix='.tif',
@@ -2036,10 +2053,15 @@ def calculate_disjoint_polygon_set(
         for poly_feat in vector_layer))
 
     LOGGER.info("build shapely rtree index")
-    poly_rtree_index = rtree.index.Index(
-        ((poly_fid, poly.bounds, None)
-         for poly_fid, poly in shapely_polygon_lookup.items()
-         if bounding_box.intersects(poly)))
+    r_tree_index_stream = [
+        (poly_fid, poly.bounds, None)
+        for poly_fid, poly in shapely_polygon_lookup.items()
+        if bounding_box.intersects(poly)]
+    if r_tree_index_stream:
+        poly_rtree_index = rtree.index.Index(r_tree_index_stream)
+    else:
+        LOGGER.warn("no polygons intersected the bounding box")
+        return ()
 
     vector_layer = None
     vector = None

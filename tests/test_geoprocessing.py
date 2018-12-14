@@ -294,6 +294,165 @@ class PyGeoprocessing10(unittest.TestCase):
                 feature.GetField('expected_value'),
                 zonal_stats[poly_id]['sum'])
 
+    def test_zonal_stats_no_bb_overlap(self):
+        """PGP.geoprocessing: test no vector bb raster overlap."""
+        gpkg_driver = ogr.GetDriverByName('GPKG')
+        vector_path = os.path.join(self.workspace_dir, 'vector.gpkg')
+        vector = gpkg_driver.CreateDataSource(vector_path)
+
+        srs = osr.SpatialReference()
+        srs.ImportFromEPSG(4326)
+        layer = vector.CreateLayer('small_vector', srs=srs)
+        layer_defn = layer.GetLayerDefn()
+
+        # make an n x n raster with 2*m x 2*m polygons inside.
+        pixel_size = 1.0
+        subpixel_size = 1./5. * pixel_size
+        origin_x = 1.0
+        origin_y = -1.0
+        n = 16
+        layer.StartTransaction()
+        x_pos = origin_x - n
+        y_pos = origin_y + n
+        shapely_feature = shapely.geometry.Polygon([
+            (x_pos, y_pos),
+            (x_pos+subpixel_size, y_pos),
+            (x_pos+subpixel_size, y_pos-subpixel_size),
+            (x_pos, y_pos-subpixel_size),
+            (x_pos, y_pos)])
+        new_feature = ogr.Feature(layer_defn)
+        new_geometry = ogr.CreateGeometryFromWkb(shapely_feature.wkb)
+        new_feature.SetGeometry(new_geometry)
+        layer.CreateFeature(new_feature)
+        layer.CommitTransaction()
+        layer.SyncToDisk()
+
+        gtiff_driver = gdal.GetDriverByName('GTiff')
+        raster_path = os.path.join(self.workspace_dir, 'small_raster.tif')
+        new_raster = gtiff_driver.Create(
+            raster_path, n, n, 1, gdal.GDT_Int32, options=[
+                'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
+                'BLOCKXSIZE=16', 'BLOCKYSIZE=16'])
+        new_raster.SetProjection(srs.ExportToWkt())
+        new_raster.SetGeoTransform([origin_x, 1.0, 0.0, origin_y, 0.0, -1.0])
+        new_band = new_raster.GetRasterBand(1)
+        new_band.SetNoDataValue(-1)
+        array = numpy.array(range(n*n), dtype=numpy.int32).reshape((n, n))
+        new_band.WriteArray(array)
+        new_raster.FlushCache()
+        new_band = None
+        new_raster = None
+
+        zonal_stats = pygeoprocessing.zonal_statistics(
+            (raster_path, 1), vector_path)
+        for poly_id in zonal_stats:
+            self.assertEqual(zonal_stats[poly_id]['sum'], 0.0)
+
+    def test_zonal_stats_all_outside(self):
+        """PGP.geoprocessing: test vector all outside raster."""
+        gpkg_driver = ogr.GetDriverByName('GPKG')
+        vector_path = os.path.join(self.workspace_dir, 'vector.gpkg')
+        vector = gpkg_driver.CreateDataSource(vector_path)
+
+        srs = osr.SpatialReference()
+        srs.ImportFromEPSG(4326)
+        layer = vector.CreateLayer('small_vector', srs=srs)
+        layer_defn = layer.GetLayerDefn()
+
+        # make an n x n raster with 2*m x 2*m polygons inside.
+        pixel_size = 1.0
+        subpixel_size = 1./5. * pixel_size
+        origin_x = 1.0
+        origin_y = -1.0
+        n = 16
+        layer.StartTransaction()
+        x_pos = origin_x - n
+        y_pos = origin_y + n
+        shapely_feature = shapely.geometry.Polygon([
+            (x_pos, y_pos),
+            (x_pos+subpixel_size, y_pos),
+            (x_pos+subpixel_size, y_pos-subpixel_size),
+            (x_pos, y_pos-subpixel_size),
+            (x_pos, y_pos)])
+        new_feature = ogr.Feature(layer_defn)
+        new_geometry = ogr.CreateGeometryFromWkb(shapely_feature.wkb)
+        new_feature.SetGeometry(new_geometry)
+        layer.CreateFeature(new_feature)
+
+        x_pos = origin_x + n*2
+        y_pos = origin_y - n*2
+        shapely_feature = shapely.geometry.Polygon([
+            (x_pos, y_pos),
+            (x_pos+subpixel_size, y_pos),
+            (x_pos+subpixel_size, y_pos-subpixel_size),
+            (x_pos, y_pos-subpixel_size),
+            (x_pos, y_pos)])
+        new_feature = ogr.Feature(layer_defn)
+        new_geometry = ogr.CreateGeometryFromWkb(shapely_feature.wkb)
+
+        x_pos = origin_x - subpixel_size*.99
+        y_pos = origin_y + subpixel_size*.99
+        shapely_feature = shapely.geometry.Polygon([
+            (x_pos, y_pos),
+            (x_pos+subpixel_size, y_pos),
+            (x_pos+subpixel_size, y_pos-subpixel_size),
+            (x_pos, y_pos-subpixel_size),
+            (x_pos, y_pos)])
+        new_feature = ogr.Feature(layer_defn)
+        new_geometry = ogr.CreateGeometryFromWkb(shapely_feature.wkb)
+
+        new_feature.SetGeometry(new_geometry)
+        layer.CreateFeature(new_feature)
+
+        layer.CommitTransaction()
+        layer.SyncToDisk()
+
+        gtiff_driver = gdal.GetDriverByName('GTiff')
+        raster_path = os.path.join(self.workspace_dir, 'small_raster.tif')
+        new_raster = gtiff_driver.Create(
+            raster_path, n, n, 1, gdal.GDT_Int32, options=[
+                'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
+                'BLOCKXSIZE=16', 'BLOCKYSIZE=16'])
+        new_raster.SetProjection(srs.ExportToWkt())
+        new_raster.SetGeoTransform([origin_x, 1.0, 0.0, origin_y, 0.0, -1.0])
+        new_band = new_raster.GetRasterBand(1)
+        new_band.SetNoDataValue(-1)
+        array = numpy.array(range(n*n), dtype=numpy.int32).reshape((n, n))
+        # this will catch a polygon that barely intersects the upper left
+        # hand corner but is nodata.
+        array[0, 0] = -1
+        new_band.WriteArray(array)
+        new_raster.FlushCache()
+        new_band = None
+        new_raster = None
+
+        zonal_stats = pygeoprocessing.zonal_statistics(
+            (raster_path, 1), vector_path)
+        for poly_id in zonal_stats:
+            self.assertEqual(zonal_stats[poly_id]['sum'], 0.0)
+
+        raster_path = os.path.join(
+            self.workspace_dir, 'nonodata_small_raster.tif')
+        new_raster = gtiff_driver.Create(
+            raster_path, n, n, 1, gdal.GDT_Int32, options=[
+                'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
+                'BLOCKXSIZE=16', 'BLOCKYSIZE=16'])
+        new_raster.SetProjection(srs.ExportToWkt())
+        new_raster.SetGeoTransform([origin_x, 1.0, 0.0, origin_y, 0.0, -1.0])
+        new_band = new_raster.GetRasterBand(1)
+        array = numpy.array(range(n*n), dtype=numpy.int32).reshape((n, n))
+        # this will catch a polygon that barely intersects the upper left
+        # hand corner but is nodata.
+        new_band.WriteArray(array)
+        new_raster.FlushCache()
+        new_band = None
+        new_raster = None
+
+        zonal_stats = pygeoprocessing.zonal_statistics(
+            (raster_path, 1), vector_path)
+        for poly_id in zonal_stats:
+            self.assertEqual(zonal_stats[poly_id]['sum'], 0.0)
+
     def test_mask_raster(self):
         """PGP.geoprocessing: test mask raster."""
         gpkg_driver = ogr.GetDriverByName('GPKG')
@@ -449,7 +608,7 @@ class PyGeoprocessing10(unittest.TestCase):
             [polygon_a, polygon_b, polygon_c], reference.projection,
             vector_format='GeoJSON', filename=aggregating_vector_path)
         pixel_matrix = numpy.ones((n_pixels, n_pixels), numpy.float32)
-        nodata_target = -1
+        nodata_target = None
         raster_path = os.path.join(self.workspace_dir, 'raster.tif')
         pygeoprocessing.testing.create_raster_on_disk(
             [pixel_matrix], reference.origin, reference.projection,
@@ -1661,7 +1820,7 @@ class PyGeoprocessing10(unittest.TestCase):
         pixel_matrix[0, 0] = 255  # 255 ubyte is -1 byte
         reference = sampledata.SRS_COLOMBIA
         nodata_base = -1
-        base_path = 'signedbyte.tif' #os.path.join(self.workspace_dir, 'base.tif')
+        base_path = os.path.join(self.workspace_dir, 'base.tif')
         pygeoprocessing.testing.create_raster_on_disk(
             [pixel_matrix], reference.origin, reference.projection,
             nodata_base, reference.pixel_size(30), datatype=gdal.GDT_Byte,
@@ -2961,4 +3120,3 @@ class PyGeoprocessing10(unittest.TestCase):
         expected_message = 'was not found'
         actual_message = str(cm.exception)
         self.assertTrue(expected_message in actual_message, actual_message)
-
