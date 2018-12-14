@@ -595,6 +595,7 @@ def delineate_watersheds_d8(
     #    * Alter geometries of remaining polygons and lines as needed
     cdef cmap[CoordinatePair, cset[int]] seed_watersheds
     cdef cmap[CoordinatePair, int] seed_ids  # {CoordinatePair: seed id}
+    cdef cmap[int, CoordinatePair] seed_id_to_seed  # {seed id: CoordinatePair}
     cdef CoordinatePair seed
     cdef int seed_id = 1
     cdef double buffer_dist = math.hypot(x_pixelwidth, y_pixelwidth) / 2. * 1.1
@@ -630,6 +631,7 @@ def delineate_watersheds_d8(
                 seed_watersheds[seed] = cset[int]()
             seed_watersheds[seed].insert(ws_id)
             seed_ids[seed] = seed_id
+            seed_id_to_seed[seed_id] = seed
             seed_id += 1
 
             # Don't need the feature any more!
@@ -748,6 +750,7 @@ def delineate_watersheds_d8(
                             seed_watersheds[seed] = cset[int]()
                         seed_watersheds[seed].insert(ws_id)
                         seed_ids[seed] = seed_id
+                        seed_id_to_seed[seed_id] = seed
                         seed_id += 1
             mr.close()
             del block
@@ -900,10 +903,186 @@ def delineate_watersheds_d8(
 
     seeds_in_block.clear()
 
-    # Phase 6: Polygonization
+    # Phase 6.1: Conditional graph traversal and ID consolidation
+    #    * This phase walks the fragment graph and identifies fragments that can be
+    #      consolidated via reclassification.  The goal of this is to maintain
+    #      the minimal set of fragments that will join to the correct output.
+    #      This is needed because:
+    #        * Polygonization is faster with fewer fragments
+    #        * Joining via cascaded_union/union is surprisingly slow, and we can avoid
+    #          many union operations by being careful about which fragments need to
+    #          remain separate.
+
+    # Reverse the upstream_fragments dictionary.
+    cdef cmap[int, int] downstream_fragments  # {fragment_id: int downstream_fragment_id}
+    cdef cmap[int, cset[int]].iterator nested_fragments_iterator = nested_fragments.begin()
+    cdef cset[int] upstream_fragments
+    cdef cset[int].iterator upstream_fragments_iterator
+    while nested_fragments_iterator != nested_fragments.end():
+        downstream_fragment_id = deref(nested_fragments_iterator).first
+        upstream_fragments = deref(nested_fragments_iterator).second
+        
+        upstream_fragments_iterator = upstream_fragments.begin()
+        while upstream_fragments_iterator != upstream_fragments.end():
+            upstream_fragment_id = deref(upstream_fragments_iterator)
+            downstream_fragments[upstream_fragment_id] = downstream_fragment_id
+            inc(upstream_fragments_iterator)
+        inc(nested_fragments_iterator)
+
+    # Locate the seeds that are as far down the seed tree as we can go.
+    cdef queue[CoordinatePair] starter_seeds
+    cdef cset[CoordinatePair] starter_seeds_set
+    seeds_in_watersheds_iterator = seed_watersheds.begin()  # reusing previous iterator
+    while seeds_in_watersheds_iterator != seed_watersheds.end():
+        # Only need the seed; don't need the member ws_ids.
+        seed = deref(seeds_in_watersheds_iterator).first
+        inc(seeds_in_watersheds_iterator)
+
+        seed_id = seed_ids[seed]
+        while True:
+            if downstream_fragments.find(seed_id) != downstream_fragments.end():
+                seed_id = downstream_fragments[seed_id]
+            else:
+                break
+        seed = seed_id_to_seed[seed_id]
+        starter_seeds.push(seed)
+        starter_seeds_set.insert(seed)
+
+    reclassification = {}
+
+    cdef cstack[CoordinatePair] stack
+    cdef cset[int] member_watersheds
+    cdef cmap[CoordinatePair, int] effective_seed_ids
+    cdef cmap[CoordinatePair, cset[int]] effective_watersheds
+    cdef cmap[CoordinatePair, cset[int]] downstream_watersheds
+    cdef cset[int] watersheds_downstream_of_neighbor
+    cdef int starter_id
+    cdef CoordinatePair starter_seed, current_seed, upstream_seed
+    cdef cset[CoordinatePair] visited
+    while starter_seeds.size() > 0:
+        starter_seed = starter_seeds.front()
+        starter_seeds_set.erase(seed)
+        starter_seeds.pop()
+
+        member_watersheds = seed_watersheds[starter_seed]
+        if effective_seed_ids.find(starter_seed) != effective_seed_ids.end():
+            starter_id = effective_seed_ids[starter_seed]
+        else:
+            starter_id = seed_ids[starter_seed]
+            effective_seed_ids[starter_seed] = starter_id
+
+        stack.push(starter_seed)
+        while stack.size() > 0:
+            current_seed = stack.top()
+            stack.pop()
+
+            current_seed_id = seed_ids[current_seed]
+
+            reclassification[seed_ids[current_seed]] = starter_id
+            visited.insert(current_seed)
+
+            # First, check to see if there are fragments upstream of this one.
+            if nested_fragments.find(current_seed_id) != nested_fragments.end():
+                upstream_fragments_set = nested_fragments[current_seed_id]
+                upstream_fragments_iterator = upstream_fragments_set.begin()
+
+                while upstream_fragments_iterator != upstream_fragments.end():
+                    upstream_seed_id = deref(upstream_fragments_iterator)
+                    inc(upstream_fragments_iterator)
+
+                    upstream_seed = seed_id_to_seed[upstream_seed_id]
+
+                    # check to see if the watershed membership of the upstream seed is a
+                    # subset of the watersheds of the starter seed.
+                    upstream_watersheds = seed_watersheds[upstream_seed]
+                    upstream_watersheds_iterator = upstream_watersheds.begin()
+                    is_subset = True
+                    while upstream_watersheds_iterator != upstream_watersheds.end():
+                        ws_id = deref(upstream_watersheds_iterator)
+                        inc(upstream_watersheds_iterator)
+
+                        if member_watersheds.find(ws_id) == member_watersheds.end():
+                            is_subset = False
+                            break
+
+                    if is_subset:
+                        stack.push(upstream_seed)
+                        effective_watersheds[upstream_seed] = member_watersheds
+                    else:
+                        # The upstream seed appears to be the start of a different fragment.
+                        # Add it to the starter seeds queue.
+                        effective_watersheds[upstream_seed] = upstream_watersheds
+                        if starter_seeds_set.find(upstream_seed) == starter_seeds_set.end():
+                            starter_seeds_set.insert(upstream_seed)
+                            starter_seeds.push(upstream_seed)
+
+                            # Noting which watersheds are downstream of the upstream
+                            # pixel is important for visiting neighbors and expanding
+                            # into them, below.
+                            downstream_watersheds[upstream_seed] = member_watersheds
+
+            # Second, visit the neighbors of this seed and see if there are any
+            # that match.
+            for neighbor_id in xrange(8):
+                neighbor_seed = CoordinatePair(
+                    current_seed.first + neighbor_col[neighbor_id],
+                    current_seed.second + neighbor_row[neighbor_id])
+
+                if not 0 <= neighbor_seed.first < flow_dir_n_rows:
+                    continue
+                if not 0 <= neighbor_seed.second < flow_dir_n_cols:
+                    continue
+
+                # Is this pixel a seed?  If it isn't, we can ignore it.
+                if seed_watersheds.find(neighbor_seed) == seed_watersheds.end():
+                    continue
+
+                neighbor_seed_id = seed_ids[neighbor_seed]
+                neighbor_watersheds = seed_watersheds[neighbor_seed]
+
+                # Do the member watersheds of this neighbor seed exactly
+                # match the member watersheds of the starter seed?
+                if seed_watersheds[neighbor_seed] == member_watersheds:
+                    if (downstream_watersheds.find(current_seed) != downstream_watersheds.end() and
+                            downstream_watersheds.find(neighbor_seed) != downstream_watersheds.end()):
+                        if downstream_watersheds[current_seed] == downstream_watersheds[neighbor_seed]:
+                            effective_seed_ids[neighbor_seed] = starter_id
+                    else:
+                        if downstream_fragments.find(neighbor_seed_id) != downstream_fragments.end():
+                            downstream_seed_id = downstream_fragments[neighbor_seed_id]
+                            downstream_seed = seed_id_to_seed[downstream_seed_id]
+
+                            # test to see if the watersheds of the downstream seed are a
+                            # subset of the watersheds of the neighbor seed.
+                            watersheds_downstream_of_neighbor = seed_watersheds[downstream_seed]
+                            downstream_watersheds_iterator = watersheds_downstream_of_neighbor.begin()
+                            is_subset = True
+                            while downstream_watersheds_iterator != watersheds_downstream_of_neighbor.end():
+                                ws_id = deref(downstream_watersheds_iterator)
+                                inc(downstream_watersheds_iterator)
+
+                                if neighbor_watersheds.find(ws_id) == neighbor_watersheds.end():
+                                    is_subset = False
+                                    break
+
+                            if is_subset:
+                                effective_seed_ids[neighbor_seed] = starter_id
+                        else:
+                            # No known downstream seeds to check, ok to expand into the seed.
+                            effective_seed_ids[neighbor_seed] = starter_id
+
+                    if visited.find(neighbor_seed) == visited.end():
+                        stack.push(neighbor_seed)
+
+    reclassified_scratch_path = os.path.join(working_dir, 'scratch_reclassified.tif')
+    pygeoprocessing.reclassify_raster(
+        (scratch_raster_path, 1), reclassification,
+        reclassified_scratch_path, gdal.GDT_UInt32, 0)
+
+    # Phase 6.2: Polygonization
     #    * Polygonize the seeds fragments.
     LOGGER.info('Polygonizing fragments')
-    scratch_raster = gdal.OpenEx(scratch_raster_path, gdal.OF_RASTER)
+    scratch_raster = gdal.OpenEx(reclassified_scratch_path, gdal.OF_RASTER)
     scratch_band = scratch_raster.GetRasterBand(1)
     mask_raster = gdal.OpenEx(mask_raster_path, gdal.OF_RASTER)
     mask_band = mask_raster.GetRasterBand(1)
@@ -952,15 +1131,6 @@ def delineate_watersheds_d8(
         ['8CONNECTED8'],  # use 8-connectedness algorithm.
         _make_polygonize_callback(LOGGER)
     )
-
-    # Reverse the {seed: seed ID} mapping for use in retrieving features.
-    cdef cmap[int, CoordinatePair] seed_id_to_seed  # {seed id: CoordinatePair}
-    cdef cmap[CoordinatePair, int].iterator seed_to_id_iterator = seed_ids.begin()
-    while seed_to_id_iterator != seed_ids.end():
-        seed = deref(seed_to_id_iterator).first
-        seed_id = deref(seed_to_id_iterator).second
-        seed_id_to_seed[seed_id] = seed
-        inc(seed_to_id_iterator)
 
     # Polygonization only copies the fragment IDs. Copy over the relevant
     # attributes that will link the fragments into whole watersheds.
