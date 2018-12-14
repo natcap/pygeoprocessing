@@ -246,7 +246,7 @@ class PyGeoprocessing10(unittest.TestCase):
         subpixel_size = 1./5. * pixel_size
         origin_x = 1.0
         origin_y = -1.0
-        n = 16
+        n = 1
         layer.StartTransaction()
         for row_index in range(n * 2):
             for col_index in range(n * 2):
@@ -2620,7 +2620,7 @@ class PyGeoprocessing10(unittest.TestCase):
         """PGP.geoprocessing: test distance transform EDT."""
         reference = sampledata.SRS_COLOMBIA
         n_pixels = 1000
-        nodata_target = -1
+        nodata_target = 0
         base_raster_array = numpy.zeros(
             (n_pixels, n_pixels), dtype=numpy.int)
         base_raster_array[:, n_pixels//2:] = nodata_target
@@ -2664,6 +2664,25 @@ class PyGeoprocessing10(unittest.TestCase):
         expected_result = scipy.ndimage.morphology.distance_transform_edt(
             1 - (base_raster_array == 1), sampling=(
                 sampling_distance[1], sampling_distance[0]))
+        numpy.testing.assert_array_almost_equal(
+            target_array, expected_result, decimal=2)
+
+        base_raster_path = os.path.join(
+            self.workspace_dir, 'undefined_nodata_base_raster.tif')
+        pygeoprocessing.testing.create_raster_on_disk(
+            [base_raster_array], reference.origin, reference.projection,
+            None, reference.pixel_size(30),
+            filename=base_raster_path)
+        pygeoprocessing.distance_transform_edt(
+            (base_raster_path, 1), target_distance_raster_path,
+            sampling_distance=sampling_distance,
+            working_dir=self.workspace_dir)
+        target_raster = gdal.OpenEx(
+            target_distance_raster_path, gdal.OF_RASTER)
+        target_band = target_raster.GetRasterBand(1)
+        target_array = target_band.ReadAsArray()
+        target_band = None
+        target_raster = None
         numpy.testing.assert_array_almost_equal(
             target_array, expected_result, decimal=2)
 
