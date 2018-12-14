@@ -400,7 +400,19 @@ class PyGeoprocessing10(unittest.TestCase):
             (x_pos, y_pos)])
         new_feature = ogr.Feature(layer_defn)
         new_geometry = ogr.CreateGeometryFromWkb(shapely_feature.wkb)
+        new_feature.SetGeometry(new_geometry)
+        layer.CreateFeature(new_feature)
 
+        x_pos = origin_x + (n+.99)
+        y_pos = origin_y - (n+.99)
+        shapely_feature = shapely.geometry.Polygon([
+            (x_pos, y_pos),
+            (x_pos+subpixel_size, y_pos),
+            (x_pos+subpixel_size, y_pos-subpixel_size),
+            (x_pos, y_pos-subpixel_size),
+            (x_pos, y_pos)])
+        new_feature = ogr.Feature(layer_defn)
+        new_geometry = ogr.CreateGeometryFromWkb(shapely_feature.wkb)
         new_feature.SetGeometry(new_geometry)
         layer.CreateFeature(new_feature)
 
@@ -409,6 +421,7 @@ class PyGeoprocessing10(unittest.TestCase):
 
         gtiff_driver = gdal.GetDriverByName('GTiff')
         raster_path = os.path.join(self.workspace_dir, 'small_raster.tif')
+        raster_path = 'small_raster.tif'
         new_raster = gtiff_driver.Create(
             raster_path, n, n, 1, gdal.GDT_Int32, options=[
                 'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
