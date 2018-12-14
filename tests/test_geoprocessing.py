@@ -1618,7 +1618,7 @@ class PyGeoprocessing10(unittest.TestCase):
         pixel_matrix[0, 0] = 255  # 255 ubyte is -1 byte
         reference = sampledata.SRS_COLOMBIA
         nodata_base = -1
-        base_path = os.path.join(self.workspace_dir, 'base.tif')
+        base_path = 'signedbyte.tif' #os.path.join(self.workspace_dir, 'base.tif')
         pygeoprocessing.testing.create_raster_on_disk(
             [pixel_matrix], reference.origin, reference.projection,
             nodata_base, reference.pixel_size(30), datatype=gdal.GDT_Byte,
@@ -1634,10 +1634,7 @@ class PyGeoprocessing10(unittest.TestCase):
         # 255 should convert to -1 with signed bytes
         pygeoprocessing.new_raster_from_base(
             base_path, target_path, gdal.GDT_Byte, [0],
-            fill_value_list=[255],
-            gtiff_creation_options=[
-                'PIXELTYPE=SIGNEDBYTE',
-                ])
+            fill_value_list=[255])
 
         target_raster = gdal.OpenEx(target_path, gdal.OF_RASTER)
         target_band = target_raster.GetRasterBand(1)
