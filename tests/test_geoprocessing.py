@@ -2822,7 +2822,6 @@ class PyGeoprocessing10(unittest.TestCase):
         expected_array = numpy.zeros((22, 22))
         expected_array[0:11, 0:11] = 10
         expected_array[11:, 11:] = 20
-
         numpy.testing.assert_almost_equal(target_array, expected_array)
 
         target_band = target_raster.GetRasterBand(2)
@@ -2830,7 +2829,21 @@ class PyGeoprocessing10(unittest.TestCase):
         target_band = None
         target_raster = None
         expected_array = numpy.zeros((22, 22))
+        numpy.testing.assert_almost_equal(target_array, expected_array)
 
+        target_path = os.path.join(self.workspace_dir, 'merged.tif')
+        pygeoprocessing.merge_rasters(
+            [raster_a_path, raster_b_path], target_path,
+            bounding_box=[4, -6, 6, -4])
+
+        target_raster = gdal.OpenEx(target_path, gdal.OF_RASTER)
+        target_band = target_raster.GetRasterBand(1)
+        self.assertEqual(target_band.GetNoDataValue(), None)
+        target_array = target_band.ReadAsArray()
+        target_band = None
+        target_raster = None
+        expected_array = numpy.empty((2, 2))
+        expected_array[:] = 10
         numpy.testing.assert_almost_equal(target_array, expected_array)
 
     def test_merge_rasters_target_nodata(self):

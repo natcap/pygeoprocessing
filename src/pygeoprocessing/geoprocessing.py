@@ -2776,7 +2776,7 @@ def merge_rasters(
         target_path (string): path to the geotiff file that will be created
             by this operation.
         bounding_box (sequence): if not None, clip target path to be within
-            these bounds.
+            these bounds. Format is [minx,miny,maxx,maxy]
         target_nodata (float): if not None, set the target raster's nodata
             value to this. Otherwise use the shared nodata value in the
             `raster_path_list`. It is an error if different rasters in
@@ -2851,8 +2851,12 @@ def merge_rasters(
     bounding_box_list = [x['bounding_box'] for x in raster_info_list]
     target_bounding_box = merge_bounding_box_list(bounding_box_list, 'union')
     if bounding_box is not None:
+        LOGGER.debug("target bounding_box %s", target_bounding_box)
         target_bounding_box = merge_bounding_box_list(
             [target_bounding_box, bounding_box], 'intersection')
+        LOGGER.debug("bounding_box %s", bounding_box)
+        LOGGER.debug("merged target bounding_box %s", target_bounding_box)
+
 
     driver = gdal.GetDriverByName('GTiff')
     target_pixel_size = pixel_size_set.pop()
@@ -3114,7 +3118,7 @@ def merge_bounding_box_list(bounding_box_list, bounding_box_mode):
 
     Parameters:
         bounding_box_list (sequence): a sequence of bounding box coordinates
-            in the order [minx,miny,maxx,maxy]..
+            in the order [minx,miny,maxx,maxy].
         mode (string): either 'union' or 'intersection' for the corresponding
             reduction mode.
 
@@ -3153,9 +3157,14 @@ def merge_bounding_box_list(bounding_box_list, bounding_box_mode):
         bb_out = [op(x, y) for op, x, y in zip(comparison_ops, bb1, bb2)]
         return bb_out
 
-    return reduce(
+    result_bb = reduce(
         functools.partial(_merge_bounding_boxes, mode=bounding_box_mode),
         bounding_box_list)
+    if result_bb[0] > result_bb[2] or result_bb[1] > result_bb[3]:
+        raise RuntimeError(
+            "Bounding boxes do not intersect. Base list: %s mode: %s "
+            " result: %s" % (bounding_box_list, bounding_box_mode, result_bb))
+    return result_bb
 
 
 def _make_logger_callback(message):
