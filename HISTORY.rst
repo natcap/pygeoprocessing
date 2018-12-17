@@ -6,6 +6,7 @@ Unreleased Changes
 * Changed ``iterblocks`` API to take a raster/path band as an input rather
   than a path and a list of bands. Also removed the ``astype_list`` due to
   its lack of orthogonality.
+* Fixed bugs in ``convolve_2d`` involving inputs with nodata masking.
 
 1.5.0 12/12/2018
 ----------------
