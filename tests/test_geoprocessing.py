@@ -2106,6 +2106,33 @@ class PyGeoprocessing10(unittest.TestCase):
             total += numpy.sum(block)
         self.assertEqual(total, test_value * n_pixels**2)
 
+    def test_iterblocks_bad_raster_band(self):
+        """PGP.geoprocessing: test iterblocks."""
+        reference = sampledata.SRS_COLOMBIA
+        n_pixels = 100
+        pixel_matrix = numpy.ones((n_pixels, n_pixels), numpy.float32)
+        test_value = 0.5
+        pixel_matrix[:] = test_value
+        nodata_target = None
+        raster_path = os.path.join(self.workspace_dir, 'raster.tif')
+        pygeoprocessing.testing.create_raster_on_disk(
+            [pixel_matrix], reference.origin, reference.projection,
+            nodata_target, reference.pixel_size(30), filename=raster_path,
+            dataset_opts=[
+                'TILED=YES',
+                'BLOCKXSIZE=64',
+                'BLOCKYSIZE=64'])
+
+        total = 0
+        with self.assertRaises(ValueError) as cm:
+            for _, block in pygeoprocessing.iterblocks(
+                    raster_path, largest_block=0):
+                total += numpy.sum(block)
+        expected_message = (
+            "`raster_path_band` not formatted as expected.")
+        actual_message = str(cm.exception)
+        self.assertTrue(expected_message in actual_message)
+
     def test_iterblocks_unsigned_byte(self):
         """PGP.geoprocessing: test iterblocks with unsigned byte."""
         reference = sampledata.SRS_COLOMBIA
