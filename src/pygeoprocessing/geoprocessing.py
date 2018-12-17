@@ -843,7 +843,9 @@ def new_raster_from_base(
         # TILED not set, so lets try to set it to a reasonable value
         if block_size[0] != n_cols:
             # if x block is not the width of the raster it *must* be tiled
-            # otherwise okay if it's striped or tiled
+            # otherwise okay if it's striped or tiled, I can't construct a
+            # test case to cover this, but there is nothing in the spec that
+            # restricts this so I have it just in case.
             local_gtiff_creation_options.append('TILED=YES')
 
     if not any(
