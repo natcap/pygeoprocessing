@@ -2815,8 +2815,9 @@ def merge_rasters(
         target_bounding_box[0], target_pixel_size[0], 0,
         target_bounding_box[1], 0, target_pixel_size[1]]
 
-    # sometimes we have negative pixel sizes so geotransform starts from the
-    # other side
+    # I haven't been able to get the geotransform to ever have a negative x
+    # or positive y, but there's nothing in the spec that would restrict it
+    # so we still test here.
     if target_pixel_size[0] < 0:
         target_geotransform[0] = target_bounding_box[2]
     if target_pixel_size[1] < 0:

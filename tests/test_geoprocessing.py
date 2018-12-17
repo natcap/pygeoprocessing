@@ -3038,6 +3038,30 @@ class PyGeoprocessing10(unittest.TestCase):
         actual_message = str(cm.exception)
         self.assertTrue(expected_message in actual_message, actual_message)
 
+        raster_h_path = os.path.join(self.workspace_dir, 'raster_h.tif')
+        raster_h_array = numpy.zeros((11, 11), dtype=numpy.int8)
+        raster_h_array[:] = 20
+        raster_h = driver.Create(
+            raster_h_path, raster_h_array.shape[1], raster_h_array.shape[0],
+            2, gdal.GDT_Int32)
+        utm10_ref = osr.SpatialReference()
+        raster_h.SetProjection(wgs84_ref.ExportToWkt())
+        raster_h_geotransform = [11.1, 2, 0, -11, 0, -2]
+        raster_h.SetGeoTransform(raster_h_geotransform)
+        band = raster_h.GetRasterBand(1)
+        band.WriteArray(raster_h_array)
+        band.FlushCache()
+        band = None
+        raster_h = None
+
+        target_path = os.path.join(self.workspace_dir, 'merged.tif')
+        with self.assertRaises(ValueError) as cm:
+            pygeoprocessing.merge_rasters(
+                [raster_a_path, raster_h_path], target_path)
+        expected_message = 'Pixel sizes of all rasters are not the same.'
+        actual_message = str(cm.exception)
+        self.assertTrue(expected_message in actual_message, actual_message)
+
     def test_align_with_target_sr(self):
         """PGP: test align_and_resize_raster_stack with a target sr."""
         wgs84_sr = osr.SpatialReference()
