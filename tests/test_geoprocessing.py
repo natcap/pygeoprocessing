@@ -370,6 +370,8 @@ class PyGeoprocessing10(unittest.TestCase):
         layer.CreateFeature(new_feature)
         layer.CommitTransaction()
         layer.SyncToDisk()
+        layer = None
+        vector = None
 
         gtiff_driver = gdal.GetDriverByName('GTiff')
         raster_path = os.path.join(self.workspace_dir, 'small_raster.tif')
@@ -2100,7 +2102,7 @@ class PyGeoprocessing10(unittest.TestCase):
 
         total = 0
         for _, block in pygeoprocessing.iterblocks(
-                raster_path, largest_block=0):
+                (raster_path, 1), largest_block=0):
             total += numpy.sum(block)
         self.assertEqual(total, test_value * n_pixels**2)
 
@@ -2123,45 +2125,9 @@ class PyGeoprocessing10(unittest.TestCase):
 
         total = 0
         for _, block in pygeoprocessing.iterblocks(
-                raster_path, largest_block=0):
+                (raster_path, 1), largest_block=0):
             total += numpy.sum(block)
         self.assertEqual(total, test_value * n_pixels**2)
-
-    def test_iterblocks_bad_astype(self):
-        """PGP.geoprocessing: test iterblocks with bad `astype_list`s."""
-        reference = sampledata.SRS_COLOMBIA
-        n_pixels = 100
-        pixel_matrix = numpy.ones((n_pixels, n_pixels), numpy.float32)
-        test_value = 0.5
-        pixel_matrix[:] = test_value
-        nodata_target = None
-        raster_path = os.path.join(self.workspace_dir, 'raster.tif')
-        pygeoprocessing.testing.create_raster_on_disk(
-            [pixel_matrix], reference.origin,
-            reference.projection, nodata_target, reference.pixel_size(30), filename=raster_path,
-            dataset_opts=[
-                'TILED=YES',
-                'BLOCKXSIZE=64',
-                'BLOCKYSIZE=64'])
-
-        total = 0
-        with self.assertRaises(ValueError) as cm:
-            for _, block in pygeoprocessing.iterblocks(
-                    raster_path, astype_list=numpy.float32, largest_block=0):
-                total += numpy.sum(block)
-        expected_message = (
-            '`astype_list` should be a list or tuple instead it is ')
-        actual_message = str(cm.exception)
-        self.assertTrue(expected_message in actual_message, actual_message)
-
-        with self.assertRaises(ValueError) as cm:
-            for _, block in pygeoprocessing.iterblocks(
-                    raster_path, astype_list=[numpy.float32, numpy.float32],
-                    largest_block=0):
-                total += numpy.sum(block)
-        expected_message = 'should be the same length'
-        actual_message = str(cm.exception)
-        self.assertTrue(expected_message in actual_message, actual_message)
 
     def test_convolve_2d_single_thread(self):
         """PGP.geoprocessing: test convolve 2d (single thread)."""
@@ -2446,8 +2412,9 @@ class PyGeoprocessing10(unittest.TestCase):
         target_nodata = slope_band.GetNoDataValue()
         count = 0
         expected_slope = 100.0
-        for _, block in pygeoprocessing.iterblocks(
-                target_slope_path, astype_list=[numpy.float32]):
+        for _, band_data in pygeoprocessing.iterblocks(
+                (target_slope_path, 1)):
+            block = band_data.astype(numpy.float32)
             bad_mask = (
                 ~numpy.isclose(block, target_nodata) &
                 (block != expected_slope))
@@ -2782,7 +2749,7 @@ class PyGeoprocessing10(unittest.TestCase):
 
         raster_a_path = os.path.join(self.workspace_dir, 'raster_a.tif')
         # everything flows to the right
-        raster_a_array = numpy.zeros((11, 11), dtype=numpy.int32)
+        raster_a_array = numpy.zeros((128, 128), dtype=numpy.int32)
         raster_a_array[:] = 10
         raster_a = driver.Create(
             raster_a_path, raster_a_array.shape[1], raster_a_array.shape[0],
@@ -2797,13 +2764,13 @@ class PyGeoprocessing10(unittest.TestCase):
         raster_a = None
 
         raster_b_path = os.path.join(self.workspace_dir, 'raster_b.tif')
-        raster_b_array = numpy.zeros((11, 11), dtype=numpy.int32)
+        raster_b_array = numpy.zeros((128, 128), dtype=numpy.int32)
         raster_b_array[:] = 20
         raster_b = driver.Create(
             raster_b_path, raster_b_array.shape[1], raster_b_array.shape[0],
             2, gdal.GDT_Int32)
         raster_b.SetProjection(wgs84_ref.ExportToWkt())
-        raster_b_geotransform = [11.1, 1, 0, -11, 0, -1]
+        raster_b_geotransform = [128.1, 1, 0, -128, 0, -1]
         raster_b.SetGeoTransform(raster_b_geotransform)
         band = raster_b.GetRasterBand(1)
         band.WriteArray(raster_b_array)
@@ -2819,16 +2786,16 @@ class PyGeoprocessing10(unittest.TestCase):
         self.assertEqual(target_band.GetNoDataValue(), None)
         target_array = target_band.ReadAsArray()
         target_band = None
-        expected_array = numpy.zeros((22, 22))
-        expected_array[0:11, 0:11] = 10
-        expected_array[11:, 11:] = 20
+        expected_array = numpy.zeros((256, 256))
+        expected_array[0:128, 0:128] = 10
+        expected_array[128:, 128:] = 20
         numpy.testing.assert_almost_equal(target_array, expected_array)
 
         target_band = target_raster.GetRasterBand(2)
         target_array = target_band.ReadAsArray()
         target_band = None
         target_raster = None
-        expected_array = numpy.zeros((22, 22))
+        expected_array = numpy.zeros((256, 256))
         numpy.testing.assert_almost_equal(target_array, expected_array)
 
         target_path = os.path.join(self.workspace_dir, 'merged.tif')
@@ -3354,7 +3321,7 @@ class PyGeoprocessing10(unittest.TestCase):
                     'mask_vector_path': dual_poly_path,
                     'mask_layer_name': 'dual_poly',
                 })
-        expected_message = 'does not overlap '
+        expected_message = 'Bounding boxes do not intersect'
         actual_message = str(cm.exception)
         self.assertTrue(expected_message in actual_message, actual_message)
 

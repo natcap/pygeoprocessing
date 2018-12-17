@@ -654,7 +654,7 @@ def fill_pits(
 
     # this outer loop searches for a pixel that is locally undrained
     for offset_dict in pygeoprocessing.iterblocks(
-            dem_raster_path_band[0], offset_only=True, largest_block=0):
+            dem_raster_path_band, offset_only=True, largest_block=0):
         win_xsize = offset_dict['win_xsize']
         win_ysize = offset_dict['win_ysize']
         xoff = offset_dict['xoff']
@@ -1028,7 +1028,7 @@ def flow_dir_d8(
 
     # this outer loop searches for a pixel that is locally undrained
     for offset_dict in pygeoprocessing.iterblocks(
-            compatable_dem_raster_path_band[0], offset_only=True,
+            compatable_dem_raster_path_band, offset_only=True,
             largest_block=0):
         win_xsize = offset_dict['win_xsize']
         win_ysize = offset_dict['win_ysize']
@@ -1345,7 +1345,7 @@ def flow_accumulation_d8(
 
     # this outer loop searches for a pixel that is locally undrained
     for offset_dict in pygeoprocessing.iterblocks(
-            flow_dir_raster_path_band[0], offset_only=True, largest_block=0):
+            flow_dir_raster_path_band, offset_only=True, largest_block=0):
         win_xsize = offset_dict['win_xsize']
         win_ysize = offset_dict['win_ysize']
         xoff = offset_dict['xoff']
@@ -1646,7 +1646,7 @@ def flow_dir_mfd(
 
     # this outer loop searches for a pixel that is locally undrained
     for offset_dict in pygeoprocessing.iterblocks(
-            compatable_dem_raster_path_band[0], offset_only=True,
+            compatable_dem_raster_path_band, offset_only=True,
             largest_block=0):
         win_xsize = offset_dict['win_xsize']
         win_ysize = offset_dict['win_ysize']
@@ -2058,7 +2058,7 @@ def flow_accumulation_mfd(
 
     # this outer loop searches for a pixel that is locally undrained
     for offset_dict in pygeoprocessing.iterblocks(
-            flow_dir_mfd_raster_path_band[0], offset_only=True,
+            flow_dir_mfd_raster_path_band, offset_only=True,
             largest_block=0):
         win_xsize = offset_dict['win_xsize']
         win_ysize = offset_dict['win_ysize']
@@ -2279,8 +2279,7 @@ def distance_to_channel_d8(
 
     # this outer loop searches for undefined channels
     for offset_dict in pygeoprocessing.iterblocks(
-        channel_raster_path_band[0], offset_only=True,
-            largest_block=0):
+            channel_raster_path_band, offset_only=True, largest_block=0):
         win_xsize = offset_dict['win_xsize']
         win_ysize = offset_dict['win_ysize']
         xoff = offset_dict['xoff']
@@ -2477,8 +2476,7 @@ def distance_to_channel_mfd(
 
     # this outer loop searches for undefined channels
     for offset_dict in pygeoprocessing.iterblocks(
-        channel_raster_path_band[0], offset_only=True,
-            largest_block=0):
+            channel_raster_path_band, offset_only=True, largest_block=0):
         win_xsize = offset_dict['win_xsize']
         win_ysize = offset_dict['win_ysize']
         xoff = offset_dict['xoff']
@@ -2696,7 +2694,7 @@ def extract_streams_mfd(
     cdef time_t last_log_time = ctime(NULL)
 
     for block_offsets in pygeoprocessing.iterblocks(
-            target_stream_raster_path, offset_only=True):
+            (target_stream_raster_path, 1), offset_only=True):
         xoff = block_offsets['xoff']
         yoff = block_offsets['yoff']
         win_xsize = block_offsets['win_xsize']
@@ -2797,7 +2795,7 @@ def extract_streams_mfd(
         target_stream_raster_path, gdal.OF_RASTER | gdal.GA_Update)
     stream_band = stream_raster.GetRasterBand(1)
     for block_offsets in pygeoprocessing.iterblocks(
-                target_stream_raster_path, offset_only=True):
+            (target_stream_raster_path, 1), offset_only=True):
         stream_array = stream_band.ReadAsArray(**block_offsets)
         stream_array[stream_array == 2] = 0
         stream_band.WriteArray(

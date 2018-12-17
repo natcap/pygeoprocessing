@@ -365,7 +365,7 @@ def raster_calculator(
 
         # iterate over each block and calculate local_op
         for block_offset in iterblocks(
-                target_raster_path, offset_only=True,
+                (target_raster_path, 1), offset_only=True,
                 largest_block=largest_block):
             # read input blocks
             offset_list = (block_offset['yoff'], block_offset['xoff'])
@@ -673,12 +673,6 @@ def align_and_resize_raster_stack(
         target_bounding_box = merge_bounding_box_list(
             bounding_box_list, bounding_box_mode)
 
-    if bounding_box_mode == "intersection" and (
-            target_bounding_box[0] > target_bounding_box[2] or
-            target_bounding_box[1] > target_bounding_box[3]):
-        raise ValueError("The rasters' and vectors' intersection is empty "
-                         "(not all rasters and vectors touch each other).")
-
     if vector_mask_options:
         # translate pygeoprocessing terminology into GDAL warp options.
         if 'mask_vector_path' not in vector_mask_options:
@@ -696,13 +690,6 @@ def align_and_resize_raster_stack(
             mask_vector_bb = mask_vector_info['bounding_box']
         mask_vector_intersect_box = merge_bounding_box_list(
             [target_bounding_box, mask_vector_bb], 'intersection')
-
-        if (mask_vector_intersect_box[0] > mask_vector_intersect_box[2] or
-                mask_vector_intersect_box[1] > mask_vector_intersect_box[3]):
-            raise ValueError(
-                "The mask vector's bounding box does not overlap with the "
-                "target bounding box. (mask bb: %s, target bb: %s)" % (
-                    mask_vector_bb, target_bounding_box))
 
     if raster_align_index is not None and raster_align_index >= 0:
         # bounding box needs alignment
@@ -903,7 +890,7 @@ def new_raster_from_base(
             # computation to hang. This block, though possibly slightly less
             # efficient than `band.Fill` will give real-time feedback about
             # how the fill is progressing.
-            for offsets in iterblocks(target_path, offset_only=True):
+            for offsets in iterblocks((target_path, 1), offset_only=True):
                 fill_array = numpy.empty(
                     (offsets['win_ysize'], offsets['win_xsize']))
                 pixels_processed += (
@@ -1066,7 +1053,7 @@ def interpolate_points(
     nodata = band.GetNoDataValue()
     geotransform = target_raster.GetGeoTransform()
     for offsets in iterblocks(
-            target_raster_path_band[0], offset_only=True):
+            target_raster_path_band, offset_only=True):
         grid_y, grid_x = numpy.mgrid[
             offsets['yoff']:offsets['yoff']+offsets['win_ysize'],
             offsets['xoff']:offsets['xoff']+offsets['win_xsize']]
@@ -1143,7 +1130,7 @@ def zonal_statistics(
     if not _is_raster_path_band_formatted(base_raster_path_band):
         raise ValueError(
             "`base_raster_path_band` not formatted as expected.  Expects "
-            "(path, band_index), recieved %s" % repr(base_raster_path_band))
+            "(path, band_index), received %s" % repr(base_raster_path_band))
     aggregate_vector = gdal.OpenEx(aggregate_vector_path, gdal.OF_VECTOR)
     if aggregate_vector is None:
         raise RuntimeError(
@@ -1185,7 +1172,7 @@ def zonal_statistics(
         clipped_raster = gdal.OpenEx(clipped_raster_path, gdal.OF_RASTER)
         clipped_band = clipped_raster.GetRasterBand(base_raster_path_band[1])
     except ValueError as e:
-        if 'intersection is empty' in str(e):
+        if 'Bounding boxes do not intersect' in str(e):
             LOGGER.error(
                 "aggregate vector %s does not intersect with the raster %s",
                 aggregate_vector_path, base_raster_path_band)
@@ -1297,9 +1284,8 @@ def zonal_statistics(
             set_index+1, len(disjoint_fid_sets),
             os.path.basename(aggregate_vector_path))
         for agg_fid_offsets in iterblocks(
-                agg_fid_raster_path, offset_only=True):
-            agg_fid_block = agg_fid_band.ReadAsArray(
-                **agg_fid_offsets)
+                (agg_fid_raster_path, 1), offset_only=True):
+            agg_fid_block = agg_fid_band.ReadAsArray(**agg_fid_offsets)
             clipped_block = clipped_band.ReadAsArray(**agg_fid_offsets)
             valid_mask = (agg_fid_block != agg_fid_nodata)
             valid_agg_fids = agg_fid_block[valid_mask]
@@ -2382,7 +2368,7 @@ def convolve_2d(
     # calculate the kernel sum for normalization
     kernel_nodata = kernel_raster_info['nodata'][0]
     kernel_sum = 0.0
-    for _, kernel_block in iterblocks(kernel_path_band[0]):
+    for _, kernel_block in iterblocks(kernel_path_band):
         if kernel_nodata is not None and ignore_nodata:
             kernel_block[numpy.isclose(kernel_block, kernel_nodata)] = 0.0
         kernel_sum += numpy.sum(kernel_block)
@@ -2413,8 +2399,8 @@ def convolve_2d(
         worker_list.append(worker)
 
     n_blocks = 0
-    for signal_offset in iterblocks(s_path_band[0], offset_only=True):
-        for kernel_offset in iterblocks(k_path_band[0], offset_only=True):
+    for signal_offset in iterblocks(s_path_band, offset_only=True):
+        for kernel_offset in iterblocks(k_path_band, offset_only=True):
             work_queue.put((signal_offset, kernel_offset))
             n_blocks += 1
     for _ in range(max(1, n_threads-1)):
@@ -2494,7 +2480,8 @@ def convolve_2d(
         mask_pixels_processed = 0
         mask_band.FlushCache()
         mask_raster.FlushCache()
-        for target_offset_data in iterblocks(target_path, offset_only=True):
+        for target_offset_data in iterblocks(
+                (target_path, 1), offset_only=True):
             target_block = target_band.ReadAsArray(
                 **target_offset_data).astype(
                     _gdal_type_to_numpy_lookup[target_datatype])
@@ -2542,8 +2529,8 @@ def convolve_2d(
 
 
 def iterblocks(
-        raster_path, band_index_list=None, largest_block=_LARGEST_ITERBLOCK,
-        astype_list=None, offset_only=False):
+        raster_path_band, largest_block=_LARGEST_ITERBLOCK,
+        offset_only=False):
     """Iterate across all the memory blocks in the input raster.
 
     Result is a generator of block location information and numpy arrays.
@@ -2558,33 +2545,23 @@ def iterblocks(
     be careful to do so only with prealigned rasters.
 
     Parameters:
-        raster_path (string): Path to raster file to iterate over.
-        band_index_list (list of ints or None): A sequence of band indexes for
-            which the data blocks should be returned; band indexes start at 1.
-            Defaults to None, which will return all bands.  Band indexes may
-            be specified in any order, and band indexes may be specified
-            multiple times.  The blocks returned on each iteration will be in
-            the order specified in this list.
+        raster_path_band (tuple): a path/band index tuple to indicate
+            which raster band iterblocks should iterate over.
         largest_block (int): Attempts to iterate over raster blocks with
             this many elements.  Useful in cases where the blocksize is
             relatively small, memory is available, and the function call
             overhead dominates the iteration.  Defaults to 2**20.  A value of
             anything less than the original blocksize of the raster will
             result in blocksizes equal to the original size.
-        astype_list (list/tuple of numpy types): If none, output blocks are in
-            the native type of the raster bands.  Otherwise this parameter is
-            a list/tuple of len(band_index_list) length that contains the
-            desired output types that iterblock generates for each band.
         offset_only (boolean): defaults to False, if True `iterblocks` only
             returns offset dictionary and doesn't read any binary data from
             the raster.  This can be useful when iterating over writing to
             an output.
 
     Returns:
-        If `offset_only` is false, on each iteration, a tuple containing a dict
-        of block data and `n` 2-dimensional numpy arrays are returned, where
-        `n` is the number of bands requested via `band_list`. The dict of
-        block data has these attributes:
+        If `offset_only` is false, on each iteration, a tuple containing a
+        dict of block data and a 2-dimensional numpy array are
+        returned. The dict of block data has these attributes:
 
             data['xoff'] - The X offset of the upper-left-hand corner of the
                 block.
@@ -2597,15 +2574,13 @@ def iterblocks(
             data and does not attempt to read binary data from the raster.
 
     """
-    raster = gdal.OpenEx(raster_path, gdal.OF_RASTER)
-
-    if band_index_list is None:
-        band_index_list = range(1, raster.RasterCount + 1)
-
-    band_index_list = [
-        raster.GetRasterBand(index) for index in band_index_list]
-
-    block = band_index_list[0].GetBlockSize()
+    if not _is_raster_path_band_formatted(raster_path_band):
+        raise ValueError(
+            "`raster_path_band` not formatted as expected.  Expects "
+            "(path, band_index), received %s" % repr(raster_path_band))
+    raster = gdal.OpenEx(raster_path_band[0], gdal.OF_RASTER)
+    band = raster.GetRasterBand(raster_path_band[1])
+    block = band.GetBlockSize()
     cols_per_block = block[0]
     rows_per_block = block[1]
 
@@ -2630,25 +2605,6 @@ def iterblocks(
     n_col_blocks = int(math.ceil(n_cols / float(cols_per_block)))
     n_row_blocks = int(math.ceil(n_rows / float(rows_per_block)))
 
-    # Initialize to None so a block array is created on the first iteration
-    last_row_block_width = None
-    last_col_block_width = None
-
-    if astype_list is not None:
-        if not isinstance(astype_list, (list, tuple)):
-            raise ValueError(
-                "`astype_list` should be a list or tuple instead it is %s" % (
-                    repr(astype_list)))
-        if len(band_index_list) != len(astype_list):
-            raise ValueError(
-                "`band_index_list` and `astype_list` should be the same "
-                "length, instead they are sizes %d and %d" % (
-                    len(band_index_list), len(astype_list)))
-        block_type_list = astype_list
-    else:
-        block_type_list = [
-            _gdal_to_numpy_type(ds_band) for ds_band in band_index_list]
-
     for row_block_index in range(n_row_blocks):
         row_offset = row_block_index * rows_per_block
         row_block_width = n_rows - row_offset
@@ -2660,29 +2616,18 @@ def iterblocks(
             if col_block_width > cols_per_block:
                 col_block_width = cols_per_block
 
-            # resize the raster block cache if necessary
-            if (last_row_block_width != row_block_width or
-                    last_col_block_width != col_block_width):
-                raster_blocks = [
-                    numpy.zeros(
-                        (row_block_width, col_block_width),
-                        dtype=block_type) for block_type in
-                    block_type_list]
-
             offset_dict = {
                 'xoff': col_offset,
                 'yoff': row_offset,
                 'win_xsize': col_block_width,
                 'win_ysize': row_block_width,
             }
-            result = offset_dict
-            if not offset_only:
-                for ds_band, block in zip(band_index_list, raster_blocks):
-                    ds_band.ReadAsArray(buf_obj=block, **offset_dict)
-                result = (result,) + tuple(raster_blocks)
-            yield result
+            if offset_only:
+                yield offset_dict
+            else:
+                yield (offset_dict, band.ReadAsArray(**offset_dict))
 
-    band_index_list = None
+    band = None
     gdal.Dataset.__swig_destroy__(raster)
     raster = None
 
@@ -2857,7 +2802,6 @@ def merge_rasters(
         LOGGER.debug("bounding_box %s", bounding_box)
         LOGGER.debug("merged target bounding_box %s", target_bounding_box)
 
-
     driver = gdal.GetDriverByName('GTiff')
     target_pixel_size = pixel_size_set.pop()
     n_cols = int(math.ceil(abs(
@@ -2868,12 +2812,8 @@ def merge_rasters(
         target_pixel_size[1])))
 
     target_geotransform = [
-        target_bounding_box[0],
-        target_pixel_size[0],
-        0,
-        target_bounding_box[1],
-        0,
-        target_pixel_size[1]]
+        target_bounding_box[0], target_pixel_size[0], 0,
+        target_bounding_box[1], 0, target_pixel_size[1]]
 
     # sometimes we have negative pixel sizes so geotransform starts from the
     # other side
@@ -2916,52 +2856,50 @@ def merge_rasters(
         raster_start_y = int((
             raster_info['geotransform'][3] -
             target_geotransform[3]) / target_pixel_size[1])
-        for iter_result in iterblocks(raster_path):
-            offset_info = iter_result[0]
-            # its possible the block reads in coverage that is outside the
-            # target bounds entirely. nothing to do but skip
-            if offset_info['yoff'] + raster_start_y > n_rows:
-                continue
-            if offset_info['xoff'] + raster_start_x > n_cols:
-                continue
-            if (offset_info['xoff'] + raster_start_x +
-                    offset_info['win_xsize'] < 0):
-                continue
-            if (offset_info['yoff'] + raster_start_y +
-                    offset_info['win_ysize'] < 0):
-                continue
+        for band_offset in range(n_bands):
+            for offset_info, data_block in iterblocks(
+                    (raster_path, band_offset+1)):
+                # its possible the block reads in coverage that is outside the
+                # target bounds entirely. nothing to do but skip
+                if offset_info['yoff'] + raster_start_y > n_rows:
+                    continue
+                if offset_info['xoff'] + raster_start_x > n_cols:
+                    continue
+                if (offset_info['xoff'] + raster_start_x +
+                        offset_info['win_xsize'] < 0):
+                    continue
+                if (offset_info['yoff'] + raster_start_y +
+                        offset_info['win_ysize'] < 0):
+                    continue
 
-            # invariant: the window described in `offset_info` intersects
-            # with the target raster.
+                # invariant: the window described in `offset_info` intersects
+                # with the target raster.
 
-            # check to see if window hangs off the left/top part of raster
-            # and determine how far to adjust down
-            x_clip_min = 0
-            if raster_start_x + offset_info['xoff'] < 0:
-                x_clip_min = abs(raster_start_x + offset_info['xoff'])
-            y_clip_min = 0
-            if raster_start_y + offset_info['yoff'] < 0:
-                y_clip_min = abs(raster_start_y + offset_info['yoff'])
-            x_clip_max = 0
+                # check to see if window hangs off the left/top part of raster
+                # and determine how far to adjust down
+                x_clip_min = 0
+                if raster_start_x + offset_info['xoff'] < 0:
+                    x_clip_min = abs(raster_start_x + offset_info['xoff'])
+                y_clip_min = 0
+                if raster_start_y + offset_info['yoff'] < 0:
+                    y_clip_min = abs(raster_start_y + offset_info['yoff'])
+                x_clip_max = 0
 
-            # check if window hangs off right/bottom part of target raster
-            if (offset_info['xoff'] + raster_start_x +
-                    offset_info['win_xsize'] >= n_cols):
-                x_clip_max = (
-                    offset_info['xoff'] + raster_start_x +
-                    offset_info['win_xsize'] - n_cols)
-            y_clip_max = 0
+                # check if window hangs off right/bottom part of target raster
+                if (offset_info['xoff'] + raster_start_x +
+                        offset_info['win_xsize'] >= n_cols):
+                    x_clip_max = (
+                        offset_info['xoff'] + raster_start_x +
+                        offset_info['win_xsize'] - n_cols)
+                y_clip_max = 0
 
-            if (offset_info['yoff'] + raster_start_y +
-                    offset_info['win_ysize'] >= n_rows):
-                y_clip_max = (
-                    offset_info['yoff'] + raster_start_y +
-                    offset_info['win_ysize'] - n_rows)
+                if (offset_info['yoff'] + raster_start_y +
+                        offset_info['win_ysize'] >= n_rows):
+                    y_clip_max = (
+                        offset_info['yoff'] + raster_start_y +
+                        offset_info['win_ysize'] - n_rows)
 
-            data_block_list = iter_result[1:]
-            for target_band, data_block in zip(
-                    target_band_list, data_block_list):
-                target_band.WriteArray(
+                target_band_list[band_offset].WriteArray(
                     data_block[
                         y_clip_min:offset_info['win_ysize']-y_clip_max,
                         x_clip_min:offset_info['win_xsize']-x_clip_max],
@@ -3126,6 +3064,10 @@ def merge_bounding_box_list(bounding_box_list, bounding_box_mode):
         A four tuple bounding box that is the union or intersection of the
             input bounding boxes.
 
+    Raises:
+        ValueError if the bounding boxes in `bounding_box_list` do not
+            intersect if the `bounding_box_mode` is 'intersection'.
+
     """
     def _merge_bounding_boxes(bb1, bb2, mode):
         """Merge two bounding boxes through union or intersection.
@@ -3161,7 +3103,7 @@ def merge_bounding_box_list(bounding_box_list, bounding_box_mode):
         functools.partial(_merge_bounding_boxes, mode=bounding_box_mode),
         bounding_box_list)
     if result_bb[0] > result_bb[2] or result_bb[1] > result_bb[3]:
-        raise RuntimeError(
+        raise ValueError(
             "Bounding boxes do not intersect. Base list: %s mode: %s "
             " result: %s" % (bounding_box_list, bounding_box_mode, result_bb))
     return result_bb
@@ -3300,7 +3242,7 @@ def _convolve_2d_worker(
 
     # calculate the kernel sum for normalization
     kernel_sum = 0.0
-    for _, kernel_block in iterblocks(kernel_path_band[0]):
+    for _, kernel_block in iterblocks(kernel_path_band):
         if kernel_nodata is not None and ignore_nodata:
             kernel_block[numpy.isclose(kernel_block, kernel_nodata)] = 0.0
         kernel_sum += numpy.sum(kernel_block)
