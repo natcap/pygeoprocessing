@@ -571,6 +571,20 @@ class PyGeoprocessing10(unittest.TestCase):
             numpy.count_nonzero(numpy.isclose(
                 mask_array, expected_result)) == 16**2)
 
+        pygeoprocessing.mask_raster(
+            (raster_path, 1), vector_path, target_mask_raster_path,
+            target_mask_value=12, working_dir=self.workspace_dir)
+
+        mask_raster = gdal.OpenEx(target_mask_raster_path, gdal.OF_RASTER)
+        mask_band = mask_raster.GetRasterBand(1)
+        mask_array = mask_band.ReadAsArray()
+        expected_result = numpy.empty((16, 16))
+        expected_result[0:8, :] = 2
+        expected_result[8::, :] = 12
+        self.assertTrue(
+            numpy.count_nonzero(numpy.isclose(
+                mask_array, expected_result)) == 16**2)
+
     def test_reproject_vector_partial_fields(self):
         """PGP.geoprocessing: reproject vector with partial field copy."""
         reference = sampledata.SRS_WILLAMETTE
