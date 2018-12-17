@@ -3422,7 +3422,7 @@ def _assert_is_valid_pixel_size(target_pixel_size):
                 return False
             float(x)
             return True
-        except ValueError:
+        except (ValueError, TypeError):
             return False
 
     if not isinstance(target_pixel_size, (list, tuple)):

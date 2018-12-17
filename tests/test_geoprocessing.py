@@ -3202,3 +3202,21 @@ class PyGeoprocessing10(unittest.TestCase):
         expected_message = 'was not found'
         actual_message = str(cm.exception)
         self.assertTrue(expected_message in actual_message, actual_message)
+
+    def test_assert_is_valid_pixel_size(self):
+        """PGP: geoprocessing test to cover valid pixel size."""
+        self.assertTrue(pygeoprocessing._assert_is_valid_pixel_size(
+            (-10.5, 18282828228)))
+        with self.assertRaises(ValueError) as cm:
+            pygeoprocessing._assert_is_valid_pixel_size(
+                (-238.2, 'eleventeen'))
+        expected_message = 'Invalid value for'
+        actual_message = str(cm.exception)
+        self.assertTrue(expected_message in actual_message, actual_message)
+
+        with self.assertRaises(ValueError) as cm:
+            pygeoprocessing._assert_is_valid_pixel_size(
+                (-238.2, (10.2,)))
+        expected_message = 'Invalid value for'
+        actual_message = str(cm.exception)
+        self.assertTrue(expected_message in actual_message, actual_message)
