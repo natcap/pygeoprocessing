@@ -2991,6 +2991,73 @@ class PyGeoprocessing10(unittest.TestCase):
         actual_message = str(cm.exception)
         self.assertTrue(expected_message in actual_message, actual_message)
 
+        raster_e_path = os.path.join(self.workspace_dir, 'raster_e.tif')
+        raster_e_array = numpy.zeros((11, 11), dtype=numpy.int32)
+        raster_e_array[:] = 20
+        raster_e = driver.Create(
+            raster_e_path, raster_e_array.shape[1], raster_e_array.shape[0],
+            2, gdal.GDT_Int32)
+        utm10_ref = osr.SpatialReference()
+        utm10_ref.ImportFromEPSG(26910)
+        raster_e.SetProjection(utm10_ref.ExportToWkt())
+        raster_e_geotransform = [11.1, 1, 0, -11, 0, -1]
+        raster_e.SetGeoTransform(raster_e_geotransform)
+        band = raster_e.GetRasterBand(1)
+        band.WriteArray(raster_e_array)
+        band.FlushCache()
+        band = None
+        raster_e = None
+
+        target_path = os.path.join(self.workspace_dir, 'merged.tif')
+        with self.assertRaises(ValueError) as cm:
+            pygeoprocessing.merge_rasters(
+                [raster_a_path, raster_e_path], target_path)
+        expected_message = 'Projections are not identical.'
+        actual_message = str(cm.exception)
+        self.assertTrue(expected_message in actual_message, actual_message)
+
+        raster_f_path = os.path.join(self.workspace_dir, 'raster_f.tif')
+        raster_f_array = numpy.zeros((11, 11), dtype=numpy.uint8)
+        raster_f_array[:] = 20
+        raster_f = driver.Create(
+            raster_f_path, raster_f_array.shape[1], raster_f_array.shape[0],
+            2, gdal.GDT_Byte)
+        utm10_ref = osr.SpatialReference()
+        utm10_ref.ImportFromEPSG(26910)
+        raster_f.SetProjection(utm10_ref.ExportToWkt())
+        raster_f_geotransform = [11.1, 1, 0, -11, 0, -1]
+        raster_f.SetGeoTransform(raster_f_geotransform)
+        band = raster_f.GetRasterBand(1)
+        band.WriteArray(raster_f_array)
+        band.FlushCache()
+        band = None
+        raster_f = None
+
+        raster_g_path = os.path.join(self.workspace_dir, 'raster_g.tif')
+        raster_g_array = numpy.zeros((11, 11), dtype=numpy.int8)
+        raster_g_array[:] = 20
+        raster_g = driver.Create(
+            raster_g_path, raster_g_array.shape[1], raster_g_array.shape[0],
+            2, gdal.GDT_Byte, options=['PIXELTYPE=SIGNEDBYTE'])
+        utm10_ref = osr.SpatialReference()
+        utm10_ref.ImportFromEPSG(26910)
+        raster_g.SetProjection(utm10_ref.ExportToWkt())
+        raster_g_geotransform = [11.1, 1, 0, -11, 0, -1]
+        raster_g.SetGeoTransform(raster_g_geotransform)
+        band = raster_g.GetRasterBand(1)
+        band.WriteArray(raster_g_array)
+        band.FlushCache()
+        band = None
+        raster_g = None
+
+        target_path = os.path.join(self.workspace_dir, 'merged.tif')
+        with self.assertRaises(ValueError) as cm:
+            pygeoprocessing.merge_rasters(
+                [raster_f_path, raster_g_path], target_path)
+        expected_message = 'PIXELTYPE different between rasters'
+        actual_message = str(cm.exception)
+        self.assertTrue(expected_message in actual_message, actual_message)
+
     def test_align_with_target_sr(self):
         """PGP: test align_and_resize_raster_stack with a target sr."""
         wgs84_sr = osr.SpatialReference()
