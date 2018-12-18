@@ -1077,7 +1077,7 @@ def delineate_watersheds_d8(
                     if visited.find(neighbor_seed) == visited.end():
                         stack.push(neighbor_seed)
 
-    reclassified_scratch_path = os.path.join(working_dir, 'scratch_reclassified.tif')
+    reclassified_scratch_path = os.path.join(working_dir_path, 'scratch_reclassified.tif')
     pygeoprocessing.reclassify_raster(
         (scratch_raster_path, 1), reclassification,
         reclassified_scratch_path, gdal.GDT_UInt32, 0)
