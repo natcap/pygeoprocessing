@@ -959,11 +959,12 @@ def delineate_watersheds_d8(
     cdef cmap[CoordinatePair, cset[int]] downstream_watersheds
     cdef cset[int] watersheds_downstream_of_neighbor
     cdef int starter_id
-    cdef CoordinatePair starter_seed, current_seed, upstream_seed
+    cdef CoordinatePair starter_seed, current_seed, upstream_seed, neighbor_seed
     cdef cset[CoordinatePair] visited
+    cdef int upstream_seed_id
     while starter_seeds.size() > 0:
         starter_seed = starter_seeds.front()
-        starter_seeds_set.erase(seed)
+        starter_seeds_set.erase(starter_seed)
         starter_seeds.pop()
 
         member_watersheds = seed_watersheds[starter_seed]
@@ -985,8 +986,8 @@ def delineate_watersheds_d8(
 
             # First, check to see if there are fragments upstream of this one.
             if nested_fragments.find(current_seed_id) != nested_fragments.end():
-                upstream_fragments_set = nested_fragments[current_seed_id]
-                upstream_fragments_iterator = upstream_fragments_set.begin()
+                upstream_fragments = nested_fragments[current_seed_id]
+                upstream_fragments_iterator = upstream_fragments.begin()
 
                 while upstream_fragments_iterator != upstream_fragments.end():
                     upstream_seed_id = deref(upstream_fragments_iterator)
