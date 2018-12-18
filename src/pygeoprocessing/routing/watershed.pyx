@@ -14,7 +14,6 @@ from osgeo import osr
 from osgeo import ogr
 import shapely.wkb
 import shapely.ops
-import rtree
 
 cimport numpy
 cimport cython
@@ -914,6 +913,7 @@ def delineate_watersheds_d8(
     #          remain separate.
 
     # Reverse the upstream_fragments dictionary.
+    LOGGER.info('Building network of downstream fragments')
     cdef cmap[int, int] downstream_fragments  # {fragment_id: int downstream_fragment_id}
     cdef cmap[int, cset[int]].iterator nested_fragments_iterator = nested_fragments.begin()
     cdef cset[int] upstream_fragments
@@ -930,6 +930,7 @@ def delineate_watersheds_d8(
         inc(nested_fragments_iterator)
 
     # Locate the seeds that are as far down the seed tree as we can go.
+    LOGGER.info('Determining downstream-most fragments')
     cdef queue[CoordinatePair] starter_seeds
     cdef cset[CoordinatePair] starter_seeds_set
     seeds_in_watersheds_iterator = seed_watersheds.begin()  # reusing previous iterator
@@ -950,6 +951,7 @@ def delineate_watersheds_d8(
 
     reclassification = {}
 
+    LOGGER.info('Determining active fragments')
     cdef cstack[CoordinatePair] stack
     cdef cset[int] member_watersheds
     cdef cmap[CoordinatePair, int] effective_seed_ids
