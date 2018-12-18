@@ -357,10 +357,8 @@ def assert_vectors_equal(a_uri, b_uri, field_tolerance):
                     reg_feature_fid = feat_regression.GetFID()
                     raise AssertionError(
                         'Geometries are not equal in feature %s, '
-                        'regression feature %s in layer %s. Geom: %s, '
-                        'Reference geom: %s.' %
-                        (feature_fid, reg_feature_fid, layer_num, geom,
-                         geom_regression))
+                        'regression feature %s in layer %s' % (
+                            feature_fid, reg_feature_fid, layer_num))
 
                 feat = None
                 feat_regression = None
