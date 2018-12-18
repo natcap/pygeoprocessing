@@ -1,6 +1,12 @@
 Release History
 ===============
 
+Unreleased Changes
+------------------
+* Changing default raster creation compression algorithm from LZW to DEFLATE,
+  this is to address issues where we were seeing recreatable, but
+  unexplainable LZWDecode errors in large raster data.
+
 1.5.0 12/12/2018
 ----------------
 * Specific type checking for ``astype_list`` in ``iterblocks`` to avoid
