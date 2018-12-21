@@ -1343,6 +1343,12 @@ def join_watershed_fragments_d8(watershed_fragments_vector, target_watersheds_pa
         target_feature = ogr.Feature(watersheds_layer_defn)
 
         # Compile the geometry from all member fragments.
+        # TODO: try timing the cascaded union against rasterizing, polygonizing and clearing the raster ... maybe that's faster?
+        #   - If it is, maybe we can get away with *not* doing any unions at all, and just relying on the rasterization?
+        #   - Try this method out on the fragments vector (without delineating watersheds again)
+        #   - May need to store extra information in *another* aspatial table in the fragments vector
+        #        - I'm thinking that this would need to be raster information so we can create the sample raster easily.
+        #   - If rasterization ends up being a good idea, maybe I can do disjoint sets to speed up the process?
         new_geometry = ogr.Geometry(ogr.wkbMultiPolygon)
         for fragment_id in fragments_set:
             fragment_feature = working_fragments_layer.GetFeature(

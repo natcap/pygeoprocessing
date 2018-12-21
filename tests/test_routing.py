@@ -21,11 +21,14 @@ class TestRouting(unittest.TestCase):
 
     def setUp(self):
         """Create a temporary workspace that's deleted later."""
-        self.workspace_dir = tempfile.mkdtemp()
+        #self.workspace_dir = tempfile.mkdtemp()
+        self.workspace_dir = 'delineation_tests'
+        if not os.path.exists(self.workspace_dir):
+            os.makedirs(self.workspace_dir)
 
     def tearDown(self):
         """Clean up remaining files."""
-        shutil.rmtree(self.workspace_dir)
+        #shutil.rmtree(self.workspace_dir)
 
     def test_pit_filling(self):
         """PGP.routing: test pitfilling."""
