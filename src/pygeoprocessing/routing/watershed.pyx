@@ -1080,7 +1080,8 @@ def delineate_watersheds_d8(
     reclassified_scratch_path = os.path.join(working_dir_path, 'scratch_reclassified.tif')
     pygeoprocessing.reclassify_raster(
         (scratch_raster_path, 1), reclassification,
-        reclassified_scratch_path, gdal.GDT_UInt32, 0)
+        reclassified_scratch_path, gdal.GDT_UInt32, 0,
+        values_required=False)  # setting to False to eliminate expensive check.
 
     # Phase 6.2: Polygonization
     #    * Polygonize the seeds fragments.
