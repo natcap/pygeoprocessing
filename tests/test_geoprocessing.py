@@ -229,8 +229,8 @@ class PyGeoprocessing10(unittest.TestCase):
             osr.SpatialReference(result_reference.ExportToWkt()).IsSame(
                 osr.SpatialReference(target_reference.ExportToWkt())))
 
-    def test_calculate_disjoint_polygon_set_null_coverage(self):
-        """PGP.geoprocessing: test that calc_disjoint_poly no intersection."""
+    def test_calculate_disjoint_polygon_set(self):
+        """PGP.geoprocessing: test calc_disjoint_poly no/intersection."""
         gpkg_driver = ogr.GetDriverByName('GPKG')
         vector_path = os.path.join(self.workspace_dir, 'small_vector.gpkg')
         vector = gpkg_driver.CreateDataSource(vector_path)
