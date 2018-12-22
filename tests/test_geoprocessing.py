@@ -503,9 +503,8 @@ class PyGeoprocessing10(unittest.TestCase):
         new_raster.SetGeoTransform(
             [origin_x+n, -1.0, 0.0, origin_y-n, 0.0, 1.0])
         new_band = new_raster.GetRasterBand(1)
-        array = numpy.flip(numpy.flip(
-            numpy.array(range(n*n), dtype=numpy.int32).reshape((n, n)),
-            axis=1), axis=0)
+        array = numpy.fliplr(numpy.flipud(
+            numpy.array(range(n*n), dtype=numpy.int32).reshape((n, n))))
         # this will catch a polygon that barely intersects the upper left
         # hand corner but is nodata.
         new_band.WriteArray(array)
