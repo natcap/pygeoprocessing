@@ -2050,7 +2050,7 @@ def calculate_disjoint_polygon_set(
         poly_rtree_index = rtree.index.Index(r_tree_index_stream)
     else:
         LOGGER.warn("no polygons intersected the bounding box")
-        return ()
+        return []
 
     vector_layer = None
     vector = None
