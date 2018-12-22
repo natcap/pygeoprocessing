@@ -2034,7 +2034,8 @@ def calculate_disjoint_polygon_set(
 
     last_time = time.time()
     LOGGER.info("build shapely polygon list")
-
+    if bounding_box is None:
+        bounding_box = get_vector_info(vector_path)['bounding_box']
     bounding_box = shapely.prepared.prep(shapely.geometry.box(*bounding_box))
     shapely_polygon_lookup = dict((
         (poly_feat.GetFID(),

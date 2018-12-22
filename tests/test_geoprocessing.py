@@ -273,6 +273,10 @@ class PyGeoprocessing10(unittest.TestCase):
             vector_path, bounding_box=[-10, -10, -9, -9])
         self.assertTrue(not result)
 
+        # otherwise none overlap:
+        result = pygeoprocessing.calculate_disjoint_polygon_set(vector_path)
+        self.assertEqual(len(result), 1, result)
+
     def test_zonal_stats_for_small_polygons(self):
         """PGP.geoprocessing: test small polygons for zonal stats."""
         gpkg_driver = ogr.GetDriverByName('GPKG')
