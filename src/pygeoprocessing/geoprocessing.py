@@ -142,7 +142,7 @@ def raster_calculator(
     """
     if not base_raster_path_band_const_list:
         raise ValueError(
-            "``base_raster_path_band_const_list`` is empty and "
+            "`base_raster_path_band_const_list` is empty and "
             "should have at least one value.")
 
     # It's a common error to not pass in path/band tuples, so check for that
@@ -162,7 +162,7 @@ def raster_calculator(
         raise ValueError(
             "Expected a sequence of path / integer band tuples, "
             "ndarrays, or (value, 'raw') pairs for "
-            "``base_raster_path_band_const_list``, instead got: "
+            "`base_raster_path_band_const_list`, instead got: "
             "%s" % pprint.pformat(base_raster_path_band_const_list))
 
     # check that any rasters exist on disk and have enough bands
@@ -406,7 +406,7 @@ def raster_calculator(
             if (not isinstance(target_block, numpy.ndarray) or
                     target_block.shape != blocksize):
                 raise ValueError(
-                    "Expected ``local_op`` to return a numpy.ndarray of "
+                    "Expected `local_op` to return a numpy.ndarray of "
                     "shape %s but got this instead: %s" % (
                         blocksize, target_block))
 
@@ -1131,7 +1131,7 @@ def zonal_statistics(
     """
     if not _is_raster_path_band_formatted(base_raster_path_band):
         raise ValueError(
-            "``base_raster_path_band`` not formatted as expected.  Expects "
+            "`base_raster_path_band` not formatted as expected.  Expects "
             "(path, band_index), received %s" % repr(base_raster_path_band))
     aggregate_vector = gdal.OpenEx(aggregate_vector_path, gdal.OF_VECTOR)
     if aggregate_vector is None:
@@ -1987,17 +1987,17 @@ def rasterize(
 
     if not burn_values and not option_list:
         raise ValueError(
-            "Neither ``burn_values`` nor ``option_list`` is set. At least "
+            "Neither `burn_values` nor `option_list` is set. At least "
             "one must have a value.")
 
     if not isinstance(burn_values, (list, tuple)):
         raise ValueError(
-            "``burn_values`` is not a list/tuple, the value passed is '%s'",
+            "`burn_values` is not a list/tuple, the value passed is '%s'",
             repr(burn_values))
 
     if not isinstance(option_list, (list, tuple)):
         raise ValueError(
-            "``option_list`` is not a list/tuple, the value passed is '%s'",
+            "`option_list` is not a list/tuple, the value passed is '%s'",
             repr(option_list))
 
     gdal.RasterizeLayer(
@@ -2179,7 +2179,7 @@ def distance_transform_edt(
 
     if not isinstance(sampling_distance, (tuple, list)):
         raise ValueError(
-            "``sampling_distance`` should be a tuple/list, instead it's %s" % (
+            "`sampling_distance` should be a tuple/list, instead it's %s" % (
                 type(sampling_distance)))
 
     sample_d_x, sample_d_y = sampling_distance
@@ -2325,9 +2325,9 @@ def convolve_2d(
     }
     if target_datatype is not gdal.GDT_Float64 and target_nodata is None:
         raise ValueError(
-            "``target_datatype`` is set, but ``target_nodata`` is None. "
-            "``target_nodata`` must be set if ``target_datatype`` is not "
-            "``gdal.GDT_Float64``.  ``target_nodata`` is set to None.")
+            "`target_datatype` is set, but `target_nodata` is None. "
+            "`target_nodata` must be set if `target_datatype` is not "
+            "`gdal.GDT_Float64`.  `target_nodata` is set to None.")
     if target_nodata is None:
         target_nodata = numpy.finfo(numpy.float32).min
     new_raster_from_base(
@@ -2578,7 +2578,7 @@ def iterblocks(
     """
     if not _is_raster_path_band_formatted(raster_path_band):
         raise ValueError(
-            "``raster_path_band`` not formatted as expected.  Expects "
+            "`raster_path_band` not formatted as expected.  Expects "
             "(path, band_index), received %s" % repr(raster_path_band))
     raster = gdal.OpenEx(raster_path_band[0], gdal.OF_RASTER)
     band = raster.GetRasterBand(raster_path_band[1])
@@ -3390,6 +3390,6 @@ def _assert_is_valid_pixel_size(target_pixel_size):
     if (len(target_pixel_size) != 2 or
             not all([_is_number(x) for x in target_pixel_size])):
         raise ValueError(
-            "Invalid value for ``target_pixel_size``, expected two numerical "
+            "Invalid value for `target_pixel_size`, expected two numerical "
             "elements, got: %s", repr(target_pixel_size))
     return True
