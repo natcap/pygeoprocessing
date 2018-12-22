@@ -7,6 +7,9 @@ Unreleased Changes
   than a path and a list of bands. Also removed the ``astype_list`` due to
   its lack of orthogonality.
 * Fixed bugs in ``convolve_2d`` involving inputs with nodata masking.
+* Changing default raster creation compression algorithm from LZW to DEFLATE,
+  this is to address issues where we were seeing recreatable, but
+  unexplainable LZWDecode errors in large raster data.
 
 1.5.0 12/12/2018
 ----------------

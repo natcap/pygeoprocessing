@@ -1096,10 +1096,6 @@ def zonal_statistics(
         aggregate_vector_path (string): a path to an ogr compatable polygon
             vector whose geometric features indicate the areas over
             ``base_raster_path_band`` to calculate statistics over.
-        aggregate_field_name (string): field name in ``aggregate_vector_path``
-            that represents an identifying value for a given polygon. Result
-            of this function will be indexed by the values found in this
-            field.
         aggregate_layer_name (string): name of shapefile layer that will be
             used to aggregate results over.  If set to None, the first layer
             in the DataSource will be used as retrieved by ``.GetLayer()``.
