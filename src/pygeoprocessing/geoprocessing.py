@@ -2560,10 +2560,10 @@ def iterblocks(
             the raster.  This can be useful when iterating over writing to
             an output.
 
-    Returns:
+    Yields:
         If ``offset_only`` is false, on each iteration, a tuple containing a
         dict of block data and a 2-dimensional numpy array are
-        returned. The dict of block data has these attributes:
+        yielded. The dict of block data has these attributes:
 
             data['xoff'] - The X offset of the upper-left-hand corner of the
                 block.
