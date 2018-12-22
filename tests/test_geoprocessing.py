@@ -271,7 +271,7 @@ class PyGeoprocessing10(unittest.TestCase):
 
         result = pygeoprocessing.calculate_disjoint_polygon_set(
             vector_path, bounding_box=[-10, -10, -9, -9])
-        self.assertTrue(result == ())
+        self.assertTrue(not result)
 
     def test_zonal_stats_for_small_polygons(self):
         """PGP.geoprocessing: test small polygons for zonal stats."""
