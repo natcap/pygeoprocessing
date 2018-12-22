@@ -1174,7 +1174,7 @@ def zonal_statistics(
         clipped_raster = gdal.OpenEx(clipped_raster_path, gdal.OF_RASTER)
         clipped_band = clipped_raster.GetRasterBand(base_raster_path_band[1])
     except ValueError as e:
-        if 'Bounding boxes do not intersect' in str(e):
+        if 'Bounding boxes do not intersect' in repr(e):
             LOGGER.error(
                 "aggregate vector %s does not intersect with the raster %s",
                 aggregate_vector_path, base_raster_path_band)
