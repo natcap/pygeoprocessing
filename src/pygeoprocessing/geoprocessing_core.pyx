@@ -288,7 +288,7 @@ def calculate_slope(
     target_slope_band = target_slope_raster.GetRasterBand(1)
 
     for block_offset in pygeoprocessing.iterblocks(
-            base_elevation_raster_path_band[0], offset_only=True):
+            base_elevation_raster_path_band, offset_only=True):
         block_offset_copy = block_offset.copy()
         # try to expand the block around the edges if it fits
         x_start = 1

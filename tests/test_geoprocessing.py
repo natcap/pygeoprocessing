@@ -5,10 +5,8 @@ import os
 import unittest
 import shutil
 import types
-import sys
 import logging
 
-LOGGER = logging.getLogger(__name__)
 
 from osgeo import gdal
 from osgeo import ogr
@@ -28,7 +26,7 @@ except ImportError:
 
 
 def passthrough(x):
-    """Used in testing simple raster calculator calls."""
+    """Use in testing simple raster calculator calls."""
     return x
 
 
@@ -68,7 +66,7 @@ class PyGeoprocessing10(unittest.TestCase):
             import pygeoprocessing
             # Verifies that there's a version attribute and it has a value.
             self.assertTrue(len(pygeoprocessing.__version__) > 0)
-        except Exception as error:
+        except Exception:
             self.fail('Could not load pygeoprocessing version.')
 
     def test_version_not_loaded(self):
@@ -231,6 +229,54 @@ class PyGeoprocessing10(unittest.TestCase):
             osr.SpatialReference(result_reference.ExportToWkt()).IsSame(
                 osr.SpatialReference(target_reference.ExportToWkt())))
 
+    def test_calculate_disjoint_polygon_set(self):
+        """PGP.geoprocessing: test calc_disjoint_poly no/intersection."""
+        gpkg_driver = ogr.GetDriverByName('GPKG')
+        vector_path = os.path.join(self.workspace_dir, 'small_vector.gpkg')
+        vector = gpkg_driver.CreateDataSource(vector_path)
+
+        srs = osr.SpatialReference()
+        srs.ImportFromEPSG(4326)
+        layer = vector.CreateLayer('small_vector', srs=srs)
+        layer.CreateField(ogr.FieldDefn('expected_value', ogr.OFTInteger))
+        layer_defn = layer.GetLayerDefn()
+
+        # make an n x n raster with 2*m x 2*m polygons inside.
+        pixel_size = 1.0
+        subpixel_size = 1./5. * pixel_size
+        origin_x = 1.0
+        origin_y = -1.0
+        n = 1
+        layer.StartTransaction()
+        for row_index in range(n * 2):
+            for col_index in range(n * 2):
+                x_pos = origin_x + (
+                    col_index*2 + 1 + col_index // 2) * subpixel_size
+                y_pos = origin_y - (
+                    row_index*2 + 1 + row_index // 2) * subpixel_size
+                shapely_feature = shapely.geometry.Polygon([
+                    (x_pos, y_pos),
+                    (x_pos+subpixel_size, y_pos),
+                    (x_pos+subpixel_size, y_pos-subpixel_size),
+                    (x_pos, y_pos-subpixel_size),
+                    (x_pos, y_pos)])
+                new_feature = ogr.Feature(layer_defn)
+                new_geometry = ogr.CreateGeometryFromWkb(shapely_feature.wkb)
+                new_feature.SetGeometry(new_geometry)
+                expected_value = row_index // 2 * n + col_index // 2
+                new_feature.SetField('expected_value', expected_value)
+                layer.CreateFeature(new_feature)
+        layer.CommitTransaction()
+        layer.SyncToDisk()
+
+        result = pygeoprocessing.calculate_disjoint_polygon_set(
+            vector_path, bounding_box=[-10, -10, -9, -9])
+        self.assertTrue(not result)
+
+        # otherwise none overlap:
+        result = pygeoprocessing.calculate_disjoint_polygon_set(vector_path)
+        self.assertEqual(len(result), 1, result)
+
     def test_zonal_stats_for_small_polygons(self):
         """PGP.geoprocessing: test small polygons for zonal stats."""
         gpkg_driver = ogr.GetDriverByName('GPKG')
@@ -296,6 +342,181 @@ class PyGeoprocessing10(unittest.TestCase):
                 feature.GetField('expected_value'),
                 zonal_stats[poly_id]['sum'])
 
+    def test_zonal_stats_no_bb_overlap(self):
+        """PGP.geoprocessing: test no vector bb raster overlap."""
+        gpkg_driver = ogr.GetDriverByName('GPKG')
+        vector_path = os.path.join(self.workspace_dir, 'vector.gpkg')
+        vector = gpkg_driver.CreateDataSource(vector_path)
+
+        srs = osr.SpatialReference()
+        srs.ImportFromEPSG(4326)
+        layer = vector.CreateLayer('small_vector', srs=srs)
+        layer_defn = layer.GetLayerDefn()
+
+        # make an n x n raster with 2*m x 2*m polygons inside.
+        pixel_size = 1.0
+        subpixel_size = 1./5. * pixel_size
+        origin_x = 1.0
+        origin_y = -1.0
+        n = 16
+        layer.StartTransaction()
+        x_pos = origin_x - n
+        y_pos = origin_y + n
+        shapely_feature = shapely.geometry.Polygon([
+            (x_pos, y_pos),
+            (x_pos+subpixel_size, y_pos),
+            (x_pos+subpixel_size, y_pos-subpixel_size),
+            (x_pos, y_pos-subpixel_size),
+            (x_pos, y_pos)])
+        new_feature = ogr.Feature(layer_defn)
+        new_geometry = ogr.CreateGeometryFromWkb(shapely_feature.wkb)
+        new_feature.SetGeometry(new_geometry)
+        layer.CreateFeature(new_feature)
+        layer.CommitTransaction()
+        layer.SyncToDisk()
+        layer = None
+        vector = None
+
+        gtiff_driver = gdal.GetDriverByName('GTiff')
+        raster_path = os.path.join(self.workspace_dir, 'small_raster.tif')
+        new_raster = gtiff_driver.Create(
+            raster_path, n, n, 1, gdal.GDT_Int32, options=[
+                'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
+                'BLOCKXSIZE=16', 'BLOCKYSIZE=16'])
+        new_raster.SetProjection(srs.ExportToWkt())
+        new_raster.SetGeoTransform([origin_x, 1.0, 0.0, origin_y, 0.0, -1.0])
+        new_band = new_raster.GetRasterBand(1)
+        new_band.SetNoDataValue(-1)
+        array = numpy.array(range(n*n), dtype=numpy.int32).reshape((n, n))
+        new_band.WriteArray(array)
+        new_raster.FlushCache()
+        new_band = None
+        new_raster = None
+
+        zonal_stats = pygeoprocessing.zonal_statistics(
+            (raster_path, 1), vector_path)
+        for poly_id in zonal_stats:
+            self.assertEqual(zonal_stats[poly_id]['sum'], 0.0)
+
+    def test_zonal_stats_all_outside(self):
+        """PGP.geoprocessing: test vector all outside raster."""
+        gpkg_driver = ogr.GetDriverByName('GPKG')
+        vector_path = os.path.join(self.workspace_dir, 'vector.gpkg')
+        vector = gpkg_driver.CreateDataSource(vector_path)
+
+        srs = osr.SpatialReference()
+        srs.ImportFromEPSG(4326)
+        layer = vector.CreateLayer('small_vector', srs=srs)
+        layer_defn = layer.GetLayerDefn()
+
+        # make an n x n raster with 2*m x 2*m polygons inside.
+        pixel_size = 1.0
+        subpixel_size = 1./5. * pixel_size
+        origin_x = 1.0
+        origin_y = -1.0
+        n = 16
+        layer.StartTransaction()
+        x_pos = origin_x - n
+        y_pos = origin_y + n
+        shapely_feature = shapely.geometry.Polygon([
+            (x_pos, y_pos),
+            (x_pos+subpixel_size, y_pos),
+            (x_pos+subpixel_size, y_pos-subpixel_size),
+            (x_pos, y_pos-subpixel_size),
+            (x_pos, y_pos)])
+        new_feature = ogr.Feature(layer_defn)
+        new_geometry = ogr.CreateGeometryFromWkb(shapely_feature.wkb)
+        new_feature.SetGeometry(new_geometry)
+        layer.CreateFeature(new_feature)
+
+        x_pos = origin_x + n*2
+        y_pos = origin_y - n*2
+        shapely_feature = shapely.geometry.Polygon([
+            (x_pos, y_pos),
+            (x_pos+subpixel_size, y_pos),
+            (x_pos+subpixel_size, y_pos-subpixel_size),
+            (x_pos, y_pos-subpixel_size),
+            (x_pos, y_pos)])
+        new_feature = ogr.Feature(layer_defn)
+        new_geometry = ogr.CreateGeometryFromWkb(shapely_feature.wkb)
+
+        x_pos = origin_x - subpixel_size*.99
+        y_pos = origin_y + subpixel_size*.99
+        shapely_feature = shapely.geometry.Polygon([
+            (x_pos, y_pos),
+            (x_pos+subpixel_size, y_pos),
+            (x_pos+subpixel_size, y_pos-subpixel_size),
+            (x_pos, y_pos-subpixel_size),
+            (x_pos, y_pos)])
+        new_feature = ogr.Feature(layer_defn)
+        new_geometry = ogr.CreateGeometryFromWkb(shapely_feature.wkb)
+        new_feature.SetGeometry(new_geometry)
+        layer.CreateFeature(new_feature)
+
+        x_pos = origin_x + (n+.99)
+        y_pos = origin_y - (n+.99)
+        shapely_feature = shapely.geometry.Polygon([
+            (x_pos, y_pos),
+            (x_pos+subpixel_size, y_pos),
+            (x_pos+subpixel_size, y_pos-subpixel_size),
+            (x_pos, y_pos-subpixel_size),
+            (x_pos, y_pos)])
+        new_feature = ogr.Feature(layer_defn)
+        new_geometry = ogr.CreateGeometryFromWkb(shapely_feature.wkb)
+        new_feature.SetGeometry(new_geometry)
+        layer.CreateFeature(new_feature)
+
+        layer.CommitTransaction()
+        layer.SyncToDisk()
+
+        gtiff_driver = gdal.GetDriverByName('GTiff')
+        raster_path = os.path.join(self.workspace_dir, 'small_raster.tif')
+        new_raster = gtiff_driver.Create(
+            raster_path, n, n, 1, gdal.GDT_Int32, options=[
+                'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
+                'BLOCKXSIZE=16', 'BLOCKYSIZE=16'])
+        new_raster.SetProjection(srs.ExportToWkt())
+        new_raster.SetGeoTransform([origin_x, 1.0, 0.0, origin_y, 0.0, -1.0])
+        new_band = new_raster.GetRasterBand(1)
+        new_band.SetNoDataValue(-1)
+        array = numpy.array(range(n*n), dtype=numpy.int32).reshape((n, n))
+        # this will catch a polygon that barely intersects the upper left
+        # hand corner but is nodata.
+        array[0, 0] = -1
+        new_band.WriteArray(array)
+        new_raster.FlushCache()
+        new_band = None
+        new_raster = None
+
+        zonal_stats = pygeoprocessing.zonal_statistics(
+            (raster_path, 1), vector_path)
+        for poly_id in zonal_stats:
+            self.assertEqual(zonal_stats[poly_id]['sum'], 0.0)
+
+        raster_path = os.path.join(
+            self.workspace_dir, 'nonodata_small_raster.tif')
+        new_raster = gtiff_driver.Create(
+            raster_path, n, n, 1, gdal.GDT_Int32, options=[
+                'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
+                'BLOCKXSIZE=16', 'BLOCKYSIZE=16'])
+        new_raster.SetProjection(srs.ExportToWkt())
+        new_raster.SetGeoTransform(
+            [origin_x+n, -1.0, 0.0, origin_y-n, 0.0, 1.0])
+        new_band = new_raster.GetRasterBand(1)
+        array = numpy.fliplr(numpy.flipud(
+            numpy.array(range(n*n), dtype=numpy.int32).reshape((n, n))))
+        # this will catch a polygon that barely intersects the upper left
+        # hand corner but is nodata.
+        new_band.WriteArray(array)
+        new_raster.FlushCache()
+        new_band = None
+        new_raster = None
+
+        zonal_stats = pygeoprocessing.zonal_statistics(
+            (raster_path, 1), vector_path)
+        for poly_id in zonal_stats:
+            self.assertEqual(zonal_stats[poly_id]['sum'], 0.0)
+
     def test_mask_raster(self):
         """PGP.geoprocessing: test mask raster."""
         gpkg_driver = ogr.GetDriverByName('GPKG')
@@ -351,6 +572,20 @@ class PyGeoprocessing10(unittest.TestCase):
         expected_result = numpy.empty((16, 16))
         expected_result[0:8, :] = 2
         expected_result[8::, :] = 0
+        self.assertTrue(
+            numpy.count_nonzero(numpy.isclose(
+                mask_array, expected_result)) == 16**2)
+
+        pygeoprocessing.mask_raster(
+            (raster_path, 1), vector_path, target_mask_raster_path,
+            target_mask_value=12, working_dir=self.workspace_dir)
+
+        mask_raster = gdal.OpenEx(target_mask_raster_path, gdal.OF_RASTER)
+        mask_band = mask_raster.GetRasterBand(1)
+        mask_array = mask_band.ReadAsArray()
+        expected_result = numpy.empty((16, 16))
+        expected_result[0:8, :] = 2
+        expected_result[8::, :] = 12
         self.assertTrue(
             numpy.count_nonzero(numpy.isclose(
                 mask_array, expected_result)) == 16**2)
@@ -451,7 +686,7 @@ class PyGeoprocessing10(unittest.TestCase):
             [polygon_a, polygon_b, polygon_c], reference.projection,
             vector_format='GeoJSON', filename=aggregating_vector_path)
         pixel_matrix = numpy.ones((n_pixels, n_pixels), numpy.float32)
-        nodata_target = -1
+        nodata_target = None
         raster_path = os.path.join(self.workspace_dir, 'raster.tif')
         pygeoprocessing.testing.create_raster_on_disk(
             [pixel_matrix], reference.origin, reference.projection,
@@ -562,6 +797,51 @@ class PyGeoprocessing10(unittest.TestCase):
                 'sum': 81.0}}
         self.assertEqual(result, expected_result)
 
+    def test_zonal_statistics_bad_vector(self):
+        """PGP.geoprocessing: zonal stats raises exception on bad vectors."""
+        # create aggregating polygon
+        reference = sampledata.SRS_COLOMBIA
+        n_pixels = 9
+        missing_aggregating_vector_path = os.path.join(
+            self.workspace_dir, 'not_exists.shp')
+        pixel_matrix = numpy.ones((n_pixels, n_pixels), numpy.float32)
+        nodata_target = None
+        raster_path = os.path.join(self.workspace_dir, 'raster.tif')
+        pygeoprocessing.testing.create_raster_on_disk(
+            [pixel_matrix], reference.origin, reference.projection,
+            nodata_target, reference.pixel_size(30), filename=raster_path)
+        with self.assertRaises(RuntimeError) as cm:
+            _ = pygeoprocessing.zonal_statistics(
+                (raster_path, 1), missing_aggregating_vector_path,
+                ignore_nodata=True,
+                polygons_might_overlap=True)
+        expected_message = 'Could not open aggregate vector'
+        actual_message = str(cm.exception)
+        self.assertTrue(expected_message in actual_message, actual_message)
+
+        pixel_size = 30.0
+        polygon_a = shapely.geometry.Polygon([
+            (reference.origin[0], reference.origin[1]),
+            (reference.origin[0], -pixel_size * n_pixels+reference.origin[1]),
+            (reference.origin[0]+pixel_size * n_pixels,
+             -pixel_size * n_pixels+reference.origin[1]),
+            (reference.origin[0]+pixel_size * n_pixels, reference.origin[1]),
+            (reference.origin[0], reference.origin[1])])
+        aggregating_vector_path = os.path.join(
+            self.workspace_dir, 'aggregate_vector.shp')
+        pygeoprocessing.testing.create_vector_on_disk(
+            [polygon_a], reference.projection,
+            vector_format='ESRI Shapefile', filename=aggregating_vector_path)
+        with self.assertRaises(RuntimeError) as cm:
+            _ = pygeoprocessing.zonal_statistics(
+                (raster_path, 1), aggregating_vector_path,
+                ignore_nodata=True,
+                aggregate_layer_name='not a layer name',
+                polygons_might_overlap=True)
+        expected_message = 'Could not open layer not a layer name'
+        actual_message = str(cm.exception)
+        self.assertTrue(expected_message in actual_message, actual_message)
+
     def test_zonal_statistics_bad_raster_path_band(self):
         """PGP.geoprocessing: test zonal stats with bad raster/path type."""
         reference = sampledata.SRS_COLOMBIA
@@ -666,7 +946,7 @@ class PyGeoprocessing10(unittest.TestCase):
 
         pygeoprocessing.warp_raster(
             base_a_path, base_a_raster_info['pixel_size'], target_raster_path,
-            'near', target_sr_wkt=reference.projection)
+            'near', target_sr_wkt=reference.projection, n_threads=1)
 
         pygeoprocessing.testing.assert_rasters_equal(
             base_a_path, target_raster_path)
@@ -732,7 +1012,6 @@ class PyGeoprocessing10(unittest.TestCase):
 
         pygeoprocessing.testing.assert_rasters_equal(
             expected_raster_path, target_raster_path)
-
 
     def test_align_and_resize_raster_stack_bad_values(self):
         """PGP.geoprocessing: align/resize raster bad base values."""
@@ -902,12 +1181,29 @@ class PyGeoprocessing10(unittest.TestCase):
             [pixel_b_matrix], reference.origin, reference.projection,
             nodata_target, reference.pixel_size(60), filename=base_b_path)
 
-        base_raster_path_list = [base_a_path, base_b_path]
+        pixel_c_matrix = numpy.ones((15, 5), numpy.int16)
+        reference = sampledata.SRS_COLOMBIA
+        nodata_target = -1
+        base_c_path = os.path.join(self.workspace_dir, 'base_c.tif')
+        pygeoprocessing.testing.create_raster_on_disk(
+            [pixel_c_matrix], reference.origin, reference.projection,
+            nodata_target, reference.pixel_size(45), filename=base_c_path)
+
+        pixel_d_matrix = numpy.ones((5, 10), numpy.int16)
+        reference = sampledata.SRS_COLOMBIA
+        nodata_target = -1
+        base_d_path = os.path.join(self.workspace_dir, 'base_d.tif')
+        pygeoprocessing.testing.create_raster_on_disk(
+            [pixel_d_matrix], reference.origin, reference.projection,
+            nodata_target, reference.pixel_size(45), filename=base_d_path)
+
+        base_raster_path_list = [
+            base_a_path, base_b_path, base_c_path, base_d_path]
         target_raster_path_list = [
             os.path.join(self.workspace_dir, 'target_%s.tif' % char)
-            for char in ['a', 'b']]
+            for char in ['a', 'b', 'c', 'd']]
 
-        resample_method_list = ['near'] * 2
+        resample_method_list = ['near'] * len(target_raster_path_list)
         bounding_box_mode = 'intersection'
 
         base_a_raster_info = pygeoprocessing.get_raster_info(base_a_path)
@@ -918,10 +1214,11 @@ class PyGeoprocessing10(unittest.TestCase):
             base_a_raster_info['pixel_size'], bounding_box_mode,
             base_vector_path_list=None, raster_align_index=0)
 
-        for raster_index in range(2):
+        for raster_index in range(len(target_raster_path_list)):
             target_raster_info = pygeoprocessing.get_raster_info(
                 target_raster_path_list[raster_index])
-            target_raster = gdal.OpenEx(target_raster_path_list[raster_index], gdal.OF_RASTER)
+            target_raster = gdal.OpenEx(
+                target_raster_path_list[raster_index], gdal.OF_RASTER)
             target_band = target_raster.GetRasterBand(1)
             target_array = target_band.ReadAsArray()
             numpy.testing.assert_array_equal(pixel_a_matrix, target_array)
@@ -1617,10 +1914,7 @@ class PyGeoprocessing10(unittest.TestCase):
         # 255 should convert to -1 with signed bytes
         pygeoprocessing.new_raster_from_base(
             base_path, target_path, gdal.GDT_Byte, [0],
-            fill_value_list=[255],
-            gtiff_creation_options=[
-                'PIXELTYPE=SIGNEDBYTE',
-                ])
+            fill_value_list=[255])
 
         target_raster = gdal.OpenEx(target_path, gdal.OF_RASTER)
         target_band = target_raster.GetRasterBand(1)
@@ -1811,9 +2105,36 @@ class PyGeoprocessing10(unittest.TestCase):
 
         total = 0
         for _, block in pygeoprocessing.iterblocks(
-                raster_path, largest_block=0):
+                (raster_path, 1), largest_block=0):
             total += numpy.sum(block)
         self.assertEqual(total, test_value * n_pixels**2)
+
+    def test_iterblocks_bad_raster_band(self):
+        """PGP.geoprocessing: test iterblocks."""
+        reference = sampledata.SRS_COLOMBIA
+        n_pixels = 100
+        pixel_matrix = numpy.ones((n_pixels, n_pixels), numpy.float32)
+        test_value = 0.5
+        pixel_matrix[:] = test_value
+        nodata_target = None
+        raster_path = os.path.join(self.workspace_dir, 'raster.tif')
+        pygeoprocessing.testing.create_raster_on_disk(
+            [pixel_matrix], reference.origin, reference.projection,
+            nodata_target, reference.pixel_size(30), filename=raster_path,
+            dataset_opts=[
+                'TILED=YES',
+                'BLOCKXSIZE=64',
+                'BLOCKYSIZE=64'])
+
+        total = 0
+        with self.assertRaises(ValueError) as cm:
+            for _, block in pygeoprocessing.iterblocks(
+                    raster_path, largest_block=0):
+                total += numpy.sum(block)
+        expected_message = (
+            "`raster_path_band` not formatted as expected.")
+        actual_message = str(cm.exception)
+        self.assertTrue(expected_message in actual_message)
 
     def test_iterblocks_unsigned_byte(self):
         """PGP.geoprocessing: test iterblocks with unsigned byte."""
@@ -1834,45 +2155,9 @@ class PyGeoprocessing10(unittest.TestCase):
 
         total = 0
         for _, block in pygeoprocessing.iterblocks(
-                raster_path, largest_block=0):
+                (raster_path, 1), largest_block=0):
             total += numpy.sum(block)
         self.assertEqual(total, test_value * n_pixels**2)
-
-    def test_iterblocks_bad_astype(self):
-        """PGP.geoprocessing: test iterblocks with bad `astype_list`s."""
-        reference = sampledata.SRS_COLOMBIA
-        n_pixels = 100
-        pixel_matrix = numpy.ones((n_pixels, n_pixels), numpy.float32)
-        test_value = 0.5
-        pixel_matrix[:] = test_value
-        nodata_target = None
-        raster_path = os.path.join(self.workspace_dir, 'raster.tif')
-        pygeoprocessing.testing.create_raster_on_disk(
-            [pixel_matrix], reference.origin,
-            reference.projection, nodata_target, reference.pixel_size(30), filename=raster_path,
-            dataset_opts=[
-                'TILED=YES',
-                'BLOCKXSIZE=64',
-                'BLOCKYSIZE=64'])
-
-        total = 0
-        with self.assertRaises(ValueError) as cm:
-            for _, block in pygeoprocessing.iterblocks(
-                    raster_path, astype_list=numpy.float32, largest_block=0):
-                total += numpy.sum(block)
-        expected_message = (
-            '`astype_list` should be a list or tuple instead it is ')
-        actual_message = str(cm.exception)
-        self.assertTrue(expected_message in actual_message, actual_message)
-
-        with self.assertRaises(ValueError) as cm:
-            for _, block in pygeoprocessing.iterblocks(
-                    raster_path, astype_list=[numpy.float32, numpy.float32],
-                    largest_block=0):
-                total += numpy.sum(block)
-        expected_message = 'should be the same length'
-        actual_message = str(cm.exception)
-        self.assertTrue(expected_message in actual_message, actual_message)
 
     def test_convolve_2d_single_thread(self):
         """PGP.geoprocessing: test convolve 2d (single thread)."""
@@ -1890,11 +2175,11 @@ class PyGeoprocessing10(unittest.TestCase):
         kernel_array = numpy.ones((3, 3), numpy.float32)
         pygeoprocessing.testing.create_raster_on_disk(
             [kernel_array], reference.origin, reference.projection,
-            nodata_target, reference.pixel_size(30), filename=kernel_path)
+            None, reference.pixel_size(30), filename=kernel_path)
         target_path = os.path.join(self.workspace_dir, 'target.tif')
         pygeoprocessing.convolve_2d(
             (signal_path, 1), (kernel_path, 1), target_path,
-            n_threads=1)
+            n_threads=1, ignore_nodata=False)
         target_raster = gdal.OpenEx(target_path, gdal.OF_RASTER)
         target_band = target_raster.GetRasterBand(1)
         target_array = target_band.ReadAsArray()
@@ -1958,14 +2243,17 @@ class PyGeoprocessing10(unittest.TestCase):
             [kernel_array], reference.origin, reference.projection,
             nodata_target, reference.pixel_size(30), filename=kernel_path)
         target_path = os.path.join(self.workspace_dir, 'target.tif')
+        target_path = 'target.tif'
         pygeoprocessing.convolve_2d(
             (signal_path, 1), (kernel_path, 1), target_path,
-            ignore_nodata=True, normalize_kernel=True)
+            mask_nodata=False, ignore_nodata=True, normalize_kernel=True)
         target_raster = gdal.OpenEx(target_path, gdal.OF_RASTER)
         target_band = target_raster.GetRasterBand(1)
         target_array = target_band.ReadAsArray()
         target_band = None
         target_raster = None
+        expected_result = test_value * n_pixels ** 2
+        self.assertEqual(numpy.sum(target_array), expected_result)
 
     def test_convolve_2d_ignore_nodata(self):
         """PGP.geoprocessing: test convolve 2d w/ normalize and ignore."""
@@ -2154,7 +2442,9 @@ class PyGeoprocessing10(unittest.TestCase):
         target_nodata = slope_band.GetNoDataValue()
         count = 0
         expected_slope = 100.0
-        for _, block in pygeoprocessing.iterblocks(target_slope_path):
+        for _, band_data in pygeoprocessing.iterblocks(
+                (target_slope_path, 1)):
+            block = band_data.astype(numpy.float32)
             bad_mask = (
                 ~numpy.isclose(block, target_nodata) &
                 (block != expected_slope))
@@ -2344,7 +2634,7 @@ class PyGeoprocessing10(unittest.TestCase):
         """PGP.geoprocessing: test distance transform EDT."""
         reference = sampledata.SRS_COLOMBIA
         n_pixels = 1000
-        nodata_target = -1
+        nodata_target = 0
         base_raster_array = numpy.zeros(
             (n_pixels, n_pixels), dtype=numpy.int)
         base_raster_array[:, n_pixels//2:] = nodata_target
@@ -2388,6 +2678,25 @@ class PyGeoprocessing10(unittest.TestCase):
         expected_result = scipy.ndimage.morphology.distance_transform_edt(
             1 - (base_raster_array == 1), sampling=(
                 sampling_distance[1], sampling_distance[0]))
+        numpy.testing.assert_array_almost_equal(
+            target_array, expected_result, decimal=2)
+
+        base_raster_path = os.path.join(
+            self.workspace_dir, 'undefined_nodata_base_raster.tif')
+        pygeoprocessing.testing.create_raster_on_disk(
+            [base_raster_array], reference.origin, reference.projection,
+            None, reference.pixel_size(30),
+            filename=base_raster_path)
+        pygeoprocessing.distance_transform_edt(
+            (base_raster_path, 1), target_distance_raster_path,
+            sampling_distance=sampling_distance,
+            working_dir=self.workspace_dir)
+        target_raster = gdal.OpenEx(
+            target_distance_raster_path, gdal.OF_RASTER)
+        target_band = target_raster.GetRasterBand(1)
+        target_array = target_band.ReadAsArray()
+        target_band = None
+        target_raster = None
         numpy.testing.assert_array_almost_equal(
             target_array, expected_result, decimal=2)
 
@@ -2470,7 +2779,7 @@ class PyGeoprocessing10(unittest.TestCase):
 
         raster_a_path = os.path.join(self.workspace_dir, 'raster_a.tif')
         # everything flows to the right
-        raster_a_array = numpy.zeros((11, 11), dtype=numpy.int32)
+        raster_a_array = numpy.zeros((128, 128), dtype=numpy.int32)
         raster_a_array[:] = 10
         raster_a = driver.Create(
             raster_a_path, raster_a_array.shape[1], raster_a_array.shape[0],
@@ -2485,13 +2794,13 @@ class PyGeoprocessing10(unittest.TestCase):
         raster_a = None
 
         raster_b_path = os.path.join(self.workspace_dir, 'raster_b.tif')
-        raster_b_array = numpy.zeros((11, 11), dtype=numpy.int32)
+        raster_b_array = numpy.zeros((128, 128), dtype=numpy.int32)
         raster_b_array[:] = 20
         raster_b = driver.Create(
             raster_b_path, raster_b_array.shape[1], raster_b_array.shape[0],
             2, gdal.GDT_Int32)
         raster_b.SetProjection(wgs84_ref.ExportToWkt())
-        raster_b_geotransform = [11.1, 1, 0, -11, 0, -1]
+        raster_b_geotransform = [128.1, 1, 0, -128, 0, -1]
         raster_b.SetGeoTransform(raster_b_geotransform)
         band = raster_b.GetRasterBand(1)
         band.WriteArray(raster_b_array)
@@ -2507,21 +2816,34 @@ class PyGeoprocessing10(unittest.TestCase):
         self.assertEqual(target_band.GetNoDataValue(), None)
         target_array = target_band.ReadAsArray()
         target_band = None
-        expected_array = numpy.zeros((22, 22))
-        expected_array[0:11, 0:11] = 10
-        expected_array[11:, 11:] = 20
-
+        expected_array = numpy.zeros((256, 256))
+        expected_array[0:128, 0:128] = 10
+        expected_array[128:, 128:] = 20
         numpy.testing.assert_almost_equal(target_array, expected_array)
 
         target_band = target_raster.GetRasterBand(2)
         target_array = target_band.ReadAsArray()
         target_band = None
         target_raster = None
-        expected_array = numpy.zeros((22, 22))
-
+        expected_array = numpy.zeros((256, 256))
         numpy.testing.assert_almost_equal(target_array, expected_array)
 
-    def test_merge_rasters_expected_nodata(self):
+        target_path = os.path.join(self.workspace_dir, 'merged.tif')
+        pygeoprocessing.merge_rasters(
+            [raster_a_path, raster_b_path], target_path,
+            bounding_box=[4, -6, 6, -4])
+
+        target_raster = gdal.OpenEx(target_path, gdal.OF_RASTER)
+        target_band = target_raster.GetRasterBand(1)
+        self.assertEqual(target_band.GetNoDataValue(), None)
+        target_array = target_band.ReadAsArray()
+        target_band = None
+        target_raster = None
+        expected_array = numpy.empty((2, 2))
+        expected_array[:] = 10
+        numpy.testing.assert_almost_equal(target_array, expected_array)
+
+    def test_merge_rasters_target_nodata(self):
         """PGP.geoprocessing: test merge_rasters with defined nodata."""
         driver = gdal.GetDriverByName('GTiff')
 
@@ -2565,7 +2887,7 @@ class PyGeoprocessing10(unittest.TestCase):
 
         target_path = os.path.join(self.workspace_dir, 'merged.tif')
         pygeoprocessing.merge_rasters(
-            [raster_a_path, raster_b_path], target_path, expected_nodata=0)
+            [raster_a_path, raster_b_path], target_path, target_nodata=0)
 
         target_raster = gdal.OpenEx(target_path, gdal.OF_RASTER)
         target_band = target_raster.GetRasterBand(1)
@@ -2579,6 +2901,196 @@ class PyGeoprocessing10(unittest.TestCase):
 
         numpy.testing.assert_almost_equal(target_array, expected_array)
         self.assertEqual(nodata_value, 0)
+
+    def test_merge_rasters_exception_cover(self):
+        """PGP.geoprocessing: test merge_rasters with bad data."""
+        driver = gdal.GetDriverByName('GTiff')
+
+        wgs84_ref = osr.SpatialReference()
+        wgs84_ref.ImportFromEPSG(4326)  # WGS84 EPSG
+
+        # the following creates a checkerboard of upper left square raster
+        # defined, lower right, and equal sized nodata chunks on the other
+        # blocks.
+
+        raster_a_path = os.path.join(self.workspace_dir, 'raster_a.tif')
+        # everything flows to the right
+        raster_a_array = numpy.zeros((11, 11), dtype=numpy.int32)
+        raster_a_array[:] = 10
+        raster_a = driver.Create(
+            raster_a_path, raster_a_array.shape[1], raster_a_array.shape[0],
+            2, gdal.GDT_Int32)
+        raster_a_geotransform = [0.1, 1., 0., 0., 0., -1.]
+        raster_a.SetGeoTransform(raster_a_geotransform)
+        raster_a.SetProjection(wgs84_ref.ExportToWkt())
+        band = raster_a.GetRasterBand(1)
+        band.WriteArray(raster_a_array)
+        band.FlushCache()
+        band = None
+        raster_a = None
+
+        raster_b_path = os.path.join(self.workspace_dir, 'raster_b.tif')
+        raster_b_array = numpy.zeros((11, 11), dtype=numpy.int32)
+        raster_b_array[:] = 20
+        raster_b = driver.Create(
+            raster_b_path, raster_b_array.shape[1], raster_b_array.shape[0],
+            2, gdal.GDT_Int32)
+        raster_b.SetProjection(wgs84_ref.ExportToWkt())
+        raster_b_geotransform = [11.1, 1, 0, -11, 0, -1]
+        raster_b.SetGeoTransform(raster_b_geotransform)
+        band = raster_b.GetRasterBand(1)
+        band.SetNoDataValue(-1.0)
+        band.WriteArray(raster_b_array)
+        band.FlushCache()
+        band = None
+        raster_b = None
+
+        target_path = os.path.join(self.workspace_dir, 'merged.tif')
+        with self.assertRaises(ValueError) as cm:
+            pygeoprocessing.merge_rasters(
+                [raster_a_path, raster_b_path], target_path)
+        expected_message = 'Nodata per raster are not the same'
+        actual_message = str(cm.exception)
+        self.assertTrue(expected_message in actual_message, actual_message)
+
+        raster_c_path = os.path.join(self.workspace_dir, 'raster_c.tif')
+        raster_c_array = numpy.zeros((11, 11), dtype=numpy.int32)
+        raster_c_array[:] = 20
+        raster_c = driver.Create(
+            raster_c_path, raster_c_array.shape[1], raster_c_array.shape[0],
+            1, gdal.GDT_Int32)
+        raster_c.SetProjection(wgs84_ref.ExportToWkt())
+        raster_c_geotransform = [11.1, 1, 0, -11, 0, -1]
+        raster_c.SetGeoTransform(raster_c_geotransform)
+        band = raster_c.GetRasterBand(1)
+        band.SetNoDataValue(-1.0)
+        band.WriteArray(raster_c_array)
+        band.FlushCache()
+        band = None
+        raster_c = None
+
+        target_path = os.path.join(self.workspace_dir, 'merged.tif')
+        with self.assertRaises(ValueError) as cm:
+            pygeoprocessing.merge_rasters(
+                [raster_a_path, raster_c_path], target_path)
+        expected_message = 'Number of bands per raster are not the same.'
+        actual_message = str(cm.exception)
+        self.assertTrue(expected_message in actual_message, actual_message)
+
+        raster_d_path = os.path.join(self.workspace_dir, 'raster_d.tif')
+        raster_d_array = numpy.zeros((11, 11), dtype=numpy.float32)
+        raster_d_array[:] = 20
+        raster_d = driver.Create(
+            raster_d_path, raster_d_array.shape[1], raster_d_array.shape[0],
+            2, gdal.GDT_Float32)
+        raster_d.SetProjection(wgs84_ref.ExportToWkt())
+        raster_d_geotransform = [11.1, 1, 0, -11, 0, -1]
+        raster_d.SetGeoTransform(raster_d_geotransform)
+        band = raster_d.GetRasterBand(1)
+        band.SetNoDataValue(-1.0)
+        band.WriteArray(raster_d_array)
+        band.FlushCache()
+        band = None
+        raster_d = None
+
+        target_path = os.path.join(self.workspace_dir, 'merged.tif')
+        with self.assertRaises(ValueError) as cm:
+            pygeoprocessing.merge_rasters(
+                [raster_a_path, raster_d_path], target_path)
+        expected_message = 'Rasters have different datatypes.'
+        actual_message = str(cm.exception)
+        self.assertTrue(expected_message in actual_message, actual_message)
+
+        raster_e_path = os.path.join(self.workspace_dir, 'raster_e.tif')
+        raster_e_array = numpy.zeros((11, 11), dtype=numpy.int32)
+        raster_e_array[:] = 20
+        raster_e = driver.Create(
+            raster_e_path, raster_e_array.shape[1], raster_e_array.shape[0],
+            2, gdal.GDT_Int32)
+        utm10_ref = osr.SpatialReference()
+        utm10_ref.ImportFromEPSG(26910)
+        raster_e.SetProjection(utm10_ref.ExportToWkt())
+        raster_e_geotransform = [11.1, 1, 0, -11, 0, -1]
+        raster_e.SetGeoTransform(raster_e_geotransform)
+        band = raster_e.GetRasterBand(1)
+        band.WriteArray(raster_e_array)
+        band.FlushCache()
+        band = None
+        raster_e = None
+
+        target_path = os.path.join(self.workspace_dir, 'merged.tif')
+        with self.assertRaises(ValueError) as cm:
+            pygeoprocessing.merge_rasters(
+                [raster_a_path, raster_e_path], target_path)
+        expected_message = 'Projections are not identical.'
+        actual_message = str(cm.exception)
+        self.assertTrue(expected_message in actual_message, actual_message)
+
+        raster_f_path = os.path.join(self.workspace_dir, 'raster_f.tif')
+        raster_f_array = numpy.zeros((11, 11), dtype=numpy.uint8)
+        raster_f_array[:] = 20
+        raster_f = driver.Create(
+            raster_f_path, raster_f_array.shape[1], raster_f_array.shape[0],
+            2, gdal.GDT_Byte)
+        utm10_ref = osr.SpatialReference()
+        utm10_ref.ImportFromEPSG(26910)
+        raster_f.SetProjection(utm10_ref.ExportToWkt())
+        raster_f_geotransform = [11.1, 1, 0, -11, 0, -1]
+        raster_f.SetGeoTransform(raster_f_geotransform)
+        band = raster_f.GetRasterBand(1)
+        band.WriteArray(raster_f_array)
+        band.FlushCache()
+        band = None
+        raster_f = None
+
+        raster_g_path = os.path.join(self.workspace_dir, 'raster_g.tif')
+        raster_g_array = numpy.zeros((11, 11), dtype=numpy.int8)
+        raster_g_array[:] = 20
+        raster_g = driver.Create(
+            raster_g_path, raster_g_array.shape[1], raster_g_array.shape[0],
+            2, gdal.GDT_Byte, options=['PIXELTYPE=SIGNEDBYTE'])
+        utm10_ref = osr.SpatialReference()
+        utm10_ref.ImportFromEPSG(26910)
+        raster_g.SetProjection(utm10_ref.ExportToWkt())
+        raster_g_geotransform = [11.1, 1, 0, -11, 0, -1]
+        raster_g.SetGeoTransform(raster_g_geotransform)
+        band = raster_g.GetRasterBand(1)
+        band.WriteArray(raster_g_array)
+        band.FlushCache()
+        band = None
+        raster_g = None
+
+        target_path = os.path.join(self.workspace_dir, 'merged.tif')
+        with self.assertRaises(ValueError) as cm:
+            pygeoprocessing.merge_rasters(
+                [raster_f_path, raster_g_path], target_path)
+        expected_message = 'PIXELTYPE different between rasters'
+        actual_message = str(cm.exception)
+        self.assertTrue(expected_message in actual_message, actual_message)
+
+        raster_h_path = os.path.join(self.workspace_dir, 'raster_h.tif')
+        raster_h_array = numpy.zeros((11, 11), dtype=numpy.int8)
+        raster_h_array[:] = 20
+        raster_h = driver.Create(
+            raster_h_path, raster_h_array.shape[1], raster_h_array.shape[0],
+            2, gdal.GDT_Int32)
+        utm10_ref = osr.SpatialReference()
+        raster_h.SetProjection(wgs84_ref.ExportToWkt())
+        raster_h_geotransform = [11.1, 2, 0, -11, 0, -2]
+        raster_h.SetGeoTransform(raster_h_geotransform)
+        band = raster_h.GetRasterBand(1)
+        band.WriteArray(raster_h_array)
+        band.FlushCache()
+        band = None
+        raster_h = None
+
+        target_path = os.path.join(self.workspace_dir, 'merged.tif')
+        with self.assertRaises(ValueError) as cm:
+            pygeoprocessing.merge_rasters(
+                [raster_a_path, raster_h_path], target_path)
+        expected_message = 'Pixel sizes of all rasters are not the same.'
+        actual_message = str(cm.exception)
+        self.assertTrue(expected_message in actual_message, actual_message)
 
     def test_align_with_target_sr(self):
         """PGP: test align_and_resize_raster_stack with a target sr."""
@@ -2863,7 +3375,7 @@ class PyGeoprocessing10(unittest.TestCase):
                     'mask_vector_path': dual_poly_path,
                     'mask_layer_name': 'dual_poly',
                 })
-        expected_message = 'does not overlap '
+        expected_message = 'Bounding boxes do not intersect'
         actual_message = str(cm.exception)
         self.assertTrue(expected_message in actual_message, actual_message)
 
@@ -2905,3 +3417,20 @@ class PyGeoprocessing10(unittest.TestCase):
         actual_message = str(cm.exception)
         self.assertTrue(expected_message in actual_message, actual_message)
 
+    def test_assert_is_valid_pixel_size(self):
+        """PGP: geoprocessing test to cover valid pixel size."""
+        self.assertTrue(pygeoprocessing._assert_is_valid_pixel_size(
+            (-10.5, 18282828228)))
+        with self.assertRaises(ValueError) as cm:
+            pygeoprocessing._assert_is_valid_pixel_size(
+                (-238.2, 'eleventeen'))
+        expected_message = 'Invalid value for'
+        actual_message = str(cm.exception)
+        self.assertTrue(expected_message in actual_message, actual_message)
+
+        with self.assertRaises(ValueError) as cm:
+            pygeoprocessing._assert_is_valid_pixel_size(
+                (-238.2, (10.2,)))
+        expected_message = 'Invalid value for'
+        actual_message = str(cm.exception)
+        self.assertTrue(expected_message in actual_message, actual_message)
