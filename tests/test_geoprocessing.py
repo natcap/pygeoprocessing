@@ -759,6 +759,69 @@ class PyGeoprocessing10(unittest.TestCase):
                 'sum': 0.0}}
         self.assertEqual(result, expected_result)
 
+    def test_zonal_statistics_nodata_is_zero(self):
+        """PGP.geoprocessing: test zonal stats function with nodata set to 0."""
+        # create aggregating polygon
+        gpkg_driver = ogr.GetDriverByName('GPKG')
+        vector_path = os.path.join(self.workspace_dir, 'small_vector.gpkg')
+        vector = gpkg_driver.CreateDataSource(vector_path)
+
+        srs = osr.SpatialReference()
+        srs.ImportFromEPSG(4326)
+        layer = vector.CreateLayer('small_vector', srs=srs)
+        layer_defn = layer.GetLayerDefn()
+
+        origin_x = 1.0
+        origin_y = -1.0
+        n = 2
+
+        layer.StartTransaction()
+        shapely_feature = shapely.geometry.Polygon([
+            (origin_x, origin_y),
+            (origin_x+n, origin_y),
+            (origin_x+n, origin_y-n),
+            (origin_x, origin_y-n),
+            (origin_x, origin_y)])
+        new_feature = ogr.Feature(layer_defn)
+        new_geometry = ogr.CreateGeometryFromWkb(shapely_feature.wkb)
+        new_feature.SetGeometry(new_geometry)
+        layer.CreateFeature(new_feature)
+        layer.CommitTransaction()
+        layer.SyncToDisk()
+
+        layer = None
+        vector = None
+
+        # create raster with nodata value of 0
+        gtiff_driver = gdal.GetDriverByName('GTiff')
+        raster_path = os.path.join(self.workspace_dir, 'small_raster.tif')
+        new_raster = gtiff_driver.Create(
+            raster_path, n, n, 1, gdal.GDT_Int32, options=[
+                'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
+                'BLOCKXSIZE=16', 'BLOCKYSIZE=16'])
+        new_raster.SetProjection(srs.ExportToWkt())
+        new_raster.SetGeoTransform([origin_x, 1.0, 0.0, origin_y, 0.0, -1.0])
+        new_band = new_raster.GetRasterBand(1)
+        new_band.WriteArray(numpy.array([[1, 0], [1, 0]]))
+        new_band.SetNoDataValue(0)
+        new_raster.FlushCache()
+        new_band = None
+        new_raster = None
+
+        result = pygeoprocessing.zonal_statistics(
+            (raster_path, 1), vector_path,
+            aggregate_layer_name=None,
+            ignore_nodata=True,
+            polygons_might_overlap=False)
+        expected_result = {
+            1: {
+                'count': 2,
+                'max': 1,
+                'min': 1,
+                'nodata_count': 2,
+                'sum': 2.0}}
+        self.assertEqual(result, expected_result)
+
     def test_zonal_statistics_named_layer(self):
         """PGP.geoprocessing: test zonal stats with named layer."""
         # create aggregating polygon
