@@ -1291,7 +1291,7 @@ def zonal_statistics(
             for agg_fid in numpy.unique(valid_agg_fids):
                 masked_clipped_block = valid_clipped[
                     valid_agg_fids == agg_fid]
-                if raster_nodata:
+                if raster_nodata is not None:
                     clipped_nodata_mask = numpy.isclose(
                         masked_clipped_block, raster_nodata)
                 else:
@@ -1375,7 +1375,7 @@ def zonal_statistics(
         unset_fid_block = clipped_band.ReadAsArray(
             xoff=xoff, yoff=yoff, win_xsize=win_xsize, win_ysize=win_ysize)
 
-        if raster_nodata:
+        if raster_nodata is not None:
             unset_fid_nodata_mask = numpy.isclose(
                 unset_fid_block, raster_nodata)
         else:
