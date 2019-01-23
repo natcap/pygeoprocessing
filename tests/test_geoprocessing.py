@@ -2306,7 +2306,6 @@ class PyGeoprocessing10(unittest.TestCase):
             [kernel_array], reference.origin, reference.projection,
             nodata_target, reference.pixel_size(30), filename=kernel_path)
         target_path = os.path.join(self.workspace_dir, 'target.tif')
-        target_path = 'target.tif'
         pygeoprocessing.convolve_2d(
             (signal_path, 1), (kernel_path, 1), target_path,
             mask_nodata=False, ignore_nodata=True, normalize_kernel=True)
@@ -2760,6 +2759,40 @@ class PyGeoprocessing10(unittest.TestCase):
         target_array = target_band.ReadAsArray()
         target_band = None
         target_raster = None
+        numpy.testing.assert_array_almost_equal(
+            target_array, expected_result, decimal=2)
+
+    def test_distance_transform_edt_small_sample_distance(self):
+        """PGP.geoprocessing: test distance transform w/ small sample dist."""
+        reference = sampledata.SRS_COLOMBIA
+        n_pixels = 10
+        nodata_target = None
+        base_raster_array = numpy.zeros(
+            (n_pixels, n_pixels), dtype=numpy.int)
+        base_raster_array[n_pixels//2:, :] = 1
+        base_raster_path = os.path.join(self.workspace_dir, 'base_raster.tif')
+        pygeoprocessing.testing.create_raster_on_disk(
+            [base_raster_array], reference.origin, reference.projection,
+            nodata_target, reference.pixel_size(30),
+            filename=base_raster_path)
+
+        target_distance_raster_path = os.path.join(
+            self.workspace_dir, 'target_distance.tif')
+
+        sampling_distance = (0.1, 0.1)
+        pygeoprocessing.distance_transform_edt(
+            (base_raster_path, 1), target_distance_raster_path,
+            sampling_distance=sampling_distance,
+            working_dir=self.workspace_dir)
+        target_raster = gdal.OpenEx(
+            target_distance_raster_path, gdal.OF_RASTER)
+        target_band = target_raster.GetRasterBand(1)
+        target_array = target_band.ReadAsArray()
+        target_band = None
+        target_raster = None
+        expected_result = scipy.ndimage.morphology.distance_transform_edt(
+            1 - (base_raster_array == 1), sampling=(
+                sampling_distance[1], sampling_distance[0]))
         numpy.testing.assert_array_almost_equal(
             target_array, expected_result, decimal=2)
 

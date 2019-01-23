@@ -88,8 +88,9 @@ def _distance_transform_edt(
     g_band_blocksize = g_band.GetBlockSize()
 
     # distances can't be larger than half the perimeter of the raster.
-    cdef float numerical_inf = sample_d_x * sample_d_y * (
+    cdef float numerical_inf = max(sample_d_x, 1.0) * max(sample_d_y, 1.0) * (
         raster_info['raster_size'][0] + raster_info['raster_size'][1])
+    LOGGER.debug(numerical_inf)
     # scan 1
     done = False
     block_xsize = raster_info['block_size'][0]
