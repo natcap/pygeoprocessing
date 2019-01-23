@@ -11,7 +11,7 @@ Unreleased Changes
   this is to address issues where we were seeing recreatable, but
   unexplainable LZWDecode errors in large raster data.
 * Fixed an issue that could cause the distance transform to be incorrect when
-  the absolute value of the sampling distance was less than 0.
+  the sampling distance was in the noninclusive range of (0.0, 1.0).
 
 1.5.0 12/12/2018
 ----------------

@@ -320,7 +320,10 @@ def raster_calculator(
         pass
     target_raster = gtiff_driver.Create(
         target_raster_path, n_cols, n_rows, 1, datatype_target,
-        options=gtiff_creation_options)
+        options=(
+            'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=DEFLATE',
+            'BLOCKXSIZE=256', 'BLOCKYSIZE=256'))
+
     target_band = target_raster.GetRasterBand(1)
     if nodata_target is not None:
         target_band.SetNoDataValue(nodata_target)
