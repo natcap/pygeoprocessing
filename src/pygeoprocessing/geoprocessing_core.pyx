@@ -51,8 +51,12 @@ def _distance_transform_edt(
         g_raster_path (string): path to a raster created by this call that
             is used as the intermediate "g" variable described in Meijster
             et. al.
-        sampling_distance (float): parameter used to linearly scale the
-            pixel distances when calculating the distance transform.
+        sample_d_x (float):
+        sample_d_y (float):
+            These parameters scale the pixel distances when calculating the
+            distance transform. `d_x` is the x direction when changing a
+            column index, and `d_y` when changing a row index. Both values
+            must be > 0.
         target_distance_raster_path (string): path to the target raster
             created by this call that is the exact euclidean distance
             transform from any pixel in the base raster that is not nodata and
@@ -90,7 +94,6 @@ def _distance_transform_edt(
     # distances can't be larger than half the perimeter of the raster.
     cdef float numerical_inf = max(sample_d_x, 1.0) * max(sample_d_y, 1.0) * (
         raster_info['raster_size'][0] + raster_info['raster_size'][1])
-    LOGGER.debug(numerical_inf)
     # scan 1
     done = False
     block_xsize = raster_info['block_size'][0]
