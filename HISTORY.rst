@@ -1,6 +1,18 @@
 Release History
 ===============
 
+1.6.0 1/23/2019
+---------------
+* Changed ``iterblocks`` API to take a raster/path band as an input rather
+  than a path and a list of bands. Also removed the ``astype_list`` due to
+  its lack of orthogonality.
+* Fixed bugs in ``convolve_2d`` involving inputs with nodata masking.
+* Changing default raster creation compression algorithm from LZW to DEFLATE,
+  this is to address issues where we were seeing recreatable, but
+  unexplainable LZWDecode errors in large raster data.
+* Fixed an issue that could cause the distance transform to be incorrect when
+  the sampling distance was in the noninclusive range of (0.0, 1.0).
+
 1.5.0 12/12/2018
 ----------------
 * Specific type checking for ``astype_list`` in ``iterblocks`` to avoid

@@ -1,3 +1,6 @@
+# coding=UTF-8
+# distutils: language=c++
+# cython: language_level=2
 import os
 import tempfile
 import logging
@@ -18,7 +21,7 @@ from osgeo import gdal
 import pygeoprocessing
 
 DEFAULT_GTIFF_CREATION_OPTIONS = (
-    'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
+    'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=DEFLATE',
     'BLOCKXSIZE=256', 'BLOCKYSIZE=256')
 LOGGER = logging.getLogger('pygeoprocessing.geoprocessing_core')
 
@@ -28,8 +31,8 @@ cdef float _NODATA = -1.0
 @cython.wraparound(False)
 @cython.cdivision(True)
 def _distance_transform_edt(
-        region_raster_path, g_raster_path, double sample_d_x,
-        double sample_d_y, target_distance_raster_path):
+        region_raster_path, g_raster_path, float sample_d_x,
+        float sample_d_y, target_distance_raster_path):
     """Calculate the euclidean distance transform on base raster.
 
     Calculates the euclidean distance transform on the base raster in units of
@@ -51,8 +54,12 @@ def _distance_transform_edt(
         g_raster_path (string): path to a raster created by this call that
             is used as the intermediate "g" variable described in Meijster
             et. al.
-        sampling_distance (float): parameter used to linearly scale the
-            pixel distances when calculating the distance transform.
+        sample_d_x (float):
+        sample_d_y (float):
+            These parameters scale the pixel distances when calculating the
+            distance transform. `d_x` is the x direction when changing a
+            column index, and `d_y` when changing a row index. Both values
+            must be > 0.
         target_distance_raster_path (string): path to the target raster
             created by this call that is the exact euclidean distance
             transform from any pixel in the base raster that is not nodata and
@@ -88,7 +95,7 @@ def _distance_transform_edt(
     g_band_blocksize = g_band.GetBlockSize()
 
     # distances can't be larger than half the perimeter of the raster.
-    cdef float numerical_inf = sample_d_x * sample_d_y * (
+    cdef float numerical_inf = max(sample_d_x, 1.0) * max(sample_d_y, 1.0) * (
         raster_info['raster_size'][0] + raster_info['raster_size'][1])
     # scan 1
     done = False
@@ -288,7 +295,7 @@ def calculate_slope(
     target_slope_band = target_slope_raster.GetRasterBand(1)
 
     for block_offset in pygeoprocessing.iterblocks(
-            base_elevation_raster_path_band[0], offset_only=True):
+            base_elevation_raster_path_band, offset_only=True):
         block_offset_copy = block_offset.copy()
         # try to expand the block around the edges if it fits
         x_start = 1

@@ -23,7 +23,6 @@ private:
     void clean(list< pair<KEY_T, VAL_T> > &removed_value_list){
         while(item_map.size()>cache_size){
             ListIter last_it = item_list.end(); last_it --;
-            MapIter map_it = item_map.find(last_it->first);
             removed_value_list.push_back(
                 make_pair(last_it->first, last_it->second));
             item_map.erase(last_it->first);
