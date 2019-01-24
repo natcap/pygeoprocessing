@@ -1,3 +1,6 @@
+# coding=UTF-8
+# distutils: language=c++
+# cython: language_level=2
 import os
 import tempfile
 import logging
@@ -28,8 +31,8 @@ cdef float _NODATA = -1.0
 @cython.wraparound(False)
 @cython.cdivision(True)
 def _distance_transform_edt(
-        region_raster_path, g_raster_path, double sample_d_x,
-        double sample_d_y, target_distance_raster_path):
+        region_raster_path, g_raster_path, float sample_d_x,
+        float sample_d_y, target_distance_raster_path):
     """Calculate the euclidean distance transform on base raster.
 
     Calculates the euclidean distance transform on the base raster in units of
