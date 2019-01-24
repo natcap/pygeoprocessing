@@ -1,8 +1,8 @@
 Release History
 ===============
 
-Unreleased Changes
-------------------
+1.6.0 1/23/2019
+---------------
 * Changed ``iterblocks`` API to take a raster/path band as an input rather
   than a path and a list of bands. Also removed the ``astype_list`` due to
   its lack of orthogonality.
