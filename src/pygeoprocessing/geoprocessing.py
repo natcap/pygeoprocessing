@@ -1756,7 +1756,8 @@ def reclassify_raster(
 def warp_raster(
         base_raster_path, target_pixel_size, target_raster_path,
         resample_method, target_bb=None, base_sr_wkt=None, target_sr_wkt=None,
-        gtiff_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS,
+        target_format='GTiff',
+        raster_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS,
         n_threads=None, vector_mask_options=None,
         gdal_warp_options=None):
     """Resize/resample raster to desired pixel size, bbox and projection.
@@ -1778,8 +1779,11 @@ def warp_raster(
             ``base_raster_path`` as this.
         target_sr_wkt (string): if not None, desired target projection in Well
             Known Text format.
-        gtiff_creation_options (list or tuple): list of strings that will be
-            passed as GDAL "dataset" creation options to the GTIFF driver.
+        target_format (str): desired raster target format. Default is GTiff.
+        raster_creation_options (list or tuple): list of strings that will be
+            passed as raster "dataset" creation options to the driver
+            specified by the `target_format` string. Defaults to
+            PyGeoprocessing's GTiff default creation options.
         n_threads (int): optional, if not None this sets the ``N_THREADS``
             option for ``gdal.Warp``.
         vector_mask_options (dict): optional, if not None, this is a
@@ -1899,7 +1903,7 @@ def warp_raster(
     base_raster = gdal.OpenEx(base_raster_path, gdal.OF_RASTER)
     gdal.Warp(
         target_raster_path, base_raster,
-        format=format_type,
+        format=target_format,
         outputBounds=working_bb,
         xRes=abs(target_pixel_size[0]),
         yRes=abs(target_pixel_size[1]),
@@ -1909,7 +1913,7 @@ def warp_raster(
         dstSRS=target_sr_wkt,
         multithread=True if warp_options else False,
         warpOptions=warp_options,
-        creationOptions=gtiff_creation_options,
+        creationOptions=raster_creation_options,
         callback=reproject_callback,
         callback_data=[target_raster_path],
         cutlineDSName=mask_vector_path,
