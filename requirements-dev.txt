@@ -1,11 +1,13 @@
-# requirements.txt
+# requirements-dev.txt
 # --------------------
 # This file records the packages and requirements needed in order for
-# pygeoprocessing to work as expected.
+# pygeoprocessing to work in a development environment.
 
 GDAL>=2.0,<3.0
 numpy>=1.10.1
 scipy>=0.14.1,!=0.19.1
 Shapely>=1.6.4
 future
+Cython
 Rtree>=0.8.2
+mock
