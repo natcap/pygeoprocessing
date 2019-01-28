@@ -1899,6 +1899,7 @@ def warp_raster(
     base_raster = gdal.OpenEx(base_raster_path, gdal.OF_RASTER)
     gdal.Warp(
         target_raster_path, base_raster,
+        format=format_type,
         outputBounds=working_bb,
         xRes=abs(target_pixel_size[0]),
         yRes=abs(target_pixel_size[1]),
