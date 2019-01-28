@@ -485,8 +485,9 @@ def align_and_resize_raster_stack(
         base_raster_path_list, target_raster_path_list, resample_method_list,
         target_pixel_size, bounding_box_mode, base_vector_path_list=None,
         raster_align_index=None, base_sr_wkt_list=None, target_sr_wkt=None,
-        gtiff_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS,
-        vector_mask_options=None, gdal_warp_options=None):
+        raster_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS,
+        vector_mask_options=None, target_raster_format='GTiff',
+        gdal_warp_options=None):
     """Generate rasters from a base such that they align geospatially.
 
     This function resizes base rasters that are in the same geospatial
@@ -535,7 +536,7 @@ def align_and_resize_raster_stack(
         target_sr_wkt (string): if not None, this is the desired
             projection of all target rasters in Well Known Text format. If
             None, the base SRS will be passed to the target.
-        gtiff_creation_options (sequence): list of strings that will be passed
+        raster_creation_options (sequence): list of strings that will be passed
             as GDAL "dataset" creation options to the GTIFF driver, or ignored
             if None.
         vector_mask_options (dict): optional, if not None, this is a
@@ -755,7 +756,8 @@ def align_and_resize_raster_stack(
                     resample_method),
                 kwds={
                     'target_bb': target_bounding_box,
-                    'gtiff_creation_options': gtiff_creation_options,
+                    'target_raster_format': target_raster_format,
+                    'raster_creation_options': raster_creation_options,
                     'target_sr_wkt': target_sr_wkt,
                     'base_sr_wkt': (
                         None if not base_sr_wkt_list else
@@ -1756,7 +1758,7 @@ def reclassify_raster(
 def warp_raster(
         base_raster_path, target_pixel_size, target_raster_path,
         resample_method, target_bb=None, base_sr_wkt=None, target_sr_wkt=None,
-        target_format='GTiff',
+        target_raster_format='GTiff',
         raster_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS,
         n_threads=None, vector_mask_options=None,
         gdal_warp_options=None):
@@ -1779,10 +1781,10 @@ def warp_raster(
             ``base_raster_path`` as this.
         target_sr_wkt (string): if not None, desired target projection in Well
             Known Text format.
-        target_format (str): desired raster target format. Default is GTiff.
+        target_raster_format (str): desired raster target format. Default is GTiff.
         raster_creation_options (list or tuple): list of strings that will be
             passed as raster "dataset" creation options to the driver
-            specified by the `target_format` string. Defaults to
+            specified by the `target_raster_format` string. Defaults to
             PyGeoprocessing's GTiff default creation options.
         n_threads (int): optional, if not None this sets the ``N_THREADS``
             option for ``gdal.Warp``.
@@ -1903,7 +1905,7 @@ def warp_raster(
     base_raster = gdal.OpenEx(base_raster_path, gdal.OF_RASTER)
     gdal.Warp(
         target_raster_path, base_raster,
-        format=target_format,
+        format=target_raster_format,
         outputBounds=working_bb,
         xRes=abs(target_pixel_size[0]),
         yRes=abs(target_pixel_size[1]),
