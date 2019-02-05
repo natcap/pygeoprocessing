@@ -1576,6 +1576,30 @@ class PyGeoprocessing10(unittest.TestCase):
             gdal.GDT_Int32, nodata_target, calc_raster_stats=True)
         pygeoprocessing.testing.assert_rasters_equal(base_path, target_path)
 
+    def test_raster_calculator_bad_target_type(self):
+        """PGP.geoprocessing: raster_calculator bad target type value."""
+        pixel_matrix = numpy.ones((5, 5), numpy.int16)
+        reference = sampledata.SRS_COLOMBIA
+        nodata_target = -1
+        base_path = os.path.join(self.workspace_dir, 'base.tif')
+        pygeoprocessing.testing.create_raster_on_disk(
+            [pixel_matrix], reference.origin, reference.projection,
+            nodata_target, reference.pixel_size(30), filename=base_path)
+
+        target_path = os.path.join(
+            self.workspace_dir, 'subdir', 'target.tif')
+        # intentionally reversing `nodata_target` and `gdal.GDT_Int32`,
+        # a value of -1 should be a value error for the target
+        with self.assertRaises(ValueError) as cm:
+            pygeoprocessing.raster_calculator(
+                [(base_path, 1)], passthrough, target_path,
+                nodata_target, gdal.GDT_Int32)
+        expected_message = (
+            'Invalid target value, should be a gdal.GDT_* type')
+        actual_message = str(cm.exception)
+        self.assertTrue(
+            expected_message in actual_message, actual_message)
+
     def test_raster_calculator_bad_raster_path(self):
         """PGP.geoprocessing: raster_calculator bad raster path pairs test."""
         pixel_matrix = numpy.ones((5, 5), numpy.int16)

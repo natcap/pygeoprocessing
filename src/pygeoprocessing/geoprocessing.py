@@ -68,6 +68,9 @@ except ImportError:
     # Python3 doesn't have a basestring.
     basestring = str
 
+_VALID_GDAL_TYPES = (
+    set([getattr(gdal, x) for x in dir(gdal.gdalconst) if 'GDT_' in x]))
+
 _LOGGING_PERIOD = 5.0  # min 5.0 seconds per update log message for the module
 _LARGEST_ITERBLOCK = 2**16  # largest block for iterblocks to read in cells
 
@@ -311,6 +314,11 @@ def raster_calculator(
             "calculator requires at least a raster or numpy array as a "
             "parameter. This is the input list: %s" % pprint.pformat(
                 base_raster_path_band_const_list))
+
+    if datatype_target not in _VALID_GDAL_TYPES:
+        raise ValueError(
+            'Invalid target value, should be a gdal.GDT_* type, received '
+            '"%s"' % datatype_target)
 
     # create target raster
     gtiff_driver = gdal.GetDriverByName('GTiff')

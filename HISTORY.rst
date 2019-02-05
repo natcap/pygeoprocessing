@@ -1,6 +1,11 @@
 Release History
 ===============
 
+Unreleased Features
+-------------------
+* Added error checking in ``raster_calculator`` to help ensure that the
+  `target_datatype` value is a valid GDAL type.
+
 1.6.0 1/23/2019
 ---------------
 * Changed ``iterblocks`` API to take a raster/path band as an input rather
