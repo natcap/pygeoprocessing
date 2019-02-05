@@ -4,10 +4,10 @@ Release History
 Unreleased Features
 -------------------
 * Added error checking in ``raster_calculator`` to help ensure that the
-  `target_datatype` value is a valid GDAL type.
+  ``target_datatype`` value is a valid GDAL type.
 
-1.6.0 1/23/2019
----------------
+1.6.0 (2019-01-23)
+------------------
 * Changed ``iterblocks`` API to take a raster/path band as an input rather
   than a path and a list of bands. Also removed the ``astype_list`` due to
   its lack of orthogonality.
@@ -18,8 +18,8 @@ Unreleased Features
 * Fixed an issue that could cause the distance transform to be incorrect when
   the sampling distance was in the noninclusive range of (0.0, 1.0).
 
-1.5.0 12/12/2018
-----------------
+1.5.0 (2018-12-12)
+------------------
 * Specific type checking for ``astype_list`` in ``iterblocks`` to avoid
   confusing exceptions.
 * Renamed test suite to be consistent with the pattern
@@ -47,13 +47,13 @@ Unreleased Features
   ``zonal_statistics`` where previously they were absent. This is to remain
   consistent with how other GIS libraries calculate zonal stats.
 
-1.4.1 11/12/2018
-----------------
+1.4.1 (2018-11-12)
+------------------
 * Hotfix that fixes an issue that would cause ``zonal_statistics`` to crash if
   a polygon were outside of the raster's bounding box.
 
-1.4.0 11/12/2018
-----------------
+1.4.0 (2018-11-12)
+------------------
 * Adding error checking to ensure that ``target_pixel_size`` passed to
   ``warp_raster`` and ``align_and_resize_raster_stack`` are validated to ensure
   they are in the correct format. This solves an issue where an incorrect
@@ -74,13 +74,13 @@ Unreleased Features
   needed. This is a "What good programmers need, not what bad programmers
   want." feature.
 
-1.3.1 10/25/2018
-----------------
+1.3.1 (2018-10-25)
+------------------
 * Hotfix to patch an infinite loop when aggregating upstream or downstream
   with custom rasters.
 
-1.3.0 10/25/2018
------------------
+1.3.0 (2018-10-25)
+------------------
 * Fixed a handful of docstring errors.
 * Improved runtime of ``zonal_statistics`` by a couple of orders of magnitude
   for large vectors by using spatial indexes when calculating disjoint polygon
@@ -136,8 +136,8 @@ Unreleased Features
   raster whose values were equal to the nodata value of the flow accumulation
   raster OR simply nodata would cause infinite loops.
 
-1.2.3 (7/25/2018)
------------------
+1.2.3 (2018-07-25)
+------------------
 * Exposing a parameter and setting reasonable defaults for the number of
   processes to allocate to ``convolve_2d`` and ``warp_raster``. Fixes an issue
   where the number of processes could exponentiate if many processes were
@@ -153,13 +153,13 @@ Unreleased Features
 * Increased the timeout in joining ``raster_calculator``'s stats worker.
   On a slow system 5 seconds was not quite enough time.
 
-1.2.2 (7/25/2018)
------------------
+1.2.2 (2018-07-25)
+------------------
 * Hotfixed a bug that would cause numpy arrays to be treated as broadcastable
   even if they were passed in "raw".
 
-1.2.1 (7/22/2018)
------------------
+1.2.1 (2018-07-22)
+------------------
 * Fixing an issue with ``warp_raster`` that would round off bounding boxes
   for rasters that did not fit perfectly into the target raster's provided
   pixel size.
@@ -167,9 +167,8 @@ Unreleased Features
   deamonized subprocess in a process pool may still have access to a raster
   but another process may require write access to it.
 
-1.2.0 (7/19/2018)
------------------
-
+1.2.0 (2018-07-19)
+------------------
 * Several PyGeoprocessing functions now take advantage of multiple CPU cores:
 
   * ``raster_calculator`` uses a separate thread to calculate raster
@@ -198,8 +197,8 @@ Unreleased Features
   cases where non-filepath non-GIS values are passed as parameters. Previously
   such an error would result in an unhelpful error in the GDAL library.
 
-1.1.0 (7/6/2018)
-----------------
+1.1.0 (2018-07-06)
+------------------
 * PyGeoprocessing now supports Python 2 and 3, and is tested on python 2.7
   and 3.6  Testing across multiple versions is configured to be run via
   ``tox``.
@@ -217,14 +216,14 @@ Unreleased Features
 * ``align_and_resize_raster_stack`` can now take a desired target projection
   which causes all input rasters to be warped to that projection on output.
 
-1.0.1 (5/16/2018)
------------------
+1.0.1 (2018-05-16)
+------------------
 * Hotfix patch to remove upper bound on required numpy version. This was
   causing a conflict with InVEST's looser requirement. Requirement is now
   set to >=1.13.0.
 
-1.0.0 (4/29/2018)
------------------
+1.0.0 (2018-04-29)
+------------------
 * This release marks a feature-complete version of PyGeoprocessing with a
   full suite of routing and geoprocessing capabilities.
 * ``pygeoprocessing.routing`` module has a ``flow_dir_mfd`` function that
@@ -240,8 +239,8 @@ Unreleased Features
   that calculates distance to a channel raster given a pygeoprocessing D8
   raster.
 
-0.7.0 (4/18/2018)
------------------
+0.7.0 (2018-04-18)
+------------------
 * Versioning is now handled by ``setuptools_scm`` rather than
   ``natcap.versioner``.  ``pygeoprocessing.__version__`` is now fetched from
   the package metadata.
@@ -263,8 +262,8 @@ Unreleased Features
 * Added a ``merge_rasters`` function to ``pygeoprocessing`` that will mosaic a
   set of rasters in the same projection, pixel size, and band count.
 
-0.6.0 (1/10/2017)
------------------
+0.6.0 (2017-01-10)
+------------------
 * Added an optional parameter to ``iterblocks`` to allow the ``largest_block``
   to be set something other than the PyGeoprocessing default. This in turn
   allows the ``largest_block`` parameter in ``raster_calculator`` to be passed
@@ -276,8 +275,8 @@ Unreleased Features
   If set to ``None`` files are created in the default system temporary
   directory.
 
-0.5.0 (9/14/2017)
------------------
+0.5.0 (2017-09-14)
+------------------
 * Fixed an issue where NETCDF files incorrectly raised Exceptions in
   ``raster_calculator``  and ``rasterize`` because they aren't filepaths.
 * Added a NullHandler so that users wouldn't get an error that a logger
@@ -289,8 +288,8 @@ Unreleased Features
   is in part to make this functionality more consistent with ArcGIS's
   spatial filters.
 
-0.4.4 (8/18/2017)
------------------
+0.4.4 (2017-08-18)
+------------------
 * When testing for raster alignment ``raster_calculator`` no longer checks the
   string equality for projections or geotransforms.  Instead it only checks
   raster size equality.  This fixes issues where users rasters DO align, but
@@ -298,15 +297,15 @@ Unreleased Features
   abstracts the problem of georeferencing away from raster_calculator that is
   only a grid based operation.
 
-0.4.3 (8/16/2017)
------------------
+0.4.3 (2017-08-16)
+------------------
 * Changed the error message in ``reclassify_raster`` so it's more informative
   about how many values are missing and the values in the input lookup table.
 * Added an optional parameter ``target_nodata`` to ``convolve_2d`` to set the
   desired target nodata value.
 
-0.4.2 (6/20/2017)
------------------
+0.4.2 (2017-06-20)
+------------------
 * Hotfix to fix an issue with ``iterblocks`` that would return signed values
   on unsigned raster types.
 * Hotfix to correctly cite Natural Capital Project partners in license and
@@ -317,8 +316,8 @@ Unreleased Features
   since a test for ``numpy.ndarray == None`` is ``False`` and later
   ``x[False]`` is the equivalent of indexing the first row of the array.
 
-0.4.1 (6/19/2017)
------------------
+0.4.1 (2017-06-19)
+------------------
 * Non-backwards compatible refactor of core PyGeoprocessing geoprocessing
   pipeline. This is to in part expose only orthogonal functionality, address
   runtime complexity issues, and follow more conventional GIS naming
@@ -366,24 +365,24 @@ Unreleased Features
 * Removed "create_rat/create_rat_uri" and migrated it to
   natcap.invest.wind_energy; the only InVEST model that uses that function.
 
-0.3.3 (2/9/2017)
-----------------
+0.3.3 (2017-02-09)
+------------------
 * Fixing a memory leak with large polygons when calculating disjoint set.
 
-0.3.2 (1/24/2017)
------------------
+0.3.2 (2017-01-24)
+------------------
 * Hotfix to patch an issue with watershed delineation packing that causes some
   field values to lose precision due to default field widths being set.
 
-0.3.1 (1/18/2017)
------------------
+0.3.1 (2017-01-18)
+------------------
 * Hotfix patch to address an issue in watershed delineation that doesn't pack
   the target watershed output file.  Half the shapefile consists of features
   polygonalized around nodata values that are flagged for deletion, but not
   removed from the file.  This patch packs those features and returns a clean
   watershed.
 
-0.3.0 (10/21/2016)
+0.3.0 (2016-10-21)
 ------------------
 * Added ``rel_tol`` and ``abs_tol`` parameters to ``testing.assertions`` to be
   consistent with PEP485 and deal with real world testing situations that
@@ -486,7 +485,6 @@ Unreleased Features
 
 0.2.2 (2015-05-07)
 ------------------
-
 * Adding MinGW-specific compiler flags for statically linking pygeoprocessing
   binaries against libstdc++ and libgcc.  Fixes an issue on many user's
   computers when installing from a wheel on the Python Package Index without
@@ -501,7 +499,6 @@ Unreleased Features
 
 0.2.1 (2015-04-23)
 ------------------
-
 * Fixed a bug on the test that determines if a raster should be memory
   blocked.  Rasters were not getting square blocked if the memory block was
   row aligned.  Now creates 256x256 blocks on rasters larger than 256x256.
@@ -519,7 +516,6 @@ Unreleased Features
 
 0.2.0 (2015-04-14)
 ------------------
-
 * Fixed a library wide issue relating to the underlying numpy types of
   GDT_Byte Datasets.  Now correctly identify the signed and unsigned versions
   and removed all instances where code used to mod byte data to unsigned data
@@ -534,13 +530,11 @@ Unreleased Features
 
 0.1.8 (2015-04-13)
 ------------------
-
 * Fixed an issue on reclassifying signed byte rasters that had negative nodata
   values but the internal type stored for vectorize datasets was unsigned.
 
 0.1.7 (2015-04-02)
 ------------------
-
 * Package logger objects are now identified by python hierarchical package
   paths (e.g. pygeoprocessing.routing)
 * Fixed an issue where rasters that had undefined nodata values caused
@@ -548,12 +542,10 @@ Unreleased Features
 
 0.1.6 (2015-03-24)
 ------------------
-
 * Fixing LICENSE.TXT to .txt issue that keeps reoccurring.
 
 0.1.5 (2015-03-16)
 ------------------
-
 * Fixed an issue where int32 dems with INT_MIN as the nodata value were being
   treated as real DEM values because of an internal cast to a float for the
   nodata type, but a cast to double for the DEM values.
@@ -563,28 +555,23 @@ Unreleased Features
 
 0.1.4 (2015-03-13)
 ------------------
-
 * Fixed a memory issue for DEMs on the order of 25k X 25k, still may have
   issues with larger DEMs.
 
 0.1.3 (2015-03-08)
 ------------------
-
 * Fixed an issue so tox correctly executes on the repository.
 * Created a history file to document current and previous releases.
 * Created an informative README.rst.
 
 0.1.2 (2015-03-04)
 ------------------
-
 * Fixing issue that caused "LICENSE.TXT not found" during pip install.
 
 0.1.1 (2015-03-04)
 ------------------
-
 * Fixing issue with automatic versioning scheme.
 
 0.1.0 (2015-02-26)
 ------------------
-
 * First release on PyPI.
