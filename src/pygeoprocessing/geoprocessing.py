@@ -317,7 +317,7 @@ def raster_calculator(
 
     if datatype_target not in _VALID_GDAL_TYPES:
         raise ValueError(
-            'Invalid target value, should be a gdal.GDT_* type, received '
+            'Invalid target type, should be a gdal.GDT_* type, received '
             '"%s"' % datatype_target)
 
     # create target raster
@@ -977,6 +977,11 @@ def create_raster_from_vector_extents(
                 # this feature won't contribute
                 LOGGER.warning(error)
         layer = None
+
+    if target_pixel_type not in _VALID_GDAL_TYPES:
+        raise ValueError(
+            'Invalid target type, should be a gdal.GDT_* type, received '
+            '"%s"' % target_pixel_type)
 
     # round up on the rows and cols so that the target raster encloses the
     # base vector

@@ -1595,16 +1595,10 @@ class PyGeoprocessing10(unittest.TestCase):
                 [(base_path, 1)], passthrough, target_path,
                 nodata_target, gdal.GDT_Int32)
         expected_message = (
-            'Invalid target value, should be a gdal.GDT_* type')
+            'Invalid target type, should be a gdal.GDT_* type')
         actual_message = str(cm.exception)
         self.assertTrue(
             expected_message in actual_message, actual_message)
-
-    def test_raster_calculator_bad_raster_path(self):
-        """PGP.geoprocessing: raster_calculator bad raster path pairs test."""
-        pixel_matrix = numpy.ones((5, 5), numpy.int16)
-        reference = sampledata.SRS_COLOMBIA
-        nodata_target = -1
         base_path = os.path.join(self.workspace_dir, 'base.tif')
         pygeoprocessing.testing.create_raster_on_disk(
             [pixel_matrix], reference.origin, reference.projection,
@@ -2062,6 +2056,39 @@ class PyGeoprocessing10(unittest.TestCase):
             target_raster_path)
         self.assertEqual(raster_properties['raster_size'][0], n_pixels_x)
         self.assertEqual(raster_properties['raster_size'][1], n_pixels_y)
+
+    def test_create_raster_from_vector_extents_invalid_pixeltype(self):
+        """PGP.geoprocessing: raster from vector with bad datatype."""
+        reference = sampledata.SRS_COLOMBIA
+        point_a = shapely.geometry.Point(
+            reference.origin[0], reference.origin[1])
+        mean_pixel_size = 30
+        n_pixels_x = 9
+        n_pixels_y = 19
+        point_b = shapely.geometry.Point(
+            reference.origin[0] +
+            reference.pixel_size(mean_pixel_size)[0] * n_pixels_x,
+            reference.origin[1] +
+            reference.pixel_size(mean_pixel_size)[1] * n_pixels_y)
+        source_vector_path = os.path.join(self.workspace_dir, 'sample_vector')
+        pygeoprocessing.testing.create_vector_on_disk(
+            [point_a, point_b], reference.projection, fields={'value': 'int'},
+            attributes=[{'value': 0}, {'value': 1}], vector_format='GeoJSON',
+            filename=source_vector_path)
+        target_raster_path = os.path.join(
+            self.workspace_dir, 'target_raster.tif')
+        target_pixel_size = [mean_pixel_size, -mean_pixel_size]
+        target_nodata = -1
+        target_pixel_type = gdal.GDT_Int16
+        with self.assertRaises(ValueError) as cm:
+            pygeoprocessing.create_raster_from_vector_extents(
+                source_vector_path, target_raster_path, target_pixel_size,
+                target_nodata, target_pixel_type)
+            expected_message = (
+                'Invalid target type, should be a gdal.GDT_* type')
+            actual_message = str(cm.exception)
+            self.assertTrue(
+                expected_message in actual_message, actual_message)
 
     def test_create_raster_from_vector_extents_odd_pixel_shapes(self):
         """PGP.geoprocessing: create raster vector ext. w/ odd pixel size."""
