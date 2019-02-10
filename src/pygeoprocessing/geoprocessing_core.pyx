@@ -101,7 +101,6 @@ def _distance_transform_edt(
     sample_d_y /= max_sample
 
     # distances can't be larger than half the perimeter of the raster.
-
     cdef float numerical_inf = max(sample_d_x, 1.0) * max(sample_d_y, 1.0) * (
         raster_info['raster_size'][0] + raster_info['raster_size'][1])
     # scan 1
@@ -195,6 +194,7 @@ def _distance_transform_edt(
                         q_index += 1
                         s_array[q_index] = u_index
                         t_array[q_index] = <int>(w / sample_d_x)
+
             sq = s_array[q_index]
             gsq = g_block[local_y_index, sq]**2
             tq = t_array[q_index]
