@@ -73,7 +73,7 @@ def _distance_transform_edt(
     cdef int xoff, block_xsize, win_xsize, n_cols
     cdef int q_index, local_x_index, local_y_index, u_index
     cdef int tq, sq
-    cdef float gu, gsq
+    cdef float gu, gsq, w
     cdef numpy.ndarray[numpy.float32_t, ndim=2] g_block
     cdef numpy.ndarray[numpy.int32_t, ndim=1] s_array
     cdef numpy.ndarray[numpy.int32_t, ndim=1] t_array
@@ -94,7 +94,14 @@ def _distance_transform_edt(
     g_band = g_raster.GetRasterBand(1)
     g_band_blocksize = g_band.GetBlockSize()
 
+    # normalize the sample distances so we don't get a strange numerical
+    # overflow
+    max_sample = max(sample_d_x, sample_d_y)
+    sample_d_x /= max_sample
+    sample_d_y /= max_sample
+
     # distances can't be larger than half the perimeter of the raster.
+
     cdef float numerical_inf = max(sample_d_x, 1.0) * max(sample_d_y, 1.0) * (
         raster_info['raster_size'][0] + raster_info['raster_size'][1])
     # scan 1
@@ -188,7 +195,6 @@ def _distance_transform_edt(
                         q_index += 1
                         s_array[q_index] = u_index
                         t_array[q_index] = <int>(w / sample_d_x)
-
             sq = s_array[q_index]
             gsq = g_block[local_y_index, sq]**2
             tq = t_array[q_index]
@@ -202,7 +208,8 @@ def _distance_transform_edt(
                         tq = t_array[q_index]
 
         valid_mask = g_block != _NODATA
-        dt[valid_mask] = numpy.sqrt(dt[valid_mask])
+        # "unnormalize" distances along with square root
+        dt[valid_mask] = numpy.sqrt(dt[valid_mask]) * max_sample
         dt[~valid_mask] = _NODATA
         target_distance_band.WriteArray(dt, xoff=0, yoff=yoff)
 

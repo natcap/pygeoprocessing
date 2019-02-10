@@ -5,6 +5,8 @@ Unreleased Features
 -------------------
 * Added error checking in ``raster_calculator`` to help ensure that the
   ``target_datatype`` value is a valid GDAL type.
+* Fixed an issue in ``distance_transform_edt`` that would occasionally
+  cause incorrect distance calculations when the x sampling distance was > 1.
 
 1.6.0 (2019-01-23)
 ------------------
