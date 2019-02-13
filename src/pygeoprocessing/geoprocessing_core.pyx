@@ -72,8 +72,8 @@ def _distance_transform_edt(
     cdef int yoff, row_index, block_ysize, win_ysize, n_rows
     cdef int xoff, block_xsize, win_xsize, n_cols
     cdef int q_index, local_x_index, local_y_index, u_index
-    cdef int tq, sq, w
-    cdef float gu, gsq
+    cdef int tq, sq
+    cdef float gu, gsq, w
     cdef numpy.ndarray[numpy.float32_t, ndim=2] g_block
     cdef numpy.ndarray[numpy.int32_t, ndim=1] s_array
     cdef numpy.ndarray[numpy.int32_t, ndim=1] t_array
@@ -187,13 +187,13 @@ def _distance_transform_edt(
                     sq = u_index
                     gsq = g_block[local_y_index, sq]**2
                 else:
-                    w = 1 + <int>((
+                    w = sample_d_x + ((
                         (sample_d_x*u_index)**2 - (sample_d_x*sq)**2 +
                         gu - gsq) / (2*sample_d_x*(u_index-sq)))
                     if w < n_cols*sample_d_x:
                         q_index += 1
                         s_array[q_index] = u_index
-                        t_array[q_index] = w
+                        t_array[q_index] = <int>(w / sample_d_x)
 
             sq = s_array[q_index]
             gsq = g_block[local_y_index, sq]**2
