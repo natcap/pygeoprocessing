@@ -1,8 +1,8 @@
 Release History
 ===============
 
-Unreleased Features
--------------------
+1.6.1 (2019-02-13)
+------------------
 * Added error checking in ``raster_calculator`` to help ensure that the
   ``target_datatype`` value is a valid GDAL type.
 * Fixed an issue in ``distance_transform_edt`` that would occasionally
