@@ -2777,22 +2777,22 @@ class PyGeoprocessing10(unittest.TestCase):
         target_distance_raster_path = os.path.join(
             self.workspace_dir, 'target_distance.tif')
 
-        sampling_distance = (200.0, 1.5)
-        pygeoprocessing.distance_transform_edt(
-            (base_raster_path, 1), target_distance_raster_path,
-            sampling_distance=sampling_distance,
-            working_dir=self.workspace_dir)
-        target_raster = gdal.OpenEx(
-            target_distance_raster_path, gdal.OF_RASTER)
-        target_band = target_raster.GetRasterBand(1)
-        target_array = target_band.ReadAsArray()
-        target_band = None
-        target_raster = None
-        expected_result = scipy.ndimage.morphology.distance_transform_edt(
-            1 - (base_raster_array == 1), sampling=(
-                sampling_distance[1], sampling_distance[0]))
-        numpy.testing.assert_array_almost_equal(
-            target_array, expected_result, decimal=2)
+        for sampling_distance in [(200.0, 1.5), (1.5, 200.0)]:
+            pygeoprocessing.distance_transform_edt(
+                (base_raster_path, 1), target_distance_raster_path,
+                sampling_distance=sampling_distance,
+                working_dir=self.workspace_dir)
+            target_raster = gdal.OpenEx(
+                target_distance_raster_path, gdal.OF_RASTER)
+            target_band = target_raster.GetRasterBand(1)
+            target_array = target_band.ReadAsArray()
+            target_band = None
+            target_raster = None
+            expected_result = scipy.ndimage.morphology.distance_transform_edt(
+                1 - (base_raster_array == 1), sampling=(
+                    sampling_distance[1], sampling_distance[0]))
+            numpy.testing.assert_array_almost_equal(
+                target_array, expected_result, decimal=2)
 
         base_raster_path = os.path.join(
             self.workspace_dir, 'undefined_nodata_base_raster.tif')
