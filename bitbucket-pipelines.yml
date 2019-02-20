@@ -7,6 +7,6 @@ pipelines:
           script:
             - apt-get update
             - apt-get install -y python{,3}-gdal python{,3}-numpy python{3,}-scipy python{,3}-shapely python{,3}-rtree cython{,3}
-            - apt-get install -y python-pip tox
+            - apt-get install -y python-pip tox mercurial
             - pip install setuptools_scm
             - tox
