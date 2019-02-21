@@ -3,13 +3,13 @@ pipelines:
     - parallel:
       - step:
           name: Tests on Python 2.7
-          image: natcap/py27-spatial-build
+          image: natcap/py27-spatial-build:05ce6cc0519ee45815eaac4bc6cfb15d898cae72
           script:
             - pip install setuptools_scm cython tox
             - tox -e py27 --sitepackages
       - step:
           name: Tests on Python 3.6
-          image: natcap/py36-spatial-build
+          image: natcap/py36-spatial-build:2c052143dcb12d801c1220fa1355e6e06f8a896c
           script:
             - pip install setuptools_scm cython tox
             - tox -e py36 --sitepackages
