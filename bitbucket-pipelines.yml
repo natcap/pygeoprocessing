@@ -2,11 +2,14 @@ pipelines:
   default:
     - parallel:
       - step:
-          name: Tests
-          image: debian:stretch
+          name: Tests on Python 2.7
+          image: natcap/py27-spatial-build
           script:
-            - apt-get update
-            - apt-get install -y python{,3}-gdal python{,3}-numpy python{3,}-scipy python{,3}-shapely python{,3}-rtree cython{,3}
-            - apt-get install -y python-pip tox mercurial
-            - pip install setuptools_scm
-            - tox
+            - pip install setuptools_scm cython tox
+            - tox -e py27 --sitepackages
+      - step:
+          name: Tests on Python 3.6
+          image: natcap/py36-spatial-build
+          script:
+            - pip install setuptools_scm cython tox
+            - tox -e py36 --sitepackages
