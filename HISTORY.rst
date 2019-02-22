@@ -1,6 +1,13 @@
 Release History
 ===============
 
+Unreleased Changes
+------------------
+* Adding automated testing via bitbucket pipelines.
+* Correcting an issue with ``pygeoprocessing.zonal_statistics`` that was
+  causing test failures on Python 3.6.
+* Pygeoprocessing is now tested against Python 3.7.
+
 1.6.1 (2019-02-13)
 ------------------
 * Added error checking in ``raster_calculator`` to help ensure that the
