@@ -23,5 +23,6 @@ pipelines:
           caches:
               - pip
           script:
+              - export WINEDEBUG=fixme-all  # Filter out fixme logging from WINE.
               - wine pip install cython numpy
               - wine tox -e py27 --sitepackages
