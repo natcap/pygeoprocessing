@@ -2,20 +2,26 @@ pipelines:
   default:
     - parallel:
       - step:
-          name: Tests on Debian 9.7 / Python 2.7
+          name: "Tests: python 2.7 on linux"
           image: natcap/py27-spatial-build:4b9b60f536fb6e7ad7adc7375d4f031e5b954bd1
+          caches:
+              - pip
           script:
-            - pip install setuptools_scm cython tox
-            - tox -e py27 --sitepackages
+              - pip install setuptools_scm cython tox
+              - tox -e py27 --sitepackages
       - step:
-          name: Tests on Debian 9.7 / Python 3.6
+          name: "Tests: python 3.6 on linux"
           image: natcap/py36-spatial-build:743e6fa5d57d9d84770414b69aab518490f24008
+          caches:
+              - pip
           script:
-            - pip install setuptools_scm cython tox
-            - tox -e py36 --sitepackages
+              - pip install setuptools_scm cython tox
+              - tox -e py36 --sitepackages
       - step:
-          name: Tests on Debian 9.7 WINE / Python 2.7
+          name: "Tests: python 2.7 under WINE"
           image: natcap/py27-wine-build:92130508f47997e962f2ae83e117d5ffcbd6b7f8
+          caches:
+              - pip
           script:
-            - wine pip install cython numpy
-            - wine tox -e py27 --sitepackages
+              - wine pip install cython numpy
+              - wine tox -e py27 --sitepackages
