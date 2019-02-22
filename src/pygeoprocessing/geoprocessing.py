@@ -2049,10 +2049,14 @@ def calculate_disjoint_polygon_set(
     if bounding_box is None:
         bounding_box = get_vector_info(vector_path)['bounding_box']
     bounding_box = shapely.prepared.prep(shapely.geometry.box(*bounding_box))
-    shapely_polygon_lookup = dict((
-        (poly_feat.GetFID(),
-         shapely.wkb.loads(poly_feat.GetGeometryRef().ExportToWkb()))
-        for poly_feat in vector_layer))
+
+    # As much as I want this to be in a comprehension, a comprehension version
+    # of this loop causes python 3.6 to crash on linux in GDAL 2.1.2 (which is
+    # what's in the debian:stretch repos.)
+    shapely_polygon_lookup = {}
+    for poly_feat in vector_layer:
+        shapely_polygon_lookup[poly_feat.GetFID()] = (
+            shapely.wkb.loads(poly_feat.GetGeometryRef().ExportToWkb()))
 
     LOGGER.info("build shapely rtree index")
     r_tree_index_stream = [
