@@ -539,7 +539,7 @@ class TestRouting(unittest.TestCase):
              1.88571429],
             [1., 1., 1., 1., 1., 1., 1., 1., 1., 1., 1.]])
 
-        numpy.testing.assert_almost_equal(flow_array, expected_result, 1e-6)
+        numpy.testing.assert_allclose(flow_array, expected_result, rtol=1e-6)
 
         # try with zero weights
         zero_array = numpy.zeros(expected_result.shape, dtype=numpy.float32)
