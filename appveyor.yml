@@ -31,7 +31,9 @@ build: off
 
 before_test:
     - "%PYTHON%\\python.exe -m pip install pipwin"
-    - "%PYTHON%\\python.exe -m pipwin install gdal shapely rtree"
+    - "%PYTHON%\\python.exe -m pipwin install gdal"
+    - "%PYTHON%\\python.exe -m pipwin install shapely"
+    - "%PYTHON%\\python.exe -m pipwin install rtree"
     - "%PYTHON%\\python.exe -m pip install tox -r requirements.txt"
 
 test_script:
