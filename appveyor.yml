@@ -30,19 +30,19 @@ install:
 build: off
 
 before_test:
-    - %PYTHON%\\python.exe -m pip install pipwin
-    - %PYTHON%\\python.exe -m pipwin install -r requirements.txt tox
+    - "%PYTHON%\\python.exe -m pip install pipwin"
+    - "%PYTHON%\\python.exe -m pipwin install -r requirements.txt tox"
 
 test_script:
-    - %PYTHON%\\python.exe -m tox -e %TOXENV%
+    - "%PYTHON%\\python.exe -m tox -e %TOXENV%"
 
 after_test:
-  # This step builds your wheels.
-  - %PYTHON%\\python.exe setup.py bdist_wheel
+    # This step builds your wheels.
+    - "%PYTHON%\\python.exe setup.py bdist_wheel"
 
 artifacts:
-  # bdist_wheel puts your built wheel in the dist directory
-  - path: dist\*
+    # bdist_wheel puts your built wheel in the dist directory
+    - path: dist\*
 
 #on_success:
 #  You can use this step to upload your artifacts to a public website.
