@@ -1,5 +1,15 @@
 # Adapted from https://packaging.python.org/guides/supporting-windows-using-appveyor/
 
+branches:
+    only:
+        - feature/*
+        - task/*
+        - bugfix/*
+        - develop
+        - master
+
+skip_non_tags: false  # we want to build untagged revisions.
+
 environment:
   matrix:
     # For Python versions available on Appveyor, see
