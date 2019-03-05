@@ -36,15 +36,13 @@ environment:
 install:
     # We need wheel installed to build wheels
     - "%PYTHON%\\python.exe -m pip install wheel"
-
-build: off
-
-before_test:
     - "%PYTHON%\\python.exe -m pip install pipwin"
     - "%PYTHON%\\python.exe -m pipwin install gdal"
     - "%PYTHON%\\python.exe -m pipwin install shapely"
     - "%PYTHON%\\python.exe -m pipwin install rtree"
     - "%PYTHON%\\python.exe -m pip install tox -r requirements.txt"
+
+build: off
 
 test_script:
     - "%PYTHON%\\python.exe -m tox --sitepackages -e %TOXENV%"
