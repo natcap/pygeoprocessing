@@ -14,6 +14,8 @@ pipelines:
                        'projectSlug': '$APPVEYOR_PROJ_SLUG',
                        'branch': '$(hg branch)',
                        'commitID': '$(hg log -r . -T \"{node}\")'}"
+            - echo "Build history at "
+            - echo "    https://ci.appveyor.com/project/$APPVEYOR_ACC_NAME/$APPVEYOR_PROJ_SLUG/history"
   default:
     - parallel:
       - step:
