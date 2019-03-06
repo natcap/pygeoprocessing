@@ -7,13 +7,12 @@ pipelines:
           script:
             - apt-get update && apt-get install -y curl
             - |
-              curl
-              --header "Authorization: Bearer $APPVEYOR_API_KEY"
-              --header "Content-Type: application/json"
-              --data "{'accountName': '$APPVEYOR_ACC_NAME',
-                       'projectSlug': '$APPVEYOR_PROJ_SLUG',
-                       'branch': '$(hg branch)',
-                       'commitID': '$(hg log -r . -T \"{node}\")'}"
+              curl --header "Authorization: Bearer $APPVEYOR_API_KEY" \
+                --header "Content-Type: application/json" \
+                --data "{'accountName': '$APPVEYOR_ACC_NAME',
+                         'projectSlug': '$APPVEYOR_PROJ_SLUG',
+                         'branch': '$(hg branch)',
+                         'commitID': '$(hg log -r . -T \"{node}\")'}"
             - echo "Build history at "
             - echo "    https://ci.appveyor.com/project/$APPVEYOR_ACC_NAME/$APPVEYOR_PROJ_SLUG/history"
   default:
