@@ -40,7 +40,7 @@ test_script:
     - "%PYTHON%\\python.exe -m tox --sitepackages -e %TOXENV%"
 
 after_test:
-    # This step builds your wheels.
+    # This step builds your wheels for artifacts
     - "%PYTHON%\\python.exe setup.py bdist_wheel"
 
 artifacts:
@@ -63,7 +63,6 @@ on_finish:
   # NB: This is done only `on_success` since the cache in uploaded only on
   # success anyway.
   - C:\cygwin\bin\find "%LOCALAPPDATA%\pip" -type f -mtime +360 -delete
-  - C:\cygwin\bin\find "%LOCALAPPDATA%\pip" -type f -size +10M -delete
   - C:\cygwin\bin\find "%LOCALAPPDATA%\pip" -empty -delete
   # Show size of cache
   - C:\cygwin\bin\du -hs "%LOCALAPPDATA%\pip\Cache"
