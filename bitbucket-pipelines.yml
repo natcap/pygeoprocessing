@@ -1,4 +1,24 @@
 pipelines:
+  custom:
+    appveyor:
+      - step:
+          # NOTE: this step should not normally be needed if hooks are running
+          # as expected with appveyor.  It's added here in case we need to retrigger
+          # an appveyor build after-the-fact.
+          name: "Retrigger AppVeyor"
+          image: debian:9.7
+          script:
+            - apt-get update && apt-get install -y curl mercurial
+            - |
+              curl --header "Authorization: Bearer $APPVEYOR_API_KEY" \
+                --header "Content-Type: application/json" \
+                --data "{'accountName': '$APPVEYOR_ACC_NAME',
+                         'projectSlug': '$APPVEYOR_PROJ_SLUG',
+                         'branch': '$(hg branch)',
+                         'commitID': '$(hg log -r . -T \"{node}\")'}" \
+                "https://ci.appveyor.com/api/builds"
+            - echo "Build history at "
+            - echo "    https://ci.appveyor.com/project/$APPVEYOR_ACC_NAME/$APPVEYOR_PROJ_SLUG/history"
   default:
     - parallel:
       - step:
@@ -25,12 +45,3 @@ pipelines:
           script:
               - pip install setuptools_scm cython tox
               - tox -e py37 --sitepackages
-      - step:
-          name: "Tests: python 2.7 under WINE"
-          image: natcap/py27-wine-build:f8dbb1a79151859d0358cc9e645d339bae5b992d
-          caches:
-              - pip
-          script:
-              - export WINEDEBUG=fixme-all  # Filter out fixme logging from WINE.
-              - wine pip install cython numpy
-              - wine tox -e py27 --sitepackages
