@@ -3,7 +3,7 @@ import os
 import logging
 import shutil
 import tempfile
-import itertools 
+import itertools
 import math
 import collections
 
@@ -367,11 +367,11 @@ cdef class _ManagedRaster:
 
 def _make_polygonize_callback(logging_adapter):
     """Create a callback function for gdal.Polygonize.
-    
+
     Parameters:
         logging_adapter (logging.Logger): A logging.Logger or context adapter
             to which records will be logged.
-            
+
     Returns:
         A callback compatible with gdal.Polygonize.
     """
@@ -403,11 +403,11 @@ class OverlappingWatershedContextAdapter(logging.LoggerAdapter):
 
     def process(self, msg, kwargs):
         """Prepare contextual information for passed log messages.
-        
+
         Parameters:
             msg (string): The templated string log message to prepend to.
             kwargs (dict): Keyword arguments for logging, passed through.
-            
+
         Returns:
             A tuple of (string log message, kwargs).  The log message has some
             extra information about which pass we're in the middle of.
@@ -452,7 +452,7 @@ ctypedef pair[long, long] CoordinatePair
 #    * For each blockwise seed coordinate cluster:
 #        * Process neighbors.
 #        * If a neighbor is upstream and is a known seed, mark connectivity between seeds.
-# 
+#
 # Phase 6: Polygonization
 #    * Polygonize the seeds fragments.
 #
@@ -786,7 +786,7 @@ def delineate_watersheds_d8(
         # Determine the block index mathematically.  We only need to be able to
         # group pixels together, so the specific number used does not matter.
         block_index = (
-            (seed.first // flow_dir_block_x_size) + 
+            (seed.first // flow_dir_block_x_size) +
             ((seed.second // flow_dir_block_y_size) * (flow_dir_n_cols // flow_dir_block_x_size)))
         if block_index > n_blocks:
             print 'block_index %s > %s' % (block_index, n_blocks)
@@ -921,7 +921,7 @@ def delineate_watersheds_d8(
     while nested_fragments_iterator != nested_fragments.end():
         downstream_fragment_id = deref(nested_fragments_iterator).first
         upstream_fragments = deref(nested_fragments_iterator).second
-        
+
         upstream_fragments_iterator = upstream_fragments.begin()
         while upstream_fragments_iterator != upstream_fragments.end():
             upstream_fragment_id = deref(upstream_fragments_iterator)
@@ -1247,7 +1247,7 @@ def join_watershed_fragments_d8(watershed_fragments_vector, target_watersheds_pa
             n_complete = working_fragments_layer.GetFeatureCount()
             LOGGER.info('%s of %s fragments complete (%.3f %%)',
                 n_complete, n_fragments, (float(n_complete-n_solo_fragments)/n_solo_fragments)*100)
-        
+
         for fragment_id in upstream_fragments[starter_fragment_id]:
             stack.push(fragment_id)
             stack_set.insert(fragment_id)
@@ -1259,9 +1259,9 @@ def join_watershed_fragments_d8(watershed_fragments_vector, target_watersheds_pa
             fragment_id = stack.top()
             stack.pop()
             stack_set.erase(fragment_id)
-            
+
             try:
-                # Base case: this fragment already has geometry in the working layer. 
+                # Base case: this fragment already has geometry in the working layer.
                 fragment_feature = working_fragments_layer.GetFeature(
                     fragment_fids[fragment_id])
                 fragment_geometry = fragment_feature.GetGeometryRef()
