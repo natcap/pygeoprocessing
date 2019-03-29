@@ -568,6 +568,7 @@ def delineate_watersheds_d8(
     # TODO: add progress logging
     cdef int n_features = working_outlets_layer.GetFeatureCount()
     cdef int n_complete = 0
+    cdef int n_removed = 0
     last_log_time = ctime(NULL)
     LOGGER.info('Preprocessing outflow geometries.')
     for feature in working_outlets_layer:
@@ -576,7 +577,7 @@ def delineate_watersheds_d8(
             working_outlets_layer.StartTransaction()
         if ctime(NULL) - last_log_time > 5.0:
             last_log_time = ctime(NULL)
-            LOGGER.info('%s of %s fragments complete (%.3f %%)',
+            LOGGER.info('%s of %s features complete (%.3f %%)',
                 n_complete, n_features, (float(n_complete)/n_features)*100.0)
         ogr_geom = feature.GetGeometryRef()
         try:
@@ -595,6 +596,7 @@ def delineate_watersheds_d8(
         # no need to include it in any of the watershed processing.
         if not flow_dir_bbox_geometry.intersects(geometry):
             working_outlets_layer.DeleteFeature(fid)
+            n_removed += 1
             continue
 
         working_vector_ws_id_to_fid[ws_id] = fid
@@ -602,6 +604,8 @@ def delineate_watersheds_d8(
         working_outlets_layer.SetFeature(feature)
         ws_id += 1  # only track ws_ids that end up in the vector.
     working_outlets_layer.CommitTransaction()
+    LOGGER.info('Preprocessing complete, %s features did not intersect the '
+                'DEM and were removed.', n_removed)
 
     # Phase 1: Prepare working geometries for determining sets of disjoint polygons.
     #    * Points and very small geometries can be removed, as we already know their seed coords.
