@@ -543,7 +543,11 @@ def delineate_watersheds_d8(
         shapely.geometry.box(*flow_dir_info['bounding_box']))
 
     source_outlets_vector = gdal.OpenEx(outflow_vector_path, gdal.OF_VECTOR)
+    if source_outlets_vector is None:
+        raise ValueError(u'Could not open outflow vector %s' % outflow_vector_path)
+
     working_outlets_path = os.path.join(working_dir_path, 'working_outlets.gpkg')
+    LOGGER.info('Copying outlets to %s', working_outlets_path)
     working_outlets_vector = gpkg_driver.CreateCopy(working_outlets_path,
                                                     source_outlets_vector)
     working_outlets_layer = working_outlets_vector.GetLayer()
@@ -562,8 +566,18 @@ def delineate_watersheds_d8(
     working_vector_ws_id_to_fid = {}
     working_outlets_layer.StartTransaction()
     # TODO: add progress logging
+    cdef int n_features = working_outlets_layer.GetFeatureCount()
+    cdef int n_complete = 0
+    last_log_time = ctime(NULL)
     LOGGER.info('Preprocessing outflow geometries.')
     for feature in working_outlets_layer:
+        if n_features % 50000 == 0:
+            working_outlets_layer.CommitTransaction()
+            working_outlets_layer.StartTransaction()
+        if ctime(NULL) - last_log_time > 5.0:
+            last_log_time = ctime(NULL)
+            LOGGER.info('%s of %s fragments complete (%.3f %%)',
+                n_complete, n_features, (float(n_complete)/n_features)*100.0)
         ogr_geom = feature.GetGeometryRef()
         try:
             geometry = shapely.wkb.loads(ogr_geom.ExportToWkb())
@@ -575,6 +589,7 @@ def delineate_watersheds_d8(
             feature.SetGeometry(ogr.CreateGeometryFromWkb(geometry.wkb))
 
         fid = feature.GetFID()
+        n_complete += 1  # always incremement this counter.
 
         # If the geometry doesn't intersect the flow direction bounding box,
         # no need to include it in any of the watershed processing.
