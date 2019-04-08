@@ -580,16 +580,23 @@ def delineate_watersheds_d8(
             LOGGER.info('%s of %s features complete (%.3f %%)',
                 n_complete, n_features, (float(n_complete)/n_features)*100.0)
         ogr_geom = feature.GetGeometryRef()
+        fid = feature.GetFID()
         try:
             geometry = shapely.wkb.loads(ogr_geom.ExportToWkb())
         except ReadingError:
             # This happens when a polygon isn't a closed ring.
             ogr_geom.CloseRings()
             ogr_geom.Buffer(0)
-            geometry = shapely.wkb.loads(ogr_geom.ExportToWkb())
-            feature.SetGeometry(ogr.CreateGeometryFromWkb(geometry.wkb))
+            # If the geometry isn't 'corrected', an exception should be raised
+            # here and the function will crash.
+            try:
+                geometry = shapely.wkb.loads(ogr_geom.ExportToWkb())
+                feature.SetGeometry(ogr.CreateGeometryFromWkb(geometry.wkb))
+            except ReadingError:
+                raise ValueError(
+                    'Feature %s has invalid geometry that could not be '
+                    'corrected.' % fid)
 
-        fid = feature.GetFID()
         n_complete += 1  # always incremement this counter.
 
         # If the geometry doesn't intersect the flow direction bounding box,
