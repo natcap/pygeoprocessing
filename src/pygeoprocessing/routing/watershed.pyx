@@ -1256,13 +1256,26 @@ def join_watershed_fragments_d8(watershed_fragments_vector, target_watersheds_pa
             # If no upstream fragments the string will be '', and ''.split(',')
             # turns into [''], which crashes when you cast it to an int.
             # We're using a defaultdict(list) here, so no need to do anything.
-            working_fragment_feature = ogr.Feature(
-                working_fragments_layer.GetLayerDefn())
-            working_fragment_geometry = ogr.Geometry(ogr.wkbMultiPolygon)
-            working_fragment_geometry.AddGeometry(fragment.GetGeometryRef())
-            working_fragment_feature.SetGeometry(working_fragment_geometry)
-            working_fragments_layer.CreateFeature(working_fragment_feature)
-            fragment_fids[fragment_id] = working_fragment_feature.GetFID()
+            if fragment_id in fragment_fids:
+                # If we've already encountered a feature with this fragment id,
+                # get that feature and add this new geometry to it.
+                working_fragment_feature = working_fragments_layer.GetFeature(
+                    fragment_fids[fragment_id])
+                working_fragment_geometry = working_fragment_feature.GetGeometryRef()
+                working_fragment_geometry.AddGeometry(fragment.GetGeometryRef())
+                working_fragment_feature.SetGeometry(working_fragment_geometry)
+                working_fragments_layer.SetFeature(working_fragment_feature)
+            else:
+                # If this is the first time we're encountering a geometry with
+                # this feature ID, create a new feature for it and add it to the
+                # working feature layer.
+                working_fragment_feature = ogr.Feature(
+                    working_fragments_layer.GetLayerDefn())
+                working_fragment_geometry = ogr.Geometry(ogr.wkbMultiPolygon)
+                working_fragment_geometry.AddGeometry(fragment.GetGeometryRef())
+                working_fragment_feature.SetGeometry(working_fragment_geometry)
+                working_fragments_layer.CreateFeature(working_fragment_feature)
+                fragment_fids[fragment_id] = working_fragment_feature.GetFID()
     working_fragments_layer.CommitTransaction()
 
     n_solo_fragments = working_fragments_layer.GetFeatureCount()
