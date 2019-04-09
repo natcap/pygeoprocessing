@@ -1177,7 +1177,6 @@ def delineate_watersheds_d8(
     # attributes that will link the fragments into whole watersheds.
     LOGGER.info('Copying fragments to the output vector.')
     target_fragments_layer.StartTransaction()
-    cdef int fragment_id
     cdef CoordinatePair fragment_seed
     cdef cset[int].iterator ws_id_iterator
     # TODO: progress logging here.
@@ -1226,7 +1225,7 @@ def join_watershed_fragments_d8(watershed_fragments_vector, target_watersheds_pa
     upstream_fragments = collections.defaultdict(list)
     n_fragments = fragments_layer.GetFeatureCount()
     fragment_ids = set([])
-    original_fragment_fids = {}  # map fragment ids to original feature IDs.
+    original_fragment_fids = {}  # map fragment ids to original feature IDs (could be multiple FIDs)
     fragment_fids = {}  # map compiled fragment FIDs to their feature IDs.
     fragments_in_watershed = collections.defaultdict(set)  # {ws_id: set(fragment_ids)}
     cdef int fragment_id, starter_fragment_id, upstream_fragment_id
@@ -1240,7 +1239,10 @@ def join_watershed_fragments_d8(watershed_fragments_vector, target_watersheds_pa
                 (float(len(original_fragment_fids))/n_fragments)*100.)
 
         fragment_id = fragment.GetField('fragment_id')
-        original_fragment_fids[fragment_id] = fragment.GetFID()
+        if fragment_id in original_fragment_fids:
+            original_fragment_fids[fragment_id].add(fragment.GetFID())
+        else:
+            original_fragment_fids[fragment_id] = set([fragment.GetFID()])
         fragment_ids.add(fragment_id)
         member_ws_ids = set([int(ws_id) for ws_id in
                              fragment.GetField('member_ws_ids').split(',')])
@@ -1279,6 +1281,9 @@ def join_watershed_fragments_d8(watershed_fragments_vector, target_watersheds_pa
         if starter_fragment_id in fragment_fids:
             continue
 
+        if starter_fragment_id is None:
+            LOGGER.warn('Starter fragment is None')
+
         if ctime(NULL) - last_log_time > 5.0:
             last_log_time = ctime(NULL)
             n_complete = working_fragments_layer.GetFeatureCount()
@@ -1289,9 +1294,14 @@ def join_watershed_fragments_d8(watershed_fragments_vector, target_watersheds_pa
             stack.push(fragment_id)
             stack_set.insert(fragment_id)
 
-        starter_fragment = fragments_layer.GetFeature(starter_fragment_id)
         geometries = ogr.Geometry(ogr.wkbMultiPolygon)
-        geometries.AddGeometry(starter_fragment.GetGeometryRef())
+        for fragment_id in original_fragment_fids[starter_fragment_id]:
+            fragment = fragments_layer.GetFeature(fragment_id)
+            if fragment is None:
+                LOGGER.warn('No fragment at id %s', fragment_id)
+
+            geometries.AddGeometry(fragment.GetGeometryRef())
+
         while not stack.empty():
             fragment_id = stack.top()
             stack.pop()
@@ -1405,6 +1415,7 @@ def join_watershed_fragments_d8(watershed_fragments_vector, target_watersheds_pa
 
         watersheds_layer.CreateFeature(target_feature)
         watersheds_layer.CommitTransaction()
+    LOGGER.info('Compilation 100% complete')
 
 
 def _is_raster_path_band_formatted(raster_path_band):
