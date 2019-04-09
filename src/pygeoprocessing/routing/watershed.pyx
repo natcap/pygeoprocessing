@@ -539,8 +539,6 @@ def delineate_watersheds_d8(
     gpkg_driver = gdal.GetDriverByName('GPKG')
     flow_dir_srs = osr.SpatialReference()
     flow_dir_srs.ImportFromWkt(flow_dir_info['projection'])
-    flow_dir_bbox_geometry = shapely.prepared.prep(
-        shapely.geometry.box(*flow_dir_info['bounding_box']))
 
     source_outlets_vector = gdal.OpenEx(outflow_vector_path, gdal.OF_VECTOR)
     if source_outlets_vector is None:
@@ -565,16 +563,11 @@ def delineate_watersheds_d8(
     #    * Exclude any geometries that do not intersect the DEM bbox (prepared geometry op)
     working_vector_ws_id_to_fid = {}
     working_outlets_layer.StartTransaction()
-    # TODO: add progress logging
     cdef int n_features = working_outlets_layer.GetFeatureCount()
     cdef int n_complete = 0
-    cdef int n_removed = 0
     last_log_time = ctime(NULL)
     LOGGER.info('Preprocessing outflow geometries.')
     for feature in working_outlets_layer:
-        if n_features % 50000 == 0:
-            working_outlets_layer.CommitTransaction()
-            working_outlets_layer.StartTransaction()
         if ctime(NULL) - last_log_time > 5.0:
             last_log_time = ctime(NULL)
             LOGGER.info('%s of %s features complete (%.3f %%)',
@@ -599,20 +592,12 @@ def delineate_watersheds_d8(
 
         n_complete += 1  # always incremement this counter.
 
-        # If the geometry doesn't intersect the flow direction bounding box,
-        # no need to include it in any of the watershed processing.
-        if not flow_dir_bbox_geometry.intersects(geometry):
-            working_outlets_layer.DeleteFeature(fid)
-            n_removed += 1
-            continue
-
         working_vector_ws_id_to_fid[ws_id] = fid
         feature.SetField(ws_id_fieldname, ws_id)
         working_outlets_layer.SetFeature(feature)
-        ws_id += 1  # only track ws_ids that end up in the vector.
+        ws_id += 1
     working_outlets_layer.CommitTransaction()
-    LOGGER.info('Preprocessing complete, %s features did not intersect the '
-                'DEM and were removed.', n_removed)
+    LOGGER.info('Preprocessing complete')
 
     # Phase 1: Prepare working geometries for determining sets of disjoint polygons.
     #    * Points and very small geometries can be removed, as we already know their seed coords.
@@ -796,7 +781,6 @@ def delineate_watersheds_d8(
     cdef int n_blocks = (
         ((flow_dir_n_cols // flow_dir_block_x_size) + 1) *
         ((flow_dir_n_rows // flow_dir_block_y_size) + 1))
-    print n_blocks
     cdef cmap[int, cset[CoordinatePair]] seeds_in_block
     cdef cmap[CoordinatePair, cset[int]].iterator seeds_in_watersheds_iterator = seed_watersheds.begin()
 
@@ -830,6 +814,7 @@ def delineate_watersheds_d8(
 
     scratch_raster_path = os.path.join(
             working_dir_path, 'scratch_raster.tif')
+    LOGGER.info('Creating new scratch raster at %s' % scratch_raster_path)
     pygeoprocessing.new_raster_from_base(
         d8_flow_dir_raster_path_band[0], scratch_raster_path,
         gdal.GDT_UInt32, [NO_WATERSHED], fill_value_list=[NO_WATERSHED],
@@ -837,6 +822,7 @@ def delineate_watersheds_d8(
     scratch_managed_raster = _ManagedRaster(scratch_raster_path, 1, 1)
 
     mask_raster_path = os.path.join(working_dir_path, 'mask_raster.tif')
+    LOGGER.info('Creating new mask raster at %s' % scratch_raster_path)
     pygeoprocessing.new_raster_from_base(
         d8_flow_dir_raster_path_band[0], mask_raster_path,
         gdal.GDT_Byte, [255], fill_value_list=[0],
