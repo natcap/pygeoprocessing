@@ -1089,6 +1089,31 @@ def delineate_watersheds_d8(
                     if visited.find(neighbor_seed) == visited.end():
                         stack.push(neighbor_seed)
 
+    # Now that we've determined the reclassification, we need to rewrite a few things:
+    #  * The fragment ids may need to be remapped
+    #  * The nested fragment IDs will need to be recreated for the new subset.
+    LOGGER.info('Remapping graph nodes: nested fragments')
+    cdef cmap[int, cset[int]] nested_fragments_consolidated
+    cdef cmap[int, cset[int]].iterator nf_iterator = nested_fragments.begin()
+    cdef cset[int].iterator nested_fragment_id_iterator
+    cdef int fragment_id, fragment_id_consolidated
+    while nf_iterator != nested_fragments.end():
+        fragment_id = deref(nf_iterator).first
+        nested_fragment_ids = deref(nf_iterator).second
+        inc(nf_iterator)
+        fragment_id_consolidated = reclassification[fragment_id]
+
+        # If the fragment has not yet been initialized, create the new set.
+        if nested_fragments_consolidated.find(fragment_id_consolidated) == nested_fragments_consolidated.end():
+            nested_fragments_consolidated[fragment_id_consolidated] = cset[int]()
+
+        nested_fragment_id_iterator = nested_fragment_ids.begin()
+        while nested_fragment_id_iterator != nested_fragment_ids.end():
+            nested_fragment_id = deref(nested_fragment_id_iterator)
+            inc(nested_fragment_id_iterator)
+            nested_fragments_consolidated[fragment_id_consolidated].insert(nested_fragment_id)
+
+    LOGGER.info("Consolidating fragment ids")
     reclassified_scratch_path = os.path.join(working_dir_path, 'scratch_reclassified.tif')
     pygeoprocessing.reclassify_raster(
         (scratch_raster_path, 1), dict(reclassification),
