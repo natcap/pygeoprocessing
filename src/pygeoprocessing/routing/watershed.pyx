@@ -961,7 +961,7 @@ def delineate_watersheds_d8(
         starter_seeds.push(seed)
         starter_seeds_set.insert(seed)
 
-    reclassification = {}
+    cdef cmap[int, int] reclassification
 
     LOGGER.info('Determining active fragments')
     cdef cstack[CoordinatePair] stack
@@ -1091,7 +1091,7 @@ def delineate_watersheds_d8(
 
     reclassified_scratch_path = os.path.join(working_dir_path, 'scratch_reclassified.tif')
     pygeoprocessing.reclassify_raster(
-        (scratch_raster_path, 1), reclassification,
+        (scratch_raster_path, 1), dict(reclassification),
         reclassified_scratch_path, gdal.GDT_UInt32, 0,
         values_required=False)  # setting to False to eliminate expensive check.
 
