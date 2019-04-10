@@ -1870,3 +1870,53 @@ class TestWatershedDelineation(unittest.TestCase):
             self.assertTrue('positive, nonzero integer'
                             in repr(cm.exception).lower())
 
+    def test_watershed_runthrough(self):
+        import pygeoprocessing.routing
+        import pygeoprocessing.testing
+        srs = osr.SpatialReference()
+
+        srs.ImportFromEPSG(32731)  # WGS84 / UTM zone 31s
+        srs_wkt = srs.ExportToWkt()
+
+        flow_dir_array = numpy.zeros((1, 7), dtype=numpy.uint8)
+        flow_dir_path = os.path.join(self.workspace_dir, 'flow_dir.tif')
+        driver = gdal.GetDriverByName('GTiff')
+        flow_dir_raster = driver.Create(
+            flow_dir_path, flow_dir_array.shape[1], flow_dir_array.shape[0],
+            1, gdal.GDT_Byte, options=(
+                'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
+                'BLOCKXSIZE=256', 'BLOCKYSIZE=256'))
+        flow_dir_raster.SetProjection(srs_wkt)
+        flow_dir_band = flow_dir_raster.GetRasterBand(1)
+        flow_dir_band.WriteArray(flow_dir_array)
+        flow_dir_geotransform = [2, 2, 0, -2, 0, -2]
+        flow_dir_raster.SetGeoTransform(flow_dir_geotransform)
+        flow_dir_raster = None
+
+        watershed_geometries = [
+            shapely.geometry.Point(2*n+1, -3) for n in range(1, 8)]
+
+        outflow_vector_path = os.path.join(self.workspace_dir, 'outflow.gpkg')
+        pygeoprocessing.testing.create_vector_on_disk(
+            watershed_geometries, srs_wkt, vector_format='GPKG',
+            filename=outflow_vector_path)
+
+        target_fragments_vector_path = os.path.join(self.workspace_dir,
+                                               'fragments.gpkg')
+
+        pygeoprocessing.routing.delineate_watersheds_d8(
+            (flow_dir_path, 1), outflow_vector_path, target_fragments_vector_path)
+
+        target_watersheds_path = os.path.join(self.workspace_dir, 'watersheds.gpkg')
+        pygeoprocessing.routing.join_watershed_fragments_d8(
+            target_fragments_vector_path, target_watersheds_path)
+
+        watersheds_vector = gdal.OpenEx(target_watersheds_path, gdal.OF_VECTOR)
+        watersheds_layer = watersheds_vector.GetLayer('watersheds')
+        self.assertEqual(watersheds_layer.GetFeatureCount(), 7)
+
+        # The watersheds should be cumulative, each one bigger than the
+        # previous.
+        for index, feature in enumerate(watersheds_layer, start=1):
+            geometry = feature.GetGeometryRef()
+            self.assertEqual(geometry.Area(), index*4)
