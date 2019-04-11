@@ -1254,7 +1254,7 @@ def join_watershed_fragments_d8(watershed_fragments_vector, target_watersheds_pa
     watersheds_vector = driver.Create(target_watersheds_path, 0, 0, 0,
                                       gdal.GDT_Unknown)
     watersheds_layer = watersheds_vector.CreateLayer(
-        'watersheds', fragments_srs, ogr.wkbMultiPolygon)
+        'watersheds', fragments_srs, ogr.wkbPolygon)
     watersheds_layer_defn = watersheds_layer.GetLayerDefn()
 
     working_fragments_layer = watersheds_vector.CreateLayer(
@@ -1295,6 +1295,8 @@ def join_watershed_fragments_d8(watershed_fragments_vector, target_watersheds_pa
         for ws_id in member_ws_ids:
             fragments_in_watershed[ws_id].add(fragment_id)
 
+        geometry = fragment.GetGeometryRef()
+
         try:
             upstream_fragments[fragment_id] = [
                 int(f) for f in fragment.GetField('upstream_fragments').split(',')]
@@ -1308,7 +1310,11 @@ def join_watershed_fragments_d8(watershed_fragments_vector, target_watersheds_pa
                 working_fragment_feature = working_fragments_layer.GetFeature(
                     fragment_fids[fragment_id])
                 working_fragment_geometry = working_fragment_feature.GetGeometryRef()
-                working_fragment_geometry.AddGeometry(fragment.GetGeometryRef())
+
+                # working_fragment_layer takes multipolygon geometries, so we can
+                # just add the new geometry to the existing one.
+                working_fragment_geometry.AddGeometry(geometry.Buffer(0))
+
                 working_fragment_feature.SetGeometry(working_fragment_geometry)
                 working_fragments_layer.SetFeature(working_fragment_feature)
             else:
@@ -1318,7 +1324,11 @@ def join_watershed_fragments_d8(watershed_fragments_vector, target_watersheds_pa
                 working_fragment_feature = ogr.Feature(
                     working_fragments_layer.GetLayerDefn())
                 working_fragment_geometry = ogr.Geometry(ogr.wkbMultiPolygon)
-                working_fragment_geometry.AddGeometry(fragment.GetGeometryRef())
+
+                # working_fragment_layer takes multipolygon geometries, so we can
+                # just add the new geometry to the existing one.
+                working_fragment_geometry.AddGeometry(geometry.Buffer(0))
+
                 working_fragment_feature.SetGeometry(working_fragment_geometry)
                 working_fragments_layer.CreateFeature(working_fragment_feature)
                 fragment_fids[fragment_id] = working_fragment_feature.GetFID()
@@ -1359,7 +1369,7 @@ def join_watershed_fragments_d8(watershed_fragments_vector, target_watersheds_pa
             if fragment is None:
                 LOGGER.warn('No fragment at id %s', fragment_id)
 
-            geometries.AddGeometry(fragment.GetGeometryRef())
+            geometries.AddGeometry(fragment.GetGeometryRef().Buffer(0))
 
         while not stack.empty():
             fragment_id = stack.top()
@@ -1371,14 +1381,7 @@ def join_watershed_fragments_d8(watershed_fragments_vector, target_watersheds_pa
                 fragment_feature = working_fragments_layer.GetFeature(
                     fragment_fids[fragment_id])
                 fragment_geometry = fragment_feature.GetGeometryRef()
-
-                # The subgeometry of a Polygon is a LineString.
-                if fragment_geometry.GetGeometryCount() == 0:
-                    geometries.AddGeometry(fragment_geometry)
-                else:
-                    # Subgeometries of a MultiPolygon are polygons.
-                    for sub_geometry in fragment_geometry:
-                        geometries.AddGeometry(sub_geometry)
+                geometries.AddGeometry(fragment_geometry.Buffer(0))
             except KeyError:
                 # Fragment geometry has not yet been compiled.
                 # Get the fragment's geometry and push it onto the stack.
@@ -1401,11 +1404,7 @@ def join_watershed_fragments_d8(watershed_fragments_vector, target_watersheds_pa
                         upstream_feature = working_fragments_layer.GetFeature(
                             fragment_fids[upstream_fragment_id])
                         upstream_geom = upstream_feature.GetGeometryRef()
-                        if upstream_geom.GetGeometryCount() == 0:
-                            local_geometry.AddGeometry(upstream_geom)
-                        else:
-                            for sub_geometry in upstream_geom:
-                                local_geometry.AddGeometry(sub_geometry)
+                        local_geometry.AddGeometry(upstream_geom.Buffer(0))
 
                     upstream_fragment_feature.SetGeometry(local_geometry)
                     working_fragments_layer.CreateFeature(upstream_fragment_feature)
@@ -1460,13 +1459,10 @@ def join_watershed_fragments_d8(watershed_fragments_vector, target_watersheds_pa
             fragment_feature = working_fragments_layer.GetFeature(
                 fragment_fids[fragment_id])
             fragment_geometry = fragment_feature.GetGeometryRef()
-            if fragment_geometry.GetGeometryCount() == 0:
-                new_geometry.AddGeometry(fragment_feature.GetGeometryRef())
-            else:
-                for sub_geometry in fragment_geometry:
-                    new_geometry.AddGeometry(sub_geometry)
+            new_geometry.AddGeometry(fragment_geometry.Buffer(0))
 
-        target_feature.SetGeometry(new_geometry.UnionCascaded())
+        target_feature.SetGeometry(new_geometry.Buffer(0))
+        #target_feature.SetGeometry(new_geometry.UnionCascaded())
 
         # Copy field values over to the new feature.
         for field_name, field_value in watershed_attributes[ws_id].items():
