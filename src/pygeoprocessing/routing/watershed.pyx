@@ -1364,10 +1364,10 @@ def join_watershed_fragments_d8(watershed_fragments_vector, target_watersheds_pa
             stack_set.insert(fragment_id)
 
         geometries = ogr.Geometry(ogr.wkbMultiPolygon)
-        for fragment_id in original_fragment_fids[starter_fragment_id]:
-            fragment = fragments_layer.GetFeature(fragment_id)
+        for fragment_fid in original_fragment_fids[starter_fragment_id]:
+            fragment = fragments_layer.GetFeature(fragment_fid)
             if fragment is None:
-                LOGGER.warn('No fragment at id %s', fragment_id)
+                LOGGER.warn('No fragment at FID %s', fragment_fid)
 
             geometries.AddGeometry(fragment.GetGeometryRef().Buffer(0))
 
