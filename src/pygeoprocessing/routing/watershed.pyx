@@ -1244,6 +1244,18 @@ def delineate_watersheds_d8(
     target_fragments_vector = None
 
 
+def _add_geometries_to_multipolygon(multipolygon, new_geometry):
+    if new_geometry.GetGeometryCount() == 0:
+        e = multipolygon.AddGeometry(new_geometry)
+        if e != 0:
+            LOGGER.warn('Error %s in AddGeometry', e)
+    else:
+        for sub_geometry in new_geometry:
+            e = multipolygon.AddGeometry(sub_geometry)
+            if e != 0:
+                LOGGER.warn('Error %s in AddGeometry', e)
+
+
 def join_watershed_fragments_d8(watershed_fragments_vector, target_watersheds_path):
     fragments_vector = gdal.OpenEx(watershed_fragments_vector, gdal.OF_VECTOR)
     fragments_layer = fragments_vector.GetLayer('watershed_fragments')
@@ -1313,7 +1325,7 @@ def join_watershed_fragments_d8(watershed_fragments_vector, target_watersheds_pa
 
                 # working_fragment_layer takes multipolygon geometries, so we can
                 # just add the new geometry to the existing one.
-                working_fragment_geometry.AddGeometry(geometry.Buffer(0))
+                _add_geometries_to_multipolygon(working_fragment_geometry, geometry)
 
                 working_fragment_feature.SetGeometry(working_fragment_geometry)
                 working_fragments_layer.SetFeature(working_fragment_feature)
@@ -1327,7 +1339,7 @@ def join_watershed_fragments_d8(watershed_fragments_vector, target_watersheds_pa
 
                 # working_fragment_layer takes multipolygon geometries, so we can
                 # just add the new geometry to the existing one.
-                working_fragment_geometry.AddGeometry(geometry.Buffer(0))
+                _add_geometries_to_multipolygon(working_fragment_geometry, geometry)
 
                 working_fragment_feature.SetGeometry(working_fragment_geometry)
                 working_fragments_layer.CreateFeature(working_fragment_feature)
@@ -1369,7 +1381,7 @@ def join_watershed_fragments_d8(watershed_fragments_vector, target_watersheds_pa
             if fragment is None:
                 LOGGER.warn('No fragment at FID %s', fragment_fid)
 
-            geometries.AddGeometry(fragment.GetGeometryRef().Buffer(0))
+            _add_geometries_to_multipolygon(geometries, fragment.GetGeometryRef())
 
         while not stack.empty():
             fragment_id = stack.top()
@@ -1381,7 +1393,7 @@ def join_watershed_fragments_d8(watershed_fragments_vector, target_watersheds_pa
                 fragment_feature = working_fragments_layer.GetFeature(
                     fragment_fids[fragment_id])
                 fragment_geometry = fragment_feature.GetGeometryRef()
-                geometries.AddGeometry(fragment_geometry.Buffer(0))
+                _add_geometries_to_multipolygon(geometries, fragment_geometry)
             except KeyError:
                 # Fragment geometry has not yet been compiled.
                 # Get the fragment's geometry and push it onto the stack.
@@ -1404,7 +1416,7 @@ def join_watershed_fragments_d8(watershed_fragments_vector, target_watersheds_pa
                         upstream_feature = working_fragments_layer.GetFeature(
                             fragment_fids[upstream_fragment_id])
                         upstream_geom = upstream_feature.GetGeometryRef()
-                        local_geometry.AddGeometry(upstream_geom.Buffer(0))
+                        _add_geometries_to_multipolygon(local_geometry, upstream_geom)
 
                     upstream_fragment_feature.SetGeometry(local_geometry)
                     working_fragments_layer.CreateFeature(upstream_fragment_feature)
@@ -1459,7 +1471,7 @@ def join_watershed_fragments_d8(watershed_fragments_vector, target_watersheds_pa
             fragment_feature = working_fragments_layer.GetFeature(
                 fragment_fids[fragment_id])
             fragment_geometry = fragment_feature.GetGeometryRef()
-            new_geometry.AddGeometry(fragment_geometry.Buffer(0))
+            _add_geometries_to_multipolygon(new_geometry, fragment_geometry)
 
         target_feature.SetGeometry(new_geometry.Buffer(0))
         #target_feature.SetGeometry(new_geometry.UnionCascaded())
