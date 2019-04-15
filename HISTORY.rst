@@ -7,6 +7,9 @@ Unreleased Changes
 * Correcting an issue with ``pygeoprocessing.zonal_statistics`` that was
   causing test failures on Python 3.6.
 * Pygeoprocessing is now tested against Python 3.7.
+* Fixed an issue in distance transform where a vertical striping artifact
+  would occur in the masked region of some large rasters when distances should
+  be 0.
 
 1.6.1 (2019-02-13)
 ------------------

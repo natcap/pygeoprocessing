@@ -155,6 +155,7 @@ def _distance_transform_edt(
     block_ysize = g_band_blocksize[1]
     g_block = numpy.empty((block_ysize, n_cols), dtype=numpy.float32)
     dt = numpy.empty((block_ysize, n_cols), dtype=numpy.float32)
+    mask_block = numpy.empty((block_ysize, n_cols), dtype=numpy.int8)
     sq = 0  # initialize so compiler doesn't complain
     gsq = 0
     for yoff in numpy.arange(0, n_rows, block_ysize):
@@ -162,11 +163,15 @@ def _distance_transform_edt(
         if yoff + win_ysize >= n_rows:
             win_ysize = n_rows - yoff
             g_block = numpy.empty((win_ysize, n_cols), dtype=numpy.float32)
+            mask_block = numpy.empty((win_ysize, n_cols), dtype=numpy.int8)
             dt = numpy.empty((win_ysize, n_cols), dtype=numpy.float32)
             done = True
         g_band.ReadAsArray(
             xoff=0, yoff=yoff, win_xsize=n_cols, win_ysize=win_ysize,
             buf_obj=g_block)
+        mask_band.ReadAsArray(
+            xoff=0, yoff=yoff, win_xsize=n_cols, win_ysize=win_ysize,
+            buf_obj=mask_block)
         for local_y_index in range(win_ysize):
             q_index = 0
             s_array[0] = 0
@@ -199,7 +204,11 @@ def _distance_transform_edt(
             gsq = g_block[local_y_index, sq]**2
             tq = t_array[q_index]
             for u_index in range(n_cols-1, -1, -1):
-                dt[local_y_index, u_index] = (sample_d_x*(u_index-sq))**2+gsq
+                if mask_block[local_y_index, u_index] != 1:
+                    dt[local_y_index, u_index] = (
+                        sample_d_x*(u_index-sq))**2+gsq
+                else:
+                    dt[local_y_index, u_index] = 0
                 if u_index <= tq:
                     q_index -= 1
                     if q_index >= 0:
