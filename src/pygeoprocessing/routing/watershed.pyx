@@ -1243,17 +1243,18 @@ def delineate_watersheds_d8(
     target_fragments_layer = None
     target_fragments_vector = None
 
+OGR_ERRORS = dict((getattr(ogr, a), a) for a in dir(ogr) if a.startswith('OGRERR'))
 
 def _add_geometries_to_multipolygon(multipolygon, new_geometry):
     if new_geometry.GetGeometryCount() == 0:
         e = multipolygon.AddGeometry(new_geometry)
         if e != 0:
-            LOGGER.warn('Error %s in AddGeometry', e)
+            LOGGER.warn('Error %s in AddGeometry 0', OGR_ERRORS[e])
     else:
         for sub_geometry in new_geometry:
             e = multipolygon.AddGeometry(sub_geometry)
             if e != 0:
-                LOGGER.warn('Error %s in AddGeometry', e)
+                LOGGER.warn('Error %s in AddGeometry n', OGR_ERRORS[e])
 
 
 def join_watershed_fragments_d8(watershed_fragments_vector, target_watersheds_path):
