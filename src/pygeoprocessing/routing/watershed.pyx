@@ -1498,3 +1498,59 @@ def _is_raster_path_band_formatted(raster_path_band):
         return False
     else:
         return True
+
+
+def delineate_watersheds_trivial_d8(
+        d8_flow_dir_raster_path_band, outflow_vector_path,
+        target_fragments_vector_path):
+
+    if (d8_flow_dir_raster_path_band is not None and not
+            _is_raster_path_band_formatted(d8_flow_dir_raster_path_band)):
+        raise ValueError(
+            "%s is supposed to be a raster band tuple but it's not." % (
+                d8_flow_dir_raster_path_band))
+
+    flow_dir_info = pygeoprocessing.get_raster_info(
+        d8_flow_dir_raster_path_band[0])
+    source_gt = flow_dir_info['geotransform']
+
+    gpkg_driver = gdal.GetDriverByName('GPKG')
+    flow_dir_srs = osr.SpatialReference()
+    flow_dir_srs.ImportFromWkt(flow_dir_info['projection'])
+
+    source_outlets_vector = gdal.OpenEx(outflow_vector_path, gdal.OF_VECTOR)
+    if source_outlets_vector is None:
+        raise ValueError(u'Could not open outflow vector %s' % outflow_vector_path)
+
+
+    source_outlets_layer = source_outlets_vector.GetFeatureCount()
+    feature_count = source_outlets_vector
+    for ws_id, feature in enumerate(source_outlets_layer):
+        LOGGER.info('Delineating watershed %s of %s', ws_id, feature_count)
+
+        geometry = feature.GetGeometryRef()
+        minx, miny, miny maxy = geometry.GetEnvelope()
+
+        # If the geometry's envelope does not intersect with the bounding box
+        # of the DEM, skip the geometry entirely.
+
+        # Otherwise:
+        # Build a shapely prepared polygon of the feature's geometry.
+        # Use the DEM's geotransform to determine the starting coordinates for iterating
+        # over the pixels within the area of the envelope.
+        # For each pixel in the area under the envelope:
+        #   * Build a square geometry
+        #   * Test for intersection with the feature's geometry.
+        #       * If intersection:
+        #           * If the pixel is over a valid flow direction pixel (non-nodata):
+        #               * Save the coordinate pair to a queue for later iteration.
+        #
+        # * Iterate over the processing queue, walking upstream until we can't.
+        #   * Record watershed pixels in a Byte raster for later polygonization
+        # * Polygonize the new watershed
+        # * Copy fields over to the new feature.
+
+        # ---------------------------
+        # The above is interesting in that (when applied to the single-pass approach),
+        # we might be able to simplify the delineation implementation a bit (though
+        # not the watershed joining, unfortunately).
