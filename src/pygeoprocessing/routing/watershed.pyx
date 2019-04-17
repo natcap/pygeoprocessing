@@ -1581,12 +1581,14 @@ def delineate_watersheds_trivial_d8(
         maxx = max(maxx, maxx + (flow_dir_pixelsize_x - fmod(maxx, flow_dir_pixelsize_x)))
         maxy = max(maxy, maxy + (flow_dir_pixelsize_y - fmod(maxy, flow_dir_pixelsize_y)))
 
+        scratch_managed_raster = _ManagedRaster(scratch_raster_path, 1, 1)
+
         # Use the DEM's geotransform to determine the starting coordinates for iterating
         # over the pixels within the area of the envelope.
         for x_index in range(<long>floor(minx / flow_dir_pixelsize_x),
                              <long>ceil(maxx / flow_dir_pixelsize_x)):
             for y_index in range(<long>floor(miny / flow_dir_pixelsize_y),
-                                 <long>ceil(maxx / flow_dir_pixelsize_y)):
+                                 <long>ceil(maxy / flow_dir_pixelsize_y)):
                 xcoord = x_index * flow_dir_pixelsize_x
                 ycoord = y_index * flow_dir_pixelsize_y
 
@@ -1609,7 +1611,9 @@ def delineate_watersheds_trivial_d8(
                 process_queue_set.insert(pixel_coords)
                 process_queue.push(pixel_coords)
 
-        scratch_managed_raster = _ManagedRaster(scratch_raster_path, 1, 1)
+        if process_queue.size() == 0:
+            LOGGER.debug('Skipping watershed %s, no seeds.', ws_id)
+            continue
 
         while not process_queue.empty():
             current_pixel = process_queue.front()
