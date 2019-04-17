@@ -14,6 +14,8 @@ from osgeo import osr
 from osgeo import ogr
 import shapely.wkb
 import shapely.ops
+import shapely.geometry
+import shapely.prepared
 
 cimport numpy
 cimport cython
@@ -29,6 +31,7 @@ from libcpp.deque cimport deque
 from libcpp.set cimport set as cset
 from libcpp.map cimport map as cmap
 from libcpp.stack cimport stack as cstack
+from libc.math cimport fmod, ceil, floor
 
 try:
     from shapely.geos import ReadingError
@@ -1502,7 +1505,7 @@ def _is_raster_path_band_formatted(raster_path_band):
 
 def delineate_watersheds_trivial_d8(
         d8_flow_dir_raster_path_band, outflow_vector_path,
-        target_fragments_vector_path):
+        target_watersheds_vector_path):
 
     if (d8_flow_dir_raster_path_band is not None and not
             _is_raster_path_band_formatted(d8_flow_dir_raster_path_band)):
@@ -1512,7 +1515,18 @@ def delineate_watersheds_trivial_d8(
 
     flow_dir_info = pygeoprocessing.get_raster_info(
         d8_flow_dir_raster_path_band[0])
+    flow_dir_nodata = flow_dir_info['nodata'][0]
     source_gt = flow_dir_info['geotransform']
+    flow_dir_origin_x = source_gt[0]
+    flow_dir_origin_y = source_gt[3]
+    flow_dir_pixelsize_x = source_gt[1]
+    flow_dir_pixelsize_y = source_gt[5]
+    flow_dir_n_cols = flow_dir_info['raster_size'][0]
+    flow_dir_n_rows = flow_dir_info['raster_size'][1]
+    flow_dir_bbox = shapely.prepared.prep(
+        shapely.geometry.box(*flow_dir_info['bounding_box']))
+    flow_dir_managed_raster = _ManagedRaster(d8_flow_dir_raster_path_band[0],
+                                             d8_flow_dir_raster_path_band[1], 0)
 
     gpkg_driver = gdal.GetDriverByName('GPKG')
     flow_dir_srs = osr.SpatialReference()
@@ -1522,32 +1536,134 @@ def delineate_watersheds_trivial_d8(
     if source_outlets_vector is None:
         raise ValueError(u'Could not open outflow vector %s' % outflow_vector_path)
 
+    # TODO: write scratch raster to a known place.
+    scratch_raster_path = 'scratch.tif'
+    pygeoprocessing.new_raster_from_base(
+        d8_flow_dir_raster_path_band[0], scratch_raster_path, gdal.GDT_Byte,
+        [255], fill_value_list=[0], gtiff_creation_options=GTIFF_CREATION_OPTIONS)
 
-    source_outlets_layer = source_outlets_vector.GetFeatureCount()
-    feature_count = source_outlets_vector
+    driver = ogr.GetDriverByName('GPKG')
+    watersheds_srs = osr.SpatialReference()
+    watersheds_srs.ImportFromWkt(flow_dir_info['projection'])
+    watersheds_vector = driver.CreateDataSource(target_watersheds_vector_path)
+    watersheds_layer = watersheds_vector.CreateLayer(
+        'watersheds', watersheds_srs, ogr.wkbPolygon)
+    index_field = ogr.FieldDefn('val', ogr.OFTInteger)
+    index_field.SetWidth(24)
+    watersheds_layer.CreateField(index_field)
+
+    source_outlets_layer = source_outlets_vector.GetLayer()
+    feature_count = source_outlets_layer.GetFeatureCount()
+    cdef int* reverse_flow = [4, 5, 6, 7, 0, 1, 2, 3]
+    cdef int* neighbor_col = [1, 1, 0, -1, -1, -1, 0, 1]
+    cdef int* neighbor_row = [0, -1, -1, -1, 0, 1, 1, 1]
+    cdef queue[CoordinatePair] process_queue
+    cdef cset[CoordinatePair] process_queue_set
     for ws_id, feature in enumerate(source_outlets_layer):
         LOGGER.info('Delineating watershed %s of %s', ws_id, feature_count)
 
         geometry = feature.GetGeometryRef()
-        minx, miny, miny maxy = geometry.GetEnvelope()
+        geom_bbox = shapely.geometry.box(*geometry.GetEnvelope())
 
         # If the geometry's envelope does not intersect with the bounding box
         # of the DEM, skip the geometry entirely.
+        if not flow_dir_bbox.intersects(geom_bbox):
+            continue
 
         # Otherwise:
         # Build a shapely prepared polygon of the feature's geometry.
+        geom_prepared = shapely.prepared.prep(shapely.wkb.loads(geometry.ExportToWkb()))
+
+        # Expand the bounding box to align with the nearest pixels.
+        minx, miny, maxx, maxy = geometry.GetEnvelope()
+        minx = min(minx, minx - fmod(minx, flow_dir_pixelsize_x))
+        miny = min(miny, miny - fmod(miny, flow_dir_pixelsize_y))
+        maxx = max(maxx, maxx + (flow_dir_pixelsize_x - fmod(maxx, flow_dir_pixelsize_x)))
+        maxy = max(maxy, maxy + (flow_dir_pixelsize_y - fmod(maxy, flow_dir_pixelsize_y)))
+
         # Use the DEM's geotransform to determine the starting coordinates for iterating
         # over the pixels within the area of the envelope.
-        # For each pixel in the area under the envelope:
-        #   * Build a square geometry
-        #   * Test for intersection with the feature's geometry.
-        #       * If intersection:
-        #           * If the pixel is over a valid flow direction pixel (non-nodata):
-        #               * Save the coordinate pair to a queue for later iteration.
-        #
-        # * Iterate over the processing queue, walking upstream until we can't.
-        #   * Record watershed pixels in a Byte raster for later polygonization
-        # * Polygonize the new watershed
+        for x_index in range(<long>floor(minx / flow_dir_pixelsize_x),
+                             <long>ceil(maxx / flow_dir_pixelsize_x)):
+            for y_index in range(<long>floor(miny / flow_dir_pixelsize_y),
+                                 <long>ceil(maxx / flow_dir_pixelsize_y)):
+                xcoord = x_index * flow_dir_pixelsize_x
+                ycoord = y_index * flow_dir_pixelsize_y
+
+                pixel_geometry = shapely.geometry.box((xcoord,
+                                                       ycoord,
+                                                       xcoord + flow_dir_pixelsize_x,
+                                                       ycoord + flow_dir_pixelsize_y))
+                if not flow_dir_bbox.intersects(pixel_geometry):
+                    continue
+
+                if not geom_prepared.intersects(pixel_geometry):
+                    continue
+
+                pixel_coords = CoordinatePair(x_index, y_index)
+
+                if flow_dir_managed_raster.get(pixel_coords.first,
+                                               pixel_coords.second) == flow_dir_nodata:
+                    continue
+
+                process_queue_set.insert(pixel_coords)
+                process_queue.push(pixel_coords)
+
+        scratch_managed_raster = _ManagedRaster(scratch_raster_path, 1, 1)
+
+        while not process_queue.empty():
+            current_pixel = process_queue.front()
+            process_queue_set.erase(current_pixel)
+            process_queue.pop()
+
+            scratch_managed_raster.set(current_pixel.first,
+                                       current_pixel.second, 1)
+
+            for neighbor_index in range(8):
+                neighbor_pixel = CoordinatePair(
+                    current_pixel.first + neighbor_col[neighbor_index],
+                    current_pixel.second + neighbor_row[neighbor_index])
+
+                if not 0 <= neighbor_pixel.first < flow_dir_n_cols:
+                    continue
+
+                if not 0 <= neighbor_pixel.second < flow_dir_n_rows:
+                    continue
+
+                # If we've already enqueued the neighbor (either it's
+                # upstream of another pixel or it's a watershed seed), we
+                # don't need to re-enqueue it.
+                if (process_queue_set.find(neighbor_pixel) !=
+                        process_queue_set.end()):
+                    continue
+
+                # Does the neighbor flow into this pixel?
+                # If yes, enqueue it.
+                if (reverse_flow[neighbor_index] ==
+                        flow_dir_managed_raster.get(
+                            neighbor_pixel.first, neighbor_pixel.second)):
+                    process_queue.push(neighbor_pixel)
+                    process_queue_set.insert(neighbor_pixel)
+
+        flow_dir_managed_raster.close()
+
+        # Polygonize this new fragment.
+        scratch_raster = gdal.OpenEx(scratch_raster_path, gdal.OF_RASTER | gdal.GA_Update)
+        scratch_band = scratch_raster.GetRasterBand(1)
+        gdal.Polygonize(
+            scratch_band,
+            scratch_band,
+            watersheds_layer,
+            0,  # field index ..., can we avoid this?
+            ['8CONNECTED=8'])
+        raise Exception
+
+        # TODO: copy all of the fields over from the source vector.
+        scratch_band.Fill(0)
+        scratch_raster.FlushCache()
+        scratch_band = None
+        scratch_raster = None
+
         # * Copy fields over to the new feature.
 
         # ---------------------------
