@@ -1580,6 +1580,10 @@ def delineate_watersheds_trivial_d8(
                 'DEM', ws_id, feature_count)
             continue
 
+        bbox_feature = ogr.Feature(polygons_layer.GetLayerDefn())
+        bbox_feature.SetGeometry(ogr.CreateGeometryFromWkb(geom_bbox.wkb))
+        polygons_layer.CreateFeature(bbox_feature)
+
         # Otherwise:
         # Build a shapely prepared polygon of the feature's geometry.
         geom_prepared = shapely.prepared.prep(shapely.wkb.loads(geometry.ExportToWkb()))
