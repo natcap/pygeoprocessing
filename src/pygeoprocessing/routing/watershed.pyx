@@ -1565,7 +1565,7 @@ def delineate_watersheds_trivial_d8(
     cdef long ix_pixel, iy_pixel  # indexes of the pixel
     cdef queue[CoordinatePair] process_queue
     cdef cset[CoordinatePair] process_queue_set
-    cdef CoordinatePair pixel_coords
+    cdef CoordinatePair pixel_coords, neighbor_pixel
     for ws_id, feature in enumerate(source_outlets_layer):
 
         geometry = feature.GetGeometryRef()
@@ -1580,9 +1580,9 @@ def delineate_watersheds_trivial_d8(
                 'DEM', ws_id, feature_count)
             continue
 
-        bbox_feature = ogr.Feature(polygons_layer.GetLayerDefn())
-        bbox_feature.SetGeometry(ogr.CreateGeometryFromWkb(geom_bbox.wkb))
-        polygons_layer.CreateFeature(bbox_feature)
+        #bbox_feature = ogr.Feature(polygons_layer.GetLayerDefn())
+        #bbox_feature.SetGeometry(ogr.CreateGeometryFromWkb(geom_bbox.wkb))
+        #polygons_layer.CreateFeature(bbox_feature)
 
         # Otherwise:
         # Build a shapely prepared polygon of the feature's geometry.
@@ -1594,16 +1594,16 @@ def delineate_watersheds_trivial_d8(
         maxx = max(maxx, maxx - fmod(maxx, flow_dir_pixelsize_x) + flow_dir_pixelsize_x)
         maxy = max(maxy, maxy + fmod(maxy, fabs(flow_dir_pixelsize_y)) + fabs(flow_dir_pixelsize_y))
 
-        bbox_geometry = shapely.geometry.box(minx, miny, maxx, maxy)
-        bbox_feature = ogr.Feature(polygons_layer.GetLayerDefn())
-        bbox_feature.SetGeometry(ogr.CreateGeometryFromWkb(bbox_geometry.wkb))
-        polygons_layer.CreateFeature(bbox_feature)
+        #bbox_geometry = shapely.geometry.box(minx, miny, maxx, maxy)
+        #bbox_feature = ogr.Feature(polygons_layer.GetLayerDefn())
+        #bbox_feature.SetGeometry(ogr.CreateGeometryFromWkb(bbox_geometry.wkb))
+        #polygons_layer.CreateFeature(bbox_feature)
 
         scratch_managed_raster = _ManagedRaster(scratch_raster_path, 1, 1)
 
         # Use the DEM's geotransform to determine the starting coordinates for iterating
         # over the pixels within the area of the envelope.
-        polygons_layer.StartTransaction()
+        #polygons_layer.StartTransaction()
         cx_pixel = minx
         while cx_pixel < maxx:
             ix_pixel = <long>((cx_pixel - flow_dir_origin_x) // flow_dir_pixelsize_x)
@@ -1623,56 +1623,18 @@ def delineate_watersheds_trivial_d8(
                 if flow_dir_managed_raster.get(ix_pixel, iy_pixel) == flow_dir_nodata:
                     continue
 
-                pixel_feature = ogr.Feature(polygons_layer.GetLayerDefn())
-                pixel_feature.SetGeometry(ogr.CreateGeometryFromWkb(pixel_geometry.wkb))
-                polygons_layer.CreateFeature(pixel_feature)
-
-            cx_pixel += flow_dir_pixelsize_x
-
-        polygons_layer.CommitTransaction()
-
-        raise Exception('bar')
-
-        for x_index in range(max(<long>floor((minx - flow_dir_origin_x) / fabs(flow_dir_pixelsize_x)), 0),
-                             min(<long>ceil((maxx - flow_dir_origin_x) / fabs(flow_dir_pixelsize_x)), flow_dir_n_cols)):
-            for y_index in range(max(<long>floor((miny - flow_dir_origin_y) / fabs(flow_dir_pixelsize_y)), 0),
-                                 min(<long>ceil((maxy - flow_dir_origin_y) / fabs(flow_dir_pixelsize_y)), flow_dir_n_rows)):
-                xcoord = (x_index * flow_dir_pixelsize_x) + flow_dir_origin_x
-                ycoord = (y_index * flow_dir_pixelsize_y) + flow_dir_origin_y
-
-                print (xcoord, ycoord)
-                print (x_index, y_index)
-
-                pixel_geometry = shapely.geometry.box(xcoord,
-                                                      ycoord + flow_dir_pixelsize_y,
-                                                      xcoord + flow_dir_pixelsize_x,
-                                                      ycoord
-                                                      )
-                if not flow_dir_bbox.intersects(pixel_geometry):
-                    continue
-
-                if not geom_prepared.intersects(pixel_geometry):
-                    continue
-
-                pixel_feature = ogr.Feature(polygons_layer.GetLayerDefn())
-                pixel_feature.SetGeometry(ogr.CreateGeometryFromWkb(pixel_geometry.wkb))
-                polygons_layer.CreateFeature(pixel_feature)
-
-                pixel_coords = CoordinatePair(x_index, y_index)
-
-                if flow_dir_managed_raster.get(pixel_coords.first,
-                                               pixel_coords.second) == flow_dir_nodata:
-                    continue
+                pixel_coords = CoordinatePair(ix_pixel, iy_pixel)
 
                 process_queue_set.insert(pixel_coords)
                 process_queue.push(pixel_coords)
-        polygons_layer.CommitTransaction()
 
-        raise Exception()
+                #pixel_feature = ogr.Feature(polygons_layer.GetLayerDefn())
+                #pixel_feature.SetGeometry(ogr.CreateGeometryFromWkb(pixel_geometry.wkb))
+                #polygons_layer.CreateFeature(pixel_feature)
 
-        if process_queue.size() == 0:
-            LOGGER.debug('Skipping watershed %s, does not intersect DEM.', ws_id)
-            continue
+            cx_pixel += flow_dir_pixelsize_x
+
+        #polygons_layer.CommitTransaction()
 
         LOGGER.info('Delineating watershed %s of %s', ws_id, feature_count)
         while not process_queue.empty():
@@ -1714,23 +1676,17 @@ def delineate_watersheds_trivial_d8(
         # Polygonize this new fragment.
         scratch_raster = gdal.OpenEx(scratch_raster_path, gdal.OF_RASTER | gdal.GA_Update)
         scratch_band = scratch_raster.GetRasterBand(1)
-        gdal.Polygonize(
-            scratch_band,
-            scratch_band,
+        result = gdal.Polygonize(
+            scratch_band,  # The source band
+            scratch_band,  # The mask indicating valid pixels
             watersheds_layer,
             0,  # field index ..., can we avoid this?
             ['8CONNECTED=8'])
-        raise Exception
 
         # TODO: copy all of the fields over from the source vector.
-        scratch_band.Fill(0)
-        scratch_raster.FlushCache()
+        scratch_band.Fill(0)  # reset the scratch band
         scratch_band = None
         scratch_raster = None
 
-        # * Copy fields over to the new feature.
-
-        # ---------------------------
-        # The above is interesting in that (when applied to the single-pass approach),
-        # we might be able to simplify the delineation implementation a bit (though
-        # not the watershed joining, unfortunately).
+    watersheds_layer = None
+    watersheds_vector = None
