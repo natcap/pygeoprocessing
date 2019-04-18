@@ -1590,9 +1590,9 @@ def delineate_watersheds_trivial_d8(
 
         # Expand the bounding box to align with the nearest pixels.
         minx = min(minx, minx - fmod(minx, flow_dir_pixelsize_x))
-        miny = min(miny, miny - fmod(miny, flow_dir_pixelsize_y))
-        maxx = max(maxx, maxx + (flow_dir_pixelsize_x - fmod(maxx, flow_dir_pixelsize_x)))
-        maxy = max(maxy, maxy + (flow_dir_pixelsize_y - fmod(maxy, flow_dir_pixelsize_y)))
+        miny = max(miny, miny + fmod(miny, fabs(flow_dir_pixelsize_y)))
+        maxx = max(maxx, maxx - fmod(maxx, flow_dir_pixelsize_x) + flow_dir_pixelsize_x)
+        maxy = min(maxy, maxy - (flow_dir_pixelsize_y - fmod(maxy, fabs(flow_dir_pixelsize_y))))
 
         bbox_geometry = shapely.geometry.box(minx, miny, maxx, maxy)
         bbox_feature = ogr.Feature(polygons_layer.GetLayerDefn())
