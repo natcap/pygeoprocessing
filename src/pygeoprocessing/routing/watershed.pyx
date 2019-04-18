@@ -31,7 +31,7 @@ from libcpp.deque cimport deque
 from libcpp.set cimport set as cset
 from libcpp.map cimport map as cmap
 from libcpp.stack cimport stack as cstack
-from libc.math cimport fmod, ceil, floor
+from libc.math cimport fmod, ceil, floor, fabs
 
 try:
     from shapely.geos import ReadingError
@@ -1517,12 +1517,12 @@ def delineate_watersheds_trivial_d8(
         d8_flow_dir_raster_path_band[0])
     flow_dir_nodata = flow_dir_info['nodata'][0]
     source_gt = flow_dir_info['geotransform']
-    flow_dir_origin_x = source_gt[0]
-    flow_dir_origin_y = source_gt[3]
-    flow_dir_pixelsize_x = source_gt[1]
-    flow_dir_pixelsize_y = source_gt[5]
-    flow_dir_n_cols = flow_dir_info['raster_size'][0]
-    flow_dir_n_rows = flow_dir_info['raster_size'][1]
+    cdef double flow_dir_origin_x = source_gt[0]
+    cdef double flow_dir_origin_y = source_gt[3]
+    cdef double flow_dir_pixelsize_x = source_gt[1]
+    cdef double flow_dir_pixelsize_y = source_gt[5]
+    cdef int flow_dir_n_cols = flow_dir_info['raster_size'][0]
+    cdef int flow_dir_n_rows = flow_dir_info['raster_size'][1]
     flow_dir_bbox = shapely.prepared.prep(
         shapely.geometry.box(*flow_dir_info['bounding_box']))
     flow_dir_managed_raster = _ManagedRaster(d8_flow_dir_raster_path_band[0],
@@ -1557,17 +1557,22 @@ def delineate_watersheds_trivial_d8(
     cdef int* reverse_flow = [4, 5, 6, 7, 0, 1, 2, 3]
     cdef int* neighbor_col = [1, 1, 0, -1, -1, -1, 0, 1]
     cdef int* neighbor_row = [0, -1, -1, -1, 0, 1, 1, 1]
+    cdef double minx, miny, maxx, maxy
     cdef queue[CoordinatePair] process_queue
     cdef cset[CoordinatePair] process_queue_set
+    cdef CoordinatePair pixel_coords
     for ws_id, feature in enumerate(source_outlets_layer):
-        LOGGER.info('Delineating watershed %s of %s', ws_id, feature_count)
 
         geometry = feature.GetGeometryRef()
-        geom_bbox = shapely.geometry.box(*geometry.GetEnvelope())
+        minx, maxx, miny, maxy = geometry.GetEnvelope()
+        geom_bbox = shapely.geometry.box(minx, miny, maxx, maxy)
 
         # If the geometry's envelope does not intersect with the bounding box
         # of the DEM, skip the geometry entirely.
         if not flow_dir_bbox.intersects(geom_bbox):
+            LOGGER.info(
+                'Skipping watershed %s of %s; feature does not intersect '
+                'DEM', ws_id, feature_count)
             continue
 
         # Otherwise:
@@ -1575,7 +1580,6 @@ def delineate_watersheds_trivial_d8(
         geom_prepared = shapely.prepared.prep(shapely.wkb.loads(geometry.ExportToWkb()))
 
         # Expand the bounding box to align with the nearest pixels.
-        minx, miny, maxx, maxy = geometry.GetEnvelope()
         minx = min(minx, minx - fmod(minx, flow_dir_pixelsize_x))
         miny = min(miny, miny - fmod(miny, flow_dir_pixelsize_y))
         maxx = max(maxx, maxx + (flow_dir_pixelsize_x - fmod(maxx, flow_dir_pixelsize_x)))
@@ -1585,22 +1589,31 @@ def delineate_watersheds_trivial_d8(
 
         # Use the DEM's geotransform to determine the starting coordinates for iterating
         # over the pixels within the area of the envelope.
-        for x_index in range(<long>floor(minx / flow_dir_pixelsize_x),
-                             <long>ceil(maxx / flow_dir_pixelsize_x)):
-            for y_index in range(<long>floor(miny / flow_dir_pixelsize_y),
-                                 <long>ceil(maxy / flow_dir_pixelsize_y)):
-                xcoord = x_index * flow_dir_pixelsize_x
-                ycoord = y_index * flow_dir_pixelsize_y
+        polygons_layer.StartTransaction()
+        for x_index in range(max(<long>floor((minx - flow_dir_origin_x) / fabs(flow_dir_pixelsize_x)), 0),
+                             min(<long>ceil((maxx - flow_dir_origin_x) / fabs(flow_dir_pixelsize_x)), flow_dir_n_cols)):
+            for y_index in range(max(<long>floor((miny - flow_dir_origin_y) / fabs(flow_dir_pixelsize_y)), 0),
+                                 min(<long>ceil((maxy - flow_dir_origin_y) / fabs(flow_dir_pixelsize_y)), flow_dir_n_rows)):
+                xcoord = (x_index * flow_dir_pixelsize_x) + flow_dir_origin_x
+                ycoord = (y_index * flow_dir_pixelsize_y) + flow_dir_origin_y
 
-                pixel_geometry = shapely.geometry.box((xcoord,
-                                                       ycoord,
-                                                       xcoord + flow_dir_pixelsize_x,
-                                                       ycoord + flow_dir_pixelsize_y))
+                print (xcoord, ycoord)
+                print (x_index, y_index)
+
+                pixel_geometry = shapely.geometry.box(xcoord,
+                                                      ycoord + flow_dir_pixelsize_y,
+                                                      xcoord + flow_dir_pixelsize_x,
+                                                      ycoord
+                                                      )
                 if not flow_dir_bbox.intersects(pixel_geometry):
                     continue
 
                 if not geom_prepared.intersects(pixel_geometry):
                     continue
+
+                pixel_feature = ogr.Feature(polygons_layer.GetLayerDefn())
+                pixel_feature.SetGeometry(ogr.CreateGeometryFromWkb(pixel_geometry.wkb))
+                polygons_layer.CreateFeature(pixel_feature)
 
                 pixel_coords = CoordinatePair(x_index, y_index)
 
@@ -1610,11 +1623,15 @@ def delineate_watersheds_trivial_d8(
 
                 process_queue_set.insert(pixel_coords)
                 process_queue.push(pixel_coords)
+        polygons_layer.CommitTransaction()
+
+        raise Exception()
 
         if process_queue.size() == 0:
             LOGGER.debug('Skipping watershed %s, no seeds.', ws_id)
             continue
 
+        LOGGER.info('Delineating watershed %s of %s', ws_id, feature_count)
         while not process_queue.empty():
             current_pixel = process_queue.front()
             process_queue_set.erase(current_pixel)
