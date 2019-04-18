@@ -1552,12 +1552,17 @@ def delineate_watersheds_trivial_d8(
     index_field.SetWidth(24)
     watersheds_layer.CreateField(index_field)
 
+    polygons_layer = watersheds_vector.CreateLayer(
+        'polygons', watersheds_srs, ogr.wkbPolygon)
+
     source_outlets_layer = source_outlets_vector.GetLayer()
     feature_count = source_outlets_layer.GetFeatureCount()
     cdef int* reverse_flow = [4, 5, 6, 7, 0, 1, 2, 3]
     cdef int* neighbor_col = [1, 1, 0, -1, -1, -1, 0, 1]
     cdef int* neighbor_row = [0, -1, -1, -1, 0, 1, 1, 1]
     cdef double minx, miny, maxx, maxy
+    cdef double cx_pixel, cy_pixel  # coordinates of the pixel
+    cdef long ix_pixel, iy_pixel  # indexes of the pixel
     cdef queue[CoordinatePair] process_queue
     cdef cset[CoordinatePair] process_queue_set
     cdef CoordinatePair pixel_coords
@@ -1585,11 +1590,45 @@ def delineate_watersheds_trivial_d8(
         maxx = max(maxx, maxx + (flow_dir_pixelsize_x - fmod(maxx, flow_dir_pixelsize_x)))
         maxy = max(maxy, maxy + (flow_dir_pixelsize_y - fmod(maxy, flow_dir_pixelsize_y)))
 
+        bbox_geometry = shapely.geometry.box(minx, miny, maxx, maxy)
+        bbox_feature = ogr.Feature(polygons_layer.GetLayerDefn())
+        bbox_feature.SetGeometry(ogr.CreateGeometryFromWkb(bbox_geometry.wkb))
+        polygons_layer.CreateFeature(bbox_feature)
+
         scratch_managed_raster = _ManagedRaster(scratch_raster_path, 1, 1)
 
         # Use the DEM's geotransform to determine the starting coordinates for iterating
         # over the pixels within the area of the envelope.
         polygons_layer.StartTransaction()
+        cx_pixel = minx
+        while cx_pixel < maxx:
+            ix_pixel = <long>((cx_pixel - flow_dir_origin_x) // flow_dir_pixelsize_x)
+
+            cy_pixel = maxy
+            while cy_pixel > miny:
+                iy_pixel = <long>((cy_pixel - flow_dir_origin_y) // flow_dir_pixelsize_y)
+                cy_pixel += flow_dir_pixelsize_y
+
+                pixel_geometry = shapely.geometry.box(cx_pixel,
+                                                      cy_pixel + flow_dir_pixelsize_y,
+                                                      cx_pixel + flow_dir_pixelsize_x,
+                                                      cy_pixel)
+                if not geom_prepared.intersects(pixel_geometry):
+                    continue
+
+                if flow_dir_managed_raster.get(ix_pixel, iy_pixel) == flow_dir_nodata:
+                    continue
+
+                pixel_feature = ogr.Feature(polygons_layer.GetLayerDefn())
+                pixel_feature.SetGeometry(ogr.CreateGeometryFromWkb(pixel_geometry.wkb))
+                polygons_layer.CreateFeature(pixel_feature)
+
+            cx_pixel += flow_dir_pixelsize_x
+
+        polygons_layer.CommitTransaction()
+
+        raise Exception('bar')
+
         for x_index in range(max(<long>floor((minx - flow_dir_origin_x) / fabs(flow_dir_pixelsize_x)), 0),
                              min(<long>ceil((maxx - flow_dir_origin_x) / fabs(flow_dir_pixelsize_x)), flow_dir_n_cols)):
             for y_index in range(max(<long>floor((miny - flow_dir_origin_y) / fabs(flow_dir_pixelsize_y)), 0),
@@ -1628,7 +1667,7 @@ def delineate_watersheds_trivial_d8(
         raise Exception()
 
         if process_queue.size() == 0:
-            LOGGER.debug('Skipping watershed %s, no seeds.', ws_id)
+            LOGGER.debug('Skipping watershed %s, does not intersect DEM.', ws_id)
             continue
 
         LOGGER.info('Delineating watershed %s of %s', ws_id, feature_count)
