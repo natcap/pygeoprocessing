@@ -1196,7 +1196,7 @@ def zonal_statistics(
                     'sum': 0.0})
             for feature in aggregate_layer:
                 _ = aggregate_stats[feature.GetFID()]
-            return aggregate_stats
+            return dict(aggregate_stats)
         else:
             # this would be very unexpected to get here, but if it happened
             # and we didn't raise an exception, execution could get weird.

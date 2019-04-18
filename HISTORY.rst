@@ -3,6 +3,8 @@ Release History
 
 Unreleased Changes
 ------------------
+* Changed ``zonal_statistics`` to always return a ``dict`` instead of
+  sometimes a ``defaultdict``. This allows pickling of the result, if desired.
 * Adding automated testing via bitbucket pipelines.
 * Correcting an issue with ``pygeoprocessing.zonal_statistics`` that was
   causing test failures on Python 3.6.
