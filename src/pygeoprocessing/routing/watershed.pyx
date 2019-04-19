@@ -1620,6 +1620,12 @@ def delineate_watersheds_trivial_d8(
                 if not geom_prepared.intersects(pixel_geometry):
                     continue
 
+                if not 0 <= ix_pixel < flow_dir_n_cols:
+                    continue
+
+                if not 0 <= iy_pixel < flow_dir_n_rows:
+                    continue
+
                 if flow_dir_managed_raster.get(ix_pixel, iy_pixel) == flow_dir_nodata:
                     continue
 
@@ -1671,7 +1677,7 @@ def delineate_watersheds_trivial_d8(
                     process_queue.push(neighbor_pixel)
                     process_queue_set.insert(neighbor_pixel)
 
-        flow_dir_managed_raster.close()
+        scratch_managed_raster.close()
 
         # Polygonize this new fragment.
         scratch_raster = gdal.OpenEx(scratch_raster_path, gdal.OF_RASTER | gdal.GA_Update)
@@ -1685,8 +1691,10 @@ def delineate_watersheds_trivial_d8(
 
         # TODO: copy all of the fields over from the source vector.
         scratch_band.Fill(0)  # reset the scratch band
+        scratch_band.FlushCache()
         scratch_band = None
         scratch_raster = None
 
+    flow_dir_managed_raster.close()
     watersheds_layer = None
     watersheds_vector = None
