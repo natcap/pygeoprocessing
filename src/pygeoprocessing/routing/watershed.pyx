@@ -1611,12 +1611,13 @@ def delineate_watersheds_trivial_d8(
             cy_pixel = maxy
             while cy_pixel > miny:
                 iy_pixel = <long>((cy_pixel - flow_dir_origin_y) // flow_dir_pixelsize_y)
-                cy_pixel += flow_dir_pixelsize_y
 
                 pixel_geometry = shapely.geometry.box(cx_pixel,
                                                       cy_pixel + flow_dir_pixelsize_y,
                                                       cx_pixel + flow_dir_pixelsize_x,
                                                       cy_pixel)
+                cy_pixel += flow_dir_pixelsize_y
+
                 if not geom_prepared.intersects(pixel_geometry):
                     continue
 
@@ -1642,7 +1643,8 @@ def delineate_watersheds_trivial_d8(
 
         #polygons_layer.CommitTransaction()
 
-        LOGGER.info('Delineating watershed %s of %s', ws_id, feature_count)
+        LOGGER.info('Delineating watershed %s of %s from %s pixels', ws_id,
+                    feature_count, process_queue.size())
         while not process_queue.empty():
             current_pixel = process_queue.front()
             process_queue_set.erase(current_pixel)
