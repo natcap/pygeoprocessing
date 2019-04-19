@@ -1577,7 +1577,7 @@ def delineate_watersheds_trivial_d8(
         if not flow_dir_bbox.intersects(geom_bbox):
             LOGGER.info(
                 'Skipping watershed %s of %s; feature does not intersect '
-                'DEM', ws_id, feature_count)
+                'flow direction raster', ws_id, feature_count)
             continue
 
         #bbox_feature = ogr.Feature(polygons_layer.GetLayerDefn())
@@ -1642,6 +1642,11 @@ def delineate_watersheds_trivial_d8(
             cx_pixel += flow_dir_pixelsize_x
 
         #polygons_layer.CommitTransaction()
+
+        if process_queue.size() == 0:
+            LOGGER.info('Skipping watershed %s of %s; feature has no valid pixels',
+                        ws_id, feature_count)
+            continue
 
         LOGGER.info('Delineating watershed %s of %s from %s pixels', ws_id,
                     feature_count, process_queue.size())
