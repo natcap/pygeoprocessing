@@ -1515,7 +1515,7 @@ def delineate_watersheds_trivial_d8(
 
     flow_dir_info = pygeoprocessing.get_raster_info(
         d8_flow_dir_raster_path_band[0])
-    flow_dir_nodata = flow_dir_info['nodata'][0]
+    cdef int flow_dir_nodata = flow_dir_info['nodata'][0]
     source_gt = flow_dir_info['geotransform']
     cdef double flow_dir_origin_x = source_gt[0]
     cdef double flow_dir_origin_y = source_gt[3]
