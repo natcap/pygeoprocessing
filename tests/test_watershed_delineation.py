@@ -70,3 +70,26 @@ class WatershedDelineationTests(unittest.TestCase):
         watersheds_vector = gdal.OpenEx(target_watersheds_path, gdal.OF_VECTOR)
         watersheds_layer = watersheds_vector.GetLayer('watersheds')
         self.assertEqual(watersheds_layer.GetFeatureCount(), 4)
+
+        # All features should have the same watersheds, both in area and
+        # geometry.
+        flow_dir_bbox = pygeoprocessing.get_raster_info(flow_dir_path)['bounding_box']
+        expected_watershed_geometry = shapely.geometry.box(*flow_dir_bbox)
+        expected_watershed_geometry = expected_watershed_geometry.difference(
+            shapely.geometry.box(20, -2, 22, -10))
+        expected_watershed_geometry = expected_watershed_geometry.difference(
+            shapely.geometry.box(20, -12, 22, -22))
+        pygeoprocessing.testing.create_vector_on_disk(
+            [expected_watershed_geometry],
+            srs_wkt, vector_format='GPKG', filename=os.path.join(self.workspace_dir, 'foo.gpkg'))
+        for feature in watersheds_layer:
+            geometry = feature.GetGeometryRef()
+            shapely_geom = shapely.wkb.loads(geometry.ExportToWkb())
+            self.assertEqual(shapely_geom.area, expected_watershed_geometry.area)
+            self.assertEqual(
+                shapely_geom.intersection(
+                    expected_watershed_geometry).area,
+                expected_watershed_geometry.area)
+            self.assertEqual(
+                shapely_geom.difference(
+                    expected_watershed_geometry).area, 0)
