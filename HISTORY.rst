@@ -3,13 +3,6 @@ Release History
 
 Unreleased Changes
 ------------------
-* Adding an implementation of watershed delineation based on D8 flow direction
-  as ``pygeoprocessing.routing.delineate_watersheds_d8``.  This function writes a
-  GeoPackage of polygons representing the regions that flow exclusively
-  into outflow points.  Another function,
-  ``pygeoprocessing.routing.join_watershed_fragments``, will take the delineated
-  watershed fragments and join nested watersheds into new geometries, writing
-  the results into a new GeoPackage.
 * ``pygeoprocessing.rasterize`` will now raise ``RuntimeError`` if the
   underlying call to ``gdal.RasterizeLayer`` encounters an error.
 * Specific type checking for `astype_list` in `iterblocks` to avoid confusing
