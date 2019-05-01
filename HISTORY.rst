@@ -3,6 +3,8 @@ Release History
 
 Unreleased Changes
 ------------------
+* Correcting an issue with the docstring in
+  ``pygeoprocessing.reclassify_raster`` to reflect the current parameters.
 * Changed ``zonal_statistics`` to always return a ``dict`` instead of
   sometimes a ``defaultdict``. This allows pickling of the result, if desired.
 * Adding automated testing via bitbucket pipelines.
