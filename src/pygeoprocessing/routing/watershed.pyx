@@ -1505,7 +1505,16 @@ def _is_raster_path_band_formatted(raster_path_band):
 
 def delineate_watersheds_trivial_d8(
         d8_flow_dir_raster_path_band, outflow_vector_path,
-        target_watersheds_vector_path):
+        target_watersheds_vector_path, working_dir=None):
+
+    try:
+        if working_dir is not None:
+            os.makedirs(working_dir)
+    except OSError:
+        pass
+    working_dir_path = tempfile.mkdtemp(
+        dir=working_dir, prefix='watershed_delineation_%s_' % time.strftime(
+            '%Y-%m-%d_%H_%M_%S', time.gmtime()))
 
     if (d8_flow_dir_raster_path_band is not None and not
             _is_raster_path_band_formatted(d8_flow_dir_raster_path_band)):
@@ -1536,8 +1545,7 @@ def delineate_watersheds_trivial_d8(
     if source_outlets_vector is None:
         raise ValueError(u'Could not open outflow vector %s' % outflow_vector_path)
 
-    # TODO: write scratch raster to a known place.
-    scratch_raster_path = 'scratch.tif'
+    scratch_raster_path = os.path.join(working_dir_path, 'scratch.tif')
     pygeoprocessing.new_raster_from_base(
         d8_flow_dir_raster_path_band[0], scratch_raster_path, gdal.GDT_Byte,
         [255], fill_value_list=[0], gtiff_creation_options=GTIFF_CREATION_OPTIONS)
@@ -1705,3 +1713,5 @@ def delineate_watersheds_trivial_d8(
     flow_dir_managed_raster.close()
     watersheds_layer = None
     watersheds_vector = None
+
+    shutil.rmtree(working_dir_path)
