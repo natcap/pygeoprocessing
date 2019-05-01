@@ -1717,17 +1717,15 @@ def reclassify_raster(
         target_datatype (gdal type): the numerical type for the target raster
         target_nodata (numerical type): the nodata value for the target raster
             Must be the same type as target_datatype
-        band_index (int): Indicates which band in ``base_raster_path`` the
-            reclassification should operate on.  Defaults to 1.
         values_required (bool): If True, raise a ValueError if there is a
-            value in the raster that is not found in value_map.
+            value in the raster that is not found in ``value_map``.
 
     Returns:
         None
 
     Raises:
-        ValueError if values_required is True and the value from
-           'key_raster' is not a key in 'attr_dict'
+        ValueError if ``values_required`` is ``True`` and a pixel value from
+           ``base_raster_path_band`` is not a key in ``attr_dict``.
 
     """
     if len(value_map) == 0:
