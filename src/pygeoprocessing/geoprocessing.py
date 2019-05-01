@@ -68,6 +68,9 @@ except ImportError:
     # Python3 doesn't have a basestring.
     basestring = str
 
+_VALID_GDAL_TYPES = (
+    set([getattr(gdal, x) for x in dir(gdal.gdalconst) if 'GDT_' in x]))
+
 _LOGGING_PERIOD = 5.0  # min 5.0 seconds per update log message for the module
 _LARGEST_ITERBLOCK = 2**16  # largest block for iterblocks to read in cells
 
@@ -81,34 +84,34 @@ def raster_calculator(
     """Apply local a raster operation on a stack of rasters.
 
     This function applies a user defined function across a stack of
-    rasters' pixel stack. The rasters in `base_raster_path_band_list` must be
-    spatially aligned and have the same cell sizes.
+    rasters' pixel stack. The rasters in ``base_raster_path_band_list`` must
+    be spatially aligned and have the same cell sizes.
 
     Parameters:
         base_raster_path_band_const_list (sequence): a sequence containing
-            either (str, int) tuples, `numpy.ndarray`s of up to two
-            dimensions, or an (object, 'raw') tuple.  A `(str, int)`
+            either (str, int) tuples, ``numpy.ndarray``s of up to two
+            dimensions, or an (object, 'raw') tuple.  A ``(str, int)``
             tuple refers to a raster path band index pair to use as an input.
-            The `numpy.ndarray`s must be broadcastable to each other AND the
-            size of the raster inputs. Values passed by  `(object, 'raw')`
-            tuples pass `object` directly into the `local_op`. All rasters
+            The ``numpy.ndarray``s must be broadcastable to each other AND the
+            size of the raster inputs. Values passed by  ``(object, 'raw')``
+            tuples pass ``object`` directly into the ``local_op``. All rasters
             must have the same raster size. If only arrays are input, numpy
             arrays must be broadcastable to each other and the final raster
             size will be the final broadcast array shape. A value error is
             raised if only "raw" inputs are passed.
         local_op (function) a function that must take in as many parameters as
-            there are elements in `base_raster_path_band_const_list`. The
-            parameters in `local_op` will map 1-to-1 in order with the values
-            in `base_raster_path_band_const_list`. `raster_calculator` will
-            call `local_op` to generate the pixel values in `target_raster`
+            there are elements in ``base_raster_path_band_const_list``. The
+            parameters in ``local_op`` will map 1-to-1 in order with the values
+            in ``base_raster_path_band_const_list``. ``raster_calculator`` will
+            call ``local_op`` to generate the pixel values in ``target_raster``
             along memory block aligned processing windows. Note any
-            particular call to `local_op` will have the arguments from
-            `raster_path_band_const_list` sliced to overlap that window.
-            If an argument from `raster_path_band_const_list` is a raster/path
-            band tuple, it will be passed to `local_op` as a 2D numpy array of
-            pixel values that align with the processing window that `local_op`
-            is targeting. A 2D or 1D array will be sliced to match
-            the processing window and in the case of a 1D array tiled in
+            particular call to ``local_op`` will have the arguments from
+            ``raster_path_band_const_list`` sliced to overlap that window.
+            If an argument from ``raster_path_band_const_list`` is a
+            raster/path band tuple, it will be passed to ``local_op`` as a 2D
+            numpy array of pixel values that align with the processing window
+            that ``local_op`` is targeting. A 2D or 1D array will be sliced to
+            match the processing window and in the case of a 1D array tiled in
             whatever dimension is flat. If an argument is a scalar it is
             passed as as scalar.
             The return value must be a 2D array of the same size as any of the
@@ -116,8 +119,8 @@ def raster_calculator(
             for the target raster.
         target_raster_path (string): the path of the output raster.  The
             projection, size, and cell size will be the same as the rasters
-            in `base_raster_path_const_band_list` or the final broadcast size
-            of the constant/ndarray values in the list.
+            in ``base_raster_path_const_band_list`` or the final broadcast
+            size of the constant/ndarray values in the list.
         datatype_target (gdal datatype; int): the desired GDAL output type of
             the target raster.
         nodata_target (numerical value): the desired nodata value of the
@@ -247,7 +250,7 @@ def raster_calculator(
             # if there's only one dimension it should match the last
             # dimension first, in the raster case this is the columns
             # because of the row/column order of numpy. No problem if
-            # that value is `1` because it will be broadcast, otherwise
+            # that value is ``1`` because it will be broadcast, otherwise
             # it should be the same as the raster.
             if (numpy_broadcast_size[0] != raster_shape[1] and
                     numpy_broadcast_size[0] != 1):
@@ -291,7 +294,7 @@ def raster_calculator(
             base_canonical_arg_list.append(value)
         else:
             raise ValueError(
-                "An unexpected `value` occurred. This should never happen. "
+                "An unexpected ``value`` occurred. This should never happen. "
                 "Value: %r" % value)
 
     # create target raster
@@ -312,6 +315,11 @@ def raster_calculator(
             "parameter. This is the input list: %s" % pprint.pformat(
                 base_raster_path_band_const_list))
 
+    if datatype_target not in _VALID_GDAL_TYPES:
+        raise ValueError(
+            'Invalid target type, should be a gdal.GDT_* type, received '
+            '"%s"' % datatype_target)
+
     # create target raster
     gtiff_driver = gdal.GetDriverByName('GTiff')
     try:
@@ -320,7 +328,10 @@ def raster_calculator(
         pass
     target_raster = gtiff_driver.Create(
         target_raster_path, n_cols, n_rows, 1, datatype_target,
-        options=gtiff_creation_options)
+        options=(
+            'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=DEFLATE',
+            'BLOCKXSIZE=256', 'BLOCKYSIZE=256'))
+
     target_band = target_raster.GetRasterBand(1)
     if nodata_target is not None:
         target_band.SetNoDataValue(nodata_target)
@@ -349,7 +360,7 @@ def raster_calculator(
             # as the raster is computed. This computational effort is high
             # and benefits from running in parallel. This queue and worker
             # takes a valid block of a raster and incrementally calculates
-            # the raster's statistics. When `None` is pushed to the queue
+            # the raster's statistics. When ``None`` is pushed to the queue
             # the worker will finish and return a (min, max, mean, std)
             # tuple.
             LOGGER.info('starting stats_worker')
@@ -365,7 +376,7 @@ def raster_calculator(
 
         # iterate over each block and calculate local_op
         for block_offset in iterblocks(
-                target_raster_path, offset_only=True,
+                (target_raster_path, 1), offset_only=True,
                 largest_block=largest_block):
             # read input blocks
             offset_list = (block_offset['yoff'], block_offset['xoff'])
@@ -377,7 +388,7 @@ def raster_calculator(
                     # I've encountered the following error when a gdal raster
                     # is corrupt, often from multiple threads writing to the
                     # same file. This helps to catch the error early rather
-                    # than lead to confusing values of `data_blocks` later.
+                    # than lead to confusing values of ``data_blocks`` later.
                     if not isinstance(data_blocks[-1], numpy.ndarray):
                         raise ValueError(
                             "got a %s when trying to read %s at %s",
@@ -497,11 +508,11 @@ def align_and_resize_raster_stack(
             will be transformed and will be used to determine the target
             bounding box.
         target_raster_path_list (sequence): a sequence of raster paths that
-            will be created to one-to-one map with `base_raster_path_list` as
-            aligned versions of those original rasters. If there are duplicate
-            paths in this list, the function will raise a ValueError.
+            will be created to one-to-one map with ``base_raster_path_list``
+            as aligned versions of those original rasters. If there are
+            duplicate paths in this list, the function will raise a ValueError.
         resample_method_list (sequence): a sequence of resampling methods
-            which one to one map each path in `base_raster_path_list` during
+            which one to one map each path in ``base_raster_path_list`` during
             resizing.  Each element must be one of
             "near|bilinear|cubic|cubicspline|lanczos|mode".
         target_pixel_size (list/tuple): the target raster's x and y pixel size
@@ -517,16 +528,16 @@ def align_and_resize_raster_stack(
             mode is 'bb=[...]' then these vectors are not used in any
             calculation.
         raster_align_index (int): indicates the index of a
-            raster in `base_raster_path_list` that the target rasters'
+            raster in ``base_raster_path_list`` that the target rasters'
             bounding boxes pixels should align with.  This feature allows
             rasters whose raster dimensions are the same, but bounding boxes
             slightly shifted less than a pixel size to align with a desired
-            grid layout.  If `None` then the bounding box of the target
+            grid layout.  If ``None`` then the bounding box of the target
             rasters is calculated as the precise intersection, union, or
             bounding box.
         base_sr_wkt_list (sequence): if not None, this is a sequence of base
-            projections of the rasters in `base_raster_path_list`. If a value
-            is `None` the `base_sr` is assumed to be whatever is defined in
+            projections of the rasters in ``base_raster_path_list``. If a value
+            is ``None`` the ``base_sr`` is assumed to be whatever is defined in
             that raster. This value is useful if there are rasters with no
             projection defined, but otherwise known.
         target_sr_wkt (string): if not None, this is the desired
@@ -565,10 +576,10 @@ def align_and_resize_raster_stack(
         ValueError if some combination of base, target, and embedded source
             reference systems results in an ambiguous target coordinate
             system.
-        ValueError if `vector_mask_options` is not None but the
-            `mask_vector_path` is undefined or doesn't point to a valid
+        ValueError if ``vector_mask_options`` is not None but the
+            ``mask_vector_path`` is undefined or doesn't point to a valid
             file.
-        ValueError if `pixel_size` is not a 2 element sequence of numbers.
+        ValueError if ``pixel_size`` is not a 2 element sequence of numbers.
 
     """
     # make sure that the input lists are of the same length
@@ -592,7 +603,7 @@ def align_and_resize_raster_stack(
                 duplicate_list.append(path)
         raise ValueError(
             "There are duplicated paths on the target list. This is an "
-            "invalid state of `target_path_list`. Duplicates: %s" % (
+            "invalid state of ``target_path_list``. Duplicates: %s" % (
                 duplicate_list))
 
     # we can accept 'union', 'intersection', or a 4 element list/tuple
@@ -634,8 +645,8 @@ def align_and_resize_raster_stack(
 
         raster_bounding_box_list = []
         for raster_index, raster_info in enumerate(raster_info_list):
-            # this block calculates the base projection of `raster_info` if
-            # `target_sr_wkt` is defined, thus implying a reprojection will
+            # this block calculates the base projection of ``raster_info`` if
+            # ``target_sr_wkt`` is defined, thus implying a reprojection will
             # be necessary.
             if target_sr_wkt:
                 if base_sr_wkt_list and base_sr_wkt_list[raster_index]:
@@ -673,12 +684,6 @@ def align_and_resize_raster_stack(
         target_bounding_box = merge_bounding_box_list(
             bounding_box_list, bounding_box_mode)
 
-    if bounding_box_mode == "intersection" and (
-            target_bounding_box[0] > target_bounding_box[2] or
-            target_bounding_box[1] > target_bounding_box[3]):
-        raise ValueError("The rasters' and vectors' intersection is empty "
-                         "(not all rasters and vectors touch each other).")
-
     if vector_mask_options:
         # translate pygeoprocessing terminology into GDAL warp options.
         if 'mask_vector_path' not in vector_mask_options:
@@ -697,13 +702,6 @@ def align_and_resize_raster_stack(
         mask_vector_intersect_box = merge_bounding_box_list(
             [target_bounding_box, mask_vector_bb], 'intersection')
 
-        if (mask_vector_intersect_box[0] > mask_vector_intersect_box[2] or
-                mask_vector_intersect_box[1] > mask_vector_intersect_box[3]):
-            raise ValueError(
-                "The mask vector's bounding box does not overlap with the "
-                "target bounding box. (mask bb: %s, target bb: %s)" % (
-                    mask_vector_bb, target_bounding_box))
-
     if raster_align_index is not None and raster_align_index >= 0:
         # bounding box needs alignment
         align_bounding_box = (
@@ -720,7 +718,7 @@ def align_and_resize_raster_stack(
                 n_pixels * align_pixel_size[index] +
                 align_bounding_box[index])
 
-    # using half the number of CPUs because in practice `warp_raster` seems
+    # using half the number of CPUs because in practice ``warp_raster`` seems
     # to use 2 cores.
     n_workers = max(min(multiprocessing.cpu_count(), n_rasters) // 2, 1)
 
@@ -740,13 +738,13 @@ def align_and_resize_raster_stack(
                     except psutil.NoSuchProcess:
                         LOGGER.warning(
                             "NoSuchProcess exception encountered when trying "
-                            "to nice %s. This might be a bug in `psutil` so "
+                            "to nice %s. This might be a bug in ``psutil`` so "
                             "it should be okay to ignore." % parent)
         except RuntimeError:
             LOGGER.warning(
                 "Runtime error when starting multiprocessing pool. This is "
                 "likely because this process is running on Windows and the "
-                "main entry point is not wrapped in an `if __name__ == "
+                "main entry point is not wrapped in an ``if __name__ == "
                 "'__main__': block. Returning from this function to attempt "
                 "to recover.")
             return
@@ -771,7 +769,7 @@ def align_and_resize_raster_stack(
                         None if not base_sr_wkt_list else
                         base_sr_wkt_list[index]),
                     'vector_mask_options': vector_mask_options,
-                    'gdal_warp_options': gdal_warp_options,})
+                    'gdal_warp_options': gdal_warp_options})
             result_list.append(result)
         worker_pool.close()
         for index, result in enumerate(result_list):
@@ -856,7 +854,9 @@ def new_raster_from_base(
         # TILED not set, so lets try to set it to a reasonable value
         if block_size[0] != n_cols:
             # if x block is not the width of the raster it *must* be tiled
-            # otherwise okay if it's striped or tiled
+            # otherwise okay if it's striped or tiled, I can't construct a
+            # test case to cover this, but there is nothing in the spec that
+            # restricts this so I have it just in case.
             local_gtiff_creation_options.append('TILED=YES')
 
     if not any(
@@ -876,7 +876,7 @@ def new_raster_from_base(
     n_bands = len(band_nodata_list)
     target_raster = driver.Create(
         target_path, n_cols, n_rows, n_bands, datatype,
-        options=gtiff_creation_options)
+        options=local_gtiff_creation_options)
     target_raster.SetProjection(base_raster.GetProjection())
     target_raster.SetGeoTransform(base_raster.GetGeoTransform())
     base_raster = None
@@ -901,9 +901,9 @@ def new_raster_from_base(
             target_band = target_raster.GetRasterBand(index + 1)
             # some rasters are very large and a fill can appear to cause
             # computation to hang. This block, though possibly slightly less
-            # efficient than `band.Fill` will give real-time feedback about
+            # efficient than ``band.Fill`` will give real-time feedback about
             # how the fill is progressing.
-            for offsets in iterblocks(target_path, offset_only=True):
+            for offsets in iterblocks((target_path, 1), offset_only=True):
                 fill_array = numpy.empty(
                     (offsets['win_ysize'], offsets['win_xsize']))
                 pixels_processed += (
@@ -914,7 +914,7 @@ def new_raster_from_base(
 
                 last_time = _invoke_timed_callback(
                     last_time, lambda: LOGGER.info(
-                        '%.2f%% complete',
+                        '%.1f%% complete',
                         float(pixels_processed) / n_pixels * 100.0),
                     _LOGGING_PERIOD)
             target_band = None
@@ -976,6 +976,12 @@ def create_raster_from_vector_extents(
                 # this is expressed as a None value in the geometry reference
                 # this feature won't contribute
                 LOGGER.warning(error)
+        layer = None
+
+    if target_pixel_type not in _VALID_GDAL_TYPES:
+        raise ValueError(
+            'Invalid target type, should be a gdal.GDT_* type, received '
+            '"%s"' % target_pixel_type)
 
     # round up on the rows and cols so that the target raster encloses the
     # base vector
@@ -1018,6 +1024,7 @@ def create_raster_from_vector_extents(
     layer = None
     vector = None
     raster = None
+    vector = None
 
 
 def interpolate_points(
@@ -1029,7 +1036,7 @@ def interpolate_points(
         base_vector_path (string): path to a shapefile that contains point
             vector layers.
         vector_attribute_field (field): a string in the vector referenced at
-            `base_vector_path` that refers to a numeric value in the
+            ``base_vector_path`` that refers to a numeric value in the
             vector's attribute table.  This is the value that will be
             interpolated across the raster.
         target_raster_path_band (tuple): a path/band number tuple to an
@@ -1066,7 +1073,7 @@ def interpolate_points(
     nodata = band.GetNoDataValue()
     geotransform = target_raster.GetGeoTransform()
     for offsets in iterblocks(
-            target_raster_path_band[0], offset_only=True):
+            target_raster_path_band, offset_only=True):
         grid_y, grid_x = numpy.mgrid[
             offsets['yoff']:offsets['yoff']+offsets['win_ysize'],
             offsets['xoff']:offsets['xoff']+offsets['win_xsize']]
@@ -1106,20 +1113,16 @@ def zonal_statistics(
             the base raster and the band index of that raster to analyze.
         aggregate_vector_path (string): a path to an ogr compatable polygon
             vector whose geometric features indicate the areas over
-            `base_raster_path_band` to calculate statistics over.
-        aggregate_field_name (string): field name in `aggregate_vector_path`
-            that represents an identifying value for a given polygon. Result
-            of this function will be indexed by the values found in this
-            field.
+            ``base_raster_path_band`` to calculate statistics over.
         aggregate_layer_name (string): name of shapefile layer that will be
             used to aggregate results over.  If set to None, the first layer
-            in the DataSource will be used as retrieved by `.GetLayer()`.
+            in the DataSource will be used as retrieved by ``.GetLayer()``.
             Note: it is normal and expected to set this field at None if the
             aggregating shapefile is a single layer as many shapefiles,
             including the common 'ESRI Shapefile', are.
         ignore_nodata: if true, then nodata pixels are not accounted for when
             calculating min, max, count, or mean.  However, the value of
-            `nodata_count` will always be the number of nodata pixels
+            ``nodata_count`` will always be the number of nodata pixels
             aggregated under the polygon.
         polygons_might_overlap (boolean): if True the function calculates
             aggregation coverage close to optimally by rasterizing sets of
@@ -1136,14 +1139,14 @@ def zonal_statistics(
         {0: {'min': 0, 'max': 1, 'sum': 1.7, count': 3, 'nodata_count': 1}}
 
     Raises:
-        ValueError if `base_raster_path_band` is incorrectly formatted.
+        ValueError if ``base_raster_path_band`` is incorrectly formatted.
         RuntimeError(s) if the aggregate vector or layer cannot open.
 
     """
     if not _is_raster_path_band_formatted(base_raster_path_band):
         raise ValueError(
             "`base_raster_path_band` not formatted as expected.  Expects "
-            "(path, band_index), recieved %s" % repr(base_raster_path_band))
+            "(path, band_index), received %s" % repr(base_raster_path_band))
     aggregate_vector = gdal.OpenEx(aggregate_vector_path, gdal.OF_VECTOR)
     if aggregate_vector is None:
         raise RuntimeError(
@@ -1173,14 +1176,33 @@ def zonal_statistics(
     # -1 here because bands are 1 indexed
     raster_nodata = raster_info['nodata'][base_raster_path_band[1]-1]
     with tempfile.NamedTemporaryFile(
-            prefix='clipped_raster', delete=False,
+            prefix='clipped_raster', suffix='.tif', delete=False,
             dir=working_dir) as clipped_raster_file:
         clipped_raster_path = clipped_raster_file.name
-    align_and_resize_raster_stack(
-        [base_raster_path_band[0]], [clipped_raster_path], ['near'],
-        raster_info['pixel_size'], 'intersection',
-        base_vector_path_list=[aggregate_vector_path], raster_align_index=0)
-    clipped_raster = gdal.OpenEx(clipped_raster_path, gdal.OF_RASTER)
+    try:
+        align_and_resize_raster_stack(
+            [base_raster_path_band[0]], [clipped_raster_path], ['near'],
+            raster_info['pixel_size'], 'intersection',
+            base_vector_path_list=[aggregate_vector_path],
+            raster_align_index=0)
+        clipped_raster = gdal.OpenEx(clipped_raster_path, gdal.OF_RASTER)
+        clipped_band = clipped_raster.GetRasterBand(base_raster_path_band[1])
+    except ValueError as e:
+        if 'Bounding boxes do not intersect' in repr(e):
+            LOGGER.error(
+                "aggregate vector %s does not intersect with the raster %s",
+                aggregate_vector_path, base_raster_path_band)
+            aggregate_stats = collections.defaultdict(
+                lambda: {
+                    'min': None, 'max': None, 'count': 0, 'nodata_count': 0,
+                    'sum': 0.0})
+            for feature in aggregate_layer:
+                _ = aggregate_stats[feature.GetFID()]
+            return dict(aggregate_stats)
+        else:
+            # this would be very unexpected to get here, but if it happened
+            # and we didn't raise an exception, execution could get weird.
+            raise
 
     # make a shapefile that non-overlapping layers can be added to
     driver = ogr.GetDriverByName('MEMORY')
@@ -1202,10 +1224,8 @@ def zonal_statistics(
     else:
         disjoint_fid_sets = [aggregate_layer_fid_set]
 
-    clipped_band = clipped_raster.GetRasterBand(base_raster_path_band[1])
-
     with tempfile.NamedTemporaryFile(
-            prefix='aggregate_fid_raster',
+            prefix='aggregate_fid_raster', suffix='.tif',
             delete=False, dir=working_dir) as agg_fid_raster_file:
         agg_fid_raster_path = agg_fid_raster_file.name
 
@@ -1280,9 +1300,8 @@ def zonal_statistics(
             set_index+1, len(disjoint_fid_sets),
             os.path.basename(aggregate_vector_path))
         for agg_fid_offsets in iterblocks(
-                agg_fid_raster_path, offset_only=True):
-            agg_fid_block = agg_fid_band.ReadAsArray(
-                **agg_fid_offsets)
+                (agg_fid_raster_path, 1), offset_only=True):
+            agg_fid_block = agg_fid_band.ReadAsArray(**agg_fid_offsets)
             clipped_block = clipped_band.ReadAsArray(**agg_fid_offsets)
             valid_mask = (agg_fid_block != agg_fid_nodata)
             valid_agg_fids = agg_fid_block[valid_mask]
@@ -1290,7 +1309,7 @@ def zonal_statistics(
             for agg_fid in numpy.unique(valid_agg_fids):
                 masked_clipped_block = valid_clipped[
                     valid_agg_fids == agg_fid]
-                if raster_nodata:
+                if raster_nodata is not None:
                     clipped_nodata_mask = numpy.isclose(
                         masked_clipped_block, raster_nodata)
                 else:
@@ -1326,6 +1345,7 @@ def zonal_statistics(
         len(aggregate_layer_fid_set))
     clipped_gt = numpy.array(
         clipped_raster.GetGeoTransform(), dtype=numpy.float32)
+    LOGGER.debug("gt %s for %s", clipped_gt, base_raster_path_band)
     for unset_fid in unset_fids:
         unset_feat = aggregate_layer.GetFeature(unset_fid)
         unset_geom_envelope = list(unset_feat.GetGeometryRef().GetEnvelope())
@@ -1373,7 +1393,7 @@ def zonal_statistics(
         unset_fid_block = clipped_band.ReadAsArray(
             xoff=xoff, yoff=yoff, win_xsize=win_xsize, win_ysize=win_ysize)
 
-        if raster_nodata:
+        if raster_nodata is not None:
             unset_fid_nodata_mask = numpy.isclose(
                 unset_fid_block, raster_nodata)
         else:
@@ -1386,9 +1406,12 @@ def zonal_statistics(
             aggregate_stats[unset_fid]['max'] = 0.0
             aggregate_stats[unset_fid]['sum'] = 0.0
         else:
-            aggregate_stats[unset_fid]['min'] = numpy.min(valid_unset_fid_block)
-            aggregate_stats[unset_fid]['max'] = numpy.max(valid_unset_fid_block)
-            aggregate_stats[unset_fid]['sum'] = numpy.sum(valid_unset_fid_block)
+            aggregate_stats[unset_fid]['min'] = numpy.min(
+                valid_unset_fid_block)
+            aggregate_stats[unset_fid]['max'] = numpy.max(
+                valid_unset_fid_block)
+            aggregate_stats[unset_fid]['sum'] = numpy.sum(
+                valid_unset_fid_block)
         aggregate_stats[unset_fid]['count'] = valid_unset_fid_block.size
         aggregate_stats[unset_fid]['nodata_count'] = numpy.count_nonzero(
             unset_fid_nodata_mask)
@@ -1397,6 +1420,10 @@ def zonal_statistics(
     LOGGER.debug(
         "remaining unset_fids: %s of %s ", len(unset_fids),
         len(aggregate_layer_fid_set))
+    # fill in the missing polygon fids in the aggregate stats by invoking the
+    # accessor in the defaultdict
+    for fid in unset_fids:
+        _ = aggregate_stats[fid]
 
     LOGGER.info(
         "all done processing polygon sets for %s", os.path.basename(
@@ -1428,8 +1455,8 @@ def get_vector_info(vector_path, layer_index=0):
             0.
 
     Raises:
-        ValueError if `vector_path` does not exist on disk or cannot be opened
-        as a gdal.OF_VECTOR.
+        ValueError if ``vector_path`` does not exist on disk or cannot be
+        opened as a gdal.OF_VECTOR.
 
     Returns:
         raster_properties (dictionary): a dictionary with the following
@@ -1470,7 +1497,7 @@ def get_raster_info(raster_path):
        raster_path (String): a path to a GDAL raster.
 
     Raises:
-        ValueError if `raster_path` is not a file or cannot be opened as a
+        ValueError if ``raster_path`` is not a file or cannot be opened as a
         gdal.OF_RASTER.
 
     Returns:
@@ -1554,15 +1581,15 @@ def reproject_vector(
         target_wkt (string): the desired output projection in Well Known Text
             (by layer.GetSpatialRef().ExportToWkt())
         target_path (string): the filepath to the transformed shapefile
-        layer_index (int): index of layer in `base_vector_path` to reproject.
-            Defaults to 0.
+        layer_index (int): index of layer in ``base_vector_path`` to
+            reproject. Defaults to 0.
         driver_name (string): String to pass to ogr.GetDriverByName, defaults
             to 'ESRI Shapefile'.
         copy_fields (bool or iterable): If True, all the fields in
-            `base_vector_path` will be copied to `target_path` during the
+            ``base_vector_path`` will be copied to ``target_path`` during the
             reprojection step. If it is an iterable, it will contain the
             field names to exclusively copy. An unmatched fieldname will be
-            ignored. If `False` no fields are copied into the new vector.
+            ignored. If ``False`` no fields are copied into the new vector.
 
     Returns:
         None
@@ -1678,21 +1705,21 @@ def reclassify_raster(
     """Reclassify pixel values in a raster.
 
     A function to reclassify values in raster to any output type. By default
-    the values except for nodata must be in `value_map`.
+    the values except for nodata must be in ``value_map``.
 
     Parameters:
         base_raster_path_band (tuple): a tuple including file path to a raster
             and the band index to operate over. ex: (path, band_index)
         value_map (dictionary): a dictionary of values of
             {source_value: dest_value, ...} where source_value's type is the
-            same as the values in `base_raster_path` at band `band_index`.
+            same as the values in ``base_raster_path`` at band ``band_index``.
             Must contain at least one value.
         target_raster_path (string): target raster output path; overwritten if
             it exists
         target_datatype (gdal type): the numerical type for the target raster
         target_nodata (numerical type): the nodata value for the target raster
             Must be the same type as target_datatype
-        band_index (int): Indicates which band in `base_raster_path` the
+        band_index (int): Indicates which band in ``base_raster_path`` the
             reclassification should operate on.  Defaults to 1.
         values_required (bool): If True, raise a ValueError if there is a
             value in the raster that is not found in value_map.
@@ -1730,7 +1757,7 @@ def reclassify_raster(
                 missing_values = unique[~has_map]
                 raise ValueError(
                     'The following %d raster values %s from "%s" do not have '
-                    'corresponding entries in the `value_map`: %s' % (
+                    'corresponding entries in the ``value_map``: %s' % (
                         missing_values.size, str(missing_values),
                         base_raster_path_band[0], str(value_map)))
         index = numpy.digitize(original_values.ravel(), keys, right=True)
@@ -1763,13 +1790,13 @@ def warp_raster(
             describing target bounding box in target coordinate system as
             [minx, miny, maxx, maxy].
         base_sr_wkt (string): if not None, interpret the projection of
-            `base_raster_path` as this.
+            ``base_raster_path`` as this.
         target_sr_wkt (string): if not None, desired target projection in Well
             Known Text format.
         gtiff_creation_options (list or tuple): list of strings that will be
             passed as GDAL "dataset" creation options to the GTIFF driver.
-        n_threads (int): optional, if not None this sets the `N_THREADS`
-            option for `gdal.Warp`.
+        n_threads (int): optional, if not None this sets the ``N_THREADS``
+            option for ``gdal.Warp``.
         vector_mask_options (dict): optional, if not None, this is a
             dictionary of options to use an existing vector's geometry to
             mask out pixels in the target raster that do not overlap the
@@ -1786,17 +1813,18 @@ def warp_raster(
                     'id > 10' would use all features whose field value of
                     'id' is > 10.
         gdal_warp_options (sequence): if present, the contents of this list
-            are passed to the `warpOptions` parameter of `gdal.Warp`. See the
-            GDAL Warp documentation for details.
+            are passed to the ``warpOptions`` parameter of ``gdal.Warp``. See
+            the GDAL Warp documentation for details.
 
     Returns:
         None
 
     Raises:
-        ValueError if `pixel_size` is not a 2 element sequence of numbers.
-        ValueError if `vector_mask_options` is not None but the
-            `mask_vector_path` is undefined or doesn't point to a valid
+        ValueError if ``pixel_size`` is not a 2 element sequence of numbers.
+        ValueError if ``vector_mask_options`` is not None but the
+            ``mask_vector_path`` is undefined or doesn't point to a valid
             file.
+
     """
     _assert_is_valid_pixel_size(target_pixel_size)
 
@@ -1908,8 +1936,8 @@ def rasterize(
         layer_index=0):
     """Project a vector onto an existing raster.
 
-    Burn the layer at `layer_index` in `vector_path` to an existing
-    raster at `target_raster_path_band`.
+    Burn the layer at ``layer_index`` in ``vector_path`` to an existing
+    raster at ``target_raster_path_band``.
 
     Parameters:
         vector_path (string): filepath to vector to rasterize.
@@ -1917,14 +1945,14 @@ def rasterize(
             into.  Can have multiple bands.
         burn_values (list/tuple): optional sequence of values to burn into
             each band of the raster.  If used, should have the same length as
-            number of bands at the `target_raster_path` raster.  If `None`
-            then `option_list` must have a valid value.
+            number of bands at the ``target_raster_path`` raster.  If ``None``
+            then ``option_list`` must have a valid value.
         option_list (list/tuple): optional a sequence of burn options, if None
-            then a valid value for `burn_values` must exist. Otherwise, each
+            then a valid value for ``burn_values`` must exist. Otherwise, each
             element is a string of the form:
                 "ATTRIBUTE=?": Identifies an attribute field on the features
                     to be used for a burn in value. The value will be burned
-                    into all output bands. If specified, `burn_values`
+                    into all output bands. If specified, ``burn_values``
                     will not be used and can be None.
                 "CHUNKYSIZE=?": The height in lines of the chunk to operate
                     on. The larger the chunk size the less times we need to
@@ -1973,8 +2001,8 @@ def rasterize(
 
     if not burn_values and not option_list:
         raise ValueError(
-            "Neither `burn_values` nor `option_list` is set. At least one "
-            "must have a value.")
+            "Neither `burn_values` nor `option_list` is set. At least "
+            "one must have a value.")
 
     if not isinstance(burn_values, (list, tuple)):
         raise ValueError(
@@ -2005,10 +2033,10 @@ def calculate_disjoint_polygon_set(
 
     Parameters:
         vector_path (string): a path to an OGR vector.
-        layer_index (int): index of underlying layer in `vector_path` to
+        layer_index (int): index of underlying layer in ``vector_path`` to
             calculate disjoint set. Defaults to 0.
         bounding_box (sequence): sequence of floats representing a bounding
-            box to filter any polygons by. If a feature in `vector_path`
+            box to filter any polygons by. If a feature in ``vector_path``
             does not intersect this bounding box it will not be considered
             in the disjoint calculation. Coordinates are in the order
             [minx, miny, maxx, maxy].
@@ -2028,26 +2056,28 @@ def calculate_disjoint_polygon_set(
     last_time = time.time()
     LOGGER.info("build shapely polygon list")
 
-    if not bounding_box:
-        bounding_box = [float('-inf'), float('-inf'), float('inf'), float('inf')]
-
+    if bounding_box is None:
+        bounding_box = get_vector_info(vector_path)['bounding_box']
     bounding_box = shapely.prepared.prep(shapely.geometry.box(*bounding_box))
-    shapely_polygon_lookup = dict((
-        (poly_feat.GetFID(),
-         shapely.wkb.loads(poly_feat.GetGeometryRef().ExportToWkb()))
-        for poly_feat in vector_layer))
 
-    LOGGER.info("build shapely rtree index for %s geometries",
-                len(shapely_polygon_lookup))
+    # As much as I want this to be in a comprehension, a comprehension version
+    # of this loop causes python 3.6 to crash on linux in GDAL 2.1.2 (which is
+    # what's in the debian:stretch repos.)
+    shapely_polygon_lookup = {}
+    for poly_feat in vector_layer:
+        shapely_polygon_lookup[poly_feat.GetFID()] = (
+            shapely.wkb.loads(poly_feat.GetGeometryRef().ExportToWkb()))
 
-    # Using the stream generator causes a bunch of low-level windows exceptions
-    # to be printed when using faulthandler.  There does not appear to be a
-    # solution for this.  See https://github.com/Toblerity/rtree/issues/80
-    poly_rtree_index = rtree.index.Index(
-        ((poly_fid, poly.bounds, None)
-          for poly_fid, poly in shapely_polygon_lookup.items()
-          if bounding_box.intersects(poly)),
-        interleaved=True)  # (xmin, ymin, xmax, ymax)
+    LOGGER.info("build shapely rtree index")
+    r_tree_index_stream = [
+        (poly_fid, poly.bounds, None)
+        for poly_fid, poly in shapely_polygon_lookup.items()
+        if bounding_box.intersects(poly)]
+    if r_tree_index_stream:
+        poly_rtree_index = rtree.index.Index(r_tree_index_stream)
+    else:
+        LOGGER.warn("no polygons intersected the bounding box")
+        return []
 
     vector_layer = None
     vector = None
@@ -2118,21 +2148,38 @@ def calculate_disjoint_polygon_set(
 
 
 def distance_transform_edt(
-        base_mask_raster_path_band, target_distance_raster_path,
-        working_dir=None):
+        base_region_raster_path_band, target_distance_raster_path,
+        sampling_distance=(1., 1.), working_dir=None):
     """Calculate the euclidean distance transform on base raster.
 
     Calculates the euclidean distance transform on the base raster in units of
-    pixels.
+    pixels multiplied by an optional scalar constant. The implementation is
+    based off the algorithm described in:  Meijster, Arnold, Jos BTM Roerdink,
+    and Wim H. Hesselink. "A general algorithm for computing distance
+    transforms in linear time." Mathematical Morphology and its applications
+    to image and signal processing. Springer, Boston, MA, 2002. 331-340.
+
+    The base mask raster represents the area to distance transform from as
+    any pixel that is not 0 or nodata. It is computationally convenient to
+    calculate the distance transform on the entire raster irrespective of
+    nodata placement and thus produces a raster that will have distance
+    transform values even in pixels that are nodata in the base.
 
     Parameters:
-        base_raster_path_band (tuple): a tuple including file path to a raster
-            and the band index to operate over. eg: (path, band_index)
-        target_distance_raster_path (string): will make a float raster w/ same
-            dimensions and projection as base_mask_raster_path_band where all
-            zero values of base_mask_raster_path_band are equal to the
-            euclidean distance to the
-            closest non-zero pixel.
+        base_region_raster_path_band (tuple): a tuple including file path to a
+            raster and the band index to define the base region pixels. Any
+            pixel  that is not 0 and nodata are considered to be part of the
+            region.
+        target_distance_raster_path (string): path to the target raster that
+            is the exact euclidean distance transform from any pixel in the
+            base raster that is not nodata and not 0. The units are in
+            (pixel distance * ``sampling_distance``).
+        sampling_distance (tuple/list): an optional parameter used to scale
+            the pixel distances when calculating the distance transform.
+            Defaults to (1.0, 1.0). First element indicates the distance
+            traveled in the x direction when changing a column index, and the
+            second element in y when changing a row index. Both values must
+            be > 0.
          working_dir (string): If not None, indicates where temporary files
             should be created during this run.
 
@@ -2140,27 +2187,48 @@ def distance_transform_edt(
         None
 
     """
-    with tempfile.NamedTemporaryFile(
-            prefix='dt_mask', delete=False, dir=working_dir) as dt_mask_file:
-        dt_mask_path = dt_mask_file.name
-    raster_info = get_raster_info(base_mask_raster_path_band[0])
-    nodata = raster_info['nodata'][base_mask_raster_path_band[1]-1]
+    working_raster_paths = {}
+    for raster_prefix in ['region_mask_raster', 'g_raster']:
+        with tempfile.NamedTemporaryFile(
+                prefix=raster_prefix, suffix='.tif', delete=False,
+                dir=working_dir) as tmp_file:
+            working_raster_paths[raster_prefix] = tmp_file.name
+    nodata = (get_raster_info(base_region_raster_path_band[0])['nodata'])[
+        base_region_raster_path_band[1]-1]
     nodata_out = 255
 
     def mask_op(base_array):
-        """Convert base_array to 1 if >0, 0 if == 0 or nodata."""
-        return numpy.where(
-            base_array == nodata, nodata_out, base_array != 0)
+        """Convert base_array to 1 if not 0 and nodata, 0 otherwise."""
+        if nodata is not None:
+            return ~numpy.isclose(base_array, nodata) & (base_array != 0)
+        else:
+            return base_array != 0
+
+    if not isinstance(sampling_distance, (tuple, list)):
+        raise ValueError(
+            "`sampling_distance` should be a tuple/list, instead it's %s" % (
+                type(sampling_distance)))
+
+    sample_d_x, sample_d_y = sampling_distance
+    if sample_d_x <= 0. or sample_d_y <= 0.:
+        raise ValueError(
+            "Sample distances must be > 0.0, instead got %s",
+            sampling_distance)
 
     raster_calculator(
-        [base_mask_raster_path_band], mask_op,
-        dt_mask_path, gdal.GDT_Byte, nodata_out, calc_raster_stats=False)
-    geoprocessing_core.distance_transform_edt(
-        (dt_mask_path, 1), target_distance_raster_path)
-    try:
-        os.remove(dt_mask_path)
-    except OSError:
-        LOGGER.warning("couldn't remove file %s", dt_mask_path)
+        [base_region_raster_path_band], mask_op,
+        working_raster_paths['region_mask_raster'], gdal.GDT_Byte, nodata_out,
+        calc_raster_stats=False)
+    geoprocessing_core._distance_transform_edt(
+        working_raster_paths['region_mask_raster'],
+        working_raster_paths['g_raster'], sampling_distance[0],
+        sampling_distance[1], target_distance_raster_path)
+
+    for path in working_raster_paths.values():
+        try:
+            os.remove(path)
+        except OSError:
+            LOGGER.warning("couldn't remove file %s", path)
 
 
 def _next_regular(base):
@@ -2182,7 +2250,7 @@ def _next_regular(base):
             number.
 
     Returns:
-        The next regular number greater than or equal to `base`.
+        The next regular number greater than or equal to ``base``.
 
     """
     if base <= 6:
@@ -2231,9 +2299,9 @@ def convolve_2d(
         n_threads=1, working_dir=None):
     """Convolve 2D kernel over 2D signal.
 
-    Convolves the raster in `kernel_path_band` over `signal_path_band`.
+    Convolves the raster in ``kernel_path_band`` over ``signal_path_band``.
     Nodata values are treated as 0.0 during the convolution and masked to
-    nodata for the output result where `signal_path` has nodata.
+    nodata for the output result where ``signal_path`` has nodata.
 
     Parameters:
         signal_path_band (tuple): a 2 tuple of the form
@@ -2242,25 +2310,25 @@ def convolve_2d(
             (filepath to kernel raster, band index).
         target_path (string): filepath to target raster that's the convolution
             of signal with kernel.  Output will be a single band raster of
-            same size and projection as `signal_path_band`. Any nodata pixels
-            that align with `signal_path_band` will be set to nodata.
+            same size and projection as ``signal_path_band``. Any nodata pixels
+            that align with ``signal_path_band`` will be set to nodata.
         ignore_nodata (boolean): If true, any pixels that are equal to
-            `signal_path_band`'s nodata value are not included when averaging
+            ``signal_path_band``'s nodata value are not included when averaging
             the convolution filter.
         normalize_kernel (boolean): If true, the result is divided by the
             sum of the kernel.
-        mask_nodata (boolean): If true, `target_path` raster's output is
-            nodata where `signal_path_band`'s pixels were nodata.
+        mask_nodata (boolean): If true, ``target_path`` raster's output is
+            nodata where ``signal_path_band``'s pixels were nodata.
         target_datatype (GDAL type): a GDAL raster type to set the output
             raster type to, as well as the type to calculate the convolution
             in.  Defaults to GDT_Float64.  Note unsigned byte is not
             supported.
         target_nodata (int/float): nodata value to set on output raster.
-            If `target_datatype` is not gdal.GDT_Float64, this value must
+            If ``target_datatype`` is not gdal.GDT_Float64, this value must
             be set.  Otherwise defaults to the minimum value of a float32.
         gtiff_creation_options (sequence): an argument list that will be
-            passed to the GTiff driver for creating `target_path`.  Useful for
-            blocksizes, compression, and more.
+            passed to the GTiff driver for creating ``target_path``.  Useful
+            for blocksizes, compression, and more.
         n_threads (int): number of computational threads to devote to
             convolution. A value of 1 will have a single thread calculate the
             FFTs and read from/write to disk. Any value > 1 will spawn
@@ -2305,7 +2373,6 @@ def convolve_2d(
 
     # we need the original signal raster info because we want the output to
     # be clipped and NODATA masked to it
-    base_signal_nodata = signal_raster_info['nodata']
     signal_raster = gdal.OpenEx(signal_path_band[0], gdal.OF_RASTER)
     signal_band = signal_raster.GetRasterBand(signal_path_band[1])
     target_raster = gdal.OpenEx(target_path, gdal.OF_RASTER | gdal.GA_Update)
@@ -2316,10 +2383,9 @@ def convolve_2d(
     if s_nodata is not None and ignore_nodata:
         mask_dir = tempfile.mkdtemp(dir=working_dir)
         mask_raster_path = os.path.join(mask_dir, 'convolved_mask.tif')
-        mask_nodata = -1.0
         new_raster_from_base(
             signal_path_band[0], mask_raster_path, gdal.GDT_Float32,
-            [mask_nodata], fill_value_list=[0],
+            [-1.0], fill_value_list=[0],
             gtiff_creation_options=gtiff_creation_options)
         mask_raster = gdal.OpenEx(
             mask_raster_path, gdal.GA_Update | gdal.OF_RASTER)
@@ -2331,7 +2397,7 @@ def convolve_2d(
     # calculate the kernel sum for normalization
     kernel_nodata = kernel_raster_info['nodata'][0]
     kernel_sum = 0.0
-    for _, kernel_block in iterblocks(kernel_path_band[0]):
+    for _, kernel_block in iterblocks(kernel_path_band):
         if kernel_nodata is not None and ignore_nodata:
             kernel_block[numpy.isclose(kernel_block, kernel_nodata)] = 0.0
         kernel_sum += numpy.sum(kernel_block)
@@ -2362,8 +2428,8 @@ def convolve_2d(
         worker_list.append(worker)
 
     n_blocks = 0
-    for signal_offset in iterblocks(s_path_band[0], offset_only=True):
-        for kernel_offset in iterblocks(k_path_band[0], offset_only=True):
+    for signal_offset in iterblocks(s_path_band, offset_only=True):
+        for kernel_offset in iterblocks(k_path_band, offset_only=True):
             work_queue.put((signal_offset, kernel_offset))
             n_blocks += 1
     for _ in range(max(1, n_threads-1)):
@@ -2398,9 +2464,9 @@ def convolve_2d(
         valid_mask = numpy.ones(
             potential_nodata_signal_array.shape, dtype=bool)
         # guard against a None nodata value
-        if base_signal_nodata is not None and mask_nodata:
+        if s_nodata is not None and mask_nodata:
             valid_mask[:] = (
-                potential_nodata_signal_array != base_signal_nodata)
+                potential_nodata_signal_array != s_nodata)
         output_array[:] = target_nodata
         output_array[valid_mask] = (
             (result[top_index_result:bottom_index_result,
@@ -2443,12 +2509,13 @@ def convolve_2d(
         mask_pixels_processed = 0
         mask_band.FlushCache()
         mask_raster.FlushCache()
-        for target_offset_data in iterblocks(target_path, offset_only=True):
+        for target_offset_data in iterblocks(
+                (target_path, 1), offset_only=True):
             target_block = target_band.ReadAsArray(
                 **target_offset_data).astype(
                     _gdal_type_to_numpy_lookup[target_datatype])
             mask_block = mask_band.ReadAsArray(**target_offset_data)
-            if base_signal_nodata is not None and mask_nodata:
+            if mask_nodata:
                 valid_mask = ~numpy.isclose(target_block, target_nodata)
             else:
                 valid_mask = numpy.ones(target_block.shape, dtype=numpy.bool)
@@ -2491,15 +2558,15 @@ def convolve_2d(
 
 
 def iterblocks(
-        raster_path, band_index_list=None, largest_block=_LARGEST_ITERBLOCK,
-        astype_list=None, offset_only=False):
+        raster_path_band, largest_block=_LARGEST_ITERBLOCK,
+        offset_only=False):
     """Iterate across all the memory blocks in the input raster.
 
     Result is a generator of block location information and numpy arrays.
 
     This is especially useful when a single value needs to be derived from the
     pixel values in a raster, such as the sum total of all pixel values, or
-    a sequence of unique raster values.  In such cases, `raster_local_op`
+    a sequence of unique raster values.  In such cases, ``raster_local_op``
     is overkill, since it writes out a raster.
 
     As a generator, this can be combined multiple times with itertools.izip()
@@ -2507,33 +2574,23 @@ def iterblocks(
     be careful to do so only with prealigned rasters.
 
     Parameters:
-        raster_path (string): Path to raster file to iterate over.
-        band_index_list (list of ints or None): A sequence of band indexes for
-            which the data blocks should be returned; band indexes start at 1.
-            Defaults to None, which will return all bands.  Band indexes may
-            be specified in any order, and band indexes may be specified
-            multiple times.  The blocks returned on each iteration will be in
-            the order specified in this list.
+        raster_path_band (tuple): a path/band index tuple to indicate
+            which raster band iterblocks should iterate over.
         largest_block (int): Attempts to iterate over raster blocks with
             this many elements.  Useful in cases where the blocksize is
             relatively small, memory is available, and the function call
             overhead dominates the iteration.  Defaults to 2**20.  A value of
             anything less than the original blocksize of the raster will
             result in blocksizes equal to the original size.
-        astype_list (list/tuple of numpy types): If none, output blocks are in
-            the native type of the raster bands.  Otherwise this parameter is
-            a list/tuple of len(band_index_list) length that contains the
-            desired output types that iterblock generates for each band.
-        offset_only (boolean): defaults to False, if True `iterblocks` only
+        offset_only (boolean): defaults to False, if True ``iterblocks`` only
             returns offset dictionary and doesn't read any binary data from
             the raster.  This can be useful when iterating over writing to
             an output.
 
-    Returns:
-        If `offset_only` is false, on each iteration, a tuple containing a dict
-        of block data and `n` 2-dimensional numpy arrays are returned, where
-        `n` is the number of bands requested via `band_list`. The dict of
-        block data has these attributes:
+    Yields:
+        If ``offset_only`` is false, on each iteration, a tuple containing a
+        dict of block data and a 2-dimensional numpy array are
+        yielded. The dict of block data has these attributes:
 
             data['xoff'] - The X offset of the upper-left-hand corner of the
                 block.
@@ -2542,19 +2599,17 @@ def iterblocks(
             data['win_xsize'] - The width of the block.
             data['win_ysize'] - The height of the block.
 
-        If `offset_only` is True, the function returns only the block offset
+        If ``offset_only`` is True, the function returns only the block offset
             data and does not attempt to read binary data from the raster.
 
     """
-    raster = gdal.OpenEx(raster_path, gdal.OF_RASTER)
-
-    if band_index_list is None:
-        band_index_list = range(1, raster.RasterCount + 1)
-
-    band_index_list = [
-        raster.GetRasterBand(index) for index in band_index_list]
-
-    block = band_index_list[0].GetBlockSize()
+    if not _is_raster_path_band_formatted(raster_path_band):
+        raise ValueError(
+            "`raster_path_band` not formatted as expected.  Expects "
+            "(path, band_index), received %s" % repr(raster_path_band))
+    raster = gdal.OpenEx(raster_path_band[0], gdal.OF_RASTER)
+    band = raster.GetRasterBand(raster_path_band[1])
+    block = band.GetBlockSize()
     cols_per_block = block[0]
     rows_per_block = block[1]
 
@@ -2579,25 +2634,6 @@ def iterblocks(
     n_col_blocks = int(math.ceil(n_cols / float(cols_per_block)))
     n_row_blocks = int(math.ceil(n_rows / float(rows_per_block)))
 
-    # Initialize to None so a block array is created on the first iteration
-    last_row_block_width = None
-    last_col_block_width = None
-
-    if astype_list is not None:
-        if not isinstance(astype_list, (list, tuple)):
-            raise ValueError(
-                "`astype_list` should be a list or tuple instead it is %s" % (
-                    repr(astype_list)))
-        if len(band_index_list) != len(astype_list):
-            raise ValueError(
-                "`band_index_list` and `astype_list` should be the same "
-                "length, instead they are sizes %d and %d" % (
-                    len(band_index_list), len(astype_list)))
-        block_type_list = astype_list
-    else:
-        block_type_list = [
-            _gdal_to_numpy_type(ds_band) for ds_band in band_index_list]
-
     for row_block_index in range(n_row_blocks):
         row_offset = row_block_index * rows_per_block
         row_block_width = n_rows - row_offset
@@ -2609,29 +2645,18 @@ def iterblocks(
             if col_block_width > cols_per_block:
                 col_block_width = cols_per_block
 
-            # resize the raster block cache if necessary
-            if (last_row_block_width != row_block_width or
-                    last_col_block_width != col_block_width):
-                raster_blocks = [
-                    numpy.zeros(
-                        (row_block_width, col_block_width),
-                        dtype=block_type) for block_type in
-                    block_type_list]
-
             offset_dict = {
                 'xoff': col_offset,
                 'yoff': row_offset,
                 'win_xsize': col_block_width,
                 'win_ysize': row_block_width,
             }
-            result = offset_dict
-            if not offset_only:
-                for ds_band, block in zip(band_index_list, raster_blocks):
-                    ds_band.ReadAsArray(buf_obj=block, **offset_dict)
-                result = (result,) + tuple(raster_blocks)
-            yield result
+            if offset_only:
+                yield offset_dict
+            else:
+                yield (offset_dict, band.ReadAsArray(**offset_dict))
 
-    band_index_list = None
+    band = None
     gdal.Dataset.__swig_destroy__(raster)
     raster = None
 
@@ -2647,7 +2672,7 @@ def transform_bounding_box(
     on the edge whether corners or warped edges.
 
     Parameters:
-        bounding_box (sequence): a sequence of 4 coordinates in `base_epsg`
+        bounding_box (sequence): a sequence of 4 coordinates in ``base_epsg``
             coordinate system describing the bound in the order
             [xmin, ymin, xmax, ymax].
         base_ref_wkt (string): the spatial reference of the input coordinate
@@ -2662,7 +2687,7 @@ def transform_bounding_box(
     Returns:
         A list of the form [xmin, ymin, xmax, ymax] that describes the largest
         fitting bounding box around the original warped bounding box in
-        `new_epsg` coordinate system.
+        ``new_epsg`` coordinate system.
 
     """
     base_ref = osr.SpatialReference()
@@ -2679,10 +2704,10 @@ def transform_bounding_box(
         return (trans_x, trans_y)
 
     # The following list comprehension iterates over each edge of the bounding
-    # box, divides each edge into `edge_samples` number of points, then
-    # reduces that list to an appropriate `bounding_fn` given the edge.
+    # box, divides each edge into ``edge_samples`` number of points, then
+    # reduces that list to an appropriate ``bounding_fn`` given the edge.
     # For example the left edge needs to be the minimum x coordinate so
-    # we generate `edge_samples` number of points between the upper left and
+    # we generate ``edge_samples` number of points between the upper left and
     # lower left point, transform them all to the new coordinate system
     # then get the minimum x coordinate "min(p[0] ...)" of the batch.
     # points are numbered from 0 starting upper right as follows:
@@ -2707,12 +2732,11 @@ def transform_bounding_box(
 
 
 def merge_rasters(
-        raster_path_list, target_path, bounding_box=None,
-        expected_nodata=None,
+        raster_path_list, target_path, bounding_box=None, target_nodata=None,
         gtiff_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS):
     """Merge the given rasters into a single raster.
 
-    This operation creates a mosaic of the rasters in `raster_path_list`.
+    This operation creates a mosaic of the rasters in ``raster_path_list``.
     The result is a raster of the size of the union of the bounding box of
     the inputs where the contents of each raster's bands are copied into the
     correct georeferenced target's bands.
@@ -2726,9 +2750,12 @@ def merge_rasters(
         target_path (string): path to the geotiff file that will be created
             by this operation.
         bounding_box (sequence): if not None, clip target path to be within
-            these bounds.
-        expected_nodata (float): if not None, use this as the nodata value
-            in case multiple rasters have different nodata values.
+            these bounds. Format is [minx,miny,maxx,maxy]
+        target_nodata (float): if not None, set the target raster's nodata
+            value to this. Otherwise use the shared nodata value in the
+            ``raster_path_list``. It is an error if different rasters in
+            ``raster_path_list`` have different nodata values and
+            ``target_nodata`` is None.
         gtiff_creation_options (sequence): this is an argument list that will
             be passed to the GTiff driver.  Useful for blocksizes,
             compression, and more.
@@ -2758,12 +2785,12 @@ def merge_rasters(
     datatype_set = set([x['datatype'] for x in raster_info_list])
     if len(datatype_set) != 1:
         raise ValueError(
-            "Datatype per raster are not the same. "
+            "Rasters have different datatypes. "
             "Here's the datatypes: %s" % str([
                 (path, x['datatype']) for path, x in zip(
                     raster_path_list, raster_info_list)]))
 
-    if expected_nodata is None:
+    if target_nodata is None:
         nodata_set = set([x['nodata'][0] for x in raster_info_list])
         if len(nodata_set) != 1:
             raise ValueError(
@@ -2798,8 +2825,11 @@ def merge_rasters(
     bounding_box_list = [x['bounding_box'] for x in raster_info_list]
     target_bounding_box = merge_bounding_box_list(bounding_box_list, 'union')
     if bounding_box is not None:
+        LOGGER.debug("target bounding_box %s", target_bounding_box)
         target_bounding_box = merge_bounding_box_list(
             [target_bounding_box, bounding_box], 'intersection')
+        LOGGER.debug("bounding_box %s", bounding_box)
+        LOGGER.debug("merged target bounding_box %s", target_bounding_box)
 
     driver = gdal.GetDriverByName('GTiff')
     target_pixel_size = pixel_size_set.pop()
@@ -2811,15 +2841,12 @@ def merge_rasters(
         target_pixel_size[1])))
 
     target_geotransform = [
-        target_bounding_box[0],
-        target_pixel_size[0],
-        0,
-        target_bounding_box[1],
-        0,
-        target_pixel_size[1]]
+        target_bounding_box[0], target_pixel_size[0], 0,
+        target_bounding_box[1], 0, target_pixel_size[1]]
 
-    # sometimes we have negative pixel sizes so geotransform starts from the
-    # other side
+    # I haven't been able to get the geotransform to ever have a negative x
+    # or positive y, but there's nothing in the spec that would restrict it
+    # so we still test here.
     if target_pixel_size[0] < 0:
         target_geotransform[0] = target_bounding_box[2]
     if target_pixel_size[1] < 0:
@@ -2833,10 +2860,10 @@ def merge_rasters(
         datatype_set.pop(), options=gtiff_creation_options)
     target_raster.SetProjection(raster.GetProjection())
     target_raster.SetGeoTransform(target_geotransform)
-    if expected_nodata is None:
+    if target_nodata is None:
         nodata = nodata_set.pop()
     else:
-        nodata = expected_nodata
+        nodata = target_nodata
     # consider what to do if rasters have nodata defined, but do not fill
     # up the mosaic.
     if nodata is not None:
@@ -2859,52 +2886,50 @@ def merge_rasters(
         raster_start_y = int((
             raster_info['geotransform'][3] -
             target_geotransform[3]) / target_pixel_size[1])
-        for iter_result in iterblocks(raster_path):
-            offset_info = iter_result[0]
-            # its possible the block reads in coverage that is outside the
-            # target bounds entirely. nothing to do but skip
-            if offset_info['yoff'] + raster_start_y > n_rows:
-                continue
-            if offset_info['xoff'] + raster_start_x > n_cols:
-                continue
-            if (offset_info['xoff'] + raster_start_x +
-                    offset_info['win_xsize'] < 0):
-                continue
-            if (offset_info['yoff'] + raster_start_y +
-                    offset_info['win_ysize'] < 0):
-                continue
+        for band_offset in range(n_bands):
+            for offset_info, data_block in iterblocks(
+                    (raster_path, band_offset+1)):
+                # its possible the block reads in coverage that is outside the
+                # target bounds entirely. nothing to do but skip
+                if offset_info['yoff'] + raster_start_y > n_rows:
+                    continue
+                if offset_info['xoff'] + raster_start_x > n_cols:
+                    continue
+                if (offset_info['xoff'] + raster_start_x +
+                        offset_info['win_xsize'] < 0):
+                    continue
+                if (offset_info['yoff'] + raster_start_y +
+                        offset_info['win_ysize'] < 0):
+                    continue
 
-            # invariant: the window described in `offset_info` intersects
-            # with the target raster.
+                # invariant: the window described in ``offset_info``
+                # intersects with the target raster.
 
-            # check to see if window hangs off the left/top part of raster
-            # and determine how far to adjust down
-            x_clip_min = 0
-            if raster_start_x + offset_info['xoff'] < 0:
-                x_clip_min = abs(raster_start_x + offset_info['xoff'])
-            y_clip_min = 0
-            if raster_start_y + offset_info['yoff'] < 0:
-                y_clip_min = abs(raster_start_y + offset_info['yoff'])
-            x_clip_max = 0
+                # check to see if window hangs off the left/top part of raster
+                # and determine how far to adjust down
+                x_clip_min = 0
+                if raster_start_x + offset_info['xoff'] < 0:
+                    x_clip_min = abs(raster_start_x + offset_info['xoff'])
+                y_clip_min = 0
+                if raster_start_y + offset_info['yoff'] < 0:
+                    y_clip_min = abs(raster_start_y + offset_info['yoff'])
+                x_clip_max = 0
 
-            # check if window hangs off right/bottom part of target raster
-            if (offset_info['xoff'] + raster_start_x +
-                    offset_info['win_xsize'] >= n_cols):
-                x_clip_max = (
-                    offset_info['xoff'] + raster_start_x +
-                    offset_info['win_xsize'] - n_cols)
-            y_clip_max = 0
+                # check if window hangs off right/bottom part of target raster
+                if (offset_info['xoff'] + raster_start_x +
+                        offset_info['win_xsize'] >= n_cols):
+                    x_clip_max = (
+                        offset_info['xoff'] + raster_start_x +
+                        offset_info['win_xsize'] - n_cols)
+                y_clip_max = 0
 
-            if (offset_info['yoff'] + raster_start_y +
-                    offset_info['win_ysize'] >= n_rows):
-                y_clip_max = (
-                    offset_info['yoff'] + raster_start_y +
-                    offset_info['win_ysize'] - n_rows)
+                if (offset_info['yoff'] + raster_start_y +
+                        offset_info['win_ysize'] >= n_rows):
+                    y_clip_max = (
+                        offset_info['yoff'] + raster_start_y +
+                        offset_info['win_ysize'] - n_rows)
 
-            data_block_list = iter_result[1:]
-            for target_band, data_block in zip(
-                    target_band_list, data_block_list):
-                target_band.WriteArray(
+                target_band_list[band_offset].WriteArray(
                     data_block[
                         y_clip_min:offset_info['win_ysize']-y_clip_max,
                         x_clip_min:offset_info['win_xsize']-x_clip_max],
@@ -2915,6 +2940,85 @@ def merge_rasters(
     target_raster = None
 
 
+def mask_raster(
+        base_raster_path_band, mask_vector_path, target_mask_raster_path,
+        mask_layer_index=0, target_mask_value=None, working_dir=None,
+        all_touched=False,
+        gtiff_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS):
+    """
+    Mask a raster band with a given vector.
+
+    Parameters:
+        base_raster_path_band (tuple): a (path, band number) tuple indicating
+            the data to mask.
+        mask_vector_path (path): path to a vector that will be used to mask
+            anything outside of the polygon that overlaps with
+            ``base_raster_path_band`` to ``target_mask_value`` if defined or
+            else ``base_raster_path_band``'s nodata value.
+        target_mask_raster_path (str): path to desired target raster that
+            is a copy of ``base_raster_path_band`` except any pixels that do
+            not intersect with ``mask_vector_path`` are set to
+            ``target_mask_value`` or ``base_raster_path_band``'s nodata value
+            if ``target_mask_value`` is None.
+        mask_layer_index (str): this layer is used as the mask geometry layer
+            in ``mask_vector_path``, defautl is 0.
+        target_mask_value (numeric): If not None, this value is written to
+            any pixel in ``base_raster_path_band`` that does not intersect
+            with ``mask_vector_path``. Otherwise the nodata value of
+            ``base_raster_path_band`` is used.
+        working_dir (str): this is a path to a directory that can be used to
+            hold temporary files required to complete this operation.
+        all_touched (bool): if False, a pixel is only masked if its centroid
+            intersects with the mask. If True a pixel is masked if any point
+            of the pixel intersects the polygon mask.
+        gtiff_creation_options (sequence): this is an argument list that will
+            be passed to the GTiff driver defined by the GDAL GTiff spec.
+
+    Returns:
+        None.
+
+    """
+    with tempfile.NamedTemporaryFile(
+            prefix='mask_raster', delete=False, suffix='.tif',
+            dir=working_dir) as mask_raster_file:
+        mask_raster_path = mask_raster_file.name
+
+    new_raster_from_base(
+        base_raster_path_band[0], mask_raster_path, gdal.GDT_Byte, [255],
+        fill_value_list=[0], gtiff_creation_options=gtiff_creation_options)
+
+    base_raster_info = get_raster_info(base_raster_path_band[0])
+
+    rasterize(
+        mask_vector_path, mask_raster_path, burn_values=[1],
+        layer_index=mask_layer_index,
+        option_list=[('ALL_TOUCHED=%s' % all_touched).upper()])
+
+    base_nodata = base_raster_info['nodata'][base_raster_path_band[1]-1]
+
+    if target_mask_value is None:
+        mask_value = base_nodata
+        if mask_value is None:
+            LOGGER.warn(
+                "No mask value was passed and target nodata is undefined, "
+                "defaulting to 0 as the target mask value.")
+            mask_value = 0
+    else:
+        mask_value = target_mask_value
+
+    def mask_op(base_array, mask_array):
+        result = numpy.copy(base_array)
+        result[mask_array == 0] = mask_value
+        return result
+
+    raster_calculator(
+        [base_raster_path_band, (mask_raster_path, 1)], mask_op,
+        target_mask_raster_path, base_raster_info['datatype'], base_nodata,
+        gtiff_creation_options=gtiff_creation_options)
+
+    os.remove(mask_raster_path)
+
+
 def _invoke_timed_callback(
         reference_time, callback_lambda, callback_period):
     """Invoke callback if a certain amount of time has passed.
@@ -2923,15 +3027,16 @@ def _invoke_timed_callback(
     module.
 
     Parameters:
-        reference_time (float): time to base `callback_period` length from.
+        reference_time (float): time to base ``callback_period`` length from.
         callback_lambda (lambda): function to invoke if difference between
-            current time and `reference_time` has exceeded `callback_period`.
+            current time and ``reference_time`` has exceeded
+            ``callback_period``.
         callback_period (float): time in seconds to pass until
-            `callback_lambda` is invoked.
+            ``callback_lambda`` is invoked.
 
     Returns:
-        `reference_time` if `callback_lambda` not invoked, otherwise the time
-        when `callback_lambda` was invoked.
+        ``reference_time`` if ``callback_lambda`` not invoked, otherwise the
+        time when ``callback_lambda`` was invoked.
 
     """
     current_time = time.time()
@@ -2978,17 +3083,21 @@ def _gdal_to_numpy_type(band):
 
 
 def merge_bounding_box_list(bounding_box_list, bounding_box_mode):
-    """Creates a single bounding box by union or intersection of the list.
+    """Create a single bounding box by union or intersection of the list.
 
     Parameters:
         bounding_box_list (sequence): a sequence of bounding box coordinates
-            in the order [minx,miny,maxx,maxy]..
+            in the order [minx,miny,maxx,maxy].
         mode (string): either 'union' or 'intersection' for the corresponding
             reduction mode.
 
     Returns:
         A four tuple bounding box that is the union or intersection of the
             input bounding boxes.
+
+    Raises:
+        ValueError if the bounding boxes in ``bounding_box_list`` do not
+            intersect if the ``bounding_box_mode`` is 'intersection'.
 
     """
     def _merge_bounding_boxes(bb1, bb2, mode):
@@ -3021,18 +3130,23 @@ def merge_bounding_box_list(bounding_box_list, bounding_box_mode):
         bb_out = [op(x, y) for op, x, y in zip(comparison_ops, bb1, bb2)]
         return bb_out
 
-    return reduce(
+    result_bb = reduce(
         functools.partial(_merge_bounding_boxes, mode=bounding_box_mode),
         bounding_box_list)
+    if result_bb[0] > result_bb[2] or result_bb[1] > result_bb[3]:
+        raise ValueError(
+            "Bounding boxes do not intersect. Base list: %s mode: %s "
+            " result: %s" % (bounding_box_list, bounding_box_mode, result_bb))
+    return result_bb
 
 
 def _make_logger_callback(message):
-    """Build a timed logger callback that prints `message` replaced.
+    """Build a timed logger callback that prints ``message`` replaced.
 
     Parameters:
         message (string): a string that expects 2 placement %% variables,
-            first for % complete from `df_complete`, second from
-            `p_progress_arg[0]`.
+            first for % complete from ``df_complete``, second from
+            ``p_progress_arg[0]``.
 
     Returns:
         Function with signature:
@@ -3047,7 +3161,7 @@ def _make_logger_callback(message):
                     (df_complete == 1.0 and
                      logger_callback.total_time >= 5.0)):
                 # In some multiprocess applications I was encountering a
-                # `p_progress_arg` of None. This is unexpected and I suspect
+                # ``p_progress_arg`` of None. This is unexpected and I suspect
                 # was an issue for some kind of GDAL race condition. So I'm
                 # guarding against it here and reporting an appropriate log
                 # if it occurs.
@@ -3114,7 +3228,7 @@ def _convolve_2d_worker(
         signal_path_band, kernel_path_band,
         ignore_nodata, normalize_kernel,
         work_queue, write_queue):
-    """Worker function to be used by `convolve_2d`.
+    """Worker function to be used by ``convolve_2d``.
 
     Parameters:
         Parameters:
@@ -3123,8 +3237,8 @@ def _convolve_2d_worker(
         kernel_path_band (tuple): a 2 tuple of the form
             (filepath to kernel raster, band index).
         ignore_nodata (boolean): If true, any pixels that are equal to
-            `signal_path_band`'s nodata value are not included when averaging
-            the convolution filter.
+            ``signal_path_band``'s nodata value are not included when
+            averaging the convolution filter.
         normalize_kernel (boolean): If true, the result is divided by the
             sum of the kernel.
         work_queue (Queue): will contain (signal_offset, kernel_offset)
@@ -3163,7 +3277,7 @@ def _convolve_2d_worker(
 
     # calculate the kernel sum for normalization
     kernel_sum = 0.0
-    for _, kernel_block in iterblocks(kernel_path_band[0]):
+    for _, kernel_block in iterblocks(kernel_path_band):
         if kernel_nodata is not None and ignore_nodata:
             kernel_block[numpy.isclose(kernel_block, kernel_nodata)] = 0.0
         kernel_sum += numpy.sum(kernel_block)
@@ -3283,7 +3397,7 @@ def _convolve_2d_worker(
 
 
 def _assert_is_valid_pixel_size(target_pixel_size):
-    """Return true if `target_pixel_size` is a valid 2 element sequence.
+    """Return true if ``target_pixel_size`` is a valid 2 element sequence.
 
     Raises ValueError if not a two element list/tuple and/or the values in
         the sequence are not numerical.
@@ -3296,7 +3410,7 @@ def _assert_is_valid_pixel_size(target_pixel_size):
                 return False
             float(x)
             return True
-        except ValueError:
+        except (ValueError, TypeError):
             return False
 
     if not isinstance(target_pixel_size, (list, tuple)):
