@@ -1703,7 +1703,7 @@ def delineate_watersheds_trivial_d8(
             scratch_band,  # The source band
             scratch_band,  # The mask indicating valid pixels
             watersheds_layer,
-            0,  # field index ..., can we avoid this?
+            0,  # ws_id field index
             ['8CONNECTED=8'])
 
         # TODO: copy all of the fields over from the source vector.
@@ -1715,5 +1715,29 @@ def delineate_watersheds_trivial_d8(
     flow_dir_managed_raster.close()
     watersheds_layer = None
     watersheds_vector = None
+
+    # last step: open up the source vector and the target vector, create all
+    # fields needed and set the values accordingly.
+    source_vector = gdal.OpenEx(outflow_vector_path, gdal.OF_VECTOR)
+    source_layer = source_vector.GetLayer()
+
+    watersheds_vector = gdal.OpenEx(target_watersheds_vector_path,
+                                    gdal.OF_VECTOR | gdal.GA_Update)
+    watersheds_layer = watersheds_vector.GetLayer('watersheds')
+    for source_field_defn in source_layer.schema:
+        watersheds_layer.CreateField(source_field_defn)
+
+    for watershed_feature in watersheds_layer:
+        ws_id = watershed_feature.GetField('ws_id')
+
+        source_feature = source_layer.GetFeature(ws_id_to_fid[ws_id])
+        for field_name, field_value in source_feature.items().items():
+            watershed_feature.SetField(field_name, field_value)
+        watersheds_layer.SetFeature(watershed_feature)
+
+    watersheds_layer = None
+    watersheds_vector = None
+    source_layer = None
+    source_vector = None
 
     shutil.rmtree(working_dir_path)
