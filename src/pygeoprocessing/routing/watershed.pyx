@@ -1539,8 +1539,8 @@ def delineate_watersheds_trivial_d8(
     # TODO: write scratch raster to a known place.
     scratch_raster_path = 'scratch.tif'
     pygeoprocessing.new_raster_from_base(
-        d8_flow_dir_raster_path_band[0], scratch_raster_path, gdal.GDT_Byte,
-        [255], fill_value_list=[0], gtiff_creation_options=GTIFF_CREATION_OPTIONS)
+        d8_flow_dir_raster_path_band[0], scratch_raster_path, gdal.GDT_Int32,
+        [-1], fill_value_list=[0], gtiff_creation_options=GTIFF_CREATION_OPTIONS)
 
     driver = ogr.GetDriverByName('GPKG')
     watersheds_srs = osr.SpatialReference()
@@ -1548,7 +1548,7 @@ def delineate_watersheds_trivial_d8(
     watersheds_vector = driver.CreateDataSource(target_watersheds_vector_path)
     watersheds_layer = watersheds_vector.CreateLayer(
         'watersheds', watersheds_srs, ogr.wkbPolygon)
-    index_field = ogr.FieldDefn('val', ogr.OFTInteger)
+    index_field = ogr.FieldDefn('ws_id', ogr.OFTInteger)
     index_field.SetWidth(24)
     watersheds_layer.CreateField(index_field)
 
@@ -1566,8 +1566,8 @@ def delineate_watersheds_trivial_d8(
     cdef queue[CoordinatePair] process_queue
     cdef cset[CoordinatePair] process_queue_set
     cdef CoordinatePair pixel_coords, neighbor_pixel
-    for ws_id, feature in enumerate(source_outlets_layer):
-
+    ws_id_to_fid = {}
+    for ws_id, feature in enumerate(source_outlets_layer, 1):
         geometry = feature.GetGeometryRef()
         minx, maxx, miny, maxy = geometry.GetEnvelope()
         geom_bbox = shapely.geometry.box(minx, miny, maxx, maxy)
@@ -1650,13 +1650,15 @@ def delineate_watersheds_trivial_d8(
 
         LOGGER.info('Delineating watershed %s of %s from %s pixels', ws_id,
                     feature_count, process_queue.size())
+        ws_id_to_fid[ws_id] = feature.GetFID()
+
         while not process_queue.empty():
             current_pixel = process_queue.front()
             process_queue_set.erase(current_pixel)
             process_queue.pop()
 
             scratch_managed_raster.set(current_pixel.first,
-                                       current_pixel.second, 1)
+                                       current_pixel.second, ws_id)
 
             for neighbor_index in range(8):
                 neighbor_pixel = CoordinatePair(
