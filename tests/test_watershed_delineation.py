@@ -52,7 +52,11 @@ class WatershedDelineationTests(unittest.TestCase):
         flow_dir_raster.SetGeoTransform(flow_dir_geotransform)
         flow_dir_raster = None
 
-        horizontal_line = shapely.geometry.LineString([(19, -11), (21, -11)])
+        # These geometries test:
+        #  * Delineation works with varying geometry types
+        #  * That we exclude seed pixels that are over nodata
+        #  * That we exclude seed pixels off the bounds of the raster
+        horizontal_line = shapely.geometry.LineString([(19, -11), (25, -11)])
         vertical_line = shapely.geometry.LineString([(21, -9), (21, -13)])
         square = shapely.geometry.box(17, -13, 21, -9)
         point = shapely.geometry.Point(21, -11)

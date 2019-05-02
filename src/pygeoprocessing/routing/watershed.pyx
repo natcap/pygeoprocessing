@@ -1552,8 +1552,8 @@ def delineate_watersheds_trivial_d8(
     index_field.SetWidth(24)
     watersheds_layer.CreateField(index_field)
 
-    polygons_layer = watersheds_vector.CreateLayer(
-        'polygons', watersheds_srs, ogr.wkbPolygon)
+    #polygons_layer = watersheds_vector.CreateLayer(
+    #    'polygons', watersheds_srs, ogr.wkbPolygon)
 
     source_outlets_layer = source_outlets_vector.GetLayer()
     feature_count = source_outlets_layer.GetFeatureCount()
