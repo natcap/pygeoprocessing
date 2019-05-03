@@ -1612,7 +1612,9 @@ def delineate_watersheds_trivial_d8(
         # Use the DEM's geotransform to determine the starting coordinates for iterating
         # over the pixels within the area of the envelope.
         #polygons_layer.StartTransaction()
-        cx_pixel = minx
+
+        # this needs to be over the pixel directly, lest the coordinates are off-by-one.
+        cx_pixel = minx + (flow_dir_pixelsize_x / 2.)
         while cx_pixel < maxx:
             ix_pixel = <long>((cx_pixel - flow_dir_origin_x) // flow_dir_pixelsize_x)
 
@@ -1712,10 +1714,10 @@ def delineate_watersheds_trivial_d8(
         scratch_band = None
         scratch_raster = None
 
-    flow_dir_managed_raster.close()
     watersheds_layer = None
     watersheds_vector = None
 
+    LOGGER.info('Copying field values to the target vector.')
     # last step: open up the source vector and the target vector, create all
     # fields needed and set the values accordingly.
     source_vector = gdal.OpenEx(outflow_vector_path, gdal.OF_VECTOR)
