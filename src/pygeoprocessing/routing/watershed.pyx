@@ -1648,7 +1648,7 @@ def group_seeds_into_fragments_d8(
                 if not 0 <= neighbor_col < flow_dir_n_cols:
                     continue
 
-                neighbor_seed = (neighbor_row, neighbor_col)
+                neighbor_seed = (neighbor_col, neighbor_row)
 
                 # Does neighbor belong to current watershed?
                 # If it doesn't exist (meaning it's a pixel that isn't a seed),
