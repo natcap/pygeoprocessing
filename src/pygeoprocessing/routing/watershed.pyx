@@ -57,6 +57,8 @@ GTIFF_CREATION_OPTIONS = (
 # this is used to calculate the opposite D8 direction interpreting the index
 # as a D8 direction
 cdef int* D8_REVERSE_DIRECTION = [4, 5, 6, 7, 0, 1, 2, 3]
+cdef int* NEIGHBOR_COL = [1, 1, 0, -1, -1, -1, 0, 1]
+cdef int* NEIGHBOR_ROW = [0, -1, -1, -1, 0, 1, 1, 1]
 
 # this is a least recently used cache written in C++ in an external file,
 # exposing here so _ManagedRaster can use it
@@ -1531,10 +1533,13 @@ def group_seeds_into_fragments_d8(
             integer watersheds.  The set represents the unique watershed IDs
             that this seed belongs to.
     """
+    flow_dir_info = pygeoprocessing.get_raster_info(d8_flow_dir_raster_path_band[0])
+    cdef long flow_dir_n_cols = flow_dir_info['raster_size'][0]
+    cdef long flow_dir_n_rows = flow_dir_info['raster_size'][1]
     cdef _ManagedRaster flow_dir_managed_raster
     flow_dir_managed_raster = _ManagedRaster(d8_flow_dir_raster_path_band[0],
-                                                  d8_flow_dir_raster_path_band[1],
-                                                  0)  # read-only
+                                             d8_flow_dir_raster_path_band[1],
+                                             0)  # read-only
 
     seeds_in_watershed = collections.defaultdict(list)
     for seed, watershed_ids in seeds_to_ws_ids.items():
@@ -1555,27 +1560,28 @@ def group_seeds_into_fragments_d8(
     # Step 1: determine which fragments are downstream of one another.
     downstream_seeds = {}
     for starter_seed in seeds_to_ws_ids.keys():
-        seed_flow_dir = flow_dir_matrix[starter_seed]
-        neighbor_seed = (starter_seed[0] + NEIGHBOR_ROW[seed_flow_dir],
-                         starter_seed[1] + NEIGHBOR_COL[seed_flow_dir])
+        seed_flow_dir = flow_dir_managed_raster.get(starter_seed[0], neighbor_seed[1])
+        neighbor_seed = (starter_seed[0] + NEIGHBOR_COL[seed_flow_dir],
+                         starter_seed[1] + NEIGHBOR_ROW[seed_flow_dir])
 
         while True:
             # is the index a seed?
             # If yes, we've found a downstream seed and we're done.
             # D8 can only have one seed downstream of another.
-            if neighbor_seed in seeds_to_ws_ids:
+            if neighbor_seed in seeds_to_watershed_membership_map:
                 downstream_seeds[starter_seed] = neighbor_seed
                 break
 
-            try:
-                current_flow_dir = flow_dir_matrix[neighbor_seed]
-                if current_flow_dir == NODATA:
-                    raise IndexError('Downstream pixel is NODATA')
-            except IndexError:
+            if not 0 <= neighbor_seed[0] < flow_dir_n_cols:
+                break
+            if not 0 <= neighbor_seed[1] < flow_dir_n_rows:
                 break
 
-            neighbor_seed = (neighbor_seed[0] + NEIGHBOR_ROW[current_flow_dir],
-                             neighbor_seed[1] + NEIGHBOR_COL[current_flow_dir])
+            if flow_dir_managed_raster.get(neighbor_seed[0], neighbor_seed[1]) == flow_dir_nodata:
+                break
+
+            neighbor_seed = (neighbor_seed[0] + NEIGHBOR_COL[current_flow_dir],
+                             neighbor_seed[1] + NEIGHBOR_ROW[current_flow_dir])
 
     # now that we know which fragments are downstream of one another, we also
     # need to know which fragments are upstream of one another.
@@ -1639,11 +1645,11 @@ def group_seeds_into_fragments_d8(
 
             # visit neighbors and see if there are any neighbors that match
             for neighbor_id in xrange(8):
-                neighbor_row = current_seed[0] + NEIGHBOR_ROW[neighbor_id]
-                neighbor_col = current_seed[1] + NEIGHBOR_COL[neighbor_id]
-                if not 0 <= neighbor_row < flow_dir_matrix.shape[0]:
+                neighbor_row = current_seed[0] + NEIGHBOR_COL[neighbor_id]
+                neighbor_col = current_seed[1] + NEIGHBOR_ROW[neighbor_id]
+                if not 0 <= neighbor_row < flow_dir_n_rows.shape[0]:
                     continue
-                if not 0 <= neighbor_col < flow_dir_matrix.shape[1]:
+                if not 0 <= neighbor_col < flow_dir_n_cols.shape[1]:
                     continue
 
                 neighbor_seed = (neighbor_row, neighbor_col)
