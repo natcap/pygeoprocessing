@@ -99,6 +99,7 @@ class WatershedDelineationTests(unittest.TestCase):
                     expected_watershed_geometry).area, 0)
 
     def test_fragment_aggregation(self):
+        import pygeoprocessing.routing
         nodata = 255
         flow_dir_array= numpy.array([
             [0, 0, 0, 0, 0, 0, 0],
@@ -146,13 +147,13 @@ class WatershedDelineationTests(unittest.TestCase):
             (6, 4): frozenset([4]),
         }
 
-        seed_ids, nested_seeds = watersheds.group_seeds_into_fragments_d8(
+        seed_ids, nested_seeds = pygeoprocessing.routing.group_seeds_into_fragments_d8(
             (flow_dir_path, 1), seeds_to_ws_ids)
 
         # The order of the seed IDs could be different, so what really matters
         # is that the correct seeds are grouped together under the same ID and
         # that there are only 6 fragment IDs (1-6, inclusive).
-        self.assertEqual(sorted(seed_ids.value()), list(range(1, 7)))
+        self.assertEqual(sorted(set(seed_ids.values())), list(range(1, 7)))
         seed_ids_to_seeds = collections.defaultdict(set)
         for seed, seed_id in seed_ids.items():
             seed_groupings[seed_id].add(seed)

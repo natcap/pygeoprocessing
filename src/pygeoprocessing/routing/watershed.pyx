@@ -1536,31 +1536,29 @@ def group_seeds_into_fragments_d8(
     flow_dir_info = pygeoprocessing.get_raster_info(d8_flow_dir_raster_path_band[0])
     cdef long flow_dir_n_cols = flow_dir_info['raster_size'][0]
     cdef long flow_dir_n_rows = flow_dir_info['raster_size'][1]
+    cdef int flow_dir_nodata = flow_dir_info['nodata'][0]
     cdef _ManagedRaster flow_dir_managed_raster
     flow_dir_managed_raster = _ManagedRaster(d8_flow_dir_raster_path_band[0],
                                              d8_flow_dir_raster_path_band[1],
                                              0)  # read-only
 
     seeds_in_watershed = collections.defaultdict(list)
-    for seed, watershed_ids in seeds_to_ws_ids.items():
+    for seed, watershed_ids in seeds_to_watershed_membership_map.items():
         for ws_id in watershed_ids:
             seeds_in_watershed[ws_id].append(seed)
 
     seeds_in_watershed = dict(seeds_in_watershed)
-    assert len(seeds_in_watershed) == 4, 'incorrect number of watersheds_found'
 
     seed_ids = {}
     seed_ids_to_seeds = {}
-    for seed_id, seed in enumerate(seeds_to_ws_ids.keys(), 1):
+    for seed_id, seed in enumerate(seeds_to_watershed_membership_map.keys(), 1):
         seed_ids[seed] = seed_id
         seed_ids_to_seeds[seed_id] = seed
 
-    pprint.pprint(('seed_ids', seed_ids))
-
     # Step 1: determine which fragments are downstream of one another.
     downstream_seeds = {}
-    for starter_seed in seeds_to_ws_ids.keys():
-        seed_flow_dir = flow_dir_managed_raster.get(starter_seed[0], neighbor_seed[1])
+    for starter_seed in seeds_to_watershed_membership_map.keys():
+        seed_flow_dir = flow_dir_managed_raster.get(starter_seed[0], starter_seed[1])
         neighbor_seed = (starter_seed[0] + NEIGHBOR_COL[seed_flow_dir],
                          starter_seed[1] + NEIGHBOR_ROW[seed_flow_dir])
 
@@ -1577,7 +1575,8 @@ def group_seeds_into_fragments_d8(
             if not 0 <= neighbor_seed[1] < flow_dir_n_rows:
                 break
 
-            if flow_dir_managed_raster.get(neighbor_seed[0], neighbor_seed[1]) == flow_dir_nodata:
+            current_flow_dir = flow_dir_managed_raster.get(neighbor_seed[0], neighbor_seed[1])
+            if current_flow_dir == flow_dir_nodata:
                 break
 
             neighbor_seed = (neighbor_seed[0] + NEIGHBOR_COL[current_flow_dir],
@@ -1586,20 +1585,16 @@ def group_seeds_into_fragments_d8(
     # now that we know which fragments are downstream of one another, we also
     # need to know which fragments are upstream of one another.
     nested_fragments = dict((v, [k]) for (k, v) in downstream_seeds.items())
-    pprint.pprint(('nested_fragments', nested_fragments))
-    pprint.pprint(('downstream_seeds', downstream_seeds))
 
     # Step 2: find the starter seeds.
     starter_seeds = set([])
-    for seed in seeds_to_ws_ids:
+    for seed in seeds_to_watershed_membership_map:
         while True:
             if seed in downstream_seeds:
                 seed = downstream_seeds[seed]
             else:
                 break
         starter_seeds.add(seed)
-
-    pprint.pprint(('starter seeds', starter_seeds))
 
     starter_seeds = list(starter_seeds)  # can't change size of set during iteration
     effective_watersheds = {}
@@ -1611,7 +1606,7 @@ def group_seeds_into_fragments_d8(
     for starter_seed in starter_seeds:
         stack = [starter_seed]
 
-        member_watersheds = seeds_to_ws_ids[starter_seed]
+        member_watersheds = seeds_to_watershed_membership_map[starter_seed]
         try:
             starter_id = effective_seed_ids[starter_seed]
         except KeyError:
@@ -1625,13 +1620,14 @@ def group_seeds_into_fragments_d8(
 
             try:
                 for upstream_seed in nested_fragments[current_seed]:
-                    if seeds_to_ws_ids[upstream_seed].issubset(seeds_to_ws_ids[starter_seed]):
+                    if seeds_to_watershed_membership_map[upstream_seed].issubset(
+                            seeds_to_watershed_membership_map[starter_seed]):
                         stack.append(upstream_seed)
-                        effective_watersheds[upstream_seed] = seeds_to_ws_ids[starter_seed]
+                        effective_watersheds[upstream_seed] = seeds_to_watershed_membership_map[starter_seed]
                     else:
                         # The upstream seed appears to be the start of a different fragment.
                         # Add it to the starter seeds queue.
-                        effective_watersheds[upstream_seed] = seeds_to_ws_ids[upstream_seed]
+                        effective_watersheds[upstream_seed] = seeds_to_watershed_membership_map[upstream_seed]
                         if upstream_seed not in starter_seeds:
                             starter_seeds.append(upstream_seed)
 
@@ -1647,9 +1643,9 @@ def group_seeds_into_fragments_d8(
             for neighbor_id in xrange(8):
                 neighbor_row = current_seed[0] + NEIGHBOR_COL[neighbor_id]
                 neighbor_col = current_seed[1] + NEIGHBOR_ROW[neighbor_id]
-                if not 0 <= neighbor_row < flow_dir_n_rows.shape[0]:
+                if not 0 <= neighbor_row < flow_dir_n_rows:
                     continue
-                if not 0 <= neighbor_col < flow_dir_n_cols.shape[1]:
+                if not 0 <= neighbor_col < flow_dir_n_cols:
                     continue
 
                 neighbor_seed = (neighbor_row, neighbor_col)
@@ -1657,10 +1653,10 @@ def group_seeds_into_fragments_d8(
                 # Does neighbor belong to current watershed?
                 # If it doesn't exist (meaning it's a pixel that isn't a seed),
                 # we don't consider it.
-                if neighbor_seed not in seeds_to_ws_ids:
+                if neighbor_seed not in seeds_to_watershed_membership_map:
                     continue
 
-                if seeds_to_ws_ids[neighbor_seed] == member_watersheds:
+                if seeds_to_watershed_membership_map[neighbor_seed] == member_watersheds:
                     # If we can compare the downstream neighbors, do so.
                     try:
                         # We only want to expand into the neighbor IFF the
@@ -1677,7 +1673,8 @@ def group_seeds_into_fragments_d8(
                         # if there is, we don't want to expand into it.
                         try:
                             downstream_seed = downstream_seeds[neighbor_seed]
-                            if seeds_to_ws_ids[neighbor_seed].issuperset(seeds_to_ws_ids[downstream_seed]):
+                            if seeds_to_watershed_membership_map[neighbor_seed].issuperset(
+                                    seeds_to_watershed_membership_map[downstream_seed]):
                                 effective_seed_ids[neighbor_seed] = starter_id
                         except KeyError:
                             # no known downstream seeds to check, we're probably ok?
@@ -1697,6 +1694,17 @@ def group_seeds_into_fragments_d8(
                 pass
 
 
+    consolidated_reclassification = {}
+    for new_index, reclass_value in enumerate(numpy.unique(reclassification.values()), 1):
+        consolidated_reclassification[reclass_value] = new_index
+
+    final_seed_ids = {}
+    for seed, starter_id in seed_ids.items():
+        final_seed_ids[seed] = consolidated_reclassification[reclassification[starter_id]]
+
+    return (final_seed_ids, None)
+
+
 
 def delineate_watersheds_d8(
         d8_flow_dir_raster_path_band, outflow_vector_path,
@@ -1708,15 +1716,6 @@ def delineate_watersheds_d8(
                 d8_flow_dir_raster_path_band))
 
     cdef int ws_id  # start indexing ws_id at 1
-    if starting_ws_id is None:
-        ws_id = 1
-    else:
-        if not isinstance(starting_ws_id, int) or starting_ws_id <= 0:
-            raise ValueError(
-                'starting_ws_id must be a positive, nonzero integer; %s found'
-                % starting_ws_id)
-        else:
-            ws_id = starting_ws_id
 
     flow_dir_info = pygeoprocessing.get_raster_info(
         d8_flow_dir_raster_path_band[0])
