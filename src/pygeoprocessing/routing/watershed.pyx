@@ -1542,13 +1542,6 @@ def group_seeds_into_fragments_d8(
                                              d8_flow_dir_raster_path_band[1],
                                              0)  # read-only
 
-    seeds_in_watershed = collections.defaultdict(list)
-    for seed, watershed_ids in seeds_to_watershed_membership_map.items():
-        for ws_id in watershed_ids:
-            seeds_in_watershed[ws_id].append(seed)
-
-    seeds_in_watershed = dict(seeds_in_watershed)
-
     seed_ids = {}
     seed_ids_to_seeds = {}
     for seed_id, seed in enumerate(seeds_to_watershed_membership_map.keys(), 1):
