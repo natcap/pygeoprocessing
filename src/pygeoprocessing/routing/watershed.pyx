@@ -1536,6 +1536,160 @@ def group_seeds_into_fragments_d8(
                                                   d8_flow_dir_raster_path_band[1],
                                                   0)  # read-only
 
+    seeds_in_watershed = collections.defaultdict(list)
+    for seed, watershed_ids in seeds_to_ws_ids.items():
+        for ws_id in watershed_ids:
+            seeds_in_watershed[ws_id].append(seed)
+
+    seeds_in_watershed = dict(seeds_in_watershed)
+    assert len(seeds_in_watershed) == 4, 'incorrect number of watersheds_found'
+
+    seed_ids = {}
+    seed_ids_to_seeds = {}
+    for seed_id, seed in enumerate(seeds_to_ws_ids.keys(), 1):
+        seed_ids[seed] = seed_id
+        seed_ids_to_seeds[seed_id] = seed
+
+    pprint.pprint(('seed_ids', seed_ids))
+
+    # Step 1: determine which fragments are downstream of one another.
+    downstream_seeds = {}
+    for starter_seed in seeds_to_ws_ids.keys():
+        seed_flow_dir = flow_dir_matrix[starter_seed]
+        neighbor_seed = (starter_seed[0] + NEIGHBOR_ROW[seed_flow_dir],
+                         starter_seed[1] + NEIGHBOR_COL[seed_flow_dir])
+
+        while True:
+            # is the index a seed?
+            # If yes, we've found a downstream seed and we're done.
+            # D8 can only have one seed downstream of another.
+            if neighbor_seed in seeds_to_ws_ids:
+                downstream_seeds[starter_seed] = neighbor_seed
+                break
+
+            try:
+                current_flow_dir = flow_dir_matrix[neighbor_seed]
+                if current_flow_dir == NODATA:
+                    raise IndexError('Downstream pixel is NODATA')
+            except IndexError:
+                break
+
+            neighbor_seed = (neighbor_seed[0] + NEIGHBOR_ROW[current_flow_dir],
+                             neighbor_seed[1] + NEIGHBOR_COL[current_flow_dir])
+
+    # now that we know which fragments are downstream of one another, we also
+    # need to know which fragments are upstream of one another.
+    nested_fragments = dict((v, [k]) for (k, v) in downstream_seeds.items())
+    pprint.pprint(('nested_fragments', nested_fragments))
+    pprint.pprint(('downstream_seeds', downstream_seeds))
+
+    # Step 2: find the starter seeds.
+    starter_seeds = set([])
+    for seed in seeds_to_ws_ids:
+        while True:
+            if seed in downstream_seeds:
+                seed = downstream_seeds[seed]
+            else:
+                break
+        starter_seeds.add(seed)
+
+    pprint.pprint(('starter seeds', starter_seeds))
+
+    starter_seeds = list(starter_seeds)  # can't change size of set during iteration
+    effective_watersheds = {}
+    visited = set([])
+    effective_seed_ids = {}
+    downstream_watersheds = {}
+    reclassification = {}
+
+    for starter_seed in starter_seeds:
+        stack = [starter_seed]
+
+        member_watersheds = seeds_to_ws_ids[starter_seed]
+        try:
+            starter_id = effective_seed_ids[starter_seed]
+        except KeyError:
+            starter_id = seed_ids[starter_seed]
+            effective_seed_ids[starter_seed] = starter_id
+
+        while len(stack) > 0:
+            current_seed = stack.pop()
+            reclassification[seed_ids[current_seed]] = starter_id
+            visited.add(current_seed)
+
+            try:
+                for upstream_seed in nested_fragments[current_seed]:
+                    if seeds_to_ws_ids[upstream_seed].issubset(seeds_to_ws_ids[starter_seed]):
+                        stack.append(upstream_seed)
+                        effective_watersheds[upstream_seed] = seeds_to_ws_ids[starter_seed]
+                    else:
+                        # The upstream seed appears to be the start of a different fragment.
+                        # Add it to the starter seeds queue.
+                        effective_watersheds[upstream_seed] = seeds_to_ws_ids[upstream_seed]
+                        if upstream_seed not in starter_seeds:
+                            starter_seeds.append(upstream_seed)
+
+                            # noting which watersheds are downstream of the
+                            # upstream pixel is important for visiting
+                            # neighbors and expanding into them, below.
+                            downstream_watersheds[upstream_seed] = member_watersheds
+            except KeyError:
+                # No nested fragments.
+                pass
+
+            # visit neighbors and see if there are any neighbors that match
+            for neighbor_id in xrange(8):
+                neighbor_row = current_seed[0] + NEIGHBOR_ROW[neighbor_id]
+                neighbor_col = current_seed[1] + NEIGHBOR_COL[neighbor_id]
+                if not 0 <= neighbor_row < flow_dir_matrix.shape[0]:
+                    continue
+                if not 0 <= neighbor_col < flow_dir_matrix.shape[1]:
+                    continue
+
+                neighbor_seed = (neighbor_row, neighbor_col)
+
+                # Does neighbor belong to current watershed?
+                # If it doesn't exist (meaning it's a pixel that isn't a seed),
+                # we don't consider it.
+                if neighbor_seed not in seeds_to_ws_ids:
+                    continue
+
+                if seeds_to_ws_ids[neighbor_seed] == member_watersheds:
+                    # If we can compare the downstream neighbors, do so.
+                    try:
+                        # We only want to expand into the neighbor IFF the
+                        # downstream watersheds match.
+                        if downstream_watersheds[current_seed] == downstream_watersheds[neighbor_seed]:
+                            effective_seed_ids[neighbor_seed] = starter_id
+                    except KeyError:
+                        # If we can't compare the downstream watersheds, it's
+                        # because we're still too far downstream to have any
+                        # meaningful linkages between them, and we can safely
+                        # expand into the neighbor.
+
+                        # check to see if there's a known downstream seed of this seed.
+                        # if there is, we don't want to expand into it.
+                        try:
+                            downstream_seed = downstream_seeds[neighbor_seed]
+                            if seeds_to_ws_ids[neighbor_seed].issuperset(seeds_to_ws_ids[downstream_seed]):
+                                effective_seed_ids[neighbor_seed] = starter_id
+                        except KeyError:
+                            # no known downstream seeds to check, we're probably ok?
+                            effective_seed_ids[neighbor_seed] = starter_id
+
+                    # Add the seed to the stack if it isn't there already.
+                    if neighbor_seed not in visited and neighbor_seed not in stack:
+                        stack.append(neighbor_seed)
+
+            try:
+                for upstream_seed in nested_fragments[current_seed]:
+                    # If the upstream seed is not a neighbor, it's probably some distance away.
+                    if upstream_seed not in stack and upstream_seed not in visited:
+                        starter_seeds.append(upstream_seed)
+            except KeyError:
+                # If there are no seeds upstream of the current seed, we can safely pass.
+                pass
+
 
 
 def delineate_watersheds_d8(
