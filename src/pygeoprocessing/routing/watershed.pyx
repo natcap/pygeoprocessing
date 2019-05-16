@@ -1503,6 +1503,41 @@ def _is_raster_path_band_formatted(raster_path_band):
         return True
 
 
+def group_seeds_into_fragments_d8(
+        d8_flow_dir_raster_path_band, seeds_to_watershed_membership_map):
+    """Group seeds into contiguous fragments, represented by a unique ID.
+
+    Fragment membership is determined by walking the flow direction raster to
+    determine upstream and downstream linkages between seeds and then analyze
+    the resulting (abbreviated) flow graph (as well as the seeds' watershed
+    membership) to determine which seeds should be grouped together by IDs.
+
+    The point of this is to reduce the number of unique fragments (represented
+    in a raster by a unique ID) needed.  Successfully reducing this has the
+    following benefits:
+
+        * Reducing the number of IDs dramatically increases the number of
+          fragments that can be uniquely identified.  In pracrice, I've seen an
+          order of magnitude increase here.
+        * Reducing the number of IDs reduces the time spent polygonizing
+          fragments after we've walked the flow direction raster.
+        * Reducing the number of polygonized fragments reduces the time spent
+          unioning geometries after the fragments have been polygonized.
+
+    Parameters:
+        d8_flow_dir_raster_path_band (tuple): A path/band index tuple.
+        seeds_to_watershed_membership_map (dict): A dict mapping a seed
+            (a tuple representing the (x, y) index of a pixel) to a set of
+            integer watersheds.  The set represents the unique watershed IDs
+            that this seed belongs to.
+    """
+    cdef _ManagedRaster flow_dir_managed_raster
+    flow_dir_managed_raster = _ManagedRaster(d8_flow_dir_raster_path_band[0],
+                                                  d8_flow_dir_raster_path_band[1],
+                                                  0)  # read-only
+
+
+
 def delineate_watersheds_d8(
         d8_flow_dir_raster_path_band, outflow_vector_path,
         target_fragments_vector_path, working_dir=None):
