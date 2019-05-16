@@ -1643,9 +1643,9 @@ def group_seeds_into_fragments_d8(
             for neighbor_id in xrange(8):
                 neighbor_col = current_seed[0] + NEIGHBOR_COL[neighbor_id]
                 neighbor_row = current_seed[1] + NEIGHBOR_ROW[neighbor_id]
-                if not 0 <= neighbor_row < flow_dir_n_rows:
-                    continue
                 if not 0 <= neighbor_col < flow_dir_n_cols:
+                    continue
+                if not 0 <= neighbor_row < flow_dir_n_rows:
                     continue
 
                 neighbor_seed = (neighbor_col, neighbor_row)
