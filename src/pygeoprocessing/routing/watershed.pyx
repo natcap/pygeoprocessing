@@ -466,7 +466,7 @@ ctypedef pair[long, long] CoordinatePair
 # Phase 1: Take the union of all fragments with the same ws_id, noting union of all upstream seeds.
 # Phase 2: Recurse the data structure, building nested geometries.
 
-def delineate_watersheds_d8(
+def delineate_watersheds_d8_old(
         d8_flow_dir_raster_path_band, outflow_vector_path,
         target_fragments_vector_path, working_dir=None, starting_ws_id=None):
     """Delineate watersheds from a D8 flow direction raster.
@@ -1503,6 +1503,72 @@ def _is_raster_path_band_formatted(raster_path_band):
         return True
 
 
+def delineate_watersheds_d8(
+        d8_flow_dir_raster_path_band, outflow_vector_path,
+        target_fragments_vector_path, working_dir=None):
+    if (d8_flow_dir_raster_path_band is not None and not
+            _is_raster_path_band_formatted(d8_flow_dir_raster_path_band)):
+        raise ValueError(
+            "%s is supposed to be a raster band tuple but it's not." % (
+                d8_flow_dir_raster_path_band))
+
+    cdef int ws_id  # start indexing ws_id at 1
+    if starting_ws_id is None:
+        ws_id = 1
+    else:
+        if not isinstance(starting_ws_id, int) or starting_ws_id <= 0:
+            raise ValueError(
+                'starting_ws_id must be a positive, nonzero integer; %s found'
+                % starting_ws_id)
+        else:
+            ws_id = starting_ws_id
+
+    flow_dir_info = pygeoprocessing.get_raster_info(
+        d8_flow_dir_raster_path_band[0])
+    source_gt = flow_dir_info['geotransform']
+    cdef long flow_dir_n_cols = flow_dir_info['raster_size'][0]
+    cdef long flow_dir_n_rows = flow_dir_info['raster_size'][1]
+    cdef int flow_dir_block_x_size = flow_dir_info['block_size'][0]
+    cdef int flow_dir_block_y_size = flow_dir_info['block_size'][1]
+    cdef double x_origin = source_gt[0]
+    cdef double y_origin = source_gt[3]
+    cdef double x_pixelwidth = source_gt[1]
+    cdef double y_pixelwidth = source_gt[5]
+    cdef double pixel_area = abs(x_pixelwidth * y_pixelwidth)
+    try:
+        if working_dir is not None:
+            os.makedirs(working_dir)
+    except OSError:
+        pass
+    working_dir_path = tempfile.mkdtemp(
+        dir=working_dir, prefix='watershed_delineation_%s_' % time.strftime(
+            '%Y-%m-%d_%H_%M_%S', time.gmtime()))
+    # Optimizations that can be done outside of watershed delineation:
+    #  * geometries can be simplified according to the nyquist-shannon sampling theorem
+    #  * any geometries outside of the bounding box of the flow direction raster can be
+    #    clipped to the bounding box or else excluded entirely.
+    #  * Geometries must be valid, and should be repaired outside of watershed delineation.
+    #
+    #
+    # 1. Determine which pixels are seeds and which watersheds are represented by which seed
+    #    * This is the disjoint-polygon/rasterization step
+    #        * Points and geometries only overlapping one pixel do not need to be rasterized.
+    #        * Lines (geometries with no area) and small polygons need to be
+    #          buffered to ensure no overlap before rasterization.
+    #    * This should also be nodata-aware.  Should not end up with seeds that are over nodata.
+    # 2. Use the flow direction raster and the watershed membership data structures to
+    #    identify which seeds should have which IDs, grouped as needed into fragments.
+    #    * While doing this, we can also track upstream/downstream dependencies and return
+    #      them as needed to the parent function.
+    #    * Assume UInt32 for return ID.
+    #    * Raise an error if more seeds than 2**32-1
+    # 3. Group seeds together into blocks to try to take advantage of LRUCache
+    # 4. Iterate through seeds, delineating watersheds.
+    # 5. Polygonize the fragments.
+    #
+    # 6? Recursively join fragments.
+
+
 def delineate_watersheds_trivial_d8(
         d8_flow_dir_raster_path_band, outflow_vector_path,
         target_watersheds_vector_path, working_dir=None):
@@ -1743,3 +1809,4 @@ def delineate_watersheds_trivial_d8(
     source_vector = None
 
     shutil.rmtree(working_dir_path)
+
