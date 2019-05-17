@@ -149,7 +149,7 @@ class WatershedDelineationTests(unittest.TestCase):
             (6, 4): frozenset([4]),
         }
 
-        seed_ids, nested_seeds = pygeoprocessing.routing.group_seeds_into_fragments_d8(
+        seed_ids = pygeoprocessing.routing.group_seeds_into_fragments_d8(
             (flow_dir_path, 1), seeds_to_ws_ids)
 
         # The order of the seed IDs could be different, so what really matters

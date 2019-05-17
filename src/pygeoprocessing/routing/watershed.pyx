@@ -95,7 +95,7 @@ cdef class _ManagedRaster:
     cdef int band_id
     cdef int closed
 
-    def __cinit__(self, raster_path, band_id, write_mode):
+    def __init__(self, raster_path, band_id, write_mode):
         """Create new instance of Managed Raster.
 
         Parameters:
@@ -112,12 +112,8 @@ cdef class _ManagedRaster:
         """
         if not os.path.isfile(raster_path):
             LOGGER.error("%s is not a file.", raster_path)
-            return
+            raise OSError('%s is not a file.' % raster_path)
         raster_info = pygeoprocessing.get_raster_info(raster_path)
-        self.raster_x_size, self.raster_y_size = raster_info['raster_size']
-        self.block_xsize, self.block_ysize = raster_info['block_size']
-        self.block_xmod = self.block_xsize-1
-        self.block_ymod = self.block_ysize-1
 
         if not (1 <= band_id <= raster_info['n_bands']):
             err_msg = (
@@ -125,12 +121,12 @@ cdef class _ManagedRaster:
                 "This exception is happening in Cython, so it will cause a "
                 "hard seg-fault, but it's otherwise meant to be a "
                 "ValueError." % (band_id))
-            print(err_msg)
+            LOGGER.error(err_msg)
             raise ValueError(err_msg)
-        self.band_id = band_id
 
-        if (self.block_xsize & (self.block_xsize - 1) != 0) or (
-                self.block_ysize & (self.block_ysize - 1) != 0):
+        block_xsize, block_ysize = raster_info['block_size']
+        if (block_xsize & (block_xsize - 1) != 0) or (
+                block_ysize & (block_ysize - 1) != 0):
             # If inputs are not a power of two, this will at least print
             # an error message. Unfortunately with Cython, the exception will
             # present itself as a hard seg-fault, but I'm leaving the
@@ -140,9 +136,32 @@ cdef class _ManagedRaster:
                 "block_xsize: %d, %d, %s. This exception is happening"
                 "in Cython, so it will cause a hard seg-fault, but it's"
                 "otherwise meant to be a ValueError." % (
-                    self.block_xsize, self.block_ysize, raster_path))
-            print(err_msg)
+                    block_xsize, block_ysize, raster_path))
+            LOGGER.error(err_msg)
             raise ValueError(err_msg)
+
+    def __cinit__(self, raster_path, band_id, write_mode):
+        """Create new instance of Managed Raster.
+
+        Parameters:
+            raster_path (char*): path to raster that has block sizes that are
+                powers of 2. If not, an exception is raised.
+            band_id (int): which band in `raster_path` to index. Uses GDAL
+                notation that starts at 1.
+            write_mode (boolean): if true, this raster is writable and dirty
+                memory blocks will be written back to the raster as blocks
+                are swapped out of the cache or when the object deconstructs.
+
+        Returns:
+            None.
+        """
+        raster_info = pygeoprocessing.get_raster_info(raster_path)
+        self.raster_x_size, self.raster_y_size = raster_info['raster_size']
+        self.block_xsize, self.block_ysize = raster_info['block_size']
+        self.block_xmod = self.block_xsize-1
+        self.block_ymod = self.block_ysize-1
+
+        self.band_id = band_id
 
         self.block_xbits = numpy.log2(self.block_xsize)
         self.block_ybits = numpy.log2(self.block_ysize)
