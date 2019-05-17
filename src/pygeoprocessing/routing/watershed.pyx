@@ -1511,7 +1511,7 @@ def group_seeds_into_fragments_d8(
 
     Fragment membership is determined by walking the flow direction raster to
     determine upstream and downstream linkages between seeds and then analyze
-    the resulting (abbreviated) flow graph (as well as the seeds' watershed
+    the resulting abbreviated flow graph (as well as the seeds' watershed
     membership) to determine which seeds should be grouped together by IDs.
 
     The point of this is to reduce the number of unique fragments (represented
@@ -1537,9 +1537,6 @@ def group_seeds_into_fragments_d8(
         seed_ids (dict): A dict mapping tuples of (x, y) pixel coordinates of
             seeds to their new unique IDs having been grouped together into
             contiguous fragments.
-        nested_fragments (dict): A dict mapping (x, y) pixel coordinates to a
-            set of fragment IDs found as values in the ``seed_ids`` dict also
-            returned by this function.
     """
     flow_dir_info = pygeoprocessing.get_raster_info(d8_flow_dir_raster_path_band[0])
     cdef long flow_dir_n_cols = flow_dir_info['raster_size'][0]
@@ -1702,7 +1699,7 @@ def group_seeds_into_fragments_d8(
     for seed, starter_id in seed_ids.items():
         final_seed_ids[seed] = consolidated_reclassification[reclassification[starter_id]]
 
-    return (final_seed_ids, None)
+    return final_seed_ids
 
 
 
