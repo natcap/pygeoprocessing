@@ -1505,6 +1505,58 @@ def _is_raster_path_band_formatted(raster_path_band):
         return True
 
 
+def split_vector_into_seeds(
+        source_vector_path, d8_flow_dir_raster_path_band,
+        source_vector_layer=None):
+    """Analyze the source vector and break all geometries into seeds.
+
+    For D8 watershed delination, ``seeds`` represent (x, y) pixel coordinates
+    on the flow direction raster as determined by a rasterization with GDAL's
+    ``ALL_TOUCHED=TRUE`` option enabled.  Seeds can represent multiple
+    watersheds, which is the result of having multiple geometries overlapping
+    one or more of the same pixels.
+
+    A seed will only be created when the seed is over a valid D8 flow direction
+    pixel.  Any geometries over nodata pixels on the flow direction raster will
+    not have seeds created where they overlap with nodata.
+
+    For optimal performance, consider preparing your source vector such that:
+
+        * All geometries are valid.  This function makes no attempt to correct
+          invalid geometries and an exception will be raised if a geometry is
+          found to be invalid.
+        * All geometries are simplified to 1/2 the pixel width of your flow
+          direction raster according to the Nyquist-Shannon sampling theorem.
+          Doing so will result in faster (and no less accurate) rasterizations
+          for particularly complex geometries.
+        * All geometries intersect the flow direction raster.  Failure to do so
+          will result in slower-than-necessary rasterization and additional
+          overhead in looping.
+
+    Parameters:
+        source_vector_path (string): A path to a GDAL-compatible vector on
+            disk containing one or more layers with one or more geometries to
+            analyze.  All geometries in the target layer must be valid, but may
+            be of any type (point, polygon, etc.) supported by GDAL.
+            The projection of this vector must match that of the flow direction
+            raster.
+        d8_flow_dir_raster_path_band (tuple): A (path, band) tuple where
+            ``path`` represents a path to a GDAL-compatible raster on disk and
+            ``band`` represents a 1-based band index.  The projection of this
+            raster must match that of the source vector.
+        source_vector_layer (string, int or None): An identifier for the layer
+            of the vector at ``source_vector_path`` to use.  If ``None``,
+            the first layer from the source vector will be used.
+
+    Returns:
+        seed_watershed_membership (dict): A python dict mapping (x, y) pixel
+            index tuples to sets of integer watershed IDs.
+    """
+    # TODO: does this function also need to identify which source features map to which WS_IDs?
+    #       Can we just refer to FIDs instead of using internal identifiers?
+    pass
+
+
 def group_seeds_into_fragments_d8(
         d8_flow_dir_raster_path_band, seeds_to_watershed_membership_map):
     """Group seeds into contiguous fragments, represented by a unique ID.
