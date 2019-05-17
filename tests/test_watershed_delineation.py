@@ -148,12 +148,8 @@ class WatershedDelineationTests(unittest.TestCase):
             (5, 4): frozenset([4]),
             (6, 4): frozenset([4]),
         }
-        empty = numpy.zeros(flow_dir_array.shape)
-        for seed, seed_id in seeds_to_ws_ids.items():
-            empty[seed[1], seed[0]] = list(seed_id)[0]
 
         seed_ids, nested_seeds = pygeoprocessing.routing.group_seeds_into_fragments_d8(
-        #seed_ids, nested_seeds = group_seeds_into_fragments_d8(
             (flow_dir_path, 1), seeds_to_ws_ids)
 
         # The order of the seed IDs could be different, so what really matters
@@ -163,10 +159,6 @@ class WatershedDelineationTests(unittest.TestCase):
         for seed, seed_id in seed_ids.items():
             seed_ids_to_seeds[seed_id].add(seed)
         seed_ids_to_seeds = dict(seed_ids_to_seeds)
-
-        empty = numpy.zeros(flow_dir_array.shape)
-        for seed, seed_id in seed_ids.items():
-            empty[seed[1], seed[0]] = seed_id
 
         seed_groupings = set([frozenset(s) for s in seed_ids_to_seeds.values()])
 
