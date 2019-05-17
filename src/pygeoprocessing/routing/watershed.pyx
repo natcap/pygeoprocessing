@@ -1532,6 +1532,14 @@ def group_seeds_into_fragments_d8(
             (a tuple representing the (x, y) index of a pixel) to a set of
             integer watersheds.  The set represents the unique watershed IDs
             that this seed belongs to.
+
+    Returns:
+        seed_ids (dict): A dict mapping tuples of (x, y) pixel coordinates of
+            seeds to their new unique IDs having been grouped together into
+            contiguous fragments.
+        nested_fragments (dict): A dict mapping (x, y) pixel coordinates to a
+            set of fragment IDs found as values in the ``seed_ids`` dict also
+            returned by this function.
     """
     flow_dir_info = pygeoprocessing.get_raster_info(d8_flow_dir_raster_path_band[0])
     cdef long flow_dir_n_cols = flow_dir_info['raster_size'][0]
@@ -1572,6 +1580,7 @@ def group_seeds_into_fragments_d8(
             neighbor_seed = (neighbor_seed[0] + NEIGHBOR_COL[current_flow_dir],
                              neighbor_seed[1] + NEIGHBOR_ROW[current_flow_dir])
 
+    # TODO: make sure we can support multiple upstream fragments in this data structure.
     # now that we know which fragments are downstream of one another, we also
     # need to know which fragments are upstream of one another.
     nested_fragments = dict((v, [k]) for (k, v) in downstream_seeds.items())
