@@ -1,3 +1,4 @@
+import collections
 import os
 import shutil
 import tempfile
@@ -8,6 +9,7 @@ import shapely.geometry
 from osgeo import gdal
 from osgeo import ogr
 from osgeo import osr
+
 
 class WatershedDelineationTests(unittest.TestCase):
     def setUp(self):
@@ -146,17 +148,25 @@ class WatershedDelineationTests(unittest.TestCase):
             (5, 4): frozenset([4]),
             (6, 4): frozenset([4]),
         }
+        empty = numpy.zeros(flow_dir_array.shape)
+        for seed, seed_id in seeds_to_ws_ids.items():
+            empty[seed[1], seed[0]] = list(seed_id)[0]
 
         seed_ids, nested_seeds = pygeoprocessing.routing.group_seeds_into_fragments_d8(
+        #seed_ids, nested_seeds = group_seeds_into_fragments_d8(
             (flow_dir_path, 1), seeds_to_ws_ids)
 
         # The order of the seed IDs could be different, so what really matters
         # is that the correct seeds are grouped together under the same ID and
         # that there are only 6 fragment IDs (1-6, inclusive).
-        self.assertEqual(sorted(set(seed_ids.values())), list(range(1, 7)))
         seed_ids_to_seeds = collections.defaultdict(set)
         for seed, seed_id in seed_ids.items():
-            seed_groupings[seed_id].add(seed)
+            seed_ids_to_seeds[seed_id].add(seed)
+        seed_ids_to_seeds = dict(seed_ids_to_seeds)
+
+        empty = numpy.zeros(flow_dir_array.shape)
+        for seed, seed_id in seed_ids.items():
+            empty[seed[1], seed[0]] = seed_id
 
         seed_groupings = set([frozenset(s) for s in seed_ids_to_seeds.values()])
 
@@ -170,3 +180,4 @@ class WatershedDelineationTests(unittest.TestCase):
             frozenset([(2, 3), (3, 3)]),
             frozenset([(5, 3), (6, 3), (5, 4), (6, 4)]),
         ])
+        self.assertEqual(sorted(set(seed_ids.values())), list(range(1, 7)))

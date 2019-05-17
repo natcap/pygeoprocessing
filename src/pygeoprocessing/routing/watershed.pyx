@@ -1639,9 +1639,9 @@ def group_seeds_into_fragments_d8(
             for neighbor_id in xrange(8):
                 neighbor_col = current_seed[0] + NEIGHBOR_COL[neighbor_id]
                 neighbor_row = current_seed[1] + NEIGHBOR_ROW[neighbor_id]
-                if not 0 <= neighbor_col < flow_dir_n_cols:
-                    continue
                 if not 0 <= neighbor_row < flow_dir_n_rows:
+                    continue
+                if not 0 <= neighbor_col < flow_dir_n_cols:
                     continue
 
                 neighbor_seed = (neighbor_col, neighbor_row)
@@ -1683,7 +1683,7 @@ def group_seeds_into_fragments_d8(
                 for upstream_seed in nested_fragments[current_seed]:
                     # If the upstream seed is not a neighbor, it's probably some distance away.
                     if upstream_seed not in stack and upstream_seed not in visited:
-                        starter_seeds.append(upstream_seed)
+                        stack.append(upstream_seed)
             except KeyError:
                 # If there are no seeds upstream of the current seed, we can safely pass.
                 pass
