@@ -1554,6 +1554,21 @@ def split_vector_into_seeds(
     """
     # TODO: does this function also need to identify which source features map to which WS_IDs?
     #       Can we just refer to FIDs instead of using internal identifiers?
+
+    # Structure:
+    #  * Loop through the source geometries
+    #      * Any points can be removed from the vector processing and entered directly into the data structure
+    #      * Geometries only intersecting a single pixel can be treated like points.
+    #      * Geometries with no area (e.g. lines) and small polygons must be buffered.
+    #      * Remaining geometries should be copied to a new temporary vector.
+    #  * Use this temporary vector to determine sets of disjoint polygons
+    #  * For each set of disjoint polygons:
+    #      * Rasterize the set of polygons
+    #      * Iterblocks through the rasterized raster
+    #      * Determine seeds for any pixels that are over valid flow direction pixels.
+    #      * Track the seeds and watershed membership in the output dict.
+    #  * Remove the working directory
+    #  * Return the data structure
     pass
 
 
