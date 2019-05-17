@@ -1541,7 +1541,6 @@ def group_seeds_into_fragments_d8(
     flow_dir_managed_raster = _ManagedRaster(d8_flow_dir_raster_path_band[0],
                                              d8_flow_dir_raster_path_band[1],
                                              0)  # read-only
-
     seed_ids = {}
     for seed_id, seed in enumerate(seeds_to_watershed_membership_map.keys(), 1):
         seed_ids[seed] = seed_id
@@ -1572,13 +1571,10 @@ def group_seeds_into_fragments_d8(
 
             neighbor_seed = (neighbor_seed[0] + NEIGHBOR_COL[current_flow_dir],
                              neighbor_seed[1] + NEIGHBOR_ROW[current_flow_dir])
-    import pprint
-    pprint.pprint(('downstream seeds', downstream_seeds))
 
     # now that we know which fragments are downstream of one another, we also
     # need to know which fragments are upstream of one another.
     nested_fragments = dict((v, [k]) for (k, v) in downstream_seeds.items())
-    pprint.pprint(('nested fragments', nested_fragments))
 
     # Step 2: find the starter seeds.
     starter_seeds = set([])
@@ -1592,7 +1588,6 @@ def group_seeds_into_fragments_d8(
             starter_seeds.add(seed)
 
     starter_seeds = list(starter_seeds)  # can't change size of set during iteration
-    pprint.pprint(('starter seeds', starter_seeds))
     effective_watersheds = {}
     visited = set([])
     effective_seed_ids = {}
@@ -1646,6 +1641,7 @@ def group_seeds_into_fragments_d8(
 
                 neighbor_seed = (neighbor_col, neighbor_row)
 
+                # Does neighbor belong to current watershed?
                 # If it doesn't exist (meaning it's a pixel that isn't a seed),
                 # we don't consider it.
                 if neighbor_seed not in seeds_to_watershed_membership_map:
