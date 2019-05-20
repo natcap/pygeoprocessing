@@ -1526,7 +1526,7 @@ def _is_raster_path_band_formatted(raster_path_band):
 
 def split_vector_into_seeds(
         source_vector_path, d8_flow_dir_raster_path_band,
-        source_vector_layer=None):
+        source_vector_layer=None, working_dir=None):
     """Analyze the source vector and break all geometries into seeds.
 
     For D8 watershed delination, ``seeds`` represent (x, y) pixel coordinates
@@ -1563,9 +1563,14 @@ def split_vector_into_seeds(
             ``path`` represents a path to a GDAL-compatible raster on disk and
             ``band`` represents a 1-based band index.  The projection of this
             raster must match that of the source vector.
-        source_vector_layer (string, int or None): An identifier for the layer
-            of the vector at ``source_vector_path`` to use.  If ``None``,
-            the first layer from the source vector will be used.
+        source_vector_layer=None (string, int or None): An identifier for
+            the layer of the vector at ``source_vector_path`` to use.
+            If ``None``, the first layer from the source vector will be used.
+        working_dir=None (string or None): The path to a directory on disk
+            where intermediate files will be stored.  This directory will be
+            created if it does not exist, and intermediate files created will
+            be removed.  If ``None``, a new temporary folder will be created
+            within the system temp directory.
 
     Returns:
         seed_watershed_membership (dict): A python dict mapping (x, y) pixel
@@ -1588,7 +1593,113 @@ def split_vector_into_seeds(
     #      * Track the seeds and watershed membership in the output dict.
     #  * Remove the working directory
     #  * Return the data structure
-    pass
+
+    try:
+        if working_dir is not None:
+            os.makedirs(working_dir)
+    except OSError:
+        pass
+    working_dir_path = tempfile.mkdtemp(
+        dir=working_dir, prefix='watershed_delineation_%s_' % time.strftime(
+            '%Y-%m-%d_%H_%M_%S', time.gmtime()))
+
+    source_vector = gdal.OpenEx(source_vector_path, gdal.OF_VECTOR)
+    if source_vector_layer is None:
+        source_vector_layer = 0  # default parameter value for GetLayer
+    source_layer = source_vector.GetLayer(source_vector_layer)
+
+    flow_dir_info = pygeoprocessing.get_raster_info(
+        d8_flow_dir_raster_path_band[0])
+    source_gt = flow_dir_info['geotransform']
+    flow_dir_bbox = shapely.prepared.prep(
+        shapely.geometry.box(*flow_dir_info['bounding_box']))
+    flow_dir_srs = osr.SpatialReference()
+    flow_dir_srs.ImportFromWkt(flow_dir_info['projection'])
+    cdef int flow_dir_nodata = flow_dir_info['nodata'][0]
+    cdef float minx, miny, maxx, maxy
+    cdef double x_origin = source_gt[0]
+    cdef double y_origin = source_gt[3]
+    cdef double x_pixelwidth = source_gt[1]
+    cdef double y_pixelwidth = source_gt[5]
+    cdef double pixel_area = abs(x_pixelwidth * y_pixelwidth)
+    cdef double buffer_dist = math.hypot(x_pixelwidth, y_pixelwidth) / 2. * 1.1
+
+    seed_ids = {}  # map {(x, y coordinate pair): ID}
+
+    # watershed IDs are represented by the FID of the outflow geometry.
+    seed_watersheds = collections.defaultdict(set)  # map {(x, y coordinate pair): set(watershed IDs)}
+
+    flow_dir_managed_raster = _ManagedRaster(d8_flow_dir_raster_path_band[0],
+                                             d8_flow_dir_raster_path_band[1],
+                                             0)  # read-only
+    gpkg_driver = gdal.GetDriverByName('GPKG')
+    temp_polygons_vector = gpkg_driver.Create(
+        os.path.join(working_dir_path, 'temp_polygons.gpkg'),
+        0, 0, 0, gdal.GDT_Unknown)
+    temp_polygons_layer = temp_polygons_vector.CreateLayer(
+        'outlet_geometries', flow_dir_srs, ogr.wkbPolygon)
+    temp_polygons_layer.CreateFeature(ogr.FieldDefn('WSID', ogr.OFT_Integer))
+
+    seed_id = 0  # assume Seed IDs can be from (2 - 2**32-1) inclusive in UInt32
+    temp_polygons_layer.StartTransaction()
+    for feature in source_layer:
+        if seed_id > 2**32-1:
+            raise ValueError('Too many seeds have been created.')
+
+        # This will raise a GEOS exception if the geometry is invalid.
+        geometry = shapely.wkb.loads(feature.GetGeometryRef().ExportToWkb())
+
+        # If the geometry doesn't intersect the flow dir bounding box at all,
+        # don't bother with it.
+        if not flow_dir_bbox.intersects(shapely.geometry.box(*geometry.bounds)):
+            continue
+
+        minx, miny, maxx, maxy = geometry.bounds
+        minx_pixelcoord = <int>((minx - x_origin) // x_pixelwidth)
+        miny_pixelcoord = <int>((miny - y_origin) // y_pixelwidth)
+        maxx_pixelcoord = <int>((maxx - x_origin) // x_pixelwidth)
+        maxy_pixelcoord = <int>((maxy - y_origin) // y_pixelwidth)
+
+        # If the geometry only intersects a single pixel, we can treat it
+        # as a single point, which means that we can track it directly in our
+        # seeds data structure and not have to include it in the disjoint set
+        # determination.
+        if minx_pixelcoord == maxx_pixelcoord and miny_pixelcoord == maxy_pixelcoord:
+            # If the point is over nodata, skip it.
+            if (flow_dir_managed_raster.get(minx_pixelcoord, miny_pixelcoord)
+                    == flow_dir_nodata):
+                continue
+
+            seed = (minx_pixelcoord, miny_pixelcoord)
+            seed_ids[seed] = seed_id
+            seed_watersheds[seed].add(feature.GetFID())
+            seed_id += 1
+            continue  # No need to create a feature for this outflow geometry
+
+        else:
+            # If we can't fit the geometry into a single pixel, there remain
+            # two special cases that warrant buffering:
+            #     * It's a line (lines don't have area). We want to avoid a
+            #       situation where multiple lines cover the same pixels
+            #       but don't intersect.  Such geometries should be treated
+            #       as overlapping and handled in disjoint sets.
+            #     * It's a polygon that has area smaller than a pixel. This
+            #       came up in real-world sample data (the Montana Lakes
+            #       example, specifically), where some very small lakes were
+            #       disjoint but both overlapped only one pixel, the same pixel.
+            #       This lead to a race condition in rasterization where only
+            #       one of them would be in the output vector.
+            if (geometry.area == 0.0 or geometry.area <= pixel_area):
+                geometry = geometry.buffer(buffer_dist)
+
+            new_feature = ogr.Feature(temp_polygons_layer.GetLayerDefn())
+            new_feature.SetField('WSID', feature.GetFID())
+            new_feature.SetGeometry(ogr.CreateGeometryFromWkb(geometry.wkb))
+            temp_polygons_layer.CreateFeature(new_feature)
+    temp_polygons_layer.CommitTransaction()
+
+
+
 
 
 def group_seeds_into_fragments_d8(
