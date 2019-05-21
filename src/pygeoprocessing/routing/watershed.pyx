@@ -1526,7 +1526,7 @@ def _is_raster_path_band_formatted(raster_path_band):
 
 def split_vector_into_seeds(
         source_vector_path, d8_flow_dir_raster_path_band,
-        source_vector_layer=None, working_dir=None):
+        source_vector_layer=None, working_dir=None, remove=True):
     """Analyze the source vector and break all geometries into seeds.
 
     For D8 watershed delination, ``seeds`` represent (x, y) pixel coordinates
@@ -1778,7 +1778,8 @@ def split_vector_into_seeds(
             flow_dir_raster = None
 
 
-    shutil.rmtree(working_dir_path, ignore_errors=True)
+    if remove:
+        shutil.rmtree(working_dir_path, ignore_errors=True)
     return dict(seed_watersheds)  # remove defaultdict capabilities
 
 
