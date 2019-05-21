@@ -182,3 +182,75 @@ class WatershedDelineationTests(unittest.TestCase):
         # make some interesting outflow geometries as a geojson vector (where all geometries are in one layer)
         # run
         # assert seeds have expected membership.
+
+        nodata = 255
+        flow_dir_array= numpy.array([
+            [0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0],
+            [nodata, nodata, nodata, nodata, nodata, nodata, nodata],
+            [0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 2, 2]], dtype=numpy.uint8)
+        srs = osr.SpatialReference()
+        srs.ImportFromEPSG(32731)  # WGS84 / UTM zone 31s
+        srs_wkt = srs.ExportToWkt()
+
+        flow_dir_path = os.path.join(self.workspace_dir, 'flow_dir.tif')
+        driver = gdal.GetDriverByName('GTiff')
+        flow_dir_raster = driver.Create(
+            flow_dir_path, flow_dir_array.shape[1], flow_dir_array.shape[0],
+            1, gdal.GDT_Byte, options=(
+                'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
+                'BLOCKXSIZE=256', 'BLOCKYSIZE=256'))
+        flow_dir_raster.SetProjection(srs_wkt)
+        flow_dir_band = flow_dir_raster.GetRasterBand(1)
+        flow_dir_band.WriteArray(flow_dir_array)
+        flow_dir_band.SetNoDataValue(255)
+        flow_dir_geotransform = [2, 2, 0, -2, 0, -2]
+        flow_dir_raster.SetGeoTransform(flow_dir_geotransform)
+        flow_dir_raster = None
+
+        outflow_geometries = []
+
+        # Make several points that all overlap the same pixel
+        outflow_geometries.append(shapely.geometry.Point(2.25, 2.25))
+        outflow_geometries.append(shapely.geometry.Point(2.5, 2.5))
+        outflow_geometries.append(shapely.geometry.Point(2.75, 2.75))
+
+        # Make a few polygons that overlap
+        outflow_geometries.append(shapely.geometry.box(
+            2, -6, 6, -2))
+        outflow_geometries.append(shapely.geometry.box(
+            4, -8, 8, -4))
+
+        # Make a few lines that don't intersect but that overlap the same pixels
+        outflow_geometries.append(shapely.geometry.LineString(
+            [(8.1, -2), (8.1, -10)]))
+        outflow_geometries.append(shapely.geometry.LineString(
+            [(9, -2), (9, -10)]))
+        outflow_geometries.append(shapely.geometry.LineString(
+            [(9.9, -2), (9.9, -10)]))
+
+        geojson_driver = gdal.GetDriverByName('GeoJSON')
+        target_outflow_vector_path = os.path.join(self.workspace_dir, 'outflow.geojson')
+        outflow_vector = geojson_driver.Create(
+            target_outflow_vector_path, 0, 0, 0, gdal.GDT_Unknown)
+        outflow_layer = outflow_vector.CreateLayer(
+            'geometries', srs, ogr.wkbUnknown)
+
+        for shapely_geometry in outflow_geometries:
+            ogr_geom = ogr.CreateGeometryFromWkb(shapely_geometry.wkb)
+            feature = ogr.Feature(outflow_layer.GetLayerDefn())
+            feature.SetGeometry(ogr_geom)
+            outflow_layer.CreateFeature(feature)
+
+        outflow_layer = None
+        outflow_vector = None
+
+        pygeoprocessing.routing.split_vector_into_seeds(
+            target_outflow_vector_path, (flow_dir_path, 1),
+            working_dir=self.workspace_dir)
+
+
+
+
