@@ -213,23 +213,25 @@ class WatershedDelineationTests(unittest.TestCase):
         outflow_geometries = []
 
         # Make several points that all overlap the same pixel
-        outflow_geometries.append(shapely.geometry.Point(2.25, 2.25))
-        outflow_geometries.append(shapely.geometry.Point(2.5, 2.5))
-        outflow_geometries.append(shapely.geometry.Point(2.75, 2.75))
+        outflow_geometries.append(shapely.geometry.Point(2.5, -2.5))
+        outflow_geometries.append(shapely.geometry.Point(3.0, -3.0))
+        outflow_geometries.append(shapely.geometry.Point(3.5, -3.5))
 
         # Make a few polygons that overlap
         outflow_geometries.append(shapely.geometry.box(
-            2, -6, 6, -2))
+            2.1, -5.9, 5.9, -2.1))
         outflow_geometries.append(shapely.geometry.box(
-            4, -8, 8, -4))
+            4.1, -7.9, 7.9, -4.1))
+        outflow_geometries.append(shapely.geometry.box(
+            6.1, -9.9, 9.9, -6.1))
 
         # Make a few lines that don't intersect but that overlap the same pixels
         outflow_geometries.append(shapely.geometry.LineString(
-            [(8.1, -2), (8.1, -10)]))
+            [(8.1, -2), (8.1, -9.9)]))
         outflow_geometries.append(shapely.geometry.LineString(
-            [(9, -2), (9, -10)]))
+            [(9, -2), (9, -9.9)]))
         outflow_geometries.append(shapely.geometry.LineString(
-            [(9.9, -2), (9.9, -10)]))
+            [(9.9, -2), (9.9, -9.9)]))
 
         geojson_driver = gdal.GetDriverByName('GeoJSON')
         target_outflow_vector_path = os.path.join(self.workspace_dir, 'outflow.geojson')
@@ -247,9 +249,29 @@ class WatershedDelineationTests(unittest.TestCase):
         outflow_layer = None
         outflow_vector = None
 
-        pygeoprocessing.routing.split_vector_into_seeds(
+        seed_watersheds = pygeoprocessing.routing.split_vector_into_seeds(
             target_outflow_vector_path, (flow_dir_path, 1),
-            working_dir=self.workspace_dir)
+            working_dir=self.workspace_dir, remove=False)
+
+        # expected seed_watersheds
+        # Feature IDs are used for watershed IDs, so if we assume that the
+        # features are created with sequential FIDs in the order in which they
+        # are created, we can assert the whole data structure.
+        # If this turns out to not be the case, I'll need to find a new way to
+        # assert these outputs.
+        expected_seed_watersheds = {
+            (0, 0): {0, 1, 2, 3},
+            (1, 0): {3},
+            (3, 0): {6, 7, 8},
+            (0, 1): {3},
+            (1, 1): {3, 4},
+            (2, 1): {4},
+            (3, 1): {6, 7, 8},
+            (2, 3): {5},
+            (3, 3): {5, 6, 7, 8}
+        }
+        self.assertEqual(seed_watersheds, expected_seed_watersheds)
+
 
 
 

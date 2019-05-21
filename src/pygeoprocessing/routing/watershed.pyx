@@ -1726,11 +1726,17 @@ def split_vector_into_seeds(
             # of nonoverlapping polygons, we want to use the *original* outflow
             # geometries for rasterization.  This step gets the appropriate features
             # from the correct vectors so we keep the correct geometries.
-            for polygon_fid in disjoint_polygon_fid_set:
-                original_feature = temp_polygons_layer.GetFeature(polygon_fid)
+            for temp_polygons_fid in disjoint_polygon_fid_set:
+                disjoint_feature = temp_polygons_layer.GetFeature(temp_polygons_fid)
+                disjoint_wsid = disjoint_feature.GetField('WSID')
+
+                source_feature = source_layer.GetFeature(disjoint_wsid)  # WSID represents FID in this vector
+
+                # The disjoint vector to be rasterized should have the
+                # geometries in the disjoint set, but from the source vector.
                 new_feature = ogr.Feature(disjoint_layer.GetLayerDefn())
-                new_feature.SetGeometry(original_feature.GetGeometryRef())
-                new_feature.SetField('WSID', original_feature.GetField('WSID'))
+                new_feature.SetGeometry(source_feature.GetGeometryRef())
+                new_feature.SetField('WSID', disjoint_wsid)  # preserve the original fid
                 disjoint_layer.CreateFeature(new_feature)
 
             disjoint_layer.CommitTransaction()
@@ -1762,12 +1768,9 @@ def split_vector_into_seeds(
 
                 valid_outflow_geoms_mask = ((flow_dir_array != flow_dir_nodata) &
                                             (tmp_seed_array != no_watershed))
-
                 for (row, col) in zip(*numpy.nonzero(valid_outflow_geoms_mask)):
                     ws_id = tmp_seed_array[row, col]
                     seed = (col + block_info['xoff'], row + block_info['yoff'])
-                    seed_watersheds[seed].add(ws_id)
-
                     seed_watersheds[seed].add(ws_id)
                     seed_ids[seed] = seed_id
                     seed_id += 1
