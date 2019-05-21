@@ -1777,10 +1777,8 @@ def split_vector_into_seeds(
             flow_dir_raster = None
 
 
-
-
-
-
+    shutil.rmtree(ignore_errors=True)
+    return dict(seed_watersheds)  # remove defaultdict capabilities
 
 
 def group_seeds_into_fragments_d8(

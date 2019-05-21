@@ -173,3 +173,12 @@ class WatershedDelineationTests(unittest.TestCase):
             frozenset([(5, 3), (6, 3), (5, 4), (6, 4)]),
         ])
         self.assertEqual(sorted(set(seed_ids.values())), list(range(1, 7)))
+
+    def test_split_vector_into_seeds(self):
+        import pygeoprocessing.routing
+
+        # Use a more interesting SRS than the one I've been using for some time (at (0, 0))
+        # make a flow direction raster, anything should do fine, but include some nodata.
+        # make some interesting outflow geometries as a geojson vector (where all geometries are in one layer)
+        # run
+        # assert seeds have expected membership.
