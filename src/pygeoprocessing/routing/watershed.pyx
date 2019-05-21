@@ -1711,7 +1711,8 @@ def split_vector_into_seeds(
                     temp_polygons_vector_path,
                     bounding_box = flow_dir_info['bounding_box']),
                 start=1):
-            LOGGER.info('Creating a vector of %s disjoint geometries')
+            LOGGER.info('Creating a vector of %s disjoint geometries',
+                        len(disjoint_polygon_fid_set))
 
             disjoint_vector_path = os.path.join(
                     working_dir_path, 'disjoint_outflow_%s.gpkg' % set_index)
@@ -1861,7 +1862,10 @@ def group_seeds_into_fragments_d8(
     # TODO: make sure we can support multiple upstream fragments in this data structure.
     # now that we know which fragments are downstream of one another, we also
     # need to know which fragments are upstream of one another.
-    nested_fragments = dict((v, [k]) for (k, v) in downstream_seeds.items())
+    nested_fragments = collections.defaultdict(list)
+    for upstream_seed, downstream_seed in downstream_seeds.items():
+        nested_fragments[downstream_seed].append(upstream_seed)
+    nested_fragments = dict(nested_fragments)
 
     # Step 2: find the starter seeds.
     starter_seeds = set([])
@@ -1977,11 +1981,11 @@ def group_seeds_into_fragments_d8(
         consolidated_reclassification[reclass_value] = new_index
 
     final_seed_ids = {}
-    for seed, starter_id in seed_ids.items():
-        final_seed_ids[seed] = consolidated_reclassification[reclassification[starter_id]]
+    for seed, seed_id in seed_ids.items():
+        original_reclassification = reclassification[seed_id]
+        final_seed_ids[seed] = consolidated_reclassification[original_reclassification]
 
     return final_seed_ids
-
 
 
 def delineate_watersheds_d8(

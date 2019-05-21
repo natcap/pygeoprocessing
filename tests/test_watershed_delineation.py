@@ -173,6 +173,7 @@ class WatershedDelineationTests(unittest.TestCase):
             frozenset([(5, 3), (6, 3), (5, 4), (6, 4)]),
         ])
         self.assertEqual(sorted(set(seed_ids.values())), list(range(1, 7)))
+        #TODO make sure we're testing multiple seeds upstream of a seed.
 
     def test_split_vector_into_seeds(self):
         import pygeoprocessing.routing
