@@ -1623,6 +1623,8 @@ def split_vector_into_seeds(
     cdef double y_pixelwidth = source_gt[5]
     cdef double pixel_area = abs(x_pixelwidth * y_pixelwidth)
     cdef double buffer_dist = math.hypot(x_pixelwidth, y_pixelwidth) / 2. * 1.1
+    no_watershed = (2**32)-1  # max value for UInt32
+
 
     seed_ids = {}  # map {(x, y coordinate pair): ID}
 
@@ -1633,9 +1635,9 @@ def split_vector_into_seeds(
                                              d8_flow_dir_raster_path_band[1],
                                              0)  # read-only
     gpkg_driver = gdal.GetDriverByName('GPKG')
+    temp_polygons_vector_path = os.path.join(working_dir_path, 'temp_polygons.gpkg')
     temp_polygons_vector = gpkg_driver.Create(
-        os.path.join(working_dir_path, 'temp_polygons.gpkg'),
-        0, 0, 0, gdal.GDT_Unknown)
+        temp_polygons_vector_path, 0, 0, 0, gdal.GDT_Unknown)
     temp_polygons_layer = temp_polygons_vector.CreateLayer(
         'outlet_geometries', flow_dir_srs, ogr.wkbPolygon)
     temp_polygons_layer.CreateFeature(ogr.FieldDefn('WSID', ogr.OFT_Integer))
@@ -1697,6 +1699,85 @@ def split_vector_into_seeds(
             new_feature.SetGeometry(ogr.CreateGeometryFromWkb(geometry.wkb))
             temp_polygons_layer.CreateFeature(new_feature)
     temp_polygons_layer.CommitTransaction()
+
+    temp_polygons_schema = temp_polygons_layer.schema
+    temp_polygons_n_features = temp_polygons_layer.GetFeatureCount()
+
+    if temp_polygons_n_features > 0:
+        LOGGER.info('Determining sets of non-overlapping geometries')
+
+        for set_index, disjoint_polygon_fid_set in enumerate(
+                pygeoprocessing.calculate_disjoint_polygon_set(
+                    temp_polygons_vector_path,
+                    bounding_box = flow_dir_info['bounding_box']),
+                start=1):
+            LOGGER.info('Creating a vector of %s disjoint geometries')
+
+            disjoint_vector_path = os.path.join(
+                    working_dir_path, 'disjoint_outflow_%s.gpkg' % set_index)
+            disjoint_vector = gpkg_driver.Create(disjoint_vector_path, 0, 0, 0,
+                                                 gdal.GDT_Unknown)
+            disjoint_layer = disjoint_vector.CreateLayer(
+                'outflow_geometries', flow_dir_srs, ogr.wkbPolygon)
+            disjoint_layer.CreateFields(temp_polygons_schema)
+
+            disjoint_layer.StartTransaction()
+            # Though the buffered working layer was used for determining the sets
+            # of nonoverlapping polygons, we want to use the *original* outflow
+            # geometries for rasterization.  This step gets the appropriate features
+            # from the correct vectors so we keep the correct geometries.
+            for polygon_fid in disjoint_polygon_fid_set:
+                original_feature = temp_polygons_layer.GetFeature(polygon_fid)
+                new_feature = ogr.Feature(disjoint_layer.GetLayerDefn())
+                new_feature.SetGeometry(original_feature.GetGeometryRef())
+                new_feature.SetField('WSID', original_feature.GetField('WSID'))
+                disjoint_layer.CreateFeature(new_feature)
+
+            disjoint_layer.CommitTransaction()
+
+            disjoint_layer = None
+            disjoint_vector = None
+
+            tmp_seed_raster_path = os.path.join(working_dir_path,
+                                                'disjoint_outflow_%s.tif' % set_index)
+            pygeoprocessing.new_raster_from_base(
+                d8_flow_dir_raster_path_band[0], tmp_seed_raster_path,
+                gdal.GDT_UInt32, [no_watershed], fill_value_list=[no_watershed],
+                gtiff_creation_options=GTIFF_CREATION_OPTIONS)
+
+            pygeoprocessing.rasterize(
+                disjoint_vector_path, tmp_seed_raster_path, None,
+                ['ALL_TOUCHED=TRUE', 'ATTRIBUTE=WSID'],
+                layer_index='outflow_geometries')
+
+            flow_dir_raster = gdal.OpenEx(d8_flow_dir_raster_path_band[0], gdal.OF_RASTER)
+            flow_dir_band = flow_dir_raster.GetRasterBand(d8_flow_dir_raster_path_band[1])
+
+            tmp_seed_raster = gdal.OpenEx(tmp_seed_raster_path, gdal.OF_RASTER)
+            tmp_seed_band = tmp_seed_raster.GetRasterBand(1)
+            for block_info in pygeoprocessing.iterblocks(tmp_seed_raster_path, offset_only=True):
+                flow_dir_array = flow_dir_band.ReadAsArray(**block_info)
+                tmp_seed_array = tmp_seed_band.ReadAsArray(**block_info)
+
+                valid_outflow_geoms_mask = ((flow_dir_array != flow_dir_nodata) &
+                                            (tmp_seed_array != no_watershed))
+
+                for (row, col) in zip(*numpy.nonzero(valid_outflow_geoms_mask)):
+                    ws_id = tmp_seed_array[row, col]
+                    seed = (col + block_info['xoff'], row + block_info['yoff'])
+                    seed_watersheds[seed].add(ws_id)
+
+                    seed_watersheds[seed].add(ws_id)
+                    seed_ids[seed] = seed_id
+                    seed_id += 1
+
+            tmp_seed_band = None
+            tmp_seed_raster = None
+            flow_dir_band = None
+            flow_dir_raster = None
+
+
+
 
 
 
