@@ -2067,6 +2067,107 @@ def delineate_watersheds_d8(
             print 'block_index %s > %s' % (block_index, n_blocks)
         seeds_in_block[block_index].insert(seed)
 
+    # create a scratch raster for writing out the fragments during iteration.
+    # Because fragment IDs will start at 1, we can also use this as the mask
+    # raster for polygonization.
+    scratch_raster_path = os.path.join(
+            working_dir_path, 'scratch_raster.tif')
+    LOGGER.info('Creating new scratch raster at %s' % scratch_raster_path)
+
+    no_watershed = (2**32)-1  # max value for UInt32
+    pygeoprocessing.new_raster_from_base(
+        d8_flow_dir_raster_path_band[0], scratch_raster_path,
+        gdal.GDT_UInt32, [no_watershed], fill_value_list=[no_watershed],
+        gtiff_creation_options=GTIFF_CREATION_OPTIONS)
+    scratch_managed_raster = _ManagedRaster(scratch_raster_path, 1, 1)
+
+    flow_dir_managed_raster = _ManagedRaster(d8_flow_dir_raster_path_band[0],
+                                             d8_flow_dir_raster_path_band[1],
+                                             0)  # Read-only
+
+    LOGGER.info('Starting delineation from %s seeds', len(seed_watersheds))
+    cdef cmap[int, cset[int]] nested_fragments
+    cdef cset[int] nested_fragment_ids
+    cdef cset[CoordinatePair] process_queue_set
+    cdef queue[CoordinatePair] process_queue
+
+    last_log_time = ctime(NULL)
+    block_iterator = seeds_in_block.begin()
+    cdef cset[CoordinatePair].iterator seed_iterator
+    cdef CoordinatePair current_pixel, neighbor_pixel
+    for block_index in range(n_blocks):
+        seeds_in_current_block = seeds_in_block[block_index]
+        seed_iterator = seeds_in_current_block.begin()
+
+        while seed_iterator != seeds_in_current_block.end():
+            current_pixel = deref(seed_iterator)
+            seed_id = seed_ids[current_pixel]
+            inc(seed_iterator)
+
+            last_ws_log_time = ctime(NULL)
+            process_queue.push(current_pixel)
+            process_queue_set.insert(current_pixel)
+            nested_fragment_ids.clear()  # clear the set for each fragment.
+
+            while not process_queue.empty():
+                if ctime(NULL) - last_log_time > 5.0:
+                    LOGGER.info('Delineating watersheds')
+                    last_log_time = ctime(NULL)
+
+                current_pixel = process_queue.front()
+                process_queue_set.erase(current_pixel)
+                process_queue.pop()
+
+                scratch_managed_raster.set(current_pixel.first,
+                                           current_pixel.second, seed_id)
+
+                for neighbor_index in range(8):
+                    neighbor_pixel = CoordinatePair(
+                        current_pixel.first + NEIGHBOR_COL[neighbor_index],
+                        current_pixel.second + NEIGHBOR_ROW[neighbor_index])
+
+                    # Is the neighbor off the bounds of the raster?
+                    # skip if so.
+                    if not 0 <= neighbor_pixel.first < flow_dir_n_cols:
+                        continue
+
+                    if not 0 <= neighbor_pixel.second < flow_dir_n_rows:
+                        continue
+
+                    # Is the neighbor pixel already in the queue?
+                    # Skip if so.
+                    if (process_queue_set.find(neighbor_pixel) !=
+                            process_queue_set.end()):
+                        continue
+
+                    # Does the neighbor flow into the current pixel?
+                    if (D8_REVERSE_DIRECTION[neighbor_index] ==
+                            flow_dir_managed_raster.get(
+                                neighbor_pixel.first, neighbor_pixel.second)):
+
+                        # Does the neighbor belong to a different outflow
+                        # geometry (is it a seed)?
+                        if (seed_ids.find(neighbor_pixel) != seed_ids.end()):
+                            # If it is, track the fragment connectivity,
+                            # but otherwise skip this pixel.  Either we've
+                            # already processed it, or else we will soon!
+                            nested_fragment_ids.insert(seed_ids[neighbor_pixel])
+                            continue
+
+                        # If the pixel has not yet been visited, enqueue it.
+                        pixel_visited = scratch_managed_raster.get(
+                            neighbor_pixel.first, neighbor_pixel.second)
+                        if pixel_visited == no_watershed:
+                            process_queue.push(neighbor_pixel)
+                            process_queue_set.insert(neighbor_pixel)
+
+            nested_fragments[seed_id] = nested_fragment_ids
+    scratch_managed_raster.close()  # flush the scratch raster.
+    flow_dir_managed_raster.close()  # don't need this any longer.
+
+    seeds_in_block.clear()
+
+
 
 def delineate_watersheds_trivial_d8(
         d8_flow_dir_raster_path_band, outflow_vector_path,
