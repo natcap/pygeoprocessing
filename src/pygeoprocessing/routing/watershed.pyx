@@ -1640,7 +1640,7 @@ def split_vector_into_seeds(
         temp_polygons_vector_path, 0, 0, 0, gdal.GDT_Unknown)
     temp_polygons_layer = temp_polygons_vector.CreateLayer(
         'outlet_geometries', flow_dir_srs, ogr.wkbPolygon)
-    temp_polygons_layer.CreateFeature(ogr.FieldDefn('WSID', ogr.OFT_Integer))
+    temp_polygons_layer.CreateField(ogr.FieldDefn('WSID', ogr.OFTInteger))
 
     seed_id = 0  # assume Seed IDs can be from (2 - 2**32-1) inclusive in UInt32
     temp_polygons_layer.StartTransaction()
@@ -1755,7 +1755,8 @@ def split_vector_into_seeds(
 
             tmp_seed_raster = gdal.OpenEx(tmp_seed_raster_path, gdal.OF_RASTER)
             tmp_seed_band = tmp_seed_raster.GetRasterBand(1)
-            for block_info in pygeoprocessing.iterblocks(tmp_seed_raster_path, offset_only=True):
+            for block_info in pygeoprocessing.iterblocks(
+                    (tmp_seed_raster_path, 1), offset_only=True):
                 flow_dir_array = flow_dir_band.ReadAsArray(**block_info)
                 tmp_seed_array = tmp_seed_band.ReadAsArray(**block_info)
 
@@ -1777,7 +1778,7 @@ def split_vector_into_seeds(
             flow_dir_raster = None
 
 
-    shutil.rmtree(ignore_errors=True)
+    shutil.rmtree(working_dir_path, ignore_errors=True)
     return dict(seed_watersheds)  # remove defaultdict capabilities
 
 
