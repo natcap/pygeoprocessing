@@ -2040,6 +2040,33 @@ def delineate_watersheds_d8(
     #
     # 6? Recursively join fragments.
 
+    seed_watersheds = split_vector_into_seeds(
+        outflow_vector_path, d8_flow_dir_raster_path_band)
+
+    seed_ids = group_seeds_into_fragments_d8(
+        d8_flow_dir_raster_path_band, seed_watersheds)
+
+    LOGGER.info('Splitting seeds into their blocks.')
+    cdef int block_index
+    cdef int n_blocks = (
+        ((flow_dir_n_cols // flow_dir_block_x_size) + 1) *
+        ((flow_dir_n_rows // flow_dir_block_y_size) + 1))
+    cdef cmap[int, cset[CoordinatePair]] seeds_in_block
+
+    # Initialize the seeds_in_block data structure
+    for block_index in range(n_blocks):
+        seeds_in_block[block_index] = cset[CoordinatePair]()
+
+    for seed, watersheds in seed_watersheds.items():
+        # Determine the block index mathematically.  We only need to be able to
+        # group pixels together, so the specific number used does not matter.
+        block_index = (
+            (seed.first // flow_dir_block_x_size) +
+            ((seed.second // flow_dir_block_y_size) * (flow_dir_n_cols // flow_dir_block_x_size)))
+        if block_index > n_blocks:
+            print 'block_index %s > %s' % (block_index, n_blocks)
+        seeds_in_block[block_index].insert(seed)
+
 
 def delineate_watersheds_trivial_d8(
         d8_flow_dir_raster_path_band, outflow_vector_path,
