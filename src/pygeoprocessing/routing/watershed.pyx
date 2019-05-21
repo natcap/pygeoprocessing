@@ -2001,6 +2001,9 @@ def delineate_watersheds_d8(
     flow_dir_info = pygeoprocessing.get_raster_info(
         d8_flow_dir_raster_path_band[0])
     source_gt = flow_dir_info['geotransform']
+    flow_dir_srs = osr.SpatialReference()
+    flow_dir_srs.ImportFromWkt(flow_dir_info['projection'])
+
     cdef long flow_dir_n_cols = flow_dir_info['raster_size'][0]
     cdef long flow_dir_n_rows = flow_dir_info['raster_size'][1]
     cdef int flow_dir_block_x_size = flow_dir_info['block_size'][0]
@@ -2178,6 +2181,47 @@ def delineate_watersheds_d8(
     flow_dir_managed_raster.close()  # don't need this any longer.
 
     seeds_in_block.clear()
+
+    LOGGER.info('Polygonizing fragments')
+    scratch_raster = gdal.OpenEx(scratch_raster_path, gdal.OF_RASTER | gdal.GA_Update)
+    scratch_band = scratch_raster.GetRasterBand(1)
+    scratch_nodata = scratch_band.GetNoDataValue()
+
+    # Replace any nodata pixels with a value of 0
+    for block_info in pygeoprocessing.iterblocks((scratch_raster_path, 1), offset_only=True):
+        block = scratch_band.ReadAsArray(**block_info)
+        mask = block == scratch_nodata
+        valid_pixels = block[mask]
+
+        if valid_pixels.size > 0:  # skip blocks that don't have any nodata
+            block[mask] = 0
+            scratch_band.WriteArray(block, xoff=block_info['xoff'], yoff=block_info['yoff'])
+
+    scratch_band.FlushCache()
+
+    gpkg_driver = gdal.GetDriverByName('GPKG')
+
+    target_fragments_vector = gpkg_driver.Create(target_fragments_vector_path,
+                                                 0, 0, 0, gdal.GDT_Unknown)
+    if target_fragments_vector is None:
+        raise RuntimeError(  # Because I frequently have this open in QGIS when I shouldn't.
+            "Could not open target fragments vector for writing. Do you have "
+            "access to this path?  Is the file open in another program?")
+
+    # Create a spatial layer for the fragment geometries.
+    # This layer only needs to know which fragments are upstream of a given fragment.
+    target_fragments_scratch_layer = target_fragments_vector.CreateLayer(
+        'watershed_fragments_scratch', flow_dir_srs, ogr.wkbPolygon)
+    target_fragments_scratch_layer.CreateField(ogr.FieldDefn('fragment_id', ogr.OFTInteger64))
+
+    gdal.Polygonize(
+        scratch_band,  # the source band to be analyzed
+        scratch_band,  # the mask band indicating valid pixels
+        target_fragments_scratch_layer,  # polygons are added to this layer
+        0,  # field index of 'fragment_id' field.
+        ['8CONNECTED=8'],  # use 8-connectedness algorithm.
+        _make_polygonize_callback(LOGGER)
+    )
 
 
 
