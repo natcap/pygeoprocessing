@@ -50,7 +50,6 @@ cdef int MANAGED_RASTER_N_BLOCKS = 2**7
 # these are the creation options that'll be used for all the rasters
 GTIFF_CREATION_OPTIONS = (
     'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
-    'SPARSE_OK=YES',
     'BLOCKXSIZE=%d' % (1 << BLOCK_BITS),
     'BLOCKYSIZE=%d' % (1 << BLOCK_BITS))
 
@@ -2044,11 +2043,19 @@ def delineate_watersheds_d8(
     #
     # 6? Recursively join fragments.
 
-    seed_watersheds = split_vector_into_seeds(
+    seed_watersheds_python = split_vector_into_seeds(
         outflow_vector_path, d8_flow_dir_raster_path_band)
 
-    seed_ids = group_seeds_into_fragments_d8(
-        d8_flow_dir_raster_path_band, seed_watersheds)
+    seed_ids_python = group_seeds_into_fragments_d8(
+        d8_flow_dir_raster_path_band, seed_watersheds_python)
+
+    LOGGER.info('Converting seed IDs to C++')
+    cdef int seed_id
+    cdef CoordinatePair seed
+    cdef cmap[CoordinatePair, int] seed_ids
+    for seed_tuple, seed_id in seed_ids_python.items():
+        seed = CoordinatePair(seed_tuple[0], seed_tuple[1])
+        seed_ids[seed] = seed_id
 
     LOGGER.info('Splitting seeds into their blocks.')
     cdef int block_index
@@ -2061,9 +2068,10 @@ def delineate_watersheds_d8(
     for block_index in range(n_blocks):
         seeds_in_block[block_index] = cset[CoordinatePair]()
 
-    for seed, watersheds in seed_watersheds.items():
+    for seed_tuple, watersheds in seed_watersheds_python.items():
         # Determine the block index mathematically.  We only need to be able to
         # group pixels together, so the specific number used does not matter.
+        seed = CoordinatePair(seed_tuple[0], seed_tuple[1])
         block_index = (
             (seed.first // flow_dir_block_x_size) +
             ((seed.second // flow_dir_block_y_size) * (flow_dir_n_cols // flow_dir_block_x_size)))
@@ -2078,7 +2086,7 @@ def delineate_watersheds_d8(
             working_dir_path, 'scratch_raster.tif')
     LOGGER.info('Creating new scratch raster at %s' % scratch_raster_path)
 
-    no_watershed = (2**32)-1  # max value for UInt32
+    cdef unsigned int no_watershed = (2**32)-1  # max value for UInt32
     pygeoprocessing.new_raster_from_base(
         d8_flow_dir_raster_path_band[0], scratch_raster_path,
         gdal.GDT_UInt32, [no_watershed], fill_value_list=[no_watershed],
@@ -2089,7 +2097,7 @@ def delineate_watersheds_d8(
                                              d8_flow_dir_raster_path_band[1],
                                              0)  # Read-only
 
-    LOGGER.info('Starting delineation from %s seeds', len(seed_watersheds))
+    LOGGER.info('Starting delineation from %s seeds', len(seed_watersheds_python))
     cdef cmap[int, cset[int]] nested_fragments
     cdef cset[int] nested_fragment_ids
     cdef cset[CoordinatePair] process_queue_set
