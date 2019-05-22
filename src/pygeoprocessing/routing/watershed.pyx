@@ -2188,6 +2188,9 @@ def delineate_watersheds_d8(
     scratch_nodata = scratch_band.GetNoDataValue()
 
     # Replace any nodata pixels with a value of 0
+    # For some reason, blocks written out have a value of zero rather than nodata. The
+    # rasterization mask considers valid pixels to be those with a nonzero value, so
+    # all nodata pixels need to be converted to 0 to make this work.
     for block_info in pygeoprocessing.iterblocks((scratch_raster_path, 1), offset_only=True):
         block = scratch_band.ReadAsArray(**block_info)
         mask = block == scratch_nodata
@@ -2210,6 +2213,8 @@ def delineate_watersheds_d8(
 
     # Create a spatial layer for the fragment geometries.
     # This layer only needs to know which fragments are upstream of a given fragment.
+    # BTW, the same number of fragments are polygonized whether the layer is a
+    # Polygon layer or a MultiPolygon layer.
     target_fragments_scratch_layer = target_fragments_vector.CreateLayer(
         'watershed_fragments_scratch', flow_dir_srs, ogr.wkbPolygon)
     target_fragments_scratch_layer.CreateField(ogr.FieldDefn('fragment_id', ogr.OFTInteger64))
