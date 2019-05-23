@@ -18,7 +18,7 @@ class WatershedDelineationTests(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.workspace_dir)
 
-    def test_watersheds(self):
+    def test_watersheds_trivial(self):
         import pygeoprocessing.testing
         import pygeoprocessing.routing
 
@@ -174,6 +174,83 @@ class WatershedDelineationTests(unittest.TestCase):
         ])
         self.assertEqual(sorted(set(seed_ids.values())), list(range(1, 7)))
         #TODO make sure we're testing multiple seeds upstream of a seed.
+
+    def test_fragment_aggregation_3(self):
+        import pygeoprocessing.routing
+        nodata = 255
+        flow_dir_array= numpy.array([
+            [3, 3, 3, 3, 3, 3, 3],
+            [3, 3, 3, 3, 3, 3, 3],
+            [3, 3, 3, 3, 3, 3, 3],
+            [3, 3, 3, 3, 3, 3, 3],
+            [3, 3, 3, 3, 3, 3, 3],
+            [3, 3, 3, 3, 3, 2, 2]], dtype=numpy.uint8)
+        srs = osr.SpatialReference()
+        srs.ImportFromEPSG(32731)  # WGS84 / UTM zone 31s
+        srs_wkt = srs.ExportToWkt()
+
+        flow_dir_path = os.path.join(self.workspace_dir, 'flow_dir.tif')
+        driver = gdal.GetDriverByName('GTiff')
+        flow_dir_raster = driver.Create(
+            flow_dir_path, flow_dir_array.shape[1], flow_dir_array.shape[0],
+            1, gdal.GDT_Byte, options=(
+                'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
+                'BLOCKXSIZE=256', 'BLOCKYSIZE=256'))
+        flow_dir_raster.SetProjection(srs_wkt)
+        flow_dir_band = flow_dir_raster.GetRasterBand(1)
+        flow_dir_band.WriteArray(flow_dir_array)
+        flow_dir_band.SetNoDataValue(255)
+        flow_dir_geotransform = [2, 2, 0, -2, 0, -2]
+        flow_dir_raster.SetGeoTransform(flow_dir_geotransform)
+        flow_dir_raster = None
+
+        # numpy coordinates go (row, col)
+        # managed_raster coordinates go (x, y), and that's what the function expects.
+        seeds_to_ws_ids = {
+            (5, 0): frozenset([1]),
+            (6, 0): frozenset([1]),
+            (5, 1): frozenset([1]),
+            (6, 1): frozenset([1]),
+            (0, 0): frozenset([2]),
+            (0, 1): frozenset([2]),
+            (0, 2): frozenset([2]),
+            (2, 2): frozenset([3]),
+            (3, 2): frozenset([3]),
+            (2, 3): frozenset([3]),
+            (3, 3): frozenset([3]),
+            (5, 3): frozenset([4]),
+            (6, 3): frozenset([4]),
+            (5, 4): frozenset([4]),
+            (6, 4): frozenset([4]),
+        }
+
+        seed_ids = pygeoprocessing.routing.group_seeds_into_fragments_d8(
+            (flow_dir_path, 1), seeds_to_ws_ids)
+
+        # The order of the seed IDs could be different, so what really matters
+        # is that the correct seeds are grouped together under the same ID and
+        # that there are only 6 fragment IDs (1-6, inclusive).
+        seed_ids_to_seeds = collections.defaultdict(set)
+        for seed, seed_id in seed_ids.items():
+            seed_ids_to_seeds[seed_id].add(seed)
+        seed_ids_to_seeds = dict(seed_ids_to_seeds)
+
+        seed_groupings = set([frozenset(s) for s in seed_ids_to_seeds.values()])
+
+        # Expected groupings of seeds per fragment (the fragment ID used doesn't
+        # matter, just that these seeds have the correct groupings)
+        expected_seed_groupings = set([
+            frozenset([(5, 0), (6, 0), (5, 1), (6, 1)]),  # using set here to make it easier to test membership.
+            frozenset([(0, 0), (0, 1)]),
+            frozenset([(0, 2)]),
+            frozenset([(2, 2), (3, 2)]),
+            frozenset([(2, 3), (3, 3)]),
+            frozenset([(5, 3), (6, 3), (5, 4), (6, 4)]),
+        ])
+        self.assertEqual(sorted(set(seed_ids.values())), list(range(1, 7)))
+        #TODO make sure we're testing multiple seeds upstream of a seed.
+        # TODO HOW IS THIS PASSING?
+
 
     def test_split_vector_into_seeds(self):
         import pygeoprocessing.routing
