@@ -41,7 +41,7 @@ def join_watershed_fragments(watershed_fragments_vector,
 
     """
     fragments_vector = ogr.Open(watershed_fragments_vector)
-    fragments_layer = fragments_vector.GetLayer()
+    fragments_layer = fragments_vector.GetLayer('watershed_fragments')
     fragments_layer_name = fragments_layer.GetName()
     fragments_srs = fragments_layer.GetSpatialRef()
 
@@ -63,7 +63,7 @@ def join_watershed_fragments(watershed_fragments_vector,
     fragment_field_values = {}
     LOGGER.info('Loading fragment geometries.')
     for feature in fragments_layer:
-        ws_id = feature.GetField('ws_id')
+        ws_id = feature.GetField('fragment_id')
         fragment_field_values[ws_id] = feature.items()
         upstream_fragments_string = feature.GetField('upstream_fragments')
         if upstream_fragments_string:
@@ -76,6 +76,10 @@ def join_watershed_fragments(watershed_fragments_vector,
             upstream_fragments[ws_id] = []
         shapely_polygon = shapely.wkb.loads(
             feature.GetGeometryRef().ExportToWkb())
+        if shapely_polygon.is_empty:
+            print 'WSID', ws_id, 'is empty'
+            continue
+
         try:
             fragment_geometries[ws_id].append(shapely_polygon)
         except KeyError:
@@ -84,8 +88,22 @@ def join_watershed_fragments(watershed_fragments_vector,
     # Create multipolygons from each of the lists of fragment geometries.
     fragment_multipolygons = {}
     for ws_id, geometry_list in fragment_geometries.items():
-        fragment_multipolygons[ws_id] = shapely.geometry.MultiPolygon(
-            geometry_list)
+        sub_geometry_list = []
+        try:
+            for geometry in geometry_list:
+                sub_geometry_list += [g for g in geometry.geoms]
+        except AttributeError:
+            # When geometry is a Polygon
+            sub_geometry_list = geometry_list
+
+        try:
+            fragment_multipolygons[ws_id] = shapely.geometry.MultiPolygon(
+                sub_geometry_list)
+        except:
+            import pprint
+            pprint.pprint(sub_geometry_list)
+            import pdb; pdb.set_trace()
+            raise
     #del fragment_geometries  # don't need this dict any longer.
 
     # Populate the watershed geometries dict with fragments that are as
@@ -165,7 +183,7 @@ def join_watershed_fragments(watershed_fragments_vector,
         encountered_ws_ids.clear()
         watershed_geometries[ws_id] = shapely.ops.cascaded_union(
             _recurse_watersheds(ws_id))
-        n_watersheds_processed +=1 
+        n_watersheds_processed +=1
 
     # Copy fields from the fragments vector and set the geometries to the
     # newly-created, unioned geometries.
