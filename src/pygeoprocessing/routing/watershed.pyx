@@ -2230,6 +2230,25 @@ def delineate_watersheds_d8(
         _make_polygonize_callback(LOGGER)
     )
 
+    # Create a non-spatial database layer for storing all of the watershed
+    # attributes without the geometries.  This is important because we need to
+    # know the ws_id of each outlet feature.
+    # TODO: don't include watersheds that are not represented in the fragments
+    outflow_vector = gdal.OpenEx(outflow_vector_path)
+    outflow_layer = outflow_vector.GetLayer()  # TODO: user-defined?
+    target_fragments_watershed_attrs_layer = target_fragments_vector.CreateLayer(
+        'watershed_attributes', geom_type=ogr.wkbNone,
+        options=['ASPATIAL_VARIANT=OGR_ASPATIAL'])
+    target_fragments_watershed_attrs_layer.CreateFields(outflow_layer.schema)
+    target_fragments_watershed_attrs_layer.StartTransaction()
+    for outflow_feature in outflow_layer:
+        new_feature = ogr.Feature(
+            target_fragments_watershed_attrs_layer.GetLayerDefn())
+        for attr_name, attr_value in outflow_feature.items().items():
+            new_feature.SetField(attr_name, attr_value)
+        target_fragments_watershed_attrs_layer.CreateFeature(new_feature)
+    target_fragments_watershed_attrs_layer.CommitTransaction()
+
     # Now need to write out the fragment copying.
     target_fragments_layer = target_fragments_vector.CreateLayer(
         'watershed_fragments', flow_dir_srs, ogr.wkbMultiPolygon)
