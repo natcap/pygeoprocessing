@@ -2241,7 +2241,7 @@ def delineate_watersheds_d8(
         options=['ASPATIAL_VARIANT=OGR_ASPATIAL'])
     target_fragments_watershed_attrs_layer.CreateFields(outflow_layer.schema)
     target_fragments_watershed_attrs_layer.StartTransaction()
-    all_watersheds_in_seeds = set(seed_watersheds_python.values())
+    all_watersheds_in_seeds = set(itertools.chain(*seed_watersheds_python.values()))
     for outflow_feature in outflow_layer:
         # Skip any watesheds (represented by outflow layer FID) not in the
         # known set of watersheds.  This will exclude any outflow features
