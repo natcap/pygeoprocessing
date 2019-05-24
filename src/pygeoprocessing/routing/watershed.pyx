@@ -2056,9 +2056,11 @@ def delineate_watersheds_d8(
     cdef int seed_id
     cdef CoordinatePair seed
     cdef cmap[CoordinatePair, int] seed_ids
+    cdef cmap[int, CoordinatePair] seed_id_to_seed
     for seed_tuple, seed_id in seed_ids_python.items():
         seed = CoordinatePair(seed_tuple[0], seed_tuple[1])
         seed_ids[seed] = seed_id
+        seed_id_to_seed[seed_id] = seed
 
     LOGGER.info('Splitting seeds into their blocks.')
     cdef int block_index
@@ -2227,6 +2229,84 @@ def delineate_watersheds_d8(
         ['8CONNECTED=8'],  # use 8-connectedness algorithm.
         _make_polygonize_callback(LOGGER)
     )
+
+    # Now need to write out the fragment copying.
+    target_fragments_layer = target_fragments_vector.CreateLayer(
+        'watershed_fragments', flow_dir_srs, ogr.wkbMultiPolygon)
+
+    # Create the fields in the target vector that already existed in the
+    # outflow points vector
+    target_fragments_layer.CreateField(ogr.FieldDefn('fragment_id', ogr.OFTInteger64))
+    target_fragments_layer.CreateField(ogr.FieldDefn('upstream_fragments', ogr.OFTString))
+    target_fragments_layer.CreateField(ogr.FieldDefn('member_ws_ids', ogr.OFTString))
+
+    # The Polygonization algorithm will sometimes identify regions that
+    # should be contiguous in a single polygon, but are not.  For this reason,
+    # we need an extra consolidation step here to make sure that we only produce
+    # 1 feature per fragment ID.
+    counts = {}   # map {fragment_id: Feature IDs with this fragment_id}
+    fragments_with_duplicates = set([])
+    for feature in target_fragments_scratch_layer:
+        fid = feature.GetFID()
+        fragment_id = feature.GetFieldAsInteger('fragment_id')
+        if fragment_id in counts:
+            counts[fragment_id].add(fid)
+            fragments_with_duplicates.add(fragment_id)
+        else:
+            counts[fragment_id] = set([fid])
+    target_fragments_scratch_layer.ResetReading()
+
+    LOGGER.info('Consolidating %s fragments with identical IDs',
+        len(fragments_with_duplicates))
+
+    fids_to_be_skipped = set([])
+    cdef CoordinatePair fragment_seed
+    target_fragments_layer.StartTransaction()
+    for fragment_id_with_duplicates in fragments_with_duplicates:
+        new_geometry = ogr.Geometry(ogr.wkbMultiPolygon)
+        for duplicate_fid in counts[fragment_id_with_duplicates]:
+            duplicate_feature = target_fragments_scratch_layer.GetFeature(duplicate_fid)
+            new_geometry.AddGeometry(duplicate_feature.GetGeometryRef())
+            fids_to_be_skipped.add(duplicate_fid)
+
+        consolidated_feature = ogr.Feature(target_fragments_layer.GetLayerDefn())
+        consolidated_feature.SetField('fragment_id', fragment_id)
+        fragment_seed = seed_id_to_seed[fragment_id]
+        consolidated_feature.SetField('upstream_fragments',
+            ','.join([str(s) for s in sorted(nested_fragments[fragment_id])]))
+        consolidated_feature.SetField('member_ws_ids',
+            ','.join([str(s) for s in sorted(
+                set(seed_watersheds_python[tuple(fragment_seed)]))]))
+        consolidated_feature.SetGeometry(new_geometry)
+        target_fragments_layer.CreateFeature(consolidated_feature)
+    target_fragments_layer.CommitTransaction()
+
+    LOGGER.info('Copying remaining fragments')
+    target_fragments_scratch_layer.ResetReading()
+    target_fragments_layer.StartTransaction()
+    for feature in target_fragments_scratch_layer:
+        if feature.GetFID() in fids_to_be_skipped:
+            continue
+
+        fragment_id = feature.GetField('fragment_id')
+        consolidated_feature = ogr.Feature(target_fragments_layer.GetLayerDefn())
+        consolidated_feature.SetField('fragment_id', fragment_id)
+        fragment_seed = seed_id_to_seed[fragment_id]
+        consolidated_feature.SetField('upstream_fragments',
+            ','.join([str(s) for s in sorted(nested_fragments[fragment_id])]))
+        consolidated_feature.SetField('member_ws_ids',
+            ','.join([str(s) for s in sorted(set(seed_watersheds_python[fragment_seed]))]))
+        new_geometry = ogr.Geometry(ogr.wkbMultiPolygon)
+        new_geometry.AddGeometry(feature.GetGeometryRef())
+        consolidated_feature.SetGeometry(new_geometry)
+        target_fragments_layer.CreateFeature(consolidated_feature)
+    target_fragments_layer.CommitTransaction()
+
+    # Close the watershed fragments vector from this disjoint geometry set.
+    disjoint_outlets_layer = None
+    disjoint_outlets_vector = None
+    target_fragments_layer = None
+    target_fragments_vector = None
 
 
 
