@@ -2241,7 +2241,14 @@ def delineate_watersheds_d8(
         options=['ASPATIAL_VARIANT=OGR_ASPATIAL'])
     target_fragments_watershed_attrs_layer.CreateFields(outflow_layer.schema)
     target_fragments_watershed_attrs_layer.StartTransaction()
+    all_watersheds_in_seeds = set(seed_watersheds_python.values())
     for outflow_feature in outflow_layer:
+        # Skip any watesheds (represented by outflow layer FID) not in the
+        # known set of watersheds.  This will exclude any outflow features
+        # that are over nodata or outside the bounds of the raster.
+        if outflow_feature.GetFID() not in all_watersheds_in_seeds:
+            continue
+
         new_feature = ogr.Feature(
             target_fragments_watershed_attrs_layer.GetLayerDefn())
         for attr_name, attr_value in outflow_feature.items().items():
