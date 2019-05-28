@@ -2035,11 +2035,12 @@ def rasterize(
             "`option_list` is not a list/tuple, the value passed is '%s'",
             repr(option_list))
 
-    LOGGER.debug(option_list)
     layer = vector.GetLayer(layer_index)
     if where_clause:
         layer.SetAttributeFilter(where_clause)
-    gdal.RasterizeLayer(raster, [1], layer, options=option_list)
+    gdal.RasterizeLayer(
+        raster, [1], layer, burn_values=burn_values,
+        options=option_list, callback=rasterize_callback)
     raster.FlushCache()
     gdal.Dataset.__swig_destroy__(raster)
 
@@ -2570,7 +2571,10 @@ def convolve_2d(
     gdal.Dataset.__swig_destroy__(target_raster)
     target_band = None
     target_raster = None
-    shutil.rmtree(mask_dir)
+    if s_nodata is not None and ignore_nodata:
+        # there's a working directory only if we need to remember the nodata
+        # pixels
+        shutil.rmtree(mask_dir)
 
 
 def iterblocks(
