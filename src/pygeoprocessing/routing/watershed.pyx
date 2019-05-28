@@ -1525,7 +1525,8 @@ def _is_raster_path_band_formatted(raster_path_band):
 
 def split_vector_into_seeds(
         source_vector_path, d8_flow_dir_raster_path_band,
-        source_vector_layer=None, working_dir=None, remove=True):
+        source_vector_layer=None, working_dir=None, remove=True,
+        write_diagnostic_vector=False):
     """Analyze the source vector and break all geometries into seeds.
 
     For D8 watershed delination, ``seeds`` represent (x, y) pixel coordinates
@@ -1599,7 +1600,7 @@ def split_vector_into_seeds(
     except OSError:
         pass
     working_dir_path = tempfile.mkdtemp(
-        dir=working_dir, prefix='watershed_delineation_%s_' % time.strftime(
+        dir=working_dir, prefix='seed_extraction_%s_' % time.strftime(
             '%Y-%m-%d_%H_%M_%S', time.gmtime()))
 
     source_vector = gdal.OpenEx(source_vector_path, gdal.OF_VECTOR)
@@ -1780,6 +1781,26 @@ def split_vector_into_seeds(
             flow_dir_band = None
             flow_dir_raster = None
 
+
+    if write_diagnostic_vector:
+        diagnostic_vector = gpkg_driver.Create(
+            os.path.join(working_dir_path, 'diagnostic.gpkg'),
+            0, 0, 0, gdal.GDT_Unknown)
+        seeds_layer = diagnostic_vector.CreateLayer(
+            'seeds', flow_dir_srs, ogr.wkbPoint)
+        seeds_layer.CreateField(ogr.FieldDefn('watersheds', ogr.OFTString))
+
+        seeds_layer.StartTransaction()
+        for seed, watershed_id_set in seed_watersheds.items():
+            feature = ogr.Feature(seeds_layer.GetLayerDefn())
+            point = shapely.geometry.Point(
+                x_origin + seed[0] * x_pixelwidth + (x_pixelwidth / 2.),
+                y_origin + seed[1] * y_pixelwidth + (y_pixelwidth / 2.))
+            feature.SetGeometry(ogr.CreateGeometryFromWkb(point.wkb))
+            feature.SetField('watersheds', ','.join([str(s) for s in sorted(watershed_id_set)]))
+            seeds_layer.CreateFeature(feature)
+
+        seeds_layer.CommitTransaction()
 
     if remove:
         shutil.rmtree(working_dir_path, ignore_errors=True)
@@ -2047,7 +2068,9 @@ def delineate_watersheds_d8(
     # 6? Recursively join fragments.
 
     seed_watersheds_python = split_vector_into_seeds(
-        outflow_vector_path, d8_flow_dir_raster_path_band)
+        outflow_vector_path, d8_flow_dir_raster_path_band,
+        write_diagnostic_vector=True, remove=False,
+        working_dir=working_dir_path)
 
     seed_ids_python = group_seeds_into_fragments_d8(
         d8_flow_dir_raster_path_band, seed_watersheds_python)
