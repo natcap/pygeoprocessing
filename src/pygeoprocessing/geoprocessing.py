@@ -17,6 +17,7 @@ import multiprocessing
 import multiprocessing.pool
 import threading
 import collections
+import shutil
 
 try:
     import queue
@@ -1771,7 +1772,7 @@ def warp_raster(
         resample_method, target_bb=None, base_sr_wkt=None, target_sr_wkt=None,
         gtiff_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS,
         n_threads=None, vector_mask_options=None,
-        gdal_warp_options=None):
+        gdal_warp_options=None, working_dir=None):
     """Resize/resample raster to desired pixel size, bbox and projection.
 
     Parameters:
@@ -1813,6 +1814,9 @@ def warp_raster(
         gdal_warp_options (sequence): if present, the contents of this list
             are passed to the ``warpOptions`` parameter of ``gdal.Warp``. See
             the GDAL Warp documentation for details.
+        working_dir (optional): if defined uses this directory to make
+            temporary working files for calculation. Otherwise uses system's
+            temp directory.
 
     Returns:
         None
@@ -1891,7 +1895,7 @@ def warp_raster(
         warp_options.extend(gdal_warp_options)
 
     mask_vector_path = None
-    mask_layer_name = None
+    mask_layer_index = 0
     mask_vector_where_filter = None
     if vector_mask_options:
         # translate pygeoprocessing terminology into GDAL warp options.
@@ -1903,15 +1907,23 @@ def warp_raster(
         if not os.path.exists(mask_vector_path):
             raise ValueError(
                 'The mask vector at %s was not found.', mask_vector_path)
-        if 'mask_layer_name' in vector_mask_options:
-            mask_layer_name = vector_mask_options['mask_layer_name']
+        if 'mask_layer_index' in vector_mask_options:
+            mask_layer_index = vector_mask_options['mask_layer_index']
         if 'mask_vector_where_filter' in vector_mask_options:
             mask_vector_where_filter = (
                 vector_mask_options['mask_vector_where_filter'])
 
+    if vector_mask_options:
+        temp_working_dir = tempfile.mkdtemp(dir=working_dir)
+        warped_raster_path = os.path.join(
+            temp_working_dir, os.path.basename(target_raster_path).replace(
+                '.tif', '_nonmasked.tif'))
+    else:
+        # if there is no vector path the result is the warp
+        warped_raster_path = target_raster_path
     base_raster = gdal.OpenEx(base_raster_path, gdal.OF_RASTER)
     gdal.Warp(
-        target_raster_path, base_raster,
+        warped_raster_path, base_raster,
         outputBounds=working_bb,
         xRes=abs(target_pixel_size[0]),
         yRes=abs(target_pixel_size[1]),
@@ -1923,15 +1935,25 @@ def warp_raster(
         warpOptions=warp_options,
         creationOptions=gtiff_creation_options,
         callback=reproject_callback,
-        callback_data=[target_raster_path],
-        cutlineDSName=mask_vector_path,
-        cutlineLayer=mask_layer_name,
-        cutlineWhere=mask_vector_where_filter)
+        callback_data=[target_raster_path])
+
+    if vector_mask_options:
+        # there was a cutline vector, so mask it out now, otherwise target
+        # is already the result.
+        mask_raster(
+            (warped_raster_path, 1), vector_mask_options['mask_vector_path'],
+            target_raster_path,
+            mask_layer_index=mask_layer_index,
+            where_clause=mask_vector_where_filter,
+            target_mask_value=None, working_dir=temp_working_dir,
+            all_touched=False,
+            gtiff_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS)
+        shutil.rmtree(temp_working_dir)
 
 
 def rasterize(
         vector_path, target_raster_path, burn_values=None, option_list=None,
-        layer_index=0):
+        layer_index=0, where_clause=None):
     """Project a vector onto an existing raster.
 
     Burn the layer at ``layer_index`` in ``vector_path`` to an existing
@@ -1959,10 +1981,10 @@ def rasterize(
                     size will be estimated based on the GDAL cache buffer size
                     using formula: cache_size_bytes/scanline_size_bytes, so
                     the chunk will not exceed the cache.
-                "ALL_TOUCHED=TRUE/FALSE": May be set to TRUE to set all pixels
-                    touched by the line or polygons, not just those whose
-                    center is within the polygon or that are selected by
-                    Brezenhams line algorithm. Defaults to FALSE.
+                 "ALL_TOUCHED=TRUE/FALSE": May be set to TRUE to set all pixels
+                     touched by the line or polygons, not just those whose
+                     center is within the polygon or that are selected by
+                     Brezenhams line algorithm. Defaults to FALSE.
                 "BURN_VALUE_FROM": May be set to "Z" to use the Z values of
                     the geometries. The value from burn_values or the
                     attribute field value is added to this before burning. In
@@ -1975,6 +1997,8 @@ def rasterize(
                     value, while ADD adds the new value to the existing
                     raster, suitable for heatmaps for instance.
             Example: ["ATTRIBUTE=npv", "ALL_TOUCHED=TRUE"]
+        where_clause (str): If not None, is an SQL query-like string to filter
+            which features are used to rasterize, (e.x. where="value=1").
 
     Returns:
         None
@@ -1987,7 +2011,6 @@ def rasterize(
         raise ValueError(
             "%s doesn't exist, but needed to rasterize." % target_raster_path)
     vector = gdal.OpenEx(vector_path, gdal.OF_VECTOR)
-    layer = vector.GetLayer(layer_index)
 
     rasterize_callback = _make_logger_callback(
         "RasterizeLayer %.1f%% complete %s")
@@ -2012,9 +2035,11 @@ def rasterize(
             "`option_list` is not a list/tuple, the value passed is '%s'",
             repr(option_list))
 
-    gdal.RasterizeLayer(
-        raster, [1], layer, burn_values=burn_values, options=option_list,
-        callback=rasterize_callback)
+    LOGGER.debug(option_list)
+    layer = vector.GetLayer(layer_index)
+    if where_clause:
+        layer.SetAttributeFilter(where_clause)
+    gdal.RasterizeLayer(raster, [1], layer, options=option_list)
     raster.FlushCache()
     gdal.Dataset.__swig_destroy__(raster)
 
@@ -2545,6 +2570,7 @@ def convolve_2d(
     gdal.Dataset.__swig_destroy__(target_raster)
     target_band = None
     target_raster = None
+    shutil.rmtree(mask_dir)
 
 
 def iterblocks(
@@ -2933,7 +2959,7 @@ def merge_rasters(
 def mask_raster(
         base_raster_path_band, mask_vector_path, target_mask_raster_path,
         mask_layer_index=0, target_mask_value=None, working_dir=None,
-        all_touched=False,
+        all_touched=False, where_clause=None,
         gtiff_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS):
     """
     Mask a raster band with a given vector.
@@ -2950,8 +2976,8 @@ def mask_raster(
             not intersect with ``mask_vector_path`` are set to
             ``target_mask_value`` or ``base_raster_path_band``'s nodata value
             if ``target_mask_value`` is None.
-        mask_layer_index (str): this layer is used as the mask geometry layer
-            in ``mask_vector_path``, defautl is 0.
+        mask_layer_index (int): this layer is used as the mask geometry layer
+            in ``mask_vector_path``, default is 0.
         target_mask_value (numeric): If not None, this value is written to
             any pixel in ``base_raster_path_band`` that does not intersect
             with ``mask_vector_path``. Otherwise the nodata value of
@@ -2961,6 +2987,9 @@ def mask_raster(
         all_touched (bool): if False, a pixel is only masked if its centroid
             intersects with the mask. If True a pixel is masked if any point
             of the pixel intersects the polygon mask.
+        where_clause (str): (optional) if not None, it is an SQL compatible where
+            clause that can be used to filter the features that are used to
+            mask the base raster.
         gtiff_creation_options (sequence): this is an argument list that will
             be passed to the GTiff driver defined by the GDAL GTiff spec.
 
@@ -2982,7 +3011,8 @@ def mask_raster(
     rasterize(
         mask_vector_path, mask_raster_path, burn_values=[1],
         layer_index=mask_layer_index,
-        option_list=[('ALL_TOUCHED=%s' % all_touched).upper()])
+        option_list=[('ALL_TOUCHED=%s' % all_touched).upper()],
+        where_clause=where_clause)
 
     base_nodata = base_raster_info['nodata'][base_raster_path_band[1]-1]
 

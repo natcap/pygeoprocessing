@@ -12,6 +12,18 @@ Unreleased Changes
 * Fixed an issue in distance transform where a vertical striping artifact
   would occur in the masked region of some large rasters when distances should
   be 0.
+* Fixed an issue in all functionality that used a cutline polygon with
+  invalid geometry which would cause a crash. This was caused by `gdal.Warp`
+  when using the cutline functionality. Instead this functionality was
+  replaced with manual rasterization. In turn this introduces two optional
+  parameters:
+    * `rasterize` and `mask_raster` have a `where_clause` parameter which
+      takes a string argument in SQL WHERE syntax to filter rasterization
+      based on attribute values.
+    * `warp_raster` takes a `working_dir` parameter to manage local temporary
+      mask rasters.
+* Removing a temporary working directory that is created when executing
+  pygeoprocessing.convolve_2d.
 
 1.6.1 (2019-02-13)
 ------------------
