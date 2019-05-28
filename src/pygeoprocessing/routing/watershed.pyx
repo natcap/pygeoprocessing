@@ -1808,7 +1808,8 @@ def split_vector_into_seeds(
 
 
 def group_seeds_into_fragments_d8(
-        d8_flow_dir_raster_path_band, seeds_to_watershed_membership_map):
+        d8_flow_dir_raster_path_band, seeds_to_watershed_membership_map,
+        diagnostic_vector_path=None):
     """Group seeds into contiguous fragments, represented by a unique ID.
 
     Fragment membership is determined by walking the flow direction raster to
@@ -1841,8 +1842,16 @@ def group_seeds_into_fragments_d8(
             contiguous fragments.
     """
     flow_dir_info = pygeoprocessing.get_raster_info(d8_flow_dir_raster_path_band[0])
+    flow_dir_srs = osr.SpatialReference()
+    flow_dir_srs.ImportFromWkt(flow_dir_info['projection'])
+    gpkg_driver = gdal.GetDriverByName('GPKG')
     cdef long flow_dir_n_cols = flow_dir_info['raster_size'][0]
     cdef long flow_dir_n_rows = flow_dir_info['raster_size'][1]
+    source_gt = flow_dir_info['geotransform']
+    cdef double x_origin = source_gt[0]
+    cdef double y_origin = source_gt[3]
+    cdef double x_pixelwidth = source_gt[1]
+    cdef double y_pixelwidth = source_gt[5]
     cdef int flow_dir_nodata = flow_dir_info['nodata'][0]
     cdef _ManagedRaster flow_dir_managed_raster
     flow_dir_managed_raster = _ManagedRaster(d8_flow_dir_raster_path_band[0],
@@ -2000,10 +2009,50 @@ def group_seeds_into_fragments_d8(
     for new_index, reclass_value in enumerate(numpy.unique(reclassification.values()), 1):
         consolidated_reclassification[reclass_value] = new_index
 
+    if diagnostic_vector_path:
+        # Write out seed IDs to a diagnostic vector.
+        diagnostic_vector = gpkg_driver.Create(
+            diagnostic_vector_path,
+            0, 0, 0, gdal.GDT_Unknown)
+        diagnostic_layer = diagnostic_vector.CreateLayer(
+            'grouped_seeds', flow_dir_srs, ogr.wkbPoint)
+        diagnostic_layer.CreateField(ogr.FieldDefn('seed_id', ogr.OFTInteger))
+        diagnostic_layer.CreateField(ogr.FieldDefn('original_id', ogr.OFTInteger))
+        diagnostic_layer.CreateField(ogr.FieldDefn('member_watersheds', ogr.OFTString))
+        diagnostic_layer.CreateField(ogr.FieldDefn('seed_coords', ogr.OFTString))
+        diagnostic_layer.CreateField(ogr.FieldDefn('upstream_seeds', ogr.OFTString))
+        diagnostic_layer.CreateField(ogr.FieldDefn('downstream_seeds', ogr.OFTString))
+        diagnostic_layer.StartTransaction()
+
     final_seed_ids = {}
     for seed, seed_id in seed_ids.items():
         original_reclassification = reclassification[seed_id]
-        final_seed_ids[seed] = consolidated_reclassification[original_reclassification]
+        new_id = consolidated_reclassification[original_reclassification]
+        final_seed_ids[seed] = new_id
+
+        if diagnostic_vector_path:
+            feature = ogr.Feature(diagnostic_layer.GetLayerDefn())
+            point = shapely.geometry.Point(
+                x_origin + seed[0] * x_pixelwidth + (x_pixelwidth / 2.),
+                y_origin + seed[1] * y_pixelwidth + (y_pixelwidth / 2.))
+            feature.SetGeometry(ogr.CreateGeometryFromWkb(point.wkb))
+            feature.SetField('seed_id', new_id)
+            feature.SetField('original_id', seed_id)
+            feature.SetField('member_watersheds', ','.join([str(s) for s in sorted(seeds_to_watershed_membership_map[seed])]))
+            feature.SetField('seed_coords', '(%s, %s)' % seed)
+            try:
+                feature.SetField('upstream_seeds', ','.join([str(s) for s in sorted(nested_fragments[seed])]))
+            except KeyError:
+                feature.SetField('upstream_seeds', '')
+
+            try:
+                feature.SetField('downstream_seeds', ','.join([str(s) for s in sorted(downstream_seeds[seed])]))
+            except KeyError:
+                feature.SetField('downstream_seeds', '')
+            diagnostic_layer.CreateFeature(feature)
+
+    if diagnostic_vector_path:
+        diagnostic_layer.CommitTransaction()
 
     return final_seed_ids
 
@@ -2024,6 +2073,7 @@ def delineate_watersheds_d8(
     source_gt = flow_dir_info['geotransform']
     flow_dir_srs = osr.SpatialReference()
     flow_dir_srs.ImportFromWkt(flow_dir_info['projection'])
+    gpkg_driver = gdal.GetDriverByName('GPKG')
 
     cdef long flow_dir_n_cols = flow_dir_info['raster_size'][0]
     cdef long flow_dir_n_rows = flow_dir_info['raster_size'][1]
@@ -2073,7 +2123,8 @@ def delineate_watersheds_d8(
         working_dir=working_dir_path)
 
     seed_ids_python = group_seeds_into_fragments_d8(
-        d8_flow_dir_raster_path_band, seed_watersheds_python)
+        d8_flow_dir_raster_path_band, seed_watersheds_python,
+        diagnostic_vector_path=os.path.join(working_dir_path, 'seed_grouping_diagnostics.gpkg'))
 
     LOGGER.info('Converting seed IDs to C++')
     cdef int seed_id
@@ -2226,8 +2277,6 @@ def delineate_watersheds_d8(
             scratch_band.WriteArray(block, xoff=block_info['xoff'], yoff=block_info['yoff'])
 
     scratch_band.FlushCache()
-
-    gpkg_driver = gdal.GetDriverByName('GPKG')
 
     target_fragments_vector = gpkg_driver.Create(target_fragments_vector_path,
                                                  0, 0, 0, gdal.GDT_Unknown)
