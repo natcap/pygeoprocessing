@@ -1468,7 +1468,7 @@ def join_watershed_fragments_d8(watershed_fragments_vector, target_watersheds_pa
     # Load the attributes table into a dict for easier accesses
     watershed_attributes = {}
     for feature in outflow_attributes_layer:
-        watershed_attributes[feature.GetField('__ws_id__')] = feature.items()
+        watershed_attributes[feature.GetFID()] = feature.items()
 
     LOGGER.info('Copying attributes')
     last_log_time = ctime(NULL)
