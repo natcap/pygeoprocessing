@@ -127,22 +127,21 @@ def doit():
     #    pygeoprocessing.routing.delineate_watersheds_d8(
     #            (flow_dir, 1), lakes, fragments_path, workspace)
 
-    with time_it('delineating watersheds trivial'):
-        pygeoprocessing.routing.delineate_watersheds_trivial_d8(
-                (flow_dir, 1), lakes, trivial_watersheds)
+    #with time_it('delineating watersheds trivial'):
+    #    pygeoprocessing.routing.delineate_watersheds_trivial_d8(
+    #            (flow_dir, 1), lakes, trivial_watersheds)
 
-    with time_it('delineating watersheds'):
-        pygeoprocessing.routing.delineate_watersheds_d8(
-                (flow_dir, 1), lakes, fragments_path, working_dir=workspace)
-    compare_scratch_to_fragments(
-        fragments_path,
-        os.path.join(workspace, 'rasterized_fragments.tif'),
-        os.path.join(sorted(glob.glob(os.path.join(workspace, 'watershed_delineation*')))[-1], 'scratch_raster.tif'))
+    #with time_it('delineating watersheds'):
+    #    pygeoprocessing.routing.delineate_watersheds_d8(
+    #            (flow_dir, 1), lakes, fragments_path, working_dir=workspace)
+    #compare_scratch_to_fragments(
+    #    fragments_path,
+    #    os.path.join(workspace, 'rasterized_fragments.tif'),
+    #    os.path.join(sorted(glob.glob(os.path.join(workspace, 'watershed_delineation*')))[-1], 'scratch_raster.tif'))
 
-
-    #with time_it('joining watershed fragments'):
-    #    pygeoprocessing.routing.join_watershed_fragments_d8(
-    #            fragments_path, joined_fragments)
+    with time_it('joining watershed fragments'):
+        pygeoprocessing.routing.join_watershed_fragments(
+                fragments_path, joined_fragments)
 
     handler.close()
     root_logger.removeHandler(handler)
