@@ -1935,7 +1935,8 @@ def group_seeds_into_fragments_d8(
                 for upstream_seed in nested_fragments[current_seed]:
                     if seeds_to_watershed_membership_map[upstream_seed].issubset(
                             seeds_to_watershed_membership_map[starter_seed]):
-                        stack.append(upstream_seed)
+                        if upstream_seed not in stack and upstream_seed not in visited:
+                            stack.append(upstream_seed)
                         effective_watersheds[upstream_seed] = seeds_to_watershed_membership_map[starter_seed]
                     else:
                         # The upstream seed appears to be the start of a different fragment.
@@ -1944,10 +1945,10 @@ def group_seeds_into_fragments_d8(
                         if upstream_seed not in starter_seeds:
                             starter_seeds.append(upstream_seed)
 
-                            # noting which watersheds are downstream of the
-                            # upstream pixel is important for visiting
-                            # neighbors and expanding into them, below.
-                            downstream_watersheds[upstream_seed] = member_watersheds
+                        # noting which watersheds are downstream of the
+                        # upstream pixel is important for visiting
+                        # neighbors and expanding into them, below.
+                        downstream_watersheds[upstream_seed] = member_watersheds
 
             # visit neighbors and see if there are any neighbors that match
             for neighbor_id in xrange(8):
@@ -1964,6 +1965,9 @@ def group_seeds_into_fragments_d8(
                 # If it doesn't exist (meaning it's a pixel that isn't a seed),
                 # we don't consider it.
                 if neighbor_seed not in seeds_to_watershed_membership_map:
+                    continue
+
+                if neighbor_seed in stack:
                     continue
 
                 if seeds_to_watershed_membership_map[neighbor_seed] == member_watersheds:
