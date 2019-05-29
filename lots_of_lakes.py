@@ -48,10 +48,10 @@ def profile(filename=None):
 
 WILLAMETTE_ROADS = (
     'workspace-willamette-roads',
-    r'C:\Users\jdouglass\workspace\natcap\invest\data\invest-data\Base_Data\Terrestrial\roads.shp',
+    os.path.normpath(r'../../natcap/invest/data/invest-data/Base_Data/Terrestrial/roads.shp'),
     #r'roadsegment.shp',
     #r'roadsegments.shp',
-    r'C:\Users\jdouglass\workspace\natcap\invest\data\invest-data\Base_Data\Freshwater\dem\hdr.adf')
+    os.path.normpath(r'../../natcap/invest/data/invest-data/Base_Data/Freshwater/dem/hdr.adf'))
 
 
 STACIES_SUBSET = (
