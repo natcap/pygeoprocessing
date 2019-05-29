@@ -1929,7 +1929,9 @@ def group_seeds_into_fragments_d8(
             reclassification[seed_ids[current_seed]] = starter_id
             visited.add(current_seed)
 
-            try:
+            # Are there nested fragments?  If yes, see if this seed ID can
+            # expand into the nested fragments.
+            if current_seed in nested_fragments:
                 for upstream_seed in nested_fragments[current_seed]:
                     if seeds_to_watershed_membership_map[upstream_seed].issubset(
                             seeds_to_watershed_membership_map[starter_seed]):
@@ -1946,9 +1948,6 @@ def group_seeds_into_fragments_d8(
                             # upstream pixel is important for visiting
                             # neighbors and expanding into them, below.
                             downstream_watersheds[upstream_seed] = member_watersheds
-            except KeyError:
-                # No nested fragments.
-                pass
 
             # visit neighbors and see if there are any neighbors that match
             for neighbor_id in xrange(8):
