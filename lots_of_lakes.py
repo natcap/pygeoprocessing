@@ -11,6 +11,9 @@ import glob
 logging.basicConfig(level=logging.DEBUG)
 LOGGER = logging.getLogger(__name__)
 
+import shapely
+import shapely.wkb
+import shapely.geometry
 from osgeo import gdal
 
 import pygeoprocessing
@@ -75,6 +78,48 @@ def compare_scratch_to_fragments(vector, rasterized_path, raster2):
         option_list=['ATTRIBUTE=fragment_id'])
 
     pygeoprocessing.testing.assert_rasters_equal(rasterized_path, raster2)
+
+
+def _load_geometries(vector_path, layer_name=None):
+    if not layer_name:
+        layer_name = 0
+
+    geometries = {}
+    vector = gdal.OpenEx(vector_path)
+    layer = vector.GetLayer(layer_name)
+    for feature in layer:
+        ogr_geom = feature.GetGeometryRef()
+        shapely_geom = shapely.wkb.loads(ogr_geom.ExportToWkb())
+        geometries[shapely_geom.bounds] = (feature.GetFID(), shapely_geom)
+
+    return geometries
+
+
+def compare_trivial_to_joined(trivial_watersheds_path, joined_fragments_path):
+    # Shapely polygons are immutable, so instead I'll index them by area and
+    # then compare the geometries.
+    trivial_geometries = _load_geometries(trivial_watersheds_path)
+    joined_geometries = _load_geometries(joined_fragments_path)
+
+    n_missing = 0
+    n_geoms_not_matched = 0
+
+    for bounds, (fid, geom) in trivial_geometries.items():
+        if bounds not in joined_geometries:
+            print "Trivial FID %s not found in joined" % fid
+            n_missing += 1
+            continue
+
+        joined_fid, joined_geom = joined_geometries[bounds]
+        if not (joined_geom.difference(geom).area == 0 and
+                joined_geom.union(geom).area == geom.area):
+            print "Trivial FID %s geom does not match joined FID %s" % (
+                fid, joined_fid)
+            n_geoms_not_matched += 1
+            continue
+
+    print 'n_missing', n_missing
+    print 'n geoms not matched', n_geoms_not_matched
 
 
 def find_fragments_split_between_features(vector_path):
