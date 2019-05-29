@@ -182,11 +182,15 @@ def doit():
     compare_scratch_to_fragments(
         fragments_path,
         os.path.join(workspace, 'rasterized_fragments.tif'),
-        os.path.join(sorted(glob.glob(os.path.join(workspace, 'watershed_delineation*')))[-1], 'scratch_raster.tif'))
+        os.path.join(sorted(glob.glob(
+            os.path.join(workspace, 'watershed_delineation*')))[-1], 'scratch_raster.tif'))
 
     with time_it('joining watershed fragments'):
         pygeoprocessing.routing.join_watershed_fragments_new(
                 fragments_path, joined_fragments)
+
+    compare_trivial_to_joined(
+        trivial_watersheds, joined_fragments)
 
     handler.close()
     root_logger.removeHandler(handler)
