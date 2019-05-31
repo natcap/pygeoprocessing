@@ -2301,7 +2301,7 @@ def delineate_watersheds_d8(
         scratch_band,  # the mask band indicating valid pixels
         target_fragments_scratch_layer,  # polygons are added to this layer
         0,  # field index of 'fragment_id' field.
-        ['8CONNECTED=8'],  # use 8-connectedness algorithm.
+        [],  # 8CONNECTED=8 sometimes creates invalid geometries.
         _make_polygonize_callback(LOGGER)
     )
 
