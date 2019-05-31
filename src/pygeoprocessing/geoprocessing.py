@@ -1814,7 +1814,7 @@ def warp_raster(
         gdal_warp_options (sequence): if present, the contents of this list
             are passed to the ``warpOptions`` parameter of ``gdal.Warp``. See
             the GDAL Warp documentation for details.
-        working_dir (optional): if defined uses this directory to make
+        working_dir (string): if defined uses this directory to make
             temporary working files for calculation. Otherwise uses system's
             temp directory.
 
