@@ -1574,7 +1574,10 @@ def split_vector_into_seeds(
 
     Returns:
         seed_watershed_membership (dict): A python dict mapping (x, y) pixel
-            index tuples to sets of integer watershed IDs.
+            index tuples to sets of integer watershed FIDs.  The watershed ID
+            represents the FID of the outflow geometry represented by this
+            seed.  A seed with multiple watershed FIDs is a part of multiple
+            watersheds.
     """
     # TODO: does this function also need to identify which source features map to which WS_IDs?
     #       Can we just refer to FIDs instead of using internal identifiers?
@@ -2315,6 +2318,8 @@ def delineate_watersheds_d8(
         'watershed_attributes', geom_type=ogr.wkbNone,
         options=['ASPATIAL_VARIANT=OGR_ASPATIAL'])
     target_fragments_watershed_attrs_layer.CreateFields(outflow_layer.schema)
+    target_fragments_watershed_attrs_layer.CreateField(
+        ogr.FieldDefn('outflow_feature_id', ogr.OFTInteger))
     target_fragments_watershed_attrs_layer.StartTransaction()
     all_watersheds_in_seeds = set(itertools.chain(*seed_watersheds_python.values()))
     for outflow_feature in outflow_layer:
@@ -2328,6 +2333,7 @@ def delineate_watersheds_d8(
             target_fragments_watershed_attrs_layer.GetLayerDefn())
         for attr_name, attr_value in outflow_feature.items().items():
             new_feature.SetField(attr_name, attr_value)
+        new_feature.SetField('outflow_feature_id', outflow_feature.GetFID())
         target_fragments_watershed_attrs_layer.CreateFeature(new_feature)
     target_fragments_watershed_attrs_layer.CommitTransaction()
 

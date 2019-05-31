@@ -65,7 +65,7 @@ def join_watershed_fragments_new(watershed_fragments_vector,
     fragment_field_values = {}
     LOGGER.info('Loading fragment geometries.')
     for feature in fragments_layer:
-        fragment_id = feature.GetField('fragment_id')
+        fragment_id = int(feature.GetField('fragment_id'))
         fragment_field_values[fragment_id] = feature.items()
         upstream_fragments_string = feature.GetField('upstream_fragments')
         if upstream_fragments_string:
@@ -101,15 +101,8 @@ def join_watershed_fragments_new(watershed_fragments_vector,
             # When geometry is a Polygon
             sub_geometry_list = geometry_list
 
-        try:
-            fragment_multipolygons[fragment_id] = shapely.geometry.MultiPolygon(
-                sub_geometry_list)
-        except:
-            import pprint
-            pprint.pprint(sub_geometry_list)
-            import pdb; pdb.set_trace()
-            raise
-    #del fragment_geometries  # don't need this dict any longer.
+        fragment_multipolygons[fragment_id] = shapely.geometry.MultiPolygon(
+            sub_geometry_list)
 
     # Populate the watershed geometries dict with fragments that are as
     # upstream as you can go.
@@ -191,16 +184,39 @@ def join_watershed_fragments_new(watershed_fragments_vector,
         n_watersheds_processed +=1
 
     # join fragments by member watersheds.
+    fragment_attributes = fragments_vector.GetLayer('watershed_attributes')
+    watershed_field_values = {}
+    for attr_feature in fragment_attributes:
+        outflow_id = attr_feature.GetField('outflow_feature_id')
+        watershed_field_values[outflow_id] = attr_feature.items()
+
+    watersheds_layer.CreateFields(fragment_attributes.schema)
+
     final_watersheds = {}
+    watersheds_layer.StartTransaction()
+    last_log_time = time.time()
+    n_watersheds_processed = 0
+    n_watersheds = len(fragments_in_watershed)
     for ws_id, member_fragment_ids in fragments_in_watershed.items():
+        current_time = time.time()
+        if current_time - last_log_time >= 5.0:
+            LOGGER.info("%s fragments of %s processed", n_watersheds_processed,
+                        n_watersheds)
+            last_log_time = current_time
+
         member_fragment_polygons = []
         for member_fragment_id in member_fragment_ids:
             member_fragment_polygons.append(watershed_geometries[member_fragment_id])
 
         watershed_feature = ogr.Feature(watersheds_layer.GetLayerDefn())
         watershed_geom = ogr.CreateGeometryFromWkb(shapely.ops.cascaded_union(member_fragment_polygons).wkb)
+        for field_name, field_value in watershed_field_values[ws_id].items():
+            watershed_feature.SetField(field_name, field_value)
+
         watershed_feature.SetGeometry(watershed_geom)
         watersheds_layer.CreateFeature(watershed_feature)
+        n_watersheds_processed += 1
+    watersheds_layer.CommitTransaction()
 
     fragments_srs = None
     fragments_feature = None
