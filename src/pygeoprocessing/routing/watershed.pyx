@@ -1639,7 +1639,7 @@ def split_vector_into_seeds(
     temp_polygons_vector = gpkg_driver.Create(
         temp_polygons_vector_path, 0, 0, 0, gdal.GDT_Unknown)
     temp_polygons_layer = temp_polygons_vector.CreateLayer(
-        'outlet_geometries', flow_dir_srs, ogr.wkbPolygon)
+        'outlet_geometries', flow_dir_srs, source_layer.GetGeometryType())
     temp_polygons_layer.CreateField(ogr.FieldDefn('WSID', ogr.OFTInteger))
 
     seed_id = 0  # assume Seed IDs can be from (2 - 2**32-1) inclusive in UInt32
