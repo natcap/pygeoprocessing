@@ -218,7 +218,7 @@ class PyGeoprocessing10(unittest.TestCase):
         target_file.close()
         pygeoprocessing.reproject_vector(
             base_vector_path, target_reference.ExportToWkt(),
-            target_vector_path, layer_index=0)
+            target_vector_path, layer_id=0)
 
         vector = ogr.Open(target_vector_path)
         layer = vector.GetLayer()
@@ -624,7 +624,7 @@ class PyGeoprocessing10(unittest.TestCase):
         target_file.close()
         pygeoprocessing.reproject_vector(
             base_vector_path, target_reference.ExportToWkt(),
-            target_vector_path, layer_index=0, copy_fields=['id'])
+            target_vector_path, layer_id=0, copy_fields=['id'])
 
         vector = ogr.Open(target_vector_path)
         layer = vector.GetLayer()
@@ -640,7 +640,7 @@ class PyGeoprocessing10(unittest.TestCase):
             self.workspace_dir, 'target_vector_no_fields.shp')
         pygeoprocessing.reproject_vector(
             base_vector_path, target_reference.ExportToWkt(),
-            target_vector_no_fields_path, layer_index=0, copy_fields=False)
+            target_vector_no_fields_path, layer_id=0, copy_fields=False)
         layer = None
         vector = None
 
@@ -2630,7 +2630,7 @@ class PyGeoprocessing10(unittest.TestCase):
 
         pygeoprocessing.rasterize(
             base_vector_path, target_raster_path, [test_value], None,
-            layer_index=0)
+            layer_id=0)
 
         target_raster = gdal.OpenEx(target_raster_path, gdal.OF_RASTER)
         target_band = target_raster.GetRasterBand(1)
@@ -2641,7 +2641,7 @@ class PyGeoprocessing10(unittest.TestCase):
 
         pygeoprocessing.rasterize(
             base_vector_path, target_raster_path, None,
-            ["ATTRIBUTE=id"], layer_index=0)
+            ["ATTRIBUTE=id"], layer_id=0)
         target_raster = gdal.OpenEx(target_raster_path, gdal.OF_RASTER)
         target_band = target_raster.GetRasterBand(1)
         result = target_band.ReadAsArray()
@@ -2680,7 +2680,7 @@ class PyGeoprocessing10(unittest.TestCase):
         with self.assertRaises(ValueError) as cm:
             pygeoprocessing.rasterize(
                 base_vector_path, target_raster_path, [test_value], None,
-                layer_index=0)
+                layer_id=0)
         expected_message = (
             "%s doesn't exist, but needed to rasterize." % target_raster_path)
         actual_message = str(cm.exception)
@@ -2721,7 +2721,7 @@ class PyGeoprocessing10(unittest.TestCase):
         with self.assertRaises(ValueError) as cm:
             pygeoprocessing.rasterize(
                 base_vector_path, target_raster_path, None, None,
-                layer_index=0)
+                layer_id=0)
         expected_message = (
             "Neither `burn_values` nor `option_list` is set")
         actual_message = str(cm.exception)
@@ -2730,7 +2730,7 @@ class PyGeoprocessing10(unittest.TestCase):
         with self.assertRaises(ValueError) as cm:
             pygeoprocessing.rasterize(
                 base_vector_path, target_raster_path, 1, None,
-                layer_index=0)
+                layer_id=0)
         expected_message = "`burn_values` is not a list/tuple"
         actual_message = str(cm.exception)
         self.assertTrue(expected_message in actual_message, actual_message)
@@ -2738,7 +2738,7 @@ class PyGeoprocessing10(unittest.TestCase):
         with self.assertRaises(ValueError) as cm:
             pygeoprocessing.rasterize(
                 base_vector_path, target_raster_path, None, "ATTRIBUTE=id",
-                layer_index=0)
+                layer_id=0)
         expected_message = "`option_list` is not a list/tuple"
         actual_message = str(cm.exception)
         self.assertTrue(expected_message in actual_message, actual_message)

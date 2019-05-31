@@ -1445,13 +1445,13 @@ def zonal_statistics(
     return dict(aggregate_stats)
 
 
-def get_vector_info(vector_path, layer_index=0):
+def get_vector_info(vector_path, layer_id=0):
     """Get information about an OGR vector (datasource).
 
     Parameters:
         vector_path (str): a path to a OGR vector.
-        layer_index (int): index of underlying layer to analyze.  Defaults to
-            0.
+        layer_id (str/int): name or index of underlying layer to analyze.
+            Defaults to 0.
 
     Raises:
         ValueError if ``vector_path`` does not exist on disk or cannot be
@@ -1473,7 +1473,7 @@ def get_vector_info(vector_path, layer_index=0):
         raise ValueError(
             "Could not open %s as a gdal.OF_VECTOR" % vector_path)
     vector_properties = {}
-    layer = vector.GetLayer(iLayer=layer_index)
+    layer = vector.GetLayer(iLayer=layer_id)
     # projection is same for all layers, so just use the first one
     spatial_ref = layer.GetSpatialRef()
     if spatial_ref:
@@ -1568,7 +1568,7 @@ def get_raster_info(raster_path):
 
 
 def reproject_vector(
-        base_vector_path, target_wkt, target_path, layer_index=0,
+        base_vector_path, target_wkt, target_path, layer_id=0,
         driver_name='ESRI Shapefile', copy_fields=True):
     """Reproject OGR DataSource (vector).
 
@@ -1580,7 +1580,7 @@ def reproject_vector(
         target_wkt (string): the desired output projection in Well Known Text
             (by layer.GetSpatialRef().ExportToWkt())
         target_path (string): the filepath to the transformed shapefile
-        layer_index (int): index of layer in ``base_vector_path`` to
+        layer_id (str/int): name or index of layer in ``base_vector_path`` to
             reproject. Defaults to 0.
         driver_name (string): String to pass to ogr.GetDriverByName, defaults
             to 'ESRI Shapefile'.
@@ -1608,7 +1608,7 @@ def reproject_vector(
     target_driver = ogr.GetDriverByName(driver_name)
     target_vector = target_driver.CreateDataSource(target_path)
 
-    layer = base_vector.GetLayer(layer_index)
+    layer = base_vector.GetLayer(layer_id)
     layer_dfn = layer.GetLayerDefn()
 
     # Create new layer for target_vector using same name and
@@ -1804,9 +1804,9 @@ def warp_raster(
                     vector will be automatically projected to the target
                     projection if its base coordinate system does not match
                     the target.
-                'mask_layer_name': (str) the layer name to use for masking,
-                    if this key is not in the dictionary the default is to use
-                    the layer at index 0.
+                'mask_layer_id': (int/str) the layer index or name to use for
+                    masking, if this key is not in the dictionary the default
+                    is to use the layer at index 0.
                 'mask_vector_where_filter': (str) an SQL WHERE string that can
                     be used to filter the geometry in the mask. Ex:
                     'id > 10' would use all features whose field value of
@@ -1895,7 +1895,7 @@ def warp_raster(
         warp_options.extend(gdal_warp_options)
 
     mask_vector_path = None
-    mask_layer_index = 0
+    mask_layer_id = 0
     mask_vector_where_filter = None
     if vector_mask_options:
         # translate pygeoprocessing terminology into GDAL warp options.
@@ -1907,8 +1907,8 @@ def warp_raster(
         if not os.path.exists(mask_vector_path):
             raise ValueError(
                 'The mask vector at %s was not found.', mask_vector_path)
-        if 'mask_layer_index' in vector_mask_options:
-            mask_layer_index = vector_mask_options['mask_layer_index']
+        if 'mask_layer_id' in vector_mask_options:
+            mask_layer_id = vector_mask_options['mask_layer_id']
         if 'mask_vector_where_filter' in vector_mask_options:
             mask_vector_where_filter = (
                 vector_mask_options['mask_vector_where_filter'])
@@ -1943,7 +1943,7 @@ def warp_raster(
         mask_raster(
             (warped_raster_path, 1), vector_mask_options['mask_vector_path'],
             target_raster_path,
-            mask_layer_index=mask_layer_index,
+            mask_layer_id=mask_layer_id,
             where_clause=mask_vector_where_filter,
             target_mask_value=None, working_dir=temp_working_dir,
             all_touched=False,
@@ -1953,10 +1953,10 @@ def warp_raster(
 
 def rasterize(
         vector_path, target_raster_path, burn_values=None, option_list=None,
-        layer_index=0, where_clause=None):
+        layer_id=0, where_clause=None):
     """Project a vector onto an existing raster.
 
-    Burn the layer at ``layer_index`` in ``vector_path`` to an existing
+    Burn the layer at ``layer_id`` in ``vector_path`` to an existing
     raster at ``target_raster_path_band``.
 
     Parameters:
@@ -1997,6 +1997,8 @@ def rasterize(
                     value, while ADD adds the new value to the existing
                     raster, suitable for heatmaps for instance.
             Example: ["ATTRIBUTE=npv", "ALL_TOUCHED=TRUE"]
+        layer_id (str/int): name or index of the layer to rasterize. Defaults
+            to 0.
         where_clause (str): If not None, is an SQL query-like string to filter
             which features are used to rasterize, (e.x. where="value=1").
 
@@ -2035,7 +2037,7 @@ def rasterize(
             "`option_list` is not a list/tuple, the value passed is '%s'",
             repr(option_list))
 
-    layer = vector.GetLayer(layer_index)
+    layer = vector.GetLayer(layer_id)
     if where_clause:
         layer.SetAttributeFilter(where_clause)
     gdal.RasterizeLayer(
@@ -2046,7 +2048,7 @@ def rasterize(
 
 
 def calculate_disjoint_polygon_set(
-        vector_path, layer_index=0, bounding_box=None):
+        vector_path, layer_id=0, bounding_box=None):
     """Create a sequence of sets of polygons that don't overlap.
 
     Determining the minimal number of those sets is an np-complete problem so
@@ -2054,8 +2056,8 @@ def calculate_disjoint_polygon_set(
 
     Parameters:
         vector_path (string): a path to an OGR vector.
-        layer_index (int): index of underlying layer in ``vector_path`` to
-            calculate disjoint set. Defaults to 0.
+        layer_id (str/int): name or index of underlying layer in
+            ``vector_path`` to calculate disjoint set. Defaults to 0.
         bounding_box (sequence): sequence of floats representing a bounding
             box to filter any polygons by. If a feature in ``vector_path``
             does not intersect this bounding box it will not be considered
@@ -2067,7 +2069,7 @@ def calculate_disjoint_polygon_set(
 
     """
     vector = gdal.OpenEx(vector_path, gdal.OF_VECTOR)
-    vector_layer = vector.GetLayer(layer_index)
+    vector_layer = vector.GetLayer(layer_id)
     feature_count = vector_layer.GetFeatureCount()
 
     last_time = time.time()
@@ -2962,7 +2964,7 @@ def merge_rasters(
 
 def mask_raster(
         base_raster_path_band, mask_vector_path, target_mask_raster_path,
-        mask_layer_index=0, target_mask_value=None, working_dir=None,
+        mask_layer_id=0, target_mask_value=None, working_dir=None,
         all_touched=False, where_clause=None,
         gtiff_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS):
     """
@@ -2980,8 +2982,8 @@ def mask_raster(
             not intersect with ``mask_vector_path`` are set to
             ``target_mask_value`` or ``base_raster_path_band``'s nodata value
             if ``target_mask_value`` is None.
-        mask_layer_index (int): this layer is used as the mask geometry layer
-            in ``mask_vector_path``, default is 0.
+        mask_layer_id (str/int): an index or name to identify the mask
+            geometry layer in ``mask_vector_path``, default is 0.
         target_mask_value (numeric): If not None, this value is written to
             any pixel in ``base_raster_path_band`` that does not intersect
             with ``mask_vector_path``. Otherwise the nodata value of
@@ -3014,7 +3016,7 @@ def mask_raster(
 
     rasterize(
         mask_vector_path, mask_raster_path, burn_values=[1],
-        layer_index=mask_layer_index,
+        layer_id=mask_layer_id,
         option_list=[('ALL_TOUCHED=%s' % all_touched).upper()],
         where_clause=where_clause)
 
