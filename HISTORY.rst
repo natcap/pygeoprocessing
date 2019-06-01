@@ -24,6 +24,10 @@ Unreleased Changes
       temporary mask rasters.
 * Removing a temporary working directory that is created when executing
   pygeoprocessing.convolve_2d.
+* Changed optional parameters involving layer indexes to be either indexes
+  or string ids. In all cases changing ``layer_index`` to ``layer_id`` in
+  the functions: ``get_vector_info``, ``reproject_vector``, ``warp_raster``,
+  ``rasterize``, ``calculate_disjoint_polygon_set``, and ``mask_raster``.
 
 1.6.1 (2019-02-13)
 ------------------
