@@ -87,7 +87,8 @@ def join_watershed_fragments_stack(watershed_fragments_vector,
         upstream_fragments_string = feature.GetField('upstream_fragments')
         if upstream_fragments_string:
             feature_upstream_fragments = set([
-                int(f) for f in upstream_fragments_string.split(',')])
+                int(f) for f in upstream_fragments_string.split(',')
+                if int(f) != fragment_id])
         else:
             feature_upstream_fragments = set([])
 
@@ -146,6 +147,10 @@ def join_watershed_fragments_stack(watershed_fragments_vector,
         for upstream_fragment_id in upstream_fragments[fragment_id]:
             if upstream_fragment_id in compiled_fragment_ids:
                 continue
+
+            if upstream_fragment_id == fragment_id:
+                continue
+
             stack.append(upstream_fragment_id)
             stack_set.add(upstream_fragment_id)
 
@@ -153,7 +158,6 @@ def join_watershed_fragments_stack(watershed_fragments_vector,
         while len(stack) > 0:
             stack_fragment_id = stack.pop()
             stack_set.remove(stack_fragment_id)
-            print stack_fragment_id
 
             # base case: this fragment has already been compiled and has geometry
             # that can be retrieved from ``compiled_fragments_layer``.
