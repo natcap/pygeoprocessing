@@ -74,6 +74,10 @@ def join_watershed_fragments_stack(watershed_fragments_vector,
     watersheds_layer = watersheds_vector.CreateLayer(
         'watersheds', fragments_srs, ogr.wkbPolygon)
     for field_defn in watershed_attributes_layer.schema:
+        # ``outflow_feature_id`` not needed in the final watersheds.
+        if field_defn.GetName() == 'outflow_feature_id':
+            continue
+
         field_type = field_defn.GetType()
         if field_type in (ogr.OFTInteger, ogr.OFTReal):
             field_defn.SetWidth(24)
@@ -214,6 +218,13 @@ def join_watershed_fragments_stack(watershed_fragments_vector,
 
     # Having compiled individual fragments, we can now join together fragments
     # by their watersheds.
+    # Before we do this, we need to load up the attributes so we can index them by
+    # their watershed ID (represented by the ``outflow_feature_id`` column)
+    attributes_by_ws_id = {}
+    for feature in watershed_attributes_layer:
+        ws_id = feature.GetField('outflow_feature_id')
+        attributes_by_ws_id[ws_id] = feature.items()
+
     watersheds_layer.StartTransaction()
     for ws_id, member_fragments in fragments_in_watershed.items():
         member_geometries = []
@@ -228,6 +239,12 @@ def join_watershed_fragments_stack(watershed_fragments_vector,
         unioned_geometry = shapely.ops.cascaded_union(member_geometries).buffer(0)
 
         watershed_feature = ogr.Feature(watersheds_layer.GetLayerDefn())
+        for field_name, field_value in attributes_by_ws_id[ws_id].items():
+            if field_name == 'outflow_feature_id':
+                continue
+
+            watershed_feature.SetField(field_name, field_value)
+
         watershed_feature.SetGeometry(ogr.CreateGeometryFromWkb(unioned_geometry.wkb))
         watersheds_layer.CreateFeature(watershed_feature)
     watersheds_layer.CommitTransaction()
