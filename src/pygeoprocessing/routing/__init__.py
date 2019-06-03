@@ -144,6 +144,9 @@ def join_watershed_fragments_stack(watershed_fragments_vector,
         if fragment_id in compiled_fragment_ids:
             continue
 
+        stack.append(fragment_id)
+        stack_set.add(fragment_id)
+
         for upstream_fragment_id in upstream_fragments[fragment_id]:
             if upstream_fragment_id in compiled_fragment_ids:
                 continue
@@ -204,6 +207,28 @@ def join_watershed_fragments_stack(watershed_fragments_vector,
                         stack_set.add(upstream_fragment_id)
 
         compiled_fragments_layer.CommitTransaction()
+
+    # Having compiled individual fragments, we can now join together fragments
+    # by their watersheds.
+    watersheds_layer.StartTransaction()
+    for ws_id, member_fragments in fragments_in_watershed.items():
+        print 'ws_id', ws_id
+
+        member_geometries = []
+        for fragment_id in member_fragments:
+            compiled_fid = compiled_fragment_fids[fragment_id]
+            compiled_feature = compiled_fragments_layer.GetFeature(compiled_fid)
+            compiled_geom = compiled_feature.GetGeometryRef()
+            shapely_geometry = shapely.wkb.loads(compiled_geom.ExportToWkb())
+            member_geometries.append(shapely_geometry)
+
+        unioned_geometry = shapely.ops.cascaded_union(member_geometries)
+
+        watershed_feature = ogr.Feature(watersheds_layer.GetLayerDefn())
+        watershed_feature.SetGeometry(ogr.CreateGeometryFromWkb(unioned_geometry.wkb))
+        watersheds_layer.CreateFeature(watershed_feature)
+    watersheds_layer.CommitTransaction()
+
 
 
 
