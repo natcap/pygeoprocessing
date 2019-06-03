@@ -2377,6 +2377,7 @@ def delineate_watersheds_d8(
             fids_to_be_skipped.add(duplicate_fid)
 
         consolidated_feature = ogr.Feature(target_fragments_layer.GetLayerDefn())
+        fragment_id = fragment_id_with_duplicates
         consolidated_feature.SetField('fragment_id', fragment_id)
         fragment_seed = seed_id_to_seed[fragment_id]
         consolidated_feature.SetField('upstream_fragments',
