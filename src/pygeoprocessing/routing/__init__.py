@@ -249,33 +249,9 @@ def join_watershed_fragments_stack(watershed_fragments_vector,
         watersheds_layer.CreateFeature(watershed_feature)
     watersheds_layer.CommitTransaction()
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    # OK to remove the compiled layer.
+    compiled_fragments_layer = None
+    watersheds_vector.DeleteLayer('compiled_fragments')
 
 
 
