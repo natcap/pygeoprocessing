@@ -97,7 +97,7 @@ def join_watershed_fragments_stack(watershed_fragments_vector,
             fragments_in_watershed[int(member_ws_id)].add(fragment_id)
 
         shapely_geometry = shapely.wkb.loads(
-            feature.GetGeometryRef().ExportToWkb())
+            feature.GetGeometryRef().ExportToWkb()).buffer(0)
 
         # If the two geometries (fragment_geometries[fragment_id] and shapely_geometry)
         # do not intersect, ``union`` will return a MultiPolygon.  If they do intersect,
@@ -176,7 +176,7 @@ def join_watershed_fragments_stack(watershed_fragments_vector,
                     compiled_fid = compiled_fragment_fids[upstream_fragment_id]
                     compiled_feature = compiled_fragments_layer.GetFeature(compiled_fid)
                     compiled_geom = compiled_feature.GetGeometryRef()
-                    shapely_geometry = shapely.wkb.loads(compiled_geom.ExportToWkb())
+                    shapely_geometry = shapely.wkb.loads(compiled_geom.ExportToWkb()).buffer(0)
                     upstream_geometries.append(shapely_geometry)
 
                 # Buffer by 0 is needed because cascaded_union does not always
@@ -218,7 +218,7 @@ def join_watershed_fragments_stack(watershed_fragments_vector,
             compiled_fid = compiled_fragment_fids[fragment_id]
             compiled_feature = compiled_fragments_layer.GetFeature(compiled_fid)
             compiled_geom = compiled_feature.GetGeometryRef()
-            shapely_geometry = shapely.wkb.loads(compiled_geom.ExportToWkb())
+            shapely_geometry = shapely.wkb.loads(compiled_geom.ExportToWkb()).buffer(0)
             member_geometries.append(shapely_geometry)
 
         # Cascaded_union does not always return valid geometries.
