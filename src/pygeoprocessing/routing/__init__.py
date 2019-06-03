@@ -179,14 +179,15 @@ def join_watershed_fragments_stack(watershed_fragments_vector,
                     shapely_geometry = shapely.wkb.loads(compiled_geom.ExportToWkb())
                     upstream_geometries.append(shapely_geometry)
 
-                unioned_geometry = shapely.ops.cascaded_union(upstream_geometries)
+                # Buffer by 0 is needed because cascaded_union does not always
+                # return valid geometries.
+                unioned_geometry = shapely.ops.cascaded_union(upstream_geometries).buffer(0)
 
                 compiled_feature = ogr.Feature(compiled_fragments_layer.GetLayerDefn())
                 compiled_feature.SetField('fragment_id', stack_fragment_id)
                 compiled_feature.SetGeometry(
                     ogr.CreateGeometryFromWkb(unioned_geometry.wkb))
                 compiled_fragments_layer.CreateFeature(compiled_feature)
-                LOGGER.info('Compiled fragment %s', stack_fragment_id)
 
                 compiled_fragment_ids.add(stack_fragment_id)
                 compiled_fragment_fids[stack_fragment_id] = compiled_feature.GetFID()
@@ -212,8 +213,6 @@ def join_watershed_fragments_stack(watershed_fragments_vector,
     # by their watersheds.
     watersheds_layer.StartTransaction()
     for ws_id, member_fragments in fragments_in_watershed.items():
-        print 'ws_id', ws_id
-
         member_geometries = []
         for fragment_id in member_fragments:
             compiled_fid = compiled_fragment_fids[fragment_id]
@@ -222,7 +221,8 @@ def join_watershed_fragments_stack(watershed_fragments_vector,
             shapely_geometry = shapely.wkb.loads(compiled_geom.ExportToWkb())
             member_geometries.append(shapely_geometry)
 
-        unioned_geometry = shapely.ops.cascaded_union(member_geometries)
+        # Cascaded_union does not always return valid geometries.
+        unioned_geometry = shapely.ops.cascaded_union(member_geometries).buffer(0)
 
         watershed_feature = ogr.Feature(watersheds_layer.GetLayerDefn())
         watershed_feature.SetGeometry(ogr.CreateGeometryFromWkb(unioned_geometry.wkb))
