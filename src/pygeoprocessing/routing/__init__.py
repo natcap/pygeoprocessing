@@ -179,6 +179,9 @@ def join_watershed_fragments_stack(watershed_fragments_vector,
                     shapely_geometry = shapely.wkb.loads(compiled_geom.ExportToWkb()).buffer(0)
                     upstream_geometries.append(shapely_geometry)
 
+                # Add the current geometry to the list as well.
+                upstream_geometries.append(fragment_geometries[stack_fragment_id])
+
                 # Buffer by 0 is needed because cascaded_union does not always
                 # return valid geometries.
                 unioned_geometry = shapely.ops.cascaded_union(upstream_geometries).buffer(0)
