@@ -13,6 +13,223 @@ import shapely.geometry
 LOGGER = logging.getLogger(__name__)
 
 
+def join_watershed_fragments_stack(watershed_fragments_vector,
+                                   target_watersheds_vector):
+    """Join watershed fragments by their IDs.
+
+    This function takes a watershed fragments vector and creates a new vector
+    where all geometries represent the full watershed represented by any nested
+    watershed fragments contained within the watershed fragments vector.
+
+    Parameters:
+        watershed_fragments_vector (string): A path to a vector on disk.  This
+            vector must have at least two fields: 'ws_id' (int) and
+            'upstream_fragments' (string).  The 'upstream_fragments' field's
+            values must be formatted as a list of comma-separated integers
+            (example: ``1,2,3,4``), where each integer matches the ``ws_id``
+            field of a polygon in this vector.  This field should only contain
+            the ``ws_id``s of watershed fragments that directly touch the
+            current fragment, as this function will recurse through the
+            fragments to determine the correct nested geometry.  If a fragment
+            has no nested watersheds, this field's value will have an empty
+            string.  The ``ws_id`` field represents a unique integer ID for the
+            watershed fragment.
+        target_watersheds_vector (string): A path to a vector on disk.  This
+            vector will be written as a GeoPackage.
+
+    Returns:
+        ``None``
+
+    """
+    # Components:
+    #  * Create the target watersheds vector with layers for:
+    #       * Flow-contiguous fragments
+    #       * The output watersheds
+    #  * Open the watershed fragments vector and get the fragments layer.
+    #  * Iterate through the fragments
+    #       * Determine which features belong to which watersheds
+    #       * Determine the upstream fragments and be able to identify geometries correctly
+    #       * Notes:
+    #           * Fragments are all assumed to be valid polygons or multipolygons
+    #           * It's an error for any geometry to be invalid.
+    #           * It's an error for any two fragments to have the same fragment ID
+    #  * Any fragments with no upstream geometries are considered 'compiled', meaning
+    #    that they do not need to have any further geometric operations performed on
+    #    them (aside from unioning by watershed).
+    #  * Use stack-recursion to go through the fragments to find all of the fragments
+    #    that nest and buffer(0) them together, saving the results to an intermediate
+    #    data structure.
+    #  * Loop through all watersheds to buffer(0) their component fragments and write
+    #    out the watershed geometries to the final output layer along with all of the
+    #    field values.
+    #  * Delete the flow-contuguous fragment layer from the target watersheds vector.
+    fragments_vector = ogr.Open(watershed_fragments_vector)
+    fragments_layer = fragments_vector.GetLayer('watershed_fragments')
+    watershed_attributes_layer = fragments_vector.GetLayer('watershed_attributes')
+    fragments_srs = fragments_layer.GetSpatialRef()
+
+    driver = gdal.GetDriverByName('GPKG')
+    watersheds_vector = driver.Create(target_watersheds_vector, 0, 0, 0,
+                                      gdal.GDT_Unknown)
+    watersheds_layer = watersheds_vector.CreateLayer(
+        'watersheds', fragments_srs, ogr.wkbPolygon)
+    for field_defn in watershed_attributes_layer.schema:
+        field_type = field_defn.GetType()
+        if field_type in (ogr.OFTInteger, ogr.OFTReal):
+            field_defn.SetWidth(24)
+        watersheds_layer.CreateField(field_defn)
+
+    upstream_fragments = {}
+    fragments_in_watershed = collections.defaultdict(set)
+    fragment_geometries = {}
+    for feature in fragments_layer:
+        fragment_id = int(feature.GetField('fragment_id'))
+        upstream_fragments_string = feature.GetField('upstream_fragments')
+        if upstream_fragments_string:
+            feature_upstream_fragments = set([
+                int(f) for f in upstream_fragments_string.split(',')])
+        else:
+            feature_upstream_fragments = set([])
+
+        # Every fragment will have member watershed IDs.
+        for member_ws_id in feature.GetField('member_ws_ids').split(','):
+            fragments_in_watershed[int(member_ws_id)].add(fragment_id)
+
+        shapely_geometry = shapely.wkb.loads(
+            feature.GetGeometryRef().ExportToWkb())
+
+        # If the two geometries (fragment_geometries[fragment_id] and shapely_geometry)
+        # do not intersect, ``union`` will return a MultiPolygon.  If they do intersect,
+        # ``union`` will return a Polygon.
+        if fragment_id in fragment_geometries:
+            shapely_geometry = shapely_geometry.union(fragment_geometries[fragment_id])
+            feature_upstream_fragments = feature_upstream_fragments.union(
+                upstream_fragments[fragment_id])
+
+        fragment_geometries[fragment_id] = shapely_geometry
+        upstream_fragments[fragment_id] = feature_upstream_fragments
+
+    # Write compiled fragments to a layer for compiled fragments
+    compiled_fragments_layer = watersheds_vector.CreateLayer(
+        'compiled_fragments', fragments_srs, ogr.wkbMultiPolygon)
+    compiled_fragments_layer.CreateField(
+        ogr.FieldDefn('fragment_id', ogr.OFTInteger))
+    compiled_fragments_layer.StartTransaction()
+    compiled_fragment_ids = set([])  # TODO: just use compiled_fragment_fids keys
+    compiled_fragment_fids = {}  # {fragment_id: FID}
+    for fragment_id in fragment_geometries:
+        if len(upstream_fragments[fragment_id]) > 0:
+            continue
+
+        new_feature = ogr.Feature(compiled_fragments_layer.GetLayerDefn())
+        new_feature.SetField('fragment_id', fragment_id)
+        new_feature.SetGeometry(
+            ogr.CreateGeometryFromWkb(fragment_geometries[fragment_id].wkb))
+        compiled_fragments_layer.CreateFeature(new_feature)
+        compiled_fragment_fids[fragment_id] = new_feature.GetFID()
+        compiled_fragment_ids.add(fragment_id)
+    compiled_fragments_layer.CommitTransaction()
+
+    # Double-check that the committed FIDs match what we expect them to be.
+    for feature in compiled_fragments_layer:
+        fragment_id = feature.GetField('fragment_id')
+        fragment_fid = feature.GetFID()
+        assert compiled_fragment_fids[fragment_id] == fragment_fid
+
+    # Now, recurse over the remaining geometries and compile the results.
+    stack = []
+    stack_set = set([])
+    for fragment_id in (set(fragment_geometries) - compiled_fragment_ids):
+        if fragment_id in compiled_fragment_ids:
+            continue
+
+        for upstream_fragment_id in upstream_fragments[fragment_id]:
+            if upstream_fragment_id in compiled_fragment_ids:
+                continue
+            stack.append(upstream_fragment_id)
+            stack_set.add(upstream_fragment_id)
+
+        compiled_fragments_layer.StartTransaction()
+        while len(stack) > 0:
+            stack_fragment_id = stack.pop()
+            stack_set.remove(stack_fragment_id)
+            print stack_fragment_id
+
+            # base case: this fragment has already been compiled and has geometry
+            # that can be retrieved from ``compiled_fragments_layer``.
+            if stack_fragment_id in compiled_fragment_ids:
+                continue
+
+            # If the geometry has not been compiled, see if it can be compiled
+            # right now.  The geometry can be compiled immediately if all of
+            # the upstream fragments have geometries in the compiled layer.
+            if upstream_fragments[stack_fragment_id] <= compiled_fragment_ids:
+                upstream_geometries = []
+                for upstream_fragment_id in upstream_fragments[stack_fragment_id]:
+                    compiled_fid = compiled_fragment_fids[upstream_fragment_id]
+                    compiled_feature = compiled_fragments_layer.GetFeature(compiled_fid)
+                    compiled_geom = compiled_feature.GetGeometryRef()
+                    shapely_geometry = shapely.wkb.loads(compiled_geom.ExportToWkb())
+                    upstream_geometries.append(shapely_geometry)
+
+                unioned_geometry = shapely.ops.cascaded_union(upstream_geometries)
+
+                compiled_feature = ogr.Feature(compiled_fragments_layer.GetLayerDefn())
+                compiled_feature.SetField('fragment_id', stack_fragment_id)
+                compiled_feature.SetGeometry(
+                    ogr.CreateGeometryFromWkb(unioned_geometry.wkb))
+                compiled_fragments_layer.CreateFeature(compiled_feature)
+                LOGGER.info('Compiled fragment %s', stack_fragment_id)
+
+                compiled_fragment_ids.add(stack_fragment_id)
+                compiled_fragment_fids[stack_fragment_id] = compiled_feature.GetFID()
+            else:
+                # If the geometry cannot be compiled immediately, see which of
+                # its upstream fragments still need compilation and push onto
+                # the stack as needed.
+                if stack_fragment_id not in stack_set:
+                    stack.append(stack_fragment_id)
+                    stack_set.add(stack_fragment_id)
+
+                for upstream_fragment_id in upstream_fragments[stack_fragment_id]:
+                    if upstream_fragment_id in compiled_fragment_ids:
+                        continue
+
+                    if upstream_fragment_id not in stack_set:
+                        stack.append(upstream_fragment_id)
+                        stack_set.add(upstream_fragment_id)
+
+        compiled_fragments_layer.CommitTransaction()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 def join_watershed_fragments_new(watershed_fragments_vector,
                                  target_watersheds_vector):
     """Join watershed fragments by their IDs.
