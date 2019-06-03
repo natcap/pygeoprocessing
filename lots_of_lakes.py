@@ -90,7 +90,7 @@ def _load_geometries(vector_path, layer_name=None):
     for feature in layer:
         ogr_geom = feature.GetGeometryRef()
         shapely_geom = shapely.wkb.loads(ogr_geom.ExportToWkb())
-        geometries[shapely_geom.bounds] = (feature.GetFID(), shapely_geom)
+        geometries[tuple(sorted(feature.items().keys()))] = (feature.GetFID(), shapely_geom)
 
     return geometries
 
@@ -104,14 +104,16 @@ def compare_trivial_to_joined(trivial_watersheds_path, joined_fragments_path):
     n_missing = 0
     n_geoms_not_matched = 0
 
-    for bounds, (fid, geom) in trivial_geometries.items():
-        if bounds not in joined_geometries:
+    for keys, (fid, geom) in trivial_geometries.items():
+        if keys not in joined_geometries:
             print "Trivial FID %s not found in joined" % fid
             n_missing += 1
             continue
 
         joined_fid, joined_geom = joined_geometries[bounds]
         if not (joined_geom.difference(geom).area == 0 and
+                geom.difference(joined_geom).area == 0 and
+                geom.union(joined_geom).area == geom.area and
                 joined_geom.union(geom).area == geom.area):
             print "Trivial FID %s geom does not match joined FID %s" % (
                 fid, joined_fid)
@@ -186,7 +188,7 @@ def doit():
             os.path.join(workspace, 'watershed_delineation*')))[-1], 'scratch_raster.tif'))
 
     with time_it('joining watershed fragments'):
-        pygeoprocessing.routing.join_watershed_fragments_new(
+        pygeoprocessing.routing.join_watershed_fragments_stack(
                 fragments_path, joined_fragments)
 
     compare_trivial_to_joined(
