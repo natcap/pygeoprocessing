@@ -1179,7 +1179,17 @@ def delineate_watersheds_d8(
                             process_queue.push(neighbor_pixel)
                             process_queue_set.insert(neighbor_pixel)
 
-            nested_fragments[seed_id] = nested_fragment_ids
+            # Since multiple seeds can have the same ID, join we need to join
+            # the nested fragments sets.
+            if nested_fragments.find(seed_id) != nested_fragments.end():
+                nested_fragment_iterator = nested_fragment_ids.begin()
+                while nested_fragment_iterator != nested_fragment_ids.end():
+                    nested_fragment_id = deref(nested_fragment_iterator)
+                    inc(nested_fragment_iterator)
+                    nested_fragments[seed_id].insert(nested_fragment_id)
+            else:
+                nested_fragments[seed_id] = nested_fragment_ids
+
     scratch_managed_raster.close()  # flush the scratch raster.
     flow_dir_managed_raster.close()  # don't need this any longer.
 
