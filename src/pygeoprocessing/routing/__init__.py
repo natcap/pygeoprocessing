@@ -71,8 +71,9 @@ def join_watershed_fragments_stack(watershed_fragments_vector,
     driver = gdal.GetDriverByName('GPKG')
     watersheds_vector = driver.Create(target_watersheds_vector, 0, 0, 0,
                                       gdal.GDT_Unknown)
+    # ogr.wkbUnknown allows both polygons and multipolygons
     watersheds_layer = watersheds_vector.CreateLayer(
-        'watersheds', fragments_srs, ogr.wkbPolygon)
+        'watersheds', fragments_srs, ogr.wkbUnknown)
     for field_defn in watershed_attributes_layer.schema:
         # ``outflow_feature_id`` not needed in the final watersheds.
         if field_defn.GetName() == 'outflow_feature_id':
@@ -115,8 +116,9 @@ def join_watershed_fragments_stack(watershed_fragments_vector,
         upstream_fragments[fragment_id] = feature_upstream_fragments
 
     # Write compiled fragments to a layer for compiled fragments
+    # ogr.wkbUnknown supports both polygons and multipolygons.
     compiled_fragments_layer = watersheds_vector.CreateLayer(
-        'compiled_fragments', fragments_srs, ogr.wkbMultiPolygon)
+        'compiled_fragments', fragments_srs, ogr.wkbUnknown)
     compiled_fragments_layer.CreateField(
         ogr.FieldDefn('fragment_id', ogr.OFTInteger))
     compiled_fragments_layer.StartTransaction()

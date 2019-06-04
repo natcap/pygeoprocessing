@@ -560,8 +560,11 @@ def split_vector_into_seeds(
     temp_polygons_vector_path = os.path.join(working_dir_path, 'temp_polygons.gpkg')
     temp_polygons_vector = gpkg_driver.Create(
         temp_polygons_vector_path, 0, 0, 0, gdal.GDT_Unknown)
+
+    # Using datatype unknown because a buffered point layer will create a
+    # Polygon.  Better to just have it be unknown and handle any geometry type.
     temp_polygons_layer = temp_polygons_vector.CreateLayer(
-        'outlet_geometries', flow_dir_srs, source_layer.GetGeomType())
+        'outlet_geometries', flow_dir_srs, ogr.wkbUnknown)
     temp_polygons_layer.CreateField(ogr.FieldDefn('WSID', ogr.OFTInteger))
 
     seed_id = start_index  # assume Seed IDs can be from (2 - 2**32-1) inclusive in UInt32
