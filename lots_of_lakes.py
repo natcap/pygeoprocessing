@@ -104,9 +104,13 @@ def compare_trivial_to_joined(trivial_watersheds_path, joined_fragments_path):
     n_missing = 0
     n_geoms_not_matched = 0
 
+    trivial_filename = os.path.basename(trivial_watersheds_path)
+    joined_filename = os.path.basename(joined_fragments_path)
+
     for keys, (fid, geom) in trivial_geometries.items():
         if keys not in joined_geometries:
-            print "Trivial FID %s not found in joined" % fid
+            print "%s FID %s not found in %s" % (
+                trivial_filename, fid, joined_filename)
             n_missing += 1
             continue
 
@@ -115,8 +119,8 @@ def compare_trivial_to_joined(trivial_watersheds_path, joined_fragments_path):
                 geom.difference(joined_geom).area == 0 and
                 geom.union(joined_geom).area == geom.area and
                 joined_geom.union(geom).area == geom.area):
-            print "Trivial FID %s geom does not match joined FID %s" % (
-                fid, joined_fid)
+            print "%s FID %s geom does not match %s FID %s" % (
+                trivial_filename, fid, joined_fid, joined_filename)
             n_geoms_not_matched += 1
             continue
 
