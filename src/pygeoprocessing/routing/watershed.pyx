@@ -641,7 +641,7 @@ def split_vector_into_seeds(
             disjoint_vector = gpkg_driver.Create(disjoint_vector_path, 0, 0, 0,
                                                  gdal.GDT_Unknown)
             disjoint_layer = disjoint_vector.CreateLayer(
-                'outflow_geometries', flow_dir_srs, ogr.wkbPolygon)
+                'outflow_geometries', flow_dir_srs, source_layer.GetGeomType())
             disjoint_layer.CreateFields(temp_polygons_schema)
 
             disjoint_layer.StartTransaction()
@@ -702,7 +702,6 @@ def split_vector_into_seeds(
             tmp_seed_raster = None
             flow_dir_band = None
             flow_dir_raster = None
-
 
     if write_diagnostic_vector:
         diagnostic_vector = gpkg_driver.Create(
