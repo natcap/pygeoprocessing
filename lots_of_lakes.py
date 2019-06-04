@@ -193,6 +193,8 @@ def doit():
 
     compare_trivial_to_joined(
         trivial_watersheds, joined_fragments)
+    compare_trivial_to_joined(
+        joined_fragments, trivial_watersheds)
 
     handler.close()
     root_logger.removeHandler(handler)
