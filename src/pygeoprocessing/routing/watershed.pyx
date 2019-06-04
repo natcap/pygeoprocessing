@@ -1526,7 +1526,7 @@ def _is_raster_path_band_formatted(raster_path_band):
 def split_vector_into_seeds(
         source_vector_path, d8_flow_dir_raster_path_band,
         source_vector_layer=None, working_dir=None, remove=True,
-        write_diagnostic_vector=False):
+        write_diagnostic_vector=False, start_index=0):
     """Analyze the source vector and break all geometries into seeds.
 
     For D8 watershed delination, ``seeds`` represent (x, y) pixel coordinates
@@ -1645,7 +1645,7 @@ def split_vector_into_seeds(
         'outlet_geometries', flow_dir_srs, source_layer.GetGeomType())
     temp_polygons_layer.CreateField(ogr.FieldDefn('WSID', ogr.OFTInteger))
 
-    seed_id = 0  # assume Seed IDs can be from (2 - 2**32-1) inclusive in UInt32
+    seed_id = start_index  # assume Seed IDs can be from (2 - 2**32-1) inclusive in UInt32
     temp_polygons_layer.StartTransaction()
     for feature in source_layer:
         if seed_id > 2**32-1:
@@ -2478,105 +2478,39 @@ def delineate_watersheds_trivial_d8(
     #polygons_layer = watersheds_vector.CreateLayer(
     #    'polygons', watersheds_srs, ogr.wkbPolygon)
 
-    source_outlets_layer = source_outlets_vector.GetLayer()
-    feature_count = source_outlets_layer.GetFeatureCount()
+    seeds = split_vector_into_seeds(
+        outflow_vector_path, d8_flow_dir_raster_path_band,
+        working_dir=working_dir_path, remove=False, start_index=1)
+
+    seeds_in_ws_id = collections.defaultdict(set)
+    for seed_tuple, ws_id_set in seeds.items():
+        for ws_id in ws_id_set:
+            seeds_in_ws_id[ws_id].add(seed_tuple)
+
+    seeds_in_ws_id = dict(seeds_in_ws_id)
+
+    feature_count = len(seeds_in_ws_id)
+
     cdef int* reverse_flow = [4, 5, 6, 7, 0, 1, 2, 3]
     cdef int* neighbor_col = [1, 1, 0, -1, -1, -1, 0, 1]
     cdef int* neighbor_row = [0, -1, -1, -1, 0, 1, 1, 1]
-    cdef double minx, miny, maxx, maxy
-    cdef double cx_pixel, cy_pixel  # coordinates of the pixel
-    cdef long ix_pixel, iy_pixel  # indexes of the pixel
     cdef queue[CoordinatePair] process_queue
     cdef cset[CoordinatePair] process_queue_set
-    cdef CoordinatePair pixel_coords, neighbor_pixel
-    ws_id_to_fid = {}
-    for ws_id, feature in enumerate(source_outlets_layer, 1):
-        geometry = feature.GetGeometryRef()
-        minx, maxx, miny, maxy = geometry.GetEnvelope()
-        geom_bbox = shapely.geometry.box(minx, miny, maxx, maxy)
-
-        # If the geometry's envelope does not intersect with the bounding box
-        # of the DEM, skip the geometry entirely.
-        if not flow_dir_bbox.intersects(geom_bbox):
-            LOGGER.info(
-                'Skipping watershed %s of %s; feature does not intersect '
-                'flow direction raster', ws_id, feature_count)
-            continue
-
-        #bbox_feature = ogr.Feature(polygons_layer.GetLayerDefn())
-        #bbox_feature.SetGeometry(ogr.CreateGeometryFromWkb(geom_bbox.wkb))
-        #polygons_layer.CreateFeature(bbox_feature)
-
-        # Otherwise:
-        # Build a shapely prepared polygon of the feature's geometry.
-        geom_prepared = shapely.prepared.prep(shapely.wkb.loads(geometry.ExportToWkb()))
-
-        # Expand the bounding box to align with the nearest pixels.
-        minx = min(minx, minx - fmod(minx, flow_dir_pixelsize_x))
-        miny = min(miny, miny + fmod(miny, fabs(flow_dir_pixelsize_y)))
-        maxx = max(maxx, maxx - fmod(maxx, flow_dir_pixelsize_x) + flow_dir_pixelsize_x)
-        maxy = max(maxy, maxy + fmod(maxy, fabs(flow_dir_pixelsize_y)) + fabs(flow_dir_pixelsize_y))
-
-        #bbox_geometry = shapely.geometry.box(minx, miny, maxx, maxy)
-        #bbox_feature = ogr.Feature(polygons_layer.GetLayerDefn())
-        #bbox_feature.SetGeometry(ogr.CreateGeometryFromWkb(bbox_geometry.wkb))
-        #polygons_layer.CreateFeature(bbox_feature)
-
-        scratch_managed_raster = _ManagedRaster(scratch_raster_path, 1, 1)
-
-        # Use the DEM's geotransform to determine the starting coordinates for iterating
-        # over the pixels within the area of the envelope.
-        #polygons_layer.StartTransaction()
-
-        # this needs to be over the pixel directly, lest the coordinates are off-by-one.
-        cx_pixel = minx + (flow_dir_pixelsize_x / 2.)
-        while cx_pixel < maxx:
-            ix_pixel = <long>((cx_pixel - flow_dir_origin_x) // flow_dir_pixelsize_x)
-
-            cy_pixel = maxy
-            while cy_pixel > miny:
-                iy_pixel = <long>((cy_pixel - flow_dir_origin_y) // flow_dir_pixelsize_y)
-
-                pixel_geometry = shapely.geometry.box(cx_pixel,
-                                                      cy_pixel + flow_dir_pixelsize_y,
-                                                      cx_pixel + flow_dir_pixelsize_x,
-                                                      cy_pixel)
-                cy_pixel += flow_dir_pixelsize_y
-
-                if not geom_prepared.intersects(pixel_geometry):
-                    continue
-
-                if not 0 <= ix_pixel < flow_dir_n_cols:
-                    continue
-
-                if not 0 <= iy_pixel < flow_dir_n_rows:
-                    continue
-
-                if flow_dir_managed_raster.get(ix_pixel, iy_pixel) == flow_dir_nodata:
-                    continue
-
-                pixel_coords = CoordinatePair(ix_pixel, iy_pixel)
-
-                process_queue_set.insert(pixel_coords)
-                process_queue.push(pixel_coords)
-
-                #pixel_feature = ogr.Feature(polygons_layer.GetLayerDefn())
-                #pixel_feature.SetGeometry(ogr.CreateGeometryFromWkb(pixel_geometry.wkb))
-                #polygons_layer.CreateFeature(pixel_feature)
-
-            cx_pixel += flow_dir_pixelsize_x
-
-        #polygons_layer.CommitTransaction()
-
-        if process_queue.size() == 0:
-            LOGGER.info('Skipping watershed %s of %s; feature has no valid pixels',
+    cdef CoordinatePair pixel_coords, neighbor_pixel, seed
+    for ws_id, seeds_in_outlet in sorted(seeds_in_ws_id.items(), key=lambda x: x[0]):
+        if len(seeds_in_outlet) == 0:
+            LOGGER.info('Skipping watershed %s of %s, no valid seeds found.',
                         ws_id, feature_count)
-            continue
+
+        for seed_tuple in seeds_in_outlet:
+            seed = CoordinatePair(seed_tuple[0], seed_tuple[1])
+            process_queue.push(seed)
+            process_queue_set.insert(seed)
 
         LOGGER.info('Delineating watershed %s of %s from %s pixels', ws_id,
                     feature_count, process_queue.size())
-        ws_id_to_fid[ws_id] = feature.GetFID()
 
+        scratch_managed_raster = _ManagedRaster(scratch_raster_path, 1, 1)
         while not process_queue.empty():
             current_pixel = process_queue.front()
             process_queue_set.erase(current_pixel)
@@ -2623,7 +2557,6 @@ def delineate_watersheds_trivial_d8(
             0,  # ws_id field index
             ['8CONNECTED=8'])
 
-        # TODO: copy all of the fields over from the source vector.
         scratch_band.Fill(0)  # reset the scratch band
         scratch_band.FlushCache()
         scratch_band = None
@@ -2647,7 +2580,8 @@ def delineate_watersheds_trivial_d8(
     for watershed_feature in watersheds_layer:
         ws_id = watershed_feature.GetField('ws_id')
 
-        source_feature = source_layer.GetFeature(ws_id_to_fid[ws_id])
+        # The FID of the source feature is the WS_ID minus 1
+        source_feature = source_layer.GetFeature(ws_id-1)
         for field_name, field_value in source_feature.items().items():
             watershed_feature.SetField(field_name, field_value)
         watersheds_layer.SetFeature(watershed_feature)
