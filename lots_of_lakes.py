@@ -167,6 +167,8 @@ def doit():
     fragments_path = os.path.join(workspace, 'fragments.gpkg')
     joined_fragments = os.path.join(workspace, 'joined_fragments.gpkg')
     trivial_watersheds = os.path.join(workspace, 'watersheds_trivial.gpkg')
+    trivial_burned = os.path.join(workspace, 'watersheds_trivial_count.tif')
+    joined_burned = os.path.join(workspace, 'joined_fragments_count.tif')
 
     #with time_it('Filling pits'):
     #    pygeoprocessing.routing.fill_pits((dem, 1), filled_dem)
@@ -194,6 +196,18 @@ def doit():
     with time_it('joining watershed fragments'):
         pygeoprocessing.routing.join_watershed_fragments_stack(
                 fragments_path, joined_fragments)
+
+    pygeoprocessing.new_raster_from_base(
+        filled_dem, trivial_burned, gdal.GDT_UInt32, [0], fill_value_list=[0])
+    pygeoprocessing.rasterize(
+        trivial_watersheds, trivial_burned, burn_values=[1],
+        option_list=['MERGE_ALG=ADD'])
+
+    pygeoprocessing.new_raster_from_base(
+        filled_dem, joined_burned, gdal.GDT_UInt32, [0], fill_value_list=[0])
+    pygeoprocessing.rasterize(
+        joined_fragments, joined_burned, burn_values=[1],
+        option_list=['MERGE_ALG=ADD'])
 
     compare_trivial_to_joined(
         trivial_watersheds, joined_fragments)
