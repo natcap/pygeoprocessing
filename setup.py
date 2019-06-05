@@ -1,5 +1,4 @@
 """setup.py module for PyGeoprocessing."""
-import numpy
 from setuptools.extension import Extension
 from setuptools import setup
 
@@ -57,7 +56,7 @@ setup(
             name="pygeoprocessing.routing.routing",
             sources=["src/pygeoprocessing/routing/routing.pyx"],
             include_dirs=[
-                numpy.get_include(),
+                'numpy',
                 'src/pygeoprocessing/routing'],
             language="c++",
         ),
@@ -65,7 +64,7 @@ setup(
             name="pygeoprocessing.geoprocessing_core",
             sources=[
                 'src/pygeoprocessing/geoprocessing_core.pyx'],
-            include_dirs=[numpy.get_include()],
+            include_dirs=['numpy'],
             language="c++")
         ],
 )
