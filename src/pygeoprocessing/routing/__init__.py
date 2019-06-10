@@ -87,6 +87,7 @@ def join_watershed_fragments_stack(watershed_fragments_vector,
     upstream_fragments = {}
     fragments_in_watershed = collections.defaultdict(set)
     fragment_geometries = {}
+    LOGGER.info('Loading fragments')
     for feature in fragments_layer:
         fragment_id = int(feature.GetField('fragment_id'))
         upstream_fragments_string = feature.GetField('upstream_fragments')
@@ -146,27 +147,31 @@ def join_watershed_fragments_stack(watershed_fragments_vector,
     # Now, recurse over the remaining geometries and compile the results.
     stack = []
     stack_set = set([])
-    for fragment_id in (set(fragment_geometries) - compiled_fragment_ids):
+    last_time = time.time()
+    LOGGER.info('Compiling flow-contiguous fragments')
+    for fragment_id in sorted(
+            set(fragment_geometries) - compiled_fragment_ids,
+            key=lambda fid: len(upstream_fragments[fid])):  # Deal with far-upstream fragments first.
         if fragment_id in compiled_fragment_ids:
             continue
 
         stack.append(fragment_id)
         stack_set.add(fragment_id)
 
-        for upstream_fragment_id in upstream_fragments[fragment_id]:
-            if upstream_fragment_id in compiled_fragment_ids:
-                continue
-
-            if upstream_fragment_id == fragment_id:
-                continue
-
-            stack.append(upstream_fragment_id)
-            stack_set.add(upstream_fragment_id)
-
         compiled_fragments_layer.StartTransaction()
+        visited = set([])
         while len(stack) > 0:
             stack_fragment_id = stack.pop()
             stack_set.remove(stack_fragment_id)
+            visited.add(stack_fragment_id)
+
+            if time.time() - last_time > 5.0:
+                last_time = time.time()
+                print stack_fragment_id, fragment_id
+                LOGGER.info(
+                    'Joined %s of %s fragments',
+                    compiled_fragments_layer.GetFeatureCount(),
+                    len(fragment_geometries))
 
             # base case: this fragment has already been compiled and has geometry
             # that can be retrieved from ``compiled_fragments_layer``.
@@ -192,6 +197,13 @@ def join_watershed_fragments_stack(watershed_fragments_vector,
                 # return valid geometries.
                 unioned_geometry = shapely.ops.cascaded_union(upstream_geometries).buffer(0)
 
+                if time.time() - last_time > 5.0:
+                    last_time = time.time()
+                    LOGGER.info(
+                        'Joined %s of %s fragments',
+                        compiled_fragments_layer.GetFeatureCount(),
+                        len(fragment_geometries))
+
                 compiled_feature = ogr.Feature(compiled_fragments_layer.GetLayerDefn())
                 compiled_feature.SetField('fragment_id', stack_fragment_id)
                 compiled_feature.SetGeometry(
@@ -204,11 +216,14 @@ def join_watershed_fragments_stack(watershed_fragments_vector,
                 # If the geometry cannot be compiled immediately, see which of
                 # its upstream fragments still need compilation and push onto
                 # the stack as needed.
-                if stack_fragment_id not in stack_set:
+                if stack_fragment_id not in stack_set and stack_fragment_id not in visited:
                     stack.append(stack_fragment_id)
                     stack_set.add(stack_fragment_id)
 
                 for upstream_fragment_id in upstream_fragments[stack_fragment_id]:
+                    if upstream_fragment_id in visited:
+                        continue
+
                     if upstream_fragment_id in compiled_fragment_ids:
                         continue
 
@@ -222,6 +237,7 @@ def join_watershed_fragments_stack(watershed_fragments_vector,
     # by their watersheds.
     # Before we do this, we need to load up the attributes so we can index them by
     # their watershed ID (represented by the ``outflow_feature_id`` column)
+    LOGGER.info('Joining fragments into watersheds')
     attributes_by_ws_id = {}
     for feature in watershed_attributes_layer:
         ws_id = feature.GetField('outflow_feature_id')
@@ -231,10 +247,13 @@ def join_watershed_fragments_stack(watershed_fragments_vector,
     for ws_id, member_fragments in fragments_in_watershed.items():
         member_geometries = []
         for fragment_id in member_fragments:
-            compiled_fid = compiled_fragment_fids[fragment_id]
-            compiled_feature = compiled_fragments_layer.GetFeature(compiled_fid)
-            compiled_geom = compiled_feature.GetGeometryRef()
-            shapely_geometry = shapely.wkb.loads(compiled_geom.ExportToWkb()).buffer(0)
+            try:
+                compiled_fid = compiled_fragment_fids[fragment_id]
+                compiled_feature = compiled_fragments_layer.GetFeature(compiled_fid)
+                compiled_geom = compiled_feature.GetGeometryRef()
+                shapely_geometry = shapely.wkb.loads(compiled_geom.ExportToWkb()).buffer(0)
+            except KeyError:
+                shapely_geometry = fragment_geometries[fragment_id]
             member_geometries.append(shapely_geometry)
 
         # Cascaded_union does not always return valid geometries.
