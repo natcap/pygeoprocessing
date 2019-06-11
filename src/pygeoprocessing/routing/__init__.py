@@ -144,93 +144,66 @@ def join_watershed_fragments_stack(watershed_fragments_vector,
         fragment_fid = feature.GetFID()
         assert compiled_fragment_fids[fragment_id] == fragment_fid
 
-    # Now, recurse over the remaining geometries and compile the results.
-    stack = []
-    stack_set = set([])
-    last_time = time.time()
+    def _load_fragment(fragment_id):
+        compiled_fid = compiled_fragment_fids[fragment_id]
+        compiled_feature = compiled_fragments_layer.GetFeature(compiled_fid)
+        compiled_geom = compiled_feature.GetGeometryRef()
+        shapely_geometry = shapely.wkb.loads(
+            compiled_geom.ExportToWkb()).buffer(0)
+        return shapely_geometry
+
+    def _write_fragment(fragment_id, geometry_list):
+        unioned_geometry = shapely.ops.cascaded_union(geometry_list).buffer(0)
+
+        compiled_feature = ogr.Feature(compiled_fragments_layer.GetLayerDefn())
+        compiled_feature.SetField('fragment_id', fragment_id)
+        compiled_feature.SetGeometry(
+            ogr.CreateGeometryFromWkb(unioned_geometry.wkb))
+        compiled_fragments_layer.CreateFeature(compiled_feature)
+        compiled_fragment_fids[fragment_id] = compiled_feature.GetFID()
+        compiled_fragment_ids.add(fragment_id)
+
+    # Now, iterate over all of the fragments and compile them into
+    # flow-contiguous fragments by recursing upstream.
     LOGGER.info('Compiling flow-contiguous fragments')
-    for fragment_id in sorted(
-            set(fragment_geometries) - compiled_fragment_ids,
-            key=lambda fid: len(upstream_fragments[fid])):  # Deal with far-upstream fragments first.
+    last_time = time.time()
+    for fragment_id in fragment_geometries:
+        # If the fragment has already been compiled, no need to recompile.
         if fragment_id in compiled_fragment_ids:
             continue
 
-        stack.append(fragment_id)
-        stack_set.add(fragment_id)
+        fragment_ids_encountered = set([fragment_id])
+        fragment_geometry_list = [fragment_geometries[fragment_id]]
 
+        stack = [fragment_id]
+        stack_set = set([fragment_id])
         compiled_fragments_layer.StartTransaction()
-        visited = set([])
         while len(stack) > 0:
+            if time.time() - last_time > 5.0:
+                LOGGER.info('%s complete so far',
+                            compiled_fragments_layer.GetFeatureCount())
+                last_time = time.time()
+
             stack_fragment_id = stack.pop()
             stack_set.remove(stack_fragment_id)
-            visited.add(stack_fragment_id)
+            fragment_ids_encountered.add(stack_fragment_id)
 
-            if time.time() - last_time > 5.0:
-                last_time = time.time()
-                print stack_fragment_id, fragment_id
-                LOGGER.info(
-                    'Joined %s of %s fragments',
-                    compiled_fragments_layer.GetFeatureCount(),
-                    len(fragment_geometries))
+            fragment_geometry_list.append(
+                fragment_geometries[stack_fragment_id])
 
-            # base case: this fragment has already been compiled and has geometry
-            # that can be retrieved from ``compiled_fragments_layer``.
-            if stack_fragment_id in compiled_fragment_ids:
-                continue
+            for upstream_fragment_id in upstream_fragments[stack_fragment_id]:
+                if upstream_fragment_id in fragment_ids_encountered:
+                    continue
 
-            # If the geometry has not been compiled, see if it can be compiled
-            # right now.  The geometry can be compiled immediately if all of
-            # the upstream fragments have geometries in the compiled layer.
-            if upstream_fragments[stack_fragment_id] <= compiled_fragment_ids:
-                upstream_geometries = []
-                for upstream_fragment_id in upstream_fragments[stack_fragment_id]:
-                    compiled_fid = compiled_fragment_fids[upstream_fragment_id]
-                    compiled_feature = compiled_fragments_layer.GetFeature(compiled_fid)
-                    compiled_geom = compiled_feature.GetGeometryRef()
-                    shapely_geometry = shapely.wkb.loads(compiled_geom.ExportToWkb()).buffer(0)
-                    upstream_geometries.append(shapely_geometry)
+                if upstream_fragment_id in stack_set:
+                    continue
 
-                # Add the current geometry to the list as well.
-                upstream_geometries.append(fragment_geometries[stack_fragment_id])
+                fragment_geometry_list.append(
+                    fragment_geometries[upstream_fragment_id])
+                stack.append(upstream_fragment_id)
+                stack_set.add(upstream_fragment_id)
 
-                # Buffer by 0 is needed because cascaded_union does not always
-                # return valid geometries.
-                unioned_geometry = shapely.ops.cascaded_union(upstream_geometries).buffer(0)
-
-                if time.time() - last_time > 5.0:
-                    last_time = time.time()
-                    LOGGER.info(
-                        'Joined %s of %s fragments',
-                        compiled_fragments_layer.GetFeatureCount(),
-                        len(fragment_geometries))
-
-                compiled_feature = ogr.Feature(compiled_fragments_layer.GetLayerDefn())
-                compiled_feature.SetField('fragment_id', stack_fragment_id)
-                compiled_feature.SetGeometry(
-                    ogr.CreateGeometryFromWkb(unioned_geometry.wkb))
-                compiled_fragments_layer.CreateFeature(compiled_feature)
-
-                compiled_fragment_ids.add(stack_fragment_id)
-                compiled_fragment_fids[stack_fragment_id] = compiled_feature.GetFID()
-            else:
-                # If the geometry cannot be compiled immediately, see which of
-                # its upstream fragments still need compilation and push onto
-                # the stack as needed.
-                if stack_fragment_id not in stack_set and stack_fragment_id not in visited:
-                    stack.append(stack_fragment_id)
-                    stack_set.add(stack_fragment_id)
-
-                for upstream_fragment_id in upstream_fragments[stack_fragment_id]:
-                    if upstream_fragment_id in visited:
-                        continue
-
-                    if upstream_fragment_id in compiled_fragment_ids:
-                        continue
-
-                    if upstream_fragment_id not in stack_set:
-                        stack.append(upstream_fragment_id)
-                        stack_set.add(upstream_fragment_id)
-
+        _write_fragment(fragment_id, fragment_geometry_list)
         compiled_fragments_layer.CommitTransaction()
 
     # Having compiled individual fragments, we can now join together fragments
