@@ -220,14 +220,7 @@ def join_watershed_fragments_stack(watershed_fragments_vector,
     for ws_id, member_fragments in fragments_in_watershed.items():
         member_geometries = []
         for fragment_id in member_fragments:
-            try:
-                compiled_fid = compiled_fragment_fids[fragment_id]
-                compiled_feature = compiled_fragments_layer.GetFeature(compiled_fid)
-                compiled_geom = compiled_feature.GetGeometryRef()
-                shapely_geometry = shapely.wkb.loads(compiled_geom.ExportToWkb()).buffer(0)
-            except KeyError:
-                shapely_geometry = fragment_geometries[fragment_id]
-            member_geometries.append(shapely_geometry)
+            member_geometries.append(_load_fragment(fragment_id))
 
         # Cascaded_union does not always return valid geometries.
         unioned_geometry = shapely.ops.cascaded_union(member_geometries).buffer(0)
