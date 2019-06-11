@@ -7,6 +7,7 @@ import cProfile
 import StringIO
 import pstats
 import glob
+import warnings
 
 logging.basicConfig(level=logging.INFO)
 LOGGER = logging.getLogger(__name__)
@@ -15,6 +16,7 @@ import shapely
 import shapely.wkb
 import shapely.geometry
 from osgeo import gdal
+from osgeo import ogr
 import numpy
 
 import pygeoprocessing
@@ -92,7 +94,12 @@ def _load_geometries(vector_path, layer_name=None):
     for feature in layer:
         ogr_geom = feature.GetGeometryRef()
         shapely_geom = shapely.wkb.loads(ogr_geom.ExportToWkb())
-        geometries[tuple(sorted(feature.items().keys()))] = (feature.GetFID(), shapely_geom)
+        key = feature.GetField('__ID__')
+        if key in geometries:
+            warnings.warn('Duplicate key from FID %s' % feature.GetFID())
+        geometries[key] = (feature.GetFID(), shapely_geom)
+
+    print 'n_features in', os.path.basename(vector_path), layer.GetFeatureCount()
 
     return geometries
 
@@ -109,20 +116,20 @@ def compare_trivial_to_joined(trivial_watersheds_path, joined_fragments_path):
     trivial_filename = os.path.basename(trivial_watersheds_path)
     joined_filename = os.path.basename(joined_fragments_path)
 
-    for keys, (fid, geom) in trivial_geometries.items():
-        if keys not in joined_geometries:
-            print "%s FID %s not found in %s" % (
-                trivial_filename, fid, joined_filename)
+    for id_key, (fid, geom) in trivial_geometries.items():
+        if id_key not in joined_geometries:
+            print "%s __ID__ %s not found in %s" % (
+                trivial_filename, id_key, joined_filename)
             n_missing += 1
             continue
 
-        joined_fid, joined_geom = joined_geometries[bounds]
+        joined_fid, joined_geom = joined_geometries[id_key]
         if not (joined_geom.difference(geom).area == 0 and
                 geom.difference(joined_geom).area == 0 and
                 geom.union(joined_geom).area == geom.area and
                 joined_geom.union(geom).area == geom.area):
-            print "%s FID %s geom does not match %s FID %s" % (
-                trivial_filename, fid, joined_fid, joined_filename)
+            print "%s __ID__ %s geom does not match %s __ID__ %s" % (
+                trivial_filename, id_key, joined_filename, id_key)
             n_geoms_not_matched += 1
             continue
 
@@ -149,6 +156,27 @@ def subtract_counts(matrix_a, matrix_b):
     return output
 
 
+def identify_features(in_vector_path, out_vector_path):
+    gpkg_driver = gdal.GetDriverByName('GPKG')
+    old_vector = gdal.OpenEx(in_vector_path)
+    old_layer = old_vector.GetLayer()
+    new_vector = gpkg_driver.Create(out_vector_path, 0, 0, 0, gdal.GDT_Unknown)
+    new_layer = new_vector.CreateLayer(
+        'identified_features', old_layer.GetSpatialRef(),
+        old_layer.GetGeomType())
+
+    new_layer.CreateFields(old_layer.schema)
+    new_layer.CreateField(ogr.FieldDefn('__ID__', ogr.OFTInteger))
+
+    for new_id, feature in enumerate(old_layer):
+        new_feature = ogr.Feature(new_layer.GetLayerDefn())
+        new_feature.SetGeometry(feature.GetGeometryRef())
+        new_feature.SetField('__ID__', new_id)
+        for field_name, field_value in feature.items().items():
+            new_feature.SetField(field_name, field_value)
+        new_layer.CreateFeature(new_feature)
+
+
 def doit():
     handler = logging.FileHandler('latest-logfile.txt', 'w', encoding='UTF-8')
     formatter = logging.Formatter(
@@ -173,6 +201,7 @@ def doit():
     if not os.path.exists(workspace):
         os.makedirs(workspace)
 
+    identified_features = os.path.join(workspace, 'identified_features.gpkg')
     filled_dem = os.path.join(workspace, 'filled_dem.tif')
     flow_dir = os.path.join(workspace, 'flow_dir_d8.tif')
     fragments_path = os.path.join(workspace, 'fragments.gpkg')
@@ -186,36 +215,46 @@ def doit():
         os.path.join(workspace, 'tg_workers'), n_workers=2,
         reporting_interval=10.0)
 
+    identified_features_task = task_graph.add_task(
+        identify_features,
+        args=(lakes, identified_features),
+        target_path_list=[identified_features],
+        task_name='identify_features')
+
     filled_pits_task = task_graph.add_task(
         pygeoprocessing.routing.fill_pits,
         args=((dem, 1), filled_dem),
-        target_path_list=[filled_dem])
+        target_path_list=[filled_dem],
+        task_name='fill_pits')
 
     d8_flow_dir_task = task_graph.add_task(
         pygeoprocessing.routing.flow_dir_d8,
         args=((filled_dem, 1), flow_dir, workspace),
         target_path_list=[flow_dir],
-        dependent_task_list=[filled_pits_task])
+        dependent_task_list=[filled_pits_task],
+        task_name='flow_dir')
 
     new_delineation_task = task_graph.add_task(
         pygeoprocessing.routing.delineate_watersheds_d8,
-        args=((flow_dir, 1), lakes, fragments_path, workspace),
+        args=((flow_dir, 1), identified_features, fragments_path, workspace),
         target_path_list=[fragments_path],
-        dependent_task_list=[d8_flow_dir_task])
+        dependent_task_list=[d8_flow_dir_task, identified_features_task],
+        task_name='new_delineation')
 
     joining_task = task_graph.add_task(
         pygeoprocessing.routing.join_watershed_fragments_stack,
         args=(fragments_path, joined_fragments),
         target_path_list=[joined_fragments],
-        dependent_task_list=[new_delineation_task])
-
+        dependent_task_list=[new_delineation_task],
+        task_name='new_delineation_join')
 
     trivial_delineation_task = task_graph.add_task(
         pygeoprocessing.routing.delineate_watersheds_trivial_d8,
-        args=((flow_dir, 1), lakes, trivial_watersheds),
+        args=((flow_dir, 1), identified_features, trivial_watersheds),
         kwargs={'working_dir': workspace},
         target_path_list=[trivial_watersheds],
-        dependent_task_list=[d8_flow_dir_task])
+        dependent_task_list=[d8_flow_dir_task, identified_features_task],
+        task_name='trivial_delineation')
 
     task_graph.close()
     task_graph.join()
