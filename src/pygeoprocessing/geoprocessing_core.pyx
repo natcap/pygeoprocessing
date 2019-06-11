@@ -21,7 +21,7 @@ from osgeo import gdal
 import pygeoprocessing
 
 DEFAULT_GTIFF_CREATION_OPTIONS = (
-    'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=DEFLATE',
+    'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=ZSTD',
     'BLOCKXSIZE=256', 'BLOCKYSIZE=256')
 LOGGER = logging.getLogger('pygeoprocessing.geoprocessing_core')
 
