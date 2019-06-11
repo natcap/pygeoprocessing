@@ -188,20 +188,23 @@ def join_watershed_fragments_stack(watershed_fragments_vector,
             stack_set.remove(stack_fragment_id)
             fragment_ids_encountered.add(stack_fragment_id)
 
-            fragment_geometry_list.append(
-                fragment_geometries[stack_fragment_id])
-
-            for upstream_fragment_id in upstream_fragments[stack_fragment_id]:
-                if upstream_fragment_id in fragment_ids_encountered:
-                    continue
-
-                if upstream_fragment_id in stack_set:
-                    continue
-
+            if stack_fragment_id in compiled_fragment_fids:
+                fragment_geometry_list.append(_load_fragment(stack_fragment_id))
+            else:
                 fragment_geometry_list.append(
-                    fragment_geometries[upstream_fragment_id])
-                stack.append(upstream_fragment_id)
-                stack_set.add(upstream_fragment_id)
+                    fragment_geometries[stack_fragment_id])
+
+                for upstream_fragment_id in upstream_fragments[stack_fragment_id]:
+                    if upstream_fragment_id in fragment_ids_encountered:
+                        continue
+
+                    if upstream_fragment_id in stack_set:
+                        continue
+
+                    fragment_geometry_list.append(
+                        fragment_geometries[upstream_fragment_id])
+                    stack.append(upstream_fragment_id)
+                    stack_set.add(upstream_fragment_id)
 
         _write_fragment(fragment_id, fragment_geometry_list)
         compiled_fragments_layer.CommitTransaction()
