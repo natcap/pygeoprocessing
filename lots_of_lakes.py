@@ -8,13 +8,14 @@ import StringIO
 import pstats
 import glob
 
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.INFO)
 LOGGER = logging.getLogger(__name__)
 
 import shapely
 import shapely.wkb
 import shapely.geometry
 from osgeo import gdal
+import numpy
 
 import pygeoprocessing
 import pygeoprocessing.testing
@@ -139,6 +140,15 @@ def find_fragments_split_between_features(vector_path):
     return [fragment_id for (fragment_id, fids) in features.items() if len(fids)]
 
 
+def subtract_counts(matrix_a, matrix_b):
+    # assume nodata of 0
+    output = numpy.zeros_like(matrix_a)
+    valid_pixels = (matrix_a == 0) | (matrix_b == 0)
+    output[valid_pixels] = numpy.absolute(
+        matrix_a[valid_pixels] - matrix_b[valid_pixels], dtype=numpy.uint8)
+    return output
+
+
 def doit():
     handler = logging.FileHandler('latest-logfile.txt', 'w', encoding='UTF-8')
     formatter = logging.Formatter(
@@ -170,10 +180,11 @@ def doit():
     trivial_watersheds = os.path.join(workspace, 'watersheds_trivial.gpkg')
     trivial_burned = os.path.join(workspace, 'watersheds_trivial_count.tif')
     joined_burned = os.path.join(workspace, 'joined_fragments_count.tif')
+    count_mismatch = os.path.join(workspace, 'fragment_count_mismatch.tif')
 
     task_graph = taskgraph.TaskGraph(
         os.path.join(workspace, 'tg_workers'), n_workers=2,
-        reporting_interval=5.0)
+        reporting_interval=10.0)
 
     filled_pits_task = task_graph.add_task(
         pygeoprocessing.routing.fill_pits,
@@ -220,6 +231,17 @@ def doit():
     pygeoprocessing.rasterize(
         joined_fragments, joined_burned, burn_values=[1],
         option_list=['MERGE_ALG=ADD'])
+
+    pygeoprocessing.raster_calculator(
+        [(trivial_burned, 1), (joined_burned, 1)],
+        subtract_counts, count_mismatch, gdal.GDT_Byte, 0)
+
+    n_pixels_mismatched = 0
+    for block_data, block in pygeoprocessing.iterblocks((count_mismatch, 1)):
+        n_pixels_mismatched += numpy.count_nonzero(block)
+
+    print 'MISMATCH', n_pixels_mismatched
+
 
     compare_trivial_to_joined(
         trivial_watersheds, joined_fragments)
