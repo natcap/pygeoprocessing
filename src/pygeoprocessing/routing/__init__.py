@@ -167,6 +167,8 @@ def join_watershed_fragments_stack(watershed_fragments_vector,
     # flow-contiguous fragments by recursing upstream.
     LOGGER.info('Compiling flow-contiguous fragments')
     last_time = time.time()
+
+    # sorting this list in order of increasing upstream fragment count increased runtime by almost 100%
     for fragment_id in fragment_geometries:
         # If the fragment has already been compiled, no need to recompile.
         if fragment_id in compiled_fragment_ids:
@@ -199,6 +201,10 @@ def join_watershed_fragments_stack(watershed_fragments_vector,
                         continue
 
                     if upstream_fragment_id in stack_set:
+                        continue
+
+                    if upstream_fragment_id in compiled_fragment_fids:
+                        fragment_geometry_list.append(_load_fragment(upstream_fragment_id))
                         continue
 
                     fragment_geometry_list.append(
