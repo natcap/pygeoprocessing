@@ -182,7 +182,7 @@ def doit():
 
     #with time_it('delineating watersheds trivial'):
     #    pygeoprocessing.routing.delineate_watersheds_trivial_d8(
-    #            (flow_dir, 1), lakes, trivial_watersheds)
+    #            (flow_dir, 1), lakes, trivial_watersheds, working_dir=workspace)
 
     with time_it('delineating watersheds'):
         pygeoprocessing.routing.delineate_watersheds_d8(

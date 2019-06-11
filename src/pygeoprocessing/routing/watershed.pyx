@@ -1359,7 +1359,7 @@ def delineate_watersheds_trivial_d8(
     except OSError:
         pass
     working_dir_path = tempfile.mkdtemp(
-        dir=working_dir, prefix='watershed_delineation_%s_' % time.strftime(
+        dir=working_dir, prefix='watershed_delineation_trivial_%s_' % time.strftime(
             '%Y-%m-%d_%H_%M_%S', time.gmtime()))
 
     if (d8_flow_dir_raster_path_band is not None and not
@@ -1406,11 +1406,9 @@ def delineate_watersheds_trivial_d8(
     index_field.SetWidth(24)
     watersheds_layer.CreateField(index_field)
 
-    #polygons_layer = watersheds_vector.CreateLayer(
-    #    'polygons', watersheds_srs, ogr.wkbPolygon)
-
     seeds = split_vector_into_seeds(
         outflow_vector_path, d8_flow_dir_raster_path_band,
+        write_diagnostic_vector=True,
         working_dir=working_dir_path, remove=False, start_index=1)
 
     seeds_in_ws_id = collections.defaultdict(set)
@@ -1431,14 +1429,15 @@ def delineate_watersheds_trivial_d8(
     for ws_id, seeds_in_outlet in sorted(seeds_in_ws_id.items(), key=lambda x: x[0]):
         if len(seeds_in_outlet) == 0:
             LOGGER.info('Skipping watershed %s of %s, no valid seeds found.',
-                        ws_id, feature_count)
+                        watersheds_layer.GetFeatureCount(), feature_count)
 
         for seed_tuple in seeds_in_outlet:
             seed = CoordinatePair(seed_tuple[0], seed_tuple[1])
             process_queue.push(seed)
             process_queue_set.insert(seed)
 
-        LOGGER.info('Delineating watershed %s of %s from %s pixels', ws_id,
+        LOGGER.info('Delineating watershed %s of %s from %s pixels',
+                    watersheds_layer.GetFeatureCount(),
                     feature_count, process_queue.size())
 
         scratch_managed_raster = _ManagedRaster(scratch_raster_path, 1, 1)
