@@ -19,6 +19,7 @@ from osgeo import gdal
 import pygeoprocessing
 import pygeoprocessing.testing
 import pygeoprocessing.routing
+import taskgraph
 
 
 @contextlib.contextmanager
@@ -170,32 +171,43 @@ def doit():
     trivial_burned = os.path.join(workspace, 'watersheds_trivial_count.tif')
     joined_burned = os.path.join(workspace, 'joined_fragments_count.tif')
 
-    #with time_it('Filling pits'):
-    #    pygeoprocessing.routing.fill_pits((dem, 1), filled_dem)
+    task_graph = taskgraph.TaskGraph(
+        os.path.join(workspace, 'tg_workers'), n_workers=2,
+        reporting_interval=5.0)
 
-    #with time_it('D8 flow direction'):
-    #    pygeoprocessing.routing.flow_dir_d8((filled_dem, 1), flow_dir, workspace)
+    filled_pits_task = task_graph.add_task(
+        pygeoprocessing.routing.fill_pits,
+        args=((dem, 1), filled_dem),
+        target_path_list=[filled_dem])
 
-    #with time_it('delineating watersheds'):
-    #    pygeoprocessing.routing.delineate_watersheds_d8(
-    #            (flow_dir, 1), lakes, fragments_path, workspace)
+    d8_flow_dir_task = task_graph.add_task(
+        pygeoprocessing.routing.flow_dir_d8,
+        args=((filled_dem, 1), flow_dir, workspace),
+        target_path_list=[flow_dir],
+        dependent_task_list=[filled_pits_task])
 
-    #with time_it('delineating watersheds trivial'):
-    #    pygeoprocessing.routing.delineate_watersheds_trivial_d8(
-    #            (flow_dir, 1), lakes, trivial_watersheds, working_dir=workspace)
+    new_delineation_task = task_graph.add_task(
+        pygeoprocessing.routing.delineate_watersheds_d8,
+        args=((flow_dir, 1), lakes, fragments_path, workspace),
+        target_path_list=[fragments_path],
+        dependent_task_list=[d8_flow_dir_task])
 
-    with time_it('delineating watersheds'):
-        pygeoprocessing.routing.delineate_watersheds_d8(
-                (flow_dir, 1), lakes, fragments_path, working_dir=workspace)
-    compare_scratch_to_fragments(
-        fragments_path,
-        os.path.join(workspace, 'rasterized_fragments.tif'),
-        os.path.join(sorted(glob.glob(
-            os.path.join(workspace, 'watershed_delineation*')))[-1], 'scratch_raster.tif'))
+    joining_task = task_graph.add_task(
+        pygeoprocessing.routing.join_watershed_fragments_stack,
+        args=(fragments_path, joined_fragments),
+        target_path_list=[joined_fragments],
+        dependent_task_list=[new_delineation_task])
 
-    with time_it('joining watershed fragments'):
-        pygeoprocessing.routing.join_watershed_fragments_stack(
-                fragments_path, joined_fragments)
+
+    trivial_delineation_task = task_graph.add_task(
+        pygeoprocessing.routing.delineate_watersheds_trivial_d8,
+        args=((flow_dir, 1), lakes, trivial_watersheds),
+        kwargs={'working_dir': workspace},
+        target_path_list=[trivial_watersheds],
+        dependent_task_list=[d8_flow_dir_task])
+
+    task_graph.close()
+    task_graph.join()
 
     pygeoprocessing.new_raster_from_base(
         filled_dem, trivial_burned, gdal.GDT_UInt32, [0], fill_value_list=[0])
