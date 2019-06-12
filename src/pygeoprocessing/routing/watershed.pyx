@@ -1352,11 +1352,13 @@ def delineate_watersheds_trivial_d8(
     watersheds_srs = osr.SpatialReference()
     watersheds_srs.ImportFromWkt(flow_dir_info['projection'])
     watersheds_vector = driver.CreateDataSource(target_watersheds_vector_path)
+    polygonized_watersheds_layer = watersheds_vector.CreateLayer(
+        'polygonized_watersheds', watersheds_srs, ogr.wkbPolygon)
     watersheds_layer = watersheds_vector.CreateLayer(
-        'watersheds', watersheds_srs, ogr.wkbPolygon)
+        'watersheds', watersheds_srs, ogr.wkbMultiPolygon)
     index_field = ogr.FieldDefn('ws_id', ogr.OFTInteger)
     index_field.SetWidth(24)
-    watersheds_layer.CreateField(index_field)
+    polygonized_watersheds_layer.CreateField(index_field)
 
     seeds = split_vector_into_seeds(
         outflow_vector_path, d8_flow_dir_raster_path_band,
@@ -1381,7 +1383,7 @@ def delineate_watersheds_trivial_d8(
     for ws_id, seeds_in_outlet in sorted(seeds_in_ws_id.items(), key=lambda x: x[0]):
         if len(seeds_in_outlet) == 0:
             LOGGER.info('Skipping watershed %s of %s, no valid seeds found.',
-                        watersheds_layer.GetFeatureCount(), feature_count)
+                        polygonized_watersheds_layer.GetFeatureCount(), feature_count)
 
         for seed_tuple in seeds_in_outlet:
             seed = CoordinatePair(seed_tuple[0], seed_tuple[1])
@@ -1389,7 +1391,7 @@ def delineate_watersheds_trivial_d8(
             process_queue_set.insert(seed)
 
         LOGGER.info('Delineating watershed %s of %s from %s pixels',
-                    watersheds_layer.GetFeatureCount(),
+                    polygonized_watersheds_layer.GetFeatureCount(),
                     feature_count, process_queue.size())
 
         scratch_managed_raster = _ManagedRaster(scratch_raster_path, 1, 1)
@@ -1435,7 +1437,7 @@ def delineate_watersheds_trivial_d8(
         result = gdal.Polygonize(
             scratch_band,  # The source band
             scratch_band,  # The mask indicating valid pixels
-            watersheds_layer,
+            polygonized_watersheds_layer,
             0,  # ws_id field index
             ['8CONNECTED=8'])
 
@@ -1444,29 +1446,48 @@ def delineate_watersheds_trivial_d8(
         scratch_band = None
         scratch_raster = None
 
-    watersheds_layer = None
-    watersheds_vector = None
+    # The Polygonization algorithm will sometimes identify regions that
+    # should be contiguous in a single polygon, but are not.  For this reason,
+    # we need an extra consolidation step here to make sure that we only produce
+    # 1 feature per watershed.
+    fragments_with_duplicates = collections.defaultdict(set)
+    for feature in polygonized_watersheds_layer:
+        fid = feature.GetFID()
+        ws_id = feature.GetField('ws_id')
+        fragments_with_duplicates[ws_id].add(fid)
+    polygonized_watersheds_layer.ResetReading()
+    fragments_with_duplicates = dict(fragments_with_duplicates)
 
-    LOGGER.info('Copying field values to the target vector.')
-    # last step: open up the source vector and the target vector, create all
-    # fields needed and set the values accordingly.
+    LOGGER.info(
+        'Consolidating %s fragments and copying field values to '
+        'watersheds layer.', polygonized_watersheds_layer.GetFeatureCount())
     source_vector = gdal.OpenEx(outflow_vector_path, gdal.OF_VECTOR)
     source_layer = source_vector.GetLayer()
+    watersheds_layer.CreateFields(source_layer.schema)
 
-    watersheds_vector = gdal.OpenEx(target_watersheds_vector_path,
-                                    gdal.OF_VECTOR | gdal.GA_Update)
-    watersheds_layer = watersheds_vector.GetLayer('watersheds')
-    for source_field_defn in source_layer.schema:
-        watersheds_layer.CreateField(source_field_defn)
+    watersheds_layer.StartTransaction()
+    for ws_id, duplicate_ids_set in fragments_with_duplicates.items():
+        if len(duplicate_ids_set) == 1:
+            source_feature = polygonized_watersheds_layer.GetFeature(
+                duplicate_ids_set.pop())
+            new_geometry = source_feature.GetGeometryRef()
+        else:
+            new_geometry = ogr.Geometry(ogr.wkbMultiPolygon)
+            for duplicate_fid in fragments_with_duplicates[ws_id]:
+                duplicate_feature = polygonized_watersheds_layer.GetFeature(duplicate_fid)
+                new_geometry.AddGeometry(duplicate_feature.GetGeometryRef())
 
-    for watershed_feature in watersheds_layer:
-        ws_id = watershed_feature.GetField('ws_id')
+        watershed_feature = ogr.Feature(watersheds_layer.GetLayerDefn())
+        watershed_feature.SetGeometry(new_geometry)
 
-        # The FID of the source feature is the WS_ID minus 1
         source_feature = source_layer.GetFeature(ws_id)
         for field_name, field_value in source_feature.items().items():
             watershed_feature.SetField(field_name, field_value)
-        watersheds_layer.SetFeature(watershed_feature)
+        watersheds_layer.CreateFeature(watershed_feature)
+    watersheds_layer.CommitTransaction()
+
+    polygonized_watersheds_layer = None
+    watersheds_vector.DeleteLayer('polygonized_watersheds')
 
     watersheds_layer = None
     watersheds_vector = None
