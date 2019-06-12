@@ -445,7 +445,7 @@ def _is_raster_path_band_formatted(raster_path_band):
 def split_vector_into_seeds(
         source_vector_path, d8_flow_dir_raster_path_band,
         source_vector_layer=None, working_dir=None, remove=True,
-        write_diagnostic_vector=False, start_index=0):
+        write_diagnostic_vector=False):
     """Analyze the source vector and break all geometries into seeds.
 
     For D8 watershed delination, ``seeds`` represent (x, y) pixel coordinates
@@ -567,7 +567,7 @@ def split_vector_into_seeds(
         'outlet_geometries', flow_dir_srs, ogr.wkbUnknown)
     temp_polygons_layer.CreateField(ogr.FieldDefn('WSID', ogr.OFTInteger))
 
-    seed_id = start_index  # assume Seed IDs can be from (2 - 2**32-1) inclusive in UInt32
+    seed_id = 0 # assume Seed IDs can be from (2 - 2**32-1) inclusive in UInt32
     temp_polygons_layer.StartTransaction()
     for feature in source_layer:
         if seed_id > 2**32-1:
@@ -1409,7 +1409,7 @@ def delineate_watersheds_trivial_d8(
     seeds = split_vector_into_seeds(
         outflow_vector_path, d8_flow_dir_raster_path_band,
         write_diagnostic_vector=True,
-        working_dir=working_dir_path, remove=False, start_index=1)
+        working_dir=working_dir_path, remove=False)
 
     seeds_in_ws_id = collections.defaultdict(set)
     for seed_tuple, ws_id_set in seeds.items():
@@ -1511,7 +1511,7 @@ def delineate_watersheds_trivial_d8(
         ws_id = watershed_feature.GetField('ws_id')
 
         # The FID of the source feature is the WS_ID minus 1
-        source_feature = source_layer.GetFeature(ws_id-1)
+        source_feature = source_layer.GetFeature(ws_id)
         for field_name, field_value in source_feature.items().items():
             watershed_feature.SetField(field_name, field_value)
         watersheds_layer.SetFeature(watershed_feature)

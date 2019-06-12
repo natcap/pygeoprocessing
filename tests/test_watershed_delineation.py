@@ -66,7 +66,17 @@ class WatershedDelineationTests(unittest.TestCase):
         outflow_vector_path = os.path.join(self.workspace_dir, 'outflow.gpkg')
         pygeoprocessing.testing.create_vector_on_disk(
             [horizontal_line, vertical_line, square, point],
-            srs_wkt, vector_format='GPKG', filename=outflow_vector_path)
+            projection=srs_wkt,
+            fields={'polygon_id': 'int',
+                    'field_string': 'string',
+                    'other': 'real'},
+            attributes=[
+                {'polygon_id': 1, 'field_string': 'hello world', 'other': 1.111},
+                {'polygon_id': 2, 'field_string': 'hello foo', 'other': 2.222},
+                {'polygon_id': 3, 'field_string': 'hello bar', 'other': 3.333},
+                {'polygon_id': 4, 'field_string': 'hello baz', 'other': 4.444}
+            ],
+            vector_format='GPKG', filename=outflow_vector_path)
 
         target_watersheds_path = os.path.join(self.workspace_dir, 'watersheds.gpkg')
 
@@ -88,6 +98,8 @@ class WatershedDelineationTests(unittest.TestCase):
         pygeoprocessing.testing.create_vector_on_disk(
             [expected_watershed_geometry],
             srs_wkt, vector_format='GPKG', filename=os.path.join(self.workspace_dir, 'foo.gpkg'))
+
+        id_to_fields = {}
         for feature in watersheds_layer:
             geometry = feature.GetGeometryRef()
             shapely_geom = shapely.wkb.loads(geometry.ExportToWkb())
@@ -99,6 +111,23 @@ class WatershedDelineationTests(unittest.TestCase):
             self.assertEqual(
                 shapely_geom.difference(
                     expected_watershed_geometry).area, 0)
+
+            field_values = feature.items()
+            del field_values['ws_id']  # Added by the tool.
+            id_to_fields[field_values['polygon_id']] = field_values
+
+        outflow_vector = gdal.OpenEx(outflow_vector_path, gdal.OF_VECTOR)
+        outflow_layer = outflow_vector.GetLayer()
+        try:
+            for feature in outflow_layer:
+                self.assertEqual(
+                    id_to_fields[feature.GetField('polygon_id')],
+                    feature.items())
+        finally:
+            outflow_layer = None
+            outflow_vector = None
+
+
 
     def test_fragment_aggregation(self):
         import pygeoprocessing.routing
