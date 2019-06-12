@@ -128,8 +128,10 @@ def compare_trivial_to_joined(trivial_watersheds_path, joined_fragments_path):
                 geom.difference(joined_geom).area == 0 and
                 geom.union(joined_geom).area == geom.area and
                 joined_geom.union(geom).area == geom.area):
-            print "%s __ID__ %s geom does not match %s __ID__ %s" % (
-                trivial_filename, id_key, joined_filename, id_key)
+            area_diff = abs(joined_geom.area - geom.area)
+            n_pixels_diff = area_diff / 900.
+            print "%s __ID__ %s geom does not match %s __ID__ %s (diff: %s, %s pixels)" % (
+                trivial_filename, id_key, joined_filename, id_key, area_diff, n_pixels_diff)
             n_geoms_not_matched += 1
             continue
 
