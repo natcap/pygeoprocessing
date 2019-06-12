@@ -570,7 +570,7 @@ def split_vector_into_seeds(
     seed_id = 0 # assume Seed IDs can be from (2 - 2**32-1) inclusive in UInt32
     temp_polygons_layer.StartTransaction()
     for feature in source_layer:
-        if seed_id > 2**32-1:
+        if seed_id >= 2**32-1:
             raise ValueError('Too many seeds have been created.')
 
         # This will raise a GEOS exception if the geometry is invalid.
@@ -782,7 +782,7 @@ def group_seeds_into_fragments_d8(
                                              d8_flow_dir_raster_path_band[1],
                                              0)  # read-only
     seed_ids = {}
-    for seed_id, seed in enumerate(seeds_to_watershed_membership_map.keys(), 1):
+    for seed_id, seed in enumerate(seeds_to_watershed_membership_map.keys(), 0):
         seed_ids[seed] = seed_id
 
     # Step 1: determine which fragments are downstream of one another.
@@ -873,54 +873,6 @@ def group_seeds_into_fragments_d8(
                         # upstream pixel is important for visiting
                         # neighbors and expanding into them, below.
                         downstream_watersheds[upstream_seed] = member_watersheds
-
-            # visit neighbors and see if there are any neighbors that match
-            for neighbor_id in xrange(8):
-                neighbor_col = current_seed[0] + NEIGHBOR_COL[neighbor_id]
-                neighbor_row = current_seed[1] + NEIGHBOR_ROW[neighbor_id]
-                if not 0 <= neighbor_row < flow_dir_n_rows:
-                    continue
-                if not 0 <= neighbor_col < flow_dir_n_cols:
-                    continue
-
-                neighbor_seed = (neighbor_col, neighbor_row)
-
-                # Does neighbor belong to current watershed?
-                # If it doesn't exist (meaning it's a pixel that isn't a seed),
-                # we don't consider it.
-                if neighbor_seed not in seeds_to_watershed_membership_map:
-                    continue
-
-                if neighbor_seed in stack:
-                    continue
-
-                if seeds_to_watershed_membership_map[neighbor_seed] == member_watersheds:
-                    # If we can compare the downstream neighbors, do so.
-                    try:
-                        # We only want to expand into the neighbor IFF the
-                        # downstream watersheds match.
-                        if downstream_watersheds[current_seed] == downstream_watersheds[neighbor_seed]:
-                            effective_seed_ids[neighbor_seed] = starter_id
-                    except KeyError:
-                        # If we can't compare the downstream watersheds, it's
-                        # because we're still too far downstream to have any
-                        # meaningful linkages between them, and we can safely
-                        # expand into the neighbor.
-
-                        # check to see if there's a known downstream seed of this seed.
-                        # if there is, we don't want to expand into it.
-                        try:
-                            downstream_seed = downstream_seeds[neighbor_seed]
-                            if seeds_to_watershed_membership_map[neighbor_seed].issuperset(
-                                    seeds_to_watershed_membership_map[downstream_seed]):
-                                effective_seed_ids[neighbor_seed] = starter_id
-                        except KeyError:
-                            # no known downstream seeds to check, we're probably ok?
-                            effective_seed_ids[neighbor_seed] = starter_id
-
-                    # Add the seed to the stack if it isn't there already.
-                    if neighbor_seed not in visited and neighbor_seed not in stack:
-                        stack.append(neighbor_seed)
 
             try:
                 for upstream_seed in nested_fragments[current_seed]:
