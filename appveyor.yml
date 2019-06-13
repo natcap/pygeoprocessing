@@ -49,6 +49,7 @@ environment:
 
 install:
     # We need wheel installed to build wheels
+    - "%PYTHON%\\python.exe -m pip install --upgrade pip"
     - "%PYTHON%\\python.exe -m pip install wheel"
     - "%PYTHON%\\python.exe -m pip install %GCLOUD_WHLS%/%GDAL_WHL%"
     - "%PYTHON%\\python.exe -m pip install %GCLOUD_WHLS%/%SHAPELY_WHL%"
