@@ -58,7 +58,7 @@ install:
 build: off
 
 test_script:
-    - "%PYTHON%\\python.exe -m tox --sitepackages -e %TOXENV%"
+    - "%PYTHON%\\python.exe -m tox -vv --sitepackages -e %TOXENV%"
 
 after_test:
     # This step builds your wheels for artifacts
