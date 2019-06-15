@@ -49,7 +49,8 @@ cdef int MANAGED_RASTER_N_BLOCKS = 2**7
 
 # these are the creation options that'll be used for all the rasters
 GTIFF_CREATION_OPTIONS = (
-    'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
+    'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=DEFLATE',
+    'SPARSE_OK=TRUE',
     'BLOCKXSIZE=%d' % (1 << BLOCK_BITS),
     'BLOCKYSIZE=%d' % (1 << BLOCK_BITS))
 
@@ -1303,7 +1304,7 @@ def delineate_watersheds_d8(
 
 def delineate_watersheds_trivial_d8(
         d8_flow_dir_raster_path_band, outflow_vector_path,
-        target_watersheds_vector_path, working_dir=None):
+        target_watersheds_vector_path, working_dir=None, remove=True):
 
     try:
         if working_dir is not None:
@@ -1330,6 +1331,7 @@ def delineate_watersheds_trivial_d8(
     cdef double flow_dir_pixelsize_y = source_gt[5]
     cdef int flow_dir_n_cols = flow_dir_info['raster_size'][0]
     cdef int flow_dir_n_rows = flow_dir_info['raster_size'][1]
+    cdef int ws_id
     flow_dir_bbox = shapely.prepared.prep(
         shapely.geometry.box(*flow_dir_info['bounding_box']))
     flow_dir_managed_raster = _ManagedRaster(d8_flow_dir_raster_path_band[0],
@@ -1342,11 +1344,6 @@ def delineate_watersheds_trivial_d8(
     source_outlets_vector = gdal.OpenEx(outflow_vector_path, gdal.OF_VECTOR)
     if source_outlets_vector is None:
         raise ValueError(u'Could not open outflow vector %s' % outflow_vector_path)
-
-    scratch_raster_path = os.path.join(working_dir_path, 'scratch.tif')
-    pygeoprocessing.new_raster_from_base(
-        d8_flow_dir_raster_path_band[0], scratch_raster_path, gdal.GDT_Int32,
-        [-1], fill_value_list=[0], gtiff_creation_options=GTIFF_CREATION_OPTIONS)
 
     driver = ogr.GetDriverByName('GPKG')
     watersheds_srs = osr.SpatialReference()
@@ -1380,6 +1377,9 @@ def delineate_watersheds_trivial_d8(
     cdef queue[CoordinatePair] process_queue
     cdef cset[CoordinatePair] process_queue_set
     cdef CoordinatePair pixel_coords, neighbor_pixel, seed
+    cdef int ix_min, iy_min, ix_max, iy_max
+    cdef _ManagedRaster scratch_managed_raster
+    cdef int watersheds_created = 0
     for ws_id, seeds_in_outlet in sorted(seeds_in_ws_id.items(), key=lambda x: x[0]):
         if len(seeds_in_outlet) == 0:
             LOGGER.info('Skipping watershed %s of %s, no valid seeds found.',
@@ -1391,10 +1391,20 @@ def delineate_watersheds_trivial_d8(
             process_queue_set.insert(seed)
 
         LOGGER.info('Delineating watershed %s of %s from %s pixels',
-                    polygonized_watersheds_layer.GetFeatureCount(),
-                    feature_count, process_queue.size())
+                    watersheds_created, feature_count, process_queue.size())
+        watersheds_created += 1
+
+        scratch_raster_path = os.path.join(working_dir_path,
+                                           'scratch_%s.tif' % ws_id)
+        pygeoprocessing.new_raster_from_base(
+            d8_flow_dir_raster_path_band[0], scratch_raster_path, gdal.GDT_UInt32,
+            [0], gtiff_creation_options=GTIFF_CREATION_OPTIONS)
 
         scratch_managed_raster = _ManagedRaster(scratch_raster_path, 1, 1)
+        ix_min = flow_dir_n_cols
+        iy_min = flow_dir_n_rows
+        ix_max = 0
+        iy_max = 0
         while not process_queue.empty():
             current_pixel = process_queue.front()
             process_queue_set.erase(current_pixel)
@@ -1402,6 +1412,10 @@ def delineate_watersheds_trivial_d8(
 
             scratch_managed_raster.set(current_pixel.first,
                                        current_pixel.second, ws_id)
+            ix_min = min(ix_min, current_pixel.first)
+            iy_min = min(iy_min, current_pixel.second)
+            ix_max = max(ix_max, current_pixel.first)
+            iy_max = max(iy_max, current_pixel.second)
 
             for neighbor_index in range(8):
                 neighbor_pixel = CoordinatePair(
@@ -1431,20 +1445,48 @@ def delineate_watersheds_trivial_d8(
 
         scratch_managed_raster.close()
 
-        # Polygonize this new fragment.
-        scratch_raster = gdal.OpenEx(scratch_raster_path, gdal.OF_RASTER | gdal.GA_Update)
-        scratch_band = scratch_raster.GetRasterBand(1)
+        # Build a VRT from the bounds of the affected pixels before
+        # rasterizing.
+        x1 = (flow_dir_origin_x + (max(ix_min-1, 0)*flow_dir_pixelsize_x))  # minx
+        y1 = (flow_dir_origin_y + (max(iy_min-1, 0)*flow_dir_pixelsize_y))  # miny
+        x2 = (flow_dir_origin_x + (min(ix_max+1, flow_dir_n_cols)*flow_dir_pixelsize_x))  # maxx
+        y2 = (flow_dir_origin_y + (min(iy_max+1, flow_dir_n_rows)*flow_dir_pixelsize_y))  # maxy
+
+        vrt_options = gdal.BuildVRTOptions(
+            outputBounds=(
+                min(x1, x2),
+                min(y1, y2),
+                max(x1, x2),
+                max(y1, y2))
+        )
+        vrt_path = os.path.join(working_dir_path, 'ws_%s.vrt' % ws_id)
+        gdal.BuildVRT(vrt_path, [scratch_raster_path], options=vrt_options)
+
+        # Polygonize this new watershed from the VRT.
+        vrt_raster = gdal.OpenEx(vrt_path, gdal.OF_RASTER)
+        if vrt_raster is None:
+            print flow_dir_origin_x, flow_dir_origin_y
+            print flow_dir_pixelsize_x, flow_dir_pixelsize_y
+            print (ix_min, iy_min, ix_max, iy_max), 'ws_id', ws_id
+            print (flow_dir_origin_x + (ix_min*flow_dir_pixelsize_x))  # minx
+            print (flow_dir_origin_y + (iy_min*flow_dir_pixelsize_y))  # miny
+            print (flow_dir_origin_x + (ix_max*flow_dir_pixelsize_x))  # maxx
+            print (flow_dir_origin_y + (iy_max*flow_dir_pixelsize_y))  # maxy
+
+        vrt_band = vrt_raster.GetRasterBand(1)
         result = gdal.Polygonize(
-            scratch_band,  # The source band
-            scratch_band,  # The mask indicating valid pixels
+            vrt_band,  # The source band
+            vrt_band,  # The mask indicating valid pixels
             polygonized_watersheds_layer,
             0,  # ws_id field index
-            ['8CONNECTED=8'])
+            [])  # 8connectedness does not always produce valid geometries.
 
-        scratch_band.Fill(0)  # reset the scratch band
-        scratch_band.FlushCache()
-        scratch_band = None
-        scratch_raster = None
+        #scratch_raster = gdal.OpenEx(scratch_raster_path, gdal.OF_RASTER | gdal.GA_Update)
+        #scratch_band = scratch_raster.GetRasterBand(1)
+        #scratch_band.Fill(0)  # reset the scratch band
+        #scratch_band.FlushCache()
+        #scratch_band = None
+        #scratch_raster = None
 
     # The Polygonization algorithm will sometimes identify regions that
     # should be contiguous in a single polygon, but are not.  For this reason,
@@ -1475,7 +1517,8 @@ def delineate_watersheds_trivial_d8(
             new_geometry = ogr.Geometry(ogr.wkbMultiPolygon)
             for duplicate_fid in fragments_with_duplicates[ws_id]:
                 duplicate_feature = polygonized_watersheds_layer.GetFeature(duplicate_fid)
-                new_geometry.AddGeometry(duplicate_feature.GetGeometryRef())
+                duplicate_geometry = duplicate_feature.GetGeometryRef()
+                new_geometry.AddGeometry(duplicate_geometry)
 
         watershed_feature = ogr.Feature(watersheds_layer.GetLayerDefn())
         watershed_feature.SetGeometry(new_geometry)
@@ -1494,5 +1537,6 @@ def delineate_watersheds_trivial_d8(
     source_layer = None
     source_vector = None
 
-    shutil.rmtree(working_dir_path)
+    if remove:
+        shutil.rmtree(working_dir_path)
 
