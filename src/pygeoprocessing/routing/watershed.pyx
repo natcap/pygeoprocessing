@@ -1301,10 +1301,12 @@ def delineate_watersheds_d8(
     target_fragments_vector = None
 
 
-
+@cython.boundscheck(False)
+@cython.wraparound(False)
 def delineate_watersheds_trivial_d8(
         d8_flow_dir_raster_path_band, outflow_vector_path,
         target_watersheds_vector_path, working_dir=None, remove=True):
+    cdef time_t setup_start_time = ctime(NULL)
 
     try:
         if working_dir is not None:
@@ -1357,19 +1359,30 @@ def delineate_watersheds_trivial_d8(
     index_field.SetWidth(24)
     polygonized_watersheds_layer.CreateField(index_field)
 
+    LOGGER.info('Finished setup in %ss',
+                round(ctime(NULL) - setup_start_time, 4))
+
+    cdef time_t seed_splitting_start_time = ctime(NULL)
+    cdef dict seeds
     seeds = split_vector_into_seeds(
         outflow_vector_path, d8_flow_dir_raster_path_band,
         write_diagnostic_vector=True,
         working_dir=working_dir_path, remove=False)
 
-    seeds_in_ws_id = collections.defaultdict(set)
-    for seed_tuple, ws_id_set in seeds.items():
-        for ws_id in ws_id_set:
-            seeds_in_ws_id[ws_id].add(seed_tuple)
+    # TODO: optimization for when wateshed geometries are perfectly duplicated.
+    # No need to re-delineate.
+    cdef cmap[int, cset[CoordinatePair]] seeds_in_ws_id_c
+    for seed_tuple in seeds:
+        for ws_id in seeds[seed_tuple]:
+            if seeds_in_ws_id_c.find(ws_id) == seeds_in_ws_id_c.end():
+                seeds_in_ws_id_c[ws_id] = cset[CoordinatePair]()
+            seeds_in_ws_id_c[ws_id].insert(
+                CoordinatePair(seed_tuple[0], seed_tuple[1]))
 
-    seeds_in_ws_id = dict(seeds_in_ws_id)
+    LOGGER.info('Finished seed splitting in %ss',
+                round(ctime(NULL) - seed_splitting_start_time, 4))
 
-    feature_count = len(seeds_in_ws_id)
+    feature_count = seeds_in_ws_id_c.size()
 
     cdef int* reverse_flow = [4, 5, 6, 7, 0, 1, 2, 3]
     cdef int* neighbor_col = [1, 1, 0, -1, -1, -1, 0, 1]
@@ -1380,18 +1393,29 @@ def delineate_watersheds_trivial_d8(
     cdef int ix_min, iy_min, ix_max, iy_max
     cdef _ManagedRaster scratch_managed_raster
     cdef int watersheds_created = 0
-    for ws_id, seeds_in_outlet in sorted(seeds_in_ws_id.items(), key=lambda x: x[0]):
-        if len(seeds_in_outlet) == 0:
-            LOGGER.info('Skipping watershed %s of %s, no valid seeds found.',
-                        polygonized_watersheds_layer.GetFeatureCount(), feature_count)
+    cdef cmap[int, cset[CoordinatePair]].iterator watershed_iterator
+    cdef cset[CoordinatePair].iterator seed_iterator
+    cdef cset[CoordinatePair] seeds_in_current_watershed
+    watershed_iterator = seeds_in_ws_id_c.begin()
+    cdef time_t last_log_time = ctime(NULL)
+    cdef time_t delineation_start_time = ctime(NULL)
+    LOGGER.info('Delineating watersheds')
+    while watershed_iterator != seeds_in_ws_id_c.end():
+        ws_id, seeds_in_current_watershed = deref(watershed_iterator)
+        inc(watershed_iterator)
 
-        for seed_tuple in seeds_in_outlet:
-            seed = CoordinatePair(seed_tuple[0], seed_tuple[1])
+        seed_iterator = seeds_in_current_watershed.begin()
+        while seed_iterator != seeds_in_current_watershed.end():
+            seed = deref(seed_iterator)
+            inc(seed_iterator)
             process_queue.push(seed)
             process_queue_set.insert(seed)
 
-        LOGGER.info('Delineating watershed %s of %s from %s pixels',
-                    watersheds_created, feature_count, process_queue.size())
+        if ctime(NULL) - last_log_time > 5.0:
+            last_log_time = ctime(NULL)
+            LOGGER.info('Delineating watershed %s of %s from %s pixels',
+                        watersheds_created, feature_count, process_queue.size())
+
         watersheds_created += 1
 
         scratch_raster_path = os.path.join(working_dir_path,
@@ -1487,7 +1511,11 @@ def delineate_watersheds_trivial_d8(
         #scratch_band.FlushCache()
         #scratch_band = None
         #scratch_raster = None
+    LOGGER.info('Finished delineating %s watersheds in %ss',
+                watersheds_created, round(ctime(NULL) -
+                                          delineation_start_time, 4))
 
+    cdef time_t vector_ops_start_time = ctime(NULL)
     # The Polygonization algorithm will sometimes identify regions that
     # should be contiguous in a single polygon, but are not.  For this reason,
     # we need an extra consolidation step here to make sure that we only produce
@@ -1531,6 +1559,9 @@ def delineate_watersheds_trivial_d8(
 
     polygonized_watersheds_layer = None
     watersheds_vector.DeleteLayer('polygonized_watersheds')
+
+    LOGGER.info('Finished vector operations in %ss',
+                round(ctime(NULL) - vector_ops_start_time, 4))
 
     watersheds_layer = None
     watersheds_vector = None
