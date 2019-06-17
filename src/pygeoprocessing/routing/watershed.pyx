@@ -517,6 +517,40 @@ def split_vector_into_seeds(
     #  * Remove the working directory
     #  * Return the data structure
 
+    cdef cmap[CoordinatePair, cset[int]] seed_watersheds_c
+    cdef cmap[CoordinatePair, cset[int]].iterator seed_watersheds_c_iterator
+    cdef cset[int] seeds
+
+    seed_watersheds_c = _split_vector_into_seeds(
+        source_vector_path, d8_flow_dir_raster_path_band,
+    # TODO: convert this to a C loop
+        source_vector_layer, working_dir, remove, write_diagnostic_vector)
+
+    python_dict = {}
+
+    while seed_watersheds_c_iterator != seed_watersheds_c.end():
+        ws_id = deref(seed_watersheds_c_iterator).first
+        seeds = deref(seed_watersheds_c_iterator).second
+
+        python_dict[ws_id] = set(seeds)
+
+    return python_dict
+
+
+cdef cset[CoordinatePair] _split_geometry_into_seeds(
+        source_geom_wkb, d8_flow_dir_raster_path_band,
+        working_dir=None, remove=True, write_diagnostic_vector=True):
+    # if a point, return the coords directly.
+    # Otherwise:
+    #    * create a new raster from the bbox of the source geom
+    #    * rasterize the source geom onto the bbox
+    #    * use numpy to extract the row/col coordinates
+    #    * return set of coordinate pairs
+
+cdef cmap[CoordinatePair, cset[int]] _split_vector_into_seeds(
+        source_vector_path, d8_flow_dir_raster_path_band,
+        source_vector_layer=None, working_dir=None, remove=True,
+        write_diagnostic_vector=False):
     try:
         if working_dir is not None:
             os.makedirs(working_dir)
@@ -549,10 +583,10 @@ def split_vector_into_seeds(
     no_watershed = (2**32)-1  # max value for UInt32
 
 
-    seed_ids = {}  # map {(x, y coordinate pair): ID}
-
     # watershed IDs are represented by the FID of the outflow geometry.
-    seed_watersheds = collections.defaultdict(set)  # map {(x, y coordinate pair): set(watershed IDs)}
+    cdef cmap[CoordinatePair, cset[int]] seed_watersheds
+    cdef CoordinatePair seed
+    cdef int seed_id
 
     flow_dir_managed_raster = _ManagedRaster(d8_flow_dir_raster_path_band[0],
                                              d8_flow_dir_raster_path_band[1],
@@ -598,9 +632,11 @@ def split_vector_into_seeds(
                     == flow_dir_nodata):
                 continue
 
-            seed = (minx_pixelcoord, miny_pixelcoord)
-            seed_ids[seed] = seed_id
-            seed_watersheds[seed].add(feature.GetFID())
+            seed = CoordinatePair(minx_pixelcoord, miny_pixelcoord)
+            if seed_watersheds.find(seed) == seed_watersheds.end():
+                seed_watersheds[seed] = cset[int]()
+            seed_watersheds[seed].insert(feature.GetFID())
+
             seed_id += 1
             continue  # No need to create a feature for this outflow geometry
 
@@ -629,6 +665,7 @@ def split_vector_into_seeds(
     temp_polygons_schema = temp_polygons_layer.schema
     temp_polygons_n_features = temp_polygons_layer.GetFeatureCount()
 
+    cdef int row, col, ws_id
     if temp_polygons_n_features > 0:
         LOGGER.info('Determining sets of non-overlapping geometries')
 
@@ -698,15 +735,17 @@ def split_vector_into_seeds(
                 for (row, col) in zip(*numpy.nonzero(valid_outflow_geoms_mask)):
                     ws_id = tmp_seed_array[row, col]
                     seed = (col + block_info['xoff'], row + block_info['yoff'])
-                    seed_watersheds[seed].add(ws_id)
-                    seed_ids[seed] = seed_id
-                    seed_id += 1
+
+                    if seed_watersheds.find(seed) == seed_watersheds.end():
+                        seed_watersheds[seed] = cset[int]()
+                    seed_watersheds[seed].insert(ws_id)
 
             tmp_seed_band = None
             tmp_seed_raster = None
             flow_dir_band = None
             flow_dir_raster = None
 
+    cdef cmap[CoordinatePair, cset[int]].iterator watershed_iterator = seed_watersheds.begin()
     if write_diagnostic_vector:
         diagnostic_vector = gpkg_driver.Create(
             os.path.join(working_dir_path, 'diagnostic.gpkg'),
@@ -716,11 +755,15 @@ def split_vector_into_seeds(
         seeds_layer.CreateField(ogr.FieldDefn('watersheds', ogr.OFTString))
 
         seeds_layer.StartTransaction()
-        for seed, watershed_id_set in seed_watersheds.items():
+        while watershed_iterator != seed_watersheds.end():
+            seed = deref(watershed_iterator).first
+            watershed_id_set = set(deref(watershed_iterator).second)
+            inc(watershed_iterator)
+
             feature = ogr.Feature(seeds_layer.GetLayerDefn())
             point = shapely.geometry.Point(
-                x_origin + seed[0] * x_pixelwidth + (x_pixelwidth / 2.),
-                y_origin + seed[1] * y_pixelwidth + (y_pixelwidth / 2.))
+                x_origin + seed.first * x_pixelwidth + (x_pixelwidth / 2.),
+                y_origin + seed.second * y_pixelwidth + (y_pixelwidth / 2.))
             feature.SetGeometry(ogr.CreateGeometryFromWkb(point.wkb))
             feature.SetField('watersheds', ','.join([str(s) for s in sorted(watershed_id_set)]))
             seeds_layer.CreateFeature(feature)
@@ -1363,11 +1406,17 @@ def delineate_watersheds_trivial_d8(
                 round(ctime(NULL) - setup_start_time, 4))
 
     cdef time_t seed_splitting_start_time = ctime(NULL)
-    cdef dict seeds
-    seeds = split_vector_into_seeds(
-        outflow_vector_path, d8_flow_dir_raster_path_band,
-        write_diagnostic_vector=True,
-        working_dir=working_dir_path, remove=False)
+    cdef cmap[CoordinatePair, cset[int]] seeds
+    cdef cmap[CoordinatePair, cset[int]].iterator seeds_iterator
+    cdef CoordinatePair seed
+    seeds = _split_vector_into_seeds(
+        outflow_vector_path,
+        d8_flow_dir_raster_path_band,
+        source_vector_layer=None,
+        working_dir=working_dir_path,
+        remove=False,
+        write_diagnostic_vector=True
+    )
 
     # TODO: optimization for when wateshed geometries are perfectly duplicated.
     # No need to re-delineate.
