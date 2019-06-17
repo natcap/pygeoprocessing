@@ -987,8 +987,11 @@ def create_raster_from_vector_extents(
     # base vector
     n_cols = int(numpy.ceil(
         abs((shp_extent[1] - shp_extent[0]) / target_pixel_size[0])))
+    n_cols = max(1, n_cols)
+
     n_rows = int(numpy.ceil(
         abs((shp_extent[3] - shp_extent[2]) / target_pixel_size[1])))
+    n_rows = max(1, n_rows)
 
     driver = gdal.GetDriverByName('GTiff')
     n_bands = 1

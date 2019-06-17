@@ -2123,6 +2123,64 @@ class PyGeoprocessing10(unittest.TestCase):
         self.assertEqual(raster_properties['raster_size'][0], n_pixels_x)
         self.assertEqual(raster_properties['raster_size'][1], n_pixels_y)
 
+    def test_create_raster_from_vector_extents_linestring_no_width(self):
+        """PGP.geoprocessing: create raster from v. ext with no geom width."""
+        reference = sampledata.SRS_COLOMBIA
+        point_a = shapely.geometry.LineString(
+            [(reference.origin[0], reference.origin[1]),
+             (reference.origin[0], reference.origin[1] + 100)])
+        pixel_x_size = -10
+        pixel_y_size = 20
+        n_pixels_x = 1
+        n_pixels_y = 5
+        source_vector_path = os.path.join(self.workspace_dir, 'sample_vector')
+        pygeoprocessing.testing.create_vector_on_disk(
+            [point_a], reference.projection, fields={'value': 'int'},
+            attributes=[{'value': 0}], vector_format='GeoJSON',
+            filename=source_vector_path)
+        target_raster_path = os.path.join(
+            self.workspace_dir, 'target_raster.tif')
+        target_pixel_size = [pixel_x_size, pixel_y_size]
+        target_nodata = -1
+        target_pixel_type = gdal.GDT_Int16
+        pygeoprocessing.create_raster_from_vector_extents(
+            source_vector_path, target_raster_path, target_pixel_size,
+            target_pixel_type, target_nodata)
+
+        raster_properties = pygeoprocessing.get_raster_info(
+            target_raster_path)
+        self.assertEqual(raster_properties['raster_size'][0], n_pixels_x)
+        self.assertEqual(raster_properties['raster_size'][1], n_pixels_y)
+
+    def test_create_raster_from_vector_extents_linestring_no_height(self):
+        """PGP.geoprocessing: create raster from v. ext with no geom height."""
+        reference = sampledata.SRS_COLOMBIA
+        point_a = shapely.geometry.LineString(
+            [(reference.origin[0], reference.origin[1]),
+             (reference.origin[0] + 100, reference.origin[1])])
+        pixel_x_size = -10
+        pixel_y_size = 20
+        n_pixels_x = 10
+        n_pixels_y = 1
+        source_vector_path = os.path.join(self.workspace_dir, 'sample_vector')
+        pygeoprocessing.testing.create_vector_on_disk(
+            [point_a], reference.projection, fields={'value': 'int'},
+            attributes=[{'value': 0}], vector_format='GeoJSON',
+            filename=source_vector_path)
+        target_raster_path = os.path.join(
+            self.workspace_dir, 'target_raster.tif')
+        target_pixel_size = [pixel_x_size, pixel_y_size]
+        target_nodata = -1
+        target_pixel_type = gdal.GDT_Int16
+        pygeoprocessing.create_raster_from_vector_extents(
+            source_vector_path, target_raster_path, target_pixel_size,
+            target_pixel_type, target_nodata)
+
+        raster_properties = pygeoprocessing.get_raster_info(
+            target_raster_path)
+        self.assertEqual(raster_properties['raster_size'][0], n_pixels_x)
+        self.assertEqual(raster_properties['raster_size'][1], n_pixels_y)
+
     def test_create_raster_from_vector_extents_bad_geometry(self):
         """PGP.geoprocessing: create raster from v. ext. with bad geometry."""
         reference = sampledata.SRS_COLOMBIA
