@@ -1372,12 +1372,24 @@ def delineate_watersheds_trivial_d8(
     # TODO: optimization for when wateshed geometries are perfectly duplicated.
     # No need to re-delineate.
     cdef cmap[int, cset[CoordinatePair]] seeds_in_ws_id_c
-    for seed_tuple in seeds:
-        for ws_id in seeds[seed_tuple]:
+    cdef cmap[int, cset[CoordinatePair]].iterator seeds_in_ws_id_c_iterator
+    cdef cset[int] ws_id_set
+    cdef cset[int].iterator ws_id_set_iterator
+
+    seeds_iterator = seeds.begin()
+    while seeds_iterator != seeds.end():
+        seed = deref(seeds_iterator).first
+        ws_id_set = deref(seeds_iterator).second
+        inc(seeds_iterator)
+
+        ws_id_set_iterator = ws_id_set.begin()
+        while ws_id_set_iterator!= ws_id_set.end():
+            ws_id = deref(ws_id_set_iterator)
+            inc(ws_id_set_iterator)
+
             if seeds_in_ws_id_c.find(ws_id) == seeds_in_ws_id_c.end():
                 seeds_in_ws_id_c[ws_id] = cset[CoordinatePair]()
-            seeds_in_ws_id_c[ws_id].insert(
-                CoordinatePair(seed_tuple[0], seed_tuple[1]))
+            seeds_in_ws_id_c[ws_id].insert(seed)
 
     LOGGER.info('Finished seed splitting in %ss',
                 round(ctime(NULL) - seed_splitting_start_time, 4))
@@ -1389,7 +1401,7 @@ def delineate_watersheds_trivial_d8(
     cdef int* neighbor_row = [0, -1, -1, -1, 0, 1, 1, 1]
     cdef queue[CoordinatePair] process_queue
     cdef cset[CoordinatePair] process_queue_set
-    cdef CoordinatePair pixel_coords, neighbor_pixel, seed
+    cdef CoordinatePair pixel_coords, neighbor_pixel
     cdef int ix_min, iy_min, ix_max, iy_max
     cdef _ManagedRaster scratch_managed_raster
     cdef int watersheds_created = 0
@@ -1403,6 +1415,12 @@ def delineate_watersheds_trivial_d8(
     while watershed_iterator != seeds_in_ws_id_c.end():
         ws_id, seeds_in_current_watershed = deref(watershed_iterator)
         inc(watershed_iterator)
+
+        # Some vectors start indexing their FIDs at 0.
+        # The mask raster input to polygonization, however, only regards pixels
+        # as zero or nonzero.  Therefore, to make sure we can use the ws_id as
+        # the FID and not maintain a separate mask raster, we'll just add 1.
+        ws_id += 1
 
         seed_iterator = seeds_in_current_watershed.begin()
         while seed_iterator != seeds_in_current_watershed.end():
@@ -1469,7 +1487,9 @@ def delineate_watersheds_trivial_d8(
         scratch_managed_raster.close()
 
         # Build a VRT from the bounds of the affected pixels before
-        # rasterizing.
+        # rasterizing.  For watersheds significantly smaller than the flow dir
+        # raster, this yields a large speedup because we don't have to read in
+        # the whole scratch raster in order to polygonize.
         x1 = (flow_dir_origin_x + (max(ix_min-1, 0)*flow_dir_pixelsize_x))  # minx
         y1 = (flow_dir_origin_y + (max(iy_min-1, 0)*flow_dir_pixelsize_y))  # miny
         x2 = (flow_dir_origin_x + (min(ix_max+1, flow_dir_n_cols)*flow_dir_pixelsize_x))  # maxx
@@ -1543,7 +1563,8 @@ def delineate_watersheds_trivial_d8(
         else:
             new_geometry = ogr.Geometry(ogr.wkbMultiPolygon)
             for duplicate_fid in fragments_with_duplicates[ws_id]:
-                duplicate_feature = polygonized_watersheds_layer.GetFeature(duplicate_fid)
+                # ws_id is tracked as 1 more than the FID.  See previous note about why.
+                duplicate_feature = polygonized_watersheds_layer.GetFeature(duplicate_fid-1)
                 duplicate_geometry = duplicate_feature.GetGeometryRef()
                 new_geometry.AddGeometry(duplicate_geometry)
 
