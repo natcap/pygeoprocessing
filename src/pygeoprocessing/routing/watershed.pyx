@@ -621,7 +621,7 @@ cdef cset[CoordinatePair] _split_geometry_into_seeds(
     # TODO: make this sparse?
     # TODO: align this with the flow_dir pixels.
     local_origin_x = minx - (minx % x_pixelwidth)
-    local_origin_y = miny - (miny % y_pixelwidth)
+    local_origin_y = maxy - (maxy % y_pixelwidth)
     pygeoprocessing.create_raster_from_vector_extents(
         tmp_vector_path, tmp_raster_path, flow_dir_info['pixel_size'],
         gdal.GDT_Byte, target_nodata=0, fill_value=None,
@@ -643,11 +643,8 @@ cdef cset[CoordinatePair] _split_geometry_into_seeds(
         diagnostic_layer = diagnostic_vector.CreateLayer(
             'seeds', flow_dir_srs, ogr.wkbPoint)
 
-    print('x/y origin', x_origin, y_origin)
-    print('seed gt', seed_raster_gt[0], seed_raster_gt[3])
     seed_raster_origin_col = (seed_raster_gt[0] - x_origin) // x_pixelwidth
     seed_raster_origin_row = (seed_raster_gt[3] - y_origin) // y_pixelwidth
-    print('seed origins', seed_raster_origin_col, seed_raster_origin_row)
     for block_info in pygeoprocessing.iterblocks(
             (tmp_raster_path, 1), offset_only=True):
         seed_array = seed_band.ReadAsArray(**block_info)
