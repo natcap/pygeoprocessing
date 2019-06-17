@@ -1411,13 +1411,6 @@ def delineate_watersheds_trivial_d8(
             process_queue.push(seed)
             process_queue_set.insert(seed)
 
-        if ctime(NULL) - last_log_time > 5.0:
-            last_log_time = ctime(NULL)
-            LOGGER.info('Delineating watershed %s of %s from %s pixels',
-                        watersheds_created, feature_count, process_queue.size())
-
-        watersheds_created += 1
-
         scratch_raster_path = os.path.join(working_dir_path,
                                            'scratch_%s.tif' % ws_id)
         pygeoprocessing.new_raster_from_base(
@@ -1430,6 +1423,11 @@ def delineate_watersheds_trivial_d8(
         ix_max = 0
         iy_max = 0
         while not process_queue.empty():
+            if ctime(NULL) - last_log_time > 5.0:
+                last_log_time = ctime(NULL)
+                LOGGER.info('Delineating watershed %s of %s',
+                            watersheds_created, feature_count)
+
             current_pixel = process_queue.front()
             process_queue_set.erase(current_pixel)
             process_queue.pop()
@@ -1467,6 +1465,7 @@ def delineate_watersheds_trivial_d8(
                     process_queue.push(neighbor_pixel)
                     process_queue_set.insert(neighbor_pixel)
 
+        watersheds_created += 1
         scratch_managed_raster.close()
 
         # Build a VRT from the bounds of the affected pixels before
