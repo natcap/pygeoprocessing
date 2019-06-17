@@ -1,3 +1,4 @@
+# cython: language_level=2
 import time
 import os
 import logging
@@ -546,6 +547,156 @@ cdef cset[CoordinatePair] _split_geometry_into_seeds(
     #    * rasterize the source geom onto the bbox
     #    * use numpy to extract the row/col coordinates
     #    * return set of coordinate pairs
+    flow_dir_info = pygeoprocessing.get_raster_info(
+        d8_flow_dir_raster_path_band[0])
+    source_gt = flow_dir_info['geotransform']
+    flow_dir_bbox = shapely.prepared.prep(
+        shapely.geometry.box(*flow_dir_info['bounding_box']))
+    flow_dir_srs = osr.SpatialReference()
+    flow_dir_srs.ImportFromWkt(flow_dir_info['projection'])
+    cdef int flow_dir_nodata = flow_dir_info['nodata'][0]
+    cdef float minx, miny, maxx, maxy
+    cdef double x_origin = source_gt[0]
+    cdef double y_origin = source_gt[3]
+    cdef double x_pixelwidth = source_gt[1]
+    cdef double y_pixelwidth = source_gt[5]
+    cdef double pixel_area = abs(x_pixelwidth * y_pixelwidth)
+    cdef int minx_pixelcoord, miny_pixelcoord, maxx_pixelcoord, maxy_pixelcoord
+    cdef cset[CoordinatePair] seed_set
+
+    geometry = shapely.wkb.loads(source_geom_wkb)
+
+    if not flow_dir_bbox.intersects(shapely.geometry.box(*geometry.bounds)):
+        # TODO: raise an error?  Log an error?
+        return seed_set  # empty
+
+    cdef _ManagedRaster flow_dir_managed_raster = _ManagedRaster(
+        d8_flow_dir_raster_path_band[0], d8_flow_dir_raster_path_band[1], 0)
+
+    minx, miny, maxx, maxy = geometry.bounds
+    minx_pixelcoord = <int>((minx - x_origin) // x_pixelwidth)
+    miny_pixelcoord = <int>((miny - y_origin) // y_pixelwidth)
+    maxx_pixelcoord = <int>((maxx - x_origin) // x_pixelwidth)
+    maxy_pixelcoord = <int>((maxy - y_origin) // y_pixelwidth)
+
+    # If the geometry only intersects a single pixel, we can treat it
+    # as a single point, which means that we can track it directly in our
+    # seeds data structure and not have to include it in the disjoint set
+    # determination.
+    if minx_pixelcoord == maxx_pixelcoord and miny_pixelcoord == maxy_pixelcoord:
+        # If the point is over nodata, skip it.
+        if (flow_dir_managed_raster.get(minx_pixelcoord, miny_pixelcoord)
+                == flow_dir_nodata):
+            # TODO: raise an error? Log an error?
+            return seed_set  # Empty
+
+        seed = CoordinatePair(minx_pixelcoord, miny_pixelcoord)
+        seed_set.insert(seed)
+        return seed_set
+
+    # The geometry does not fit into a single pixel, so let's create a new
+    # raster onto which to rasterize it.
+    try:
+        if working_dir is not None:
+            os.makedirs(working_dir)
+    except OSError:
+        pass
+    working_dir_path = tempfile.mkdtemp(
+        dir=working_dir, prefix='seed_extraction_%s_' % time.strftime(
+            '%Y-%m-%d_%H_%M_%S', time.gmtime()))
+
+    gpkg_driver = gdal.GetDriverByName('GPKG')
+    tmp_vector_path = os.path.join(working_dir_path, 'user_geometry.gpkg')
+    new_vector = gpkg_driver.Create(tmp_vector_path, 0, 0, 0, gdal.GDT_Unknown)
+    new_layer = new_vector.CreateLayer('user_geometry', flow_dir_srs, ogr.wkbUnknown)
+
+    new_feature = ogr.Feature(new_layer.GetLayerDefn())
+    new_feature.SetGeometry(ogr.CreateGeometryFromWkb(source_geom_wkb))
+    new_layer.CreateFeature(new_feature)
+
+    new_layer = None
+    new_vector = None
+
+    tmp_raster_path = os.path.join(working_dir_path, 'rasterized_geometry.tif')
+    # TODO: make this sparse?
+    # TODO: align this with the flow_dir pixels.
+    local_origin_x = minx - (minx % x_pixelwidth)
+    local_origin_y = miny - (miny % y_pixelwidth)
+    pygeoprocessing.create_raster_from_vector_extents(
+        tmp_vector_path, tmp_raster_path, flow_dir_info['pixel_size'],
+        gdal.GDT_Byte, target_nodata=0, fill_value=None,
+        origin=(local_origin_x, local_origin_y))
+
+
+    pygeoprocessing.rasterize(tmp_vector_path, tmp_raster_path, burn_values=[1])
+
+    seed_raster = gdal.OpenEx(tmp_raster_path, gdal.OF_RASTER)
+    seed_band = seed_raster.GetRasterBand(1)
+    seed_raster_gt = seed_raster.GetGeoTransform()
+    seed_raster_origin_x = seed_raster_gt[0]
+    seed_raster_origin_y = seed_raster_gt[3]
+
+    if write_diagnostic_vector:
+        diagnostic_vector = gpkg_driver.Create(
+            os.path.join(working_dir_path, 'diagnostic.gpkg'),
+            0, 0, 0, gdal.GDT_Unknown)
+        diagnostic_layer = diagnostic_vector.CreateLayer(
+            'seeds', flow_dir_srs, ogr.wkbPoint)
+
+    print('x/y origin', x_origin, y_origin)
+    print('seed gt', seed_raster_gt[0], seed_raster_gt[3])
+    seed_raster_origin_col = (seed_raster_gt[0] - x_origin) // x_pixelwidth
+    seed_raster_origin_row = (seed_raster_gt[3] - y_origin) // y_pixelwidth
+    print('seed origins', seed_raster_origin_col, seed_raster_origin_row)
+    for block_info in pygeoprocessing.iterblocks(
+            (tmp_raster_path, 1), offset_only=True):
+        seed_array = seed_band.ReadAsArray(**block_info)
+
+        for (row, col) in itertools.izip(*numpy.nonzero(seed_array)):
+            global_row = seed_raster_origin_row + block_info['yoff'] + row
+            global_col = seed_raster_origin_col + block_info['xoff'] + col
+
+            if flow_dir_managed_raster.get(global_col, global_row) == flow_dir_nodata:
+                continue
+
+            if write_diagnostic_vector:
+                new_feature = ogr.Feature(diagnostic_layer.GetLayerDefn())
+                new_feature.SetGeometry(ogr.CreateGeometryFromWkb(
+                    shapely.geometry.Point(
+                        x_origin + ((global_col*x_pixelwidth) + (x_pixelwidth / 2.)),
+                        y_origin + ((global_row*y_pixelwidth) + (y_pixelwidth / 2.))).wkb))
+                diagnostic_layer.CreateFeature(new_feature)
+
+            seed_set.insert(CoordinatePair(global_col, global_row))
+
+    seed_band = None
+    seed_raster = None
+
+    if remove:
+        shutil.rmtree(working_dir_path)
+
+    return seed_set
+
+
+def split_geometry_into_seeds(
+        source_geom_wkb, d8_flow_dir_raster_path_band,
+        working_dir=None, remove=True, write_diagnostic_vector=True):
+
+    return_set = set()
+    cdef cset[CoordinatePair] seeds = _split_geometry_into_seeds(
+        source_geom_wkb, d8_flow_dir_raster_path_band,
+        working_dir, remove, write_diagnostic_vector)
+
+    cdef CoordinatePair seed
+    cdef cset[CoordinatePair].iterator seeds_iterator = seeds.begin()
+    while seeds_iterator != seeds.end():
+        seed = deref(seeds_iterator)
+        inc(seeds_iterator)
+
+        return_set.add((seed.first, seed.second))
+
+    return return_set
+
 
 cdef cmap[CoordinatePair, cset[int]] _split_vector_into_seeds(
         source_vector_path, d8_flow_dir_raster_path_band,
@@ -612,7 +763,7 @@ cdef cmap[CoordinatePair, cset[int]] _split_vector_into_seeds(
         geometry = shapely.wkb.loads(feature.GetGeometryRef().ExportToWkb())
 
         # If the geometry doesn't intersect the flow dir bounding box at all,
-        # don't bother with it.
+        # don't bother shapely_geom with it.
         if not flow_dir_bbox.intersects(shapely.geometry.box(*geometry.bounds)):
             continue
 
@@ -727,12 +878,13 @@ cdef cmap[CoordinatePair, cset[int]] _split_vector_into_seeds(
             tmp_seed_band = tmp_seed_raster.GetRasterBand(1)
             for block_info in pygeoprocessing.iterblocks(
                     (tmp_seed_raster_path, 1), offset_only=True):
+                print block_info
                 flow_dir_array = flow_dir_band.ReadAsArray(**block_info)
                 tmp_seed_array = tmp_seed_band.ReadAsArray(**block_info)
 
                 valid_outflow_geoms_mask = ((flow_dir_array != flow_dir_nodata) &
                                             (tmp_seed_array != no_watershed))
-                for (row, col) in zip(*numpy.nonzero(valid_outflow_geoms_mask)):
+                for (row, col) in itertools.izip(*numpy.nonzero(valid_outflow_geoms_mask)):
                     ws_id = tmp_seed_array[row, col]
                     seed = (col + block_info['xoff'], row + block_info['yoff'])
 

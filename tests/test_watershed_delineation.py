@@ -430,7 +430,49 @@ class WatershedDelineationTests(unittest.TestCase):
         }
         self.assertEqual(seed_watersheds, expected_seed_watersheds)
 
+    def test_split_geometry_into_seeds(self):
+        from pygeoprocessing.routing import split_geometry_into_seeds
+        nodata = 255
+        flow_dir_array= numpy.array([
+            [0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0],
+            [nodata, nodata, nodata, nodata, nodata, nodata, nodata],
+            [0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 2, 2]], dtype=numpy.uint8)
+        srs = osr.SpatialReference()
+        srs.ImportFromEPSG(32731)  # WGS84 / UTM zone 31s
+        srs_wkt = srs.ExportToWkt()
 
+        flow_dir_path = os.path.join(self.workspace_dir, 'flow_dir.tif')
+        driver = gdal.GetDriverByName('GTiff')
+        flow_dir_raster = driver.Create(
+            flow_dir_path, flow_dir_array.shape[1], flow_dir_array.shape[0],
+            1, gdal.GDT_Byte, options=(
+                'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
+                'BLOCKXSIZE=256', 'BLOCKYSIZE=256'))
+        flow_dir_raster.SetProjection(srs_wkt)
+        flow_dir_band = flow_dir_raster.GetRasterBand(1)
+        flow_dir_band.WriteArray(flow_dir_array)
+        flow_dir_band.SetNoDataValue(255)
+        flow_dir_geotransform = [2, 2, 0, -2, 0, -2]
+        flow_dir_raster.SetGeoTransform(flow_dir_geotransform)
+        flow_dir_raster = None
+
+        point = shapely.geometry.Point(2.5, -2.5)
+        linestring = shapely.geometry.LineString([(10, -2), (10, -9.9)])
+        box = shapely.geometry.box(4.1, -7.9, 7.9, -3.9)
+
+        for geometry, expected_seeds in (
+                (point, set([(0, 0)])),
+                (linestring, set([(4, 0), (4, 1), (4, 3)])),  # skips nodata pixel
+                (box, set([(1, 1), (2, 1)]))):
+
+            result_seeds = split_geometry_into_seeds(
+                geometry.wkb, (flow_dir_path, 1), working_dir=self.workspace_dir,
+                remove=False, write_diagnostic_vector=True)
+
+            self.assertEqual(result_seeds, expected_seeds)
 
 
 
