@@ -3090,11 +3090,10 @@ def evaluate_raster_calculator_expression(
 
     LOGGER.debug('applying raster calculator')
     raster_calculator(
-        [(raster_op, 'raw')] +
         [path_band for path_band in raster_path_band_list] +
         [(get_raster_info(path_band[0])['nodata'][path_band[1]-1], 'raw')
          for path_band in raster_path_band_list] + [
-            (target_nodata, 'raw'), (default_nan, 'raw')],
+            (raster_op, 'raw'), (target_nodata, 'raw'), (default_nan, 'raw')],
         _general_raster_calculator_op, target_raster_path, gdal.GDT_Float32,
         target_nodata)
     if delete_churn_dir:
@@ -3105,9 +3104,9 @@ def _general_raster_calculator_op(*arg_list):
     """General raster operation with well conditioned args.
 
     Parameters:
-        arg_list (list): list is 2*n+2 length long laid out as:
-            op, array_0, ... array_n, nodata_0, ... nodata_n,
-            target_nodata, nan_value
+        arg_list (list): list is 2*n+3 length long laid out as:
+            array_0, ... array_n, nodata_0, ... nodata_n,
+            op, target_nodata, nan_value
 
             The first element `op` is an operation that takes n elements which
             are numpy.ndarrays. The second n elements are the nodata values
@@ -3121,21 +3120,25 @@ def _general_raster_calculator_op(*arg_list):
         pixels are set to target_nodata.
 
     """
-    n = int((len(arg_list)-2) / 2)
-    result = numpy.empty(arg_list[1].shape, dtype=numpy.float32)
+    n = int((len(arg_list)-3) / 2)
+    result = numpy.empty(arg_list[0].shape, dtype=numpy.float32)
+    array_list = arg_list[0:n]
+    nodata_list = arg_list[n:2*n]
+    op = arg_list[2*n]
     target_nodata = arg_list[2*n+1]
     nan_value = arg_list[2*n+2]
     result[:] = target_nodata
-    nodata_list = arg_list[n+1:2*n+1]
     if any([x is not None for x in nodata_list]):
-        array_list = arg_list[1:(n+1)]
         valid_mask = ~numpy.logical_or.reduce(
             [numpy.isclose(array, nodata)
              for array, nodata in zip(array_list, nodata_list)
              if nodata is not None])
-        op = arg_list[0]
         result[valid_mask] = op(*[array[valid_mask] for array in array_list])
-        result[numpy.isnan(result)] = nan_value
+    else:
+        # there's no nodata values to mask so operate directly
+        result[:] = op(*array_list)
+
+    result[numpy.isnan(result)] = nan_value
     return result
 
 
