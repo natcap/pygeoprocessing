@@ -1656,6 +1656,9 @@ def delineate_watersheds_trivial_d8(
 
             scratch_managed_raster.set(current_pixel.first,
                                        current_pixel.second, ws_id)
+
+            # These are for tracking the extents of the raster so we can build
+            # a VRT and only polygonize the pixels we need to.
             ix_min = min(ix_min, current_pixel.first)
             iy_min = min(iy_min, current_pixel.second)
             ix_max = max(ix_max, current_pixel.first)
@@ -1711,29 +1714,17 @@ def delineate_watersheds_trivial_d8(
 
         # Polygonize this new watershed from the VRT.
         vrt_raster = gdal.OpenEx(vrt_path, gdal.OF_RASTER)
-        if vrt_raster is None:
-            print flow_dir_origin_x, flow_dir_origin_y
-            print flow_dir_pixelsize_x, flow_dir_pixelsize_y
-            print (ix_min, iy_min, ix_max, iy_max), 'ws_id', ws_id
-            print (flow_dir_origin_x + (ix_min*flow_dir_pixelsize_x))  # minx
-            print (flow_dir_origin_y + (iy_min*flow_dir_pixelsize_y))  # miny
-            print (flow_dir_origin_x + (ix_max*flow_dir_pixelsize_x))  # maxx
-            print (flow_dir_origin_y + (iy_max*flow_dir_pixelsize_y))  # maxy
-
         vrt_band = vrt_raster.GetRasterBand(1)
         result = gdal.Polygonize(
             vrt_band,  # The source band
-            vrt_band,  # The mask indicating valid pixels
+            vrt_band,  # The mask. Pixels with 0 are invalid, nonzero are valid
             polygonized_watersheds_layer,
             0,  # ws_id field index
             [])  # 8connectedness does not always produce valid geometries.
 
-        #scratch_raster = gdal.OpenEx(scratch_raster_path, gdal.OF_RASTER | gdal.GA_Update)
-        #scratch_band = scratch_raster.GetRasterBand(1)
-        #scratch_band.Fill(0)  # reset the scratch band
-        #scratch_band.FlushCache()
-        #scratch_band = None
-        #scratch_raster = None
+        vrt_band = None
+        vrt_raster = None
+
     LOGGER.info('Finished delineating %s watersheds in %ss',
                 watersheds_created, round(ctime(NULL) -
                                           delineation_start_time, 4))
@@ -1746,7 +1737,8 @@ def delineate_watersheds_trivial_d8(
     fragments_with_duplicates = collections.defaultdict(set)
     for feature in polygonized_watersheds_layer:
         fid = feature.GetFID()
-        ws_id = feature.GetField('ws_id')
+        # ws_id is tracked as 1 more than the FID.  See previous note about why.
+        ws_id = feature.GetField('ws_id')-1
         fragments_with_duplicates[ws_id].add(fid)
     polygonized_watersheds_layer.ResetReading()
     fragments_with_duplicates = dict(fragments_with_duplicates)
@@ -1767,8 +1759,7 @@ def delineate_watersheds_trivial_d8(
         else:
             new_geometry = ogr.Geometry(ogr.wkbMultiPolygon)
             for duplicate_fid in fragments_with_duplicates[ws_id]:
-                # ws_id is tracked as 1 more than the FID.  See previous note about why.
-                duplicate_feature = polygonized_watersheds_layer.GetFeature(duplicate_fid-1)
+                duplicate_feature = polygonized_watersheds_layer.GetFeature(duplicate_fid)
                 duplicate_geometry = duplicate_feature.GetGeometryRef()
                 new_geometry.AddGeometry(duplicate_geometry)
 
