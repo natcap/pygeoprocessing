@@ -540,7 +540,7 @@ def split_vector_into_seeds(
 
 
 cdef cset[CoordinatePair] _split_geometry_into_seeds(
-        source_geom_wkb, d8_flow_dir_raster_path_band,
+        source_geom_wkb, flow_dir_info,
         working_dir=None, remove=True, write_diagnostic_vector=True) except *:
     # if a point, return the coords directly.
     # Otherwise:
@@ -548,15 +548,7 @@ cdef cset[CoordinatePair] _split_geometry_into_seeds(
     #    * rasterize the source geom onto the bbox
     #    * use numpy to extract the row/col coordinates
     #    * return set of coordinate pairs
-    flow_dir_info = pygeoprocessing.get_raster_info(
-        d8_flow_dir_raster_path_band[0])
     source_gt = flow_dir_info['geotransform']
-    flow_dir_bbox = shapely.prepared.prep(
-        shapely.geometry.box(
-            flow_dir_info['bounding_box'][0],
-            flow_dir_info['bounding_box'][1],
-            flow_dir_info['bounding_box'][2],
-            flow_dir_info['bounding_box'][3]))
     flow_dir_srs = osr.SpatialReference()
     flow_dir_srs.ImportFromWkt(flow_dir_info['projection'])
     cdef int flow_dir_nodata = flow_dir_info['nodata'][0]
@@ -632,8 +624,8 @@ cdef cset[CoordinatePair] _split_geometry_into_seeds(
     seed_raster = gdal.OpenEx(tmp_raster_path, gdal.OF_RASTER)
     seed_band = seed_raster.GetRasterBand(1)
     seed_raster_gt = seed_raster.GetGeoTransform()
-    seed_raster_origin_x = seed_raster_gt[0]
-    seed_raster_origin_y = seed_raster_gt[3]
+    cdef double seed_raster_origin_x = seed_raster_gt[0]
+    cdef double seed_raster_origin_y = seed_raster_gt[3]
 
     if write_diagnostic_vector:
         diagnostic_vector = gpkg_driver.Create(
@@ -642,25 +634,40 @@ cdef cset[CoordinatePair] _split_geometry_into_seeds(
         diagnostic_layer = diagnostic_vector.CreateLayer(
             'seeds', flow_dir_srs, ogr.wkbPoint)
 
-    seed_raster_origin_col = (seed_raster_gt[0] - x_origin) // x_pixelwidth
-    seed_raster_origin_row = (seed_raster_gt[3] - y_origin) // y_pixelwidth
+    cdef int row, col
+    cdef int global_row, global_col
+    cdef int seed_raster_origin_col = <int>((seed_raster_origin_x - x_origin) // x_pixelwidth)
+    cdef int seed_raster_origin_row = <int>((seed_raster_origin_y - y_origin) // y_pixelwidth)
+    cdef dict block_info
+    cdef int block_xoff
+    cdef int block_yoff
+    cdef numpy.ndarray[numpy.npy_uint8, ndim=2] seed_array
     for block_info in pygeoprocessing.iterblocks(
             (tmp_raster_path, 1), offset_only=True):
         seed_array = seed_band.ReadAsArray(**block_info)
+        block_xoff = block_info['xoff']
+        block_yoff = block_info['yoff']
+        n_rows = seed_array.shape[0]
+        n_cols = seed_array.shape[1]
 
-        for (row, col) in itertools.izip(*numpy.nonzero(seed_array)):
-            global_row = seed_raster_origin_row + block_info['yoff'] + row
-            global_col = seed_raster_origin_col + block_info['xoff'] + col
+        for row in range(n_rows):
+            for col in range(n_cols):
+                with cython.boundscheck(False):
+                    if seed_array[row, col] == 0:
+                        continue
 
-            if write_diagnostic_vector:
-                new_feature = ogr.Feature(diagnostic_layer.GetLayerDefn())
-                new_feature.SetGeometry(ogr.CreateGeometryFromWkb(
-                    shapely.geometry.Point(
-                        x_origin + ((global_col*x_pixelwidth) + (x_pixelwidth / 2.)),
-                        y_origin + ((global_row*y_pixelwidth) + (y_pixelwidth / 2.))).wkb))
-                diagnostic_layer.CreateFeature(new_feature)
+                global_row = seed_raster_origin_row + block_yoff + row
+                global_col = seed_raster_origin_col + block_xoff + col
 
-            seed_set.insert(CoordinatePair(global_col, global_row))
+                if write_diagnostic_vector:
+                    new_feature = ogr.Feature(diagnostic_layer.GetLayerDefn())
+                    new_feature.SetGeometry(ogr.CreateGeometryFromWkb(
+                        shapely.geometry.Point(
+                            x_origin + ((global_col*x_pixelwidth) + (x_pixelwidth / 2.)),
+                            y_origin + ((global_row*y_pixelwidth) + (y_pixelwidth / 2.))).wkb))
+                    diagnostic_layer.CreateFeature(new_feature)
+
+                seed_set.insert(CoordinatePair(global_col, global_row))
 
     seed_band = None
     seed_raster = None
@@ -1598,7 +1605,7 @@ def delineate_watersheds_trivial_d8(
             continue
 
         seeds_in_watershed = _split_geometry_into_seeds(
-            geom_wkb, d8_flow_dir_raster_path_band,
+            geom_wkb, flow_dir_info,
             working_dir=working_dir_path,
             remove=True,
             write_diagnostic_vector=False)
@@ -1640,7 +1647,7 @@ def delineate_watersheds_trivial_d8(
         while not process_queue.empty():
             if ctime(NULL) - last_log_time > 5.0:
                 last_log_time = ctime(NULL)
-                LOGGER.info('Delineating watershed %s of %s',
+                LOGGER.info('Delineating watershed from feature %s of %s',
                             current_fid, outflow_feature_count)
 
             current_pixel = process_queue.front()
