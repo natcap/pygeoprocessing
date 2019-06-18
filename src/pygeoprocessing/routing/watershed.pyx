@@ -618,15 +618,21 @@ cdef cset[CoordinatePair] _split_geometry_into_seeds(
     new_vector = None
 
     tmp_raster_path = os.path.join(working_dir_path, 'rasterized_geometry.tif')
-    # TODO: make this sparse?
-    # TODO: align this with the flow_dir pixels.
+
     local_origin_x = minx - (minx % x_pixelwidth)
     local_origin_y = maxy - (maxy % y_pixelwidth)
-    pygeoprocessing.create_raster_from_vector_extents(
-        tmp_vector_path, tmp_raster_path, flow_dir_info['pixel_size'],
-        gdal.GDT_Byte, target_nodata=0, fill_value=None,
-        origin=(local_origin_x, local_origin_y))
-
+    local_n_cols = int(((maxx - local_origin_x) // x_pixelwidth) + 1)
+    local_n_rows = int(((miny - local_origin_y) // y_pixelwidth) + 1)
+    local_geotransform = [
+        local_origin_x, source_gt[1], source_gt[2],
+        local_origin_y, source_gt[4], source_gt[5]]
+    gtiff_driver = gdal.GetDriverByName('GTiff')
+    raster = gtiff_driver.Create(
+        tmp_raster_path, local_n_cols, local_n_rows, 1, gdal.GDT_Byte,
+        options=GTIFF_CREATION_OPTIONS)  # Raster is sparse, no need to fill.
+    raster.SetProjection(flow_dir_srs.ExportToWkt())
+    raster.SetGeoTransform(local_geotransform)
+    raster = None
 
     pygeoprocessing.rasterize(tmp_vector_path, tmp_raster_path, burn_values=[1])
 
