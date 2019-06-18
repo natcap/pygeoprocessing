@@ -3043,6 +3043,91 @@ def mask_raster(
     os.remove(mask_raster_path)
 
 
+def evaluate_raster_calculator_expression(
+        expression, symbol_to_path_list, target_nodata, target_raster_path,
+        churn_dir=None):
+    """Evaluate the arithmetic expression of rasters.
+
+    Any nodata pixels in the path list are cause the corresponding pixel to
+    be a nodata value.
+
+    Parameters:
+        expression (str): a valid arithmetic expression whose variables are
+            defined in `symbol_to_path_list`.
+        symbol_to_path_list (list): a list of tuples where each tuple contains
+            a "symbol name"/raster_path pair. All symbol names correspond to
+            symbols in `expression. Ex:
+                expression = '2*x+b'
+                symbol_to_path_list = [
+                    ('x', path_to_x_raster), ('b', path_to_b_raster)]
+        target_nodata (numeric): desired nodata value for
+            `target_raster_path`.
+        target_raster_path (str): path to the raster that is created by
+            `expression`.
+        churn_dir (str): path to a temporary "churn" directory. If not
+            specified uses a tempfile.mkdtemp.
+
+    Returns:
+        None.
+
+    """
+    LOGGER.debug('evaluating: %s', expression)
+    delete_churn_dir = False
+    if churn_dir is None:
+        churn_dir = tempfile.mkdtemp()
+        delete_churn_dir = True
+    LOGGER.debug('preprocessing rasters')
+    symbol_list, raster_path_list = zip(*symbol_to_path_list)
+    processed_path_list = pygeobench.preprocess_rasters(
+        raster_path_list, churn_dir)
+    raster_op = lambdify(symbol_list, expression, 'numpy')
+
+    LOGGER.debug('applying raster calculator')
+    pygeoprocessing.raster_calculator(
+        [(raster_op, 'raw')] +
+        [(path, 1) for path in processed_path_list] +
+        [(pygeoprocessing.get_raster_info(path)['nodata'][0], 'raw')
+         for path in processed_path_list] + [(target_nodata, 'raw')],
+        _general_raster_calculator_op, target_raster_path, gdal.GDT_Float32,
+        target_nodata)
+    if delete_churn_dir:
+        shutil.rmtree(churn_dir)
+
+
+def _general_raster_calculator_op(*arg_list):
+    """General raster operation with well conditioned args.
+
+    Parameters:
+        arg_list (list): list is 2*n+2 length long laid out as:
+            op, array_0, ... array_n, nodata_0, ... nodata_n, target_nodata
+
+            The first element `op` is an operation that takes n elements which
+            are numpy.ndarrays. The second n elements are the nodata values
+            for the corresponding ndarrays. The last value is the target
+            nodata value.
+
+    Returns:
+        op applied to a masked version of array_0, ... array_n where only
+        valid nodata values in the raster stack are used. Otherwise the target
+        pixels are set to target_nodata.
+
+    """
+    n = int((len(arg_list)-2) / 2)
+    result = numpy.empty(arg_list[1].shape, dtype=numpy.float32)
+    target_nodata = arg_list[2*n+1]
+    result[:] = target_nodata
+    nodata_list = arg_list[n+1:2*n+1]
+    if any([x is not None for x in nodata_list]):
+        array_list = arg_list[1:(n+1)]
+        valid_mask = ~numpy.logical_or.reduce(
+            [numpy.isclose(array, nodata)
+             for array, nodata in zip(array_list, nodata_list)
+             if nodata is not None])
+        op = arg_list[0]
+        result[valid_mask] = op(*[array[valid_mask] for array in array_list])
+    return result
+
+
 def _invoke_timed_callback(
         reference_time, callback_lambda, callback_period):
     """Invoke callback if a certain amount of time has passed.
