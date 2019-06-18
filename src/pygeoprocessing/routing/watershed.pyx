@@ -1503,7 +1503,7 @@ def delineate_watersheds_d8(
 @cython.wraparound(False)
 def delineate_watersheds_trivial_d8(
         d8_flow_dir_raster_path_band, outflow_vector_path,
-        target_watersheds_vector_path, working_dir=None, remove=True):
+        target_watersheds_vector_path, working_dir=None, remove=True, layer_id=0):
     cdef time_t setup_start_time = ctime(NULL)
 
     try:
@@ -1561,44 +1561,6 @@ def delineate_watersheds_trivial_d8(
                 round(ctime(NULL) - setup_start_time, 4))
 
     cdef time_t seed_splitting_start_time = ctime(NULL)
-    cdef cmap[CoordinatePair, cset[int]] seeds
-    cdef cmap[CoordinatePair, cset[int]].iterator seeds_iterator
-    cdef CoordinatePair seed
-    seeds = _split_vector_into_seeds(
-        outflow_vector_path,
-        d8_flow_dir_raster_path_band,
-        source_vector_layer=None,
-        working_dir=working_dir_path,
-        remove=False,
-        write_diagnostic_vector=True
-    )
-
-    # TODO: optimization for when wateshed geometries are perfectly duplicated.
-    # No need to re-delineate.
-    cdef cmap[int, cset[CoordinatePair]] seeds_in_ws_id_c
-    cdef cmap[int, cset[CoordinatePair]].iterator seeds_in_ws_id_c_iterator
-    cdef cset[int] ws_id_set
-    cdef cset[int].iterator ws_id_set_iterator
-
-    seeds_iterator = seeds.begin()
-    while seeds_iterator != seeds.end():
-        seed = deref(seeds_iterator).first
-        ws_id_set = deref(seeds_iterator).second
-        inc(seeds_iterator)
-
-        ws_id_set_iterator = ws_id_set.begin()
-        while ws_id_set_iterator!= ws_id_set.end():
-            ws_id = deref(ws_id_set_iterator)
-            inc(ws_id_set_iterator)
-
-            if seeds_in_ws_id_c.find(ws_id) == seeds_in_ws_id_c.end():
-                seeds_in_ws_id_c[ws_id] = cset[CoordinatePair]()
-            seeds_in_ws_id_c[ws_id].insert(seed)
-
-    LOGGER.info('Finished seed splitting in %ss',
-                round(ctime(NULL) - seed_splitting_start_time, 4))
-
-    feature_count = seeds_in_ws_id_c.size()
 
     cdef int* reverse_flow = [4, 5, 6, 7, 0, 1, 2, 3]
     cdef int* neighbor_col = [1, 1, 0, -1, -1, -1, 0, 1]
@@ -1609,25 +1571,38 @@ def delineate_watersheds_trivial_d8(
     cdef int ix_min, iy_min, ix_max, iy_max
     cdef _ManagedRaster scratch_managed_raster
     cdef int watersheds_created = 0
-    cdef cmap[int, cset[CoordinatePair]].iterator watershed_iterator
     cdef cset[CoordinatePair].iterator seed_iterator
-    cdef cset[CoordinatePair] seeds_in_current_watershed
-    watershed_iterator = seeds_in_ws_id_c.begin()
+    cdef cset[CoordinatePair] seeds_in_watershed
     cdef time_t last_log_time = ctime(NULL)
     cdef time_t delineation_start_time = ctime(NULL)
     LOGGER.info('Delineating watersheds')
-    while watershed_iterator != seeds_in_ws_id_c.end():
-        ws_id, seeds_in_current_watershed = deref(watershed_iterator)
-        inc(watershed_iterator)
 
+    outflow_vector = gdal.OpenEx(outflow_vector_path)
+    outflow_layer = outflow_vector.GetLayer(layer_id)
+    outflow_feature_count = outflow_layer.GetFeatureCount()
+    for feature in outflow_layer:
         # Some vectors start indexing their FIDs at 0.
         # The mask raster input to polygonization, however, only regards pixels
         # as zero or nonzero.  Therefore, to make sure we can use the ws_id as
         # the FID and not maintain a separate mask raster, we'll just add 1.
-        ws_id += 1
+        ws_id = feature.GetFID() + 1
+        assert ws_id >= 1, 'WSID <= 1!'
 
-        seed_iterator = seeds_in_current_watershed.begin()
-        while seed_iterator != seeds_in_current_watershed.end():
+        geom_wkb = feature.GetGeometryRef().ExportToWkb()
+        seeds_in_watershed = _split_geometry_into_seeds(
+            geom_wkb, d8_flow_dir_raster_path_band,
+            working_dir=working_dir_path,
+            remove=True,
+            write_diagnostic_vector=False)
+
+        if seeds_in_watershed.size() == 0:
+            LOGGER.warn(
+                'Outflow feature %s does not intersect any pixels with '
+                'valid flow direction. Skipping.', feature.GetFID())
+            continue
+
+        seed_iterator = seeds_in_watershed.begin()
+        while seed_iterator != seeds_in_watershed.end():
             seed = deref(seed_iterator)
             inc(seed_iterator)
             process_queue.push(seed)
@@ -1648,7 +1623,7 @@ def delineate_watersheds_trivial_d8(
             if ctime(NULL) - last_log_time > 5.0:
                 last_log_time = ctime(NULL)
                 LOGGER.info('Delineating watershed %s of %s',
-                            watersheds_created, feature_count)
+                            watersheds_created, outflow_feature_count)
 
             current_pixel = process_queue.front()
             process_queue_set.erase(current_pixel)
