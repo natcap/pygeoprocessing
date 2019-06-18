@@ -1,4 +1,5 @@
 # cython: language_level=2
+# cython: profile=True
 import time
 import os
 import logging
@@ -540,7 +541,7 @@ def split_vector_into_seeds(
 
 cdef cset[CoordinatePair] _split_geometry_into_seeds(
         source_geom_wkb, d8_flow_dir_raster_path_band,
-        working_dir=None, remove=True, write_diagnostic_vector=True):
+        working_dir=None, remove=True, write_diagnostic_vector=True) except *:
     # if a point, return the coords directly.
     # Otherwise:
     #    * create a new raster from the bbox of the source geom
@@ -551,7 +552,11 @@ cdef cset[CoordinatePair] _split_geometry_into_seeds(
         d8_flow_dir_raster_path_band[0])
     source_gt = flow_dir_info['geotransform']
     flow_dir_bbox = shapely.prepared.prep(
-        shapely.geometry.box(*flow_dir_info['bounding_box']))
+        shapely.geometry.box(
+            flow_dir_info['bounding_box'][0],
+            flow_dir_info['bounding_box'][1],
+            flow_dir_info['bounding_box'][2],
+            flow_dir_info['bounding_box'][3]))
     flow_dir_srs = osr.SpatialReference()
     flow_dir_srs.ImportFromWkt(flow_dir_info['projection'])
     cdef int flow_dir_nodata = flow_dir_info['nodata'][0]
@@ -566,13 +571,6 @@ cdef cset[CoordinatePair] _split_geometry_into_seeds(
 
     geometry = shapely.wkb.loads(source_geom_wkb)
 
-    if not flow_dir_bbox.intersects(shapely.geometry.box(*geometry.bounds)):
-        # TODO: raise an error?  Log an error?
-        return seed_set  # empty
-
-    cdef _ManagedRaster flow_dir_managed_raster = _ManagedRaster(
-        d8_flow_dir_raster_path_band[0], d8_flow_dir_raster_path_band[1], 0)
-
     minx, miny, maxx, maxy = geometry.bounds
     minx_pixelcoord = <int>((minx - x_origin) // x_pixelwidth)
     miny_pixelcoord = <int>((miny - y_origin) // y_pixelwidth)
@@ -585,11 +583,6 @@ cdef cset[CoordinatePair] _split_geometry_into_seeds(
     # determination.
     if minx_pixelcoord == maxx_pixelcoord and miny_pixelcoord == maxy_pixelcoord:
         # If the point is over nodata, skip it.
-        if (flow_dir_managed_raster.get(minx_pixelcoord, miny_pixelcoord)
-                == flow_dir_nodata):
-            # TODO: raise an error? Log an error?
-            return seed_set  # Empty
-
         seed = CoordinatePair(minx_pixelcoord, miny_pixelcoord)
         seed_set.insert(seed)
         return seed_set
@@ -658,9 +651,6 @@ cdef cset[CoordinatePair] _split_geometry_into_seeds(
         for (row, col) in itertools.izip(*numpy.nonzero(seed_array)):
             global_row = seed_raster_origin_row + block_info['yoff'] + row
             global_col = seed_raster_origin_col + block_info['xoff'] + col
-
-            if flow_dir_managed_raster.get(global_col, global_row) == flow_dir_nodata:
-                continue
 
             if write_diagnostic_vector:
                 new_feature = ogr.Feature(diagnostic_layer.GetLayerDefn())
@@ -1571,42 +1561,70 @@ def delineate_watersheds_trivial_d8(
     cdef int ix_min, iy_min, ix_max, iy_max
     cdef _ManagedRaster scratch_managed_raster
     cdef int watersheds_created = 0
+    cdef int current_fid, outflow_feature_count
     cdef cset[CoordinatePair].iterator seed_iterator
     cdef cset[CoordinatePair] seeds_in_watershed
     cdef time_t last_log_time = ctime(NULL)
     cdef time_t delineation_start_time = ctime(NULL)
     LOGGER.info('Delineating watersheds')
+    flow_dir_bbox = shapely.prepared.prep(
+        shapely.geometry.box(*flow_dir_info['bounding_box']))
 
     outflow_vector = gdal.OpenEx(outflow_vector_path)
-    outflow_layer = outflow_vector.GetLayer(layer_id)
+    outflow_layer = outflow_vector.GetLayer()
     outflow_feature_count = outflow_layer.GetFeatureCount()
     for feature in outflow_layer:
         # Some vectors start indexing their FIDs at 0.
         # The mask raster input to polygonization, however, only regards pixels
         # as zero or nonzero.  Therefore, to make sure we can use the ws_id as
         # the FID and not maintain a separate mask raster, we'll just add 1.
-        ws_id = feature.GetFID() + 1
+        current_fid = feature.GetFID()
+        ws_id = current_fid + 1
         assert ws_id >= 1, 'WSID <= 1!'
 
-        geom_wkb = feature.GetGeometryRef().ExportToWkb()
+        geom = feature.GetGeometryRef()
+        if geom.IsEmpty():
+            LOGGER.warn(
+                'Outflow feature %s has empty geometry.  Skipping.',
+                current_fid)
+            continue
+        geom_wkb = geom.ExportToWkb()
+        shapely_geom = shapely.wkb.loads(geom_wkb)
+
+        if not flow_dir_bbox.intersects(shapely.geometry.box(*shapely_geom.bounds)):
+            LOGGER.warn(
+                'Outflow feature %s does not overlap with the flow '
+                'direction raster. Skipping.', current_fid)
+            continue
+
         seeds_in_watershed = _split_geometry_into_seeds(
             geom_wkb, d8_flow_dir_raster_path_band,
             working_dir=working_dir_path,
             remove=True,
             write_diagnostic_vector=False)
 
-        if seeds_in_watershed.size() == 0:
-            LOGGER.warn(
-                'Outflow feature %s does not intersect any pixels with '
-                'valid flow direction. Skipping.', feature.GetFID())
-            continue
-
         seed_iterator = seeds_in_watershed.begin()
         while seed_iterator != seeds_in_watershed.end():
             seed = deref(seed_iterator)
             inc(seed_iterator)
+
+            if not 0 <= seed.first < flow_dir_n_cols:
+                continue
+
+            if not 0 <= seed.second < flow_dir_n_rows:
+                continue
+
+            if flow_dir_managed_raster.get(seed.first, seed.second) == flow_dir_nodata:
+                continue
+
             process_queue.push(seed)
             process_queue_set.insert(seed)
+
+        if process_queue_set.size() == 0:
+            LOGGER.warn(
+                'Outflow feature %s does not intersect any pixels with '
+                'valid flow direction. Skipping.', current_fid)
+            continue
 
         scratch_raster_path = os.path.join(working_dir_path,
                                            'scratch_%s.tif' % ws_id)
@@ -1623,7 +1641,7 @@ def delineate_watersheds_trivial_d8(
             if ctime(NULL) - last_log_time > 5.0:
                 last_log_time = ctime(NULL)
                 LOGGER.info('Delineating watershed %s of %s',
-                            watersheds_created, outflow_feature_count)
+                            current_fid, outflow_feature_count)
 
             current_pixel = process_queue.front()
             process_queue_set.erase(current_pixel)
