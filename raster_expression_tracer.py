@@ -26,7 +26,7 @@ LOGGER = logging.getLogger(__name__)
 
 def main():
     """Write your expression here."""
-    expression_list = [
+    raster_calculation_list = [
         {
             'expression': '(load-export)/load',
             'symbol_to_path_map': {
@@ -38,52 +38,68 @@ def main():
         }
     ]
 
-    for expression in expression_list:
-        expression_id = os.path.splitext(
-            os.path.basename(expression['target_raster_path']))[0]
-        expression_workspace_path = os.path.join(WORKSPACE_DIR, expression_id)
-        expression_ecoshard_path = os.path.join(
-            expression_workspace_path, 'ecoshard')
-        try:
-            os.makedirs(expression_ecoshard_path)
-        except OSError:
-            pass
-        # process ecoshards if necessary
-        symbol_to_path_band_map = {}
-        download_task_list = []
-        for symbol, path in expression['symbol_to_path_map'].items():
-            if path.startswith('http://') or path.startswith('https://'):
-                # download to local file
-                local_path = os.path.join(
-                    expression_ecoshard_path,
-                    os.path.basename(path))
-                download_task = TASK_GRAPH.add_task(
-                    func=download_url,
-                    args=(path, local_path),
-                    target_path_list=[local_path],
-                    task_name='download %s' % local_path)
-                download_task_list.append(download_task)
-                symbol_to_path_band_map[symbol] = (local_path, 1)
-            else:
-                symbol_to_path_band_map[symbol] = (path, 1)
+    for raster_calculation in raster_calculation_list:
+        evaluate_calculation(raster_calculation)
 
-        # this sets a common target sr, pixel size, and resample method .
-        expression.update({
-            'churn_dir': WORKSPACE_DIR,
-            'target_sr_wkt': None,
-            'target_pixel_size': None,
-            'resample_method': 'near',
-            'symbol_to_path_band_map': symbol_to_path_band_map,
-            })
-        del expression['symbol_to_path_map']
-        LOGGER.debug(expression)
-        TASK_GRAPH.add_task(
-            func=pygeoprocessing.evaluate_raster_calculator_expression,
-            kwargs=expression,
-            dependent_task_list=download_task_list,
-            task_name='%s -> %s' % (
-                expression['expression'],
-                os.path.basename(expression['target_raster_path'])))
+
+def evaluate_calculation(args):
+    """Evaluates raster calculator expression object.
+
+    Parameters:
+        args['expression'] (str): a symbolic arithmetic expression
+            representing the desired calculation.
+        args['symbol_to_path_map'] (dict): dictionary mapping symbols in
+            `expression` to either raster paths or URLs. In the case of
+            the latter, the file will be downloaded to a `WORKSPACE_DIR`
+        args['target_nodata'] (numeric):
+        args['target_raster_path'] (str):
+    """
+
+    expression_id = os.path.splitext(
+        os.path.basename(args['target_raster_path']))[0]
+    expression_workspace_path = os.path.join(WORKSPACE_DIR, expression_id)
+    expression_ecoshard_path = os.path.join(
+        expression_workspace_path, 'ecoshard')
+    try:
+        os.makedirs(expression_ecoshard_path)
+    except OSError:
+        pass
+    # process ecoshards if necessary
+    symbol_to_path_band_map = {}
+    download_task_list = []
+    for symbol, path in args['symbol_to_path_map'].items():
+        if path.startswith('http://') or path.startswith('https://'):
+            # download to local file
+            local_path = os.path.join(
+                expression_ecoshard_path,
+                os.path.basename(path))
+            download_task = TASK_GRAPH.add_task(
+                func=download_url,
+                args=(path, local_path),
+                target_path_list=[local_path],
+                task_name='download %s' % local_path)
+            download_task_list.append(download_task)
+            symbol_to_path_band_map[symbol] = (local_path, 1)
+        else:
+            symbol_to_path_band_map[symbol] = (path, 1)
+
+    # this sets a common target sr, pixel size, and resample method .
+    expression.update({
+        'churn_dir': WORKSPACE_DIR,
+        'target_sr_wkt': None,
+        'target_pixel_size': None,
+        'resample_method': 'near',
+        'symbol_to_path_band_map': symbol_to_path_band_map,
+        })
+    del args['symbol_to_path_map']
+    LOGGER.debug(expression)
+    TASK_GRAPH.add_task(
+        func=pygeoprocessing.evaluate_raster_calculator_expression,
+        kwargs=expression,
+        dependent_task_list=download_task_list,
+        task_name='%s -> %s' % (
+            args['expression'],
+            os.path.basename(args['target_raster_path'])))
 
 
 def _preprocess_rasters(
