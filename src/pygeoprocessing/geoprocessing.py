@@ -3045,8 +3045,9 @@ def mask_raster(
 
 
 def evaluate_raster_calculator_expression(
-        expression, symbol_to_path_list, target_nodata, target_raster_path,
-        churn_dir=None):
+        expression, symbol_to_path_band_map, target_nodata, target_raster_path,
+        churn_dir=None, target_sr_wkt=None, target_pixel_size=None,
+        resample_method='near'):
     """Evaluate the arithmetic expression of rasters.
 
     Any nodata pixels in the path list are cause the corresponding pixel to
@@ -3054,19 +3055,34 @@ def evaluate_raster_calculator_expression(
 
     Parameters:
         expression (str): a valid arithmetic expression whose variables are
-            defined in `symbol_to_path_list`.
-        symbol_to_path_list (list): a list of tuples where each tuple contains
-            a "symbol name"/raster_path pair. All symbol names correspond to
+            defineband_d in `symbol_to_path_band_map`.
+        symbol_to_path_band_map (dict): a dict of symbol/(path, band) pairs to
+            indicate which symbol maps to which raster and corresponding
+            band. All symbol names correspond to
             symbols in `expression. Ex:
                 expression = '2*x+b'
-                symbol_to_path_list = [
-                    ('x', path_to_x_raster), ('b', path_to_b_raster)]
+                symbol_to_path_band_mapband_ = {
+                    'x': (path_to_x_raster, 1),
+                    'b': (path_to_b_raster, 1)
+                }
         target_nodata (numeric): desired nodata value for
             `target_raster_path`.
         target_raster_path (str): path to the raster that is created by
             `expression`.
         churn_dir (str): path to a temporary "churn" directory. If not
             specified uses a tempfile.mkdtemp.
+        target_sr_wkt (string): if not None, this is the desired
+            projection of the target rasters in Well Known Text format. If
+            None and all symbol rasters have the same projection, that
+            projection will be used. Otherwise a ValueError is raised
+            indicating that the rasters are in different projections with
+            no guidance to resolve.
+        target_pixel_size (tuple): It not None, desired output target pixel
+            size. A ValueError is raised if symbol rasters are different
+            pixel sizes and this value is None.
+        resample_method (str): if the symbol rasters need to be resized for
+            any reason, this method is used. The value can be one of:
+            "near|bilinear|cubic|cubicspline|lanczos|average|mode|max".
 
     Returns:
         None.
@@ -3078,15 +3094,18 @@ def evaluate_raster_calculator_expression(
         churn_dir = tempfile.mkdtemp()
         delete_churn_dir = True
     LOGGER.debug('preprocessing rasters')
-    symbol_list, raster_path_list = zip(*symbol_to_path_list)
+    ############# this needs some thought about raster path bands
+    symbol_list, raster_path_band_list = zip(*symbol_to_path_band_map.items())
     processed_path_list = _preprocess_rasters(
-        raster_path_list, churn_dir)
+        raster_path_band_list, churn_dir, target_sr_wkt=target_sr_wkt,
+        target_pixel_size=target_pixel_size, resample_method=resample_method)
+
     raster_op = lambdify(symbol_list, expression, 'numpy')
 
     LOGGER.debug('applying raster calculator')
     raster_calculator(
         [(raster_op, 'raw')] +
-        [(path, 1) for path in processed_path_list] +
+        [path_band for path_band in processed_path_list] +
         [(get_raster_info(path)['nodata'][0], 'raw')
          for path in processed_path_list] + [(target_nodata, 'raw')],
         _general_raster_calculator_op, target_raster_path, gdal.GDT_Float32,
@@ -3096,7 +3115,7 @@ def evaluate_raster_calculator_expression(
 
 
 def _preprocess_rasters(
-        base_raster_path_list, churn_dir, target_epsg=None,
+        base_raster_path_list, churn_dir, target_sr_wkt=None,
         target_pixel_size=None, resample_method='near'):
     """Process base raster path list so it can be used in raster calcs.
 
@@ -3105,6 +3124,18 @@ def _preprocess_rasters(
         churn_dir (str): path to a directory that can be used to write
             temporary files that could be used later for
             caching/reproducibility.
+        target_sr_wkt (string): if not None, this is the desired
+            projection of the target rasters in Well Known Text format. If
+            None and all symbol rasters have the same projection, that
+            projection will be used. Otherwise a ValueError is raised
+            indicating that the rasters are in different projections with
+            no guidance to resolve.
+        target_pixel_size (tuple): It not None, desired output target pixel
+            size. A ValueError is raised if symbol rasters are different
+            pixel sizes and this value is None.
+        resample_method (str): if the symbol rasters need to be resized for
+            any reason, this method is used. The value can be one of:
+            "near|bilinear|cubic|cubicspline|lanczos|average|mode|max".
 
     Returns:
         list of raster paths that can be used in raster calcs, note this may
@@ -3123,15 +3154,15 @@ def _preprocess_rasters(
 
     target_sr_wkt = None
     if len(set(base_projection_list)) != 1:
-        if target_epsg is not None:
+        if target_sr_wkt is not None:
             raise ValueError(
                 "Projections of base rasters are not equal and there "
-                "is no `target_epsg` defined.\nprojection list: %s",
+                "is no `target_sr_wkt` defined.\nprojection list: %s",
                 str(base_projection_list))
         else:
             LOGGER.info('projections are different')
             target_srs = osr.SpatialReference()
-            target_srs.ImportFromEPSG(target_epsg)
+            target_srs.ImportFromWkt(target_sr_wkt)
             target_sr_wkt = target_srs.ExportToWkt()
             resample_inputs = True
 
