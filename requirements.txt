@@ -10,3 +10,4 @@ Shapely>=1.6.4
 future
 Cython
 Rtree>=0.8.2
+sympy
