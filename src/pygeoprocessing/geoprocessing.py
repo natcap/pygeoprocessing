@@ -3065,24 +3065,14 @@ def evaluate_raster_calculator_expression(
                     'x': (path_to_x_raster, 1),
                     'b': (path_to_b_raster, 1)
                 }
+            All rasters represented in this structure must have the same
+            raster size.
         target_nodata (numeric): desired nodata value for
             `target_raster_path`.
         target_raster_path (str): path to the raster that is created by
             `expression`.
         churn_dir (str): path to a temporary "churn" directory. If not
             specified uses a tempfile.mkdtemp.
-        target_sr_wkt (string): if not None, this is the desired
-            projection of the target rasters in Well Known Text format. If
-            None and all symbol rasters have the same projection, that
-            projection will be used. Otherwise a ValueError is raised
-            indicating that the rasters are in different projections with
-            no guidance to resolve.
-        target_pixel_size (tuple): It not None, desired output target pixel
-            size. A ValueError is raised if symbol rasters are different
-            pixel sizes and this value is None.
-        resample_method (str): if the symbol rasters need to be resized for
-            any reason, this method is used. The value can be one of:
-            "near|bilinear|cubic|cubicspline|lanczos|average|mode|max".
 
     Returns:
         None.
@@ -3093,111 +3083,19 @@ def evaluate_raster_calculator_expression(
     if churn_dir is None:
         churn_dir = tempfile.mkdtemp()
         delete_churn_dir = True
-    LOGGER.debug('preprocessing rasters')
-    ############# this needs some thought about raster path bands
     symbol_list, raster_path_band_list = zip(*symbol_to_path_band_map.items())
-    processed_path_list = _preprocess_rasters(
-        raster_path_band_list, churn_dir, target_sr_wkt=target_sr_wkt,
-        target_pixel_size=target_pixel_size, resample_method=resample_method)
-
     raster_op = lambdify(symbol_list, expression, 'numpy')
 
     LOGGER.debug('applying raster calculator')
     raster_calculator(
         [(raster_op, 'raw')] +
-        [path_band for path_band in processed_path_list] +
-        [(get_raster_info(path)['nodata'][0], 'raw')
-         for path in processed_path_list] + [(target_nodata, 'raw')],
+        [path_band for path_band in raster_path_band_list] +
+        [(get_raster_info(path_band[0])['nodata'][path_band[1]-1], 'raw')
+         for path_band in raster_path_band_list] + [(target_nodata, 'raw')],
         _general_raster_calculator_op, target_raster_path, gdal.GDT_Float32,
         target_nodata)
     if delete_churn_dir:
         shutil.rmtree(churn_dir)
-
-
-def _preprocess_rasters(
-        base_raster_path_list, churn_dir, target_sr_wkt=None,
-        target_pixel_size=None, resample_method='near'):
-    """Process base raster path list so it can be used in raster calcs.
-
-    Parameters:
-        base_raster_path_list (list): list of arbitrary rasters.
-        churn_dir (str): path to a directory that can be used to write
-            temporary files that could be used later for
-            caching/reproducibility.
-        target_sr_wkt (string): if not None, this is the desired
-            projection of the target rasters in Well Known Text format. If
-            None and all symbol rasters have the same projection, that
-            projection will be used. Otherwise a ValueError is raised
-            indicating that the rasters are in different projections with
-            no guidance to resolve.
-        target_pixel_size (tuple): It not None, desired output target pixel
-            size. A ValueError is raised if symbol rasters are different
-            pixel sizes and this value is None.
-        resample_method (str): if the symbol rasters need to be resized for
-            any reason, this method is used. The value can be one of:
-            "near|bilinear|cubic|cubicspline|lanczos|average|mode|max".
-
-    Returns:
-        list of raster paths that can be used in raster calcs, note this may
-        be the original list of rasters or they may have been created by
-        this call.
-
-    """
-    resample_inputs = False
-
-    base_info_list = [
-        get_raster_info(path)
-        for path in base_raster_path_list]
-    base_projection_list = [info['projection'] for info in base_info_list]
-    base_pixel_list = [info['pixel_size'] for info in base_info_list]
-    base_raster_shape_list = [info['raster_size'] for info in base_info_list]
-
-    target_sr_wkt = None
-    if len(set(base_projection_list)) != 1:
-        if target_sr_wkt is not None:
-            raise ValueError(
-                "Projections of base rasters are not equal and there "
-                "is no `target_sr_wkt` defined.\nprojection list: %s",
-                str(base_projection_list))
-        else:
-            LOGGER.info('projections are different')
-            target_srs = osr.SpatialReference()
-            target_srs.ImportFromWkt(target_sr_wkt)
-            target_sr_wkt = target_srs.ExportToWkt()
-            resample_inputs = True
-
-    if len(set(base_pixel_list)) != 1:
-        if target_pixel_size is None:
-            raise ValueError(
-                "base and reference pixel sizes are different and no target "
-                "is defined.\nbase pixel sizes: %s", str(base_pixel_list))
-        LOGGER.info('pixel sizes are different')
-        resample_inputs = True
-    else:
-        # else use the pixel size they all have
-        target_pixel_size = base_pixel_list[0]
-
-    if len(set(base_raster_shape_list)) != 1:
-        LOGGER.info('raster shapes different')
-        resample_inputs = True
-
-    if resample_inputs:
-        LOGGER.info("need to align/reproject inputs to apply calculation")
-        try:
-            os.makedirs(churn_dir)
-        except OSError:
-            LOGGER.debug('churn dir %s already exists', churn_dir)
-
-        operand_raster_path_list = [
-            os.path.join(churn_dir, os.path.basename(path)) for path in
-            base_raster_path_list]
-        align_and_resize_raster_stack(
-            base_raster_path_list, operand_raster_path_list,
-            [resample_method]*len(base_raster_path_list),
-            target_pixel_size, 'intersection', target_sr_wkt=target_sr_wkt)
-        return operand_raster_path_list
-    else:
-        return base_raster_path_list
 
 
 def _general_raster_calculator_op(*arg_list):
