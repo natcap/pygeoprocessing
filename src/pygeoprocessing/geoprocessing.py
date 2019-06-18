@@ -3047,7 +3047,7 @@ def mask_raster(
 def evaluate_raster_calculator_expression(
         expression, symbol_to_path_band_map, target_nodata, target_raster_path,
         churn_dir=None, target_sr_wkt=None, target_pixel_size=None,
-        resample_method='near'):
+        resample_method='near', default_nan=0.0):
     """Evaluate the arithmetic expression of rasters.
 
     Any nodata pixels in the path list are cause the corresponding pixel to
@@ -3073,6 +3073,8 @@ def evaluate_raster_calculator_expression(
             `expression`.
         churn_dir (str): path to a temporary "churn" directory. If not
             specified uses a tempfile.mkdtemp.
+        default_nan (numeric): if a calculation results in an NaN that
+            value is replaces with this value.
 
     Returns:
         None.
@@ -3091,7 +3093,8 @@ def evaluate_raster_calculator_expression(
         [(raster_op, 'raw')] +
         [path_band for path_band in raster_path_band_list] +
         [(get_raster_info(path_band[0])['nodata'][path_band[1]-1], 'raw')
-         for path_band in raster_path_band_list] + [(target_nodata, 'raw')],
+         for path_band in raster_path_band_list] + [
+            (target_nodata, 'raw'), (default_nan, 'raw')],
         _general_raster_calculator_op, target_raster_path, gdal.GDT_Float32,
         target_nodata)
     if delete_churn_dir:
@@ -3103,12 +3106,14 @@ def _general_raster_calculator_op(*arg_list):
 
     Parameters:
         arg_list (list): list is 2*n+2 length long laid out as:
-            op, array_0, ... array_n, nodata_0, ... nodata_n, target_nodata
+            op, array_0, ... array_n, nodata_0, ... nodata_n,
+            target_nodata, nan_value
 
             The first element `op` is an operation that takes n elements which
             are numpy.ndarrays. The second n elements are the nodata values
-            for the corresponding ndarrays. The last value is the target
-            nodata value.
+            for the corresponding ndarrays. The second to value is the target
+            nodata value and the final value is the value to set if an NaN
+            occurs in the calculations.
 
     Returns:
         op applied to a masked version of array_0, ... array_n where only
@@ -3119,6 +3124,7 @@ def _general_raster_calculator_op(*arg_list):
     n = int((len(arg_list)-2) / 2)
     result = numpy.empty(arg_list[1].shape, dtype=numpy.float32)
     target_nodata = arg_list[2*n+1]
+    nan_value = arg_list[2*n+2]
     result[:] = target_nodata
     nodata_list = arg_list[n+1:2*n+1]
     if any([x is not None for x in nodata_list]):
@@ -3129,6 +3135,7 @@ def _general_raster_calculator_op(*arg_list):
              if nodata is not None])
         op = arg_list[0]
         result[valid_mask] = op(*[array[valid_mask] for array in array_list])
+        result[numpy.isnan(result)] = nan_value
     return result
 
 
