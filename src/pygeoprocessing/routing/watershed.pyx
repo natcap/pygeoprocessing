@@ -541,7 +541,8 @@ def split_vector_into_seeds(
 
 cdef cset[CoordinatePair] _split_geometry_into_seeds(
         source_geom_wkb, flow_dir_info,
-        working_dir=None, remove=True, write_diagnostic_vector=True) except *:
+        raster_path,
+        diagnostic_vector_path=None):
     # if a point, return the coords directly.
     # Otherwise:
     #    * create a new raster from the bbox of the source geom
@@ -579,30 +580,23 @@ cdef cset[CoordinatePair] _split_geometry_into_seeds(
         seed_set.insert(seed)
         return seed_set
 
+    cdef int write_diagnostic_vector = 0
+    if diagnostic_vector_path != None:
+        write_diagnostic_vector = 1
+
+    #gpkg_driver = gdal.GetDriverByName('GPKG')
+    #tmp_vector_path = os.path.join(working_dir_path, 'user_geometry.gpkg')
+    #new_vector = gpkg_driver.Create(tmp_vector_path, 0, 0, 0, gdal.GDT_Unknown)
+    #new_layer = new_vector.CreateLayer('user_geometry', flow_dir_srs, ogr.wkbUnknown)
+
     # The geometry does not fit into a single pixel, so let's create a new
     # raster onto which to rasterize it.
-    try:
-        if working_dir is not None:
-            os.makedirs(working_dir)
-    except OSError:
-        pass
-    working_dir_path = tempfile.mkdtemp(
-        dir=working_dir, prefix='seed_extraction_%s_' % time.strftime(
-            '%Y-%m-%d_%H_%M_%S', time.gmtime()))
-
-    gpkg_driver = gdal.GetDriverByName('GPKG')
-    tmp_vector_path = os.path.join(working_dir_path, 'user_geometry.gpkg')
-    new_vector = gpkg_driver.Create(tmp_vector_path, 0, 0, 0, gdal.GDT_Unknown)
+    memory_driver = gdal.GetDriverByName('Memory')
+    new_vector = memory_driver.Create('mem', 0, 0, 0, gdal.GDT_Unknown)
     new_layer = new_vector.CreateLayer('user_geometry', flow_dir_srs, ogr.wkbUnknown)
-
     new_feature = ogr.Feature(new_layer.GetLayerDefn())
     new_feature.SetGeometry(ogr.CreateGeometryFromWkb(source_geom_wkb))
     new_layer.CreateFeature(new_feature)
-
-    new_layer = None
-    new_vector = None
-
-    tmp_raster_path = os.path.join(working_dir_path, 'rasterized_geometry.tif')
 
     local_origin_x = minx - (minx % x_pixelwidth)
     local_origin_y = maxy - (maxy % y_pixelwidth)
@@ -613,37 +607,31 @@ cdef cset[CoordinatePair] _split_geometry_into_seeds(
         local_origin_y, source_gt[4], source_gt[5]]
     gtiff_driver = gdal.GetDriverByName('GTiff')
     raster = gtiff_driver.Create(
-        tmp_raster_path, local_n_cols, local_n_rows, 1, gdal.GDT_Byte,
+        raster_path, local_n_cols, local_n_rows, 1, gdal.GDT_Byte,
         options=GTIFF_CREATION_OPTIONS)  # Raster is sparse, no need to fill.
     raster.SetProjection(flow_dir_srs.ExportToWkt())
     raster.SetGeoTransform(local_geotransform)
-    raster = None
 
-    pygeoprocessing.rasterize(tmp_vector_path, tmp_raster_path, burn_values=[1])
+    gdal.RasterizeLayer(raster, [1], new_layer, burn_values=[1])
+    seed_band = raster.GetRasterBand(1)
 
-    seed_raster = gdal.OpenEx(tmp_raster_path, gdal.OF_RASTER)
-    seed_band = seed_raster.GetRasterBand(1)
-    seed_raster_gt = seed_raster.GetGeoTransform()
-    cdef double seed_raster_origin_x = seed_raster_gt[0]
-    cdef double seed_raster_origin_y = seed_raster_gt[3]
-
-    if write_diagnostic_vector:
+    if write_diagnostic_vector == 1:
+        gpkg_driver = gdal.GetDriverByName('GPKG')
         diagnostic_vector = gpkg_driver.Create(
-            os.path.join(working_dir_path, 'diagnostic.gpkg'),
-            0, 0, 0, gdal.GDT_Unknown)
+            diagnostic_vector_path, 0, 0, 0, gdal.GDT_Unknown)
         diagnostic_layer = diagnostic_vector.CreateLayer(
             'seeds', flow_dir_srs, ogr.wkbPoint)
 
     cdef int row, col
     cdef int global_row, global_col
-    cdef int seed_raster_origin_col = <int>((seed_raster_origin_x - x_origin) // x_pixelwidth)
-    cdef int seed_raster_origin_row = <int>((seed_raster_origin_y - y_origin) // y_pixelwidth)
+    cdef int seed_raster_origin_col = <int>((local_origin_x - x_origin) // x_pixelwidth)
+    cdef int seed_raster_origin_row = <int>((local_origin_y - y_origin) // y_pixelwidth)
     cdef dict block_info
     cdef int block_xoff
     cdef int block_yoff
     cdef numpy.ndarray[numpy.npy_uint8, ndim=2] seed_array
     for block_info in pygeoprocessing.iterblocks(
-            (tmp_raster_path, 1), offset_only=True):
+            (raster_path, 1), offset_only=True):
         seed_array = seed_band.ReadAsArray(**block_info)
         block_xoff = block_info['xoff']
         block_yoff = block_info['yoff']
@@ -659,7 +647,7 @@ cdef cset[CoordinatePair] _split_geometry_into_seeds(
                 global_row = seed_raster_origin_row + block_yoff + row
                 global_col = seed_raster_origin_col + block_xoff + col
 
-                if write_diagnostic_vector:
+                if write_diagnostic_vector == 1:
                     new_feature = ogr.Feature(diagnostic_layer.GetLayerDefn())
                     new_feature.SetGeometry(ogr.CreateGeometryFromWkb(
                         shapely.geometry.Point(
@@ -670,22 +658,17 @@ cdef cset[CoordinatePair] _split_geometry_into_seeds(
                 seed_set.insert(CoordinatePair(global_col, global_row))
 
     seed_band = None
-    seed_raster = None
-
-    if remove:
-        shutil.rmtree(working_dir_path)
+    raster = None
 
     return seed_set
 
 
 def split_geometry_into_seeds(
-        source_geom_wkb, d8_flow_dir_raster_path_band,
-        working_dir=None, remove=True, write_diagnostic_vector=True):
+        source_geom_wkb, flow_dir_info, raster_path, diagnostic_vector_path=None):
 
     return_set = set()
     cdef cset[CoordinatePair] seeds = _split_geometry_into_seeds(
-        source_geom_wkb, d8_flow_dir_raster_path_band,
-        working_dir, remove, write_diagnostic_vector)
+        source_geom_wkb, flow_dir_info, raster_path, diagnostic_vector_path)
 
     cdef CoordinatePair seed
     cdef cset[CoordinatePair].iterator seeds_iterator = seeds.begin()
@@ -1606,9 +1589,8 @@ def delineate_watersheds_trivial_d8(
 
         seeds_in_watershed = _split_geometry_into_seeds(
             geom_wkb, flow_dir_info,
-            working_dir=working_dir_path,
-            remove=True,
-            write_diagnostic_vector=False)
+            raster_path=os.path.join(working_dir_path, 'rasterized_%s.tif' % ws_id),
+        )
 
         seed_iterator = seeds_in_watershed.begin()
         while seed_iterator != seeds_in_watershed.end():
