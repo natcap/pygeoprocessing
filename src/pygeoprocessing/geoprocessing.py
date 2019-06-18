@@ -3106,7 +3106,7 @@ def _general_raster_calculator_op(*arg_list):
     Parameters:
         arg_list (list): list is 2*n+3 length long laid out as:
             array_0, ... array_n, nodata_0, ... nodata_n,
-            op, target_nodata, nan_value
+            op, target_nodata, invalid_value_replacement
 
             The first element `op` is an operation that takes n elements which
             are numpy.ndarrays. The second n elements are the nodata values
@@ -3126,7 +3126,7 @@ def _general_raster_calculator_op(*arg_list):
     nodata_list = arg_list[n:2*n]
     op = arg_list[2*n]
     target_nodata = arg_list[2*n+1]
-    nan_value = arg_list[2*n+2]
+    invalid_value_replacement = arg_list[2*n+2]
     result[:] = target_nodata
     if any([x is not None for x in nodata_list]):
         valid_mask = ~numpy.logical_or.reduce(
@@ -3138,7 +3138,8 @@ def _general_raster_calculator_op(*arg_list):
         # there's no nodata values to mask so operate directly
         result[:] = op(*array_list)
 
-    result[numpy.isnan(result)] = nan_value
+    result[numpy.isnan(result) | numpy.isinf(result)] = (
+        invalid_value_replacement)
     return result
 
 
