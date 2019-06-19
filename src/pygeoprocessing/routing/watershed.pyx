@@ -540,7 +540,7 @@ def split_vector_into_seeds(
 
 
 cdef cset[CoordinatePair] _split_geometry_into_seeds(
-        source_geom_wkb, flow_dir_info,
+        source_geom_wkb, flow_dir_info, flow_dir_srs,
         raster_path,
         diagnostic_vector_path=None):
     # if a point, return the coords directly.
@@ -550,8 +550,6 @@ cdef cset[CoordinatePair] _split_geometry_into_seeds(
     #    * use numpy to extract the row/col coordinates
     #    * return set of coordinate pairs
     source_gt = flow_dir_info['geotransform']
-    flow_dir_srs = osr.SpatialReference()
-    flow_dir_srs.ImportFromWkt(flow_dir_info['projection'])
     cdef int flow_dir_nodata = flow_dir_info['nodata'][0]
     cdef float minx, miny, maxx, maxy
     cdef double x_origin = source_gt[0]
@@ -1566,6 +1564,8 @@ def delineate_watersheds_trivial_d8(
     outflow_vector = gdal.OpenEx(outflow_vector_path, gdal.OF_VECTOR)
     outflow_layer = outflow_vector.GetLayer()
     outflow_feature_count = outflow_layer.GetFeatureCount()
+    flow_dir_srs = osr.SpatialReference()
+    flow_dir_srs.ImportFromWkt(flow_dir_info['projection'])
     for feature in outflow_layer:
         # Some vectors start indexing their FIDs at 0.
         # The mask raster input to polygonization, however, only regards pixels
@@ -1593,6 +1593,7 @@ def delineate_watersheds_trivial_d8(
         seeds_raster_path = os.path.join(working_dir_path, 'rasterized_%s.tif' % ws_id)
         seeds_in_watershed = _split_geometry_into_seeds(
             geom_wkb, flow_dir_info,
+            flow_dir_srs=flow_dir_srs,
             raster_path=seeds_raster_path,
         )
 
