@@ -1576,7 +1576,7 @@ def delineate_watersheds_trivial_d8(
 
         geom = feature.GetGeometryRef()
         if geom.IsEmpty():
-            LOGGER.warn(
+            LOGGER.debug(
                 'Outflow feature %s has empty geometry.  Skipping.',
                 current_fid)
             continue
@@ -1584,7 +1584,7 @@ def delineate_watersheds_trivial_d8(
         shapely_geom = shapely.wkb.loads(geom_wkb)
 
         if not flow_dir_bbox.intersects(shapely.geometry.box(*shapely_geom.bounds)):
-            LOGGER.warn(
+            LOGGER.debug(
                 'Outflow feature %s does not overlap with the flow '
                 'direction raster. Skipping.', current_fid)
             continue
@@ -1613,7 +1613,7 @@ def delineate_watersheds_trivial_d8(
             process_queue_set.insert(seed)
 
         if process_queue_set.size() == 0:
-            LOGGER.warn(
+            LOGGER.debug(
                 'Outflow feature %s does not intersect any pixels with '
                 'valid flow direction. Skipping.', current_fid)
             continue
