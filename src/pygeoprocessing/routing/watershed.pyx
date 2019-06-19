@@ -1554,8 +1554,10 @@ def delineate_watersheds_trivial_d8(
     cdef int current_fid, outflow_feature_count
     cdef cset[CoordinatePair].iterator seed_iterator
     cdef cset[CoordinatePair] seeds_in_watershed
-    cdef time_t last_log_time = ctime(NULL)
+    cdef time_t last_log_time
     cdef time_t delineation_start_time = ctime(NULL)
+    cdef int n_cells_visited = 0
+
     LOGGER.info('Delineating watersheds')
     flow_dir_bbox = shapely.prepared.prep(
         shapely.geometry.box(*flow_dir_info['bounding_box']))
@@ -1587,9 +1589,10 @@ def delineate_watersheds_trivial_d8(
                 'direction raster. Skipping.', current_fid)
             continue
 
+        seeds_raster_path = os.path.join(working_dir_path, 'rasterized_%s.tif' % ws_id)
         seeds_in_watershed = _split_geometry_into_seeds(
             geom_wkb, flow_dir_info,
-            raster_path=os.path.join(working_dir_path, 'rasterized_%s.tif' % ws_id),
+            raster_path=seeds_raster_path,
         )
 
         seed_iterator = seeds_in_watershed.begin()
@@ -1626,11 +1629,18 @@ def delineate_watersheds_trivial_d8(
         iy_min = flow_dir_n_rows
         ix_max = 0
         iy_max = 0
+        n_cells_visited = 0
+        LOGGER.info(
+            'Delineating watershed %s of %s (ws_id %s)',
+            current_fid, outflow_feature_count, ws_id)
+        last_log_time = ctime(NULL)
         while not process_queue.empty():
             if ctime(NULL) - last_log_time > 5.0:
                 last_log_time = ctime(NULL)
-                LOGGER.info('Delineating watershed from feature %s of %s',
-                            current_fid, outflow_feature_count)
+                LOGGER.info(
+                    'Delineating watershed %s of %s (ws_id %s), %s pixels '
+                    'found so far', current_fid, outflow_feature_count,
+                    ws_id, n_cells_visited)
 
             current_pixel = process_queue.front()
             process_queue_set.erase(current_pixel)
@@ -1638,6 +1648,7 @@ def delineate_watersheds_trivial_d8(
 
             scratch_managed_raster.set(current_pixel.first,
                                        current_pixel.second, ws_id)
+            n_cells_visited += 1
 
             # These are for tracking the extents of the raster so we can build
             # a VRT and only polygonize the pixels we need to.
@@ -1664,17 +1675,20 @@ def delineate_watersheds_trivial_d8(
                         process_queue_set.end()):
                     continue
 
+                # If the neighbor is known to be a seed, we don't need to
+                # re-enqueue it either.  Either it's been visited already (and
+                # may have upstream pixels) or it's going to be.
+                if (seeds_in_watershed.find(neighbor_pixel) !=
+                        seeds_in_watershed.end()):
+                    continue
+
                 # Does the neighbor flow into this pixel?
                 # If yes, enqueue it.
                 if (reverse_flow[neighbor_index] ==
                         flow_dir_managed_raster.get(
                             neighbor_pixel.first, neighbor_pixel.second)):
-
-                    # Only enqueue this pixel if it hasn't already been visited.
-                    if scratch_managed_raster.get(
-                        neighbor_pixel.first, neighbor_pixel.second) == 0:
-                            process_queue.push(neighbor_pixel)
-                            process_queue_set.insert(neighbor_pixel)
+                    process_queue.push(neighbor_pixel)
+                    process_queue_set.insert(neighbor_pixel)
 
         watersheds_created += 1
         scratch_managed_raster.close()
@@ -1710,6 +1724,11 @@ def delineate_watersheds_trivial_d8(
 
         vrt_band = None
         vrt_raster = None
+
+        os.remove(scratch_raster_path)
+        if os.path.exists(seeds_raster_path):
+            os.remove(seeds_raster_path)
+        os.remove(vrt_path)
 
     LOGGER.info('Finished delineating %s watersheds in %ss',
                 watersheds_created, round(ctime(NULL) -
