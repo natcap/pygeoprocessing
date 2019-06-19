@@ -1517,6 +1517,7 @@ def delineate_watersheds_trivial_d8(
     flow_dir_managed_raster = _ManagedRaster(d8_flow_dir_raster_path_band[0],
                                              d8_flow_dir_raster_path_band[1], 0)
 
+    gtiff_driver = gdal.GetDriverByName('GTiff')
     gpkg_driver = gdal.GetDriverByName('GPKG')
     flow_dir_srs = osr.SpatialReference()
     flow_dir_srs.ImportFromWkt(flow_dir_info['projection'])
@@ -1562,7 +1563,7 @@ def delineate_watersheds_trivial_d8(
     flow_dir_bbox = shapely.prepared.prep(
         shapely.geometry.box(*flow_dir_info['bounding_box']))
 
-    outflow_vector = gdal.OpenEx(outflow_vector_path)
+    outflow_vector = gdal.OpenEx(outflow_vector_path, gdal.OF_VECTOR)
     outflow_layer = outflow_vector.GetLayer()
     outflow_feature_count = outflow_layer.GetFeatureCount()
     for feature in outflow_layer:
@@ -1620,9 +1621,17 @@ def delineate_watersheds_trivial_d8(
 
         scratch_raster_path = os.path.join(working_dir_path,
                                            'scratch_%s.tif' % ws_id)
-        pygeoprocessing.new_raster_from_base(
-            d8_flow_dir_raster_path_band[0], scratch_raster_path, gdal.GDT_UInt32,
-            [0], gtiff_creation_options=GTIFF_CREATION_OPTIONS)
+        scratch_raster = gtiff_driver.Create(
+            scratch_raster_path,
+            flow_dir_n_cols,
+            flow_dir_n_rows,
+            1,  # n bands
+            gdal.GDT_UInt32,
+            options=GTIFF_CREATION_OPTIONS)
+        scratch_raster.SetGeoTransform(source_gt)
+        scratch_raster.SetProjection(flow_dir_info['projection'])
+        # strictly speaking, there's no need to set the nodata value on the band.
+        scratch_raster = None
 
         scratch_managed_raster = _ManagedRaster(scratch_raster_path, 1, 1)
         ix_min = flow_dir_n_cols
