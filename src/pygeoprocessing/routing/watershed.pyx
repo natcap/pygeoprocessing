@@ -1669,8 +1669,12 @@ def delineate_watersheds_trivial_d8(
                 if (reverse_flow[neighbor_index] ==
                         flow_dir_managed_raster.get(
                             neighbor_pixel.first, neighbor_pixel.second)):
-                    process_queue.push(neighbor_pixel)
-                    process_queue_set.insert(neighbor_pixel)
+
+                    # Only enqueue this pixel if it hasn't already been visited.
+                    if scratch_managed_raster.get(
+                        neighbor_pixel.first, neighbor_pixel.second) == 0:
+                            process_queue.push(neighbor_pixel)
+                            process_queue_set.insert(neighbor_pixel)
 
         watersheds_created += 1
         scratch_managed_raster.close()
