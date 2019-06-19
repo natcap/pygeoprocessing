@@ -33,6 +33,8 @@ install:
     - "%PYTHON%\\python.exe -m pipwin install shapely"
     - "%PYTHON%\\python.exe -m pipwin install rtree"
     - "%PYTHON%\\python.exe -m pip install tox -r requirements.txt"
+    # setup.py install before running tox due to https://github.com/pypa/pip/issues/6558
+    - "%PYTHON%\\python.exe setup.py install"
 
 build: off
 
