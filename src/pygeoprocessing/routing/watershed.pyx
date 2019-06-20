@@ -816,14 +816,17 @@ def delineate_watersheds_trivial_d8(
     # should be contiguous in a single polygon, but are not.  For this reason,
     # we need an extra consolidation step here to make sure that we only produce
     # 1 feature per watershed.
-    fragments_with_duplicates = collections.defaultdict(set)
+    cdef cmap[int, cset[int]] fragments_with_duplicates
+    cdef int fid
     for feature in polygonized_watersheds_layer:
         fid = feature.GetFID()
         # ws_id is tracked as 1 more than the FID.  See previous note about why.
-        ws_id = feature.GetField('ws_id')-1
-        fragments_with_duplicates[ws_id].add(fid)
+        ws_id = feature.GetField('ws_id') - 1
+        if (fragments_with_duplicates.find(ws_id)
+                == fragments_with_duplicates.end()):
+            fragments_with_duplicates[ws_id] = cset[int]()
+        fragments_with_duplicates[ws_id].insert(fid)
     polygonized_watersheds_layer.ResetReading()
-    fragments_with_duplicates = dict(fragments_with_duplicates)
 
     LOGGER.info(
         'Consolidating %s fragments and copying field values to '
@@ -833,14 +836,28 @@ def delineate_watersheds_trivial_d8(
     watersheds_layer.CreateFields(source_layer.schema)
 
     watersheds_layer.StartTransaction()
-    for ws_id, duplicate_ids_set in fragments_with_duplicates.items():
-        if len(duplicate_ids_set) == 1:
-            source_feature = polygonized_watersheds_layer.GetFeature(
-                duplicate_ids_set.pop())
+    cdef int duplicate_fid
+    cdef cset[int] duplicate_ids_set
+    cdef cset[int].iterator duplicate_ids_set_iterator
+    cdef cmap[int, cset[int]].iterator fragments_with_duplicates_iterator
+    fragments_with_duplicates_iterator = fragments_with_duplicates.begin()
+    while fragments_with_duplicates_iterator != fragments_with_duplicates.end():
+        ws_id = deref(fragments_with_duplicates_iterator).first
+        duplicate_ids_set = deref(fragments_with_duplicates_iterator).second
+        inc(fragments_with_duplicates_iterator)
+
+        duplicate_ids_set_iterator = duplicate_ids_set.begin()
+
+        if duplicate_ids_set.size() == 1:
+            duplicate_fid = deref(duplicate_ids_set_iterator)
+            source_feature = polygonized_watersheds_layer.GetFeature(duplicate_fid)
             new_geometry = source_feature.GetGeometryRef()
         else:
             new_geometry = ogr.Geometry(ogr.wkbMultiPolygon)
-            for duplicate_fid in fragments_with_duplicates[ws_id]:
+            while duplicate_ids_set_iterator != duplicate_ids_set.end():
+                duplicate_fid = deref(duplicate_ids_set_iterator)
+                inc(duplicate_ids_set_iterator)
+
                 duplicate_feature = polygonized_watersheds_layer.GetFeature(duplicate_fid)
                 duplicate_geometry = duplicate_feature.GetGeometryRef()
                 new_geometry.AddGeometry(duplicate_geometry)
