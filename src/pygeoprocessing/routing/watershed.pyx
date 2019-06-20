@@ -547,10 +547,9 @@ def split_geometry_into_seeds(
 
 @cython.boundscheck(False)
 @cython.wraparound(False)
-def delineate_watersheds_trivial_d8(
+def delineate_watersheds_d8(
         d8_flow_dir_raster_path_band, outflow_vector_path,
         target_watersheds_vector_path, working_dir=None, remove=True, layer_id=0):
-    cdef time_t setup_start_time = ctime(NULL)
 
     try:
         if working_dir is not None:
@@ -604,11 +603,6 @@ def delineate_watersheds_trivial_d8(
     index_field.SetWidth(24)
     polygonized_watersheds_layer.CreateField(index_field)
 
-    LOGGER.info('Finished setup in %ss',
-                round(ctime(NULL) - setup_start_time, 4))
-
-    cdef time_t seed_splitting_start_time = ctime(NULL)
-
     cdef int* reverse_flow = [4, 5, 6, 7, 0, 1, 2, 3]
     cdef int* neighbor_col = [1, 1, 0, -1, -1, -1, 0, 1]
     cdef int* neighbor_row = [0, -1, -1, -1, 0, 1, 1, 1]
@@ -622,7 +616,6 @@ def delineate_watersheds_trivial_d8(
     cdef cset[CoordinatePair].iterator seed_iterator
     cdef cset[CoordinatePair] seeds_in_watershed
     cdef time_t last_log_time
-    cdef time_t delineation_start_time = ctime(NULL)
     cdef int n_cells_visited = 0
 
     LOGGER.info('Delineating watersheds')
@@ -808,10 +801,8 @@ def delineate_watersheds_trivial_d8(
         os.remove(vrt_path)
 
     LOGGER.info('Finished delineating %s watersheds in %ss',
-                watersheds_created, round(ctime(NULL) -
-                                          delineation_start_time, 4))
+                watersheds_created)
 
-    cdef time_t vector_ops_start_time = ctime(NULL)
     # The Polygonization algorithm will sometimes identify regions that
     # should be contiguous in a single polygon, but are not.  For this reason,
     # we need an extra consolidation step here to make sure that we only produce
@@ -873,9 +864,7 @@ def delineate_watersheds_trivial_d8(
 
     polygonized_watersheds_layer = None
     watersheds_vector.DeleteLayer('polygonized_watersheds')
-
-    LOGGER.info('Finished vector operations in %ss',
-                round(ctime(NULL) - vector_ops_start_time, 4))
+    LOGGER.info('Finished vector consolidation')
 
     watersheds_layer = None
     watersheds_vector = None
