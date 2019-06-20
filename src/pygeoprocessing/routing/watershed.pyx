@@ -1723,7 +1723,7 @@ def delineate_watersheds_trivial_d8(
         gdal.BuildVRT(vrt_path, [scratch_raster_path], options=vrt_options)
 
         # Polygonize this new watershed from the VRT.
-        vrt_raster = gdal.OpenEx(vrt_path, gdal.OF_RASTER)
+        vrt_raster = gdal.OpenEx(vrt_path, gdal.OF_RASTER, allowed_drivers=['VRT'])
         vrt_band = vrt_raster.GetRasterBand(1)
         result = gdal.Polygonize(
             vrt_band,  # The source band
