@@ -23,6 +23,10 @@ import pygeoprocessing
 import pygeoprocessing.testing
 import pygeoprocessing.routing
 import taskgraph
+import psutil
+
+PROCESS = psutil.Process()
+PROCESS.nice(psutil.REALTIME_PRIORITY_CLASS)
 
 
 @contextlib.contextmanager
@@ -70,6 +74,17 @@ ALL_OF_MONTANA = (
     'workspace-montana',
     r'C:\Users\jdouglass\workspace\jdouglass\snippets\in-development-watershed-delination-sample\NDD_Montana_waterbodies1.gpkg',
     r'C:\Users\jdouglass\workspace\jdouglass\snippets\in-development-watershed-delination-sample\merged_montana.tif')
+
+COLOMBIA = (
+    'workspace-colombia',
+    r'C:\Users\jdouglass\workspace\natcap\opal\data\colombia_tool_data\Municipalities.shp',
+    r'C:\Users\jdouglass\workspace\natcap\opal\data\colombia_tool_data\DEM.tif')
+
+GHANA = (
+    'workspace-ghana',
+    r'C:\Users\jdouglass\Documents\delineateit_ghana\snapped_outlets.gpkg',
+    r'C:\Users\jdouglass\Documents\delineateit_ghana\filled_dem.tif'
+)
 
 
 def compare_scratch_to_fragments(vector, rasterized_path, raster2):
@@ -172,7 +187,25 @@ def identify_features(in_vector_path, out_vector_path):
 
     for new_id, feature in enumerate(old_layer):
         new_feature = ogr.Feature(new_layer.GetLayerDefn())
-        new_feature.SetGeometry(feature.GetGeometryRef())
+        geom = feature.GetGeometryRef()
+        if geom.IsValid():
+            buffered_geom = geom
+        else:
+            buffered_geom = geom.Buffer(0)
+            if buffered_geom == None:
+                 geom.CloseRings()
+                 buffered_geom = geom.Buffer(0)
+
+        if buffered_geom == None:
+            raise ValueError('Nope')
+
+        if buffered_geom.IsEmpty():
+            raise ValueError('empty')
+
+        #if new_id > 100:
+        #    break
+
+        new_feature.SetGeometry(buffered_geom)
         new_feature.SetField('__ID__', new_id)
         for field_name, field_value in feature.items().items():
             new_feature.SetField(field_name, field_value)
@@ -186,7 +219,7 @@ def doit():
             '%m/%d/%Y %H:%M:%S ')
     root_logger = logging.getLogger()
     root_logger.addHandler(handler)
-    root_logger.setLevel(logging.NOTSET)
+    #root_logger.setLevel(logging.NOTSET)
     handler.setFormatter(formatter)
     handler.setLevel(logging.NOTSET)
 
@@ -198,6 +231,12 @@ def doit():
 
     # Biggest Montana dataset I have at the moment.
     #workspace, lakes, dem = ALL_OF_MONTANA
+
+    # OPAL - Colombia Dataset
+    #workspace, lakes, dem = COLOMBIA
+
+    # Stacie's Ghana dataset
+    #workspace, lakes, dem = GHANA
 
     #workspace = 'D:\\new-watershed-delineation'
     if not os.path.exists(workspace):
@@ -213,8 +252,21 @@ def doit():
     joined_burned = os.path.join(workspace, 'joined_fragments_count.tif')
     count_mismatch = os.path.join(workspace, 'fragment_count_mismatch.tif')
 
+
+    #import line_profiler
+    #identify_features(lakes, identified_features)
+    #profile = line_profiler.LineProfiler(pygeoprocessing.routing.delineate_watersheds_trivial_d8)
+    #profile.runcall(pygeoprocessing.routing.delineate_watersheds_trivial_d8,
+    #    (flow_dir, 1), identified_features, trivial_watersheds, working_dir=workspace)
+    #profile.print_stats()
+
+    #pygeoprocessing.routing.delineate_watersheds_trivial_d8(
+    #    (flow_dir, 1), identified_features, trivial_watersheds,
+    #    working_dir=workspace)
+    #return
+
     task_graph = taskgraph.TaskGraph(
-        os.path.join(workspace, 'tg_workers'), n_workers=2,
+        os.path.join(workspace, 'tg_workers'), n_workers=-1,
         reporting_interval=10.0)
 
     identified_features_task = task_graph.add_task(
@@ -236,19 +288,19 @@ def doit():
         dependent_task_list=[filled_pits_task],
         task_name='flow_dir')
 
-    new_delineation_task = task_graph.add_task(
-        pygeoprocessing.routing.delineate_watersheds_d8,
-        args=((flow_dir, 1), identified_features, fragments_path, workspace),
-        target_path_list=[fragments_path],
-        dependent_task_list=[d8_flow_dir_task, identified_features_task],
-        task_name='new_delineation')
+    #new_delineation_task = task_graph.add_task(
+    #    pygeoprocessing.routing.delineate_watersheds_d8,
+    #    args=((flow_dir, 1), identified_features, fragments_path, workspace),
+    #    target_path_list=[fragments_path],
+    #    dependent_task_list=[d8_flow_dir_task, identified_features_task],
+    #    task_name='new_delineation')
 
-    joining_task = task_graph.add_task(
-        pygeoprocessing.routing.join_watershed_fragments_stack,
-        args=(fragments_path, joined_fragments),
-        target_path_list=[joined_fragments],
-        dependent_task_list=[new_delineation_task],
-        task_name='new_delineation_join')
+    #joining_task = task_graph.add_task(
+    #    pygeoprocessing.routing.join_watershed_fragments_stack,
+    #    args=(fragments_path, joined_fragments),
+    #    target_path_list=[joined_fragments],
+    #    dependent_task_list=[new_delineation_task],
+    #    task_name='new_delineation_join')
 
     trivial_delineation_task = task_graph.add_task(
         pygeoprocessing.routing.delineate_watersheds_trivial_d8,
@@ -260,6 +312,7 @@ def doit():
 
     task_graph.close()
     task_graph.join()
+    return
 
     pygeoprocessing.new_raster_from_base(
         filled_dem, trivial_burned, gdal.GDT_UInt32, [0], fill_value_list=[0])
