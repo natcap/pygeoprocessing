@@ -1520,8 +1520,8 @@ def delineate_watersheds_trivial_d8(
     flow_dir_srs = osr.SpatialReference()
     flow_dir_srs.ImportFromWkt(flow_dir_info['projection'])
 
-    source_outlets_vector = gdal.OpenEx(outflow_vector_path, gdal.OF_VECTOR)
-    if source_outlets_vector is None:
+    outflow_vector = gdal.OpenEx(outflow_vector_path, gdal.OF_VECTOR)
+    if outflow_vector is None:
         raise ValueError(u'Could not open outflow vector %s' % outflow_vector_path)
 
     driver = ogr.GetDriverByName('GPKG')
@@ -1561,7 +1561,6 @@ def delineate_watersheds_trivial_d8(
     flow_dir_bbox = shapely.prepared.prep(
         shapely.geometry.box(*flow_dir_info['bounding_box']))
 
-    outflow_vector = gdal.OpenEx(outflow_vector_path, gdal.OF_VECTOR)
     outflow_layer = outflow_vector.GetLayer()
     outflow_feature_count = outflow_layer.GetFeatureCount()
     flow_dir_srs = osr.SpatialReference()
