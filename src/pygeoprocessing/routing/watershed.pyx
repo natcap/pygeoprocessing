@@ -718,7 +718,7 @@ def delineate_watersheds_d8(
                 'direction raster. Skipping.', current_fid)
             continue
 
-        seeds_raster_path = os.path.join(working_dir_path, 'rasterized_%s.tif' % ws_id)
+        seeds_raster_path = os.path.join(working_dir_path, '%s_rasterized.tif' % ws_id)
         seeds_in_watershed = _c_split_geometry_into_seeds(
             geom_wkb,
             source_gt,
@@ -750,7 +750,7 @@ def delineate_watersheds_d8(
             continue
 
         scratch_raster_path = os.path.join(working_dir_path,
-                                           'scratch_%s.tif' % ws_id)
+                                           '%s_scratch.tif' % ws_id)
         scratch_raster = gtiff_driver.Create(
             scratch_raster_path,
             flow_dir_n_cols,
@@ -848,7 +848,7 @@ def delineate_watersheds_d8(
                 max(x1, x2),
                 max(y1, y2))
         )
-        vrt_path = os.path.join(working_dir_path, 'ws_%s.vrt' % ws_id)
+        vrt_path = os.path.join(working_dir_path, '%s_vrt.vrt' % ws_id)
         gdal.BuildVRT(vrt_path, [scratch_raster_path], options=vrt_options)
 
         # Polygonize this new watershed from the VRT.
@@ -864,10 +864,12 @@ def delineate_watersheds_d8(
         vrt_band = None
         vrt_raster = None
 
-        os.remove(scratch_raster_path)
-        if os.path.exists(seeds_raster_path):
-            os.remove(seeds_raster_path)
-        os.remove(vrt_path)
+        # Removing files as we go to help manage disk space.
+        if remove:
+            os.remove(scratch_raster_path)
+            if os.path.exists(seeds_raster_path):
+                os.remove(seeds_raster_path)
+            os.remove(vrt_path)
 
     LOGGER.info('Finished delineating %s watersheds', watersheds_created)
 
