@@ -1,15 +1,9 @@
 # cython: language_level=2
-# cython: profile=True
-# cython: linetrace=True
-# distutils: define_macros=CYTHON_TRACE=1
 import time
 import os
 import logging
 import shutil
 import tempfile
-import itertools
-import math
-import collections
 
 import numpy
 import pygeoprocessing
@@ -17,7 +11,6 @@ from osgeo import gdal
 from osgeo import osr
 from osgeo import ogr
 import shapely.wkb
-import shapely.ops
 import shapely.geometry
 import shapely.prepared
 
@@ -945,4 +938,3 @@ def delineate_watersheds_d8(
 
     if remove:
         shutil.rmtree(working_dir_path)
-
