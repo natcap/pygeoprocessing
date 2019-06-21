@@ -128,7 +128,7 @@ class WatershedDelineationTests(unittest.TestCase):
 
     def test_split_geometry_into_seeds(self):
         import pygeoprocessing
-        from pygeoprocessing.routing import split_geometry_into_seeds
+        from pygeoprocessing.routing import watershed
         nodata = 255
         flow_dir_array= numpy.array([
             [0, 0, 0, 0, 0, 0, 0],
@@ -167,7 +167,7 @@ class WatershedDelineationTests(unittest.TestCase):
                 (box, set([(1, 1), (2, 1), (1, 2), (2, 2)])))):  # includes nodata pixels
 
             raster_path = os.path.join(self.workspace_dir, '%s.tif' % index)
-            result_seeds = split_geometry_into_seeds(
-                geometry.wkb, flow_dir_info, srs, raster_path)
+            result_seeds = watershed._split_geometry_into_seeds(
+                geometry.wkb, flow_dir_info['geotransform'], srs, raster_path)
 
             self.assertEqual(result_seeds, expected_seeds)

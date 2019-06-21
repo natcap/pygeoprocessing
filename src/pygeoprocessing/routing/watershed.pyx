@@ -1,5 +1,7 @@
 # cython: language_level=2
 # cython: profile=True
+# cython: linetrace=True
+# distutils: define_macros=CYTHON_TRACE=1
 import time
 import os
 import logging
@@ -405,22 +407,38 @@ def _is_raster_path_band_formatted(raster_path_band):
         return True
 
 
-cdef cset[CoordinatePair] _split_geometry_into_seeds(
-        source_geom_wkb, flow_dir_info, flow_dir_srs,
-        target_raster_path, diagnostic_vector_path=None):
-    # if a point, return the coords directly.
-    # Otherwise:
-    #    * create a new raster from the bbox of the source geom
-    #    * rasterize the source geom onto the bbox
-    #    * use numpy to extract the row/col coordinates
-    #    * return set of coordinate pairs
-    source_gt = flow_dir_info['geotransform']
-    cdef int flow_dir_nodata = flow_dir_info['nodata'][0]
+cdef cset[CoordinatePair] _c_split_geometry_into_seeds(
+        bytes source_geom_wkb, tuple flow_dir_geotransform, flow_dir_srs,
+        bytes target_raster_path, diagnostic_vector_path=None):
+    """Split a geometry into 'seeds' of (x, y) coordinate pairs.
+
+    Parameters:
+        source_geom_wkb (string): A string of bytes in WKB representing
+            a geometry. Must be in the same projected coordinate system
+            as the flow direction raster from which
+            ``flow_dir_geotransform`` and ``flow_dir_srs`` are derived.
+        flow_dir_geotransform (list): A 6-element array representing
+            the GDAL affine geotransform from the flow direction raster.
+        flow_dir_srs (osr.SpatialReference): The OSR SpatialReference
+            object from the flow direction raster.
+        target_raster_path (string): The path to a raster onto which
+            the geometry might be rasterized.  If the geometry is small
+            enough to be completely contained within a single pixel, no
+            raster will be written to this location.
+        diagnostic_vector_path (string or None): If a string, a GeoPackage
+            vector will be written to this path containing georeferenced
+            points representing the 'seeds' determined by this function.
+            If ``None``, no vector is created.
+
+    Returns:
+        A ``cset[CoordinatePair]`` for use in cython code.
+
+    """
     cdef float minx, miny, maxx, maxy
-    cdef double x_origin = source_gt[0]
-    cdef double y_origin = source_gt[3]
-    cdef double x_pixelwidth = source_gt[1]
-    cdef double y_pixelwidth = source_gt[5]
+    cdef double x_origin = flow_dir_geotransform[0]
+    cdef double y_origin = flow_dir_geotransform[3]
+    cdef double x_pixelwidth = flow_dir_geotransform[1]
+    cdef double y_pixelwidth = flow_dir_geotransform[5]
     cdef double pixel_area = abs(x_pixelwidth * y_pixelwidth)
     cdef int minx_pixelcoord, miny_pixelcoord, maxx_pixelcoord, maxy_pixelcoord
     cdef cset[CoordinatePair] seed_set
@@ -466,8 +484,8 @@ cdef cset[CoordinatePair] _split_geometry_into_seeds(
     local_n_cols = int(((maxx - local_origin_x) // x_pixelwidth) + 1)
     local_n_rows = int(((miny - local_origin_y) // y_pixelwidth) + 1)
     local_geotransform = [
-        local_origin_x, source_gt[1], source_gt[2],
-        local_origin_y, source_gt[4], source_gt[5]]
+        local_origin_x, flow_dir_geotransform[1], flow_dir_geotransform[2],
+        local_origin_y, flow_dir_geotransform[4], flow_dir_geotransform[5]]
     gtiff_driver = gdal.GetDriverByName('GTiff')
     raster = gtiff_driver.Create(
         target_raster_path, local_n_cols, local_n_rows, 1, gdal.GDT_Byte,
@@ -526,13 +544,40 @@ cdef cset[CoordinatePair] _split_geometry_into_seeds(
     return seed_set
 
 
-def split_geometry_into_seeds(
-        source_geom_wkb, flow_dir_info, flow_dir_srs, target_raster_path,
+def _split_geometry_into_seeds(
+        source_geom_wkb, geotransform, flow_dir_srs, target_raster_path,
         diagnostic_vector_path=None):
+    """Split a geometry into 'seeds' of (x, y) coordinate pairs.
+
+    This function is a python wrapper around ``_c_split_geometry_into_seeds``
+    that is useful for testing.
+
+    Parameters:
+        source_geom_wkb (string): A string of bytes in WKB representing
+            a geometry. Must be in the same projected coordinate system
+            as the flow direction raster from which
+            ``flow_dir_geotransform`` and ``flow_dir_srs`` are derived.
+        flow_dir_geotransform (list): A 6-element array representing
+            the GDAL affine geotransform from the flow direction raster.
+        flow_dir_srs (osr.SpatialReference): The OSR SpatialReference
+            object from the flow direction raster.
+        target_raster_path (string): The path to a raster onto which
+            the geometry might be rasterized.  If the geometry is small
+            enough to be completely contained within a single pixel, no
+            raster will be written to this location.
+        diagnostic_vector_path (string or None): If a string, a GeoPackage
+            vector will be written to this path containing georeferenced
+            points representing the 'seeds' determined by this function.
+            If ``None``, no vector is created.
+
+    Returns:
+        A python ``set`` of (x-index, y-index) tuples.
+
+    """
 
     return_set = set()
-    cdef cset[CoordinatePair] seeds = _split_geometry_into_seeds(
-        source_geom_wkb, flow_dir_info, flow_dir_srs, target_raster_path,
+    cdef cset[CoordinatePair] seeds = _c_split_geometry_into_seeds(
+        source_geom_wkb, geotransform, flow_dir_srs, target_raster_path,
         diagnostic_vector_path)
 
     cdef CoordinatePair seed
@@ -652,8 +697,9 @@ def delineate_watersheds_d8(
             continue
 
         seeds_raster_path = os.path.join(working_dir_path, 'rasterized_%s.tif' % ws_id)
-        seeds_in_watershed = _split_geometry_into_seeds(
-            geom_wkb, flow_dir_info,
+        seeds_in_watershed = _c_split_geometry_into_seeds(
+            geom_wkb,
+            source_gt,
             flow_dir_srs=flow_dir_srs,
             target_raster_path=seeds_raster_path,
         )
