@@ -407,8 +407,7 @@ def _is_raster_path_band_formatted(raster_path_band):
 
 cdef cset[CoordinatePair] _split_geometry_into_seeds(
         source_geom_wkb, flow_dir_info, flow_dir_srs,
-        raster_path,
-        diagnostic_vector_path=None):
+        target_raster_path, diagnostic_vector_path=None):
     # if a point, return the coords directly.
     # Otherwise:
     #    * create a new raster from the bbox of the source geom
@@ -471,7 +470,7 @@ cdef cset[CoordinatePair] _split_geometry_into_seeds(
         local_origin_y, source_gt[4], source_gt[5]]
     gtiff_driver = gdal.GetDriverByName('GTiff')
     raster = gtiff_driver.Create(
-        raster_path, local_n_cols, local_n_rows, 1, gdal.GDT_Byte,
+        target_raster_path, local_n_cols, local_n_rows, 1, gdal.GDT_Byte,
         options=GTIFF_CREATION_OPTIONS)  # Raster is sparse, no need to fill.
     raster.SetProjection(flow_dir_srs.ExportToWkt())
     raster.SetGeoTransform(local_geotransform)
@@ -528,11 +527,12 @@ cdef cset[CoordinatePair] _split_geometry_into_seeds(
 
 
 def split_geometry_into_seeds(
-        source_geom_wkb, flow_dir_info, raster_path, diagnostic_vector_path=None):
+        source_geom_wkb, flow_dir_info, flow_dir_srs, target_raster_path,
+        diagnostic_vector_path=None):
 
     return_set = set()
     cdef cset[CoordinatePair] seeds = _split_geometry_into_seeds(
-        source_geom_wkb, flow_dir_info, raster_path, diagnostic_vector_path)
+        source_geom_wkb, flow_dir_info, target_raster_path, diagnostic_vector_path)
 
     cdef CoordinatePair seed
     cdef cset[CoordinatePair].iterator seeds_iterator = seeds.begin()
@@ -800,8 +800,7 @@ def delineate_watersheds_d8(
             os.remove(seeds_raster_path)
         os.remove(vrt_path)
 
-    LOGGER.info('Finished delineating %s watersheds in %ss',
-                watersheds_created)
+    LOGGER.info('Finished delineating %s watersheds', watersheds_created)
 
     # The Polygonization algorithm will sometimes identify regions that
     # should be contiguous in a single polygon, but are not.  For this reason,
