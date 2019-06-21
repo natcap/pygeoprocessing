@@ -168,6 +168,91 @@ class WatershedDelineationTests(unittest.TestCase):
 
             raster_path = os.path.join(self.workspace_dir, '%s.tif' % index)
             result_seeds = watershed._split_geometry_into_seeds(
-                geometry.wkb, flow_dir_info['geotransform'], srs, raster_path)
+                geometry.wkb, flow_dir_info['geotransform'], srs,
+                flow_dir_array.shape[1], flow_dir_array.shape[0],
+                raster_path)
+
+            self.assertEqual(result_seeds, expected_seeds)
+
+    def test_split_geometry_into_seeds_willamette(self):
+        import pygeoprocessing
+        from pygeoprocessing.routing import watershed
+        nodata = 255
+        flow_dir_array= numpy.array([
+            [0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0]], dtype=numpy.uint8)
+        srs = osr.SpatialReference()
+        srs.ImportFromEPSG(3157)  # UTM zone 17N
+        srs_wkt = srs.ExportToWkt()
+
+        flow_dir_path = os.path.join(self.workspace_dir, 'flow_dir.tif')
+        driver = gdal.GetDriverByName('GTiff')
+        flow_dir_raster = driver.Create(
+            flow_dir_path, flow_dir_array.shape[1], flow_dir_array.shape[0],
+            1, gdal.GDT_Byte, options=(
+                'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
+                'BLOCKXSIZE=256', 'BLOCKYSIZE=256'))
+        flow_dir_raster.SetProjection(srs_wkt)
+        flow_dir_band = flow_dir_raster.GetRasterBand(1)
+        flow_dir_band.WriteArray(flow_dir_array)
+        flow_dir_band.SetNoDataValue(255)
+        pixel_xsize = 30
+        pixel_ysize = -30
+        flow_dir_geotransform = [
+            443723, pixel_xsize, 0,
+            4956546, 0, pixel_ysize]
+        flow_dir_raster.SetGeoTransform(flow_dir_geotransform)
+        flow_dir_raster = None
+        flow_dir_info = pygeoprocessing.get_raster_info(flow_dir_path)
+
+        pixel_indexes_array = numpy.arange(
+            flow_dir_array.size).reshape(flow_dir_array.shape)
+        pixel_indexes_path = os.path.join(self.workspace_dir, 'pixel_indexes.tif')
+        driver = gdal.GetDriverByName('GTiff')
+        pixel_indexes_raster = driver.Create(
+            pixel_indexes_path, pixel_indexes_array.shape[1], pixel_indexes_array.shape[0],
+            1, gdal.GDT_Byte, options=(
+                'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
+                'BLOCKXSIZE=256', 'BLOCKYSIZE=256'))
+        pixel_indexes_raster.SetProjection(srs_wkt)
+        pixel_indexes_band = pixel_indexes_raster.GetRasterBand(1)
+        pixel_indexes_band.WriteArray(pixel_indexes_array)
+        pixel_indexes_band.SetNoDataValue(255)
+        pixel_xsize = 30
+        pixel_ysize = -30
+        pixel_indexes_geotransform = [
+            443723, pixel_xsize, 0,
+            4956546, 0, pixel_ysize]
+        pixel_indexes_raster.SetGeoTransform(pixel_indexes_geotransform)
+        pixel_indexes_raster = None
+
+
+        point = shapely.geometry.Point(
+            flow_dir_geotransform[0] + pixel_xsize / 2.,
+            flow_dir_geotransform[3] + pixel_ysize / 2.)
+        linestring = shapely.geometry.LineString([
+            (flow_dir_geotransform[0] + pixel_xsize * 4,
+             flow_dir_geotransform[3] - pixel_ysize * 2),  # extend beyond y boundary
+            (flow_dir_geotransform[0] + pixel_xsize * 4,
+             flow_dir_geotransform[3] + pixel_ysize * 5)])
+        box = shapely.geometry.box(
+            flow_dir_geotransform[0] + pixel_xsize * 2,
+            flow_dir_geotransform[1] + pixel_ysize * 4,
+            flow_dir_geotransform[0] + pixel_xsize * 4,
+            flow_dir_geotransform[1] + pixel_ysize * 2)
+
+        for index, (geometry, expected_seeds) in enumerate((
+                (point, set([(0, 0)])),
+                (linestring, set([(3, 0), (3, 1), (3, 2), (3, 3)])),  # includes nodata pixel
+                (box, set([(1, 1), (2, 1), (1, 2), (2, 2)])))):  # includes nodata pixels
+            print(index, geometry)
+
+            result_seeds = watershed._split_geometry_into_seeds(
+                geometry.wkb, flow_dir_info['geotransform'], srs,
+                flow_dir_array.shape[1], flow_dir_array.shape[0],
+                os.path.join(self.workspace_dir, '%s.tif' % index),
+                os.path.join(self.workspace_dir, '%s.gpkg' % index))
 
             self.assertEqual(result_seeds, expected_seeds)
