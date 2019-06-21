@@ -401,8 +401,8 @@ def _is_raster_path_band_formatted(raster_path_band):
 
 
 cdef cset[CoordinatePair] _c_split_geometry_into_seeds(
-        bytes source_geom_wkb, tuple flow_dir_geotransform, flow_dir_srs,
-        bytes target_raster_path, diagnostic_vector_path=None):
+        source_geom_wkb, tuple flow_dir_geotransform, flow_dir_srs,
+        target_raster_path, diagnostic_vector_path=None):
     """Split a geometry into 'seeds' of (x, y) coordinate pairs.
 
     Parameters:
