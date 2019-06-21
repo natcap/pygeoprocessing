@@ -494,7 +494,7 @@ cdef cset[CoordinatePair] _split_geometry_into_seeds(
     cdef int block_yoff
     cdef numpy.ndarray[numpy.npy_uint8, ndim=2] seed_array
     for block_info in pygeoprocessing.iterblocks(
-            (raster_path, 1), offset_only=True):
+            (target_raster_path, 1), offset_only=True):
         seed_array = seed_band.ReadAsArray(**block_info)
         block_xoff = block_info['xoff']
         block_yoff = block_info['yoff']
@@ -532,7 +532,8 @@ def split_geometry_into_seeds(
 
     return_set = set()
     cdef cset[CoordinatePair] seeds = _split_geometry_into_seeds(
-        source_geom_wkb, flow_dir_info, target_raster_path, diagnostic_vector_path)
+        source_geom_wkb, flow_dir_info, flow_dir_srs, target_raster_path,
+        diagnostic_vector_path)
 
     cdef CoordinatePair seed
     cdef cset[CoordinatePair].iterator seeds_iterator = seeds.begin()
@@ -654,7 +655,7 @@ def delineate_watersheds_d8(
         seeds_in_watershed = _split_geometry_into_seeds(
             geom_wkb, flow_dir_info,
             flow_dir_srs=flow_dir_srs,
-            raster_path=seeds_raster_path,
+            target_raster_path=seeds_raster_path,
         )
 
         seed_iterator = seeds_in_watershed.begin()
@@ -858,6 +859,8 @@ def delineate_watersheds_d8(
         source_feature = source_layer.GetFeature(ws_id)
         for field_name, field_value in source_feature.items().items():
             watershed_feature.SetField(field_name, field_value)
+            if field_name == 'ws_id':
+                continue
         watersheds_layer.CreateFeature(watershed_feature)
     watersheds_layer.CommitTransaction()
 
