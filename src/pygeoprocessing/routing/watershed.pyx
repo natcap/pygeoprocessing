@@ -938,3 +938,4 @@ def delineate_watersheds_d8(
 
     if remove:
         shutil.rmtree(working_dir_path)
+    LOGGER.info('Watershed delineation complete')

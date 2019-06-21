@@ -303,7 +303,7 @@ def doit():
     #    task_name='new_delineation_join')
 
     trivial_delineation_task = task_graph.add_task(
-        pygeoprocessing.routing.delineate_watersheds_trivial_d8,
+        pygeoprocessing.routing.delineate_watersheds_d8,
         args=((flow_dir, 1), identified_features, trivial_watersheds),
         kwargs={'working_dir': workspace},
         target_path_list=[trivial_watersheds],
