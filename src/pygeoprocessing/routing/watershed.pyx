@@ -486,7 +486,8 @@ cdef cset[CoordinatePair] _c_split_geometry_into_seeds(
     raster.SetProjection(flow_dir_srs.ExportToWkt())
     raster.SetGeoTransform(local_geotransform)
 
-    gdal.RasterizeLayer(raster, [1], new_layer, burn_values=[1])
+    gdal.RasterizeLayer(
+        raster, [1], new_layer, burn_values=[1], options=['ALL_TOUCHED=True'])
     seed_band = raster.GetRasterBand(1)
 
     if write_diagnostic_vector == 1:
@@ -515,6 +516,7 @@ cdef cset[CoordinatePair] _c_split_geometry_into_seeds(
         for row in range(n_rows):
             for col in range(n_cols):
                 with cython.boundscheck(False):
+                    # Check if the pixel does not overlap the geometry.
                     if seed_array[row, col] == 0:
                         continue
 
@@ -928,7 +930,8 @@ def delineate_watersheds_d8(
     watersheds_layer.CommitTransaction()
 
     polygonized_watersheds_layer = None
-    watersheds_vector.DeleteLayer('polygonized_watersheds')
+    if remove:
+        watersheds_vector.DeleteLayer('polygonized_watersheds')
     LOGGER.info('Finished vector consolidation')
 
     watersheds_layer = None
