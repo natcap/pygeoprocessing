@@ -159,7 +159,7 @@ class WatershedDelineationTests(unittest.TestCase):
 
         point = shapely.geometry.Point(2.5, -2.5)
         linestring = shapely.geometry.LineString([(10, -2), (10, -9.9)])
-        box = shapely.geometry.box(4.1, -7.9, 7.9, -3.9)
+        box = shapely.geometry.box(4.1, -7.9, 7.9, -4.1)
 
         for index, (geometry, expected_seeds) in enumerate((
                 (point, set([(0, 0)])),
@@ -167,10 +167,11 @@ class WatershedDelineationTests(unittest.TestCase):
                 (box, set([(1, 1), (2, 1), (1, 2), (2, 2)])))):  # includes nodata pixels
 
             raster_path = os.path.join(self.workspace_dir, '%s.tif' % index)
+            diagnostic_path = os.path.join(self.workspace_dir, '%s.gpkg' % index)
             result_seeds = watershed._split_geometry_into_seeds(
                 geometry.wkb, flow_dir_info['geotransform'], srs,
                 flow_dir_array.shape[1], flow_dir_array.shape[0],
-                raster_path)
+                raster_path, diagnostic_path)
 
             self.assertEqual(result_seeds, expected_seeds)
 
@@ -227,7 +228,6 @@ class WatershedDelineationTests(unittest.TestCase):
             4956546, 0, pixel_ysize]
         pixel_indexes_raster.SetGeoTransform(pixel_indexes_geotransform)
         pixel_indexes_raster = None
-
 
         point = shapely.geometry.Point(
             flow_dir_geotransform[0] + pixel_xsize / 2.,
