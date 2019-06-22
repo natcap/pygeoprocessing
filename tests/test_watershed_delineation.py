@@ -239,15 +239,14 @@ class WatershedDelineationTests(unittest.TestCase):
              flow_dir_geotransform[3] + pixel_ysize * 5)])
         box = shapely.geometry.box(
             flow_dir_geotransform[0] + pixel_xsize * 2,
-            flow_dir_geotransform[1] + pixel_ysize * 4,
+            flow_dir_geotransform[3] + pixel_ysize * 4,
             flow_dir_geotransform[0] + pixel_xsize * 4,
-            flow_dir_geotransform[1] + pixel_ysize * 2)
+            flow_dir_geotransform[3] + pixel_ysize * 2)
 
         for index, (geometry, expected_seeds) in enumerate((
                 (point, set([(0, 0)])),
-                (linestring, set([(3, 0), (3, 1), (3, 2), (3, 3)])),  # includes nodata pixel
+                (linestring, set([(4, 0), (4, 1), (4, 2), (4, 3)])),  # includes nodata pixel
                 (box, set([(1, 1), (2, 1), (1, 2), (2, 2)])))):  # includes nodata pixels
-            print(index, geometry)
 
             result_seeds = watershed._split_geometry_into_seeds(
                 geometry.wkb, flow_dir_info['geotransform'], srs,
