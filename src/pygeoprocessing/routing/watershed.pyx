@@ -402,6 +402,7 @@ def _is_raster_path_band_formatted(raster_path_band):
 
 cdef cset[CoordinatePair] _c_split_geometry_into_seeds(
         source_geom_wkb, tuple flow_dir_geotransform, flow_dir_srs,
+        flow_dir_n_cols, flow_dir_n_rows,
         target_raster_path, diagnostic_vector_path=None):
     """Split a geometry into 'seeds' of (x, y) coordinate pairs.
 
@@ -414,6 +415,10 @@ cdef cset[CoordinatePair] _c_split_geometry_into_seeds(
             the GDAL affine geotransform from the flow direction raster.
         flow_dir_srs (osr.SpatialReference): The OSR SpatialReference
             object from the flow direction raster.
+        flow_dir_n_cols (int): the number of columns in the flow
+            direction raster.
+        flow_dir_n_rows (int): the number of rows in the flow
+            direction raster.
         target_raster_path (string): The path to a raster onto which
             the geometry might be rasterized.  If the geometry is small
             enough to be completely contained within a single pixel, no
@@ -432,17 +437,15 @@ cdef cset[CoordinatePair] _c_split_geometry_into_seeds(
     cdef double y_origin = flow_dir_geotransform[3]
     cdef double x_pixelwidth = flow_dir_geotransform[1]
     cdef double y_pixelwidth = flow_dir_geotransform[5]
-    cdef double pixel_area = abs(x_pixelwidth * y_pixelwidth)
-    cdef int minx_pixelcoord, miny_pixelcoord, maxx_pixelcoord, maxy_pixelcoord
     cdef cset[CoordinatePair] seed_set
 
     geometry = shapely.wkb.loads(source_geom_wkb)
 
     minx, miny, maxx, maxy = geometry.bounds
-    minx_pixelcoord = <int>((minx - x_origin) // x_pixelwidth)
-    miny_pixelcoord = <int>((miny - y_origin) // y_pixelwidth)
-    maxx_pixelcoord = <int>((maxx - x_origin) // x_pixelwidth)
-    maxy_pixelcoord = <int>((maxy - y_origin) // y_pixelwidth)
+    cdef int minx_pixelcoord = <int>((minx - x_origin) // x_pixelwidth)
+    cdef int miny_pixelcoord = <int>((miny - y_origin) // y_pixelwidth)
+    cdef int maxx_pixelcoord = <int>((maxx - x_origin) // x_pixelwidth)
+    cdef int maxy_pixelcoord = <int>((maxy - y_origin) // y_pixelwidth)
 
     # If the geometry only intersects a single pixel, we can treat it
     # as a single point, which means that we can track it directly in our
@@ -454,15 +457,6 @@ cdef cset[CoordinatePair] _c_split_geometry_into_seeds(
         seed_set.insert(seed)
         return seed_set
 
-    cdef int write_diagnostic_vector = 0
-    if diagnostic_vector_path != None:
-        write_diagnostic_vector = 1
-
-    #gpkg_driver = gdal.GetDriverByName('GPKG')
-    #tmp_vector_path = os.path.join(working_dir_path, 'user_geometry.gpkg')
-    #new_vector = gpkg_driver.Create(tmp_vector_path, 0, 0, 0, gdal.GDT_Unknown)
-    #new_layer = new_vector.CreateLayer('user_geometry', flow_dir_srs, ogr.wkbUnknown)
-
     # The geometry does not fit into a single pixel, so let's create a new
     # raster onto which to rasterize it.
     memory_driver = gdal.GetDriverByName('Memory')
@@ -472,16 +466,22 @@ cdef cset[CoordinatePair] _c_split_geometry_into_seeds(
     new_feature.SetGeometry(ogr.CreateGeometryFromWkb(source_geom_wkb))
     new_layer.CreateFeature(new_feature)
 
-    local_origin_x = minx - (minx % x_pixelwidth)
-    local_origin_y = maxy - (maxy % y_pixelwidth)
-    local_n_cols = int(((maxx - local_origin_x) // x_pixelwidth) + 1)
-    local_n_rows = int(((miny - local_origin_y) // y_pixelwidth) + 1)
+    local_origin_x = max(minx, x_origin)
+    local_origin_y = min(maxy, y_origin)
+    print('flow_dir_gt', flow_dir_geotransform)
+    print('local origin', local_origin_x, local_origin_y)
+    print('origin_y', miny, maxy, y_origin)
+
+    local_n_cols = min(abs(((maxx - local_origin_x) // x_pixelwidth) + 1), flow_dir_n_cols)
+    local_n_rows = min(abs(((miny - local_origin_y) // y_pixelwidth) + 1), flow_dir_n_rows)
+
     local_geotransform = [
         local_origin_x, flow_dir_geotransform[1], flow_dir_geotransform[2],
         local_origin_y, flow_dir_geotransform[4], flow_dir_geotransform[5]]
+    print 'local_geotransform', local_geotransform
     gtiff_driver = gdal.GetDriverByName('GTiff')
     raster = gtiff_driver.Create(
-        target_raster_path, local_n_cols, local_n_rows, 1, gdal.GDT_Byte,
+        target_raster_path, int(local_n_cols), int(local_n_rows), 1, gdal.GDT_Byte,
         options=GTIFF_CREATION_OPTIONS)  # Raster is sparse, no need to fill.
     raster.SetProjection(flow_dir_srs.ExportToWkt())
     raster.SetGeoTransform(local_geotransform)
@@ -490,12 +490,20 @@ cdef cset[CoordinatePair] _c_split_geometry_into_seeds(
         raster, [1], new_layer, burn_values=[1], options=['ALL_TOUCHED=True'])
     seed_band = raster.GetRasterBand(1)
 
-    if write_diagnostic_vector == 1:
+    cdef int write_diagnostic_vector = 0
+    if diagnostic_vector_path != None:
+        write_diagnostic_vector = 1
+
         gpkg_driver = gdal.GetDriverByName('GPKG')
         diagnostic_vector = gpkg_driver.Create(
             diagnostic_vector_path, 0, 0, 0, gdal.GDT_Unknown)
         diagnostic_layer = diagnostic_vector.CreateLayer(
             'seeds', flow_dir_srs, ogr.wkbPoint)
+        user_geometry_layer = diagnostic_vector.CreateLayer(
+            'user_geometry', flow_dir_srs, ogr.wkbUnknown)
+        user_feature = ogr.Feature(user_geometry_layer.GetLayerDefn())
+        user_feature.SetGeometry(ogr.CreateGeometryFromWkb(source_geom_wkb))
+        user_geometry_layer.CreateFeature(user_feature)
 
     cdef int row, col
     cdef int global_row, global_col
@@ -512,6 +520,8 @@ cdef cset[CoordinatePair] _c_split_geometry_into_seeds(
         block_yoff = block_info['yoff']
         n_rows = seed_array.shape[0]
         n_cols = seed_array.shape[1]
+        print('block offset', block_xoff, block_yoff)
+        print('rows, cols', n_rows, n_cols)
 
         for row in range(n_rows):
             for col in range(n_cols):
@@ -522,6 +532,7 @@ cdef cset[CoordinatePair] _c_split_geometry_into_seeds(
 
                 global_row = seed_raster_origin_row + block_yoff + row
                 global_col = seed_raster_origin_col + block_xoff + col
+                print('global', global_row, global_col)
 
                 if write_diagnostic_vector == 1:
                     new_feature = ogr.Feature(diagnostic_layer.GetLayerDefn())
@@ -540,7 +551,8 @@ cdef cset[CoordinatePair] _c_split_geometry_into_seeds(
 
 
 def _split_geometry_into_seeds(
-        source_geom_wkb, geotransform, flow_dir_srs, target_raster_path,
+        source_geom_wkb, geotransform, flow_dir_srs,
+        flow_dir_n_cols, flow_dir_n_rows, target_raster_path,
         diagnostic_vector_path=None):
     """Split a geometry into 'seeds' of (x, y) coordinate pairs.
 
@@ -556,6 +568,10 @@ def _split_geometry_into_seeds(
             the GDAL affine geotransform from the flow direction raster.
         flow_dir_srs (osr.SpatialReference): The OSR SpatialReference
             object from the flow direction raster.
+        flow_dir_n_cols (int): the number of columns in the flow
+            direction raster.
+        flow_dir_n_rows (int): the number of rows in the flow
+            direction raster.
         target_raster_path (string): The path to a raster onto which
             the geometry might be rasterized.  If the geometry is small
             enough to be completely contained within a single pixel, no
@@ -572,8 +588,8 @@ def _split_geometry_into_seeds(
 
     return_set = set()
     cdef cset[CoordinatePair] seeds = _c_split_geometry_into_seeds(
-        source_geom_wkb, geotransform, flow_dir_srs, target_raster_path,
-        diagnostic_vector_path)
+        source_geom_wkb, geotransform, flow_dir_srs, flow_dir_n_cols,
+        flow_dir_n_rows, target_raster_path, diagnostic_vector_path)
 
     cdef CoordinatePair seed
     cdef cset[CoordinatePair].iterator seeds_iterator = seeds.begin()
@@ -714,11 +730,15 @@ def delineate_watersheds_d8(
             continue
 
         seeds_raster_path = os.path.join(working_dir_path, '%s_rasterized.tif' % ws_id)
+        diagnostic_vector_path = os.path.join(working_dir_path, '%s_seeds.gpkg' % ws_id)
         seeds_in_watershed = _c_split_geometry_into_seeds(
             geom_wkb,
             source_gt,
             flow_dir_srs=flow_dir_srs,
+            flow_dir_n_cols=flow_dir_n_cols,
+            flow_dir_n_rows=flow_dir_n_rows,
             target_raster_path=seeds_raster_path,
+            diagnostic_vector_path=diagnostic_vector_path
         )
 
         seed_iterator = seeds_in_watershed.begin()
@@ -865,6 +885,8 @@ def delineate_watersheds_d8(
             if os.path.exists(seeds_raster_path):
                 os.remove(seeds_raster_path)
             os.remove(vrt_path)
+            if os.path.exists(diagnostic_vector_path):
+                os.remove(diagnostic_vector_path)
 
     LOGGER.info('Finished delineating %s watersheds', watersheds_created)
 
