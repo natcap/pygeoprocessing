@@ -19,6 +19,7 @@ class WatershedDelineationTests(unittest.TestCase):
         shutil.rmtree(self.workspace_dir)
 
     def test_watersheds_trivial(self):
+        """PGP watersheds: test trivial delineation."""
         import pygeoprocessing.testing
         import pygeoprocessing.routing
 
@@ -127,6 +128,7 @@ class WatershedDelineationTests(unittest.TestCase):
             outflow_vector = None
 
     def test_split_geometry_into_seeds(self):
+        """PGP watersheds: Test geometry-to-seed extraction."""
         import pygeoprocessing
         from pygeoprocessing.routing import watershed
         nodata = 255
@@ -176,6 +178,7 @@ class WatershedDelineationTests(unittest.TestCase):
             self.assertEqual(result_seeds, expected_seeds)
 
     def test_split_geometry_into_seeds_willamette(self):
+        """PGP watersheds: Test geometry-to-seed extraction in Willamette."""
         import pygeoprocessing
         from pygeoprocessing.routing import watershed
         nodata = 255
