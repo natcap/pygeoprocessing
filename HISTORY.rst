@@ -3,6 +3,8 @@ Release History
 
 Unreleased Changes
 ------------------
+* Adding D8 watershed delineation as
+  ``pygeoprocessing.routing.delineate_watersheds_d8``.
 * ``pygeoprocessing.rasterize`` will now raise ``RuntimeError`` if the
   underlying call to ``gdal.RasterizeLayer`` encounters an error.
 * Specific type checking for `astype_list` in `iterblocks` to avoid confusing
