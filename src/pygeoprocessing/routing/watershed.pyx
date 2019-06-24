@@ -437,6 +437,8 @@ cdef cset[CoordinatePair] _c_split_geometry_into_seeds(
     cdef double y_origin = flow_dir_geotransform[3]
     cdef double x_pixelwidth = flow_dir_geotransform[1]
     cdef double y_pixelwidth = flow_dir_geotransform[5]
+    cdef double flow_dir_maxx = x_origin + (flow_dir_n_cols * x_pixelwidth)
+    cdef double flow_dir_miny = y_origin + (flow_dir_n_rows * y_pixelwidth)
     cdef cset[CoordinatePair] seed_set
 
     geometry = shapely.wkb.loads(source_geom_wkb)
@@ -457,6 +459,26 @@ cdef cset[CoordinatePair] _c_split_geometry_into_seeds(
         seed_set.insert(seed)
         return seed_set
 
+    # If the geometry's bounding box covers more than one pixel, we need to
+    # rasterize it to determine which pixels it intersects.
+    cdef double minx_aligned = max(
+        x_origin + (minx_pixelcoord * x_pixelwidth),
+        x_origin)
+    cdef double miny_aligned = max(
+        y_origin + ((miny_pixelcoord+1) * y_pixelwidth),
+        flow_dir_miny)
+    cdef double maxx_aligned = min(
+        x_origin + ((maxx_pixelcoord+1) * x_pixelwidth),
+        flow_dir_maxx)
+    cdef double maxy_aligned = min(
+        y_origin + (maxy_pixelcoord * y_pixelwidth),
+        y_origin)
+
+    # It's possible for a perfectly vertical or horizontal line to cover 0 rows
+    # or columns, so defaulting to row/col count of 1 in these cases.
+    local_n_cols = max(abs(maxx_aligned - minx_aligned) // abs(x_pixelwidth), 1)
+    local_n_rows = max(abs(maxy_aligned - miny_aligned) // abs(y_pixelwidth), 1)
+
     # The geometry does not fit into a single pixel, so let's create a new
     # raster onto which to rasterize it.
     memory_driver = gdal.GetDriverByName('Memory')
@@ -466,19 +488,12 @@ cdef cset[CoordinatePair] _c_split_geometry_into_seeds(
     new_feature.SetGeometry(ogr.CreateGeometryFromWkb(source_geom_wkb))
     new_layer.CreateFeature(new_feature)
 
-    local_origin_x = max(minx, x_origin)
-    local_origin_y = min(maxy, y_origin)
-    print('flow_dir_gt', flow_dir_geotransform)
-    print('local origin', local_origin_x, local_origin_y)
-    print('origin_y', miny, maxy, y_origin)
-
-    local_n_cols = min(abs(((maxx - local_origin_x) // x_pixelwidth) + 1), flow_dir_n_cols)
-    local_n_rows = min(abs(((miny - local_origin_y) // y_pixelwidth) + 1), flow_dir_n_rows)
+    local_origin_x = max(minx_aligned, x_origin)
+    local_origin_y = min(maxy_aligned, y_origin)
 
     local_geotransform = [
         local_origin_x, flow_dir_geotransform[1], flow_dir_geotransform[2],
         local_origin_y, flow_dir_geotransform[4], flow_dir_geotransform[5]]
-    print 'local_geotransform', local_geotransform
     gtiff_driver = gdal.GetDriverByName('GTiff')
     raster = gtiff_driver.Create(
         target_raster_path, int(local_n_cols), int(local_n_rows), 1, gdal.GDT_Byte,
@@ -520,8 +535,6 @@ cdef cset[CoordinatePair] _c_split_geometry_into_seeds(
         block_yoff = block_info['yoff']
         n_rows = seed_array.shape[0]
         n_cols = seed_array.shape[1]
-        print('block offset', block_xoff, block_yoff)
-        print('rows, cols', n_rows, n_cols)
 
         for row in range(n_rows):
             for col in range(n_cols):
@@ -532,7 +545,6 @@ cdef cset[CoordinatePair] _c_split_geometry_into_seeds(
 
                 global_row = seed_raster_origin_row + block_yoff + row
                 global_col = seed_raster_origin_col + block_xoff + col
-                print('global', global_row, global_col)
 
                 if write_diagnostic_vector == 1:
                     new_feature = ogr.Feature(diagnostic_layer.GetLayerDefn())

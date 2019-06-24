@@ -238,10 +238,10 @@ class WatershedDelineationTests(unittest.TestCase):
             (flow_dir_geotransform[0] + pixel_xsize * 4,
              flow_dir_geotransform[3] + pixel_ysize * 5)])
         box = shapely.geometry.box(
-            flow_dir_geotransform[0] + pixel_xsize * 2,
-            flow_dir_geotransform[3] + pixel_ysize * 4,
-            flow_dir_geotransform[0] + pixel_xsize * 4,
-            flow_dir_geotransform[3] + pixel_ysize * 2)
+            flow_dir_geotransform[0] + pixel_xsize * 2.1,
+            flow_dir_geotransform[3] + pixel_ysize * 4.1,
+            flow_dir_geotransform[0] + pixel_xsize * 3.9,
+            flow_dir_geotransform[3] + pixel_ysize * 2.1)
 
         for index, (geometry, expected_seeds) in enumerate((
                 (point, set([(0, 0)])),
