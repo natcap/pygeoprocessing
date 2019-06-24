@@ -676,8 +676,14 @@ def delineate_watersheds_d8(
     watersheds_vector = driver.CreateDataSource(target_watersheds_vector_path)
     polygonized_watersheds_layer = watersheds_vector.CreateLayer(
         'polygonized_watersheds', watersheds_srs, ogr.wkbPolygon)
+
+    # Using wkbUnknown layer data type because it's possible for a single
+    # watershed to have several disjoint components, and inserting a
+    # Polygon geometry into a MultiPolygon layer (or vice versa) is
+    # technically not supported by the GPKG standard although GDAL
+    # allows it for the time being.
     watersheds_layer = watersheds_vector.CreateLayer(
-        'watersheds', watersheds_srs, ogr.wkbMultiPolygon)
+        'watersheds', watersheds_srs, ogr.wkbUnknown)
     index_field = ogr.FieldDefn('ws_id', ogr.OFTInteger)
     index_field.SetWidth(24)
     polygonized_watersheds_layer.CreateField(index_field)
