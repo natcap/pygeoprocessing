@@ -2747,7 +2747,7 @@ class PyGeoprocessing10(unittest.TestCase):
                     return_value=lambda x, y, z: 1/0.):
                 pygeoprocessing.rasterize(
                     base_vector_path, target_raster_path, [test_value], None,
-                    layer_index=0)
+                    layer_id=0)
 
         self.assertTrue('nonzero exit code' in str(cm.exception))
 
