@@ -5,11 +5,14 @@ Unreleased Changes
 ------------------
 * Adding D8 watershed delineation as
   ``pygeoprocessing.routing.delineate_watersheds_d8``.
+* Corrected an issue with ``pygeoprocessing.create_raster_from_vector_extents``
+  where a vector with no width or no height (a vector with a single point, for
+  example) would result in invalid raster dimensions being passed to GDAL.
+  These edge cases are now guarded against.
+* ``pygeoprocessing.calculate_disjoint_polygon_set`` will now raise
+  ``RuntimeError`` if it is passed a vector with no features in it.
 * ``pygeoprocessing.rasterize`` will now raise ``RuntimeError`` if the
   underlying call to ``gdal.RasterizeLayer`` encounters an error.
-* Specific type checking for `astype_list` in `iterblocks` to avoid confusing
-  Exceptions.
-* Renamed test suite to be consistent with the pattern `test_[component].tif`.
 * Correcting an issue with the docstring in
   ``pygeoprocessing.reclassify_raster`` to reflect the current parameters.
 * Changed ``zonal_statistics`` to always return a ``dict`` instead of
