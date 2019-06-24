@@ -26,7 +26,10 @@ import taskgraph
 import psutil
 
 PROCESS = psutil.Process()
-PROCESS.nice(psutil.REALTIME_PRIORITY_CLASS)
+if psutil.WINDOWS:
+    PROCESS.nice(psutil.REALTIME_PRIORITY_CLASS)
+elif psutil.POSIX:
+    PROCESS.nice(20)
 
 
 @contextlib.contextmanager
