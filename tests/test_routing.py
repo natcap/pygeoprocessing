@@ -22,8 +22,7 @@ class TestRouting(unittest.TestCase):
 
     def setUp(self):
         """Create a temporary workspace that's deleted later."""
-        #self.workspace_dir = tempfile.mkdtemp()
-        self.workspace_dir = 'delineation_tests'
+        self.workspace_dir = tempfile.mkdtemp()
         if not os.path.exists(self.workspace_dir):
             os.makedirs(self.workspace_dir)
 
