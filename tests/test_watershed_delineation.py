@@ -245,8 +245,8 @@ class WatershedDelineationTests(unittest.TestCase):
 
         for index, (geometry, expected_seeds) in enumerate((
                 (point, set([(0, 0)])),
-                (linestring, set([(4, 0), (4, 1), (4, 2), (4, 3)])),  # includes nodata pixel
-                (box, set([(1, 1), (2, 1), (1, 2), (2, 2)])))):  # includes nodata pixels
+                (linestring, set([(4, 0), (4, 1), (4, 2), (4, 3)])),
+                (box, set([(2, 2), (2, 3), (3, 2), (3, 3)])))):
 
             result_seeds = watershed._split_geometry_into_seeds(
                 geometry.wkb, flow_dir_info['geotransform'], srs,
