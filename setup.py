@@ -44,8 +44,6 @@ setup(
         'Operating System :: MacOS :: MacOS X',
         'Operating System :: Microsoft',
         'Operating System :: POSIX',
-        'Programming Language :: Python :: 2',
-        'Programming Language :: Python :: 2.7',
         'Programming Language :: Python :: 3',
         'Programming Language :: Python :: 3.6',
         'Programming Language :: Python :: 3.7',
@@ -69,7 +67,7 @@ setup(
                 'src/pygeoprocessing/routing'],
             language="c++",
         ),
-         Extension(
+        Extension(
              "pygeoprocessing.geoprocessing_core",
              sources=[
                  'src/pygeoprocessing/geoprocessing_core.pyx'],

@@ -1,8 +1,9 @@
 Release History
 ===============
 
-Unreleased Changes
+1.7.0 (2019-06-27)
 ------------------
+* Removing support for Python 2.7.
 * Adding D8 watershed delineation as
   ``pygeoprocessing.routing.delineate_watersheds_d8``.
 * Corrected an issue with ``pygeoprocessing.create_raster_from_vector_extents``
