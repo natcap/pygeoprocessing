@@ -1,7 +1,7 @@
 include HISTORY.rst
 include LICENSE.txt
 include README.rst
-include setup.cfg
-include src/pygeoprocessing/routing/routing_core.pxd
-include src/pygeoprocessing/version.py
+global-include *.pyx
+global-include *.pxd
+global-include *.h
 include requirements.txt

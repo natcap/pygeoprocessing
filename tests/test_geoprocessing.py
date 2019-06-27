@@ -218,7 +218,7 @@ class PyGeoprocessing10(unittest.TestCase):
         target_file.close()
         pygeoprocessing.reproject_vector(
             base_vector_path, target_reference.ExportToWkt(),
-            target_vector_path, layer_index=0)
+            target_vector_path, layer_id=0)
 
         vector = ogr.Open(target_vector_path)
         layer = vector.GetLayer()
@@ -624,7 +624,7 @@ class PyGeoprocessing10(unittest.TestCase):
         target_file.close()
         pygeoprocessing.reproject_vector(
             base_vector_path, target_reference.ExportToWkt(),
-            target_vector_path, layer_index=0, copy_fields=['id'])
+            target_vector_path, layer_id=0, copy_fields=['id'])
 
         vector = ogr.Open(target_vector_path)
         layer = vector.GetLayer()
@@ -640,7 +640,7 @@ class PyGeoprocessing10(unittest.TestCase):
             self.workspace_dir, 'target_vector_no_fields.shp')
         pygeoprocessing.reproject_vector(
             base_vector_path, target_reference.ExportToWkt(),
-            target_vector_no_fields_path, layer_index=0, copy_fields=False)
+            target_vector_no_fields_path, layer_id=0, copy_fields=False)
         layer = None
         vector = None
 
@@ -2123,6 +2123,64 @@ class PyGeoprocessing10(unittest.TestCase):
         self.assertEqual(raster_properties['raster_size'][0], n_pixels_x)
         self.assertEqual(raster_properties['raster_size'][1], n_pixels_y)
 
+    def test_create_raster_from_vector_extents_linestring_no_width(self):
+        """PGP.geoprocessing: create raster from v. ext with no geom width."""
+        reference = sampledata.SRS_COLOMBIA
+        point_a = shapely.geometry.LineString(
+            [(reference.origin[0], reference.origin[1]),
+             (reference.origin[0], reference.origin[1] + 100)])
+        pixel_x_size = -10
+        pixel_y_size = 20
+        n_pixels_x = 1
+        n_pixels_y = 5
+        source_vector_path = os.path.join(self.workspace_dir, 'sample_vector')
+        pygeoprocessing.testing.create_vector_on_disk(
+            [point_a], reference.projection, fields={'value': 'int'},
+            attributes=[{'value': 0}], vector_format='GeoJSON',
+            filename=source_vector_path)
+        target_raster_path = os.path.join(
+            self.workspace_dir, 'target_raster.tif')
+        target_pixel_size = [pixel_x_size, pixel_y_size]
+        target_nodata = -1
+        target_pixel_type = gdal.GDT_Int16
+        pygeoprocessing.create_raster_from_vector_extents(
+            source_vector_path, target_raster_path, target_pixel_size,
+            target_pixel_type, target_nodata)
+
+        raster_properties = pygeoprocessing.get_raster_info(
+            target_raster_path)
+        self.assertEqual(raster_properties['raster_size'][0], n_pixels_x)
+        self.assertEqual(raster_properties['raster_size'][1], n_pixels_y)
+
+    def test_create_raster_from_vector_extents_linestring_no_height(self):
+        """PGP.geoprocessing: create raster from v. ext with no geom height."""
+        reference = sampledata.SRS_COLOMBIA
+        point_a = shapely.geometry.LineString(
+            [(reference.origin[0], reference.origin[1]),
+             (reference.origin[0] + 100, reference.origin[1])])
+        pixel_x_size = -10
+        pixel_y_size = 20
+        n_pixels_x = 10
+        n_pixels_y = 1
+        source_vector_path = os.path.join(self.workspace_dir, 'sample_vector')
+        pygeoprocessing.testing.create_vector_on_disk(
+            [point_a], reference.projection, fields={'value': 'int'},
+            attributes=[{'value': 0}], vector_format='GeoJSON',
+            filename=source_vector_path)
+        target_raster_path = os.path.join(
+            self.workspace_dir, 'target_raster.tif')
+        target_pixel_size = [pixel_x_size, pixel_y_size]
+        target_nodata = -1
+        target_pixel_type = gdal.GDT_Int16
+        pygeoprocessing.create_raster_from_vector_extents(
+            source_vector_path, target_raster_path, target_pixel_size,
+            target_pixel_type, target_nodata)
+
+        raster_properties = pygeoprocessing.get_raster_info(
+            target_raster_path)
+        self.assertEqual(raster_properties['raster_size'][0], n_pixels_x)
+        self.assertEqual(raster_properties['raster_size'][1], n_pixels_y)
+
     def test_create_raster_from_vector_extents_bad_geometry(self):
         """PGP.geoprocessing: create raster from v. ext. with bad geometry."""
         reference = sampledata.SRS_COLOMBIA
@@ -2630,7 +2688,7 @@ class PyGeoprocessing10(unittest.TestCase):
 
         pygeoprocessing.rasterize(
             base_vector_path, target_raster_path, [test_value], None,
-            layer_index=0)
+            layer_id=0)
 
         target_raster = gdal.OpenEx(target_raster_path, gdal.OF_RASTER)
         target_band = target_raster.GetRasterBand(1)
@@ -2641,13 +2699,57 @@ class PyGeoprocessing10(unittest.TestCase):
 
         pygeoprocessing.rasterize(
             base_vector_path, target_raster_path, None,
-            ["ATTRIBUTE=id"], layer_index=0)
+            ["ATTRIBUTE=id"], layer_id=0)
         target_raster = gdal.OpenEx(target_raster_path, gdal.OF_RASTER)
         target_band = target_raster.GetRasterBand(1)
         result = target_band.ReadAsArray()
         target_band = None
         target_raster = None
         self.assertTrue((result == 5).all())
+
+    def test_rasterize_error(self):
+        """PGP.geoprocessing: test rasterize when error encountered."""
+        reference = sampledata.SRS_COLOMBIA
+        n_pixels = 3
+        target_raster_array = numpy.ones((n_pixels, n_pixels), numpy.float32)
+        test_value = 0.5
+        target_raster_array[:] = test_value
+        nodata_target = -1
+        target_raster_path = os.path.join(
+            self.workspace_dir, 'target_raster.tif')
+        pygeoprocessing.testing.create_raster_on_disk(
+            [target_raster_array], reference.origin, reference.projection,
+            nodata_target, reference.pixel_size(30), filename=target_raster_path)
+
+        reference = sampledata.SRS_COLOMBIA
+        pixel_size = 30.0
+        polygon = shapely.geometry.Polygon([
+            (reference.origin[0], reference.origin[1]),
+            (reference.origin[0], -pixel_size * n_pixels+reference.origin[1]),
+            (reference.origin[0]+pixel_size * n_pixels,
+             -pixel_size * n_pixels+reference.origin[1]),
+            (reference.origin[0]+pixel_size * n_pixels, reference.origin[1]),
+            (reference.origin[0], reference.origin[1])])
+        base_vector_path = os.path.join(
+            self.workspace_dir, 'base_vector.json')
+
+        pygeoprocessing.testing.create_vector_on_disk(
+            [polygon], reference.projection,
+            fields={'id': 'int'}, attributes=[{'id': 5}],
+            vector_format='GeoJSON', filename=base_vector_path)
+
+        with self.assertRaises(RuntimeError) as cm:
+            # Patching the function that makes a logger callback so that
+            # it will raise an exception (ZeroDivisionError in this case,
+            # but any exception should do).
+            with mock.patch(
+                    'pygeoprocessing.geoprocessing._make_logger_callback',
+                    return_value=lambda x, y, z: 1/0.):
+                pygeoprocessing.rasterize(
+                    base_vector_path, target_raster_path, [test_value], None,
+                    layer_id=0)
+
+        self.assertTrue('nonzero exit code' in str(cm.exception))
 
     def test_rasterize_missing_file(self):
         """PGP.geoprocessing: test rasterize with no target raster."""
@@ -2680,7 +2782,7 @@ class PyGeoprocessing10(unittest.TestCase):
         with self.assertRaises(ValueError) as cm:
             pygeoprocessing.rasterize(
                 base_vector_path, target_raster_path, [test_value], None,
-                layer_index=0)
+                layer_id=0)
         expected_message = (
             "%s doesn't exist, but needed to rasterize." % target_raster_path)
         actual_message = str(cm.exception)
@@ -2721,7 +2823,7 @@ class PyGeoprocessing10(unittest.TestCase):
         with self.assertRaises(ValueError) as cm:
             pygeoprocessing.rasterize(
                 base_vector_path, target_raster_path, None, None,
-                layer_index=0)
+                layer_id=0)
         expected_message = (
             "Neither `burn_values` nor `option_list` is set")
         actual_message = str(cm.exception)
@@ -2730,7 +2832,7 @@ class PyGeoprocessing10(unittest.TestCase):
         with self.assertRaises(ValueError) as cm:
             pygeoprocessing.rasterize(
                 base_vector_path, target_raster_path, 1, None,
-                layer_index=0)
+                layer_id=0)
         expected_message = "`burn_values` is not a list/tuple"
         actual_message = str(cm.exception)
         self.assertTrue(expected_message in actual_message, actual_message)
@@ -2738,7 +2840,7 @@ class PyGeoprocessing10(unittest.TestCase):
         with self.assertRaises(ValueError) as cm:
             pygeoprocessing.rasterize(
                 base_vector_path, target_raster_path, None, "ATTRIBUTE=id",
-                layer_index=0)
+                layer_id=0)
         expected_message = "`option_list` is not a list/tuple"
         actual_message = str(cm.exception)
         self.assertTrue(expected_message in actual_message, actual_message)
@@ -3563,6 +3665,63 @@ class PyGeoprocessing10(unittest.TestCase):
         expected_message = 'was not found'
         actual_message = str(cm.exception)
         self.assertTrue(expected_message in actual_message, actual_message)
+
+    def test_disjoint_polygon_set_no_bounding_box(self):
+        """PGP.geoprocessing: check disjoint sets."""
+        import pygeoprocessing
+
+        srs = osr.SpatialReference()
+        srs.ImportFromEPSG(32731)  # WGS84 / UTM zone 31s
+        srs_wkt = srs.ExportToWkt()
+
+        def square(centerpoint_tuple):
+            x, y = centerpoint_tuple
+            return shapely.geometry.Polygon(
+                [(x-1.5, y-1.5),
+                 (x-1.5, y+1.5),
+                 (x+1.5, y+1.5),
+                 (x+1.5, y-1.5),
+                 (x-1.5, y-1.5)])
+
+        watershed_geometries = [
+            square((16, -8)),
+            square((8, -10)),
+            square((2, -8)),  # overlap with FID 4
+            square((2, -7)),  # overlap with FID 3
+            square((14, -12)),
+        ]
+
+        outflow_vector = os.path.join(self.workspace_dir, 'outflow.gpkg')
+        pygeoprocessing.testing.create_vector_on_disk(
+            watershed_geometries, srs_wkt, vector_format='GPKG',
+            filename=outflow_vector)
+
+        disjoint_sets = pygeoprocessing.calculate_disjoint_polygon_set(outflow_vector)
+        self.assertEqual(
+            disjoint_sets,
+            [set([1, 2, 3, 5]), set([4])])
+
+    def test_disjoint_polygon_set_no_features_error(self):
+        """PGP.geoprocessing: raise an error when a vector has no features."""
+        import pygeoprocessing
+        import pygeoprocessing.testing
+
+        srs = osr.SpatialReference()
+        srs.ImportFromEPSG(4623)
+
+        empty_vector_path = os.path.join(self.workspace_dir, 'empty.geojson')
+        pygeoprocessing.testing.create_vector_on_disk(
+            geometries=[],
+            projection=srs.ExportToWkt(),
+            fields=None,
+            vector_format='GeoJSON',
+            filename=empty_vector_path)
+
+        with self.assertRaises(RuntimeError) as cm:
+            pygeoprocessing.calculate_disjoint_polygon_set(empty_vector_path)
+
+        self.assertTrue('Vector must have geometries but does not'
+                        in str(cm.exception))
 
     def test_assert_is_valid_pixel_size(self):
         """PGP: geoprocessing test to cover valid pixel size."""
