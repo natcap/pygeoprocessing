@@ -30,11 +30,13 @@ Release History
   when using the cutline functionality. Instead this functionality was
   replaced with manual rasterization. In turn this introduces two optional
   parameters:
+
     * ``rasterize`` and ``mask_raster`` have a ``where_clause`` parameter
       which takes a string argument in SQL WHERE syntax to filter
       rasterization based on attribute values.
     * ``warp_raster`` takes a ``working_dir`` parameter to manage local
       temporary mask rasters.
+
 * Removing a temporary working directory that is created when executing
   pygeoprocessing.convolve_2d.
 * Changed optional parameters involving layer indexes to be either indexes
