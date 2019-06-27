@@ -408,7 +408,7 @@ def raster_calculator(
                                 blocksize[dim_index],)
                             tile_dims[dim_index] = 1
                     data_blocks.append(
-                        numpy.tile(value[slice_list], tile_dims))
+                        numpy.tile(tuple(value[slice_list]), tile_dims))
                 else:
                     # must be a raw tuple
                     data_blocks.append(value[0])
@@ -988,8 +988,11 @@ def create_raster_from_vector_extents(
     # base vector
     n_cols = int(numpy.ceil(
         abs((shp_extent[1] - shp_extent[0]) / target_pixel_size[0])))
+    n_cols = max(1, n_cols)
+
     n_rows = int(numpy.ceil(
         abs((shp_extent[3] - shp_extent[2]) / target_pixel_size[1])))
+    n_rows = max(1, n_rows)
 
     driver = gdal.GetDriverByName('GTiff')
     n_bands = 1
@@ -1022,6 +1025,8 @@ def create_raster_from_vector_extents(
         band.Fill(fill_value)
         band.FlushCache()
         band = None
+    layer = None
+    vector = None
     raster = None
     vector = None
 
@@ -2038,11 +2043,14 @@ def rasterize(
     layer = vector.GetLayer(layer_id)
     if where_clause:
         layer.SetAttributeFilter(where_clause)
-    gdal.RasterizeLayer(
+    result = gdal.RasterizeLayer(
         raster, [1], layer, burn_values=burn_values,
         options=option_list, callback=rasterize_callback)
     raster.FlushCache()
     gdal.Dataset.__swig_destroy__(raster)
+
+    if result != 0:
+        raise RuntimeError('Rasterize returned a nonzero exit code.')
 
 
 def calculate_disjoint_polygon_set(
@@ -2070,8 +2078,13 @@ def calculate_disjoint_polygon_set(
     vector_layer = vector.GetLayer(layer_id)
     feature_count = vector_layer.GetFeatureCount()
 
+    if feature_count == 0:
+        raise RuntimeError('Vector must have geometries but does not: %s'
+                           % vector_path)
+
     last_time = time.time()
     LOGGER.info("build shapely polygon list")
+
     if bounding_box is None:
         bounding_box = get_vector_info(vector_path)['bounding_box']
     bounding_box = shapely.prepared.prep(shapely.geometry.box(*bounding_box))
@@ -3200,6 +3213,10 @@ def _make_logger_callback(message):
         except AttributeError:
             logger_callback.last_time = time.time()
             logger_callback.total_time = 0.0
+        except:
+            LOGGER.exception("Unhandled error occurred while logging "
+                             "progress.  df_complete: %s, p_progress_arg: %s",
+                             df_complete, p_progress_arg)
 
     return logger_callback
 
