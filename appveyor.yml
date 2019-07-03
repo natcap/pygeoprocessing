@@ -6,6 +6,7 @@ skip_non_tags: false  # we want to build untagged revisions.
 
 environment:
   GCLOUD_WHLS: "https://storage.googleapis.com/natcap-build-dependencies/python-win32"
+  PIP_INSTALL: "pip install --extra-index-url pypi.naturalcapitalproject.org --tristed-host pypi.naturalcapitalproject.org"
 
   matrix:
     # For Python versions available on Appveyor, see
@@ -13,48 +14,26 @@ environment:
 
     - PYTHON: "C:\\Python27"
       TOXENV: "py27"
-      GDAL_WHL: "GDAL-2.2.4-cp27-cp27m-win32.whl"
-      SHAPELY_WHL: "Shapely-1.6.4.post1-cp27-cp27m-win32.whl"
-      RTREE_WHL: "Rtree-0.8.3-cp27-cp27m-win32.whl"
 
     - PYTHON: "C:\\Python36"
       TOXENV: "py36"
-      GDAL_WHL: "GDAL-2.3.2-cp36-cp36m-win32.whl"
-      SHAPELY_WHL: "Shapely-1.6.4.post1-cp36-cp36m-win32.whl"
-      RTREE_WHL: "Rtree-0.8.3-cp36-cp36m-win32.whl"
 
     - PYTHON: "C:\\Python37"
       TOXENV: "py37"
-      GDAL_WHL: "GDAL-2.4.1-cp37-cp37m-win32.whl"
-      SHAPELY_WHL: "Shapely-1.6.4.post1-cp37-cp37m-win32.whl"
-      RTREE_WHL: "Rtree-0.8.3-cp37-cp37m-win32.whl"
 
     - PYTHON: "C:\\Python27-x64"
       TOXENV: "py27"
-      GDAL_WHL: "GDAL-2.2.4-cp27-cp27m-win_amd64.whl"
-      SHAPELY_WHL: "Shapely-1.6.4.post1-cp27-cp27m-win_amd64.whl"
-      RTREE_WHL: "Rtree-0.8.3-cp27-cp27m-win_amd64.whl"
 
     - PYTHON: "C:\\Python36-x64"
       TOXENV: "py36"
-      GDAL_WHL: "GDAL-2.4.1-cp36-cp36m-win_amd64.whl"
-      SHAPELY_WHL: "Shapely-1.6.4.post1-cp36-cp36m-win_amd64.whl"
-      RTREE_WHL: "Rtree-0.8.3-cp36-cp36m-win_amd64.whl"
 
     - PYTHON: "C:\\Python37-x64"
       TOXENV: "py37"
-      GDAL_WHL: "GDAL-2.4.1-cp37-cp37m-win_amd64.whl"
-      SHAPELY_WHL: "Shapely-1.6.4.post1-cp37-cp37m-win_amd64.whl"
-      RTREE_WHL: "Rtree-0.8.3-cp37-cp37m-win_amd64.whl"
 
 install:
     # We need wheel installed to build wheels
     - "%PYTHON%\\python.exe -m pip install --upgrade pip"
-    - "%PYTHON%\\python.exe -m pip install wheel"
-    - "%PYTHON%\\python.exe -m pip install %GCLOUD_WHLS%/%GDAL_WHL%"
-    - "%PYTHON%\\python.exe -m pip install %GCLOUD_WHLS%/%SHAPELY_WHL%"
-    - "%PYTHON%\\python.exe -m pip install %GCLOUD_WHLS%/%RTREE_WHL%"
-    - "%PYTHON%\\python.exe -m pip install tox -r requirements.txt"
+    - "%PYTHON%\\python.exe -m %PIP_INSTALL% gdal shapely rtree tox wheel -r requirements.txt"
     - "%PYTHON%\\python.exe setup.py install"
 
 build: off
