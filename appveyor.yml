@@ -32,7 +32,7 @@ environment:
 install:
     # We need wheel installed to build wheels
     - "%PYTHON%\\python.exe -m pip install --upgrade pip"
-    - '%PYTHON%\\python.exe -m %PIP_INSTALL% "gdal<3" shapely rtree tox wheel -r requirements.txt'
+    - '%PYTHON%\\python.exe -m %PIP_INSTALL% tox wheel -r requirements.txt'
     # setup.py install before running tox due to https://github.com/pypa/pip/issues/6558
     - "%PYTHON%\\python.exe setup.py install"
 
