@@ -5,7 +5,6 @@ image: "Visual Studio 2015"
 skip_non_tags: false  # we want to build untagged revisions.
 
 environment:
-  GCLOUD_WHLS: "https://storage.googleapis.com/natcap-build-dependencies/python-win32"
   PIP_INSTALL: "pip install --extra-index-url pypi.naturalcapitalproject.org --tristed-host pypi.naturalcapitalproject.org"
 
   matrix:
