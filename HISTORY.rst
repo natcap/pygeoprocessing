@@ -1,8 +1,19 @@
 Release History
 ===============
 
-Unreleased Changes
+1.7.0 (2019-06-27)
 ------------------
+* Removing support for Python 2.7.
+* Adding D8 watershed delineation as
+  ``pygeoprocessing.routing.delineate_watersheds_d8``.
+* Corrected an issue with ``pygeoprocessing.create_raster_from_vector_extents``
+  where a vector with no width or no height (a vector with a single point, for
+  example) would result in invalid raster dimensions being passed to GDAL.
+  These edge cases are now guarded against.
+* ``pygeoprocessing.calculate_disjoint_polygon_set`` will now raise
+  ``RuntimeError`` if it is passed a vector with no features in it.
+* ``pygeoprocessing.rasterize`` will now raise ``RuntimeError`` if the
+  underlying call to ``gdal.RasterizeLayer`` encounters an error.
 * Correcting an issue with the docstring in
   ``pygeoprocessing.reclassify_raster`` to reflect the current parameters.
 * Changed ``zonal_statistics`` to always return a ``dict`` instead of
@@ -19,11 +30,13 @@ Unreleased Changes
   when using the cutline functionality. Instead this functionality was
   replaced with manual rasterization. In turn this introduces two optional
   parameters:
+
     * ``rasterize`` and ``mask_raster`` have a ``where_clause`` parameter
       which takes a string argument in SQL WHERE syntax to filter
       rasterization based on attribute values.
     * ``warp_raster`` takes a ``working_dir`` parameter to manage local
       temporary mask rasters.
+
 * Removing a temporary working directory that is created when executing
   pygeoprocessing.convolve_2d.
 * Changed optional parameters involving layer indexes to be either indexes
