@@ -5,7 +5,7 @@ image: "Visual Studio 2015"
 skip_non_tags: false  # we want to build untagged revisions.
 
 environment:
-  PIP_INSTALL: "pip install --extra-index-url pypi.naturalcapitalproject.org --tristed-host pypi.naturalcapitalproject.org"
+  PIP_INSTALL: "pip install --extra-index-url pypi.naturalcapitalproject.org --trusted-host pypi.naturalcapitalproject.org"
 
   matrix:
     # For Python versions available on Appveyor, see
