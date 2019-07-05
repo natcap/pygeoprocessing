@@ -2257,6 +2257,9 @@ class PyGeoprocessing10(unittest.TestCase):
 
     def test_create_raster_from_vector_extents_linestring_no_width(self):
         """PGP.geoprocessing: create raster from v. ext with no geom width."""
+        import pygeoprocessing
+        from pygeoprocessing.testing import sampledata
+
         reference = sampledata.SRS_COLOMBIA
         point_a = shapely.geometry.LineString(
             [(reference.origin[0], reference.origin[1]),
@@ -2286,6 +2289,9 @@ class PyGeoprocessing10(unittest.TestCase):
 
     def test_create_raster_from_vector_extents_linestring_no_height(self):
         """PGP.geoprocessing: create raster from v. ext with no geom height."""
+        import pygeoprocessing
+        from pygeoprocessing.testing import sampledata
+
         reference = sampledata.SRS_COLOMBIA
         point_a = shapely.geometry.LineString(
             [(reference.origin[0], reference.origin[1]),
@@ -2899,6 +2905,9 @@ class PyGeoprocessing10(unittest.TestCase):
 
     def test_rasterize_error(self):
         """PGP.geoprocessing: test rasterize when error encountered."""
+        import pygeoprocessing
+        from pygeoprocessing.testing import sampledata
+
         reference = sampledata.SRS_COLOMBIA
         n_pixels = 3
         target_raster_array = numpy.ones((n_pixels, n_pixels), numpy.float32)
