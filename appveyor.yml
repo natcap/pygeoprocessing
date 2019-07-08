@@ -1,8 +1,12 @@
 # Adapted from https://packaging.python.org/guides/supporting-windows-using-appveyor/
+#
+image: "Visual Studio 2015"
 
 skip_non_tags: false  # we want to build untagged revisions.
 
 environment:
+  PIP_INSTALL: "pip install --extra-index-url http://pypi.naturalcapitalproject.org/simple/ --trusted-host pypi.naturalcapitalproject.org --prefer-binary"
+
   matrix:
     # For Python versions available on Appveyor, see
     # https://www.appveyor.com/docs/windows-images-software/#python
@@ -27,19 +31,15 @@ environment:
 
 install:
     # We need wheel installed to build wheels
-    - "%PYTHON%\\python.exe -m pip install wheel"
-    - "%PYTHON%\\python.exe -m pip install pipwin"
-    - '%PYTHON%\\python.exe -m pipwin install "gdal<=2.9"'
-    - "%PYTHON%\\python.exe -m pipwin install shapely"
-    - "%PYTHON%\\python.exe -m pipwin install rtree"
-    - "%PYTHON%\\python.exe -m pip install tox -r requirements.txt"
+    - "%PYTHON%\\python.exe -m pip install --upgrade pip"
+    - '%PYTHON%\\python.exe -m %PIP_INSTALL% tox wheel pytest mock -r requirements.txt'
     # setup.py install before running tox due to https://github.com/pypa/pip/issues/6558
     - "%PYTHON%\\python.exe setup.py install"
 
 build: off
 
 test_script:
-    - "%PYTHON%\\python.exe -m tox --sitepackages -e %TOXENV%"
+    - "%PYTHON%\\python.exe -m tox -vv --sitepackages -e %TOXENV%"
 
 after_test:
     # This step builds your wheels for artifacts
