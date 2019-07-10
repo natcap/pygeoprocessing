@@ -29,6 +29,12 @@ LOGGER = logging.getLogger('pygeoprocessing.geoprocessing_core')
 
 cdef float _NODATA = -1.0
 
+cdef extern from "FastFileIterator.h" nogil:
+    cdef cppclass FastFileIterator[DATA_T]:
+        FastFileIterator(const char*, size_t)
+        DATA_T next()
+
+
 @cython.boundscheck(False)
 @cython.wraparound(False)
 @cython.cdivision(True)
@@ -586,7 +592,8 @@ def disk_based_raster_sort(
 
     """
     cdef FILE *fptr
-    cdef long long[:] buffer_data
+    cdef long[:] buffer_data
+    cdef FastFileIterator[long]* fast_file_iterator
     try:
         os.makedirs(working_sort_directory)
     except OSError:
@@ -597,18 +604,21 @@ def disk_based_raster_sort(
             (base_raster_path, 1), largest_block=buffer_size):
         buffer_data = numpy.sort(
             block_data[~numpy.isclose(block_data, nodata)]).astype(
-            numpy.int64)
+            numpy.long)
         file_path = os.path.join(
             working_sort_directory, '%d.dat' % file_index)
         fptr = fopen(bytes(file_path.encode()), "w")
-        fwrite(<void*>&buffer_data[0], sizeof(long int), buffer_data.size, fptr)
+        fwrite(<void*>&buffer_data[0], sizeof(long), buffer_data.size, fptr)
         fclose(fptr)
         file_index += 1
 
         fptr = fopen(bytes(file_path.encode()), "r")
-        fread(&buffer_data[0], sizeof(long int), buffer_data.size, fptr)
+        fread(&buffer_data[0], sizeof(long), buffer_data.size, fptr)
+        fast_file_iterator = new FastFileIterator[long](
+            (bytes(file_path.encode())), 100)
         for i in range(buffer_data.size):
             print(buffer_data[i])
+            print('ffi: %s' % fast_file_iterator.next())
             if i > 20:
-                print ('**********')
+                print('**********')
                 break
