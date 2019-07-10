@@ -13,9 +13,11 @@ import numpy
 cimport cython
 from libcpp.map cimport map
 
-from libc.math cimport sqrt
-from libc.math cimport exp
-from libc.math cimport ceil
+from libc.stdio cimport FILE
+from libc.stdio cimport fopen
+from libc.stdio cimport fwrite
+from libc.stdio cimport fread
+from libc.stdio cimport fclose
 
 from osgeo import gdal
 import pygeoprocessing
@@ -562,3 +564,51 @@ def stats_worker(stats_work_queue, exception_queue):
         while not stats_work_queue.empty():
             stats_work_queue.get()
         raise
+
+
+def disk_based_raster_sort(
+        base_raster_path, working_sort_directory, buffer_size=2**28):
+    """Create a set of heap files to sort a raster.
+
+    Parameters:
+        base_raster_path (str): path to raster.
+        working_sort_directory (str): path to a directory that does not
+            exist or is empty. This directory will be used to create heapfiles
+            with sizes no larger than `buffer_size` which are written in the
+            of the pattern N.dat where N is in the numbering 0, 1, 2, ... up
+            to the number of files necessary to handle the raster.
+        buffer_size (int): defines how large to make each heapfile which
+            is close to the amount of maximum memory to use when storing
+            elements before a sort and write to disk.
+
+    Returns:
+        None.
+
+    """
+    cdef FILE *fptr
+    cdef long long[:] buffer_data
+    try:
+        os.makedirs(working_sort_directory)
+    except OSError:
+        pass
+    file_index = 0
+    nodata = pygeoprocessing.get_raster_info(base_raster_path)['nodata'][0]
+    for _, block_data in pygeoprocessing.iterblocks(
+            (base_raster_path, 1), largest_block=buffer_size):
+        buffer_data = numpy.sort(
+            block_data[~numpy.isclose(block_data, nodata)]).astype(
+            numpy.int64)
+        file_path = os.path.join(
+            working_sort_directory, '%d.dat' % file_index)
+        fptr = fopen(bytes(file_path.encode()), "w")
+        fwrite(<void*>&buffer_data[0], sizeof(long int), buffer_data.size, fptr)
+        fclose(fptr)
+        file_index += 1
+
+        fptr = fopen(bytes(file_path.encode()), "r")
+        fread(&buffer_data[0], sizeof(long int), buffer_data.size, fptr)
+        for i in range(buffer_data.size):
+            print(buffer_data[i])
+            if i > 20:
+                print ('**********')
+                break

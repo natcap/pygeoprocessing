@@ -12,6 +12,7 @@ import pkg_resources
 from . import geoprocessing
 
 from .geoprocessing_core import calculate_slope
+from .geoprocessing_core import disk_based_raster_sort
 
 try:
     __version__ = pkg_resources.get_distribution(__name__).version
