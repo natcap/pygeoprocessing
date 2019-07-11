@@ -2,8 +2,9 @@
 #define __FASTFILEITERATOR_H_INCLUDED__
 
 #include <cstddef>
-#include<iostream>
-#include<fstream>
+#include <iostream>
+#include <fstream>
+#include <stdio.h>
 
 using namespace std;
 template <class DATA_T> class FastFileIterator{
@@ -15,6 +16,26 @@ private:
     size_t cache_size;
     size_t buffer_size;
     size_t file_length;
+
+    void update_buffer() {
+        if (this->local_offset >= this->cache_size) {
+            std::ifstream is (this->file_path, std::ifstream::binary);
+            this->global_offset += this->local_offset;
+            this->local_offset = 0;
+            if (this->buffer_size > (this->file_length - this->global_offset)) {
+                this->cache_size = this->file_length - this->global_offset;
+            } else {
+                this->cache_size = this->buffer_size;
+            }
+            is.seekg(this->global_offset, is.beg);
+            if (this->buffer != nullptr) {
+                delete [] this->buffer;
+            }
+            this->buffer = new DATA_T[this->cache_size];
+            is.read((char*)this->buffer, this->cache_size);
+            is.close();
+        }
+    }
 
 public:
     FastFileIterator(const char *file_path, size_t buffer_size) {
@@ -33,29 +54,23 @@ public:
             delete [] buffer;
         }
     }
+
+    DATA_T const peek() {
+        update_buffer();
+        return this->buffer[this->local_offset];
+    }
+
     DATA_T next() {
-        if (this->local_offset >= this->cache_size) {
-            std::ifstream is (this->file_path, std::ifstream::binary);
-            this->global_offset += this->local_offset;
-            this->local_offset = 0;
-            if (this->buffer_size > (this->file_length - this->global_offset)) {
-                this->cache_size = this->file_length - this->global_offset;
-            } else {
-                this->cache_size = this->buffer_size;
-            }
-            if (cache_size == 0) {
-                return -1;
-            }
-            is.seekg(this->global_offset, is.beg);
-            if (this->buffer != nullptr) {
-                delete [] this->buffer;
-            }
-            this->buffer = new DATA_T[this->cache_size];
-            is.read((char*)this->buffer, this->cache_size);
-            is.close();
-        }
+        update_buffer();
         this->local_offset += 1;
         return this->buffer[this->local_offset-1];
     }
 };
+
+template <class DATA_T>
+int FastFileIteratorCompare(FastFileIterator<DATA_T>* a,
+                            FastFileIterator<DATA_T>* b) {
+    return a->peek() > b->peek();
+}
+
 #endif
