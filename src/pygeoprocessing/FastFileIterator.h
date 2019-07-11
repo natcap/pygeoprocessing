@@ -10,7 +10,9 @@ using namespace std;
 template <class DATA_T> class FastFileIterator{
 private:
     DATA_T* buffer = nullptr;
-    const char* file_path;
+    char* file_path = nullptr;
+    // these offsets and sizes are in numbers of items instead of bytes, or
+    // number of bytes / sizeof(DATA_T)
     size_t global_offset;
     size_t local_offset;
     size_t cache_size;
@@ -19,7 +21,6 @@ private:
 
     void update_buffer() {
         if (this->local_offset >= this->cache_size) {
-            std::ifstream is (this->file_path, std::ifstream::binary);
             this->global_offset += this->local_offset;
             this->local_offset = 0;
             if (this->buffer_size > (this->file_length - this->global_offset)) {
@@ -27,13 +28,15 @@ private:
             } else {
                 this->cache_size = this->buffer_size;
             }
-            is.seekg(this->global_offset, is.beg);
             if (this->buffer != nullptr) {
                 delete [] this->buffer;
             }
             this->buffer = new DATA_T[this->cache_size];
-            is.read((char*)this->buffer, this->cache_size);
-            is.close();
+            FILE *fptr = fopen(this->file_path, "r");
+            fseek(fptr, this->global_offset*sizeof(DATA_T), SEEK_SET);
+            printf("reading cache size %d", this->cache_size);
+            fread((DATA_T*)this->buffer, sizeof(DATA_T), this->cache_size, fptr);
+            fclose(fptr);
         }
     }
 
@@ -43,21 +46,32 @@ public:
         local_offset = 0;
         cache_size = 0;
         this->buffer_size = buffer_size;
-        this->file_path = file_path;
+        this->file_path = new char[strlen(file_path)+1];
+        this->file_path = strcpy(this->file_path, file_path);
         std::ifstream is (this->file_path, std::ifstream::binary);
         is.seekg(0, is.end);
-        this->file_length = is.tellg();
+        this->file_length = is.tellg() / sizeof(DATA_T);
+        printf("file length: %d buffer size: %d\n", this->file_length, this->buffer_size);
+        if (this->buffer_size > this->file_length) {
+            this->buffer_size = this->file_length;
+        }
+        printf("file length: %d buffer size: %d\n", this->file_length, this->buffer_size);
         is.close();
+        update_buffer();
     }
     ~FastFileIterator() {
         if (buffer != nullptr) {
             delete [] buffer;
+            delete [] this->file_path;
         }
     }
 
     DATA_T const peek() {
-        update_buffer();
         return this->buffer[this->local_offset];
+    }
+
+    size_t const size() {
+        return this->file_length - (this->global_offset + this->local_offset);
     }
 
     DATA_T next() {
@@ -70,7 +84,7 @@ public:
 template <class DATA_T>
 int FastFileIteratorCompare(FastFileIterator<DATA_T>* a,
                             FastFileIterator<DATA_T>* b) {
-    return a->peek() > b->peek();
+    return a->peek() < b->peek();
 }
 
 #endif

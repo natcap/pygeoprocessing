@@ -34,6 +34,7 @@ cdef extern from "FastFileIterator.h" nogil:
     cdef cppclass FastFileIterator[DATA_T]:
         FastFileIterator(const char*, size_t)
         DATA_T next()
+        size_t size()
     int FastFileIteratorCompare[DATA_T](FastFileIterator[DATA_T]*,
                                         FastFileIterator[DATA_T]*)
 
@@ -602,7 +603,7 @@ def disk_based_percentile(
     cdef FastFileIteratorPtr fast_file_iterator
     cdef FastFileIteratorPtr tmp_fast_file_iterator
     cdef vector[FastFileIteratorPtr] fast_file_iterator_vector
-    cdef long i, percentile_index = 0, n_elements = 0
+    cdef long i, percentile_index = 0, n_elements = 0, next_val
     cdef double step_size
     try:
         os.makedirs(working_sort_directory)
@@ -611,7 +612,7 @@ def disk_based_percentile(
     file_index = 0
     nodata = pygeoprocessing.get_raster_info(base_raster_path)['nodata'][0]
     for _, block_data in pygeoprocessing.iterblocks(
-            (base_raster_path, 1)):
+            (base_raster_path, 1), largest_block=buffer_size):
         buffer_data = numpy.sort(
             block_data[~numpy.isclose(block_data, nodata)]).astype(
             numpy.long)
@@ -621,13 +622,14 @@ def disk_based_percentile(
         n_elements += buffer_data.size
         file_path = os.path.join(
             working_sort_directory, '%d.dat' % file_index)
-        fptr = fopen(bytes(file_path.encode()), "w")
-        fwrite(<void*>&buffer_data[0], sizeof(long), buffer_data.size, fptr)
+        fptr = fopen(bytes(file_path.encode()), "wb")
+        fwrite(<long*>&buffer_data[0], sizeof(long), buffer_data.size, fptr)
         fclose(fptr)
         file_index += 1
+        print(file_index)
 
         fast_file_iterator = new FastFileIterator[long](
-            (bytes(file_path.encode())), 100)
+            (bytes(file_path.encode())), 2**30)
         fast_file_iterator_vector.push_back(fast_file_iterator)
         push_heap(
             fast_file_iterator_vector.begin(),
@@ -637,14 +639,13 @@ def disk_based_percentile(
     current_percentile = percentile_list[percentile_index]
     step_size = 100.0 / n_elements
     current_step = 0.0
+    print(fast_file_iterator_vector.size())
     for i in range(n_elements):
+        next_val = fast_file_iterator_vector.front().next()
         if current_step >= current_percentile:
-            print(
-                '%s: %s' % (
-                    current_percentile,
-                    fast_file_iterator_vector.front().next()))
+            print('%s: %s' % (current_percentile, next_val))
             percentile_index += 1
-            print(percentile_index, len(percentile_list), current_step, n_elements)
+            print(percentile_index, len(percentile_list), current_step, fast_file_iterator_vector.front().size(), n_elements)
             if percentile_index >= len(percentile_list):
                 break
             current_percentile = percentile_list[percentile_index]
@@ -653,7 +654,10 @@ def disk_based_percentile(
             fast_file_iterator_vector.begin(),
             fast_file_iterator_vector.end(),
             FastFileIteratorCompare[long])
-        push_heap(
-            fast_file_iterator_vector.begin(),
-            fast_file_iterator_vector.end(),
-            FastFileIteratorCompare[long])
+        if fast_file_iterator_vector.back().size() > 0:
+            push_heap(
+                fast_file_iterator_vector.begin(),
+                fast_file_iterator_vector.end(),
+                FastFileIteratorCompare[long])
+        else:
+            fast_file_iterator_vector.pop_back()
