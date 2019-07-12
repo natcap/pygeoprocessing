@@ -29,13 +29,26 @@ private:
                 this->cache_size = this->buffer_size;
             }
             if (this->buffer != nullptr) {
-                delete [] this->buffer;
+                free(this->buffer);
             }
-            this->buffer = new DATA_T[this->cache_size];
-            FILE *fptr = fopen(this->file_path, "r");
-            fseek(fptr, this->global_offset*sizeof(DATA_T), SEEK_SET);
-            printf("reading cache size %d", this->cache_size);
-            fread((DATA_T*)this->buffer, sizeof(DATA_T), this->cache_size, fptr);
+            this->buffer = (DATA_T*)malloc(this->cache_size * sizeof(DATA_T));
+            FILE *fptr = fopen(this->file_path, "rb");
+            size_t elements_to_read = this->cache_size;
+            size_t elements_read = 0;
+            while (elements_to_read) {
+                elements_read += fread(
+                    (void*)(this->buffer+elements_read*sizeof(DATA_T)),
+                    sizeof(DATA_T), elements_to_read, fptr);
+                if (ferror (fptr)) {
+                    perror("error occured");
+                    elements_to_read = 0;
+                } else if (feof(fptr)) {
+                    printf("end of file\n");
+                    break;
+                } else {
+                    elements_to_read = this->cache_size - elements_read;
+                }
+            }
             fclose(fptr);
         }
     }
@@ -46,7 +59,7 @@ public:
         local_offset = 0;
         cache_size = 0;
         this->buffer_size = buffer_size;
-        this->file_path = new char[strlen(file_path)+1];
+        this->file_path = (char*)malloc((strlen(file_path)+1)*sizeof(char));
         this->file_path = strcpy(this->file_path, file_path);
         std::ifstream is (this->file_path, std::ifstream::binary);
         is.seekg(0, is.end);
@@ -61,8 +74,8 @@ public:
     }
     ~FastFileIterator() {
         if (buffer != nullptr) {
-            delete [] buffer;
-            delete [] this->file_path;
+            free(buffer);
+            free(this->file_path);
         }
     }
 
@@ -76,15 +89,19 @@ public:
 
     DATA_T next() {
         update_buffer();
-        this->local_offset += 1;
-        return this->buffer[this->local_offset-1];
+        if (size() > 0) {
+            this->local_offset += 1;
+            return this->buffer[this->local_offset-1];
+        } else {
+            return -1;
+        }
     }
 };
 
 template <class DATA_T>
 int FastFileIteratorCompare(FastFileIterator<DATA_T>* a,
                             FastFileIterator<DATA_T>* b) {
-    return a->peek() < b->peek();
+    return a->peek() > b->peek();
 }
 
 #endif

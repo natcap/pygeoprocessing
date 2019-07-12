@@ -639,8 +639,8 @@ def disk_based_percentile(
     current_percentile = percentile_list[percentile_index]
     step_size = 100.0 / n_elements
     current_step = 0.0
-    print(fast_file_iterator_vector.size())
     for i in range(n_elements):
+        current_step = step_size * i
         next_val = fast_file_iterator_vector.front().next()
         if current_step >= current_percentile:
             print('%s: %s' % (current_percentile, next_val))
@@ -649,7 +649,6 @@ def disk_based_percentile(
             if percentile_index >= len(percentile_list):
                 break
             current_percentile = percentile_list[percentile_index]
-        current_step += step_size
         pop_heap(
             fast_file_iterator_vector.begin(),
             fast_file_iterator_vector.end(),
@@ -661,3 +660,5 @@ def disk_based_percentile(
                 FastFileIteratorCompare[long])
         else:
             fast_file_iterator_vector.pop_back()
+    if percentile_index < len(percentile_list):
+        print('%s: %s' % (current_percentile, next_val))
