@@ -2109,7 +2109,7 @@ def calculate_disjoint_polygon_set(
     if r_tree_index_stream:
         poly_rtree_index = rtree.index.Index(r_tree_index_stream)
     else:
-        LOGGER.warn("no polygons intersected the bounding box")
+        LOGGER.warning("no polygons intersected the bounding box")
         return []
 
     vector_layer = None
@@ -3040,7 +3040,7 @@ def mask_raster(
     if target_mask_value is None:
         mask_value = base_nodata
         if mask_value is None:
-            LOGGER.warn(
+            LOGGER.warning(
                 "No mask value was passed and target nodata is undefined, "
                 "defaulting to 0 as the target mask value.")
             mask_value = 0
