@@ -1705,7 +1705,8 @@ def reproject_vector(
 
 def reclassify_raster(
         base_raster_path_band, value_map, target_raster_path, target_datatype,
-        target_nodata, values_required=True):
+        target_nodata, values_required=True,
+        gtiff_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS):
     """Reclassify pixel values in a raster.
 
     A function to reclassify values in raster to any output type. By default
@@ -1725,6 +1726,8 @@ def reclassify_raster(
             Must be the same type as target_datatype
         values_required (bool): If True, raise a ValueError if there is a
             value in the raster that is not found in ``value_map``.
+        gtiff_creation_options (list or tuple): list of strings that will be
+            passed as GDAL "dataset" creation options to the GTIFF driver.
 
     Returns:
         None
@@ -1767,7 +1770,8 @@ def reclassify_raster(
 
     raster_calculator(
         [base_raster_path_band], _map_dataset_to_value_op,
-        target_raster_path, target_datatype, target_nodata)
+        target_raster_path, target_datatype, target_nodata,
+        gtiff_creation_options=gtiff_creation_options)
 
 
 def warp_raster(
