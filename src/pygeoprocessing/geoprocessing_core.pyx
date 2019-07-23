@@ -602,15 +602,29 @@ def disk_based_percentile(
         percentile values in `base_raster_path_band.
 
     """
-    return _disk_based_percentile_long(
-        base_raster_path_band, working_sort_directory, percentile_list,
-        buffer_size=buffer_size)
+    raster_type = pygeoprocessing.get_raster_info(
+        base_raster_path_band[0])['datatype']
+    if raster_type in (
+            gdal.GDT_Byte, gdal.GDT_Int16, gdal.GDT_UInt16, gdal.GDT_Int32,
+            gdal.GDT_UInt32, gdal.GDT_Float32):
+        return _disk_based_percentile_long(
+            base_raster_path_band, working_sort_directory, percentile_list,
+            buffer_size=buffer_size)
+    elif raster_type in (
+            gdal.GDT_Float64, gdal.GDT_CFloat32, gdal.GDT_CFloat64):
+        return _disk_based_percentile_double(
+            base_raster_path_band, working_sort_directory, percentile_list,
+            buffer_size=buffer_size)
+    else:
+        raise ValueError(
+            'Cannot process raster type %s (not a known integer nor float '
+            'type)', raster_type)
 
 
 def _disk_based_percentile_long(
         base_raster_path_band, working_sort_directory, percentile_list,
         buffer_size):
-    """Calculate percentiles of a raster band.
+    """Calculate percentiles of a raster band of an integer type.
 
     Parameters:
         base_raster_path_band (tuple): path to raster that is of a long
@@ -633,10 +647,11 @@ def _disk_based_percentile_long(
     cdef FILE *fptr
     cdef long[:] buffer_data
     cdef FastFileIteratorLongPtr fast_file_iterator
-    cdef FastFileIteratorLongPtr tmp_fast_file_iterator
     cdef vector[FastFileIteratorLongPtr] fast_file_iterator_vector
-    cdef long i, percentile_index = 0, n_elements = 0, next_val
-    cdef double step_size
+    cdef long i, percentile_index = 0, n_elements = 0
+    cdef long next_val = 0L
+    cdef double step_size, current_percentile
+    cdef double current_step = 0.0
     result_list = []
     try:
         os.makedirs(working_sort_directory)
@@ -670,7 +685,7 @@ def _disk_based_percentile_long(
 
     current_percentile = percentile_list[percentile_index]
     step_size = 100.0 / n_elements
-    current_step = 0.0
+
     for i in range(n_elements):
         current_step = step_size * i
         next_val = fast_file_iterator_vector.front().next()
@@ -689,6 +704,96 @@ def _disk_based_percentile_long(
                 fast_file_iterator_vector.begin(),
                 fast_file_iterator_vector.end(),
                 FastFileIteratorCompare[long])
+        else:
+            fast_file_iterator_vector.pop_back()
+    if percentile_index < len(percentile_list):
+        result_list.append(next_val)
+    return result_list
+
+
+def _disk_based_percentile_double(
+        base_raster_path_band, working_sort_directory, percentile_list,
+        buffer_size):
+    """Calculate percentiles of a raster band of a real type.
+
+    Parameters:
+        base_raster_path_band (tuple): path to raster that is of a long
+            real type.
+        working_sort_directory (str): path to a directory that does not
+            exist or is empty. This directory will be used to create heapfiles
+            with sizes no larger than `buffer_size` which are written in the
+            of the pattern N.dat where N is in the numbering 0, 1, 2, ... up
+            to the number of files necessary to handle the raster.
+        percentile_list (list): sorted list of percentiles to report.
+        buffer_size (int): defines how large to make each heapfile which
+            is close to the amount of maximum memory to use when storing
+            elements before a sort and write to disk.
+
+    Returns:
+        A list of len(percentile_list) elements long containing the
+        percentile values in `base_raster_path_band.
+
+    """
+    cdef FILE *fptr
+    cdef double[:] buffer_data
+    cdef FastFileIteratorDoublePtr fast_file_iterator
+    cdef vector[FastFileIteratorDoublePtr] fast_file_iterator_vector
+    cdef long i, percentile_index = 0, n_elements = 0
+    cdef double next_val = 0.0
+    cdef double current_step = 0.0
+    cdef double step_size, current_percentile
+    result_list = []
+    try:
+        os.makedirs(working_sort_directory)
+    except OSError:
+        pass
+    file_index = 0
+    nodata = pygeoprocessing.get_raster_info(
+        base_raster_path_band[0])['nodata'][base_raster_path_band[1]-1]
+    for _, block_data in pygeoprocessing.iterblocks(
+            base_raster_path_band, largest_block=buffer_size):
+        buffer_data = numpy.sort(
+            block_data[~numpy.isclose(block_data, nodata)]).astype(
+            numpy.double)
+        if buffer_data.size == 0:
+            continue
+        n_elements += buffer_data.size
+        file_path = os.path.join(
+            working_sort_directory, '%d.dat' % file_index)
+        fptr = fopen(bytes(file_path.encode()), "wb")
+        fwrite(
+            <double*>&buffer_data[0], sizeof(double), buffer_data.size, fptr)
+        fclose(fptr)
+        file_index += 1
+
+        fast_file_iterator = new FastFileIterator[double](
+            (bytes(file_path.encode())), 2**30)
+        fast_file_iterator_vector.push_back(fast_file_iterator)
+        push_heap(
+            fast_file_iterator_vector.begin(),
+            fast_file_iterator_vector.end(),
+            FastFileIteratorCompare[double])
+
+    current_percentile = percentile_list[percentile_index]
+    step_size = 100.0 / n_elements
+    for i in range(n_elements):
+        current_step = step_size * i
+        next_val = fast_file_iterator_vector.front().next()
+        if current_step >= current_percentile:
+            result_list.append(next_val)
+            percentile_index += 1
+            if percentile_index >= len(percentile_list):
+                break
+            current_percentile = percentile_list[percentile_index]
+        pop_heap(
+            fast_file_iterator_vector.begin(),
+            fast_file_iterator_vector.end(),
+            FastFileIteratorCompare[double])
+        if fast_file_iterator_vector.back().size() > 0:
+            push_heap(
+                fast_file_iterator_vector.begin(),
+                fast_file_iterator_vector.end(),
+                FastFileIteratorCompare[double])
         else:
             fast_file_iterator_vector.pop_back()
     if percentile_index < len(percentile_list):
