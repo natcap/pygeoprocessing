@@ -3980,6 +3980,7 @@ class PyGeoprocessing10(unittest.TestCase):
 
     def test_percentile_long_type(self):
         """PGP: test percentile with long type."""
+        import pygeoprocessing
         srs = osr.SpatialReference()
         srs.ImportFromEPSG(4326)
         gtiff_driver = gdal.GetDriverByName('GTiff')
@@ -4027,6 +4028,7 @@ class PyGeoprocessing10(unittest.TestCase):
 
     def test_percentile_double_type(self):
         """PGP: test percentile function with double type."""
+        import pygeoprocessing
         srs = osr.SpatialReference()
         srs.ImportFromEPSG(4326)
         gtiff_driver = gdal.GetDriverByName('GTiff')
@@ -4092,6 +4094,7 @@ class PyGeoprocessing10(unittest.TestCase):
 
     def test_percentile_unsupported_type(self):
         """PGP: test percentile with unsupported type."""
+        import pygeoprocessing
         srs = osr.SpatialReference()
         srs.ImportFromEPSG(4326)
         gtiff_driver = gdal.GetDriverByName('GTiff')
