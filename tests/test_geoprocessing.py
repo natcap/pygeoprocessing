@@ -3779,7 +3779,7 @@ class PyGeoprocessing10(unittest.TestCase):
         # manually rounding up the percentiles
         expected_int_percentiles = [
             array[0], array[23], array[73], array[99], array[99]]
-        actual_int_percentiles = pygeoprocessing.disk_based_percentile(
+        actual_int_percentiles = pygeoprocessing.raster_band_percentile(
             (int_raster_path, 1), self.workspace_dir, percentile_cutoffs)
         numpy.testing.assert_almost_equal(
             actual_int_percentiles, expected_int_percentiles)
@@ -3844,7 +3844,7 @@ class PyGeoprocessing10(unittest.TestCase):
 
         expected_float_percentiles = [
             array[0], array[23], array[73], array[99], array[99]]
-        actual_percentiles = pygeoprocessing.disk_based_percentile(
+        actual_percentiles = pygeoprocessing.raster_band_percentile(
             (double_raster_path, 1), self.workspace_dir, percentile_cutoffs)
         numpy.testing.assert_almost_equal(
             actual_percentiles, expected_float_percentiles)
@@ -3870,7 +3870,7 @@ class PyGeoprocessing10(unittest.TestCase):
         cdouble_raster = None
 
         with self.assertRaises(ValueError) as cm:
-            _ = pygeoprocessing.disk_based_percentile(
+            _ = pygeoprocessing.raster_band_percentile(
                 (cdouble_raster_path, 1), self.workspace_dir,
                 percentile_cutoffs)
         expected_message = 'Cannot process raster type'

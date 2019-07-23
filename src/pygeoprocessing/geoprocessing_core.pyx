@@ -579,7 +579,7 @@ ctypedef FastFileIterator[long]* FastFileIteratorLongPtr
 ctypedef FastFileIterator[double]* FastFileIteratorDoublePtr
 
 
-def disk_based_percentile(
+def raster_band_percentile(
         base_raster_path_band, working_sort_directory, percentile_list,
         buffer_size=2**28):
     """Calculate percentiles of a raster band.
@@ -599,7 +599,9 @@ def disk_based_percentile(
 
     Returns:
         A list of len(percentile_list) elements long containing the
-        percentile values in `base_raster_path_band.
+        percentile values in `base_raster_path_band where the interpolation
+        scheme is "higher" (i.e. any percentile splits will select the next
+        element higher than the percentile cutoff).
 
     """
     raster_type = pygeoprocessing.get_raster_info(
@@ -607,11 +609,11 @@ def disk_based_percentile(
     if raster_type in (
             gdal.GDT_Byte, gdal.GDT_Int16, gdal.GDT_UInt16, gdal.GDT_Int32,
             gdal.GDT_UInt32):
-        return _disk_based_percentile_long(
+        return _raster_band_percentile_long(
             base_raster_path_band, working_sort_directory, percentile_list,
             buffer_size=buffer_size)
     elif raster_type in (gdal.GDT_Float32, gdal.GDT_Float64):
-        return _disk_based_percentile_double(
+        return _raster_band_percentile_double(
             base_raster_path_band, working_sort_directory, percentile_list,
             buffer_size=buffer_size)
     else:
@@ -620,7 +622,7 @@ def disk_based_percentile(
             'type)', raster_type)
 
 
-def _disk_based_percentile_long(
+def _raster_band_percentile_long(
         base_raster_path_band, working_sort_directory, percentile_list,
         buffer_size):
     """Calculate percentiles of a raster band of an integer type.
@@ -640,7 +642,9 @@ def _disk_based_percentile_long(
 
     Returns:
         A list of len(percentile_list) elements long containing the
-        percentile values in `base_raster_path_band.
+        percentile values in `base_raster_path_band where the interpolation
+        scheme is "higher" (i.e. any percentile splits will select the next
+        element higher than the percentile cutoff).
 
     """
     cdef FILE *fptr
@@ -710,7 +714,7 @@ def _disk_based_percentile_long(
     return result_list
 
 
-def _disk_based_percentile_double(
+def _raster_band_percentile_double(
         base_raster_path_band, working_sort_directory, percentile_list,
         buffer_size):
     """Calculate percentiles of a raster band of a real type.
@@ -730,7 +734,9 @@ def _disk_based_percentile_double(
 
     Returns:
         A list of len(percentile_list) elements long containing the
-        percentile values in `base_raster_path_band.
+        percentile values in `base_raster_path_band where the interpolation
+        scheme is "higher" (i.e. any percentile splits will select the next
+        element higher than the percentile cutoff).
 
     """
     cdef FILE *fptr

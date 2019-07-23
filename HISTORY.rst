@@ -1,6 +1,11 @@
 Release History
 ===============
 
+Unreleased Changes
+------------------
+* Added an out-of-core high performance raster percentile function at
+  pygeoprocessing.raster_band_percentile.
+
 1.7.0 (2019-06-27)
 ------------------
 * Removing support for Python 2.7.
