@@ -13,9 +13,6 @@ import numpy
 from shapely.geometry import Polygon
 import mock
 
-import pygeoprocessing
-import pygeoprocessing.testing
-
 
 class RasterCreationTest(unittest.TestCase):
 
@@ -167,8 +164,10 @@ class RasterCreationTest(unittest.TestCase):
 
     def test_raster_nodata_notset(self):
         """When nodata=None, a nodata value should not be set."""
+        import pygeoprocessing
         from pygeoprocessing.testing import create_raster_on_disk
         from pygeoprocessing.testing.sampledata import SRS_WILLAMETTE
+
         pixels = [numpy.array([[0]])]
         nodata = None
         reference = SRS_WILLAMETTE
