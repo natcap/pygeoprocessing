@@ -606,12 +606,11 @@ def disk_based_percentile(
         base_raster_path_band[0])['datatype']
     if raster_type in (
             gdal.GDT_Byte, gdal.GDT_Int16, gdal.GDT_UInt16, gdal.GDT_Int32,
-            gdal.GDT_UInt32, gdal.GDT_Float32):
+            gdal.GDT_UInt32):
         return _disk_based_percentile_long(
             base_raster_path_band, working_sort_directory, percentile_list,
             buffer_size=buffer_size)
-    elif raster_type in (
-            gdal.GDT_Float64, gdal.GDT_CFloat32, gdal.GDT_CFloat64):
+    elif raster_type in (gdal.GDT_Float32, gdal.GDT_Float64):
         return _disk_based_percentile_double(
             base_raster_path_band, working_sort_directory, percentile_list,
             buffer_size=buffer_size)
