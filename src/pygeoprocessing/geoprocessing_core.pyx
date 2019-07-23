@@ -574,16 +574,19 @@ def stats_worker(stats_work_queue, exception_queue):
             stats_work_queue.get()
         raise
 
-ctypedef FastFileIterator[long]* FastFileIteratorPtr
+
+ctypedef FastFileIterator[long]* FastFileIteratorLongPtr
+ctypedef FastFileIterator[double]* FastFileIteratorDoublePtr
 
 
 def disk_based_percentile(
-        base_raster_path, working_sort_directory, percentile_list,
+        base_raster_path_band, working_sort_directory, percentile_list,
         buffer_size=2**28):
-    """Create a set of heap files to sort a raster.
+    """Calculate percentiles of a raster band.
 
     Parameters:
-        base_raster_path (str): path to raster.
+        base_raster_path_band (tuple): path to raster that is of a long
+            integer type.
         working_sort_directory (str): path to a directory that does not
             exist or is empty. This directory will be used to create heapfiles
             with sizes no larger than `buffer_size` which are written in the
@@ -595,14 +598,43 @@ def disk_based_percentile(
             elements before a sort and write to disk.
 
     Returns:
-        None.
+        A list of len(percentile_list) elements long containing the
+        percentile values in `base_raster_path_band.
+
+    """
+    return _disk_based_percentile_long(
+        base_raster_path_band, working_sort_directory, percentile_list,
+        buffer_size=buffer_size)
+
+
+def _disk_based_percentile_long(
+        base_raster_path_band, working_sort_directory, percentile_list,
+        buffer_size):
+    """Calculate percentiles of a raster band.
+
+    Parameters:
+        base_raster_path_band (tuple): path to raster that is of a long
+            integer type.
+        working_sort_directory (str): path to a directory that does not
+            exist or is empty. This directory will be used to create heapfiles
+            with sizes no larger than `buffer_size` which are written in the
+            of the pattern N.dat where N is in the numbering 0, 1, 2, ... up
+            to the number of files necessary to handle the raster.
+        percentile_list (list): sorted list of percentiles to report.
+        buffer_size (int): defines how large to make each heapfile which
+            is close to the amount of maximum memory to use when storing
+            elements before a sort and write to disk.
+
+    Returns:
+        A list of len(percentile_list) elements long containing the
+        percentile values in `base_raster_path_band.
 
     """
     cdef FILE *fptr
     cdef long[:] buffer_data
-    cdef FastFileIteratorPtr fast_file_iterator
-    cdef FastFileIteratorPtr tmp_fast_file_iterator
-    cdef vector[FastFileIteratorPtr] fast_file_iterator_vector
+    cdef FastFileIteratorLongPtr fast_file_iterator
+    cdef FastFileIteratorLongPtr tmp_fast_file_iterator
+    cdef vector[FastFileIteratorLongPtr] fast_file_iterator_vector
     cdef long i, percentile_index = 0, n_elements = 0, next_val
     cdef double step_size
     result_list = []
@@ -611,9 +643,10 @@ def disk_based_percentile(
     except OSError:
         pass
     file_index = 0
-    nodata = pygeoprocessing.get_raster_info(base_raster_path)['nodata'][0]
+    nodata = pygeoprocessing.get_raster_info(
+        base_raster_path_band[0])['nodata'][base_raster_path_band[1]-1]
     for _, block_data in pygeoprocessing.iterblocks(
-            (base_raster_path, 1), largest_block=buffer_size):
+            base_raster_path_band, largest_block=buffer_size):
         buffer_data = numpy.sort(
             block_data[~numpy.isclose(block_data, nodata)]).astype(
             numpy.long)

@@ -3781,7 +3781,7 @@ class PyGeoprocessing10(unittest.TestCase):
             array[0], array[23], array[73], array[99], array[99]]
 
         actual_percentiles = pygeoprocessing.disk_based_percentile(
-            raster_path, self.workspace_dir, percentile_cutoffs)
+            (raster_path, 1), self.workspace_dir, percentile_cutoffs)
 
         numpy.testing.assert_almost_equal(
             actual_percentiles, expected_percentiles)
