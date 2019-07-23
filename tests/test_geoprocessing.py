@@ -6,6 +6,7 @@ import unittest
 import shutil
 import types
 import logging
+import importlib
 
 
 from osgeo import gdal
@@ -18,11 +19,6 @@ import pygeoprocessing.testing
 from pygeoprocessing.testing import sampledata
 import shapely.geometry
 import mock
-
-try:
-    from builtins import reload
-except ImportError:
-    from imp import reload
 
 
 def passthrough(x):
@@ -79,7 +75,7 @@ class PyGeoprocessing10(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 # RuntimeError is a side effect of `import pygeoprocessing`,
                 # so we reload it to retrigger the metadata load.
-                pygeoprocessing = reload(pygeoprocessing)
+                pygeoprocessing = importlib.reload(pygeoprocessing)
 
     def test_reclassify_raster_missing_pixel_value(self):
         """PGP.geoprocessing: test reclassify raster with missing value."""
@@ -3740,3 +3736,52 @@ class PyGeoprocessing10(unittest.TestCase):
         expected_message = 'Invalid value for'
         actual_message = str(cm.exception)
         self.assertTrue(expected_message in actual_message, actual_message)
+
+    def test_percentile(self):
+        """PGP: test percentile function."""
+        srs = osr.SpatialReference()
+        srs.ImportFromEPSG(4326)
+        gtiff_driver = gdal.GetDriverByName('GTiff')
+        raster_path = os.path.join(self.workspace_dir, 'small_raster.tif')
+        n_length = 10
+        new_raster = gtiff_driver.Create(
+            raster_path, n_length, n_length, 1, gdal.GDT_Int32, options=[
+                'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
+                'BLOCKXSIZE=16', 'BLOCKYSIZE=16'])
+        new_raster.SetProjection(srs.ExportToWkt())
+        new_raster.SetGeoTransform([0.0, 1.0, 0.0, 0.0, 0.0, -1.0])
+        new_band = new_raster.GetRasterBand(1)
+        new_band.SetNoDataValue(-1)
+        # I made this array from a random set and since it's 100 elements long
+        # I know exactly the percentile cutoffs.
+        array = numpy.array([
+            1975, 153829, 346236, 359534, 372568, 432350, 468065, 620239,
+            757710, 835119, 870788, 880695, 899211, 939183, 949597, 976023,
+            1210404, 1242155, 1395436, 1484104, 1563806, 1787749, 2001579,
+            2015145, 2080141, 2107594, 2331278, 2335667, 2508967, 2513463,
+            2529240, 2764320, 2782388, 2892567, 3131013, 3242402, 3313283,
+            3353958, 3427341, 3473886, 3507842, 3552610, 3730904, 3800470,
+            3871533, 3955725, 4114781, 4326231, 4333170, 4464510, 4585432,
+            4632068, 4671364, 4770370, 4927815, 4962157, 4974890, 5153019,
+            5370756, 5592526, 5611672, 5688083, 5746114, 5833862, 5890515,
+            5948526, 6030964, 6099825, 6162147, 6169317, 6181528, 6186133,
+            6225623, 6732204, 6800472, 7059916, 7097505, 7112239, 7435668,
+            7438680, 7713058, 7759246, 7878338, 7882983, 7974409, 8223956,
+            8226559, 8355570, 8433741, 8523959, 8853540, 8999076, 9109444,
+            9250199, 9262560, 9365311, 9404229, 9529068, 9597598,
+            9715208])
+        new_band.WriteArray(array.reshape((n_length, n_length)))
+        new_raster.FlushCache()
+        new_band = None
+        new_raster = None
+
+        percentile_cutoffs = [0.0, 22.5, 72.1, 99.0, 100.0]
+        # manually rounding up the percentiles
+        expected_percentiles = [
+            array[0], array[23], array[73], array[99], array[99]]
+
+        actual_percentiles = pygeoprocessing.disk_based_percentile(
+            raster_path, self.workspace_dir, percentile_cutoffs)
+
+        numpy.testing.assert_almost_equal(
+            actual_percentiles, expected_percentiles)

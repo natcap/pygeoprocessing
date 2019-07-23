@@ -605,6 +605,7 @@ def disk_based_percentile(
     cdef vector[FastFileIteratorPtr] fast_file_iterator_vector
     cdef long i, percentile_index = 0, n_elements = 0, next_val
     cdef double step_size
+    result_list = []
     try:
         os.makedirs(working_sort_directory)
     except OSError:
@@ -617,7 +618,6 @@ def disk_based_percentile(
             block_data[~numpy.isclose(block_data, nodata)]).astype(
             numpy.long)
         if buffer_data.size == 0:
-            print('it empty')
             continue
         n_elements += buffer_data.size
         file_path = os.path.join(
@@ -626,7 +626,6 @@ def disk_based_percentile(
         fwrite(<long*>&buffer_data[0], sizeof(long), buffer_data.size, fptr)
         fclose(fptr)
         file_index += 1
-        print(file_index)
 
         fast_file_iterator = new FastFileIterator[long](
             (bytes(file_path.encode())), 2**30)
@@ -643,9 +642,8 @@ def disk_based_percentile(
         current_step = step_size * i
         next_val = fast_file_iterator_vector.front().next()
         if current_step >= current_percentile:
-            print('%s: %s' % (current_percentile, next_val))
+            result_list.append(next_val)
             percentile_index += 1
-            print(percentile_index, len(percentile_list), current_step, fast_file_iterator_vector.front().size(), n_elements)
             if percentile_index >= len(percentile_list):
                 break
             current_percentile = percentile_list[percentile_index]
@@ -661,4 +659,5 @@ def disk_based_percentile(
         else:
             fast_file_iterator_vector.pop_back()
     if percentile_index < len(percentile_list):
-        print('%s: %s' % (current_percentile, next_val))
+        result_list.append(next_val)
+    return result_list

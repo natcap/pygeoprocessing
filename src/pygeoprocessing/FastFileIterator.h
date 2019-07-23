@@ -64,11 +64,9 @@ public:
         std::ifstream is (this->file_path, std::ifstream::binary);
         is.seekg(0, is.end);
         this->file_length = is.tellg() / sizeof(DATA_T);
-        printf("file length: %d buffer size: %d\n", this->file_length, this->buffer_size);
         if (this->buffer_size > this->file_length) {
             this->buffer_size = this->file_length;
         }
-        printf("file length: %d buffer size: %d\n", this->file_length, this->buffer_size);
         is.close();
         update_buffer();
     }
