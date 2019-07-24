@@ -1,14 +1,14 @@
-#ifndef __FASTFILEITERATOR_H_INCLUDED__
-#define __FASTFILEITERATOR_H_INCLUDED__
+// Copyright 2019 The Natural Capital Project
+#ifndef SRC_PYGEOPROCESSING_FASTFILEITERATOR_H_
+#define SRC_PYGEOPROCESSING_FASTFILEITERATOR_H_
 
+#include <stdio.h>
 #include <cstddef>
 #include <iostream>
 #include <fstream>
-#include <stdio.h>
 
-using namespace std;
 template <class DATA_T> class FastFileIterator{
-private:
+ private:
     DATA_T* buffer = nullptr;
     char* file_path = nullptr;
     // these offsets and sizes are in numbers of items instead of bytes, or
@@ -31,15 +31,17 @@ private:
             if (this->buffer != nullptr) {
                 free(this->buffer);
             }
-            this->buffer = (DATA_T*)malloc(this->cache_size * sizeof(DATA_T));
+            this->buffer = reinterpret_cast<DATA_T*>malloc(
+                this->cache_size * sizeof(DATA_T));
             FILE *fptr = fopen(this->file_path, "rb");
             size_t elements_to_read = this->cache_size;
             size_t elements_read = 0;
             while (elements_to_read) {
                 elements_read += fread(
-                    (void*)(this->buffer+elements_read*sizeof(DATA_T)),
+                    reinterpret_cast<void*>(
+                        this->buffer+elements_read*sizeof(DATA_T)),
                     sizeof(DATA_T), elements_to_read, fptr);
-                if (ferror (fptr)) {
+                if (ferror(fptr)) {
                     perror("error occured");
                     elements_to_read = 0;
                 } else if (feof(fptr)) {
@@ -53,15 +55,17 @@ private:
         }
     }
 
-public:
+ public:
     FastFileIterator(const char *file_path, size_t buffer_size) {
         global_offset = 0;
         local_offset = 0;
         cache_size = 0;
         this->buffer_size = buffer_size;
-        this->file_path = (char*)malloc((strlen(file_path)+1)*sizeof(char));
-        this->file_path = strcpy(this->file_path, file_path);
-        std::ifstream is (this->file_path, std::ifstream::binary);
+        this->file_path = reinterpret_cast<char*>malloc(
+            (strlen(file_path)+1)*sizeof(char));
+        this->file_path = snprintf(
+            this->file_path, strlen(file_path)+1, file_path);
+        std::ifstream is(this->file_path, std::ifstream::binary);
         is.seekg(0, is.end);
         this->file_length = is.tellg() / sizeof(DATA_T);
         if (this->buffer_size > this->file_length) {
@@ -102,4 +106,4 @@ int FastFileIteratorCompare(FastFileIterator<DATA_T>* a,
     return a->peek() > b->peek();
 }
 
-#endif
+#endif  // SRC_PYGEOPROCESSING_FASTFILEITERATOR_H_
