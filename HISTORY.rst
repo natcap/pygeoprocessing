@@ -1,6 +1,17 @@
 Release History
 ===============
 
+Unreleased Changes
+------------------
+* Added a ``raster_driver_name`` field to all ``pygeoprocessing`` functions
+  that create rasters and implemented a **non-backwards compatible rename** on
+  the parameter ``gtiff_creation_options`` in those functions to
+  ``raster_creation_options``. The rename is necessary to be consistent with
+  the concept that a created raster may not necessarily be in a GeoTIFF
+  format.  Note any ``raster_driver_name`` values must refer to drivers that
+  ``GDAL`` supports for creation and any values in ``raster_creation_options``
+  must be consistent with the driver options in ``raster_driver_name``.
+
 1.7.0 (2019-06-27)
 ------------------
 * Removing support for Python 2.7.
