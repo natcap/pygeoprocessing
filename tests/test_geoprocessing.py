@@ -3987,9 +3987,9 @@ class PyGeoprocessing10(unittest.TestCase):
 
         gtiff_driver = gdal.GetDriverByName('GTiff')
         raster_path = os.path.join(self.workspace_dir, 'small_raster.tif')
-        n = 10
+        n = 5
         new_raster = gtiff_driver.Create(
-            raster_path, n, n, 1, gdal.GDT_Int16, options=[
+            raster_path, n, n, 1, gdal.GDT_Byte, options=[
                 'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
                 'BLOCKXSIZE=16', 'BLOCKYSIZE=16'])
 
@@ -4008,7 +4008,7 @@ class PyGeoprocessing10(unittest.TestCase):
         target_path = os.path.join(self.workspace_dir, 'target.gpkg')
         pygeoprocessing.raster_calculator(
             ((raster_path, 1), (raster_path, 1)), lambda a, b: a+b,
-            target_path, gdal.GDT_Int16, None, raster_driver_name='gpkg',
+            target_path, gdal.GDT_Byte, None, raster_driver_name='gpkg',
             raster_creation_options=())
         target_raster = gdal.OpenEx(target_path)
         target_driver = target_raster.GetDriver()
