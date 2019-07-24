@@ -31,8 +31,8 @@ template <class DATA_T> class FastFileIterator{
             if (this->buffer != nullptr) {
                 free(this->buffer);
             }
-            this->buffer = reinterpret_cast<DATA_T*>malloc(
-                this->cache_size * sizeof(DATA_T));
+            this->buffer = reinterpret_cast<DATA_T*>(malloc(
+                this->cache_size * sizeof(DATA_T)));
             FILE *fptr = fopen(this->file_path, "rb");
             size_t elements_to_read = this->cache_size;
             size_t elements_read = 0;
@@ -61,8 +61,8 @@ template <class DATA_T> class FastFileIterator{
         local_offset = 0;
         cache_size = 0;
         this->buffer_size = buffer_size;
-        this->file_path = reinterpret_cast<char*>malloc(
-            (strlen(file_path)+1)*sizeof(char));
+        this->file_path = reinterpret_cast<char*>(malloc(
+            (strlen(file_path)+1)*sizeof(char)));
         this->file_path = snprintf(
             this->file_path, strlen(file_path)+1, file_path);
         std::ifstream is(this->file_path, std::ifstream::binary);
