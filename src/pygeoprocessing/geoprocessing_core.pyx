@@ -1,6 +1,6 @@
 # coding=UTF-8
 # distutils: language=c++
-# cython: language_level=2
+# cython: language_level=3
 import os
 import tempfile
 import logging
@@ -203,9 +203,9 @@ def _distance_transform_edt(
                     sq = u_index
                     gsq = g_block[local_y_index, sq]**2
                 else:
-                    w = sample_d_x + ((
+                    w = (float)(sample_d_x + ((
                         (sample_d_x*u_index)**2 - (sample_d_x*sq)**2 +
-                        gu - gsq) / (2*sample_d_x*(u_index-sq)))
+                        gu - gsq) / (2*sample_d_x*(u_index-sq))))
                     if w < n_cols*sample_d_x:
                         q_index += 1
                         s_array[q_index] = u_index

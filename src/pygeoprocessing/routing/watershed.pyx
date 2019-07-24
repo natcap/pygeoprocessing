@@ -1,4 +1,5 @@
-# cython: language_level=2
+# coding=UTF-8
+# cython: language_level=3
 import time
 import os
 import logging
@@ -156,9 +157,9 @@ cdef class _ManagedRaster:
         self.block_xbits = numpy.log2(self.block_xsize)
         self.block_ybits = numpy.log2(self.block_ysize)
         self.block_nx = (
-            self.raster_x_size + (self.block_xsize) - 1) / self.block_xsize
+            self.raster_x_size + (self.block_xsize) - 1) // self.block_xsize
         self.block_ny = (
-            self.raster_y_size + (self.block_ysize) - 1) / self.block_ysize
+            self.raster_y_size + (self.block_ysize) - 1) // self.block_ysize
 
         self.lru_cache = new LRUCache[int, int*](MANAGED_RASTER_N_BLOCKS)
         self.raster_path = <bytes> raster_path
@@ -288,7 +289,7 @@ cdef class _ManagedRaster:
 
     cdef void _load_block(self, int block_index) except *:
         cdef int block_xi = block_index % self.block_nx
-        cdef int block_yi = block_index / self.block_nx
+        cdef int block_yi = block_index // self.block_nx
 
         # we need the offsets to subtract from global indexes for cached array
         cdef int xoff = block_xi << self.block_xbits
@@ -349,7 +350,7 @@ cdef class _ManagedRaster:
                     self.dirty_blocks.erase(dirty_itr)
 
                     block_xi = block_index % self.block_nx
-                    block_yi = block_index / self.block_nx
+                    block_yi = block_index // self.block_nx
 
                     xoff = block_xi << self.block_xbits
                     yoff = block_yi << self.block_ybits
