@@ -709,7 +709,7 @@ def align_and_resize_raster_stack(
                 mask_vector_info['projection'], target_sr_wkt)
         else:
             mask_vector_bb = mask_vector_info['bounding_box']
-        mask_vector_intersect_box = merge_bounding_box_list(
+        target_bounding_box = merge_bounding_box_list(
             [target_bounding_box, mask_vector_bb], 'intersection')
 
     if raster_align_index is not None and raster_align_index >= 0:
@@ -1724,7 +1724,8 @@ def reproject_vector(
 def reclassify_raster(
         base_raster_path_band, value_map, target_raster_path, target_datatype,
         target_nodata, values_required=True,
-        raster_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS):
+        raster_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS,
+        raster_driver_name='GTiff'):
     """Reclassify pixel values in a raster.
 
     A function to reclassify values in raster to any output type. By default
@@ -1746,6 +1747,9 @@ def reclassify_raster(
             value in the raster that is not found in ``value_map``.
         raster_creation_options (list or tuple): list of strings that will be
             passed as GDAL "dataset" creation options to the GTIFF driver.
+        raster_driver_name (str): desired raster target format that would be
+            recognized by gdal.GetDriverByName(raster_driver_name). Default is
+            'GTiff'.
 
     Returns:
         None
@@ -1789,7 +1793,8 @@ def reclassify_raster(
     raster_calculator(
         [base_raster_path_band], _map_dataset_to_value_op,
         target_raster_path, target_datatype, target_nodata,
-        raster_creation_options=raster_creation_options)
+        raster_creation_options=raster_creation_options,
+        raster_driver_name=raster_driver_name)
 
 
 def warp_raster(
@@ -1979,7 +1984,8 @@ def warp_raster(
             where_clause=mask_vector_where_filter,
             target_mask_value=None, working_dir=temp_working_dir,
             all_touched=False,
-            raster_creation_options=raster_creation_options)
+            raster_creation_options=raster_creation_options,
+            raster_driver_name=raster_driver_name)
         shutil.rmtree(temp_working_dir)
 
 
@@ -2207,7 +2213,9 @@ def calculate_disjoint_polygon_set(
 
 def distance_transform_edt(
         base_region_raster_path_band, target_distance_raster_path,
-        sampling_distance=(1., 1.), working_dir=None):
+        sampling_distance=(1., 1.), working_dir=None,
+        raster_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS,
+        raster_driver_name='GTiff'):
     """Calculate the euclidean distance transform on base raster.
 
     Calculates the euclidean distance transform on the base raster in units of
@@ -2240,6 +2248,11 @@ def distance_transform_edt(
             be > 0.
          working_dir (string): If not None, indicates where temporary files
             should be created during this run.
+        raster_creation_options (sequence): this is an argument list that will
+            be passed to the GTiff driver defined by the GDAL GTiff spec.
+        raster_driver_name (str): desired raster target format that would be
+            recognized by gdal.GetDriverByName(raster_driver_name). Default is
+            'GTiff'.
 
     Returns:
         None
@@ -2276,11 +2289,15 @@ def distance_transform_edt(
     raster_calculator(
         [base_region_raster_path_band], mask_op,
         working_raster_paths['region_mask_raster'], gdal.GDT_Byte, nodata_out,
-        calc_raster_stats=False)
+        calc_raster_stats=False,
+        raster_creation_options=raster_creation_options,
+        raster_driver_name=raster_driver_name)
     geoprocessing_core._distance_transform_edt(
         working_raster_paths['region_mask_raster'],
         working_raster_paths['g_raster'], sampling_distance[0],
-        sampling_distance[1], target_distance_raster_path)
+        sampling_distance[1], target_distance_raster_path,
+        raster_creation_options,
+        raster_driver_name)
 
     for path in working_raster_paths.values():
         try:
@@ -2352,9 +2369,9 @@ def convolve_2d(
         signal_path_band, kernel_path_band, target_path,
         ignore_nodata=False, mask_nodata=True, normalize_kernel=False,
         target_datatype=gdal.GDT_Float64,
-        target_nodata=None,
+        target_nodata=None, n_threads=1, working_dir=None,
         raster_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS,
-        n_threads=1, working_dir=None):
+        raster_driver_name='GTiff'):
     """Convolve 2D kernel over 2D signal.
 
     Convolves the raster in ``kernel_path_band`` over ``signal_path_band``.
@@ -2394,6 +2411,9 @@ def convolve_2d(
             manages the reads and writes.
          working_dir (string): If not None, indicates where temporary files
             should be created during this run.
+        raster_driver_name (str): desired raster target format that would be
+            recognized by gdal.GetDriverByName(raster_driver_name). Default is
+            'GTiff'.
 
     Returns:
         None
@@ -2418,7 +2438,8 @@ def convolve_2d(
     new_raster_from_base(
         signal_path_band[0], target_path, target_datatype, [target_nodata],
         fill_value_list=[0],
-        raster_creation_options=raster_creation_options)
+        raster_creation_options=raster_creation_options,
+        raster_driver_name=raster_driver_name)
 
     signal_raster_info = get_raster_info(signal_path_band[0])
     kernel_raster_info = get_raster_info(kernel_path_band[0])
@@ -2444,7 +2465,8 @@ def convolve_2d(
         new_raster_from_base(
             signal_path_band[0], mask_raster_path, gdal.GDT_Float32,
             [-1.0], fill_value_list=[0],
-            raster_creation_options=raster_creation_options)
+            raster_creation_options=raster_creation_options,
+            raster_driver_name=raster_driver_name)
         mask_raster = gdal.OpenEx(
             mask_raster_path, gdal.GA_Update | gdal.OF_RASTER)
         mask_band = mask_raster.GetRasterBand(1)
@@ -3010,7 +3032,8 @@ def mask_raster(
         base_raster_path_band, mask_vector_path, target_mask_raster_path,
         mask_layer_id=0, target_mask_value=None, working_dir=None,
         all_touched=False, where_clause=None,
-        raster_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS):
+        raster_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS,
+        raster_driver_name='GTiff'):
     """
     Mask a raster band with a given vector.
 
@@ -3037,11 +3060,14 @@ def mask_raster(
         all_touched (bool): if False, a pixel is only masked if its centroid
             intersects with the mask. If True a pixel is masked if any point
             of the pixel intersects the polygon mask.
-        where_clause (str): (optional) if not None, it is an SQL compatible where
-            clause that can be used to filter the features that are used to
-            mask the base raster.
+        where_clause (str): (optional) if not None, it is an SQL compatible
+            where clause that can be used to filter the features that are used
+            to mask the base raster.
         raster_creation_options (sequence): this is an argument list that will
             be passed to the GTiff driver defined by the GDAL GTiff spec.
+        raster_driver_name (str): desired raster target format that would be
+            recognized by gdal.GetDriverByName(raster_driver_name). Default is
+            'GTiff'.
 
     Returns:
         None.
@@ -3054,7 +3080,8 @@ def mask_raster(
 
     new_raster_from_base(
         base_raster_path_band[0], mask_raster_path, gdal.GDT_Byte, [255],
-        fill_value_list=[0], raster_creation_options=raster_creation_options)
+        fill_value_list=[0], raster_creation_options=raster_creation_options,
+        raster_driver_name=raster_driver_name)
 
     base_raster_info = get_raster_info(base_raster_path_band[0])
 
@@ -3084,7 +3111,8 @@ def mask_raster(
     raster_calculator(
         [base_raster_path_band, (mask_raster_path, 1)], mask_op,
         target_mask_raster_path, base_raster_info['datatype'], base_nodata,
-        raster_creation_options=raster_creation_options)
+        raster_creation_options=raster_creation_options,
+        raster_driver_name=raster_driver_name)
 
     os.remove(mask_raster_path)
 

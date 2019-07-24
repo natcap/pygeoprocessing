@@ -626,7 +626,8 @@ def fill_pits(
     pygeoprocessing.new_raster_from_base(
         dem_raster_path_band[0], flat_region_mask_path, gdal.GDT_Byte,
         [mask_nodata], fill_value_list=[mask_nodata],
-        raster_creation_options=raster_creation_options)
+        raster_creation_options=raster_creation_options,
+        raster_driver_name=raster_driver_name)
     flat_region_mask_managed_raster = _ManagedRaster(
         flat_region_mask_path, 1, 1)
 
@@ -637,14 +638,15 @@ def fill_pits(
     pygeoprocessing.new_raster_from_base(
         dem_raster_path_band[0], pit_mask_path, gdal.GDT_Int32,
         [mask_nodata], fill_value_list=[mask_nodata],
-        raster_creation_options=raster_creation_options)
+        raster_creation_options=raster_creation_options,
+        raster_driver_name=raster_driver_name)
     pit_mask_managed_raster = _ManagedRaster(
         pit_mask_path, 1, 1)
 
     # copy the base DEM to the target and set up for writing
-    geotiff_driver = gdal.GetDriverByName(raster_driver_name)
+    raster_driver = gdal.GetDriverByName(raster_driver_name)
     base_dem_raster = gdal.OpenEx(dem_raster_path_band[0], gdal.OF_RASTER)
-    geotiff_driver.CreateCopy(
+    raster_driver.CreateCopy(
         target_filled_dem_raster_path, base_dem_raster,
         options=raster_creation_options)
     target_dem_raster = gdal.OpenEx(
@@ -982,7 +984,8 @@ def flow_dir_d8(
     pygeoprocessing.new_raster_from_base(
         dem_raster_path_band[0], flat_region_mask_path, gdal.GDT_Byte,
         [mask_nodata], fill_value_list=[mask_nodata],
-        raster_creation_options=raster_creation_options)
+        raster_creation_options=raster_creation_options,
+        raster_driver_name=raster_driver_name)
     flat_region_mask_managed_raster = _ManagedRaster(
         flat_region_mask_path, 1, 1)
 
@@ -990,7 +993,8 @@ def flow_dir_d8(
     pygeoprocessing.new_raster_from_base(
         dem_raster_path_band[0], target_flow_dir_path, gdal.GDT_Byte,
         [flow_dir_nodata], fill_value_list=[flow_dir_nodata],
-        raster_creation_options=raster_creation_options)
+        raster_creation_options=raster_creation_options,
+        raster_driver_name=raster_driver_name)
     flow_dir_managed_raster = _ManagedRaster(target_flow_dir_path, 1, 1)
 
     # this creates a raster that's used for a dynamic programming solution to
@@ -1002,7 +1006,8 @@ def flow_dir_d8(
     pygeoprocessing.new_raster_from_base(
         dem_raster_path_band[0], plateau_distance_path, gdal.GDT_Float64,
         [-1], fill_value_list=[raster_x_size * raster_y_size],
-        raster_creation_options=raster_creation_options)
+        raster_creation_options=raster_creation_options,
+        raster_driver_name=raster_driver_name)
     plateau_distance_managed_raster = _ManagedRaster(
         plateau_distance_path, 1, 1)
 
@@ -1016,9 +1021,9 @@ def flow_dir_d8(
         compatable_dem_raster_path_band = (
             os.path.join(working_dir_path, 'compatable_dem.tif'),
             dem_raster_path_band[1])
-        geotiff_driver = gdal.GetDriverByName(raster_driver_name)
+        raster_driver = gdal.GetDriverByName(raster_driver_name)
         dem_raster = gdal.OpenEx(dem_raster_path_band[0], gdal.OF_RASTER)
-        geotiff_driver.CreateCopy(
+        raster_driver.CreateCopy(
             compatable_dem_raster_path_band[0], dem_raster,
             options=raster_creation_options)
         dem_raster = None
@@ -1323,7 +1328,8 @@ def flow_accumulation_d8(
         flow_dir_raster_path_band[0], target_flow_accum_raster_path,
         gdal.GDT_Float64, [flow_accum_nodata],
         fill_value_list=[flow_accum_nodata],
-        raster_creation_options=raster_creation_options)
+        raster_creation_options=raster_creation_options,
+        raster_driver_name=raster_driver_name)
     flow_accum_managed_raster = _ManagedRaster(
         target_flow_accum_raster_path, 1, 1)
 
@@ -1597,7 +1603,8 @@ def flow_dir_mfd(
     pygeoprocessing.new_raster_from_base(
         dem_raster_path_band[0], flat_region_mask_path, gdal.GDT_Byte,
         [mask_nodata], fill_value_list=[mask_nodata],
-        raster_creation_options=raster_creation_options)
+        raster_creation_options=raster_creation_options,
+        raster_driver_name=raster_driver_name)
     flat_region_mask_managed_raster = _ManagedRaster(
         flat_region_mask_path, 1, 1)
 
@@ -1605,7 +1612,8 @@ def flow_dir_mfd(
     pygeoprocessing.new_raster_from_base(
         dem_raster_path_band[0], target_flow_dir_path, gdal.GDT_Int32,
         [flow_dir_nodata], fill_value_list=[flow_dir_nodata],
-        raster_creation_options=raster_creation_options)
+        raster_creation_options=raster_creation_options,
+        raster_driver_name=raster_driver_name)
     flow_dir_managed_raster = _ManagedRaster(target_flow_dir_path, 1, 1)
 
     plateu_drain_mask_path = os.path.join(
@@ -1613,7 +1621,8 @@ def flow_dir_mfd(
     pygeoprocessing.new_raster_from_base(
         dem_raster_path_band[0], plateu_drain_mask_path, gdal.GDT_Byte,
         [mask_nodata], fill_value_list=[mask_nodata],
-        raster_creation_options=raster_creation_options)
+        raster_creation_options=raster_creation_options,
+        raster_driver_name=raster_driver_name)
     plateau_drain_mask_managed_raster = _ManagedRaster(
         plateu_drain_mask_path, 1, 1)
 
@@ -1628,7 +1637,8 @@ def flow_dir_mfd(
         dem_raster_path_band[0], plateau_distance_path, gdal.GDT_Float64,
         [plateau_distance_nodata], fill_value_list=[
             raster_x_size * raster_y_size],
-        raster_creation_options=raster_creation_options)
+        raster_creation_options=raster_creation_options,
+        raster_driver_name=raster_driver_name)
     plateau_distance_managed_raster = _ManagedRaster(
         plateau_distance_path, 1, 1)
 
@@ -1641,9 +1651,9 @@ def flow_dir_mfd(
         compatable_dem_raster_path_band = (
             os.path.join(working_dir_path, 'compatable_dem.tif'),
             dem_raster_path_band[1])
-        geotiff_driver = gdal.GetDriverByName(raster_driver_name)
+        raster_driver = gdal.GetDriverByName(raster_driver_name)
         dem_raster = gdal.OpenEx(dem_raster_path_band[0], gdal.OF_RASTER)
-        geotiff_driver.CreateCopy(
+        raster_driver.CreateCopy(
             compatable_dem_raster_path_band[0], dem_raster,
             options=raster_creation_options)
         dem_raster = None
@@ -2052,7 +2062,8 @@ def flow_accumulation_mfd(
         flow_dir_mfd_raster_path_band[0], target_flow_accum_raster_path,
         gdal.GDT_Float64, [flow_accum_nodata],
         fill_value_list=[flow_accum_nodata],
-        raster_creation_options=raster_creation_options)
+        raster_creation_options=raster_creation_options,
+        raster_driver_name=raster_driver_name)
 
     flow_accum_managed_raster = _ManagedRaster(
         target_flow_accum_raster_path, 1, 1)
@@ -2277,7 +2288,8 @@ def distance_to_channel_d8(
         target_distance_to_channel_raster_path,
         gdal.GDT_Float64, [distance_nodata],
         fill_value_list=[distance_nodata],
-        raster_creation_options=raster_creation_options)
+        raster_creation_options=raster_creation_options,
+        raster_driver_name=raster_driver_name)
     distance_to_channel_managed_raster = _ManagedRaster(
         target_distance_to_channel_raster_path, 1, 1)
 
@@ -2471,7 +2483,8 @@ def distance_to_channel_mfd(
         target_distance_to_channel_raster_path,
         gdal.GDT_Float64, [distance_nodata],
         fill_value_list=[distance_nodata],
-        raster_creation_options=raster_creation_options)
+        raster_creation_options=raster_creation_options,
+        raster_driver_name=raster_driver_name)
     distance_to_channel_managed_raster = _ManagedRaster(
         target_distance_to_channel_raster_path, 1, 1)
 
@@ -2700,7 +2713,8 @@ def extract_streams_mfd(
     pygeoprocessing.new_raster_from_base(
         flow_accum_raster_path_band[0], target_stream_raster_path,
         gdal.GDT_Byte, [stream_nodata], fill_value_list=[stream_nodata],
-        raster_creation_options=raster_creation_options)
+        raster_creation_options=raster_creation_options,
+        raster_driver_name=raster_driver_name)
 
     cdef _ManagedRaster flow_accum_mr = _ManagedRaster(
         flow_accum_raster_path_band[0], flow_accum_raster_path_band[1], 0)

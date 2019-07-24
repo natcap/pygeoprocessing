@@ -32,7 +32,8 @@ cdef float _NODATA = -1.0
 @cython.cdivision(True)
 def _distance_transform_edt(
         region_raster_path, g_raster_path, float sample_d_x,
-        float sample_d_y, target_distance_raster_path):
+        float sample_d_y, target_distance_raster_path,
+        raster_creation_options, raster_driver_name):
     """Calculate the euclidean distance transform on base raster.
 
     Calculates the euclidean distance transform on the base raster in units of
@@ -242,7 +243,8 @@ def _distance_transform_edt(
 @cython.cdivision(True)
 def calculate_slope(
         base_elevation_raster_path_band, target_slope_path,
-        raster_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS):
+        raster_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS,
+        raster_driver_name='GTiff'):
     """Create a percent slope raster from DEM raster.
 
     Base algorithm is from Zevenbergen & Thorne "Quantitative Analysis of Land
@@ -306,7 +308,8 @@ def calculate_slope(
         base_elevation_raster_path_band[0], target_slope_path,
         gdal.GDT_Float32, [slope_nodata],
         fill_value_list=[float(slope_nodata)],
-        raster_creation_options=raster_creation_options)
+        raster_creation_options=raster_creation_options,
+        raster_driver_name=raster_driver_name)
     target_slope_raster = gdal.OpenEx(target_slope_path, gdal.GA_Update)
     target_slope_band = target_slope_raster.GetRasterBand(1)
 
