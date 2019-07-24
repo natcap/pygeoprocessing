@@ -242,7 +242,7 @@ def _distance_transform_edt(
 @cython.cdivision(True)
 def calculate_slope(
         base_elevation_raster_path_band, target_slope_path,
-        gtiff_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS):
+        raster_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS):
     """Create a percent slope raster from DEM raster.
 
     Base algorithm is from Zevenbergen & Thorne "Quantitative Analysis of Land
@@ -274,7 +274,7 @@ def calculate_slope(
         target_slope_path (string): path to target slope raster; will be a
             32 bit float GeoTIFF of same size/projection as calculate slope
             with units of percent slope.
-        gtiff_creation_options (list or tuple): list of strings that will be
+        raster_creation_options (list or tuple): list of strings that will be
             passed as GDAL "dataset" creation options to the GTIFF driver.
 
     Returns:
@@ -306,7 +306,7 @@ def calculate_slope(
         base_elevation_raster_path_band[0], target_slope_path,
         gdal.GDT_Float32, [slope_nodata],
         fill_value_list=[float(slope_nodata)],
-        gtiff_creation_options=gtiff_creation_options)
+        raster_creation_options=raster_creation_options)
     target_slope_raster = gdal.OpenEx(target_slope_path, gdal.GA_Update)
     target_slope_band = target_slope_raster.GetRasterBand(1)
 

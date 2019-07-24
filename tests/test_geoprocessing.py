@@ -1801,7 +1801,7 @@ class PyGeoprocessing10(unittest.TestCase):
             pygeoprocessing.raster_calculator(
                 [(base_path_a, 1), (base_path_b, 1)], passthrough,
                 target_path, gdal.GDT_Int32, nodata_base,
-                gtiff_creation_options=None, calc_raster_stats=True)
+                raster_creation_options=None, calc_raster_stats=True)
         expected_message = 'Input Rasters are not the same dimensions.'
         actual_message = str(cm.exception)
         self.assertTrue(expected_message in actual_message)
@@ -2138,7 +2138,7 @@ class PyGeoprocessing10(unittest.TestCase):
         pygeoprocessing.new_raster_from_base(
             base_path, target_path, gdal.GDT_Byte, [None],
             fill_value_list=[None],
-            gtiff_creation_options=[
+            raster_creation_options=[
                 'PIXELTYPE=SIGNEDBYTE',
                 ])
 
