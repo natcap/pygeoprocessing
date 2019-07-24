@@ -3996,7 +3996,7 @@ class PyGeoprocessing10(unittest.TestCase):
         srs = osr.SpatialReference()
         srs.ImportFromEPSG(4326)
         new_raster.SetProjection(srs.ExportToWkt())
-        new_raster.SetGeoTransform([0, 1.0, 0.0, 0, 0.0, -1.0])
+        new_raster.SetGeoTransform([1.0, 1.0, 0.0, 1.0, 0.0, -1.0])
         new_band = new_raster.GetRasterBand(1)
         new_band.SetNoDataValue(-1)
         array = numpy.array(range(n*n), dtype=numpy.int32).reshape((n, n))
