@@ -3981,3 +3981,39 @@ class PyGeoprocessing10(unittest.TestCase):
         expected_message = 'Invalid value for'
         actual_message = str(cm.exception)
         self.assertTrue(expected_message in actual_message, actual_message)
+
+    def test_non_geotiff_raster_types(self):
+        """PGP: test mixed GTiff and gpkg raster types."""
+        import pygeoprocessing
+
+        gtiff_driver = gdal.GetDriverByName('GTiff')
+        raster_path = os.path.join(self.workspace_dir, 'small_raster.tif')
+        n = 10
+        new_raster = gtiff_driver.Create(
+            raster_path, n, n, 1, gdal.GDT_Int16, options=[
+                'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
+                'BLOCKXSIZE=16', 'BLOCKYSIZE=16'])
+
+        srs = osr.SpatialReference()
+        srs.ImportFromEPSG(4326)
+        new_raster.SetProjection(srs.ExportToWkt())
+        new_raster.SetGeoTransform([0, 1.0, 0.0, 0, 0.0, -1.0])
+        new_band = new_raster.GetRasterBand(1)
+        new_band.SetNoDataValue(-1)
+        array = numpy.array(range(n*n), dtype=numpy.int32).reshape((n, n))
+        new_band.WriteArray(array)
+        new_raster.FlushCache()
+        new_band = None
+        new_raster = None
+
+        target_path = os.path.join(self.workspace_dir, 'target.gpkg')
+        pygeoprocessing.raster_calculator(
+            ((raster_path, 1), (raster_path, 1)), lambda a, b: a+b,
+            target_path, gdal.GDT_Int16, None, raster_driver_name='gpkg',
+            raster_creation_options=())
+        target_raster = gdal.OpenEx(target_path)
+        target_driver = target_raster.GetDriver()
+        self.assertEqual(target_driver.GetDescription().lower(), 'gpkg')
+        target_band = target_raster.GetRasterBand(1)
+        numpy.testing.assert_array_equal(
+            target_band.ReadAsArray(), array*2)

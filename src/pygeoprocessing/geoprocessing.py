@@ -325,16 +325,14 @@ def raster_calculator(
             '"%s"' % datatype_target)
 
     # create target raster
-    gtiff_driver = gdal.GetDriverByName(raster_driver_name)
+    raster_driver = gdal.GetDriverByName(raster_driver_name)
     try:
         os.makedirs(os.path.dirname(target_raster_path))
     except OSError:
         pass
-    target_raster = gtiff_driver.Create(
+    target_raster = raster_driver.Create(
         target_raster_path, n_cols, n_rows, 1, datatype_target,
-        options=(
-            'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=DEFLATE',
-            'BLOCKXSIZE=256', 'BLOCKYSIZE=256'))
+        options=raster_creation_options)
 
     target_band = target_raster.GetRasterBand(1)
     if nodata_target is not None:
@@ -1981,7 +1979,7 @@ def warp_raster(
             where_clause=mask_vector_where_filter,
             target_mask_value=None, working_dir=temp_working_dir,
             all_touched=False,
-            raster_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS)
+            raster_creation_options=raster_creation_options)
         shutil.rmtree(temp_working_dir)
 
 
