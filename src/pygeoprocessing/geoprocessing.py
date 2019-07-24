@@ -17,6 +17,7 @@ import multiprocessing
 import multiprocessing.pool
 import threading
 import collections
+import shutil
 
 try:
     import queue
@@ -68,6 +69,9 @@ except ImportError:
     # Python3 doesn't have a basestring.
     basestring = str
 
+_VALID_GDAL_TYPES = (
+    set([getattr(gdal, x) for x in dir(gdal.gdalconst) if 'GDT_' in x]))
+
 _LOGGING_PERIOD = 5.0  # min 5.0 seconds per update log message for the module
 _LARGEST_ITERBLOCK = 2**16  # largest block for iterblocks to read in cells
 
@@ -75,9 +79,9 @@ _LARGEST_ITERBLOCK = 2**16  # largest block for iterblocks to read in cells
 def raster_calculator(
         base_raster_path_band_const_list, local_op, target_raster_path,
         datatype_target, nodata_target,
+        calc_raster_stats=True, largest_block=_LARGEST_ITERBLOCK,
         gtiff_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS,
-        calc_raster_stats=True,
-        largest_block=_LARGEST_ITERBLOCK):
+        raster_driver_name='GTiff'):
     """Apply local a raster operation on a stack of rasters.
 
     This function applies a user defined function across a stack of
@@ -122,8 +126,6 @@ def raster_calculator(
             the target raster.
         nodata_target (numerical value): the desired nodata value of the
             target raster.
-        gtiff_creation_options (sequence): this is an argument list that will
-            be passed to the GTiff driver defined by the GDAL GTiff spec.
         calc_raster_stats (boolean): If True, calculates and sets raster
             statistics (min, max, mean, and stdev) for target raster.
         largest_block (int): Attempts to internally iterate over raster blocks
@@ -132,6 +134,11 @@ def raster_calculator(
             overhead dominates the iteration.  Defaults to 2**20.  A value of
             anything less than the original blocksize of the raster will
             result in blocksizes equal to the original size.
+        gtiff_creation_options (sequence): this is an argument list that will
+            be passed to the GTiff driver defined by the GDAL GTiff spec.
+        raster_driver_name (str): desired raster target format that would be
+            recognized by gdal.GetDriverByName(raster_driver_name). Default is
+            'GTiff'.
 
     Returns:
         None
@@ -312,8 +319,13 @@ def raster_calculator(
             "parameter. This is the input list: %s" % pprint.pformat(
                 base_raster_path_band_const_list))
 
+    if datatype_target not in _VALID_GDAL_TYPES:
+        raise ValueError(
+            'Invalid target type, should be a gdal.GDT_* type, received '
+            '"%s"' % datatype_target)
+
     # create target raster
-    gtiff_driver = gdal.GetDriverByName('GTiff')
+    gtiff_driver = gdal.GetDriverByName(raster_driver_name)
     try:
         os.makedirs(os.path.dirname(target_raster_path))
     except OSError:
@@ -399,7 +411,8 @@ def raster_calculator(
                                 blocksize[dim_index],)
                             tile_dims[dim_index] = 1
                     data_blocks.append(
-                        numpy.tile(value[slice_list], tile_dims))
+                        numpy.tile(
+                            tuple(value[tuple(slice_list)]), tile_dims))
                 else:
                     # must be a raw tuple
                     data_blocks.append(value[0])
@@ -485,9 +498,9 @@ def align_and_resize_raster_stack(
         base_raster_path_list, target_raster_path_list, resample_method_list,
         target_pixel_size, bounding_box_mode, base_vector_path_list=None,
         raster_align_index=None, base_sr_wkt_list=None, target_sr_wkt=None,
+        vector_mask_options=None, gdal_warp_options=None,
         raster_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS,
-        vector_mask_options=None, target_raster_format='GTiff',
-        gdal_warp_options=None):
+        raster_driver_name='GTiff'):
     """Generate rasters from a base such that they align geospatially.
 
     This function resizes base rasters that are in the same geospatial
@@ -536,9 +549,6 @@ def align_and_resize_raster_stack(
         target_sr_wkt (string): if not None, this is the desired
             projection of all target rasters in Well Known Text format. If
             None, the base SRS will be passed to the target.
-        raster_creation_options (sequence): list of strings that will be passed
-            as GDAL "dataset" creation options to the GTIFF driver, or ignored
-            if None.
         vector_mask_options (dict): optional, if not None, this is a
             dictionary of options to use an existing vector's geometry to
             mask out pixels in the target raster that do not overlap the
@@ -554,6 +564,15 @@ def align_and_resize_raster_stack(
                     be used to filter the geometry in the mask. Ex:
                     'id > 10' would use all features whose field value of
                     'id' is > 10.
+        gdal_warp_options (sequence): if present, the contents of this list
+            are passed to the ``warpOptions`` parameter of ``gdal.Warp``. See
+            the GDAL Warp documentation for valid options.
+        raster_creation_options (sequence): list of strings that will be passed
+            as GDAL "dataset" creation options to the GTIFF driver, or ignored
+            if None.
+        raster_driver_name (str): desired raster target format that would be
+            recognized by gdal.GetDriverByName(raster_driver_name). Default is
+            'GTiff'.
 
     Returns:
         None
@@ -756,7 +775,7 @@ def align_and_resize_raster_stack(
                     resample_method),
                 kwds={
                     'target_bb': target_bounding_box,
-                    'target_raster_format': target_raster_format,
+                    'raster_driver_name': raster_driver_name,
                     'raster_creation_options': raster_creation_options,
                     'target_sr_wkt': target_sr_wkt,
                     'base_sr_wkt': (
@@ -785,14 +804,15 @@ def align_and_resize_raster_stack(
 def new_raster_from_base(
         base_path, target_path, datatype, band_nodata_list,
         fill_value_list=None, n_rows=None, n_cols=None,
-        gtiff_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS):
-    """Create new GeoTIFF by coping spatial reference/geotransform of base.
+        gtiff_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS,
+        raster_driver_name='GTiff'):
+    """Create new raster by coping spatial reference/geotransform of base.
 
     A convenience function to simplify the creation of a new raster from the
     basis of an existing one.  Depending on the input mode, one can create
     a new raster of the same dimensions, geotransform, and georeference as
     the base.  Other options are provided to change the raster dimensions,
-    number of bands, nodata values, data type, and core GeoTIFF creation
+    number of bands, nodata values, data type, and core raster creation
     options.
 
     Parameters:
@@ -813,6 +833,9 @@ def new_raster_from_base(
             columns.
         gtiff_creation_options: a sequence of dataset options that gets
             passed to the gdal creation driver, overrides defaults
+        raster_driver_name (str): desired raster target format that would be
+            recognized by gdal.GetDriverByName(raster_driver_name). Default is
+            'GTiff'.
 
     Returns:
         None
@@ -823,7 +846,7 @@ def new_raster_from_base(
         n_rows = base_raster.RasterYSize
     if n_cols is None:
         n_cols = base_raster.RasterXSize
-    driver = gdal.GetDriverByName('GTiff')
+    driver = gdal.GetDriverByName(raster_driver_name)
 
     local_gtiff_creation_options = list(gtiff_creation_options)
     # PIXELTYPE is sometimes used to define signed vs. unsigned bytes and
@@ -918,7 +941,8 @@ def new_raster_from_base(
 def create_raster_from_vector_extents(
         base_vector_path, target_raster_path, target_pixel_size,
         target_pixel_type, target_nodata, fill_value=None,
-        gtiff_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS):
+        gtiff_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS,
+        raster_driver_name='GTiff'):
     """Create a blank raster based on a vector file extent.
 
     Parameters:
@@ -941,6 +965,9 @@ def create_raster_from_vector_extents(
         gtiff_creation_options (sequence): this is an argument list that will
             be passed to the GTiff driver.  Useful for blocksizes,
             compression, and more.
+        raster_driver_name (str): desired raster target format that would be
+            recognized by gdal.GetDriverByName(raster_driver_name). Default is
+            'GTiff'.
 
     Returns:
         None
@@ -972,14 +999,22 @@ def create_raster_from_vector_extents(
                 LOGGER.warning(error)
         layer = None
 
+    if target_pixel_type not in _VALID_GDAL_TYPES:
+        raise ValueError(
+            'Invalid target type, should be a gdal.GDT_* type, received '
+            '"%s"' % target_pixel_type)
+
     # round up on the rows and cols so that the target raster encloses the
     # base vector
     n_cols = int(numpy.ceil(
         abs((shp_extent[1] - shp_extent[0]) / target_pixel_size[0])))
+    n_cols = max(1, n_cols)
+
     n_rows = int(numpy.ceil(
         abs((shp_extent[3] - shp_extent[2]) / target_pixel_size[1])))
+    n_rows = max(1, n_rows)
 
-    driver = gdal.GetDriverByName('GTiff')
+    driver = gdal.GetDriverByName(raster_driver_name)
     n_bands = 1
     raster = driver.Create(
         target_raster_path, n_cols, n_rows, n_bands, target_pixel_type,
@@ -1010,6 +1045,8 @@ def create_raster_from_vector_extents(
         band.Fill(fill_value)
         band.FlushCache()
         band = None
+    layer = None
+    vector = None
     raster = None
     vector = None
 
@@ -1185,7 +1222,7 @@ def zonal_statistics(
                     'sum': 0.0})
             for feature in aggregate_layer:
                 _ = aggregate_stats[feature.GetFID()]
-            return aggregate_stats
+            return dict(aggregate_stats)
         else:
             # this would be very unexpected to get here, but if it happened
             # and we didn't raise an exception, execution could get weird.
@@ -1433,13 +1470,13 @@ def zonal_statistics(
     return dict(aggregate_stats)
 
 
-def get_vector_info(vector_path, layer_index=0):
+def get_vector_info(vector_path, layer_id=0):
     """Get information about an OGR vector (datasource).
 
     Parameters:
         vector_path (str): a path to a OGR vector.
-        layer_index (int): index of underlying layer to analyze.  Defaults to
-            0.
+        layer_id (str/int): name or index of underlying layer to analyze.
+            Defaults to 0.
 
     Raises:
         ValueError if ``vector_path`` does not exist on disk or cannot be
@@ -1461,7 +1498,7 @@ def get_vector_info(vector_path, layer_index=0):
         raise ValueError(
             "Could not open %s as a gdal.OF_VECTOR" % vector_path)
     vector_properties = {}
-    layer = vector.GetLayer(iLayer=layer_index)
+    layer = vector.GetLayer(iLayer=layer_id)
     # projection is same for all layers, so just use the first one
     spatial_ref = layer.GetSpatialRef()
     if spatial_ref:
@@ -1556,7 +1593,7 @@ def get_raster_info(raster_path):
 
 
 def reproject_vector(
-        base_vector_path, target_wkt, target_path, layer_index=0,
+        base_vector_path, target_wkt, target_path, layer_id=0,
         driver_name='ESRI Shapefile', copy_fields=True):
     """Reproject OGR DataSource (vector).
 
@@ -1568,7 +1605,7 @@ def reproject_vector(
         target_wkt (string): the desired output projection in Well Known Text
             (by layer.GetSpatialRef().ExportToWkt())
         target_path (string): the filepath to the transformed shapefile
-        layer_index (int): index of layer in ``base_vector_path`` to
+        layer_id (str/int): name or index of layer in ``base_vector_path`` to
             reproject. Defaults to 0.
         driver_name (string): String to pass to ogr.GetDriverByName, defaults
             to 'ESRI Shapefile'.
@@ -1596,7 +1633,7 @@ def reproject_vector(
     target_driver = ogr.GetDriverByName(driver_name)
     target_vector = target_driver.CreateDataSource(target_path)
 
-    layer = base_vector.GetLayer(layer_index)
+    layer = base_vector.GetLayer(layer_id)
     layer_dfn = layer.GetLayerDefn()
 
     # Create new layer for target_vector using same name and
@@ -1688,7 +1725,8 @@ def reproject_vector(
 
 def reclassify_raster(
         base_raster_path_band, value_map, target_raster_path, target_datatype,
-        target_nodata, values_required=True):
+        target_nodata, values_required=True,
+        gtiff_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS):
     """Reclassify pixel values in a raster.
 
     A function to reclassify values in raster to any output type. By default
@@ -1706,17 +1744,17 @@ def reclassify_raster(
         target_datatype (gdal type): the numerical type for the target raster
         target_nodata (numerical type): the nodata value for the target raster
             Must be the same type as target_datatype
-        band_index (int): Indicates which band in ``base_raster_path`` the
-            reclassification should operate on.  Defaults to 1.
         values_required (bool): If True, raise a ValueError if there is a
-            value in the raster that is not found in value_map.
+            value in the raster that is not found in ``value_map``.
+        gtiff_creation_options (list or tuple): list of strings that will be
+            passed as GDAL "dataset" creation options to the GTIFF driver.
 
     Returns:
         None
 
     Raises:
-        ValueError if values_required is True and the value from
-           'key_raster' is not a key in 'attr_dict'
+        ValueError if ``values_required`` is ``True`` and a pixel value from
+           ``base_raster_path_band`` is not a key in ``attr_dict``.
 
     """
     if len(value_map) == 0:
@@ -1752,16 +1790,17 @@ def reclassify_raster(
 
     raster_calculator(
         [base_raster_path_band], _map_dataset_to_value_op,
-        target_raster_path, target_datatype, target_nodata)
+        target_raster_path, target_datatype, target_nodata,
+        gtiff_creation_options=gtiff_creation_options)
 
 
 def warp_raster(
         base_raster_path, target_pixel_size, target_raster_path,
         resample_method, target_bb=None, base_sr_wkt=None, target_sr_wkt=None,
-        target_raster_format='GTiff',
-        raster_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS,
         n_threads=None, vector_mask_options=None,
-        gdal_warp_options=None):
+        gdal_warp_options=None, working_dir=None,
+        raster_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS,
+        raster_driver_name='GTiff'):
     """Resize/resample raster to desired pixel size, bbox and projection.
 
     Parameters:
@@ -1781,11 +1820,6 @@ def warp_raster(
             ``base_raster_path`` as this.
         target_sr_wkt (string): if not None, desired target projection in Well
             Known Text format.
-        target_raster_format (str): desired raster target format. Default is GTiff.
-        raster_creation_options (list or tuple): list of strings that will be
-            passed as raster "dataset" creation options to the driver
-            specified by the `target_raster_format` string. Defaults to
-            PyGeoprocessing's GTiff default creation options.
         n_threads (int): optional, if not None this sets the ``N_THREADS``
             option for ``gdal.Warp``.
         vector_mask_options (dict): optional, if not None, this is a
@@ -1796,16 +1830,26 @@ def warp_raster(
                     vector will be automatically projected to the target
                     projection if its base coordinate system does not match
                     the target.
-                'mask_layer_name': (str) the layer name to use for masking,
-                    if this key is not in the dictionary the default is to use
-                    the layer at index 0.
+                'mask_layer_id': (int/str) the layer index or name to use for
+                    masking, if this key is not in the dictionary the default
+                    is to use the layer at index 0.
                 'mask_vector_where_filter': (str) an SQL WHERE string that can
                     be used to filter the geometry in the mask. Ex:
                     'id > 10' would use all features whose field value of
                     'id' is > 10.
         gdal_warp_options (sequence): if present, the contents of this list
             are passed to the ``warpOptions`` parameter of ``gdal.Warp``. See
-            the GDAL Warp documentation for details.
+            the GDAL Warp documentation for valid options.
+        working_dir (string): if defined uses this directory to make
+            temporary working files for calculation. Otherwise uses system's
+            temp directory.
+        raster_creation_options (list or tuple): list of strings that will be
+            passed as raster "dataset" creation options to the driver
+            specified by the `raster_driver_name` string. Defaults to
+            PyGeoprocessing's GTiff default creation options.
+        raster_driver_name (str): desired raster target format that would be
+            recognized by gdal.GetDriverByName(raster_driver_name). Default is
+            'GTiff'.
 
     Returns:
         None
@@ -1884,7 +1928,7 @@ def warp_raster(
         warp_options.extend(gdal_warp_options)
 
     mask_vector_path = None
-    mask_layer_name = None
+    mask_layer_id = 0
     mask_vector_where_filter = None
     if vector_mask_options:
         # translate pygeoprocessing terminology into GDAL warp options.
@@ -1896,16 +1940,24 @@ def warp_raster(
         if not os.path.exists(mask_vector_path):
             raise ValueError(
                 'The mask vector at %s was not found.', mask_vector_path)
-        if 'mask_layer_name' in vector_mask_options:
-            mask_layer_name = vector_mask_options['mask_layer_name']
+        if 'mask_layer_id' in vector_mask_options:
+            mask_layer_id = vector_mask_options['mask_layer_id']
         if 'mask_vector_where_filter' in vector_mask_options:
             mask_vector_where_filter = (
                 vector_mask_options['mask_vector_where_filter'])
 
+    if vector_mask_options:
+        temp_working_dir = tempfile.mkdtemp(dir=working_dir)
+        warped_raster_path = os.path.join(
+            temp_working_dir, os.path.basename(target_raster_path).replace(
+                '.tif', '_nonmasked.tif'))
+    else:
+        # if there is no vector path the result is the warp
+        warped_raster_path = target_raster_path
     base_raster = gdal.OpenEx(base_raster_path, gdal.OF_RASTER)
     gdal.Warp(
-        target_raster_path, base_raster,
-        format=target_raster_format,
+        warped_raster_path, base_raster,
+        format=raster_driver_name,
         outputBounds=working_bb,
         xRes=abs(target_pixel_size[0]),
         yRes=abs(target_pixel_size[1]),
@@ -1917,18 +1969,28 @@ def warp_raster(
         warpOptions=warp_options,
         creationOptions=raster_creation_options,
         callback=reproject_callback,
-        callback_data=[target_raster_path],
-        cutlineDSName=mask_vector_path,
-        cutlineLayer=mask_layer_name,
-        cutlineWhere=mask_vector_where_filter)
+        callback_data=[target_raster_path])
+
+    if vector_mask_options:
+        # there was a cutline vector, so mask it out now, otherwise target
+        # is already the result.
+        mask_raster(
+            (warped_raster_path, 1), vector_mask_options['mask_vector_path'],
+            target_raster_path,
+            mask_layer_id=mask_layer_id,
+            where_clause=mask_vector_where_filter,
+            target_mask_value=None, working_dir=temp_working_dir,
+            all_touched=False,
+            gtiff_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS)
+        shutil.rmtree(temp_working_dir)
 
 
 def rasterize(
         vector_path, target_raster_path, burn_values=None, option_list=None,
-        layer_index=0):
+        layer_id=0, where_clause=None):
     """Project a vector onto an existing raster.
 
-    Burn the layer at ``layer_index`` in ``vector_path`` to an existing
+    Burn the layer at ``layer_id`` in ``vector_path`` to an existing
     raster at ``target_raster_path_band``.
 
     Parameters:
@@ -1953,10 +2015,10 @@ def rasterize(
                     size will be estimated based on the GDAL cache buffer size
                     using formula: cache_size_bytes/scanline_size_bytes, so
                     the chunk will not exceed the cache.
-                "ALL_TOUCHED=TRUE/FALSE": May be set to TRUE to set all pixels
-                    touched by the line or polygons, not just those whose
-                    center is within the polygon or that are selected by
-                    Brezenhams line algorithm. Defaults to FALSE.
+                 "ALL_TOUCHED=TRUE/FALSE": May be set to TRUE to set all pixels
+                     touched by the line or polygons, not just those whose
+                     center is within the polygon or that are selected by
+                     Brezenhams line algorithm. Defaults to FALSE.
                 "BURN_VALUE_FROM": May be set to "Z" to use the Z values of
                     the geometries. The value from burn_values or the
                     attribute field value is added to this before burning. In
@@ -1969,6 +2031,10 @@ def rasterize(
                     value, while ADD adds the new value to the existing
                     raster, suitable for heatmaps for instance.
             Example: ["ATTRIBUTE=npv", "ALL_TOUCHED=TRUE"]
+        layer_id (str/int): name or index of the layer to rasterize. Defaults
+            to 0.
+        where_clause (str): If not None, is an SQL query-like string to filter
+            which features are used to rasterize, (e.x. where="value=1").
 
     Returns:
         None
@@ -1981,7 +2047,6 @@ def rasterize(
         raise ValueError(
             "%s doesn't exist, but needed to rasterize." % target_raster_path)
     vector = gdal.OpenEx(vector_path, gdal.OF_VECTOR)
-    layer = vector.GetLayer(layer_index)
 
     rasterize_callback = _make_logger_callback(
         "RasterizeLayer %.1f%% complete %s")
@@ -2006,15 +2071,21 @@ def rasterize(
             "`option_list` is not a list/tuple, the value passed is '%s'",
             repr(option_list))
 
-    gdal.RasterizeLayer(
-        raster, [1], layer, burn_values=burn_values, options=option_list,
-        callback=rasterize_callback)
+    layer = vector.GetLayer(layer_id)
+    if where_clause:
+        layer.SetAttributeFilter(where_clause)
+    result = gdal.RasterizeLayer(
+        raster, [1], layer, burn_values=burn_values,
+        options=option_list, callback=rasterize_callback)
     raster.FlushCache()
     gdal.Dataset.__swig_destroy__(raster)
 
+    if result != 0:
+        raise RuntimeError('Rasterize returned a nonzero exit code.')
+
 
 def calculate_disjoint_polygon_set(
-        vector_path, layer_index=0, bounding_box=None):
+        vector_path, layer_id=0, bounding_box=None):
     """Create a sequence of sets of polygons that don't overlap.
 
     Determining the minimal number of those sets is an np-complete problem so
@@ -2022,8 +2093,8 @@ def calculate_disjoint_polygon_set(
 
     Parameters:
         vector_path (string): a path to an OGR vector.
-        layer_index (int): index of underlying layer in ``vector_path`` to
-            calculate disjoint set. Defaults to 0.
+        layer_id (str/int): name or index of underlying layer in
+            ``vector_path`` to calculate disjoint set. Defaults to 0.
         bounding_box (sequence): sequence of floats representing a bounding
             box to filter any polygons by. If a feature in ``vector_path``
             does not intersect this bounding box it will not be considered
@@ -2035,18 +2106,27 @@ def calculate_disjoint_polygon_set(
 
     """
     vector = gdal.OpenEx(vector_path, gdal.OF_VECTOR)
-    vector_layer = vector.GetLayer(layer_index)
+    vector_layer = vector.GetLayer(layer_id)
     feature_count = vector_layer.GetFeatureCount()
+
+    if feature_count == 0:
+        raise RuntimeError('Vector must have geometries but does not: %s'
+                           % vector_path)
 
     last_time = time.time()
     LOGGER.info("build shapely polygon list")
+
     if bounding_box is None:
         bounding_box = get_vector_info(vector_path)['bounding_box']
     bounding_box = shapely.prepared.prep(shapely.geometry.box(*bounding_box))
-    shapely_polygon_lookup = dict((
-        (poly_feat.GetFID(),
-         shapely.wkb.loads(poly_feat.GetGeometryRef().ExportToWkb()))
-        for poly_feat in vector_layer))
+
+    # As much as I want this to be in a comprehension, a comprehension version
+    # of this loop causes python 3.6 to crash on linux in GDAL 2.1.2 (which is
+    # what's in the debian:stretch repos.)
+    shapely_polygon_lookup = {}
+    for poly_feat in vector_layer:
+        shapely_polygon_lookup[poly_feat.GetFID()] = (
+            shapely.wkb.loads(poly_feat.GetGeometryRef().ExportToWkb()))
 
     LOGGER.info("build shapely rtree index")
     r_tree_index_stream = [
@@ -2056,7 +2136,7 @@ def calculate_disjoint_polygon_set(
     if r_tree_index_stream:
         poly_rtree_index = rtree.index.Index(r_tree_index_stream)
     else:
-        LOGGER.warn("no polygons intersected the bounding box")
+        LOGGER.warning("no polygons intersected the bounding box")
         return []
 
     vector_layer = None
@@ -2535,6 +2615,10 @@ def convolve_2d(
     gdal.Dataset.__swig_destroy__(target_raster)
     target_band = None
     target_raster = None
+    if s_nodata is not None and ignore_nodata:
+        # there's a working directory only if we need to remember the nodata
+        # pixels
+        shutil.rmtree(mask_dir)
 
 
 def iterblocks(
@@ -2713,7 +2797,8 @@ def transform_bounding_box(
 
 def merge_rasters(
         raster_path_list, target_path, bounding_box=None, target_nodata=None,
-        gtiff_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS):
+        gtiff_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS,
+        raster_driver_name='GTiff'):
     """Merge the given rasters into a single raster.
 
     This operation creates a mosaic of the rasters in ``raster_path_list``.
@@ -2739,6 +2824,9 @@ def merge_rasters(
         gtiff_creation_options (sequence): this is an argument list that will
             be passed to the GTiff driver.  Useful for blocksizes,
             compression, and more.
+        raster_driver_name (str): desired raster target format that would be
+            recognized by gdal.GetDriverByName(raster_driver_name). Default is
+            'GTiff'.
 
     Returns:
         None.
@@ -2811,7 +2899,7 @@ def merge_rasters(
         LOGGER.debug("bounding_box %s", bounding_box)
         LOGGER.debug("merged target bounding_box %s", target_bounding_box)
 
-    driver = gdal.GetDriverByName('GTiff')
+    driver = gdal.GetDriverByName(raster_driver_name)
     target_pixel_size = pixel_size_set.pop()
     n_cols = int(math.ceil(abs(
         (target_bounding_box[2]-target_bounding_box[0]) /
@@ -2922,8 +3010,8 @@ def merge_rasters(
 
 def mask_raster(
         base_raster_path_band, mask_vector_path, target_mask_raster_path,
-        mask_layer_index=0, target_mask_value=None, working_dir=None,
-        all_touched=False,
+        mask_layer_id=0, target_mask_value=None, working_dir=None,
+        all_touched=False, where_clause=None,
         gtiff_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS):
     """
     Mask a raster band with a given vector.
@@ -2940,8 +3028,8 @@ def mask_raster(
             not intersect with ``mask_vector_path`` are set to
             ``target_mask_value`` or ``base_raster_path_band``'s nodata value
             if ``target_mask_value`` is None.
-        mask_layer_index (str): this layer is used as the mask geometry layer
-            in ``mask_vector_path``, defautl is 0.
+        mask_layer_id (str/int): an index or name to identify the mask
+            geometry layer in ``mask_vector_path``, default is 0.
         target_mask_value (numeric): If not None, this value is written to
             any pixel in ``base_raster_path_band`` that does not intersect
             with ``mask_vector_path``. Otherwise the nodata value of
@@ -2951,6 +3039,9 @@ def mask_raster(
         all_touched (bool): if False, a pixel is only masked if its centroid
             intersects with the mask. If True a pixel is masked if any point
             of the pixel intersects the polygon mask.
+        where_clause (str): (optional) if not None, it is an SQL compatible where
+            clause that can be used to filter the features that are used to
+            mask the base raster.
         gtiff_creation_options (sequence): this is an argument list that will
             be passed to the GTiff driver defined by the GDAL GTiff spec.
 
@@ -2971,15 +3062,16 @@ def mask_raster(
 
     rasterize(
         mask_vector_path, mask_raster_path, burn_values=[1],
-        layer_index=mask_layer_index,
-        option_list=[('ALL_TOUCHED=%s' % all_touched).upper()])
+        layer_id=mask_layer_id,
+        option_list=[('ALL_TOUCHED=%s' % all_touched).upper()],
+        where_clause=where_clause)
 
     base_nodata = base_raster_info['nodata'][base_raster_path_band[1]-1]
 
     if target_mask_value is None:
         mask_value = base_nodata
         if mask_value is None:
-            LOGGER.warn(
+            LOGGER.warning(
                 "No mask value was passed and target nodata is undefined, "
                 "defaulting to 0 as the target mask value.")
             mask_value = 0
@@ -3156,6 +3248,10 @@ def _make_logger_callback(message):
         except AttributeError:
             logger_callback.last_time = time.time()
             logger_callback.total_time = 0.0
+        except:
+            LOGGER.exception("Unhandled error occurred while logging "
+                             "progress.  df_complete: %s, p_progress_arg: %s",
+                             df_complete, p_progress_arg)
 
     return logger_callback
 

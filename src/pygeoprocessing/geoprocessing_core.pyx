@@ -73,7 +73,7 @@ def _distance_transform_edt(
     cdef int xoff, block_xsize, win_xsize, n_cols
     cdef int q_index, local_x_index, local_y_index, u_index
     cdef int tq, sq
-    cdef float gu, gsq
+    cdef float gu, gsq, w
     cdef numpy.ndarray[numpy.float32_t, ndim=2] g_block
     cdef numpy.ndarray[numpy.int32_t, ndim=1] s_array
     cdef numpy.ndarray[numpy.int32_t, ndim=1] t_array
@@ -93,6 +93,12 @@ def _distance_transform_edt(
     g_raster = gdal.OpenEx(g_raster_path, gdal.OF_RASTER | gdal.GA_Update)
     g_band = g_raster.GetRasterBand(1)
     g_band_blocksize = g_band.GetBlockSize()
+
+    # normalize the sample distances so we don't get a strange numerical
+    # overflow
+    max_sample = max(sample_d_x, sample_d_y)
+    sample_d_x /= max_sample
+    sample_d_y /= max_sample
 
     # distances can't be larger than half the perimeter of the raster.
     cdef float numerical_inf = max(sample_d_x, 1.0) * max(sample_d_y, 1.0) * (
@@ -149,6 +155,7 @@ def _distance_transform_edt(
     block_ysize = g_band_blocksize[1]
     g_block = numpy.empty((block_ysize, n_cols), dtype=numpy.float32)
     dt = numpy.empty((block_ysize, n_cols), dtype=numpy.float32)
+    mask_block = numpy.empty((block_ysize, n_cols), dtype=numpy.int8)
     sq = 0  # initialize so compiler doesn't complain
     gsq = 0
     for yoff in numpy.arange(0, n_rows, block_ysize):
@@ -156,11 +163,15 @@ def _distance_transform_edt(
         if yoff + win_ysize >= n_rows:
             win_ysize = n_rows - yoff
             g_block = numpy.empty((win_ysize, n_cols), dtype=numpy.float32)
+            mask_block = numpy.empty((win_ysize, n_cols), dtype=numpy.int8)
             dt = numpy.empty((win_ysize, n_cols), dtype=numpy.float32)
             done = True
         g_band.ReadAsArray(
             xoff=0, yoff=yoff, win_xsize=n_cols, win_ysize=win_ysize,
             buf_obj=g_block)
+        mask_band.ReadAsArray(
+            xoff=0, yoff=yoff, win_xsize=n_cols, win_ysize=win_ysize,
+            buf_obj=mask_block)
         for local_y_index in range(win_ysize):
             q_index = 0
             s_array[0] = 0
@@ -181,9 +192,9 @@ def _distance_transform_edt(
                     sq = u_index
                     gsq = g_block[local_y_index, sq]**2
                 else:
-                    w = sample_d_x + (
+                    w = sample_d_x + ((
                         (sample_d_x*u_index)**2 - (sample_d_x*sq)**2 +
-                        gu - gsq) / (2*sample_d_x*(u_index-sq))
+                        gu - gsq) / (2*sample_d_x*(u_index-sq)))
                     if w < n_cols*sample_d_x:
                         q_index += 1
                         s_array[q_index] = u_index
@@ -193,8 +204,12 @@ def _distance_transform_edt(
             gsq = g_block[local_y_index, sq]**2
             tq = t_array[q_index]
             for u_index in range(n_cols-1, -1, -1):
-                dt[local_y_index, u_index] = (sample_d_x*(u_index-sq))**2+gsq
-                if u_index == tq:
+                if mask_block[local_y_index, u_index] != 1:
+                    dt[local_y_index, u_index] = (
+                        sample_d_x*(u_index-sq))**2+gsq
+                else:
+                    dt[local_y_index, u_index] = 0
+                if u_index <= tq:
                     q_index -= 1
                     if q_index >= 0:
                         sq = s_array[q_index]
@@ -202,7 +217,8 @@ def _distance_transform_edt(
                         tq = t_array[q_index]
 
         valid_mask = g_block != _NODATA
-        dt[valid_mask] = numpy.sqrt(dt[valid_mask])
+        # "unnormalize" distances along with square root
+        dt[valid_mask] = numpy.sqrt(dt[valid_mask]) * max_sample
         dt[~valid_mask] = _NODATA
         target_distance_band.WriteArray(dt, xoff=0, yoff=yoff)
 

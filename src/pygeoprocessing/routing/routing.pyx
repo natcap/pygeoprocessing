@@ -503,7 +503,8 @@ def _generate_read_bounds(offset_dict, raster_x_size, raster_y_size):
 def fill_pits(
         dem_raster_path_band, target_filled_dem_raster_path,
         working_dir=None,
-        gtiff_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS):
+        gtiff_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS,
+        raster_driver_name='GTiff'):
     """Fill the pits in a DEM.
 
         This function defines pits as hydrologically connected regions that do
@@ -527,6 +528,9 @@ def fill_pits(
         gtiff_creation_options (list): this is an argument list that will be
             passed to the GTiff driver.  Useful for blocksizes, compression,
             and more.
+        raster_driver_name (str): desired raster target format that would be
+            recognized by gdal.GetDriverByName(raster_driver_name). Default is
+            'GTiff'.
 
     Returns:
         None.
@@ -638,7 +642,7 @@ def fill_pits(
         pit_mask_path, 1, 1)
 
     # copy the base DEM to the target and set up for writing
-    geotiff_driver = gdal.GetDriverByName('GTiff')
+    geotiff_driver = gdal.GetDriverByName(raster_driver_name)
     base_dem_raster = gdal.OpenEx(dem_raster_path_band[0], gdal.OF_RASTER)
     geotiff_driver.CreateCopy(
         target_filled_dem_raster_path, base_dem_raster,
@@ -865,7 +869,8 @@ def fill_pits(
 def flow_dir_d8(
         dem_raster_path_band, target_flow_dir_path,
         working_dir=None,
-        gtiff_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS):
+        gtiff_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS,
+        raster_driver_name='GTiff'):
     """D8 flow direction.
 
     Parameters:
@@ -888,6 +893,9 @@ def flow_dir_d8(
         gtiff_creation_options (list): this is an argument list that will be
             passed to the GTiff driver.  Useful for blocksizes, compression,
             and more.
+        raster_driver_name (str): desired raster target format that would be
+            recognized by gdal.GetDriverByName(raster_driver_name). Default is
+            'GTiff'.
 
     Returns:
         None.
@@ -1008,7 +1016,7 @@ def flow_dir_d8(
         compatable_dem_raster_path_band = (
             os.path.join(working_dir_path, 'compatable_dem.tif'),
             dem_raster_path_band[1])
-        geotiff_driver = gdal.GetDriverByName('GTiff')
+        geotiff_driver = gdal.GetDriverByName(raster_driver_name)
         dem_raster = gdal.OpenEx(dem_raster_path_band[0], gdal.OF_RASTER)
         geotiff_driver.CreateCopy(
             compatable_dem_raster_path_band[0], dem_raster,
@@ -1227,7 +1235,8 @@ def flow_dir_d8(
 def flow_accumulation_d8(
         flow_dir_raster_path_band, target_flow_accum_raster_path,
         weight_raster_path_band=None,
-        gtiff_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS):
+        gtiff_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS,
+        raster_driver_name='GTiff'):
     """D8 flow accumulation.
 
     Parameters:
@@ -1253,6 +1262,9 @@ def flow_accumulation_d8(
         gtiff_creation_options (list): this is an argument list that will be
             passed to the GTiff driver.  Useful for blocksizes, compression,
             and more.
+        raster_driver_name (str): desired raster target format that would be
+            recognized by gdal.GetDriverByName(raster_driver_name). Default is
+            'GTiff'.
 
     Returns:
         None.
@@ -1447,7 +1459,8 @@ def flow_accumulation_d8(
 
 def flow_dir_mfd(
         dem_raster_path_band, target_flow_dir_path, working_dir=None,
-        gtiff_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS):
+        gtiff_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS,
+        raster_driver_name='GTiff'):
     """Multiple flow direction.
 
     Parameters:
@@ -1476,6 +1489,9 @@ def flow_dir_mfd(
         gtiff_creation_options (list): this is an argument list that will be
             passed to the GTiff driver.  Useful for blocksizes, compression,
             and more.
+        raster_driver_name (str): desired raster target format that would be
+            recognized by gdal.GetDriverByName(raster_driver_name). Default is
+            'GTiff'.
 
     Returns:
         None.
@@ -1625,7 +1641,7 @@ def flow_dir_mfd(
         compatable_dem_raster_path_band = (
             os.path.join(working_dir_path, 'compatable_dem.tif'),
             dem_raster_path_band[1])
-        geotiff_driver = gdal.GetDriverByName('GTiff')
+        geotiff_driver = gdal.GetDriverByName(raster_driver_name)
         dem_raster = gdal.OpenEx(dem_raster_path_band[0], gdal.OF_RASTER)
         geotiff_driver.CreateCopy(
             compatable_dem_raster_path_band[0], dem_raster,
@@ -1939,7 +1955,8 @@ def flow_dir_mfd(
 def flow_accumulation_mfd(
         flow_dir_mfd_raster_path_band, target_flow_accum_raster_path,
         weight_raster_path_band=None,
-        gtiff_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS):
+        gtiff_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS,
+        raster_driver_name='GTiff'):
     """Multiple flow direction accumulation.
 
     Parameters:
@@ -1967,8 +1984,13 @@ def flow_accumulation_mfd(
         gtiff_creation_options (list): this is an argument list that will be
             passed to the GTiff driver.  Useful for blocksizes, compression,
             and more.
+        raster_driver_name (str): desired raster target format that would be
+            recognized by gdal.GetDriverByName(raster_driver_name). Default is
+            'GTiff'.
+
     Returns:
         None.
+
     """
     # These variables are used to iterate over the DEM using `iterblock`
     # indexes, a numpy.float64 type is used since we need to statically cast
@@ -2181,7 +2203,8 @@ def distance_to_channel_d8(
         flow_dir_d8_raster_path_band, channel_raster_path_band,
         target_distance_to_channel_raster_path,
         weight_raster_path_band=None,
-        gtiff_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS):
+        gtiff_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS,
+        raster_driver_name='GTiff'):
     """Calculate distance to channel with D8 flow.
 
     Parameters:
@@ -2208,6 +2231,9 @@ def distance_to_channel_d8(
         gtiff_creation_options (list): this is an argument list that will be
             passed to the GTiff driver.  Useful for blocksizes, compression,
             and more.
+        raster_driver_name (str): desired raster target format that would be
+            recognized by gdal.GetDriverByName(raster_driver_name). Default is
+            'GTiff'.
 
     Returns:
         None.
@@ -2368,7 +2394,8 @@ def distance_to_channel_d8(
 def distance_to_channel_mfd(
         flow_dir_mfd_raster_path_band, channel_raster_path_band,
         target_distance_to_channel_raster_path, weight_raster_path_band=None,
-        gtiff_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS):
+        gtiff_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS,
+        raster_driver_name='GTiff'):
     """Calculate distance to channel with multiple flow direction.
 
     Parameters:
@@ -2393,6 +2420,9 @@ def distance_to_channel_mfd(
         gtiff_creation_options (list): this is an argument list that will be
             passed to the GTiff driver.  Useful for blocksizes, compression,
             and more.
+        raster_driver_name (str): desired raster target format that would be
+            recognized by gdal.GetDriverByName(raster_driver_name). Default is
+            'GTiff'.
 
     Returns:
         None.
@@ -2610,9 +2640,11 @@ def distance_to_channel_mfd(
 
 
 def extract_streams_mfd(
-        flow_accum_raster_path_band, flow_dir_mfd_path_band, double flow_threshold,
-        target_stream_raster_path, double trace_threshold_proportion=1.0,
-        gtiff_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS):
+        flow_accum_raster_path_band, flow_dir_mfd_path_band,
+        double flow_threshold, target_stream_raster_path,
+        double trace_threshold_proportion=1.0,
+        gtiff_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS,
+        raster_driver_name='GTiff'):
     """Classify a stream raster from MFD flow accumulation.
 
     This function classifies pixels as streams that have a flow accumulation
@@ -2644,6 +2676,9 @@ def extract_streams_mfd(
         gtiff_creation_options (list): this is an argument list that will be
             passed to the GTiff driver.  Useful for blocksizes, compression,
             and more.
+        raster_driver_name (str): desired raster target format that would be
+            recognized by gdal.GetDriverByName(raster_driver_name). Default is
+            'GTiff'.
 
     Returns:
         None.

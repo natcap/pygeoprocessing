@@ -155,7 +155,7 @@ def checksum_folder(workspace_uri, logfile_uri, style='GNU', ignore_exts=None):
         ignore_exts = []
 
     for dirpath, _, filenames in os.walk(workspace_uri):
-        for filename in filenames:
+        for filename in sorted(filenames):
             filepath = os.path.join(dirpath, filename)
 
             # if the extension is in our set of extensions to ignore, skip it.

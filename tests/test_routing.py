@@ -5,8 +5,12 @@ import shutil
 import os
 
 from osgeo import gdal
+from osgeo import osr
+from osgeo import ogr
 import numpy
 import numpy.testing
+import shapely.geometry
+import shapely.wkb
 
 import logging
 
@@ -19,6 +23,8 @@ class TestRouting(unittest.TestCase):
     def setUp(self):
         """Create a temporary workspace that's deleted later."""
         self.workspace_dir = tempfile.mkdtemp()
+        if not os.path.exists(self.workspace_dir):
+            os.makedirs(self.workspace_dir)
 
     def tearDown(self):
         """Clean up remaining files."""
@@ -54,6 +60,18 @@ class TestRouting(unittest.TestCase):
         # the expected result is that the pit is filled in
         dem_array[3:8, 3:8] = 0.0
         numpy.testing.assert_almost_equal(result_array, dem_array)
+
+    def test_pit_filling_path_band_checking(self):
+        """PGP.routing: test pitfilling catches path-band formatting errors."""
+        import pygeoprocessing.routing
+
+        with self.assertRaises(ValueError):
+            pygeoprocessing.routing.fill_pits(
+                ('invalid path', 1), 'foo')
+
+        with self.assertRaises(ValueError):
+            pygeoprocessing.routing.fill_pits(
+                'invalid path', 'foo')
 
     def test_pit_filling_nodata_int(self):
         """PGP.routing: test pitfilling with nodata value."""
@@ -539,7 +557,7 @@ class TestRouting(unittest.TestCase):
              1.88571429],
             [1., 1., 1., 1., 1., 1., 1., 1., 1., 1., 1.]])
 
-        numpy.testing.assert_almost_equal(flow_array, expected_result, 1e-6)
+        numpy.testing.assert_allclose(flow_array, expected_result, rtol=1e-6)
 
         # try with zero weights
         zero_array = numpy.zeros(expected_result.shape, dtype=numpy.float32)
