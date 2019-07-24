@@ -1,5 +1,4 @@
 """setup.py module for PyGeoprocessing."""
-from Cython.Build import cythonize
 import numpy
 from setuptools.extension import Extension
 from setuptools import setup
@@ -45,28 +44,35 @@ setup(
         'Operating System :: MacOS :: MacOS X',
         'Operating System :: Microsoft',
         'Operating System :: POSIX',
-        'Programming Language :: Python :: 2',
-        'Programming Language :: Python :: 2.7',
         'Programming Language :: Python :: 3',
         'Programming Language :: Python :: 3.6',
         'Programming Language :: Python :: 3.7',
         'Topic :: Scientific/Engineering :: GIS',
         'License :: OSI Approved :: BSD License'
     ],
-    ext_modules=cythonize(
-        [Extension(
-            "pygeoprocessing.routing.routing",
+    ext_modules=[
+        Extension(
+            name="pygeoprocessing.routing.routing",
             sources=["src/pygeoprocessing/routing/routing.pyx"],
             include_dirs=[
                 numpy.get_include(),
                 'src/pygeoprocessing/routing'],
             language="c++",
         ),
-         Extension(
+        Extension(
+            "pygeoprocessing.routing.watershed",
+            sources=["src/pygeoprocessing/routing/watershed.pyx"],
+            include_dirs=[
+                numpy.get_include(),
+                'src/pygeoprocessing/routing'],
+            language="c++",
+        ),
+        Extension(
              "pygeoprocessing.geoprocessing_core",
              sources=[
                  'src/pygeoprocessing/geoprocessing_core.pyx'],
              include_dirs=[numpy.get_include()],
-             language="c++")],
-        )
+             language="c++"
+        ),
+    ]
 )
