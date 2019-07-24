@@ -1,6 +1,6 @@
 # coding=UTF-8
 # distutils: language=c++
-# cython: language_level=2
+# cython: language_level=3
 import os
 import tempfile
 import logging

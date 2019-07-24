@@ -1,5 +1,6 @@
 # coding=UTF-8
 # distutils: language=c++
+# cython: language_level=3
 """
 Provides PyGeprocessing Routing functionality.
 
@@ -50,7 +51,7 @@ cdef int MANAGED_RASTER_N_BLOCKS = 2**6
 
 # these are the creation options that'll be used for all the rasters
 DEFAULT_GTIFF_CREATION_OPTIONS = (
-    'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=DEFLATE',
+    'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=ZSTD',
     'BLOCKXSIZE=%d' % (1 << BLOCK_BITS),
     'BLOCKYSIZE=%d' % (1 << BLOCK_BITS))
 
@@ -228,9 +229,9 @@ cdef class _ManagedRaster:
         self.block_xbits = numpy.log2(self.block_xsize)
         self.block_ybits = numpy.log2(self.block_ysize)
         self.block_nx = (
-            self.raster_x_size + (self.block_xsize) - 1) / self.block_xsize
+            self.raster_x_size + (self.block_xsize) - 1) // self.block_xsize
         self.block_ny = (
-            self.raster_y_size + (self.block_ysize) - 1) / self.block_ysize
+            self.raster_y_size + (self.block_ysize) - 1) // self.block_ysize
 
         self.lru_cache = new LRUCache[int, double*](MANAGED_RASTER_N_BLOCKS)
         self.raster_path = <bytes> raster_path
@@ -368,7 +369,7 @@ cdef class _ManagedRaster:
 
     cdef void _load_block(self, int block_index) except *:
         cdef int block_xi = block_index % self.block_nx
-        cdef int block_yi = block_index / self.block_nx
+        cdef int block_yi = block_index // self.block_nx
 
         # we need the offsets to subtract from global indexes for cached array
         cdef int xoff = block_xi << self.block_xbits
@@ -428,7 +429,7 @@ cdef class _ManagedRaster:
                     self.dirty_blocks.erase(dirty_itr)
 
                     block_xi = block_index % self.block_nx
-                    block_yi = block_index / self.block_nx
+                    block_yi = block_index // self.block_nx
 
                     xoff = block_xi << self.block_xbits
                     yoff = block_yi << self.block_ybits
@@ -466,6 +467,7 @@ cdef class _ManagedRaster:
 
         self.lru_cache.clean(removed_value_list, self.lru_cache.size())
 
+        raster_band = None
         if self.write_mode:
             raster = gdal.OpenEx(
                 self.raster_path, gdal.GA_Update | gdal.OF_RASTER)
@@ -486,7 +488,7 @@ cdef class _ManagedRaster:
                     self.dirty_blocks.erase(dirty_itr)
 
                     block_xi = block_index % self.block_nx
-                    block_yi = block_index / self.block_nx
+                    block_yi = block_index // self.block_nx
 
                     xoff = block_xi << self.block_xbits
                     yoff = block_yi << self.block_ybits
@@ -1073,10 +1075,10 @@ def flow_dir_d8(
             dem_raster_path_band[1])
         geotiff_driver = gdal.GetDriverByName('GTiff')
         dem_raster = gdal.OpenEx(dem_raster_path_band[0], gdal.OF_RASTER)
-        raster_copy = geotiff_driver.CreateCopy(
+        _ = geotiff_driver.CreateCopy(
             compatable_dem_raster_path_band[0], dem_raster,
             options=gtiff_creation_options)
-        raster_copy = None
+        _ = None
         dem_raster = None
         LOGGER.info("compatible dem complete")
     else:
@@ -1691,10 +1693,10 @@ def flow_dir_mfd(
             dem_raster_path_band[1])
         geotiff_driver = gdal.GetDriverByName('GTiff')
         dem_raster = gdal.OpenEx(dem_raster_path_band[0], gdal.OF_RASTER)
-        raster_copy = geotiff_driver.CreateCopy(
+        _ = geotiff_driver.CreateCopy(
             compatable_dem_raster_path_band[0], dem_raster,
             options=gtiff_creation_options)
-        raster_copy = None
+        _ = None
         dem_raster = None
         LOGGER.info("compatible dem complete")
     else:
@@ -2856,11 +2858,12 @@ def extract_streams_mfd(
 
     stream_mr.close()
     LOGGER.info('filter out incomplete divergent streams')
+    block_offsets_list = list(pygeoprocessing.iterblocks(
+        (target_stream_raster_path, 1), offset_only=True))
     stream_raster = gdal.OpenEx(
         target_stream_raster_path, gdal.OF_RASTER | gdal.GA_Update)
     stream_band = stream_raster.GetRasterBand(1)
-    for block_offsets in pygeoprocessing.iterblocks(
-            (target_stream_raster_path, 1), offset_only=True):
+    for block_offsets in block_offsets_list:
         stream_array = stream_band.ReadAsArray(**block_offsets)
         stream_array[stream_array == 2] = 0
         stream_band.WriteArray(
