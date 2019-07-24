@@ -1,6 +1,11 @@
 Release History
 ===============
 
+Unreleased Changes
+------------------
+* Changed default compression routine for GeoTIFFs to ZSTD (thanks Facebook
+  https://facebook.github.io/zstd/).
+
 1.7.0 (2019-06-27)
 ------------------
 * Removing support for Python 2.7.
