@@ -667,7 +667,7 @@ def _raster_band_percentile_int(
             base_raster_path_band, largest_block=buffer_size):
         buffer_data = numpy.sort(
             block_data[~numpy.isclose(block_data, nodata)]).astype(
-            numpy.int)
+            numpy.int32)
         if buffer_data.size == 0:
             continue
         n_elements += buffer_data.size
