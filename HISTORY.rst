@@ -1,6 +1,12 @@
 Release History
 ===============
 
+Unreleased Changes
+------------------
+* Added a ``get_gis_type`` function to ``pygeoprocessing`` that takes a
+  filepath and returns a bitmask of ``pygeoprocessing.RASTER_TYPE`` and/or
+  ``pygeoprocessing.VECTOR_TYPE``.
+
 1.7.0 (2019-06-27)
 ------------------
 * Removing support for Python 2.7.
