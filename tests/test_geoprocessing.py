@@ -4054,3 +4054,8 @@ class PyGeoprocessing10(unittest.TestCase):
         self.assertEqual(
             pygeoprocessing.get_gis_type(vector_path),
             pygeoprocessing.VECTOR_TYPE)
+
+        with self.assertRaises(ValueError) as cm:
+            pygeoprocessing.get_gis_type('totally_fake_file')
+        actual_message = str(cm.exception)
+        self.assertTrue('does not exist' in actual_message, actual_message)
