@@ -56,6 +56,24 @@ def _make_simple_raster(val_array, nodata_val, gdal_type, target_path):
     new_raster = None
 
 
+def _read_raster_to_array(raster_path):
+    """Return the contents of a single band raster as a numpy array.
+
+    Parameters:
+        raster_path (str): path to raster.
+
+    Returns:
+        equivalent of opening GDAL raster, first band, and .ReadAsArray()
+
+    """
+    raster = gdal.OpenEx(raster_path, gdal.OF_RASTER)
+    band = raster.GetRasterBand(1)
+    array = band.ReadAsArray()
+    band = None
+    raster = None
+    return array
+
+
 class PyGeoprocessing10(unittest.TestCase):
     """Tests for the PyGeoprocesing 1.0 refactor."""
 
@@ -4018,12 +4036,12 @@ class PyGeoprocessing10(unittest.TestCase):
         n = 10
         raster_a_path = os.path.join(self.workspace_dir, 'a.tif')
         raster_b_path = os.path.join(self.workspace_dir, 'b.tif')
-        raster_c_path = os.path.join(self.workspace_dir, 'c.tif')
         val_array = numpy.array(range(n*n), dtype=numpy.int32).reshape((n, n))
         nodata_val = None
-        for raster_path in (raster_a_path, raster_b_path, raster_c_path):
-            _make_simple_raster(
-                val_array, nodata_val, gdal.GDT_Int32, raster_path)
+        _make_simple_raster(
+            val_array, nodata_val, gdal.GDT_Int32, raster_a_path)
+        _make_simple_raster(
+            val_array, nodata_val, gdal.GDT_Int32, raster_b_path)
 
         # test regular addition
         expression_str = 'a+b'
@@ -4036,12 +4054,29 @@ class PyGeoprocessing10(unittest.TestCase):
         pygeoprocessing.symbolic.evaluate_raster_calculator_expression(
             expression_str, symbol_to_path_band_map, target_nodata,
             target_raster_path)
+        target_array = _read_raster_to_array(target_raster_path)
+        numpy.testing.assert_almost_equal(
+            target_array, 2*numpy.array(range(n*n)).reshape((n, n)))
 
-        target_raster = gdal.OpenEx(target_raster_path, gdal.OF_RASTER)
-        target_band = target_raster.GetRasterBand(1)
-        target_array = target_band.ReadAsArray()
-        target_band = None
-        target_raster = None
+        # test with two values as nodata
+        nodata_val = -1
+        raster_c_path = os.path.join(self.workspace_dir, 'c.tif')
+        val_array = numpy.array(range(n*n), dtype=numpy.int32).reshape((n, n))
+        val_array[0, 0] = nodata_val
+        _make_simple_raster(
+            val_array, nodata_val, gdal.GDT_Int32, raster_c_path)
+        raster_d_path = os.path.join(self.workspace_dir, 'd.tif')
+        val_array = numpy.array(range(n*n), dtype=numpy.int32).reshape((n, n))
+        val_array[-1, -1] = nodata_val
+        _make_simple_raster(
+            val_array, nodata_val, gdal.GDT_Int32, raster_d_path)
 
+        pygeoprocessing.symbolic.evaluate_raster_calculator_expression(
+            expression_str, symbol_to_path_band_map, nodata_val,
+            target_raster_path)
+        target_array = _read_raster_to_array(target_raster_path)
+        expected_array = val_array * val_array
+        expected_array[0, 0] = -1
+        expected_array[-1, -1] = -1
         numpy.testing.assert_almost_equal(
             target_array, 2*numpy.array(range(n*n)).reshape((n, n)))
