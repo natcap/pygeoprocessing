@@ -1,6 +1,11 @@
 Release History
 ===============
 
+Unreleased Changes
+------------------
+* Modified `iterblocks` to raise a helpful ValueError instead of a general
+  NoneTypeError if a raster does not open.
+
 1.7.0 (2019-06-27)
 ------------------
 * Removing support for Python 2.7.
