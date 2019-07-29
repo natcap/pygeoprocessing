@@ -409,7 +409,8 @@ def raster_calculator(
                                 blocksize[dim_index],)
                             tile_dims[dim_index] = 1
                     data_blocks.append(
-                        numpy.tile(value[slice_list], tile_dims))
+                        numpy.tile(
+                            tuple(value[tuple(slice_list)]), tile_dims))
                 else:
                     # must be a raw tuple
                     data_blocks.append(value[0])
@@ -989,8 +990,11 @@ def create_raster_from_vector_extents(
     # base vector
     n_cols = int(numpy.ceil(
         abs((shp_extent[1] - shp_extent[0]) / target_pixel_size[0])))
+    n_cols = max(1, n_cols)
+
     n_rows = int(numpy.ceil(
         abs((shp_extent[3] - shp_extent[2]) / target_pixel_size[1])))
+    n_rows = max(1, n_rows)
 
     driver = gdal.GetDriverByName('GTiff')
     n_bands = 1
@@ -1023,6 +1027,8 @@ def create_raster_from_vector_extents(
         band.Fill(fill_value)
         band.FlushCache()
         band = None
+    layer = None
+    vector = None
     raster = None
     vector = None
 
@@ -1701,7 +1707,8 @@ def reproject_vector(
 
 def reclassify_raster(
         base_raster_path_band, value_map, target_raster_path, target_datatype,
-        target_nodata, values_required=True):
+        target_nodata, values_required=True,
+        gtiff_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS):
     """Reclassify pixel values in a raster.
 
     A function to reclassify values in raster to any output type. By default
@@ -1721,6 +1728,8 @@ def reclassify_raster(
             Must be the same type as target_datatype
         values_required (bool): If True, raise a ValueError if there is a
             value in the raster that is not found in ``value_map``.
+        gtiff_creation_options (list or tuple): list of strings that will be
+            passed as GDAL "dataset" creation options to the GTIFF driver.
 
     Returns:
         None
@@ -1763,7 +1772,8 @@ def reclassify_raster(
 
     raster_calculator(
         [base_raster_path_band], _map_dataset_to_value_op,
-        target_raster_path, target_datatype, target_nodata)
+        target_raster_path, target_datatype, target_nodata,
+        gtiff_creation_options=gtiff_creation_options)
 
 
 def warp_raster(
@@ -2039,11 +2049,14 @@ def rasterize(
     layer = vector.GetLayer(layer_id)
     if where_clause:
         layer.SetAttributeFilter(where_clause)
-    gdal.RasterizeLayer(
+    result = gdal.RasterizeLayer(
         raster, [1], layer, burn_values=burn_values,
         options=option_list, callback=rasterize_callback)
     raster.FlushCache()
     gdal.Dataset.__swig_destroy__(raster)
+
+    if result != 0:
+        raise RuntimeError('Rasterize returned a nonzero exit code.')
 
 
 def calculate_disjoint_polygon_set(
@@ -2071,8 +2084,13 @@ def calculate_disjoint_polygon_set(
     vector_layer = vector.GetLayer(layer_id)
     feature_count = vector_layer.GetFeatureCount()
 
+    if feature_count == 0:
+        raise RuntimeError('Vector must have geometries but does not: %s'
+                           % vector_path)
+
     last_time = time.time()
     LOGGER.info("build shapely polygon list")
+
     if bounding_box is None:
         bounding_box = get_vector_info(vector_path)['bounding_box']
     bounding_box = shapely.prepared.prep(shapely.geometry.box(*bounding_box))
@@ -2093,7 +2111,7 @@ def calculate_disjoint_polygon_set(
     if r_tree_index_stream:
         poly_rtree_index = rtree.index.Index(r_tree_index_stream)
     else:
-        LOGGER.warn("no polygons intersected the bounding box")
+        LOGGER.warning("no polygons intersected the bounding box")
         return []
 
     vector_layer = None
@@ -3024,7 +3042,7 @@ def mask_raster(
     if target_mask_value is None:
         mask_value = base_nodata
         if mask_value is None:
-            LOGGER.warn(
+            LOGGER.warning(
                 "No mask value was passed and target nodata is undefined, "
                 "defaulting to 0 as the target mask value.")
             mask_value = 0
@@ -3300,6 +3318,10 @@ def _make_logger_callback(message):
         except AttributeError:
             logger_callback.last_time = time.time()
             logger_callback.total_time = 0.0
+        except:
+            LOGGER.exception("Unhandled error occurred while logging "
+                             "progress.  df_complete: %s, p_progress_arg: %s",
+                             df_complete, p_progress_arg)
 
     return logger_callback
 
