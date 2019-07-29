@@ -1,6 +1,13 @@
 Release History
 ===============
 
+Unreleased Changes
+------------------
+* Added a ``'file_list'`` key to the dictionary returned by
+  ``get_raster_info`` and ``get_vector_info`` that contains a list of all the
+  files associated with that GIS object. The first parameter of these lists
+  can be passed to ``gdal.OpenEx`` to open the object directly.
+
 1.7.0 (2019-06-27)
 ------------------
 * Removing support for Python 2.7.
