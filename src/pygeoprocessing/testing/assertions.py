@@ -168,8 +168,8 @@ def assert_rasters_equal(
                         band_number, a_blocksize, b_blocksize))
 
             for (_, a_block), (_, b_block) in zip(
-                    geoprocessing.iterblocks(a_uri, [band_number]),
-                    geoprocessing.iterblocks(b_uri, [band_number])):
+                    geoprocessing.iterblocks((a_uri, band_number)),
+                    geoprocessing.iterblocks((b_uri, band_number))):
                 try:
                     numpy.testing.assert_allclose(
                         a_block, b_block, rtol=rel_tol, atol=abs_tol)
