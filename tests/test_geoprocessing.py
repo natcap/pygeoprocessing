@@ -3981,3 +3981,47 @@ class PyGeoprocessing10(unittest.TestCase):
         expected_message = 'Invalid value for'
         actual_message = str(cm.exception)
         self.assertTrue(expected_message in actual_message, actual_message)
+
+    def test_evaluate_raster_calculator_expression(self):
+        """PGP: test evaluate raster symbolic expression."""
+        import pygeoprocessing.symbolic
+
+        srs = osr.SpatialReference()
+        srs.ImportFromEPSG(4326)
+        wgs84_wkt = srs.ExportToWkt()
+        n = 10
+        gtiff_driver = gdal.GetDriverByName('GTiff')
+        raster_a_path = os.path.join(self.workspace_dir, 'a.tif')
+        raster_b_path = os.path.join(self.workspace_dir, 'b.tif')
+        raster_c_path = os.path.join(self.workspace_dir, 'b.tif')
+        for raster_path in (raster_a_path, raster_b_path):
+            new_raster = gtiff_driver.Create(
+                raster_path, n, n, 1, gdal.GDT_Int32)
+            new_raster.SetProjection(wgs84_wkt)
+            new_raster.SetGeoTransform([1, 1.0, 0.0, 1, 0.0, -1.0])
+            new_band = new_raster.GetRasterBand(1)
+            array = numpy.array(range(n*n), dtype=numpy.int32).reshape((n, n))
+            new_band.WriteArray(array)
+            new_raster.FlushCache()
+            new_band = None
+            new_raster = None
+
+        expression_str = 'a+b'
+        symbol_to_path_band_map = {
+            'a': (raster_a_path, 1),
+            'b': (raster_b_path, 1),
+        }
+        target_nodata = None
+        target_raster_path = os.path.join(self.workspace_dir, 'target.tif')
+        pygeoprocessing.symbolic.evaluate_raster_calculator_expression(
+            expression_str, symbol_to_path_band_map, target_nodata,
+            target_raster_path, churn_dir=self.workspace_dir)
+
+        target_raster = gdal.OpenEx(target_raster_path, gdal.OF_RASTER)
+        target_band = target_raster.GetRasterBand(1)
+        target_array = target_band.ReadAsArray()
+        target_band = None
+        target_raster = None
+
+        numpy.testing.assert_almost_equal(
+            target_array, 2*numpy.array(range(n*n)).reshape((n, n)))
