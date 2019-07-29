@@ -16,15 +16,20 @@ LOGGER.addHandler(logging.NullHandler())  # silence logging by default
 
 def evaluate_raster_calculator_expression(
         expression_str, symbol_to_path_band_map, target_nodata,
-        target_raster_path, churn_dir=None, target_sr_wkt=None,
-        target_pixel_size=None, resample_method=None,
-        default_nan=None, default_inf=None):
+        target_raster_path, default_nan=None, default_inf=None):
     """Evaluate the arithmetic expression of rasters.
 
-    Evaluate the symbolic arithmetic expression in `expression_str
+    Evaluate the symbolic arithmetic expression in `expression_str` where the
+    symbols represent equally sized GIS rasters. With the following rules:
 
-    Any nodata pixels in the path list are cause the corresponding pixel to
-    be a nodata value.
+        * any nodata pixels in a raster will cause the entire pixel stack
+          to be `target_nodata`. If `target_nodata` is None, this will be 0.
+        * any calculations the result in NaN or inf values will be replaced
+          by the corresponding values in `default_nan` and `default_inf`.
+          If either of these are not defined an NaN or inf result will cause
+          a ValueError exception to be raised.
+        * valid arithmetic expressions are those available in the `sympy`
+          library and include: +, -, *, /, <, <=, >, >=, !=, &, and |.
 
     Parameters:
         expression_str (str): a valid arithmetic expression whose variables
@@ -44,20 +49,18 @@ def evaluate_raster_calculator_expression(
             `target_raster_path`.
         target_raster_path (str): path to the raster that is created by
             `expression_str`.
-        churn_dir (str): path to a temporary "churn" directory. If not
-            specified uses a tempfile.mkdtemp.
         default_nan (numeric): if a calculation results in an NaN that
-            value is replaces with this value.
+            value is replaces with this value. A ValueError exception is
+            raised if this case occurs and `default_nan` is None.
+        default_inf (numeric): if a calculation results in an +/- inf
+            that value is replaced with this value. A ValueError exception is
+            raised if this case occurs and `default_nan` is None.
 
     Returns:
         None.
 
     """
     LOGGER.debug('evaluating: %s', expression_str)
-    delete_churn_dir = False
-    if churn_dir is None:
-        churn_dir = tempfile.mkdtemp()
-        delete_churn_dir = True
     symbol_list, raster_path_band_list = zip(*symbol_to_path_band_map.items())
     raster_op = sympy.lambdify(symbol_list, expression_str, 'numpy')
 
@@ -66,51 +69,81 @@ def evaluate_raster_calculator_expression(
         [(geoprocessing.get_raster_info(
             path_band[0])['nodata'][path_band[1]-1], 'raw')
          for path_band in raster_path_band_list] + [
-            (raster_op, 'raw'), (target_nodata, 'raw'), (default_nan, 'raw')],
-        _general_raster_calculator_op, target_raster_path, gdal.GDT_Float32,
+            (raster_op, 'raw'), (target_nodata, 'raw'), (default_nan, 'raw'),
+            (default_inf, 'raw')],
+        _generic_raster_op, target_raster_path, gdal.GDT_Float32,
         target_nodata)
-    if delete_churn_dir:
-        shutil.rmtree(churn_dir)
 
 
-def _general_raster_calculator_op(*arg_list):
-    """General raster operation with well conditioned args.
+def _generic_raster_op(*arg_list):
+    """General raster array operation with well conditioned args.
 
     Parameters:
-        arg_list (list): list is 2*n+3 length long laid out as:
-            array_0, ... array_n, nodata_0, ... nodata_n,
-            op, target_nodata, invalid_value_replacement
+        arg_list (list): a list of length 2*n+4 defined as:
+            [array_0, ... array_n, nodata_0, ... nodata_n,
+             func, target_nodata, default_nan, default_inf]
 
-            The first element `op` is an operation that takes n elements which
-            are numpy.ndarrays. The second n elements are the nodata values
-            for the corresponding ndarrays. The second to value is the target
-            nodata value and the final value is the value to set if an NaN
-            occurs in the calculations.
+            Where `func` is a function that takes 2*n elements. The first
+            `n` elements are `numpy.ndarrays` and the second set of `n`
+            elements are the corresponding nodata for those arrays. T
+
+            `target_noata` is the result of an element in `func` if any of the
+            array values that would produce the result contain a nodata value.
+
+            `default_nan` and `default_inf` is the value that should be
+            replaced if the result of applying `func` to its arguments results
+            in an `numpy.nan` or `numpy.inf` value. A ValueError exception is
+            raised if a `numpy.nan` or `numpy.inf` is produced by `func` but
+            the corresponding `default_*` argument is `None`.
 
     Returns:
-        op applied to a masked version of array_0, ... array_n where only
+        func applied to a masked version of array_0, ... array_n where only
         valid nodata values in the raster stack are used. Otherwise the target
         pixels are set to target_nodata.
 
     """
-    n = int((len(arg_list)-3) // 2)
-    result = numpy.empty(arg_list[0].shape, dtype=numpy.float32)
+    n = int((len(arg_list)-4) // 2)
     array_list = arg_list[0:n]
+    target_dtype = numpy.result_type(*[x.dtype for x in array_list])
+    result = numpy.empty(arg_list[0].shape, dtype=target_dtype)
     nodata_list = arg_list[n:2*n]
-    op = arg_list[2*n]
+    func = arg_list[2*n]
     target_nodata = arg_list[2*n+1]
-    invalid_value_replacement = arg_list[2*n+2]
-    result[:] = target_nodata
-    if any([x is not None for x in nodata_list]):
+    default_nan = arg_list[2*n+2]
+    default_inf = arg_list[2*n+3]
+    if target_nodata is not None:
+        result[:] = target_nodata
+    nodata_present = any([x is not None for x in nodata_list])
+    valid_mask = None
+    if nodata_present:
         valid_mask = ~numpy.logical_or.reduce(
             [numpy.isclose(array, nodata)
              for array, nodata in zip(array_list, nodata_list)
              if nodata is not None])
-        result[valid_mask] = op(*[array[valid_mask] for array in array_list])
+        func_result = func(*[array[valid_mask] for array in array_list])
     else:
         # there's no nodata values to mask so operate directly
-        result[:] = op(*array_list)
+        func_result = func(*array_list)
 
-    result[numpy.isnan(result) | numpy.isinf(result)] = (
-        invalid_value_replacement)
+    if nodata_present:
+        result[valid_mask] = func_result
+    else:
+        result[:] = func_result
+
+    is_nan_mask = numpy.isnan(result)
+    if is_nan_mask.any():
+        if default_nan:
+            result[is_nan_mask] = default_nan
+        else:
+            raise ValueError(
+                'Encountered NaN in calculation but `default_nan` is None.')
+
+    is_inf_mask = numpy.isinf(result)
+    if is_inf_mask.any():
+        if default_inf:
+            result[is_inf_mask] = default_inf
+        else:
+            raise ValueError(
+                'Encountered inf in calculation but `default_inf` is None.')
+
     return result

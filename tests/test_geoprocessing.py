@@ -4035,7 +4035,7 @@ class PyGeoprocessing10(unittest.TestCase):
         target_raster_path = os.path.join(self.workspace_dir, 'target.tif')
         pygeoprocessing.symbolic.evaluate_raster_calculator_expression(
             expression_str, symbol_to_path_band_map, target_nodata,
-            target_raster_path, churn_dir=self.workspace_dir)
+            target_raster_path)
 
         target_raster = gdal.OpenEx(target_raster_path, gdal.OF_RASTER)
         target_band = target_raster.GetRasterBand(1)
