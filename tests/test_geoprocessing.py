@@ -50,6 +50,7 @@ def _make_simple_raster(val_array, nodata_val, gdal_type, target_path):
     new_raster.SetProjection(wgs84_wkt)
     new_raster.SetGeoTransform([1, 1.0, 0.0, 1, 0.0, -1.0])
     new_band = new_raster.GetRasterBand(1)
+    new_band.SetNoDataValue(nodata_val)
     new_band.WriteArray(val_array)
     new_raster.FlushCache()
     new_band = None
@@ -4044,7 +4045,7 @@ class PyGeoprocessing10(unittest.TestCase):
             val_array, nodata_val, gdal.GDT_Int32, raster_b_path)
 
         # test regular addition
-        expression_str = 'a+b'
+        sum_expression_str = 'a+b'
         symbol_to_path_band_map = {
             'a': (raster_a_path, 1),
             'b': (raster_b_path, 1),
@@ -4052,7 +4053,7 @@ class PyGeoprocessing10(unittest.TestCase):
         target_nodata = None
         target_raster_path = os.path.join(self.workspace_dir, 'target.tif')
         pygeoprocessing.symbolic.evaluate_raster_calculator_expression(
-            expression_str, symbol_to_path_band_map, target_nodata,
+            sum_expression_str, symbol_to_path_band_map, target_nodata,
             target_raster_path)
         target_array = _read_raster_to_array(target_raster_path)
         numpy.testing.assert_almost_equal(
@@ -4070,13 +4071,25 @@ class PyGeoprocessing10(unittest.TestCase):
         val_array[-1, -1] = nodata_val
         _make_simple_raster(
             val_array, nodata_val, gdal.GDT_Int32, raster_d_path)
+        mult_expression_str = 'c*d'
+        symbol_to_path_band_map = {
+            'c': (raster_c_path, 1),
+            'd': (raster_d_path, 1),
+        }
 
         pygeoprocessing.symbolic.evaluate_raster_calculator_expression(
-            expression_str, symbol_to_path_band_map, nodata_val,
+            mult_expression_str, symbol_to_path_band_map, nodata_val,
             target_raster_path)
         target_array = _read_raster_to_array(target_raster_path)
+        print(target_array)
         expected_array = val_array * val_array
         expected_array[0, 0] = -1
         expected_array[-1, -1] = -1
+        print(expected_array)
         numpy.testing.assert_almost_equal(
-            target_array, 2*numpy.array(range(n*n)).reshape((n, n)))
+            target_array.flatten(), expected_array**2)
+
+        # test with undefined target nodata
+        pygeoprocessing.symbolic.evaluate_raster_calculator_expression(
+            mult_expression_str, symbol_to_path_band_map, -1,
+            target_raster_path)
