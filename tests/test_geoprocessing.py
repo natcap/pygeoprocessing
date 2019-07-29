@@ -4016,3 +4016,12 @@ class PyGeoprocessing10(unittest.TestCase):
         target_band = target_raster.GetRasterBand(1)
         numpy.testing.assert_array_equal(
             target_band.ReadAsArray(), array*2)
+
+    def test_iterblocks_bad_raster(self):
+        """PGP: tests iterblocks presents useful error on missing raster."""
+        import pygeoprocessing
+        with self.assertRaises(ValueError) as cm:
+            _ = list(pygeoprocessing.iterblocks(('fake_file.tif', 1)))
+        expected_message = 'could not be opened'
+        actual_message = str(cm.exception)
+        self.assertTrue(expected_message in actual_message, actual_message)

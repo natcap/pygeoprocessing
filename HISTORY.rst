@@ -11,6 +11,8 @@ Unreleased Changes
   format.  Note any ``raster_driver_name`` values must refer to drivers that
   ``GDAL`` supports for creation and any values in ``raster_creation_options``
   must be consistent with the driver options in ``raster_driver_name``.
+* Modified ``iterblocks`` to raise a helpful ValueError instead of a general
+  NoneTypeError if a raster does not open.
 
 1.7.0 (2019-06-27)
 ------------------
