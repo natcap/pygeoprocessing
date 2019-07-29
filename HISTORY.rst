@@ -1,6 +1,13 @@
 Release History
 ===============
 
+Unreleased Changes
+------------------
+* Added a ``'numpy_type'`` field to the result of ``get_raster_info`` that
+  contains the equivalent numpy datatype of the GDAL type in the raster. This
+  includes functionality differentate between the unsigned and signed
+  ``gdal.GDT_Byte`` vs. ``numpy.int8`` and ``numpy.uint8``.
+
 1.7.0 (2019-06-27)
 ------------------
 * Removing support for Python 2.7.
