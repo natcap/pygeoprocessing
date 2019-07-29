@@ -8,6 +8,8 @@ Unreleased Changes
   PyGeoprocessing.
 * Added an out-of-core high performance raster percentile function at
   pygeoprocessing.raster_band_percentile.
+* Modified `iterblocks` to raise a helpful ValueError instead of a general
+  NoneTypeError if a raster does not open.
 
 1.7.0 (2019-06-27)
 ------------------
