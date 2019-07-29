@@ -7,6 +7,8 @@ Unreleased Changes
   contains the equivalent numpy datatype of the GDAL type in the raster. This
   includes functionality differentate between the unsigned and signed
   ``gdal.GDT_Byte`` vs. ``numpy.int8`` and ``numpy.uint8``.
+* Modified `iterblocks` to raise a helpful ValueError instead of a general
+  NoneTypeError if a raster does not open.
 
 1.7.0 (2019-06-27)
 ------------------
