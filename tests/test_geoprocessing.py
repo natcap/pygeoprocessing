@@ -5,8 +5,6 @@ import os
 import unittest
 import shutil
 import types
-import logging
-
 
 from osgeo import gdal
 from osgeo import ogr
@@ -3981,3 +3979,7 @@ class PyGeoprocessing10(unittest.TestCase):
         expected_message = 'Invalid value for'
         actual_message = str(cm.exception)
         self.assertTrue(expected_message in actual_message, actual_message)
+
+    def test_get_file_info(self):
+        """PGP: geoprocessing test for file_list from raster and vector."""
+        pass

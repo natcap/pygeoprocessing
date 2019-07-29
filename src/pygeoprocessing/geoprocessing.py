@@ -1452,10 +1452,10 @@ def zonal_statistics(
 
 
 def get_vector_info(vector_path, layer_id=0):
-    """Get information about an OGR vector (datasource).
+    """Get information about an GDAL vector.
 
     Parameters:
-        vector_path (str): a path to a OGR vector.
+        vector_path (str): a path to a GDAL vector.
         layer_id (str/int): name or index of underlying layer to analyze.
             Defaults to 0.
 
@@ -1479,6 +1479,7 @@ def get_vector_info(vector_path, layer_id=0):
         raise ValueError(
             "Could not open %s as a gdal.OF_VECTOR" % vector_path)
     vector_properties = {}
+    vector_properties['file_list'] = vector.GetFileList()
     layer = vector.GetLayer(iLayer=layer_id)
     # projection is same for all layers, so just use the first one
     spatial_ref = layer.GetSpatialRef()
@@ -1535,6 +1536,7 @@ def get_raster_info(raster_path):
         raise ValueError(
             "Could not open %s as a gdal.OF_RASTER" % raster_path)
     raster_properties = {}
+    raster_properties['file_list'] = raster.GetFileList()
     projection_wkt = raster.GetProjection()
     if not projection_wkt:
         projection_wkt = None
