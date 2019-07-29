@@ -27,6 +27,35 @@ def passthrough(x):
     return x
 
 
+def _make_simple_raster(val_array, nodata_val, gdal_type, target_path):
+    """Create a raster of size `val_array.shape` at `target_path`.
+
+    Parameters:
+        val_array (numpy.array): a 2d array.
+        target_path (str): path to raster to create that will be of the
+            same type of val_array with contents of val_array. Projection is
+            WGS84 w/ 1 degree pixels with upper left corner at (1, 1).
+
+    Returns:
+        None.
+
+    """
+    wgs84_sr = osr.SpatialReference()
+    wgs84_sr.ImportFromEPSG(4326)
+    wgs84_wkt = wgs84_sr.ExportToWkt()
+    gtiff_driver = gdal.GetDriverByName('GTiff')
+    ny, nx = val_array.shape
+    new_raster = gtiff_driver.Create(
+        target_path, nx, ny, 1, gdal_type)
+    new_raster.SetProjection(wgs84_wkt)
+    new_raster.SetGeoTransform([1, 1.0, 0.0, 1, 0.0, -1.0])
+    new_band = new_raster.GetRasterBand(1)
+    new_band.WriteArray(val_array)
+    new_raster.FlushCache()
+    new_band = None
+    new_raster = None
+
+
 class PyGeoprocessing10(unittest.TestCase):
     """Tests for the PyGeoprocesing 1.0 refactor."""
 
@@ -3986,26 +4015,17 @@ class PyGeoprocessing10(unittest.TestCase):
         """PGP: test evaluate raster symbolic expression."""
         import pygeoprocessing.symbolic
 
-        srs = osr.SpatialReference()
-        srs.ImportFromEPSG(4326)
-        wgs84_wkt = srs.ExportToWkt()
         n = 10
-        gtiff_driver = gdal.GetDriverByName('GTiff')
         raster_a_path = os.path.join(self.workspace_dir, 'a.tif')
         raster_b_path = os.path.join(self.workspace_dir, 'b.tif')
-        raster_c_path = os.path.join(self.workspace_dir, 'b.tif')
-        for raster_path in (raster_a_path, raster_b_path):
-            new_raster = gtiff_driver.Create(
-                raster_path, n, n, 1, gdal.GDT_Int32)
-            new_raster.SetProjection(wgs84_wkt)
-            new_raster.SetGeoTransform([1, 1.0, 0.0, 1, 0.0, -1.0])
-            new_band = new_raster.GetRasterBand(1)
-            array = numpy.array(range(n*n), dtype=numpy.int32).reshape((n, n))
-            new_band.WriteArray(array)
-            new_raster.FlushCache()
-            new_band = None
-            new_raster = None
+        raster_c_path = os.path.join(self.workspace_dir, 'c.tif')
+        val_array = numpy.array(range(n*n), dtype=numpy.int32).reshape((n, n))
+        nodata_val = None
+        for raster_path in (raster_a_path, raster_b_path, raster_c_path):
+            _make_simple_raster(
+                val_array, nodata_val, gdal.GDT_Int32, raster_path)
 
+        # test regular addition
         expression_str = 'a+b'
         symbol_to_path_band_map = {
             'a': (raster_a_path, 1),
