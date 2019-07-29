@@ -5,8 +5,6 @@ import os
 import unittest
 import shutil
 import types
-import logging
-
 
 from osgeo import gdal
 from osgeo import ogr
@@ -4059,3 +4057,12 @@ class PyGeoprocessing10(unittest.TestCase):
             pygeoprocessing.get_gis_type('totally_fake_file')
         actual_message = str(cm.exception)
         self.assertTrue('does not exist' in actual_message, actual_message)
+
+    def test_iterblocks_bad_raster(self):
+        """PGP: tests iterblocks presents useful error on missing raster."""
+        import pygeoprocessing
+        with self.assertRaises(ValueError) as cm:
+            _ = list(pygeoprocessing.iterblocks(('fake_file.tif', 1)))
+        expected_message = 'could not be opened'
+        actual_message = str(cm.exception)
+        self.assertTrue(expected_message in actual_message, actual_message)
