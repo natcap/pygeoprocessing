@@ -2647,6 +2647,9 @@ def iterblocks(
             "`raster_path_band` not formatted as expected.  Expects "
             "(path, band_index), received %s" % repr(raster_path_band))
     raster = gdal.OpenEx(raster_path_band[0], gdal.OF_RASTER)
+    if raster is None:
+        raise ValueError(
+            "Raster at %s could not be opened." % raster_path_band[0])
     band = raster.GetRasterBand(raster_path_band[1])
     block = band.GetBlockSize()
     cols_per_block = block[0]
