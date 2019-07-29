@@ -4004,3 +4004,12 @@ class PyGeoprocessing10(unittest.TestCase):
         vector = None
         vector_info = pygeoprocessing.get_vector_info(vector_path)
         self.assertEqual(vector_info['file_list'], vector_file_list)
+
+    def test_iterblocks_bad_raster(self):
+        """PGP: tests iterblocks presents useful error on missing raster."""
+        import pygeoprocessing
+        with self.assertRaises(ValueError) as cm:
+            _ = list(pygeoprocessing.iterblocks(('fake_file.tif', 1)))
+        expected_message = 'could not be opened'
+        actual_message = str(cm.exception)
+        self.assertTrue(expected_message in actual_message, actual_message)
