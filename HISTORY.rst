@@ -5,6 +5,8 @@ Unreleased Changes
 ------------------
 * Changed default compression routine for GeoTIFFs to ZSTD (thanks Facebook
   https://facebook.github.io/zstd/).
+* Modified `iterblocks` to raise a helpful ValueError instead of a general
+  NoneTypeError if a raster does not open.
 
 1.7.0 (2019-06-27)
 ------------------
