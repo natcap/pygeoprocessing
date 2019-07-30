@@ -690,7 +690,7 @@ def align_and_resize_raster_stack(
             bounding_box_list, bounding_box_mode)
 
     if vector_mask_options:
-        # translate pygeoprocessing terminology into GDAL warp options.
+        # ensure the mask exists and intersects with the target bounding box
         if 'mask_vector_path' not in vector_mask_options:
             raise ValueError(
                 'vector_mask_options passed, but no value for '
@@ -704,7 +704,10 @@ def align_and_resize_raster_stack(
                 mask_vector_info['projection'], target_sr_wkt)
         else:
             mask_vector_bb = mask_vector_info['bounding_box']
-        target_bounding_box = merge_bounding_box_list(
+        # Calling `merge_bounding_box_list` will raise an ValueError if the
+        # bounding box of the mask and the target do not intersect. The
+        # result is otherwise not used.
+        _ = merge_bounding_box_list(
             [target_bounding_box, mask_vector_bb], 'intersection')
 
     if raster_align_index is not None and raster_align_index >= 0:
