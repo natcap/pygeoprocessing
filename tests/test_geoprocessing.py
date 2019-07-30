@@ -3980,6 +3980,109 @@ class PyGeoprocessing10(unittest.TestCase):
         actual_message = str(cm.exception)
         self.assertTrue(expected_message in actual_message, actual_message)
 
+    def test_get_file_info(self):
+        """PGP: geoprocessing test for `file_list` in the get_*_info ops."""
+        import pygeoprocessing
+
+        gtiff_driver = gdal.GetDriverByName('GTiff')
+        raster_path = os.path.join(self.workspace_dir, 'test.tif')
+        raster = gtiff_driver.Create(raster_path, 1, 1, 1, gdal.GDT_Int32)
+        raster.FlushCache()
+        raster_file_list = raster.GetFileList()
+        raster = None
+        raster_info = pygeoprocessing.get_raster_info(raster_path)
+        self.assertEqual(raster_info['file_list'], raster_file_list)
+
+        gpkg_driver = gdal.GetDriverByName('GPKG')
+        vector_path = os.path.join(self.workspace_dir, 'small_vector.gpkg')
+        vector = gpkg_driver.Create(vector_path, 0, 0, 0, gdal.GDT_Unknown)
+        srs = osr.SpatialReference()
+        srs.ImportFromEPSG(4326)
+        layer = vector.CreateLayer('small_vector', srs=srs)
+        del layer
+        vector_file_list = vector.GetFileList()
+        vector = None
+        vector_info = pygeoprocessing.get_vector_info(vector_path)
+        self.assertEqual(vector_info['file_list'], vector_file_list)
+
+    def test_get_gis_type(self):
+        """PGP: test geoprocessing type."""
+        import pygeoprocessing
+        gpkg_driver = ogr.GetDriverByName('GPKG')
+        vector_path = os.path.join(self.workspace_dir, 'small_vector.gpkg')
+        vector = gpkg_driver.CreateDataSource(vector_path)
+
+        srs = osr.SpatialReference()
+        srs.ImportFromEPSG(4326)
+        layer = vector.CreateLayer('small_vector', srs=srs)
+        layer.CreateField(ogr.FieldDefn('expected_value', ogr.OFTInteger))
+        layer_defn = layer.GetLayerDefn()
+
+        # make an n x n raster with 2*m x 2*m polygons inside.
+        pixel_size = 1.0
+        subpixel_size = 1./5. * pixel_size
+        origin_x = 1.0
+        origin_y = -1.0
+        n = 16
+        layer.StartTransaction()
+        for row_index in range(n * 2):
+            for col_index in range(n * 2):
+                x_pos = origin_x + (
+                    col_index*2 + 1 + col_index // 2) * subpixel_size
+                y_pos = origin_y - (
+                    row_index*2 + 1 + row_index // 2) * subpixel_size
+                shapely_feature = shapely.geometry.Polygon([
+                    (x_pos, y_pos),
+                    (x_pos+subpixel_size, y_pos),
+                    (x_pos+subpixel_size, y_pos-subpixel_size),
+                    (x_pos, y_pos-subpixel_size),
+                    (x_pos, y_pos)])
+                new_feature = ogr.Feature(layer_defn)
+                new_geometry = ogr.CreateGeometryFromWkb(shapely_feature.wkb)
+                new_feature.SetGeometry(new_geometry)
+                expected_value = row_index // 2 * n + col_index // 2
+                new_feature.SetField('expected_value', expected_value)
+                layer.CreateFeature(new_feature)
+        layer.CommitTransaction()
+        layer.SyncToDisk()
+        layer = None
+        vector = None
+
+        gtiff_driver = gdal.GetDriverByName('GTiff')
+        raster_path = os.path.join(self.workspace_dir, 'small_raster.tif')
+        new_raster = gtiff_driver.Create(
+            raster_path, n, n, 1, gdal.GDT_Int32, options=[
+                'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
+                'BLOCKXSIZE=16', 'BLOCKYSIZE=16'])
+        new_raster.SetProjection(srs.ExportToWkt())
+        new_raster.SetGeoTransform([origin_x, 1.0, 0.0, origin_y, 0.0, -1.0])
+        new_band = new_raster.GetRasterBand(1)
+        new_band.SetNoDataValue(-1)
+        array = numpy.array(range(n*n), dtype=numpy.int32).reshape((n, n))
+        new_band.WriteArray(array)
+        new_raster.FlushCache()
+        new_band = None
+        new_raster = None
+
+        text_file_path = os.path.join(self.workspace_dir, 'text_file.txt')
+        with open(text_file_path, 'w') as text_file:
+            text_file.write('test')
+
+        self.assertEqual(
+            pygeoprocessing.get_gis_type(text_file_path),
+            pygeoprocessing.UNKNOWN_TYPE)
+        self.assertEqual(
+            pygeoprocessing.get_gis_type(raster_path),
+            pygeoprocessing.RASTER_TYPE)
+        self.assertEqual(
+            pygeoprocessing.get_gis_type(vector_path),
+            pygeoprocessing.VECTOR_TYPE)
+
+        with self.assertRaises(ValueError) as cm:
+            pygeoprocessing.get_gis_type('totally_fake_file')
+        actual_message = str(cm.exception)
+        self.assertTrue('does not exist' in actual_message, actual_message)
+
     def test_iterblocks_bad_raster(self):
         """PGP: tests iterblocks presents useful error on missing raster."""
         import pygeoprocessing
