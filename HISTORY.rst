@@ -11,6 +11,13 @@ Unreleased Changes
   format.  Note any ``raster_driver_name`` values must refer to drivers that
   ``GDAL`` supports for creation and any values in ``raster_creation_options``
   must be consistent with the driver options in ``raster_driver_name``.
+* Added a ``'file_list'`` key to the dictionary returned by
+  ``get_raster_info`` and ``get_vector_info`` that contains a list of all the
+  files associated with that GIS object. The first parameter of these lists
+  can be passed to ``gdal.OpenEx`` to open the object directly.
+* Added a ``get_gis_type`` function to ``pygeoprocessing`` that takes a
+  filepath and returns a bitmask of ``pygeoprocessing.RASTER_TYPE`` and/or
+  ``pygeoprocessing.VECTOR_TYPE``.
 * Modified ``iterblocks`` to raise a helpful ValueError instead of a general
   NoneTypeError if a raster does not open.
 
