@@ -49,10 +49,10 @@ cdef int BLOCK_BITS = 8
 cdef int MANAGED_RASTER_N_BLOCKS = 2**6
 
 # these are the creation options that'll be used for all the rasters
-DEFAULT_GTIFF_CREATION_OPTIONS = (
+DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS = ('GTiff', (
     'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=DEFLATE',
     'BLOCKXSIZE=%d' % (1 << BLOCK_BITS),
-    'BLOCKYSIZE=%d' % (1 << BLOCK_BITS))
+    'BLOCKYSIZE=%d' % (1 << BLOCK_BITS)))
 
 # if nodata is not defined for a float, it's a difficult choice. this number
 # probably won't collide with anything ever created by humans
@@ -503,7 +503,7 @@ def _generate_read_bounds(offset_dict, raster_x_size, raster_y_size):
 def fill_pits(
         dem_raster_path_band, target_filled_dem_raster_path,
         working_dir=None,
-        gtiff_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS):
+        raster_driver_creation_tuple=DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS):
     """Fill the pits in a DEM.
 
         This function defines pits as hydrologically connected regions that do
@@ -524,9 +524,10 @@ def fill_pits(
             it is created by this call. If None, a temporary directory is
             created by tempdir.mkdtemp which is removed after the function
             call completes successfully.
-        gtiff_creation_options (list): this is an argument list that will be
-            passed to the GTiff driver.  Useful for blocksizes, compression,
-            and more.
+        raster_driver_creation_tuple (tuple): a tuple containing a GDAL driver
+            name string as the first element and a GDAL creation options
+            tuple/list as the second. Defaults to a GTiff driver tuple
+            defined at geoprocessing.DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS.
 
     Returns:
         None.
@@ -622,7 +623,7 @@ def fill_pits(
     pygeoprocessing.new_raster_from_base(
         dem_raster_path_band[0], flat_region_mask_path, gdal.GDT_Byte,
         [mask_nodata], fill_value_list=[mask_nodata],
-        gtiff_creation_options=gtiff_creation_options)
+        raster_driver_creation_tuple=raster_driver_creation_tuple)
     flat_region_mask_managed_raster = _ManagedRaster(
         flat_region_mask_path, 1, 1)
 
@@ -633,16 +634,16 @@ def fill_pits(
     pygeoprocessing.new_raster_from_base(
         dem_raster_path_band[0], pit_mask_path, gdal.GDT_Int32,
         [mask_nodata], fill_value_list=[mask_nodata],
-        gtiff_creation_options=gtiff_creation_options)
+        raster_driver_creation_tuple=raster_driver_creation_tuple)
     pit_mask_managed_raster = _ManagedRaster(
         pit_mask_path, 1, 1)
 
     # copy the base DEM to the target and set up for writing
-    geotiff_driver = gdal.GetDriverByName('GTiff')
+    raster_driver = gdal.GetDriverByName(raster_driver_creation_tuple[0])
     base_dem_raster = gdal.OpenEx(dem_raster_path_band[0], gdal.OF_RASTER)
-    geotiff_driver.CreateCopy(
+    raster_driver.CreateCopy(
         target_filled_dem_raster_path, base_dem_raster,
-        options=gtiff_creation_options)
+        options=raster_driver_creation_tuple[1])
     target_dem_raster = gdal.OpenEx(
         target_filled_dem_raster_path, gdal.OF_RASTER)
     target_dem_band = target_dem_raster.GetRasterBand(dem_raster_path_band[1])
@@ -865,7 +866,7 @@ def fill_pits(
 def flow_dir_d8(
         dem_raster_path_band, target_flow_dir_path,
         working_dir=None,
-        gtiff_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS):
+        raster_driver_creation_tuple=DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS):
     """D8 flow direction.
 
     Parameters:
@@ -885,9 +886,10 @@ def flow_dir_d8(
         working_dir (string): If not None, indicates where temporary files
             should be created during this run. If this directory doesn't exist
             it is created by this call.
-        gtiff_creation_options (list): this is an argument list that will be
-            passed to the GTiff driver.  Useful for blocksizes, compression,
-            and more.
+        raster_driver_creation_tuple (tuple): a tuple containing a GDAL driver
+            name string as the first element and a GDAL creation options
+            tuple/list as the second. Defaults to a GTiff driver tuple
+            defined at geoprocessing.DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS.
 
     Returns:
         None.
@@ -974,7 +976,7 @@ def flow_dir_d8(
     pygeoprocessing.new_raster_from_base(
         dem_raster_path_band[0], flat_region_mask_path, gdal.GDT_Byte,
         [mask_nodata], fill_value_list=[mask_nodata],
-        gtiff_creation_options=gtiff_creation_options)
+        raster_driver_creation_tuple=raster_driver_creation_tuple)
     flat_region_mask_managed_raster = _ManagedRaster(
         flat_region_mask_path, 1, 1)
 
@@ -982,7 +984,7 @@ def flow_dir_d8(
     pygeoprocessing.new_raster_from_base(
         dem_raster_path_band[0], target_flow_dir_path, gdal.GDT_Byte,
         [flow_dir_nodata], fill_value_list=[flow_dir_nodata],
-        gtiff_creation_options=gtiff_creation_options)
+        raster_driver_creation_tuple=raster_driver_creation_tuple)
     flow_dir_managed_raster = _ManagedRaster(target_flow_dir_path, 1, 1)
 
     # this creates a raster that's used for a dynamic programming solution to
@@ -994,7 +996,7 @@ def flow_dir_d8(
     pygeoprocessing.new_raster_from_base(
         dem_raster_path_band[0], plateau_distance_path, gdal.GDT_Float64,
         [-1], fill_value_list=[raster_x_size * raster_y_size],
-        gtiff_creation_options=gtiff_creation_options)
+        raster_driver_creation_tuple=raster_driver_creation_tuple)
     plateau_distance_managed_raster = _ManagedRaster(
         plateau_distance_path, 1, 1)
 
@@ -1008,11 +1010,11 @@ def flow_dir_d8(
         compatable_dem_raster_path_band = (
             os.path.join(working_dir_path, 'compatable_dem.tif'),
             dem_raster_path_band[1])
-        geotiff_driver = gdal.GetDriverByName('GTiff')
+        raster_driver = gdal.GetDriverByName(raster_driver_creation_tuple[0])
         dem_raster = gdal.OpenEx(dem_raster_path_band[0], gdal.OF_RASTER)
-        geotiff_driver.CreateCopy(
+        raster_driver.CreateCopy(
             compatable_dem_raster_path_band[0], dem_raster,
-            options=gtiff_creation_options)
+            options=raster_driver_creation_tuple[1])
         dem_raster = None
         LOGGER.info("compatible dem complete")
     else:
@@ -1227,7 +1229,7 @@ def flow_dir_d8(
 def flow_accumulation_d8(
         flow_dir_raster_path_band, target_flow_accum_raster_path,
         weight_raster_path_band=None,
-        gtiff_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS):
+        raster_driver_creation_tuple=DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS):
     """D8 flow accumulation.
 
     Parameters:
@@ -1250,9 +1252,10 @@ def flow_accumulation_d8(
             weight. If `None`, 1 is the default flow accumulation weight.
             This raster must be the same dimensions as
             `flow_dir_mfd_raster_path_band`.
-        gtiff_creation_options (list): this is an argument list that will be
-            passed to the GTiff driver.  Useful for blocksizes, compression,
-            and more.
+        raster_driver_creation_tuple (tuple): a tuple containing a GDAL driver
+            name string as the first element and a GDAL creation options
+            tuple/list as the second. Defaults to a GTiff driver tuple
+            defined at geoprocessing.DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS.
 
     Returns:
         None.
@@ -1311,7 +1314,7 @@ def flow_accumulation_d8(
         flow_dir_raster_path_band[0], target_flow_accum_raster_path,
         gdal.GDT_Float64, [flow_accum_nodata],
         fill_value_list=[flow_accum_nodata],
-        gtiff_creation_options=gtiff_creation_options)
+        raster_driver_creation_tuple=raster_driver_creation_tuple)
     flow_accum_managed_raster = _ManagedRaster(
         target_flow_accum_raster_path, 1, 1)
 
@@ -1447,7 +1450,7 @@ def flow_accumulation_d8(
 
 def flow_dir_mfd(
         dem_raster_path_band, target_flow_dir_path, working_dir=None,
-        gtiff_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS):
+        raster_driver_creation_tuple=DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS):
     """Multiple flow direction.
 
     Parameters:
@@ -1473,9 +1476,10 @@ def flow_dir_mfd(
         working_dir (string): If not None, indicates where temporary files
             should be created during this run. If this directory doesn't exist
             it is created by this call.
-        gtiff_creation_options (list): this is an argument list that will be
-            passed to the GTiff driver.  Useful for blocksizes, compression,
-            and more.
+        raster_driver_creation_tuple (tuple): a tuple containing a GDAL driver
+            name string as the first element and a GDAL creation options
+            tuple/list as the second. Defaults to a GTiff driver tuple
+            defined at geoprocessing.DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS.
 
     Returns:
         None.
@@ -1581,7 +1585,7 @@ def flow_dir_mfd(
     pygeoprocessing.new_raster_from_base(
         dem_raster_path_band[0], flat_region_mask_path, gdal.GDT_Byte,
         [mask_nodata], fill_value_list=[mask_nodata],
-        gtiff_creation_options=gtiff_creation_options)
+        raster_driver_creation_tuple=raster_driver_creation_tuple)
     flat_region_mask_managed_raster = _ManagedRaster(
         flat_region_mask_path, 1, 1)
 
@@ -1589,7 +1593,7 @@ def flow_dir_mfd(
     pygeoprocessing.new_raster_from_base(
         dem_raster_path_band[0], target_flow_dir_path, gdal.GDT_Int32,
         [flow_dir_nodata], fill_value_list=[flow_dir_nodata],
-        gtiff_creation_options=gtiff_creation_options)
+        raster_driver_creation_tuple=raster_driver_creation_tuple)
     flow_dir_managed_raster = _ManagedRaster(target_flow_dir_path, 1, 1)
 
     plateu_drain_mask_path = os.path.join(
@@ -1597,7 +1601,7 @@ def flow_dir_mfd(
     pygeoprocessing.new_raster_from_base(
         dem_raster_path_band[0], plateu_drain_mask_path, gdal.GDT_Byte,
         [mask_nodata], fill_value_list=[mask_nodata],
-        gtiff_creation_options=gtiff_creation_options)
+        raster_driver_creation_tuple=raster_driver_creation_tuple)
     plateau_drain_mask_managed_raster = _ManagedRaster(
         plateu_drain_mask_path, 1, 1)
 
@@ -1612,7 +1616,7 @@ def flow_dir_mfd(
         dem_raster_path_band[0], plateau_distance_path, gdal.GDT_Float64,
         [plateau_distance_nodata], fill_value_list=[
             raster_x_size * raster_y_size],
-        gtiff_creation_options=gtiff_creation_options)
+        raster_driver_creation_tuple=raster_driver_creation_tuple)
     plateau_distance_managed_raster = _ManagedRaster(
         plateau_distance_path, 1, 1)
 
@@ -1625,11 +1629,11 @@ def flow_dir_mfd(
         compatable_dem_raster_path_band = (
             os.path.join(working_dir_path, 'compatable_dem.tif'),
             dem_raster_path_band[1])
-        geotiff_driver = gdal.GetDriverByName('GTiff')
+        raster_driver = gdal.GetDriverByName(raster_driver_creation_tuple[0])
         dem_raster = gdal.OpenEx(dem_raster_path_band[0], gdal.OF_RASTER)
-        geotiff_driver.CreateCopy(
+        raster_driver.CreateCopy(
             compatable_dem_raster_path_band[0], dem_raster,
-            options=gtiff_creation_options)
+            options=raster_driver_creation_tuple[1])
         dem_raster = None
         LOGGER.info("compatible dem complete")
     else:
@@ -1939,7 +1943,7 @@ def flow_dir_mfd(
 def flow_accumulation_mfd(
         flow_dir_mfd_raster_path_band, target_flow_accum_raster_path,
         weight_raster_path_band=None,
-        gtiff_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS):
+        raster_driver_creation_tuple=DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS):
     """Multiple flow direction accumulation.
 
     Parameters:
@@ -1964,11 +1968,14 @@ def flow_accumulation_mfd(
             This raster must be the same dimensions as
             `flow_dir_mfd_raster_path_band`. If a weight nodata pixel is
             encountered it will be treated as a weight value of 0.
-        gtiff_creation_options (list): this is an argument list that will be
-            passed to the GTiff driver.  Useful for blocksizes, compression,
-            and more.
+        raster_driver_creation_tuple (tuple): a tuple containing a GDAL driver
+            name string as the first element and a GDAL creation options
+            tuple/list as the second. Defaults to a GTiff driver tuple
+            defined at geoprocessing.DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS.
+
     Returns:
         None.
+
     """
     # These variables are used to iterate over the DEM using `iterblock`
     # indexes, a numpy.float64 type is used since we need to statically cast
@@ -2030,7 +2037,7 @@ def flow_accumulation_mfd(
         flow_dir_mfd_raster_path_band[0], target_flow_accum_raster_path,
         gdal.GDT_Float64, [flow_accum_nodata],
         fill_value_list=[flow_accum_nodata],
-        gtiff_creation_options=gtiff_creation_options)
+        raster_driver_creation_tuple=raster_driver_creation_tuple)
 
     flow_accum_managed_raster = _ManagedRaster(
         target_flow_accum_raster_path, 1, 1)
@@ -2181,7 +2188,7 @@ def distance_to_channel_d8(
         flow_dir_d8_raster_path_band, channel_raster_path_band,
         target_distance_to_channel_raster_path,
         weight_raster_path_band=None,
-        gtiff_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS):
+        raster_driver_creation_tuple=DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS):
     """Calculate distance to channel with D8 flow.
 
     Parameters:
@@ -2205,9 +2212,10 @@ def distance_to_channel_d8(
             weight. If `None`, 1 is the default distance between neighboring
             pixels. This raster must be the same dimensions as
             `flow_dir_mfd_raster_path_band`.
-        gtiff_creation_options (list): this is an argument list that will be
-            passed to the GTiff driver.  Useful for blocksizes, compression,
-            and more.
+        raster_driver_creation_tuple (tuple): a tuple containing a GDAL driver
+            name string as the first element and a GDAL creation options
+            tuple/list as the second. Defaults to a GTiff driver tuple
+            defined at geoprocessing.DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS.
 
     Returns:
         None.
@@ -2251,7 +2259,7 @@ def distance_to_channel_d8(
         target_distance_to_channel_raster_path,
         gdal.GDT_Float64, [distance_nodata],
         fill_value_list=[distance_nodata],
-        gtiff_creation_options=gtiff_creation_options)
+        raster_driver_creation_tuple=raster_driver_creation_tuple)
     distance_to_channel_managed_raster = _ManagedRaster(
         target_distance_to_channel_raster_path, 1, 1)
 
@@ -2368,7 +2376,7 @@ def distance_to_channel_d8(
 def distance_to_channel_mfd(
         flow_dir_mfd_raster_path_band, channel_raster_path_band,
         target_distance_to_channel_raster_path, weight_raster_path_band=None,
-        gtiff_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS):
+        raster_driver_creation_tuple=DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS):
     """Calculate distance to channel with multiple flow direction.
 
     Parameters:
@@ -2390,9 +2398,10 @@ def distance_to_channel_mfd(
             weight. If `None`, 1 is the default distance between neighboring
             pixels. This raster must be the same dimensions as
             `flow_dir_mfd_raster_path_band`.
-        gtiff_creation_options (list): this is an argument list that will be
-            passed to the GTiff driver.  Useful for blocksizes, compression,
-            and more.
+        raster_driver_creation_tuple (tuple): a tuple containing a GDAL driver
+            name string as the first element and a GDAL creation options
+            tuple/list as the second. Defaults to a GTiff driver tuple
+            defined at geoprocessing.DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS.
 
     Returns:
         None.
@@ -2441,7 +2450,7 @@ def distance_to_channel_mfd(
         target_distance_to_channel_raster_path,
         gdal.GDT_Float64, [distance_nodata],
         fill_value_list=[distance_nodata],
-        gtiff_creation_options=gtiff_creation_options)
+        raster_driver_creation_tuple=raster_driver_creation_tuple)
     distance_to_channel_managed_raster = _ManagedRaster(
         target_distance_to_channel_raster_path, 1, 1)
 
@@ -2610,9 +2619,10 @@ def distance_to_channel_mfd(
 
 
 def extract_streams_mfd(
-        flow_accum_raster_path_band, flow_dir_mfd_path_band, double flow_threshold,
-        target_stream_raster_path, double trace_threshold_proportion=1.0,
-        gtiff_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS):
+        flow_accum_raster_path_band, flow_dir_mfd_path_band,
+        double flow_threshold, target_stream_raster_path,
+        double trace_threshold_proportion=1.0,
+        raster_driver_creation_tuple=DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS):
     """Classify a stream raster from MFD flow accumulation.
 
     This function classifies pixels as streams that have a flow accumulation
@@ -2641,9 +2651,10 @@ def extract_streams_mfd(
             `flow_threshold` drain. Setting this value < 1.0 is useful for
             classifying streams in regions that have highly divergent flow
             directions.
-        gtiff_creation_options (list): this is an argument list that will be
-            passed to the GTiff driver.  Useful for blocksizes, compression,
-            and more.
+        raster_driver_creation_tuple (tuple): a tuple containing a GDAL driver
+            name string as the first element and a GDAL creation options
+            tuple/list as the second. Defaults to a GTiff driver tuple
+            defined at geoprocessing.DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS.
 
     Returns:
         None.
@@ -2665,7 +2676,7 @@ def extract_streams_mfd(
     pygeoprocessing.new_raster_from_base(
         flow_accum_raster_path_band[0], target_stream_raster_path,
         gdal.GDT_Byte, [stream_nodata], fill_value_list=[stream_nodata],
-        gtiff_creation_options=gtiff_creation_options)
+        raster_driver_creation_tuple=raster_driver_creation_tuple)
 
     cdef _ManagedRaster flow_accum_mr = _ManagedRaster(
         flow_accum_raster_path_band[0], flow_accum_raster_path_band[1], 0)
