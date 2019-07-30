@@ -37,3 +37,8 @@ for attrname in dir(geoprocessing):
     if isinstance(attribute, types.FunctionType):
         __all__ += (attrname,)
         setattr(sys.modules['pygeoprocessing'], attrname, attribute)
+
+# these are bit masks for the known PyGeoprocessing types
+UNKNOWN_TYPE = 0
+RASTER_TYPE = 1
+VECTOR_TYPE = 2

@@ -40,7 +40,7 @@ cdef int MANAGED_RASTER_N_BLOCKS = 2**7
 
 # these are the creation options that'll be used for all the rasters
 GTIFF_CREATION_OPTIONS = (
-    'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=DEFLATE',
+    'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=ZSTD',
     'SPARSE_OK=TRUE',
     'BLOCKXSIZE=%d' % (1 << BLOCK_BITS),
     'BLOCKYSIZE=%d' % (1 << BLOCK_BITS))
@@ -496,18 +496,21 @@ cdef cset[CoordinatePair] _c_split_geometry_into_seeds(
         local_origin_x, flow_dir_geotransform[1], flow_dir_geotransform[2],
         local_origin_y, flow_dir_geotransform[4], flow_dir_geotransform[5]]
     gtiff_driver = gdal.GetDriverByName('GTiff')
+    # Raster is sparse, no need to fill.
     raster = gtiff_driver.Create(
-        target_raster_path, int(local_n_cols), int(local_n_rows), 1, gdal.GDT_Byte,
-        options=GTIFF_CREATION_OPTIONS)  # Raster is sparse, no need to fill.
+        target_raster_path, int(local_n_cols), int(local_n_rows), 1,
+        gdal.GDT_Byte, options=GTIFF_CREATION_OPTIONS)
     raster.SetProjection(flow_dir_srs.ExportToWkt())
     raster.SetGeoTransform(local_geotransform)
 
     gdal.RasterizeLayer(
         raster, [1], new_layer, burn_values=[1], options=['ALL_TOUCHED=True'])
-    seed_band = raster.GetRasterBand(1)
+    raster = None
 
     cdef int write_diagnostic_vector = 0
-    if diagnostic_vector_path != None:
+    diagnostic_vector = None
+    diagnostic_layer = None
+    if diagnostic_vector_path is not None:
         write_diagnostic_vector = 1
 
         gpkg_driver = gdal.GetDriverByName('GPKG')
@@ -529,9 +532,8 @@ cdef cset[CoordinatePair] _c_split_geometry_into_seeds(
     cdef int block_xoff
     cdef int block_yoff
     cdef numpy.ndarray[numpy.npy_uint8, ndim=2] seed_array
-    for block_info in pygeoprocessing.iterblocks(
-            (target_raster_path, 1), offset_only=True):
-        seed_array = seed_band.ReadAsArray(**block_info)
+    for block_info, seed_array in pygeoprocessing.iterblocks(
+            (target_raster_path, 1)):
         block_xoff = block_info['xoff']
         block_yoff = block_info['yoff']
         n_rows = seed_array.shape[0]
@@ -551,14 +553,13 @@ cdef cset[CoordinatePair] _c_split_geometry_into_seeds(
                     new_feature = ogr.Feature(diagnostic_layer.GetLayerDefn())
                     new_feature.SetGeometry(ogr.CreateGeometryFromWkb(
                         shapely.geometry.Point(
-                            x_origin + ((global_col*x_pixelwidth) + (x_pixelwidth / 2.)),
-                            y_origin + ((global_row*y_pixelwidth) + (y_pixelwidth / 2.))).wkb))
+                            x_origin + ((global_col*x_pixelwidth) +
+                                        (x_pixelwidth / 2.)),
+                            y_origin + ((global_row*y_pixelwidth) +
+                                        (y_pixelwidth / 2.))).wkb))
                     diagnostic_layer.CreateFeature(new_feature)
 
                 seed_set.insert(CoordinatePair(global_col, global_row))
-
-    seed_band = None
-    raster = None
 
     return seed_set
 
@@ -618,8 +619,9 @@ def _split_geometry_into_seeds(
 @cython.boundscheck(False)
 def delineate_watersheds_d8(
         d8_flow_dir_raster_path_band, outflow_vector_path,
-        target_watersheds_vector_path, working_dir=None, remove=True):
-    """Delineate watersheds for a vector of geometries using D8 flow direction.
+        target_watersheds_vector_path, working_dir=None,
+        remove_temp_files=True):
+    """Delineate watersheds for a vector of geometries using D8 flow dir.
 
     Parameters:
         d8_flow_dir_raster_path_band (tuple): A (path, band_id) tuple
@@ -636,8 +638,8 @@ def delineate_watersheds_d8(
         working_dir=None (string or None): The path to a directory on disk
             within which various intermediate files will be stored.  If None,
             a folder will be created within the system's temp directory.
-        remove=True (bool): Whether to remove the created temp directory
-            at the end of the watershed delineation run.
+        remove_temp_files=True (bool): Whether to remove the created temp
+            directory at the end of the watershed delineation run.
 
     Returns
         ``None``
@@ -675,7 +677,6 @@ def delineate_watersheds_d8(
                                              d8_flow_dir_raster_path_band[1], 0)
 
     gtiff_driver = gdal.GetDriverByName('GTiff')
-    gpkg_driver = gdal.GetDriverByName('GPKG')
     flow_dir_srs = osr.SpatialReference()
     flow_dir_srs.ImportFromWkt(flow_dir_info['projection'])
 
@@ -706,7 +707,7 @@ def delineate_watersheds_d8(
     cdef int* neighbor_row = [0, -1, -1, -1, 0, 1, 1, 1]
     cdef queue[CoordinatePair] process_queue
     cdef cset[CoordinatePair] process_queue_set
-    cdef CoordinatePair pixel_coords, neighbor_pixel
+    cdef CoordinatePair neighbor_pixel
     cdef int ix_min, iy_min, ix_max, iy_max
     cdef _ManagedRaster scratch_managed_raster
     cdef int watersheds_created = 0
@@ -888,18 +889,18 @@ def delineate_watersheds_d8(
         # Polygonize this new watershed from the VRT.
         vrt_raster = gdal.OpenEx(vrt_path, gdal.OF_RASTER, allowed_drivers=['VRT'])
         vrt_band = vrt_raster.GetRasterBand(1)
-        result = gdal.Polygonize(
+        _ = gdal.Polygonize(
             vrt_band,  # The source band
             vrt_band,  # The mask. Pixels with 0 are invalid, nonzero are valid
             polygonized_watersheds_layer,
             0,  # ws_id field index
             [])  # 8connectedness does not always produce valid geometries.
-
+        _ = None
         vrt_band = None
         vrt_raster = None
 
         # Removing files as we go to help manage disk space.
-        if remove:
+        if remove_temp_files:
             os.remove(scratch_raster_path)
             if os.path.exists(seeds_raster_path):
                 os.remove(seeds_raster_path)
@@ -971,7 +972,7 @@ def delineate_watersheds_d8(
     watersheds_layer.CommitTransaction()
 
     polygonized_watersheds_layer = None
-    if remove:
+    if remove_temp_files:
         watersheds_vector.DeleteLayer('polygonized_watersheds')
     LOGGER.info('Finished vector consolidation')
 
@@ -980,6 +981,6 @@ def delineate_watersheds_d8(
     source_layer = None
     source_vector = None
 
-    if remove:
+    if remove_temp_files:
         shutil.rmtree(working_dir_path)
     LOGGER.info('Watershed delineation complete')

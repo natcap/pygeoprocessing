@@ -3,12 +3,27 @@ Release History
 
 Unreleased Changes
 ------------------
+<<<<<<< working copy
 * Added a ``gtiff_creation_options`` parameter to ``reclassify_raster`` to be
   consistent with the rest of the raster creation functions in
   PyGeoprocessing.
 * Added an out-of-core high performance raster percentile function at
   pygeoprocessing.raster_band_percentile.
-* Modified `iterblocks` to raise a helpful ValueError instead of a general
+* Changed default compression routine for GeoTIFFs to ZSTD (thanks Facebook
+  https://facebook.github.io/zstd/).
+* Added a **non-backwards compatible change** by replacing the
+  ``gtiff_creation_options`` string to a driver/option string named
+  ``raster_driver_creation_tuple``. This allows the caller to create any type
+  of ``GDAL`` writable driver along with the option list associated with that
+  driver.
+* Added a ``'file_list'`` key to the dictionary returned by
+  ``get_raster_info`` and ``get_vector_info`` that contains a list of all the
+  files associated with that GIS object. The first parameter of these lists
+  can be passed to ``gdal.OpenEx`` to open the object directly.
+* Added a ``get_gis_type`` function to ``pygeoprocessing`` that takes a
+  filepath and returns a bitmask of ``pygeoprocessing.RASTER_TYPE`` and/or
+  ``pygeoprocessing.VECTOR_TYPE``.
+* Modified ``iterblocks`` to raise a helpful ValueError instead of a general
   NoneTypeError if a raster does not open.
 
 1.7.0 (2019-06-27)
