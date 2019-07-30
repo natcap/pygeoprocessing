@@ -20,9 +20,9 @@ from libc.math cimport ceil
 from osgeo import gdal
 import pygeoprocessing
 
-DEFAULT_GTIFF_CREATION_OPTIONS = (
+DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS = ('GTiff', (
     'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=DEFLATE',
-    'BLOCKXSIZE=256', 'BLOCKYSIZE=256')
+    'BLOCKXSIZE=256', 'BLOCKYSIZE=256'))
 LOGGER = logging.getLogger('pygeoprocessing.geoprocessing_core')
 
 cdef float _NODATA = -1.0
@@ -33,7 +33,7 @@ cdef float _NODATA = -1.0
 def _distance_transform_edt(
         region_raster_path, g_raster_path, float sample_d_x,
         float sample_d_y, target_distance_raster_path,
-        raster_creation_options, raster_driver_name):
+        raster_driver_creation_tuple):
     """Calculate the euclidean distance transform on base raster.
 
     Calculates the euclidean distance transform on the base raster in units of
@@ -65,6 +65,9 @@ def _distance_transform_edt(
             created by this call that is the exact euclidean distance
             transform from any pixel in the base raster that is not nodata and
             not 0. The units are in (pixel distance * sampling_distance).
+        raster_driver_creation_tuple (tuple): a tuple containing a GDAL driver
+            name string as the first element and a GDAL creation options
+            tuple/list as the second
 
     Returns:
         None
@@ -90,7 +93,8 @@ def _distance_transform_edt(
     raster_info = pygeoprocessing.get_raster_info(region_raster_path)
     pygeoprocessing.new_raster_from_base(
         region_raster_path, g_raster_path, gdal.GDT_Float32, [_NODATA],
-        fill_value_list=None)
+        fill_value_list=None,
+        raster_driver_creation_tuple=raster_driver_creation_tuple)
     g_raster = gdal.OpenEx(g_raster_path, gdal.OF_RASTER | gdal.GA_Update)
     g_band = g_raster.GetRasterBand(1)
     g_band_blocksize = g_band.GetBlockSize()
@@ -143,7 +147,8 @@ def _distance_transform_edt(
 
     pygeoprocessing.new_raster_from_base(
         region_raster_path, target_distance_raster_path.encode('utf-8'),
-        gdal.GDT_Float32, [distance_nodata], fill_value_list=None)
+        gdal.GDT_Float32, [distance_nodata], fill_value_list=None,
+        raster_driver_creation_tuple=raster_driver_creation_tuple)
     target_distance_raster = gdal.OpenEx(
         target_distance_raster_path, gdal.OF_RASTER | gdal.GA_Update)
     target_distance_band = target_distance_raster.GetRasterBand(1)
@@ -244,7 +249,7 @@ def _distance_transform_edt(
 def calculate_slope(
         base_elevation_raster_path_band, target_slope_path,
         raster_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS,
-        raster_driver_name='GTiff'):
+        raster_driver_creation_tuple=DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS):
     """Create a percent slope raster from DEM raster.
 
     Base algorithm is from Zevenbergen & Thorne "Quantitative Analysis of Land
@@ -276,8 +281,10 @@ def calculate_slope(
         target_slope_path (string): path to target slope raster; will be a
             32 bit float GeoTIFF of same size/projection as calculate slope
             with units of percent slope.
-        raster_creation_options (list or tuple): list of strings that will be
-            passed as GDAL "dataset" creation options to the GTIFF driver.
+        raster_driver_creation_tuple (tuple): a tuple containing a GDAL driver
+            name string as the first element and a GDAL creation options
+            tuple/list as the second. Defaults to
+            geoprocessing.DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS.
 
     Returns:
         None
@@ -308,8 +315,7 @@ def calculate_slope(
         base_elevation_raster_path_band[0], target_slope_path,
         gdal.GDT_Float32, [slope_nodata],
         fill_value_list=[float(slope_nodata)],
-        raster_creation_options=raster_creation_options,
-        raster_driver_name=raster_driver_name)
+        raster_driver_creation_tuple=raster_driver_creation_tuple)
     target_slope_raster = gdal.OpenEx(target_slope_path, gdal.GA_Update)
     target_slope_band = target_slope_raster.GetRasterBand(1)
 
