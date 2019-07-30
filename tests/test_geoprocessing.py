@@ -25,7 +25,8 @@ def passthrough(x):
     return x
 
 
-def _make_simple_raster(val_array, nodata_val, gdal_type, target_path):
+def _make_simple_raster(
+        val_array, nodata_val, gdal_type, target_path, creation_options=None):
     """Create a raster of size `val_array.shape` at `target_path`.
 
     Parameters:
@@ -33,6 +34,8 @@ def _make_simple_raster(val_array, nodata_val, gdal_type, target_path):
         target_path (str): path to raster to create that will be of the
             same type of val_array with contents of val_array. Projection is
             WGS84 w/ 1 degree pixels with upper left corner at (1, 1).
+        creation_options (list/tuple): if not none is passed to creation
+            driver.
 
     Returns:
         None.
@@ -43,8 +46,12 @@ def _make_simple_raster(val_array, nodata_val, gdal_type, target_path):
     wgs84_wkt = wgs84_sr.ExportToWkt()
     gtiff_driver = gdal.GetDriverByName('GTiff')
     ny, nx = val_array.shape
+    new_raster_creation_options = []
+    if creation_options is not None:
+        new_raster_creation_options = creation_options
     new_raster = gtiff_driver.Create(
-        target_path, nx, ny, 1, gdal_type)
+        target_path, nx, ny, 1, gdal_type,
+        options=new_raster_creation_options)
     new_raster.SetProjection(wgs84_wkt)
     new_raster.SetGeoTransform([1, 1.0, 0.0, 1, 0.0, -1.0])
     new_band = new_raster.GetRasterBand(1)
@@ -4070,6 +4077,12 @@ class PyGeoprocessing10(unittest.TestCase):
         _make_simple_raster(
             ones_array, nodata_val, gdal.GDT_Float32, raster_ones_path)
 
+        bytes_array = numpy.ones((n, n), dtype=numpy.int8) * -1
+        bytes_path = os.path.join(self.workspace_dir, 'bytes.tif')
+        _make_simple_raster(
+            bytes_array, nodata_val, gdal.GDT_Byte, bytes_path,
+            creation_options=['PIXELTYPE=SIGNEDBYTE'])
+
         # test regular addition
         sum_expression_str = 'a+b'
         symbol_to_path_band_map = {
@@ -4079,6 +4092,7 @@ class PyGeoprocessing10(unittest.TestCase):
             'd': (raster_d_path, 1),
             'all_ones': (raster_ones_path, 1),
             'all_zeros': (raster_zero_path, 1),
+            'byte_val': (bytes_path, 1),
         }
         target_nodata = None
         target_raster_path = os.path.join(self.workspace_dir, 'target.tif')
@@ -4152,6 +4166,14 @@ class PyGeoprocessing10(unittest.TestCase):
         expected_message = 'Symbolic expression reduces to a constant'
         actual_message = str(cm.exception)
         self.assertTrue(expected_message in actual_message, actual_message)
+
+        target_byte_raster_path = os.path.join(
+            self.workspace_dir, 'byte.tif')
+        byte_expression = '1+byte_val'
+        pygeoprocessing.symbolic.evaluate_raster_calculator_expression(
+            byte_expression, symbol_to_path_band_map, target_nodata,
+            target_byte_raster_path)
+
 
     def test_non_geotiff_raster_types(self):
         """PGP: test mixed GTiff and gpkg raster types."""

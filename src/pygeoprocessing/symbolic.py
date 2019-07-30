@@ -107,7 +107,6 @@ def evaluate_raster_calculator_expression(
         numpy.dtype('complex64'): gdal.GDT_CFloat64,
     }
 
-
     if target_numpy_type != numpy.int8:
         target_gdal_type = dtype_to_gdal_type[
             target_numpy_type]
@@ -116,8 +115,8 @@ def evaluate_raster_calculator_expression(
         # it's a signed byte
         target_gdal_type = gdal.GDT_Byte
         target_raster_driver_creation_tuple = (
-            target_raster_driver_creation_tuple[0],
-            target_raster_driver_creation_tuple[1]+['PIXELTYPE=SIGNEDBYTE'])
+            raster_driver_creation_tuple[0],
+            tuple(raster_driver_creation_tuple[1])+('PIXELTYPE=SIGNEDBYTE',))
     geoprocessing.raster_calculator(
         raster_path_band_const_list, _generic_raster_op, target_raster_path,
         target_gdal_type, target_nodata,
