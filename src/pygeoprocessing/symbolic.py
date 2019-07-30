@@ -4,6 +4,7 @@ import logging
 
 from osgeo import gdal
 import sympy
+import sympy.parsing.sympy_parser
 import numpy
 import numpy.ma
 from . import geoprocessing
@@ -37,7 +38,7 @@ def evaluate_raster_calculator_expression(
             band. All symbol names correspond to
             symbols in `expression_str`. Ex:
                 expression_str = '2*x+b'
-                symbol_to_path_band_mapband_ = {
+                symbol_to_path_band_map = {
                     'x': (path_to_x_raster, 1),
                     'b': (path_to_b_raster, 1)
                 }
@@ -58,8 +59,15 @@ def evaluate_raster_calculator_expression(
         None.
 
     """
-    LOGGER.debug('evaluating: %s', expression_str)
-    symbol_list, raster_path_band_list = zip(*symbol_to_path_band_map.items())
+    active_symbols = {
+        str(x) for x in sympy.parsing.sympy_parser.parse_expr(
+            expression_str).free_symbols}
+    LOGGER.debug(
+        'evaluating: %s, active symbols: %s', expression_str, active_symbols)
+    symbol_list, raster_path_band_list = zip(*[
+        (symbol, raster_path_band) for symbol, raster_path_band in
+        symbol_to_path_band_map.items() if symbol in active_symbols])
+    LOGGER.debug('filtered symbol_list: %s', symbol_list)
     raster_op = sympy.lambdify(symbol_list, expression_str, 'numpy')
 
     geoprocessing.raster_calculator(
