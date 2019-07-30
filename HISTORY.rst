@@ -15,7 +15,11 @@ Unreleased Changes
 * Added a ``get_gis_type`` function to ``pygeoprocessing`` that takes a
   filepath and returns a bitmask of ``pygeoprocessing.RASTER_TYPE`` and/or
   ``pygeoprocessing.VECTOR_TYPE``.
-* Modified ``iterblocks`` to raise a helpful ValueError instead of a general
+* Added a ``'numpy_type'`` field to the result of ``get_raster_info`` that
+  contains the equivalent numpy datatype of the GDAL type in the raster. This
+  includes functionality differentate between the unsigned and signed
+  ``gdal.GDT_Byte`` vs. ``numpy.int8`` and ``numpy.uint8``.
+* Modified `iterblocks` to raise a helpful ValueError instead of a general
   NoneTypeError if a raster does not open.
 * Added a `pygeoprocessing.symbolic.evaluate_raster_calculator_expression`
   function that can parse a string expression and a map of symbols to
