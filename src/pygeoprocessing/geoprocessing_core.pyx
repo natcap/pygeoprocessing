@@ -67,7 +67,8 @@ def _distance_transform_edt(
             not 0. The units are in (pixel distance * sampling_distance).
         raster_driver_creation_tuple (tuple): a tuple containing a GDAL driver
             name string as the first element and a GDAL creation options
-            tuple/list as the second
+            tuple/list as the second. Defaults to a GTiff driver tuple
+            defined at geoprocessing.DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS.
 
     Returns:
         None
@@ -248,7 +249,6 @@ def _distance_transform_edt(
 @cython.cdivision(True)
 def calculate_slope(
         base_elevation_raster_path_band, target_slope_path,
-        raster_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS,
         raster_driver_creation_tuple=DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS):
     """Create a percent slope raster from DEM raster.
 

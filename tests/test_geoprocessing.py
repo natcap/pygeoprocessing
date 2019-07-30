@@ -1070,7 +1070,8 @@ class PyGeoprocessing10(unittest.TestCase):
         pygeoprocessing.testing.create_raster_on_disk(
             [pixel_a_matrix], reference.origin, reference.projection,
             nodata_target, reference.pixel_size(20), filename=base_a_path,
-            dataset_opts=['PIXELTYPE=SIGNEDBYTE'])
+            raster_driver_creation_tuple=('GTiff', [
+                'PIXELTYPE=SIGNEDBYTE']))
 
         target_raster_path = os.path.join(self.workspace_dir, 'target_a.tif')
 
@@ -1801,7 +1802,7 @@ class PyGeoprocessing10(unittest.TestCase):
             pygeoprocessing.raster_calculator(
                 [(base_path_a, 1), (base_path_b, 1)], passthrough,
                 target_path, gdal.GDT_Int32, nodata_base,
-                raster_creation_options=None, calc_raster_stats=True)
+                calc_raster_stats=True)
         expected_message = 'Input Rasters are not the same dimensions.'
         actual_message = str(cm.exception)
         self.assertTrue(expected_message in actual_message)
@@ -2101,12 +2102,12 @@ class PyGeoprocessing10(unittest.TestCase):
             [pixel_matrix], reference.origin, reference.projection,
             nodata_base, reference.pixel_size(30), datatype=gdal.GDT_Byte,
             filename=base_path,
-            dataset_opts=[
+            raster_driver_creation_tuple=('GTiff', [
                 'PIXELTYPE=SIGNEDBYTE',
                 'TILED=YES',
                 'BLOCKXSIZE=64',
                 'BLOCKYSIZE=64',
-                ])
+                ]))
 
         target_path = os.path.join(self.workspace_dir, 'target.tif')
         # 255 should convert to -1 with signed bytes
@@ -2137,9 +2138,9 @@ class PyGeoprocessing10(unittest.TestCase):
         pygeoprocessing.new_raster_from_base(
             base_path, target_path, gdal.GDT_Byte, [None],
             fill_value_list=[None],
-            raster_creation_options=[
+            raster_driver_creation_tuple=('GTiff', [
                 'PIXELTYPE=SIGNEDBYTE',
-                ])
+                ]))
 
         raster_properties = pygeoprocessing.get_raster_info(target_path)
         self.assertEqual(raster_properties['nodata'], [None])
@@ -2417,10 +2418,10 @@ class PyGeoprocessing10(unittest.TestCase):
         pygeoprocessing.testing.create_raster_on_disk(
             [pixel_matrix], reference.origin, reference.projection,
             nodata_target, reference.pixel_size(30), filename=raster_path,
-            dataset_opts=[
+            raster_driver_creation_tuple=('GTiff', [
                 'TILED=YES',
                 'BLOCKXSIZE=64',
-                'BLOCKYSIZE=64'])
+                'BLOCKYSIZE=64']))
 
         total = 0
         for _, block in pygeoprocessing.iterblocks(
@@ -2444,10 +2445,10 @@ class PyGeoprocessing10(unittest.TestCase):
         pygeoprocessing.testing.create_raster_on_disk(
             [pixel_matrix], reference.origin, reference.projection,
             nodata_target, reference.pixel_size(30), filename=raster_path,
-            dataset_opts=[
+            raster_driver_creation_tuple=('GTiff', [
                 'TILED=YES',
                 'BLOCKXSIZE=64',
-                'BLOCKYSIZE=64'])
+                'BLOCKYSIZE=64']))
 
         total = 0
         with self.assertRaises(ValueError) as cm:
@@ -2475,10 +2476,10 @@ class PyGeoprocessing10(unittest.TestCase):
         pygeoprocessing.testing.create_raster_on_disk(
             [pixel_matrix], reference.origin, reference.projection,
             nodata_target, reference.pixel_size(30), filename=raster_path,
-            dataset_opts=[
+            raster_driver_creation_tuple=('GTiff', [
                 'TILED=YES',
                 'BLOCKXSIZE=64',
-                'BLOCKYSIZE=64'])
+                'BLOCKYSIZE=64']))
 
         total = 0
         for _, block in pygeoprocessing.iterblocks(
@@ -4008,8 +4009,8 @@ class PyGeoprocessing10(unittest.TestCase):
         target_path = os.path.join(self.workspace_dir, 'target.gpkg')
         pygeoprocessing.raster_calculator(
             ((raster_path, 1), (raster_path, 1)), lambda a, b: a+b,
-            target_path, gdal.GDT_Byte, None, raster_driver_name='gpkg',
-            raster_creation_options=())
+            target_path, gdal.GDT_Byte, None,
+            raster_driver_creation_tuple=['gpkg', ()])
         target_raster = gdal.OpenEx(target_path)
         target_driver = target_raster.GetDriver()
         self.assertEqual(target_driver.GetDescription().lower(), 'gpkg')
