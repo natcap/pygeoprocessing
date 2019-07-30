@@ -4155,6 +4155,9 @@ class PyGeoprocessing10(unittest.TestCase):
         expected_array[0, 0] = -9999
         target_array = _read_raster_to_array(target_raster_path)
         numpy.testing.assert_almost_equal(target_array, expected_array)
+        # ensure it's a float32
+        self.assertEqual(pygeoprocessing.get_raster_info(
+            target_raster_path)['numpy_type'], numpy.float32)
 
         # test that a symbolic implementation that reduces to a constant
         # raises a ValueError
