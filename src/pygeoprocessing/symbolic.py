@@ -1,8 +1,6 @@
 # coding=UTF-8
 """A collection of GDAL dataset and raster utilities."""
 import logging
-import tempfile
-import shutil
 
 from osgeo import gdal
 import sympy

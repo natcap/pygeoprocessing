@@ -4090,6 +4090,8 @@ class PyGeoprocessing10(unittest.TestCase):
             mult_expression_str, symbol_to_path_band_map, -1,
             target_raster_path)
 
+        # TODO : Test all teh boundary cases.
+
     def test_get_file_info(self):
         """PGP: geoprocessing test for `file_list` in the get_*_info ops."""
         import pygeoprocessing
