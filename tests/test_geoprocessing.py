@@ -3980,6 +3980,31 @@ class PyGeoprocessing10(unittest.TestCase):
         actual_message = str(cm.exception)
         self.assertTrue(expected_message in actual_message, actual_message)
 
+    def test_get_file_info(self):
+        """PGP: geoprocessing test for `file_list` in the get_*_info ops."""
+        import pygeoprocessing
+
+        gtiff_driver = gdal.GetDriverByName('GTiff')
+        raster_path = os.path.join(self.workspace_dir, 'test.tif')
+        raster = gtiff_driver.Create(raster_path, 1, 1, 1, gdal.GDT_Int32)
+        raster.FlushCache()
+        raster_file_list = raster.GetFileList()
+        raster = None
+        raster_info = pygeoprocessing.get_raster_info(raster_path)
+        self.assertEqual(raster_info['file_list'], raster_file_list)
+
+        gpkg_driver = gdal.GetDriverByName('GPKG')
+        vector_path = os.path.join(self.workspace_dir, 'small_vector.gpkg')
+        vector = gpkg_driver.Create(vector_path, 0, 0, 0, gdal.GDT_Unknown)
+        srs = osr.SpatialReference()
+        srs.ImportFromEPSG(4326)
+        layer = vector.CreateLayer('small_vector', srs=srs)
+        del layer
+        vector_file_list = vector.GetFileList()
+        vector = None
+        vector_info = pygeoprocessing.get_vector_info(vector_path)
+        self.assertEqual(vector_info['file_list'], vector_file_list)
+
     def test_get_gis_type(self):
         """PGP: test geoprocessing type."""
         import pygeoprocessing
