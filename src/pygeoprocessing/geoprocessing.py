@@ -87,6 +87,9 @@ _GDAL_TYPE_TO_NUMPY_LOOKUP = {
     gdal.GDT_CFloat32: numpy.csingle,
     gdal.GDT_CFloat64: numpy.complex64,
 }
+# invert so we can go from numpy type to gdal type
+_NUMPY_TO_GDAL_TYPE_LOOKUP = {
+    v: k for v, k in _GDAL_TYPE_TO_NUMPY_LOOKUP.items()}
 
 
 def raster_calculator(
