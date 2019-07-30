@@ -12,6 +12,9 @@ Unreleased Changes
   ``pygeoprocessing.VECTOR_TYPE``.
 * Modified ``iterblocks`` to raise a helpful ValueError instead of a general
   NoneTypeError if a raster does not open.
+* Added a `pygeoprocessing.symbolic.evaluate_raster_calculator_expression`
+  function that can parse a string expression and a map of symbols to
+  calculate a raster calculation operation.
 
 1.7.0 (2019-06-27)
 ------------------
