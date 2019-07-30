@@ -1,6 +1,7 @@
 # coding=UTF-8
-"""A collection of GDAL dataset and raster utilities."""
+"""Module to hold symbolic PyGeoprocessing utilities."""
 import logging
+import inspect
 
 from osgeo import gdal
 import sympy
@@ -59,26 +60,34 @@ def evaluate_raster_calculator_expression(
         None.
 
     """
+    # remove any raster bands that don't have corresponding symbols in the
+    # expression
     active_symbols = {
         str(x) for x in sympy.parsing.sympy_parser.parse_expr(
-            expression_str).free_symbols}
+            expression_str, evaluate=False).free_symbols}
     LOGGER.debug(
         'evaluating: %s, active symbols: %s', expression_str, active_symbols)
     symbol_list, raster_path_band_list = zip(*[
         (symbol, raster_path_band) for symbol, raster_path_band in
         symbol_to_path_band_map.items() if symbol in active_symbols])
-    LOGGER.debug('filtered symbol_list: %s', symbol_list)
     raster_op = sympy.lambdify(symbol_list, expression_str, 'numpy')
+    raster_op_source = inspect.getsource(raster_op)
+    LOGGER.debug('raster_op:\n%s', raster_op_source)
+    if not active_symbols:
+        raise ValueError(
+            'Symbolic expression reduces to a constant and does not need '
+            'evaluation. See inferred implementation:\n%s' % raster_op_source)
 
-    geoprocessing.raster_calculator(
+    raster_path_band_const_list = (
         [path_band for path_band in raster_path_band_list] +
         [(geoprocessing.get_raster_info(
             path_band[0])['nodata'][path_band[1]-1], 'raw')
          for path_band in raster_path_band_list] + [
             (raster_op, 'raw'), (target_nodata, 'raw'), (default_nan, 'raw'),
-            (default_inf, 'raw')],
-        _generic_raster_op, target_raster_path, gdal.GDT_Float32,
-        target_nodata)
+            (default_inf, 'raw')])
+    geoprocessing.raster_calculator(
+        raster_path_band_const_list, _generic_raster_op, target_raster_path,
+        gdal.GDT_Float32, target_nodata)
 
 
 def _generic_raster_op(*arg_list):

@@ -1,4 +1,5 @@
 """PyGeoprocessing 1.0 test suite."""
+import logging
 import time
 import tempfile
 import os
@@ -18,6 +19,8 @@ try:
     from builtins import reload
 except ImportError:
     from imp import reload
+
+LOGGER = logging.getLogger(__name__)
 
 
 def passthrough(x):
@@ -4047,15 +4050,16 @@ class PyGeoprocessing10(unittest.TestCase):
         raster_c_path = os.path.join(self.workspace_dir, 'c.tif')
         val_array = numpy.array(
             range(n*n), dtype=numpy.float32).reshape((n, n))
-        val_array[0, 0] = nodata_val
+        c_d_nodata = -1
+        val_array[0, 0] = c_d_nodata  # set as nodata
         _make_simple_raster(
-            val_array, nodata_val, gdal.GDT_Float32, raster_c_path)
+            val_array, c_d_nodata, gdal.GDT_Float32, raster_c_path)
         raster_d_path = os.path.join(self.workspace_dir, 'd.tif')
         val_array = numpy.array(
             range(n*n), dtype=numpy.float32).reshape((n, n))
-        val_array[-1, -1] = nodata_val
+        val_array[-1, -1] = c_d_nodata
         _make_simple_raster(
-            val_array, nodata_val, gdal.GDT_Float32, raster_d_path)
+            val_array, c_d_nodata, gdal.GDT_Float32, raster_d_path)
 
         zero_array = numpy.zeros((n, n), dtype=numpy.float32)
         raster_zero_path = os.path.join(self.workspace_dir, 'zero.tif')
@@ -4087,7 +4091,7 @@ class PyGeoprocessing10(unittest.TestCase):
             target_array, 2*numpy.array(range(n*n)).reshape((n, n)))
 
         # test with two values as nodata
-        target_nodata = None
+        target_nodata = -1
         mult_expression_str = 'c*d'
         pygeoprocessing.symbolic.evaluate_raster_calculator_expression(
             mult_expression_str, symbol_to_path_band_map, target_nodata,
@@ -4122,7 +4126,7 @@ class PyGeoprocessing10(unittest.TestCase):
         target_array = _read_raster_to_array(target_raster_path)
         numpy.testing.assert_almost_equal(target_array, expected_array)
 
-        zero_by_zero_expr = 'all_zeros / all_zeros'
+        zero_by_zero_expr = 'all_zeros / a'
         with self.assertRaises(ValueError) as cm:
             pygeoprocessing.symbolic.evaluate_raster_calculator_expression(
                 zero_by_zero_expr, symbol_to_path_band_map, target_nodata,
@@ -4134,8 +4138,8 @@ class PyGeoprocessing10(unittest.TestCase):
         pygeoprocessing.symbolic.evaluate_raster_calculator_expression(
             zero_by_zero_expr, symbol_to_path_band_map, target_nodata,
             target_raster_path, default_nan=-9999)
-        expected_array = numpy.empty(val_array.shape)
-        expected_array[:] = -9999
+        expected_array = numpy.zeros(val_array.shape)
+        expected_array[0, 0] = -9999
         target_array = _read_raster_to_array(target_raster_path)
         numpy.testing.assert_almost_equal(target_array, expected_array)
 
