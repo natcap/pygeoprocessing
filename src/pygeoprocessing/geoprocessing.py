@@ -3,7 +3,7 @@
 from __future__ import division
 from __future__ import absolute_import
 
-from .geoprocessing_core import DEFAULT_GTIFF_CREATION_OPTIONS
+from .geoprocessing_core import DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS
 
 from builtins import zip
 from builtins import range
@@ -91,9 +91,8 @@ _GDAL_TYPE_TO_NUMPY_LOOKUP = {
 def raster_calculator(
         base_raster_path_band_const_list, local_op, target_raster_path,
         datatype_target, nodata_target,
-        gtiff_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS,
-        calc_raster_stats=True,
-        largest_block=_LARGEST_ITERBLOCK):
+        calc_raster_stats=True, largest_block=_LARGEST_ITERBLOCK,
+        raster_driver_creation_tuple=DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS):
     """Apply local a raster operation on a stack of rasters.
 
     This function applies a user defined function across a stack of
@@ -138,8 +137,6 @@ def raster_calculator(
             the target raster.
         nodata_target (numerical value): the desired nodata value of the
             target raster.
-        gtiff_creation_options (sequence): this is an argument list that will
-            be passed to the GTiff driver defined by the GDAL GTiff spec.
         calc_raster_stats (boolean): If True, calculates and sets raster
             statistics (min, max, mean, and stdev) for target raster.
         largest_block (int): Attempts to internally iterate over raster blocks
@@ -148,6 +145,10 @@ def raster_calculator(
             overhead dominates the iteration.  Defaults to 2**20.  A value of
             anything less than the original blocksize of the raster will
             result in blocksizes equal to the original size.
+        raster_driver_creation_tuple (tuple): a tuple containing a GDAL driver
+            name string as the first element and a GDAL creation options
+            tuple/list as the second. Defaults to
+            geoprocessing.DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS.
 
     Returns:
         None
@@ -334,16 +335,14 @@ def raster_calculator(
             '"%s"' % datatype_target)
 
     # create target raster
-    gtiff_driver = gdal.GetDriverByName('GTiff')
+    raster_driver = gdal.GetDriverByName(raster_driver_creation_tuple[0])
     try:
         os.makedirs(os.path.dirname(target_raster_path))
     except OSError:
         pass
-    target_raster = gtiff_driver.Create(
+    target_raster = raster_driver.Create(
         target_raster_path, n_cols, n_rows, 1, datatype_target,
-        options=(
-            'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=DEFLATE',
-            'BLOCKXSIZE=256', 'BLOCKYSIZE=256'))
+        options=raster_driver_creation_tuple[1])
 
     target_band = target_raster.GetRasterBand(1)
     if nodata_target is not None:
@@ -507,8 +506,8 @@ def align_and_resize_raster_stack(
         base_raster_path_list, target_raster_path_list, resample_method_list,
         target_pixel_size, bounding_box_mode, base_vector_path_list=None,
         raster_align_index=None, base_sr_wkt_list=None, target_sr_wkt=None,
-        gtiff_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS,
-        vector_mask_options=None, gdal_warp_options=None):
+        vector_mask_options=None, gdal_warp_options=None,
+        raster_driver_creation_tuple=DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS):
     """Generate rasters from a base such that they align geospatially.
 
     This function resizes base rasters that are in the same geospatial
@@ -557,9 +556,6 @@ def align_and_resize_raster_stack(
         target_sr_wkt (string): if not None, this is the desired
             projection of all target rasters in Well Known Text format. If
             None, the base SRS will be passed to the target.
-        gtiff_creation_options (sequence): list of strings that will be passed
-            as GDAL "dataset" creation options to the GTIFF driver, or ignored
-            if None.
         vector_mask_options (dict): optional, if not None, this is a
             dictionary of options to use an existing vector's geometry to
             mask out pixels in the target raster that do not overlap the
@@ -575,6 +571,13 @@ def align_and_resize_raster_stack(
                     be used to filter the geometry in the mask. Ex:
                     'id > 10' would use all features whose field value of
                     'id' is > 10.
+        gdal_warp_options (sequence): if present, the contents of this list
+            are passed to the ``warpOptions`` parameter of ``gdal.Warp``. See
+            the GDAL Warp documentation for valid options.
+        raster_driver_creation_tuple (tuple): a tuple containing a GDAL driver
+            name string as the first element and a GDAL creation options
+            tuple/list as the second. Defaults to a GTiff driver tuple
+            defined at geoprocessing.DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS.
 
     Returns:
         None
@@ -699,7 +702,7 @@ def align_and_resize_raster_stack(
             bounding_box_list, bounding_box_mode)
 
     if vector_mask_options:
-        # translate pygeoprocessing terminology into GDAL warp options.
+        # ensure the mask exists and intersects with the target bounding box
         if 'mask_vector_path' not in vector_mask_options:
             raise ValueError(
                 'vector_mask_options passed, but no value for '
@@ -713,7 +716,10 @@ def align_and_resize_raster_stack(
                 mask_vector_info['projection'], target_sr_wkt)
         else:
             mask_vector_bb = mask_vector_info['bounding_box']
-        mask_vector_intersect_box = merge_bounding_box_list(
+        # Calling `merge_bounding_box_list` will raise an ValueError if the
+        # bounding box of the mask and the target do not intersect. The
+        # result is otherwise not used.
+        _ = merge_bounding_box_list(
             [target_bounding_box, mask_vector_bb], 'intersection')
 
     if raster_align_index is not None and raster_align_index >= 0:
@@ -777,7 +783,8 @@ def align_and_resize_raster_stack(
                     resample_method),
                 kwds={
                     'target_bb': target_bounding_box,
-                    'gtiff_creation_options': gtiff_creation_options,
+                    'raster_driver_creation_tuple': (
+                        raster_driver_creation_tuple),
                     'target_sr_wkt': target_sr_wkt,
                     'base_sr_wkt': (
                         None if not base_sr_wkt_list else
@@ -805,14 +812,14 @@ def align_and_resize_raster_stack(
 def new_raster_from_base(
         base_path, target_path, datatype, band_nodata_list,
         fill_value_list=None, n_rows=None, n_cols=None,
-        gtiff_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS):
-    """Create new GeoTIFF by coping spatial reference/geotransform of base.
+        raster_driver_creation_tuple=DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS):
+    """Create new raster by coping spatial reference/geotransform of base.
 
     A convenience function to simplify the creation of a new raster from the
     basis of an existing one.  Depending on the input mode, one can create
     a new raster of the same dimensions, geotransform, and georeference as
     the base.  Other options are provided to change the raster dimensions,
-    number of bands, nodata values, data type, and core GeoTIFF creation
+    number of bands, nodata values, data type, and core raster creation
     options.
 
     Parameters:
@@ -831,8 +838,10 @@ def new_raster_from_base(
         n_rows (int): if not None, defines the number of target raster rows.
         n_cols (int): if not None, defines the number of target raster
             columns.
-        gtiff_creation_options: a sequence of dataset options that gets
-            passed to the gdal creation driver, overrides defaults
+        raster_driver_creation_tuple (tuple): a tuple containing a GDAL driver
+            name string as the first element and a GDAL creation options
+            tuple/list as the second. Defaults to a GTiff driver tuple
+            defined at geoprocessing.DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS.
 
     Returns:
         None
@@ -843,9 +852,9 @@ def new_raster_from_base(
         n_rows = base_raster.RasterYSize
     if n_cols is None:
         n_cols = base_raster.RasterXSize
-    driver = gdal.GetDriverByName('GTiff')
+    driver = gdal.GetDriverByName(raster_driver_creation_tuple[0])
 
-    local_gtiff_creation_options = list(gtiff_creation_options)
+    local_raster_creation_options = list(raster_driver_creation_tuple[1])
     # PIXELTYPE is sometimes used to define signed vs. unsigned bytes and
     # the only place that is stored is in the IMAGE_STRUCTURE metadata
     # copy it over if it exists and it not already defined by the input
@@ -855,8 +864,8 @@ def new_raster_from_base(
     metadata = base_band.GetMetadata('IMAGE_STRUCTURE')
     if 'PIXELTYPE' in metadata and not any(
             ['PIXELTYPE' in option for option in
-             local_gtiff_creation_options]):
-        local_gtiff_creation_options.append(
+             local_raster_creation_options]):
+        local_raster_creation_options.append(
             'PIXELTYPE=' + metadata['PIXELTYPE'])
 
     block_size = base_band.GetBlockSize()
@@ -864,19 +873,19 @@ def new_raster_from_base(
     # striped or tiled.  Here we leave it up to the default inputs or if its
     # obviously not striped we tile.
     if not any(
-            ['TILED' in option for option in local_gtiff_creation_options]):
+            ['TILED' in option for option in local_raster_creation_options]):
         # TILED not set, so lets try to set it to a reasonable value
         if block_size[0] != n_cols:
             # if x block is not the width of the raster it *must* be tiled
             # otherwise okay if it's striped or tiled, I can't construct a
             # test case to cover this, but there is nothing in the spec that
             # restricts this so I have it just in case.
-            local_gtiff_creation_options.append('TILED=YES')
+            local_raster_creation_options.append('TILED=YES')
 
     if not any(
-            ['BLOCK' in option for option in local_gtiff_creation_options]):
+            ['BLOCK' in option for option in local_raster_creation_options]):
         # not defined, so lets copy what we know from the current raster
-        local_gtiff_creation_options.extend([
+        local_raster_creation_options.extend([
             'BLOCKXSIZE=%d' % block_size[0],
             'BLOCKYSIZE=%d' % block_size[1]])
 
@@ -890,7 +899,7 @@ def new_raster_from_base(
     n_bands = len(band_nodata_list)
     target_raster = driver.Create(
         target_path, n_cols, n_rows, n_bands, datatype,
-        options=local_gtiff_creation_options)
+        options=local_raster_creation_options)
     target_raster.SetProjection(base_raster.GetProjection())
     target_raster.SetGeoTransform(base_raster.GetGeoTransform())
     base_raster = None
@@ -938,7 +947,7 @@ def new_raster_from_base(
 def create_raster_from_vector_extents(
         base_vector_path, target_raster_path, target_pixel_size,
         target_pixel_type, target_nodata, fill_value=None,
-        gtiff_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS):
+        raster_driver_creation_tuple=DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS):
     """Create a blank raster based on a vector file extent.
 
     Parameters:
@@ -958,9 +967,10 @@ def create_raster_from_vector_extents(
             value is needed.
         fill_value (int/float): value to fill in the target raster; no fill if
             value is None
-        gtiff_creation_options (sequence): this is an argument list that will
-            be passed to the GTiff driver.  Useful for blocksizes,
-            compression, and more.
+        raster_driver_creation_tuple (tuple): a tuple containing a GDAL driver
+            name string as the first element and a GDAL creation options
+            tuple/list as the second. Defaults to a GTiff driver tuple
+            defined at geoprocessing.DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS.
 
     Returns:
         None
@@ -1007,11 +1017,11 @@ def create_raster_from_vector_extents(
         abs((shp_extent[3] - shp_extent[2]) / target_pixel_size[1])))
     n_rows = max(1, n_rows)
 
-    driver = gdal.GetDriverByName('GTiff')
+    driver = gdal.GetDriverByName(raster_driver_creation_tuple[0])
     n_bands = 1
     raster = driver.Create(
         target_raster_path, n_cols, n_rows, n_bands, target_pixel_type,
-        options=gtiff_creation_options)
+        options=raster_driver_creation_tuple[1])
     raster.GetRasterBand(1).SetNoDataValue(target_nodata)
 
     # Set the transform based on the upper left corner and given pixel
@@ -1084,16 +1094,18 @@ def interpolate_points(
     point_array = numpy.array(point_list)
     value_array = numpy.array(value_list)
 
+    # getting the offsets first before the raster is opened in update mode
+    offset_list = list(
+        iterblocks(target_raster_path_band, offset_only=True))
     target_raster = gdal.OpenEx(
         target_raster_path_band[0], gdal.OF_RASTER | gdal.GA_Update)
     band = target_raster.GetRasterBand(target_raster_path_band[1])
     nodata = band.GetNoDataValue()
     geotransform = target_raster.GetGeoTransform()
-    for offsets in iterblocks(
-            target_raster_path_band, offset_only=True):
+    for offset in offset_list:
         grid_y, grid_x = numpy.mgrid[
-            offsets['yoff']:offsets['yoff']+offsets['win_ysize'],
-            offsets['xoff']:offsets['xoff']+offsets['win_xsize']]
+            offset['yoff']:offset['yoff']+offset['win_ysize'],
+            offset['xoff']:offset['xoff']+offset['win_xsize']]
         grid_y = grid_y * geotransform[5] + geotransform[3]
         grid_x = grid_x * geotransform[1] + geotransform[0]
 
@@ -1104,7 +1116,7 @@ def interpolate_points(
         raster_out_array = scipy.interpolate.griddata(
             point_array, value_array, (grid_y, grid_x), interpolation_mode,
             nodata)
-        band.WriteArray(raster_out_array, offsets['xoff'], offsets['yoff'])
+        band.WriteArray(raster_out_array, offset['xoff'], offset['yoff'])
 
 
 def zonal_statistics(
@@ -1250,6 +1262,9 @@ def zonal_statistics(
     new_raster_from_base(
         clipped_raster_path, agg_fid_raster_path, gdal.GDT_Int32,
         [agg_fid_nodata])
+    # fetch the block offsets before the raster is opened for writing
+    agg_fid_offset_list = list(
+        iterblocks((agg_fid_raster_path, 1), offset_only=True))
     agg_fid_raster = gdal.OpenEx(
         agg_fid_raster_path, gdal.GA_Update | gdal.OF_RASTER)
     aggregate_stats = collections.defaultdict(lambda: {
@@ -1316,10 +1331,9 @@ def zonal_statistics(
             "summarizing rasterized disjoint polygon set %d of %d %s",
             set_index+1, len(disjoint_fid_sets),
             os.path.basename(aggregate_vector_path))
-        for agg_fid_offsets in iterblocks(
-                (agg_fid_raster_path, 1), offset_only=True):
-            agg_fid_block = agg_fid_band.ReadAsArray(**agg_fid_offsets)
-            clipped_block = clipped_band.ReadAsArray(**agg_fid_offsets)
+        for agg_fid_offset in agg_fid_offset_list:
+            agg_fid_block = agg_fid_band.ReadAsArray(**agg_fid_offset)
+            clipped_block = clipped_band.ReadAsArray(**agg_fid_offset)
             valid_mask = (agg_fid_block != agg_fid_nodata)
             valid_agg_fids = agg_fid_block[valid_mask]
             valid_clipped = clipped_block[valid_mask]
@@ -1464,10 +1478,10 @@ def zonal_statistics(
 
 
 def get_vector_info(vector_path, layer_id=0):
-    """Get information about an OGR vector (datasource).
+    """Get information about an GDAL vector.
 
     Parameters:
-        vector_path (str): a path to a OGR vector.
+        vector_path (str): a path to a GDAL vector.
         layer_id (str/int): name or index of underlying layer to analyze.
             Defaults to 0.
 
@@ -1491,6 +1505,7 @@ def get_vector_info(vector_path, layer_id=0):
         raise ValueError(
             "Could not open %s as a gdal.OF_VECTOR" % vector_path)
     vector_properties = {}
+    vector_properties['file_list'] = vector.GetFileList()
     layer = vector.GetLayer(iLayer=layer_id)
     # projection is same for all layers, so just use the first one
     spatial_ref = layer.GetSpatialRef()
@@ -1549,6 +1564,7 @@ def get_raster_info(raster_path):
         raise ValueError(
             "Could not open %s as a gdal.OF_RASTER" % raster_path)
     raster_properties = {}
+    raster_properties['file_list'] = raster.GetFileList()
     projection_wkt = raster.GetProjection()
     if not projection_wkt:
         projection_wkt = None
@@ -1731,7 +1747,7 @@ def reproject_vector(
 def reclassify_raster(
         base_raster_path_band, value_map, target_raster_path, target_datatype,
         target_nodata, values_required=True,
-        gtiff_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS):
+        raster_driver_creation_tuple=DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS):
     """Reclassify pixel values in a raster.
 
     A function to reclassify values in raster to any output type. By default
@@ -1751,8 +1767,10 @@ def reclassify_raster(
             Must be the same type as target_datatype
         values_required (bool): If True, raise a ValueError if there is a
             value in the raster that is not found in ``value_map``.
-        gtiff_creation_options (list or tuple): list of strings that will be
-            passed as GDAL "dataset" creation options to the GTIFF driver.
+        raster_driver_creation_tuple (tuple): a tuple containing a GDAL driver
+            name string as the first element and a GDAL creation options
+            tuple/list as the second. Defaults to a GTiff driver tuple
+            defined at geoprocessing.DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS.
 
     Returns:
         None
@@ -1796,15 +1814,15 @@ def reclassify_raster(
     raster_calculator(
         [base_raster_path_band], _map_dataset_to_value_op,
         target_raster_path, target_datatype, target_nodata,
-        gtiff_creation_options=gtiff_creation_options)
+        raster_driver_creation_tuple=raster_driver_creation_tuple)
 
 
 def warp_raster(
         base_raster_path, target_pixel_size, target_raster_path,
         resample_method, target_bb=None, base_sr_wkt=None, target_sr_wkt=None,
-        gtiff_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS,
         n_threads=None, vector_mask_options=None,
-        gdal_warp_options=None, working_dir=None):
+        gdal_warp_options=None, working_dir=None,
+        raster_driver_creation_tuple=DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS):
     """Resize/resample raster to desired pixel size, bbox and projection.
 
     Parameters:
@@ -1824,8 +1842,6 @@ def warp_raster(
             ``base_raster_path`` as this.
         target_sr_wkt (string): if not None, desired target projection in Well
             Known Text format.
-        gtiff_creation_options (list or tuple): list of strings that will be
-            passed as GDAL "dataset" creation options to the GTIFF driver.
         n_threads (int): optional, if not None this sets the ``N_THREADS``
             option for ``gdal.Warp``.
         vector_mask_options (dict): optional, if not None, this is a
@@ -1845,10 +1861,14 @@ def warp_raster(
                     'id' is > 10.
         gdal_warp_options (sequence): if present, the contents of this list
             are passed to the ``warpOptions`` parameter of ``gdal.Warp``. See
-            the GDAL Warp documentation for details.
+            the GDAL Warp documentation for valid options.
         working_dir (string): if defined uses this directory to make
             temporary working files for calculation. Otherwise uses system's
             temp directory.
+        raster_driver_creation_tuple (tuple): a tuple containing a GDAL driver
+            name string as the first element and a GDAL creation options
+            tuple/list as the second. Defaults to a GTiff driver tuple
+            defined at geoprocessing.DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS.
 
     Returns:
         None
@@ -1956,6 +1976,7 @@ def warp_raster(
     base_raster = gdal.OpenEx(base_raster_path, gdal.OF_RASTER)
     gdal.Warp(
         warped_raster_path, base_raster,
+        format=raster_driver_creation_tuple[0],
         outputBounds=working_bb,
         xRes=abs(target_pixel_size[0]),
         yRes=abs(target_pixel_size[1]),
@@ -1965,7 +1986,7 @@ def warp_raster(
         dstSRS=target_sr_wkt,
         multithread=True if warp_options else False,
         warpOptions=warp_options,
-        creationOptions=gtiff_creation_options,
+        creationOptions=raster_driver_creation_tuple[1],
         callback=reproject_callback,
         callback_data=[target_raster_path])
 
@@ -1979,7 +2000,7 @@ def warp_raster(
             where_clause=mask_vector_where_filter,
             target_mask_value=None, working_dir=temp_working_dir,
             all_touched=False,
-            gtiff_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS)
+            raster_driver_creation_tuple=raster_driver_creation_tuple)
         shutil.rmtree(temp_working_dir)
 
 
@@ -2207,7 +2228,8 @@ def calculate_disjoint_polygon_set(
 
 def distance_transform_edt(
         base_region_raster_path_band, target_distance_raster_path,
-        sampling_distance=(1., 1.), working_dir=None):
+        sampling_distance=(1., 1.), working_dir=None,
+        raster_driver_creation_tuple=DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS):
     """Calculate the euclidean distance transform on base raster.
 
     Calculates the euclidean distance transform on the base raster in units of
@@ -2240,6 +2262,10 @@ def distance_transform_edt(
             be > 0.
          working_dir (string): If not None, indicates where temporary files
             should be created during this run.
+        raster_driver_creation_tuple (tuple): a tuple containing a GDAL driver
+            name string as the first element and a GDAL creation options
+            tuple/list as the second. Defaults to a GTiff driver tuple
+            defined at geoprocessing.DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS.
 
     Returns:
         None
@@ -2276,11 +2302,13 @@ def distance_transform_edt(
     raster_calculator(
         [base_region_raster_path_band], mask_op,
         working_raster_paths['region_mask_raster'], gdal.GDT_Byte, nodata_out,
-        calc_raster_stats=False)
+        calc_raster_stats=False,
+        raster_driver_creation_tuple=raster_driver_creation_tuple)
     geoprocessing_core._distance_transform_edt(
         working_raster_paths['region_mask_raster'],
         working_raster_paths['g_raster'], sampling_distance[0],
-        sampling_distance[1], target_distance_raster_path)
+        sampling_distance[1], target_distance_raster_path,
+        raster_driver_creation_tuple)
 
     for path in working_raster_paths.values():
         try:
@@ -2352,9 +2380,8 @@ def convolve_2d(
         signal_path_band, kernel_path_band, target_path,
         ignore_nodata=False, mask_nodata=True, normalize_kernel=False,
         target_datatype=gdal.GDT_Float64,
-        target_nodata=None,
-        gtiff_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS,
-        n_threads=1, working_dir=None):
+        target_nodata=None, n_threads=1, working_dir=None,
+        raster_driver_creation_tuple=DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS):
     """Convolve 2D kernel over 2D signal.
 
     Convolves the raster in ``kernel_path_band`` over ``signal_path_band``.
@@ -2384,7 +2411,7 @@ def convolve_2d(
         target_nodata (int/float): nodata value to set on output raster.
             If ``target_datatype`` is not gdal.GDT_Float64, this value must
             be set.  Otherwise defaults to the minimum value of a float32.
-        gtiff_creation_options (sequence): an argument list that will be
+        raster_creation_options (sequence): an argument list that will be
             passed to the GTiff driver for creating ``target_path``.  Useful
             for blocksizes, compression, and more.
         n_threads (int): number of computational threads to devote to
@@ -2394,6 +2421,10 @@ def convolve_2d(
             manages the reads and writes.
          working_dir (string): If not None, indicates where temporary files
             should be created during this run.
+        raster_driver_creation_tuple (tuple): a tuple containing a GDAL driver
+            name string as the first element and a GDAL creation options
+            tuple/list as the second. Defaults to a GTiff driver tuple
+            defined at geoprocessing.DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS.
 
     Returns:
         None
@@ -2409,7 +2440,7 @@ def convolve_2d(
     new_raster_from_base(
         signal_path_band[0], target_path, target_datatype, [target_nodata],
         fill_value_list=[0],
-        gtiff_creation_options=gtiff_creation_options)
+        raster_driver_creation_tuple=raster_driver_creation_tuple)
 
     signal_raster_info = get_raster_info(signal_path_band[0])
     kernel_raster_info = get_raster_info(kernel_path_band[0])
@@ -2424,6 +2455,8 @@ def convolve_2d(
     # be clipped and NODATA masked to it
     signal_raster = gdal.OpenEx(signal_path_band[0], gdal.OF_RASTER)
     signal_band = signal_raster.GetRasterBand(signal_path_band[1])
+    # getting the offset list before it's opened for updating
+    target_offset_list = list(iterblocks((target_path, 1), offset_only=True))
     target_raster = gdal.OpenEx(target_path, gdal.OF_RASTER | gdal.GA_Update)
     target_band = target_raster.GetRasterBand(1)
 
@@ -2435,7 +2468,7 @@ def convolve_2d(
         new_raster_from_base(
             signal_path_band[0], mask_raster_path, gdal.GDT_Float32,
             [-1.0], fill_value_list=[0],
-            gtiff_creation_options=gtiff_creation_options)
+            raster_driver_creation_tuple=raster_driver_creation_tuple)
         mask_raster = gdal.OpenEx(
             mask_raster_path, gdal.GA_Update | gdal.OF_RASTER)
         mask_band = mask_raster.GetRasterBand(1)
@@ -2558,8 +2591,7 @@ def convolve_2d(
         mask_pixels_processed = 0
         mask_band.FlushCache()
         mask_raster.FlushCache()
-        for target_offset_data in iterblocks(
-                (target_path, 1), offset_only=True):
+        for target_offset_data in target_offset_list:
             target_block = target_band.ReadAsArray(
                 **target_offset_data).astype(
                     _GDAL_TYPE_TO_NUMPY_LOOKUP[target_datatype])
@@ -2789,7 +2821,7 @@ def transform_bounding_box(
 
 def merge_rasters(
         raster_path_list, target_path, bounding_box=None, target_nodata=None,
-        gtiff_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS):
+        raster_driver_creation_tuple=DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS):
     """Merge the given rasters into a single raster.
 
     This operation creates a mosaic of the rasters in ``raster_path_list``.
@@ -2812,9 +2844,10 @@ def merge_rasters(
             ``raster_path_list``. It is an error if different rasters in
             ``raster_path_list`` have different nodata values and
             ``target_nodata`` is None.
-        gtiff_creation_options (sequence): this is an argument list that will
-            be passed to the GTiff driver.  Useful for blocksizes,
-            compression, and more.
+        raster_driver_creation_tuple (tuple): a tuple containing a GDAL driver
+            name string as the first element and a GDAL creation options
+            tuple/list as the second. Defaults to a GTiff driver tuple
+            defined at geoprocessing.DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS.
 
     Returns:
         None.
@@ -2887,7 +2920,7 @@ def merge_rasters(
         LOGGER.debug("bounding_box %s", bounding_box)
         LOGGER.debug("merged target bounding_box %s", target_bounding_box)
 
-    driver = gdal.GetDriverByName('GTiff')
+    driver = gdal.GetDriverByName(raster_driver_creation_tuple[0])
     target_pixel_size = pixel_size_set.pop()
     n_cols = int(math.ceil(abs(
         (target_bounding_box[2]-target_bounding_box[0]) /
@@ -2913,7 +2946,7 @@ def merge_rasters(
     n_bands = n_bands_set.pop()
     target_raster = driver.Create(
         target_path, n_cols, n_rows, n_bands,
-        datatype_set.pop(), options=gtiff_creation_options)
+        datatype_set.pop(), options=raster_driver_creation_tuple[1])
     target_raster.SetProjection(raster.GetProjection())
     target_raster.SetGeoTransform(target_geotransform)
     if target_nodata is None:
@@ -3000,7 +3033,7 @@ def mask_raster(
         base_raster_path_band, mask_vector_path, target_mask_raster_path,
         mask_layer_id=0, target_mask_value=None, working_dir=None,
         all_touched=False, where_clause=None,
-        gtiff_creation_options=DEFAULT_GTIFF_CREATION_OPTIONS):
+        raster_driver_creation_tuple=DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS):
     """
     Mask a raster band with a given vector.
 
@@ -3027,11 +3060,13 @@ def mask_raster(
         all_touched (bool): if False, a pixel is only masked if its centroid
             intersects with the mask. If True a pixel is masked if any point
             of the pixel intersects the polygon mask.
-        where_clause (str): (optional) if not None, it is an SQL compatible where
-            clause that can be used to filter the features that are used to
-            mask the base raster.
-        gtiff_creation_options (sequence): this is an argument list that will
-            be passed to the GTiff driver defined by the GDAL GTiff spec.
+        where_clause (str): (optional) if not None, it is an SQL compatible
+            where clause that can be used to filter the features that are used
+            to mask the base raster.
+        raster_driver_creation_tuple (tuple): a tuple containing a GDAL driver
+            name string as the first element and a GDAL creation options
+            tuple/list as the second. Defaults to a GTiff driver tuple
+            defined at geoprocessing.DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS.
 
     Returns:
         None.
@@ -3044,7 +3079,8 @@ def mask_raster(
 
     new_raster_from_base(
         base_raster_path_band[0], mask_raster_path, gdal.GDT_Byte, [255],
-        fill_value_list=[0], gtiff_creation_options=gtiff_creation_options)
+        fill_value_list=[0],
+        raster_driver_creation_tuple=raster_driver_creation_tuple)
 
     base_raster_info = get_raster_info(base_raster_path_band[0])
 
@@ -3074,7 +3110,7 @@ def mask_raster(
     raster_calculator(
         [base_raster_path_band, (mask_raster_path, 1)], mask_op,
         target_mask_raster_path, base_raster_info['datatype'], base_nodata,
-        gtiff_creation_options=gtiff_creation_options)
+        raster_driver_creation_tuple=raster_driver_creation_tuple)
 
     os.remove(mask_raster_path)
 
@@ -3198,6 +3234,34 @@ def merge_bounding_box_list(bounding_box_list, bounding_box_mode):
             "Bounding boxes do not intersect. Base list: %s mode: %s "
             " result: %s" % (bounding_box_list, bounding_box_mode, result_bb))
     return result_bb
+
+
+def get_gis_type(path):
+    """Calculate the GIS type of the file located at `path`.
+
+    Parameters:
+        path (str): path to a file on disk.
+
+
+    Returns:
+        a bitwise OR of all GIS types that PyGeoprocessing models, currently
+        this is UNKNOWN_TYPE, RASTER_TYPE, or VECTOR_TYPE.
+
+    """
+    if not os.path.exists(path):
+        raise ValueError("%s does not exist", path)
+    from pygeoprocessing import UNKNOWN_TYPE
+    gis_type = UNKNOWN_TYPE
+    gis_raster = gdal.OpenEx(path, gdal.OF_RASTER)
+    if gis_raster is not None:
+        from pygeoprocessing import RASTER_TYPE
+        gis_type |= RASTER_TYPE
+        gis_raster = None
+    gis_vector = gdal.OpenEx(path, gdal.OF_VECTOR)
+    if gis_vector is not None:
+        from pygeoprocessing import VECTOR_TYPE
+        gis_type |= VECTOR_TYPE
+    return gis_type
 
 
 def _make_logger_callback(message):

@@ -44,7 +44,8 @@ class RasterCreationTest(unittest.TestCase):
         create_raster_on_disk([pixels], reference.origin,
                               reference.projection,
                               nodata, reference.pixel_size(30),
-                              datatype=gdal.GDT_Byte, format='GTiff',
+                              datatype=gdal.GDT_Byte,
+                              raster_driver_creation_tuple=('GTiff', ()),
                               filename=filename)
 
         self.assertTrue(os.path.exists(filename))
@@ -73,7 +74,8 @@ class RasterCreationTest(unittest.TestCase):
             create_raster_on_disk(
                 [numpy.ones((4, 4))],
                 reference.origin, reference.projection, 0,
-                reference.pixel_size(30), format='foo')
+                reference.pixel_size(30), raster_driver_creation_tuple=(
+                    'foo', []))
 
     def test_raster_autodtype(self):
         """Verify automatic detection of a matrix's dtype."""
