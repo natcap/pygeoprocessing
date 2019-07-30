@@ -1453,10 +1453,10 @@ def zonal_statistics(
 
 
 def get_vector_info(vector_path, layer_id=0):
-    """Get information about an OGR vector (datasource).
+    """Get information about an GDAL vector.
 
     Parameters:
-        vector_path (str): a path to a OGR vector.
+        vector_path (str): a path to a GDAL vector.
         layer_id (str/int): name or index of underlying layer to analyze.
             Defaults to 0.
 
@@ -1480,6 +1480,7 @@ def get_vector_info(vector_path, layer_id=0):
         raise ValueError(
             "Could not open %s as a gdal.OF_VECTOR" % vector_path)
     vector_properties = {}
+    vector_properties['file_list'] = vector.GetFileList()
     layer = vector.GetLayer(iLayer=layer_id)
     # projection is same for all layers, so just use the first one
     spatial_ref = layer.GetSpatialRef()
@@ -1536,6 +1537,7 @@ def get_raster_info(raster_path):
         raise ValueError(
             "Could not open %s as a gdal.OF_RASTER" % raster_path)
     raster_properties = {}
+    raster_properties['file_list'] = raster.GetFileList()
     projection_wkt = raster.GetProjection()
     if not projection_wkt:
         projection_wkt = None
@@ -3184,6 +3186,34 @@ def merge_bounding_box_list(bounding_box_list, bounding_box_mode):
             "Bounding boxes do not intersect. Base list: %s mode: %s "
             " result: %s" % (bounding_box_list, bounding_box_mode, result_bb))
     return result_bb
+
+
+def get_gis_type(path):
+    """Calculate the GIS type of the file located at `path`.
+
+    Parameters:
+        path (str): path to a file on disk.
+
+
+    Returns:
+        a bitwise OR of all GIS types that PyGeoprocessing models, currently
+        this is UNKNOWN_TYPE, RASTER_TYPE, or VECTOR_TYPE.
+
+    """
+    if not os.path.exists(path):
+        raise ValueError("%s does not exist", path)
+    from pygeoprocessing import UNKNOWN_TYPE
+    gis_type = UNKNOWN_TYPE
+    gis_raster = gdal.OpenEx(path, gdal.OF_RASTER)
+    if gis_raster is not None:
+        from pygeoprocessing import RASTER_TYPE
+        gis_type |= RASTER_TYPE
+        gis_raster = None
+    gis_vector = gdal.OpenEx(path, gdal.OF_VECTOR)
+    if gis_vector is not None:
+        from pygeoprocessing import VECTOR_TYPE
+        gis_type |= VECTOR_TYPE
+    return gis_type
 
 
 def _make_logger_callback(message):
