@@ -62,21 +62,22 @@ def evaluate_raster_calculator_expression(
     """
     # remove any raster bands that don't have corresponding symbols in the
     # expression
-    active_symbols = {
-        str(x) for x in sympy.parsing.sympy_parser.parse_expr(
-            expression_str, evaluate=False).free_symbols}
-    LOGGER.debug(
-        'evaluating: %s, active symbols: %s', expression_str, active_symbols)
-    symbol_list, raster_path_band_list = zip(*[
-        (symbol, raster_path_band) for symbol, raster_path_band in
-        symbol_to_path_band_map.items() if symbol in active_symbols])
-    raster_op = sympy.lambdify(symbol_list, expression_str, 'numpy')
+    active_symbols = sorted(
+        [str(x) for x in sympy.parsing.sympy_parser.parse_expr(
+            expression_str).free_symbols])
+    raster_op = sympy.lambdify(active_symbols, expression_str, 'numpy')
     raster_op_source = inspect.getsource(raster_op)
-    LOGGER.debug('raster_op:\n%s', raster_op_source)
     if not active_symbols:
         raise ValueError(
             'Symbolic expression reduces to a constant and does not need '
             'evaluation. See inferred implementation:\n%s' % raster_op_source)
+
+    LOGGER.debug(
+        'evaluating: %s\nactive symbols: %s\nraster_op:\n%s',
+        expression_str, active_symbols, raster_op_source)
+    symbol_list, raster_path_band_list = zip(*[
+        (symbol, raster_path_band) for symbol, raster_path_band in
+        sorted(symbol_to_path_band_map.items()) if symbol in active_symbols])
 
     raster_path_band_const_list = (
         [path_band for path_band in raster_path_band_list] +

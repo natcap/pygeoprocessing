@@ -1,5 +1,4 @@
 """PyGeoprocessing 1.0 test suite."""
-import logging
 import time
 import tempfile
 import os
@@ -19,8 +18,6 @@ try:
     from builtins import reload
 except ImportError:
     from imp import reload
-
-LOGGER = logging.getLogger(__name__)
 
 
 def passthrough(x):
@@ -4142,6 +4139,19 @@ class PyGeoprocessing10(unittest.TestCase):
         expected_array[0, 0] = -9999
         target_array = _read_raster_to_array(target_raster_path)
         numpy.testing.assert_almost_equal(target_array, expected_array)
+
+        # test that a symbolic implementation that reduces to a constant
+        # raises a ValueError
+        simplifies_to_1 = 'a*b**-1*a*d**2 / a**2 * d**-2 / b**-1'
+        with self.assertRaises(ValueError) as cm:
+            pygeoprocessing.symbolic.evaluate_raster_calculator_expression(
+                simplifies_to_1, symbol_to_path_band_map, target_nodata,
+                target_raster_path)
+        expected_message = 'Symbolic expression reduces to a constant'
+        actual_message = str(cm.exception)
+        self.assertTrue(expected_message in actual_message, actual_message)
+
+
 
     def test_get_file_info(self):
         """PGP: geoprocessing test for `file_list` in the get_*_info ops."""
