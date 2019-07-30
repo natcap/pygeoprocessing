@@ -48,7 +48,8 @@ def _make_simple_raster(val_array, nodata_val, gdal_type, target_path):
     new_raster.SetProjection(wgs84_wkt)
     new_raster.SetGeoTransform([1, 1.0, 0.0, 1, 0.0, -1.0])
     new_band = new_raster.GetRasterBand(1)
-    new_band.SetNoDataValue(nodata_val)
+    if nodata_val is not None:
+        new_band.SetNoDataValue(nodata_val)
     new_band.WriteArray(val_array)
     new_raster.FlushCache()
     new_band = None
@@ -4035,12 +4036,13 @@ class PyGeoprocessing10(unittest.TestCase):
         n = 10
         raster_a_path = os.path.join(self.workspace_dir, 'a.tif')
         raster_b_path = os.path.join(self.workspace_dir, 'b.tif')
-        val_array = numpy.array(range(n*n), dtype=numpy.int32).reshape((n, n))
+        val_array = numpy.array(
+            range(n*n), dtype=numpy.float32).reshape((n, n))
         nodata_val = None
         _make_simple_raster(
-            val_array, nodata_val, gdal.GDT_Int32, raster_a_path)
+            val_array, nodata_val, gdal.GDT_Float32, raster_a_path)
         _make_simple_raster(
-            val_array, nodata_val, gdal.GDT_Int32, raster_b_path)
+            val_array, nodata_val, gdal.GDT_Float32, raster_b_path)
 
         # test regular addition
         sum_expression_str = 'a+b'
@@ -4060,15 +4062,17 @@ class PyGeoprocessing10(unittest.TestCase):
         # test with two values as nodata
         nodata_val = -1
         raster_c_path = os.path.join(self.workspace_dir, 'c.tif')
-        val_array = numpy.array(range(n*n), dtype=numpy.int32).reshape((n, n))
+        val_array = numpy.array(
+            range(n*n), dtype=numpy.float32).reshape((n, n))
         val_array[0, 0] = nodata_val
         _make_simple_raster(
-            val_array, nodata_val, gdal.GDT_Int32, raster_c_path)
+            val_array, nodata_val, gdal.GDT_Float32, raster_c_path)
         raster_d_path = os.path.join(self.workspace_dir, 'd.tif')
-        val_array = numpy.array(range(n*n), dtype=numpy.int32).reshape((n, n))
+        val_array = numpy.array(
+            range(n*n), dtype=numpy.float32).reshape((n, n))
         val_array[-1, -1] = nodata_val
         _make_simple_raster(
-            val_array, nodata_val, gdal.GDT_Int32, raster_d_path)
+            val_array, nodata_val, gdal.GDT_Float32, raster_d_path)
         mult_expression_str = 'c*d'
         symbol_to_path_band_map = {
             'c': (raster_c_path, 1),
@@ -4082,15 +4086,48 @@ class PyGeoprocessing10(unittest.TestCase):
         expected_array = val_array * val_array
         expected_array[0, 0] = -1
         expected_array[-1, -1] = -1
-        numpy.testing.assert_almost_equal(
-            target_array.flatten(), expected_array**2)
+        numpy.testing.assert_almost_equal(target_array, expected_array)
 
         # test with undefined target nodata
         pygeoprocessing.symbolic.evaluate_raster_calculator_expression(
             mult_expression_str, symbol_to_path_band_map, -1,
             target_raster_path)
 
-        # TODO : Test all teh boundary cases.
+        # test divide by zero
+
+        zero_array = numpy.zeros((n, n), dtype=numpy.float32)
+        raster_zero_path = os.path.join(self.workspace_dir, 'zero.tif')
+        _make_simple_raster(
+            zero_array, nodata_val, gdal.GDT_Float32, raster_zero_path)
+
+        ones_array = numpy.ones((n, n), dtype=numpy.float32)
+        raster_ones_path = os.path.join(self.workspace_dir, 'ones.tif')
+        _make_simple_raster(
+            ones_array, nodata_val, gdal.GDT_Float32, raster_ones_path)
+
+        divide_by_zero_expr = 'all_ones / all_zeros'
+        symbol_to_path_band_map = {
+            'all_ones': (raster_ones_path, 1),
+            'all_zeros': (raster_zero_path, 1),
+        }
+        target_nodata = None
+        target_raster_path = os.path.join(self.workspace_dir, 'target.tif')
+        with self.assertRaises(ValueError) as cm:
+            pygeoprocessing.symbolic.evaluate_raster_calculator_expression(
+                divide_by_zero_expr, symbol_to_path_band_map, target_nodata,
+                target_raster_path)
+        expected_message = 'Encountered inf in calculation'
+        actual_message = str(cm.exception)
+        self.assertTrue(expected_message in actual_message, actual_message)
+
+        pygeoprocessing.symbolic.evaluate_raster_calculator_expression(
+            divide_by_zero_expr, symbol_to_path_band_map, target_nodata,
+            target_raster_path, default_inf=-9999)
+        expected_array = numpy.empty(val_array.shape)
+        expected_array[:] = -9999
+        target_array = _read_raster_to_array(target_raster_path)
+        numpy.testing.assert_almost_equal(target_array, expected_array)
+
 
     def test_get_file_info(self):
         """PGP: geoprocessing test for `file_list` in the get_*_info ops."""
