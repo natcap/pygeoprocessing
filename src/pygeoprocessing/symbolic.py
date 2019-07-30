@@ -9,6 +9,7 @@ import sympy.parsing.sympy_parser
 import numpy
 import numpy.ma
 from . import geoprocessing
+from .geoprocessing import DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS
 
 LOGGER = logging.getLogger(__name__)
 LOGGER.addHandler(logging.NullHandler())  # silence logging by default
@@ -16,7 +17,8 @@ LOGGER.addHandler(logging.NullHandler())  # silence logging by default
 
 def evaluate_raster_calculator_expression(
         expression_str, symbol_to_path_band_map, target_nodata,
-        target_raster_path, default_nan=None, default_inf=None):
+        target_raster_path, default_nan=None, default_inf=None,
+        raster_driver_creation_tuple=DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS):
     """Evaluate the arithmetic expression of rasters.
 
     Evaluate the symbolic arithmetic expression in `expression_str` where the
@@ -86,9 +88,40 @@ def evaluate_raster_calculator_expression(
          for path_band in raster_path_band_list] + [
             (raster_op, 'raw'), (target_nodata, 'raw'), (default_nan, 'raw'),
             (default_inf, 'raw')])
+
+    # Determine the target gdal type
+    target_numpy_type = numpy.result_type(*[
+        geoprocessing.get_raster_info(path)['numpy_type']
+        for path, band_id in raster_path_band_const_list
+        if isinstance(band_id, int)])
+
+    dtype_to_gdal_type = {
+        numpy.dtype('uint8'): gdal.GDT_Byte,
+        numpy.dtype('int16'): gdal.GDT_Int16,
+        numpy.dtype('int32'): gdal.GDT_Int32,
+        numpy.dtype('uint16'): gdal.GDT_UInt16,
+        numpy.dtype('uint32'): gdal.GDT_UInt32,
+        numpy.dtype('float32'): gdal.GDT_Float32,
+        numpy.dtype('float64'): gdal.GDT_Float64,
+        numpy.dtype('csingle'): gdal.GDT_CFloat32,
+        numpy.dtype('complex64'): gdal.GDT_CFloat64,
+    }
+
+
+    if target_numpy_type != numpy.int8:
+        target_gdal_type = dtype_to_gdal_type[
+            target_numpy_type]
+        target_raster_driver_creation_tuple = raster_driver_creation_tuple
+    else:
+        # it's a signed byte
+        target_gdal_type = gdal.GDT_Byte
+        target_raster_driver_creation_tuple = (
+            target_raster_driver_creation_tuple[0],
+            target_raster_driver_creation_tuple[1]+['PIXELTYPE=SIGNEDBYTE'])
     geoprocessing.raster_calculator(
         raster_path_band_const_list, _generic_raster_op, target_raster_path,
-        gdal.GDT_Float32, target_nodata)
+        target_gdal_type, target_nodata,
+        raster_driver_creation_tuple=target_raster_driver_creation_tuple)
 
 
 def _generic_raster_op(*arg_list):
