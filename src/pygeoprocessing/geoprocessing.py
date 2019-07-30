@@ -3185,6 +3185,34 @@ def merge_bounding_box_list(bounding_box_list, bounding_box_mode):
     return result_bb
 
 
+def get_gis_type(path):
+    """Calculate the GIS type of the file located at `path`.
+
+    Parameters:
+        path (str): path to a file on disk.
+
+
+    Returns:
+        a bitwise OR of all GIS types that PyGeoprocessing models, currently
+        this is UNKNOWN_TYPE, RASTER_TYPE, or VECTOR_TYPE.
+
+    """
+    if not os.path.exists(path):
+        raise ValueError("%s does not exist", path)
+    from pygeoprocessing import UNKNOWN_TYPE
+    gis_type = UNKNOWN_TYPE
+    gis_raster = gdal.OpenEx(path, gdal.OF_RASTER)
+    if gis_raster is not None:
+        from pygeoprocessing import RASTER_TYPE
+        gis_type |= RASTER_TYPE
+        gis_raster = None
+    gis_vector = gdal.OpenEx(path, gdal.OF_VECTOR)
+    if gis_vector is not None:
+        from pygeoprocessing import VECTOR_TYPE
+        gis_type |= VECTOR_TYPE
+    return gis_type
+
+
 def _make_logger_callback(message):
     """Build a timed logger callback that prints ``message`` replaced.
 
