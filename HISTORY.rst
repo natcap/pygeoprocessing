@@ -5,6 +5,11 @@ Unreleased Changes
 ------------------
 * Changed default compression routine for GeoTIFFs to ZSTD (thanks Facebook
   https://facebook.github.io/zstd/).
+* Added a **non-backwards compatible change** by replacing the
+  ``gtiff_creation_options`` string to a driver/option string named
+  ``raster_driver_creation_tuple``. This allows the caller to create any type
+  of ``GDAL`` writable driver along with the option list associated with that
+  driver.
 * Added a ``'file_list'`` key to the dictionary returned by
   ``get_raster_info`` and ``get_vector_info`` that contains a list of all the
   files associated with that GIS object. The first parameter of these lists

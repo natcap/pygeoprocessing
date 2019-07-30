@@ -936,7 +936,8 @@ class RasterTests(unittest.TestCase):
         filename_b = os.path.join(self.workspace, 'b.tif')
         RasterTests.create_raster(
             filename=filename_a,
-            dataset_opts=['TILED=YES', 'BLOCKXSIZE=128', 'BLOCKYSIZE=128'])
+            raster_driver_creation_tuple=(
+                'GTiff', ['TILED=YES', 'BLOCKXSIZE=128', 'BLOCKYSIZE=128']))
         RasterTests.create_raster(filename=filename_b)
 
         with self.assertRaises(AssertionError):
