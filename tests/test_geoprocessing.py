@@ -4173,6 +4173,10 @@ class PyGeoprocessing10(unittest.TestCase):
         pygeoprocessing.symbolic.evaluate_raster_calculator_expression(
             byte_expression, symbol_to_path_band_map, target_nodata,
             target_byte_raster_path)
+        # we should get out a *signed* byte
+        self.assertEqual(
+            pygeoprocessing.get_raster_info(
+                target_byte_raster_path)['numpy_type'], numpy.int8)
 
 
     def test_non_geotiff_raster_types(self):
