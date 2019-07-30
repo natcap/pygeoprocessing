@@ -2406,7 +2406,7 @@ def convolve_2d(
             nodata where ``signal_path_band``'s pixels were nodata.
         target_datatype (GDAL type): a GDAL raster type to set the output
             raster type to, as well as the type to calculate the convolution
-            in.  Defaults to GDT_Float64.  Note unsigned byte is not
+            in.  Defaults to GDT_Float64.  Note signed byte is not
             supported.
         target_nodata (int/float): nodata value to set on output raster.
             If ``target_datatype`` is not gdal.GDT_Float64, this value must
