@@ -19,16 +19,7 @@ private:
     // used to make lookups O(log n) time
     map<KEY_T, ListIter> item_map;
     size_t cache_size;
-private:
-    void clean(list< pair<KEY_T, VAL_T> > &removed_value_list){
-        while(item_map.size()>cache_size){
-            ListIter last_it = item_list.end(); last_it --;
-            removed_value_list.push_back(
-                make_pair(last_it->first, last_it->second));
-            item_map.erase(last_it->first);
-            item_list.pop_back();
-        }
-    };
+
 public:
     LRUCache(int cache_size_):cache_size(cache_size_){
             ;
@@ -40,6 +31,10 @@ public:
 
     ListIter end() {
         return item_list.end();
+    }
+
+    size_t size() {
+        return item_list.size();
     }
 
     void put(
@@ -57,7 +52,7 @@ public:
         // record its iterator in the map
         item_map.insert(make_pair(key, item_list.begin()));
         // possibly remove any elements that have exceeded the cache size
-        return clean(removed_value_list);
+        return clean(removed_value_list, cache_size);
     };
     bool exist(const KEY_T &key){
         return (item_map.count(key)>0);
@@ -68,6 +63,16 @@ public:
         // move the element to the front of the list
         item_list.splice(item_list.begin(), item_list, it->second);
         return it->second->second;
+    };
+
+    void clean(list< pair<KEY_T, VAL_T> > &removed_value_list, size_t n_items) {
+        while(item_map.size()>n_items){
+            ListIter last_it = item_list.end(); last_it --;
+            removed_value_list.push_back(
+                make_pair(last_it->first, last_it->second));
+            item_map.erase(last_it->first);
+            item_list.pop_back();
+        }
     };
 };
 #endif

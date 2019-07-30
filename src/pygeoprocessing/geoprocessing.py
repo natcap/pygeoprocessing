@@ -1095,16 +1095,18 @@ def interpolate_points(
     point_array = numpy.array(point_list)
     value_array = numpy.array(value_list)
 
+    # getting the offsets first before the raster is opened in update mode
+    offset_list = list(
+        iterblocks(target_raster_path_band, offset_only=True))
     target_raster = gdal.OpenEx(
         target_raster_path_band[0], gdal.OF_RASTER | gdal.GA_Update)
     band = target_raster.GetRasterBand(target_raster_path_band[1])
     nodata = band.GetNoDataValue()
     geotransform = target_raster.GetGeoTransform()
-    for offsets in iterblocks(
-            target_raster_path_band, offset_only=True):
+    for offset in offset_list:
         grid_y, grid_x = numpy.mgrid[
-            offsets['yoff']:offsets['yoff']+offsets['win_ysize'],
-            offsets['xoff']:offsets['xoff']+offsets['win_xsize']]
+            offset['yoff']:offset['yoff']+offset['win_ysize'],
+            offset['xoff']:offset['xoff']+offset['win_xsize']]
         grid_y = grid_y * geotransform[5] + geotransform[3]
         grid_x = grid_x * geotransform[1] + geotransform[0]
 
@@ -1115,7 +1117,7 @@ def interpolate_points(
         raster_out_array = scipy.interpolate.griddata(
             point_array, value_array, (grid_y, grid_x), interpolation_mode,
             nodata)
-        band.WriteArray(raster_out_array, offsets['xoff'], offsets['yoff'])
+        band.WriteArray(raster_out_array, offset['xoff'], offset['yoff'])
 
 
 def zonal_statistics(
@@ -1261,6 +1263,9 @@ def zonal_statistics(
     new_raster_from_base(
         clipped_raster_path, agg_fid_raster_path, gdal.GDT_Int32,
         [agg_fid_nodata])
+    # fetch the block offsets before the raster is opened for writing
+    agg_fid_offset_list = list(
+        iterblocks((agg_fid_raster_path, 1), offset_only=True))
     agg_fid_raster = gdal.OpenEx(
         agg_fid_raster_path, gdal.GA_Update | gdal.OF_RASTER)
     aggregate_stats = collections.defaultdict(lambda: {
@@ -1327,10 +1332,9 @@ def zonal_statistics(
             "summarizing rasterized disjoint polygon set %d of %d %s",
             set_index+1, len(disjoint_fid_sets),
             os.path.basename(aggregate_vector_path))
-        for agg_fid_offsets in iterblocks(
-                (agg_fid_raster_path, 1), offset_only=True):
-            agg_fid_block = agg_fid_band.ReadAsArray(**agg_fid_offsets)
-            clipped_block = clipped_band.ReadAsArray(**agg_fid_offsets)
+        for agg_fid_offset in agg_fid_offset_list:
+            agg_fid_block = agg_fid_band.ReadAsArray(**agg_fid_offset)
+            clipped_block = clipped_band.ReadAsArray(**agg_fid_offset)
             valid_mask = (agg_fid_block != agg_fid_nodata)
             valid_agg_fids = agg_fid_block[valid_mask]
             valid_clipped = clipped_block[valid_mask]
@@ -2452,6 +2456,8 @@ def convolve_2d(
     # be clipped and NODATA masked to it
     signal_raster = gdal.OpenEx(signal_path_band[0], gdal.OF_RASTER)
     signal_band = signal_raster.GetRasterBand(signal_path_band[1])
+    # getting the offset list before it's opened for updating
+    target_offset_list = list(iterblocks((target_path, 1), offset_only=True))
     target_raster = gdal.OpenEx(target_path, gdal.OF_RASTER | gdal.GA_Update)
     target_band = target_raster.GetRasterBand(1)
 
@@ -2586,8 +2592,7 @@ def convolve_2d(
         mask_pixels_processed = 0
         mask_band.FlushCache()
         mask_raster.FlushCache()
-        for target_offset_data in iterblocks(
-                (target_path, 1), offset_only=True):
+        for target_offset_data in target_offset_list:
             target_block = target_band.ReadAsArray(
                 **target_offset_data).astype(
                     _GDAL_TYPE_TO_NUMPY_LOOKUP[target_datatype])

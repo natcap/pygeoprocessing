@@ -1,6 +1,6 @@
 # coding=UTF-8
 # distutils: language=c++
-# cython: language_level=2
+# cython: language_level=3
 import os
 import tempfile
 import logging
@@ -20,8 +20,8 @@ from libc.math cimport ceil
 from osgeo import gdal
 import pygeoprocessing
 
-DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS = ('GTiff', (
-    'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=DEFLATE',
+DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS = (
+    'GTIFF', ('TILED=YES', 'BIGTIFF=YES', 'COMPRESS=ZSTD',
     'BLOCKXSIZE=256', 'BLOCKYSIZE=256'))
 LOGGER = logging.getLogger('pygeoprocessing.geoprocessing_core')
 

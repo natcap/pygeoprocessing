@@ -1,5 +1,6 @@
 # coding=UTF-8
 # distutils: language=c++
+# cython: language_level=3
 """
 Provides PyGeprocessing Routing functionality.
 
@@ -104,6 +105,8 @@ cdef extern from "LRUCache.h" nogil:
         clist[pair[KEY_T,VAL_T]].iterator end()
         bint exist(KEY_T &)
         VAL_T get(KEY_T &)
+        void clean(clist[pair[KEY_T,VAL_T]]&, int n_items)
+        size_t size()
 
 # this is the class type that'll get stored in the priority queue
 cdef struct PixelType:
@@ -226,9 +229,9 @@ cdef class _ManagedRaster:
         self.block_xbits = numpy.log2(self.block_xsize)
         self.block_ybits = numpy.log2(self.block_ysize)
         self.block_nx = (
-            self.raster_x_size + (self.block_xsize) - 1) / self.block_xsize
+            self.raster_x_size + (self.block_xsize) - 1) // self.block_xsize
         self.block_ny = (
-            self.raster_y_size + (self.block_ysize) - 1) / self.block_ysize
+            self.raster_y_size + (self.block_ysize) - 1) // self.block_ysize
 
         self.lru_cache = new LRUCache[int, double*](MANAGED_RASTER_N_BLOCKS)
         self.raster_path = <bytes> raster_path
@@ -366,7 +369,7 @@ cdef class _ManagedRaster:
 
     cdef void _load_block(self, int block_index) except *:
         cdef int block_xi = block_index % self.block_nx
-        cdef int block_yi = block_index / self.block_nx
+        cdef int block_yi = block_index // self.block_nx
 
         # we need the offsets to subtract from global indexes for cached array
         cdef int xoff = block_xi << self.block_xbits
@@ -426,7 +429,66 @@ cdef class _ManagedRaster:
                     self.dirty_blocks.erase(dirty_itr)
 
                     block_xi = block_index % self.block_nx
-                    block_yi = block_index / self.block_nx
+                    block_yi = block_index // self.block_nx
+
+                    xoff = block_xi << self.block_xbits
+                    yoff = block_yi << self.block_ybits
+
+                    win_xsize = self.block_xsize
+                    win_ysize = self.block_ysize
+
+                    if xoff+win_xsize > self.raster_x_size:
+                        win_xsize = win_xsize - (
+                            xoff+win_xsize - self.raster_x_size)
+                    if yoff+win_ysize > self.raster_y_size:
+                        win_ysize = win_ysize - (
+                            yoff+win_ysize - self.raster_y_size)
+
+                    for xi_copy in range(win_xsize):
+                        for yi_copy in range(win_ysize):
+                            block_array[yi_copy, xi_copy] = double_buffer[
+                                (yi_copy << self.block_xbits) + xi_copy]
+                    raster_band.WriteArray(
+                        block_array[0:win_ysize, 0:win_xsize],
+                        xoff=xoff, yoff=yoff)
+            PyMem_Free(double_buffer)
+            removed_value_list.pop_front()
+
+        if self.write_mode:
+            raster_band = None
+            raster = None
+
+    cdef void flush(self) except *:
+        cdef clist[BlockBufferPair] removed_value_list
+        cdef double *double_buffer
+        cdef cset[int].iterator dirty_itr
+        cdef int block_index, block_xi, block_yi
+        cdef int xoff, yoff, win_xsize, win_ysize
+
+        self.lru_cache.clean(removed_value_list, self.lru_cache.size())
+
+        raster_band = None
+        if self.write_mode:
+            raster = gdal.OpenEx(
+                self.raster_path, gdal.GA_Update | gdal.OF_RASTER)
+            raster_band = raster.GetRasterBand(self.band_id)
+
+        block_array = numpy.empty(
+            (self.block_ysize, self.block_xsize), dtype=numpy.double)
+        while not removed_value_list.empty():
+            # write the changed value back if desired
+            double_buffer = removed_value_list.front().second
+
+            if self.write_mode:
+                block_index = removed_value_list.front().first
+
+                # write back the block if it's dirty
+                dirty_itr = self.dirty_blocks.find(block_index)
+                if dirty_itr != self.dirty_blocks.end():
+                    self.dirty_blocks.erase(dirty_itr)
+
+                    block_xi = block_index % self.block_nx
+                    block_yi = block_index // self.block_nx
 
                     xoff = block_xi << self.block_xbits
                     yoff = block_yi << self.block_ybits
@@ -644,9 +706,6 @@ def fill_pits(
     raster_driver.CreateCopy(
         target_filled_dem_raster_path, base_dem_raster,
         options=raster_driver_creation_tuple[1])
-    target_dem_raster = gdal.OpenEx(
-        target_filled_dem_raster_path, gdal.OF_RASTER)
-    target_dem_band = target_dem_raster.GetRasterBand(dem_raster_path_band[1])
     filled_dem_managed_raster = _ManagedRaster(
         target_filled_dem_raster_path, dem_raster_path_band[1], 1)
 
@@ -676,8 +735,13 @@ def fill_pits(
         # attempt to expand read block by a pixel boundary
         (xa, xb, ya, yb), modified_offset_dict = _generate_read_bounds(
             offset_dict, raster_x_size, raster_y_size)
+        filled_dem_managed_raster.flush()
+        target_dem_raster = gdal.OpenEx(target_filled_dem_raster_path)
+        target_dem_band = target_dem_raster.GetRasterBand(1)
         dem_buffer_array[ya:yb, xa:xb] = target_dem_band.ReadAsArray(
                 **modified_offset_dict).astype(numpy.float64)
+        target_dem_band = None
+        target_dem_raster = None
 
         # search block for locally undrained pixels
         for yi in range(1, win_ysize+1):
@@ -2802,11 +2866,12 @@ def extract_streams_mfd(
 
     stream_mr.close()
     LOGGER.info('filter out incomplete divergent streams')
+    block_offsets_list = list(pygeoprocessing.iterblocks(
+        (target_stream_raster_path, 1), offset_only=True))
     stream_raster = gdal.OpenEx(
         target_stream_raster_path, gdal.OF_RASTER | gdal.GA_Update)
     stream_band = stream_raster.GetRasterBand(1)
-    for block_offsets in pygeoprocessing.iterblocks(
-            (target_stream_raster_path, 1), offset_only=True):
+    for block_offsets in block_offsets_list:
         stream_array = stream_band.ReadAsArray(**block_offsets)
         stream_array[stream_array == 2] = 0
         stream_band.WriteArray(
