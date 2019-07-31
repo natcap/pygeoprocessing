@@ -3,6 +3,10 @@ Release History
 
 Unreleased Changes
 ------------------
+* Added a ``'numpy_type'`` field to the result of ``get_raster_info`` that
+  contains the equivalent numpy datatype of the GDAL type in the raster. This
+  includes functionality differentate between the unsigned and signed
+  ``gdal.GDT_Byte`` vs. ``numpy.int8`` and ``numpy.uint8``.
 * Changed default compression routine for GeoTIFFs to ZSTD (thanks Facebook
   https://facebook.github.io/zstd/).
 * Added a **non-backwards compatible change** by replacing the
