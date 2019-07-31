@@ -4181,7 +4181,6 @@ class PyGeoprocessing10(unittest.TestCase):
             pygeoprocessing.get_raster_info(
                 target_byte_raster_path)['numpy_type'], numpy.int8)
 
-
     def test_non_geotiff_raster_types(self):
         """PGP: test mixed GTiff and gpkg raster types."""
         import pygeoprocessing
