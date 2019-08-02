@@ -4121,6 +4121,38 @@ class PyGeoprocessing10(unittest.TestCase):
         actual_message = str(cm.exception)
         self.assertTrue(expected_message in actual_message, actual_message)
 
+    def test_get_raster_info_type(self):
+        """PGP: test get_raster_info's type."""
+        import pygeoprocessing
+        gdal_type_numpy_pairs = (
+            ('int16.tif', gdal.GDT_Int16, numpy.int16),
+            ('uint16.tif', gdal.GDT_UInt16, numpy.uint16),
+            ('int32.tif', gdal.GDT_Int32, numpy.int32),
+            ('uint32.tif', gdal.GDT_UInt32, numpy.uint32),
+            ('float32.tif', gdal.GDT_Float32, numpy.float32),
+            ('float64.tif', gdal.GDT_Float64, numpy.float64),
+            ('cfloat32.tif', gdal.GDT_CFloat32, numpy.csingle),
+            ('cfloat64.tif', gdal.GDT_CFloat64, numpy.complex64))
+
+        gtiff_driver = gdal.GetDriverByName('GTiff')
+        srs = osr.SpatialReference()
+        srs.ImportFromEPSG(4326)
+        wgs84_wkt = srs.ExportToWkt()
+        for raster_filename, gdal_type, numpy_type in gdal_type_numpy_pairs:
+            raster_path = os.path.join(self.workspace_dir, raster_filename)
+            new_raster = gtiff_driver.Create(raster_path, 1, 1, 1, gdal_type)
+            new_raster.SetProjection(wgs84_wkt)
+            new_raster.SetGeoTransform([1.0, 1.0, 0.0, 1.0, 0.0, -1.0])
+            new_band = new_raster.GetRasterBand(1)
+            array = numpy.array([[1]], dtype=numpy_type)
+            new_band.WriteArray(array)
+            new_raster.FlushCache()
+            new_band = None
+            new_raster = None
+
+            raster_info = pygeoprocessing.get_raster_info(raster_path)
+            self.assertEqual(raster_info['numpy_type'], numpy_type)
+
     def test_non_geotiff_raster_types(self):
         """PGP: test mixed GTiff and gpkg raster types."""
         import pygeoprocessing

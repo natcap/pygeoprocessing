@@ -75,6 +75,18 @@ _VALID_GDAL_TYPES = (
 _LOGGING_PERIOD = 5.0  # min 5.0 seconds per update log message for the module
 _LARGEST_ITERBLOCK = 2**16  # largest block for iterblocks to read in cells
 
+_GDAL_TYPE_TO_NUMPY_LOOKUP = {
+    gdal.GDT_Byte: numpy.uint8,
+    gdal.GDT_Int16: numpy.int16,
+    gdal.GDT_Int32: numpy.int32,
+    gdal.GDT_UInt16: numpy.uint16,
+    gdal.GDT_UInt32: numpy.uint32,
+    gdal.GDT_Float32: numpy.float32,
+    gdal.GDT_Float64: numpy.float64,
+    gdal.GDT_CFloat32: numpy.csingle,
+    gdal.GDT_CFloat64: numpy.complex64,
+}
+
 
 def raster_calculator(
         base_raster_path_band_const_list, local_op, target_raster_path,
@@ -1542,6 +1554,8 @@ def get_raster_info(raster_path):
                 [minx, miny, maxx, maxy]
             'block_size' (tuple): underlying x/y raster block size for
                 efficient reading.
+            'numpy_type' (numpy type): this is the equivalent numpy datatype
+                for the raster bands including signed bytes.
 
     """
     raster = gdal.OpenEx(raster_path, gdal.OF_RASTER)
@@ -1583,7 +1597,17 @@ def get_raster_info(raster_path):
         numpy.max(x_bounds), numpy.max(y_bounds)]
 
     # datatype is the same for the whole raster, but is associated with band
-    raster_properties['datatype'] = raster.GetRasterBand(1).DataType
+    band = raster.GetRasterBand(1)
+    band_datatype = band.DataType
+    raster_properties['datatype'] = band_datatype
+    raster_properties['numpy_type'] = (
+        _GDAL_TYPE_TO_NUMPY_LOOKUP[band_datatype])
+    # this part checks to see if the byte is signed or not
+    if band_datatype == gdal.GDT_Byte:
+        metadata = band.GetMetadata('IMAGE_STRUCTURE')
+        if 'PIXELTYPE' in metadata and metadata['PIXELTYPE'] == 'SIGNEDBYTE':
+            raster_properties['numpy_type'] = numpy.int8
+    band = None
     raster = None
     return raster_properties
 
@@ -2381,7 +2405,7 @@ def convolve_2d(
             nodata where ``signal_path_band``'s pixels were nodata.
         target_datatype (GDAL type): a GDAL raster type to set the output
             raster type to, as well as the type to calculate the convolution
-            in.  Defaults to GDT_Float64.  Note unsigned byte is not
+            in.  Defaults to GDT_Float64.  Note signed byte is not
             supported.
         target_nodata (int/float): nodata value to set on output raster.
             If ``target_datatype`` is not gdal.GDT_Float64, this value must
@@ -2405,15 +2429,6 @@ def convolve_2d(
         None
 
     """
-    _gdal_type_to_numpy_lookup = {
-        gdal.GDT_Byte: numpy.int8,
-        gdal.GDT_Int16: numpy.int16,
-        gdal.GDT_Int32: numpy.int32,
-        gdal.GDT_UInt16: numpy.uint16,
-        gdal.GDT_UInt32: numpy.uint32,
-        gdal.GDT_Float32: numpy.float32,
-        gdal.GDT_Float64: numpy.float64,
-    }
     if target_datatype is not gdal.GDT_Float64 and target_nodata is None:
         raise ValueError(
             "`target_datatype` is set, but `target_nodata` is None. "
@@ -2578,7 +2593,7 @@ def convolve_2d(
         for target_offset_data in target_offset_list:
             target_block = target_band.ReadAsArray(
                 **target_offset_data).astype(
-                    _gdal_type_to_numpy_lookup[target_datatype])
+                    _GDAL_TYPE_TO_NUMPY_LOOKUP[target_datatype])
             mask_block = mask_band.ReadAsArray(**target_offset_data)
             if mask_nodata:
                 valid_mask = ~numpy.isclose(target_block, target_nodata)

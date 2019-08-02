@@ -3,12 +3,15 @@ Release History
 
 Unreleased Changes
 ------------------
-<<<<<<< working copy
 * Added a ``gtiff_creation_options`` parameter to ``reclassify_raster`` to be
   consistent with the rest of the raster creation functions in
   PyGeoprocessing.
 * Added an out-of-core high performance raster percentile function at
   pygeoprocessing.raster_band_percentile.
+* Added a ``'numpy_type'`` field to the result of ``get_raster_info`` that
+  contains the equivalent numpy datatype of the GDAL type in the raster. This
+  includes functionality differentate between the unsigned and signed
+  ``gdal.GDT_Byte`` vs. ``numpy.int8`` and ``numpy.uint8``.
 * Changed default compression routine for GeoTIFFs to ZSTD (thanks Facebook
   https://facebook.github.io/zstd/).
 * Added a **non-backwards compatible change** by replacing the
