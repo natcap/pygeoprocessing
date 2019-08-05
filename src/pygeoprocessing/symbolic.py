@@ -16,12 +16,12 @@ LOGGER.addHandler(logging.NullHandler())  # silence logging by default
 
 
 def evaluate_raster_calculator_expression(
-        expression_str, symbol_to_path_band_map, target_nodata,
+        expression, symbol_to_path_band_map, target_nodata,
         target_raster_path, default_nan=None, default_inf=None,
         raster_driver_creation_tuple=DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS):
     """Evaluate the arithmetic expression of rasters.
 
-    Evaluate the symbolic arithmetic expression in `expression_str` where the
+    Evaluate the symbolic arithmetic expression in `expression` where the
     symbols represent equally sized GIS rasters. With the following rules:
 
         * any nodata pixels in a raster will cause the entire pixel stack
@@ -34,13 +34,13 @@ def evaluate_raster_calculator_expression(
           library and include: +, -, *, /, <, <=, >, >=, !=, &, and |.
 
     Parameters:
-        expression_str (str): a valid arithmetic expression whose variables
+        expression (str): a valid arithmetic expression whose variables
             are defined in `symbol_to_path_band_map`.
         symbol_to_path_band_map (dict): a dict of symbol/(path, band) pairs to
             indicate which symbol maps to which raster and corresponding
             band. All symbol names correspond to
-            symbols in `expression_str`. Ex:
-                expression_str = '2*x+b'
+            symbols in `expression`. Ex:
+                expression = '2*x+b'
                 symbol_to_path_band_map = {
                     'x': (path_to_x_raster, 1),
                     'b': (path_to_b_raster, 1)
@@ -50,7 +50,7 @@ def evaluate_raster_calculator_expression(
         target_nodata (numeric): desired nodata value for
             `target_raster_path`.
         target_raster_path (str): path to the raster that is created by
-            `expression_str`.
+            `expression`.
         default_nan (numeric): if a calculation results in an NaN that
             value is replaces with this value. A ValueError exception is
             raised if this case occurs and `default_nan` is None.
@@ -66,8 +66,8 @@ def evaluate_raster_calculator_expression(
     # expression
     active_symbols = sorted(
         [str(x) for x in sympy.parsing.sympy_parser.parse_expr(
-            expression_str).free_symbols])
-    raster_op = sympy.lambdify(active_symbols, expression_str, 'numpy')
+            expression).free_symbols])
+    raster_op = sympy.lambdify(active_symbols, expression, 'numpy')
     raster_op_source = inspect.getsource(raster_op)
     if not active_symbols:
         raise ValueError(
@@ -76,7 +76,7 @@ def evaluate_raster_calculator_expression(
 
     LOGGER.debug(
         'evaluating: %s\nactive symbols: %s\nraster_op:\n%s',
-        expression_str, active_symbols, raster_op_source)
+        expression, active_symbols, raster_op_source)
     symbol_list, raster_path_band_list = zip(*[
         (symbol, raster_path_band) for symbol, raster_path_band in
         sorted(symbol_to_path_band_map.items()) if symbol in active_symbols])

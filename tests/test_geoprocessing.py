@@ -4084,7 +4084,7 @@ class PyGeoprocessing10(unittest.TestCase):
             creation_options=['PIXELTYPE=SIGNEDBYTE'])
 
         # test regular addition
-        sum_expression_str = 'a+b'
+        sum_expression = 'a+b'
         symbol_to_path_band_map = {
             'a': (raster_a_path, 1),
             'b': (raster_b_path, 1),
@@ -4097,7 +4097,7 @@ class PyGeoprocessing10(unittest.TestCase):
         target_nodata = None
         target_raster_path = os.path.join(self.workspace_dir, 'target.tif')
         pygeoprocessing.symbolic.evaluate_raster_calculator_expression(
-            sum_expression_str, symbol_to_path_band_map, target_nodata,
+            sum_expression, symbol_to_path_band_map, target_nodata,
             target_raster_path)
         target_array = _read_raster_to_array(target_raster_path)
         numpy.testing.assert_almost_equal(
@@ -4105,9 +4105,9 @@ class PyGeoprocessing10(unittest.TestCase):
 
         # test with two values as nodata
         target_nodata = -1
-        mult_expression_str = 'c*d'
+        mult_expression = 'c*d'
         pygeoprocessing.symbolic.evaluate_raster_calculator_expression(
-            mult_expression_str, symbol_to_path_band_map, target_nodata,
+            mult_expression, symbol_to_path_band_map, target_nodata,
             target_raster_path)
         target_array = _read_raster_to_array(target_raster_path)
         expected_array = val_array * val_array
@@ -4117,7 +4117,7 @@ class PyGeoprocessing10(unittest.TestCase):
 
         # test with undefined target nodata
         pygeoprocessing.symbolic.evaluate_raster_calculator_expression(
-            mult_expression_str, symbol_to_path_band_map, -1,
+            mult_expression, symbol_to_path_band_map, -1,
             target_raster_path)
 
         # test divide by zero
