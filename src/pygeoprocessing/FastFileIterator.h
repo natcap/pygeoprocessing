@@ -63,7 +63,7 @@ template <class DATA_T> class FastFileIterator{
         this->buffer_size = buffer_size;
         this->file_path = reinterpret_cast<char*>(malloc(
             (strlen(file_path)+1)*sizeof(char)));
-        snprintf(this->file_path, strlen(file_path)+1, file_path);
+        strncpy(this->file_path, file_path, strlen(file_path)+1);
         std::ifstream is(this->file_path, std::ifstream::binary);
         is.seekg(0, is.end);
         this->file_length = is.tellg() / sizeof(DATA_T);
