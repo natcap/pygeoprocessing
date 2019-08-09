@@ -135,8 +135,8 @@ def _generic_raster_op(*arg_list):
             ``n`` elements are ``numpy.ndarrays`` and the second set of ``n``
             elements are the corresponding nodata for those arrays.
 
-            ``target_noata`` is the result of an element in ``func`` if any of
-            the array values that would produce the result contain a nodata
+            ``target_nodata`` is the result of an element in ``func`` if any
+            of the array values that would produce the result contain a nodata
             value.
 
             ``default_nan`` and ``default_inf`` is the value that should be
