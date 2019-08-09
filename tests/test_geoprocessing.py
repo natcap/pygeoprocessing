@@ -4117,7 +4117,7 @@ class PyGeoprocessing10(unittest.TestCase):
 
         # test with undefined target nodata
         pygeoprocessing.symbolic.evaluate_raster_calculator_expression(
-            mult_expression, symbol_to_path_band_map, -1,
+            mult_expression, symbol_to_path_band_map, None,
             target_raster_path)
 
         # test divide by zero
