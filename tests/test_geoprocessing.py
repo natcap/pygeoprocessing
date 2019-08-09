@@ -4181,67 +4181,6 @@ class PyGeoprocessing10(unittest.TestCase):
             pygeoprocessing.get_raster_info(
                 target_byte_raster_path)['numpy_type'], numpy.int8)
 
-    def test_non_geotiff_raster_types(self):
-        """PGP: test mixed GTiff and gpkg raster types."""
-        import pygeoprocessing
-
-        gtiff_driver = gdal.GetDriverByName('GTiff')
-        raster_path = os.path.join(self.workspace_dir, 'small_raster.tif')
-        n = 5
-        new_raster = gtiff_driver.Create(
-            raster_path, n, n, 1, gdal.GDT_Byte, options=[
-                'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
-                'BLOCKXSIZE=16', 'BLOCKYSIZE=16'])
-
-        srs = osr.SpatialReference()
-        srs.ImportFromEPSG(4326)
-        new_raster.SetProjection(srs.ExportToWkt())
-        new_raster.SetGeoTransform([1.0, 1.0, 0.0, 1.0, 0.0, -1.0])
-        new_band = new_raster.GetRasterBand(1)
-        new_band.SetNoDataValue(-1)
-        array = numpy.array(range(n*n), dtype=numpy.int32).reshape((n, n))
-        new_band.WriteArray(array)
-        new_raster.FlushCache()
-        new_band = None
-        new_raster = None
-
-        target_path = os.path.join(self.workspace_dir, 'target.gpkg')
-        pygeoprocessing.raster_calculator(
-            ((raster_path, 1), (raster_path, 1)), lambda a, b: a+b,
-            target_path, gdal.GDT_Byte, None,
-            raster_driver_creation_tuple=['gpkg', ()])
-        target_raster = gdal.OpenEx(target_path)
-        target_driver = target_raster.GetDriver()
-        self.assertEqual(target_driver.GetDescription().lower(), 'gpkg')
-        target_band = target_raster.GetRasterBand(1)
-        numpy.testing.assert_array_equal(
-            target_band.ReadAsArray(), array*2)
-
-    def test_get_file_info(self):
-        """PGP: geoprocessing test for `file_list` in the get_*_info ops."""
-        import pygeoprocessing
-
-        gtiff_driver = gdal.GetDriverByName('GTiff')
-        raster_path = os.path.join(self.workspace_dir, 'test.tif')
-        raster = gtiff_driver.Create(raster_path, 1, 1, 1, gdal.GDT_Int32)
-        raster.FlushCache()
-        raster_file_list = raster.GetFileList()
-        raster = None
-        raster_info = pygeoprocessing.get_raster_info(raster_path)
-        self.assertEqual(raster_info['file_list'], raster_file_list)
-
-        gpkg_driver = gdal.GetDriverByName('GPKG')
-        vector_path = os.path.join(self.workspace_dir, 'small_vector.gpkg')
-        vector = gpkg_driver.Create(vector_path, 0, 0, 0, gdal.GDT_Unknown)
-        srs = osr.SpatialReference()
-        srs.ImportFromEPSG(4326)
-        layer = vector.CreateLayer('small_vector', srs=srs)
-        del layer
-        vector_file_list = vector.GetFileList()
-        vector = None
-        vector_info = pygeoprocessing.get_vector_info(vector_path)
-        self.assertEqual(vector_info['file_list'], vector_file_list)
-
     def test_get_gis_type(self):
         """PGP: test geoprocessing type."""
         import pygeoprocessing
