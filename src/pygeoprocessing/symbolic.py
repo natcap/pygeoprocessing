@@ -29,8 +29,8 @@ def evaluate_raster_calculator_expression(
           by the corresponding values in `default_nan` and `default_inf`.
           If either of these are not defined an NaN or inf result will cause
           a ValueError exception to be raised.
-        * valid arithmetic expressions are those available in the `sympy`
-          library and include: +, -, *, /, <, <=, >, >=, !=, &, and |.
+        * the following arithmetic operators are available:
+          +, -, *, /, <, <=, >, >=, !=, &, and |.
 
     Parameters:
         expression (str): a valid arithmetic expression whose variables
