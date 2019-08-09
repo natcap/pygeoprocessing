@@ -89,7 +89,9 @@ def evaluate_raster_calculator_expression(
             (raster_op, 'raw'), (target_nodata, 'raw'), (default_nan, 'raw'),
             (default_inf, 'raw')])
 
-    # Determine the target gdal type
+    # Determine the target gdal type by gathering all the numpy types to
+    # determine what the result type would be if they were all applied in
+    # an operation.
     target_numpy_type = numpy.result_type(*[
         geoprocessing.get_raster_info(path)['numpy_type']
         for path, band_id in raster_path_band_const_list
@@ -107,6 +109,9 @@ def evaluate_raster_calculator_expression(
         numpy.dtype('complex64'): gdal.GDT_CFloat64,
     }
 
+    # most numpy types map directly to a GDAL type except for numpy.int8 in
+    # this case we need to add an additional 'PIXELTYPE=SIGNEDBYTE' to the
+    # creation options
     if target_numpy_type != numpy.int8:
         target_gdal_type = dtype_to_gdal_type[
             target_numpy_type]
