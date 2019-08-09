@@ -12,7 +12,6 @@ from . import geoprocessing
 from .geoprocessing import DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS
 
 LOGGER = logging.getLogger(__name__)
-LOGGER.addHandler(logging.NullHandler())  # silence logging by default
 
 
 def evaluate_raster_calculator_expression(

@@ -41,7 +41,6 @@ from libcpp.deque cimport deque
 from libcpp.set cimport set as cset
 
 LOGGER = logging.getLogger(__name__)
-LOGGER.addHandler(logging.NullHandler())  # silence logging by default
 
 # This module creates rasters with a memory xy block size of 2**BLOCK_BITS
 cdef int BLOCK_BITS = 8
