@@ -55,7 +55,6 @@ import scipy.signal.signaltools
 import shapely.wkb
 import shapely.ops
 import shapely.prepared
-from sympy.utilities.lambdify import lambdify
 from . import geoprocessing_core
 
 from functools import reduce
