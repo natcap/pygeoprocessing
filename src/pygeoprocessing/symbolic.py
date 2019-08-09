@@ -153,8 +153,8 @@ def _generic_raster_op(*arg_list):
 
     Returns:
         func applied to a masked version of array_0, ... array_n where only
-        valid nodata values in the raster stack are used. Otherwise the target
-        pixels are set to target_nodata.
+        valid non-nodata values in the raster stack are used. Otherwise the
+        target pixels are set to target_nodata.
 
     """
     n = int((len(arg_list)-4) // 2)
