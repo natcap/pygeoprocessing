@@ -4115,10 +4115,15 @@ class PyGeoprocessing10(unittest.TestCase):
         expected_array[-1, -1] = -1
         numpy.testing.assert_almost_equal(target_array, expected_array)
 
-        # test with undefined target nodata
-        pygeoprocessing.symbolic.evaluate_raster_calculator_expression(
-            mult_expression, symbol_to_path_band_map, None,
-            target_raster_path)
+        # test the case where the input raster has a nodata value but the
+        # target nodata is None -- this should be an error.
+        with self.assertRaises(ValueError) as cm:
+            pygeoprocessing.symbolic.evaluate_raster_calculator_expression(
+                mult_expression, symbol_to_path_band_map, None,
+                target_raster_path)
+        expected_message = '`target_nodata` is undefined (None)'
+        actual_message = str(cm.exception)
+        self.assertTrue(expected_message in actual_message, actual_message)
 
         # test divide by zero
         divide_by_zero_expr = 'all_ones / all_zeros'

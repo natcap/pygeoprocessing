@@ -24,7 +24,7 @@ def evaluate_raster_calculator_expression(
     symbols represent equally sized GIS rasters. With the following rules:
 
         * any nodata pixels in a raster will cause the entire pixel stack
-          to be ``target_nodata``. If ``target_nodata`` is None, this will \
+          to be ``target_nodata``. If ``target_nodata`` is None, this will
           be 0.
         * any calculations the result in NaN or inf values will be replaced
           by the corresponding values in ``default_nan`` and ``default_inf``.
@@ -166,15 +166,20 @@ def _generic_raster_op(*arg_list):
     target_nodata = arg_list[2*n+1]
     default_nan = arg_list[2*n+2]
     default_inf = arg_list[2*n+3]
+    nodata_present = any([x is not None for x in nodata_list])
     if target_nodata is not None:
         result[:] = target_nodata
-    nodata_present = any([x is not None for x in nodata_list])
+
     valid_mask = None
     if nodata_present:
         valid_mask = ~numpy.logical_or.reduce(
             [numpy.isclose(array, nodata)
              for array, nodata in zip(array_list, nodata_list)
              if nodata is not None])
+        if not valid_mask.all() and target_nodata is None:
+            raise ValueError(
+                "`target_nodata` is undefined (None) but there are nodata "
+                "values present in the input rasters.")
         func_result = func(*[array[valid_mask] for array in array_list])
     else:
         # there's no nodata values to mask so operate directly
