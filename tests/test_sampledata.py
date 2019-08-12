@@ -13,9 +13,6 @@ import numpy
 from shapely.geometry import Polygon
 import mock
 
-import pygeoprocessing
-import pygeoprocessing.testing
-
 
 class RasterCreationTest(unittest.TestCase):
 
@@ -47,7 +44,8 @@ class RasterCreationTest(unittest.TestCase):
         create_raster_on_disk([pixels], reference.origin,
                               reference.projection,
                               nodata, reference.pixel_size(30),
-                              datatype=gdal.GDT_Byte, format='GTiff',
+                              datatype=gdal.GDT_Byte,
+                              raster_driver_creation_tuple=('GTiff', ()),
                               filename=filename)
 
         self.assertTrue(os.path.exists(filename))
@@ -76,7 +74,8 @@ class RasterCreationTest(unittest.TestCase):
             create_raster_on_disk(
                 [numpy.ones((4, 4))],
                 reference.origin, reference.projection, 0,
-                reference.pixel_size(30), format='foo')
+                reference.pixel_size(30), raster_driver_creation_tuple=(
+                    'foo', []))
 
     def test_raster_autodtype(self):
         """Verify automatic detection of a matrix's dtype."""
@@ -167,8 +166,10 @@ class RasterCreationTest(unittest.TestCase):
 
     def test_raster_nodata_notset(self):
         """When nodata=None, a nodata value should not be set."""
+        import pygeoprocessing
         from pygeoprocessing.testing import create_raster_on_disk
         from pygeoprocessing.testing.sampledata import SRS_WILLAMETTE
+
         pixels = [numpy.array([[0]])]
         nodata = None
         reference = SRS_WILLAMETTE

@@ -1,6 +1,29 @@
 Release History
 ===============
 
+1.8.0 (2019-08-12)
+------------------
+* Added a ``'numpy_type'`` field to the result of ``get_raster_info`` that
+  contains the equivalent numpy datatype of the GDAL type in the raster. This
+  includes functionality differentate between the unsigned and signed
+  ``gdal.GDT_Byte`` vs. ``numpy.int8`` and ``numpy.uint8``.
+* Changed default compression routine for GeoTIFFs to ZSTD (thanks Facebook
+  https://facebook.github.io/zstd/).
+* Added a **non-backwards compatible change** by replacing the
+  ``gtiff_creation_options`` string to a driver/option string named
+  ``raster_driver_creation_tuple``. This allows the caller to create any type
+  of ``GDAL`` writable driver along with the option list associated with that
+  driver.
+* Added a ``'file_list'`` key to the dictionary returned by
+  ``get_raster_info`` and ``get_vector_info`` that contains a list of all the
+  files associated with that GIS object. The first parameter of these lists
+  can be passed to ``gdal.OpenEx`` to open the object directly.
+* Added a ``get_gis_type`` function to ``pygeoprocessing`` that takes a
+  filepath and returns a bitmask of ``pygeoprocessing.RASTER_TYPE`` and/or
+  ``pygeoprocessing.VECTOR_TYPE``.
+* Modified ``iterblocks`` to raise a helpful ValueError instead of a general
+  NoneTypeError if a raster does not open.
+
 1.7.0 (2019-06-27)
 ------------------
 * Removing support for Python 2.7.
@@ -43,6 +66,9 @@ Release History
   or string ids. In all cases changing ``layer_index`` to ``layer_id`` in
   the functions: ``get_vector_info``, ``reproject_vector``, ``warp_raster``,
   ``rasterize``, ``calculate_disjoint_polygon_set``, and ``mask_raster``.
+* Added a ``gtiff_creation_options`` parameter to ``reclassify_raster`` to be
+  consistent with the rest of the raster creation functions in
+  PyGeoprocessing.
 
 1.6.1 (2019-02-13)
 ------------------

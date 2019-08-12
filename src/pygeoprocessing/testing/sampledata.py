@@ -47,7 +47,7 @@ from osgeo import gdal
 from osgeo import ogr
 from osgeo import osr
 from .. import geoprocessing
-from ..geoprocessing_core import DEFAULT_GTIFF_CREATION_OPTIONS
+from ..geoprocessing_core import DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS
 
 
 LOGGER = logging.getLogger('pygeoprocessing.testing.sampledata')
@@ -179,8 +179,8 @@ def cleanup(uri):
 
 def create_raster_on_disk(
         band_matrices, origin, projection_wkt, nodata, pixel_size,
-        datatype='auto', format='GTiff',
-        dataset_opts=DEFAULT_GTIFF_CREATION_OPTIONS,
+        datatype='auto',
+        raster_driver_creation_tuple=DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS,
         filename=None):
     """
     Create a GDAL raster on disk.
@@ -202,16 +202,10 @@ def create_raster_on_disk(
             Either or both of these values could be negative.
         datatype (int or 'auto'): A GDAL datatype. If 'auto', a reasonable
             datatype will be chosen based on the datatype of the numpy matrix.
-        format='GTiff' (string): The string driver name to use.  Determines
-            the output format of the raster.  Defaults to GeoTiff.  See
-            http://www.gdal.org/formats_list.html for a list of available
-            formats.
-        dataset_opts=None (list of strings): A list of strings to pass to
-            the underlying GDAL driver for creating this raster.  Possible
-            options are usually format dependent.  If None, no options will
-            be passed to the driver.  For a GTiff, the most common set of
-            options will usually be ['TILED=YES'].  GTiff block sizes
-            default to 256 along an edge if not otherwise specified.
+        raster_driver_creation_tuple (tuple): a tuple containing a GDAL driver
+            name string as the first element and a GDAL creation options
+            tuple/list as the second. Defaults to a GTiff driver tuple
+            defined at geoprocessing.DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS.
         filename=None (string): If provided, the new raster should be created
             at this filepath.  If None, a new temporary file will be created
             within your tempfile directory (within `tempfile.gettempdir()`)
@@ -249,14 +243,17 @@ def create_raster_on_disk(
 
     # Create a raster given the shape of the pixels given the input driver
     n_rows, n_cols = band_matrices[0].shape
-    driver = gdal.GetDriverByName(format)
+    driver = gdal.GetDriverByName(raster_driver_creation_tuple[0])
     if driver is None:
         raise RuntimeError(
             ('GDAL driver "%s" not found.  '
-             'Available drivers: %s') % (format, ', '.join(GDAL_DRIVERS)))
+             'Available drivers: %s') % (
+             raster_driver_creation_tuple[0], ', '.join(GDAL_DRIVERS)))
 
-    if dataset_opts is None:
+    if raster_driver_creation_tuple[1] in [None, [], ()]:
         dataset_opts = []
+    else:
+        dataset_opts = raster_driver_creation_tuple[1]
 
     new_raster = driver.Create(out_uri, n_cols, n_rows, len(band_matrices),
                                datatype, options=dataset_opts)
