@@ -1,6 +1,12 @@
 Release History
 ===============
 
+Unreleased Changes
+------------------
+* Modified ``pygeoprocessing.routing.fill_pits`` to create a single band
+  raster of the input DEM raster/path band rather than a copy of the input
+  DEM raster irrespective of the band number.
+
 1.8.0 (2019-08-12)
 ------------------
 * Added a ``'numpy_type'`` field to the result of ``get_raster_info`` that
