@@ -1,7 +1,7 @@
 Release History
 ===============
 
-Unreleased Changes
+1.8.0 (2019-08-12)
 ------------------
 * Added a ``'numpy_type'`` field to the result of ``get_raster_info`` that
   contains the equivalent numpy datatype of the GDAL type in the raster. This
