@@ -707,7 +707,7 @@ def fill_pits(
         dem_raster_path_band[0])['datatype']
     pygeoprocessing.new_raster_from_base(
         dem_raster_path_band[0], target_filled_dem_raster_path,
-        base_datatype, [mask_nodata], fill_value_list=[1],
+        base_datatype, [dem_nodata],
         raster_driver_creation_tuple=raster_driver_creation_tuple)
     filled_dem_raster = gdal.OpenEx(
         target_filled_dem_raster_path, gdal.OF_RASTER | gdal.GA_Update)
