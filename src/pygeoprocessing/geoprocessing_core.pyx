@@ -7,10 +7,13 @@ import logging
 import time
 import sys
 import traceback
+import shutil
 
 cimport numpy
 import numpy
 cimport cython
+from cython.operator cimport dereference as deref
+from cython.operator cimport preincrement as inc
 from libcpp.vector cimport vector
 from libcpp.algorithm cimport push_heap
 from libcpp.algorithm cimport pop_heap
@@ -664,15 +667,19 @@ def _raster_band_percentile_int(
     cdef int[:] buffer_data
     cdef FastFileIteratorIntPtr fast_file_iterator
     cdef vector[FastFileIteratorIntPtr] fast_file_iterator_vector
+    cdef vector[FastFileIteratorIntPtr].iterator ffiv_iter
     cdef long i, percentile_index = 0, n_elements = 0
     cdef int next_val = 0L
     cdef double step_size, current_percentile
     cdef double current_step = 0.0
     result_list = []
+    rm_dir_when_done = False
     try:
         os.makedirs(working_sort_directory)
+        rm_dir_when_done = True
     except OSError:
         pass
+    heapfile_list = []
     file_index = 0
     nodata = pygeoprocessing.get_raster_info(
         base_raster_path_band[0])['nodata'][base_raster_path_band[1]-1]
@@ -686,6 +693,7 @@ def _raster_band_percentile_int(
         n_elements += buffer_data.size
         file_path = os.path.join(
             working_sort_directory, '%d.dat' % file_index)
+        heapfile_list.append(file_path)
         fptr = fopen(bytes(file_path.encode()), "wb")
         fwrite(<int*>&buffer_data[0], sizeof(int), buffer_data.size, fptr)
         fclose(fptr)
@@ -721,9 +729,26 @@ def _raster_band_percentile_int(
                 fast_file_iterator_vector.end(),
                 FastFileIteratorCompare[int])
         else:
+            fast_file_iterator = fast_file_iterator_vector.back()
+            del fast_file_iterator
             fast_file_iterator_vector.pop_back()
     if percentile_index < len(percentile_list):
         result_list.append(next_val)
+    # delete all the heap files
+    ffiv_iter = fast_file_iterator_vector.begin()
+    while ffiv_iter != fast_file_iterator_vector.end():
+        fast_file_iterator = deref(ffiv_iter)
+        del fast_file_iterator
+        inc(ffiv_iter)
+    fast_file_iterator_vector.clear()
+    for file_path in heapfile_list:
+        try:
+            os.remove(file_path)
+        except OSError:
+            # you never know if this might fail!
+            LOGGER.warn('unable to remove %s', file_path)
+    if rm_dir_when_done:
+        shutil.rmtree(working_sort_directory)
     return result_list
 
 
