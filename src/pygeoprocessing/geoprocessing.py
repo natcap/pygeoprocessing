@@ -59,7 +59,6 @@ from . import geoprocessing_core
 
 from functools import reduce
 LOGGER = logging.getLogger(__name__)
-LOGGER.addHandler(logging.NullHandler())  # silence logging by default
 
 _MAX_TIMEOUT = 60.0
 

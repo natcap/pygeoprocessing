@@ -6,13 +6,16 @@ from __future__ import absolute_import
 
 import types
 import sys
+import logging
 
 import pkg_resources
 
 from . import geoprocessing
-
 from .geoprocessing_core import calculate_slope
 from .geoprocessing_core import raster_band_percentile
+
+LOGGER = logging.getLogger(__name__)
+LOGGER.addHandler(logging.NullHandler())  # silence logging by default
 
 try:
     __version__ = pkg_resources.get_distribution(__name__).version
