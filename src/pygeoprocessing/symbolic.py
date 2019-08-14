@@ -59,9 +59,17 @@ def evaluate_raster_calculator_expression(
             raised if this case occurs and ``default_nan`` is None.
 
     Returns:
-        None.
+        None
 
     """
+    # its a common error to pass something other than a string for
+    # ``expression`` but the resulting error is obscure, so test for that and
+    # make a helpful error
+    if not isinstance(expression, str):
+        raise ValueError(
+            "Expected type `str` for `expression` but instead got %s", str(
+                type(expression)))
+
     # remove any raster bands that don't have corresponding symbols in the
     # expression
     active_symbols = sorted(

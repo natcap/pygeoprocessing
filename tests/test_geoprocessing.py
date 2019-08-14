@@ -4186,6 +4186,19 @@ class PyGeoprocessing10(unittest.TestCase):
             pygeoprocessing.get_raster_info(
                 target_byte_raster_path)['numpy_type'], numpy.int8)
 
+    def test_evaluate_symbolic_bad_type(self):
+        """PGP: evaluate raster calculator expression gets the right type."""
+        import pygeoprocessing.symbolic
+
+        not_a_str_expression = False
+        with self.assertRaises(ValueError) as cm:
+            pygeoprocessing.symbolic.evaluate_raster_calculator_expression(
+                not_a_str_expression, {}, None, 'raster.tif')
+        actual_message = str(cm.exception)
+        self.assertTrue(
+            'Expected type `str` for `expression`' in actual_message,
+            actual_message)
+
     def test_get_gis_type(self):
         """PGP: test geoprocessing type."""
         import pygeoprocessing
