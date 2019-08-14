@@ -598,7 +598,7 @@ def raster_band_percentile(
             that is of any integer or real type.
         working_sort_directory (str): path to a directory that does not
             exist or is empty. This directory will be used to create heapfiles
-            with sizes no larger than `buffer_size` which are written in the
+            with sizes no larger than ``buffer_size`` which are written in the
             of the pattern N.dat where N is in the numbering 0, 1, 2, ... up
             to the number of files necessary to handle the raster.
         percentile_list (list): sorted list of percentiles to report must
@@ -643,7 +643,7 @@ def _raster_band_percentile_int(
             is of an integer type.
         working_sort_directory (str): path to a directory that does not
             exist or is empty. This directory will be used to create heapfiles
-            with sizes no larger than `buffer_size` which are written in the
+            with sizes no larger than ``buffer_size`` which are written in the
             of the pattern N.dat where N is in the numbering 0, 1, 2, ... up
             to the number of files necessary to handle the raster.
         percentile_list (list): sorted list of percentiles to report must
@@ -737,7 +737,7 @@ def _raster_band_percentile_double(
             is a real/float type.
         working_sort_directory (str): path to a directory that does not
             exist or is empty. This directory will be used to create heapfiles
-            with sizes no larger than `buffer_size` which are written in the
+            with sizes no larger than ``buffer_size`` which are written in the
             of the pattern N.dat where N is in the numbering 0, 1, 2, ... up
             to the number of files necessary to handle the raster.
         percentile_list (list): sorted list of percentiles to report must
