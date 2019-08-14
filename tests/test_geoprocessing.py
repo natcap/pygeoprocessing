@@ -25,6 +25,62 @@ def passthrough(x):
     return x
 
 
+def _make_simple_raster(
+        val_array, nodata_val, gdal_type, target_path, creation_options=None):
+    """Create a raster of size `val_array.shape` at `target_path`.
+
+    Parameters:
+        val_array (numpy.array): a 2d array.
+        target_path (str): path to raster to create that will be of the
+            same type of val_array with contents of val_array. Projection is
+            WGS84 w/ 1 degree pixels with upper left corner at (1, 1).
+        creation_options (list/tuple): if not none is passed to creation
+            driver.
+
+    Returns:
+        None.
+
+    """
+    wgs84_sr = osr.SpatialReference()
+    wgs84_sr.ImportFromEPSG(4326)
+    wgs84_wkt = wgs84_sr.ExportToWkt()
+    gtiff_driver = gdal.GetDriverByName('GTiff')
+    ny, nx = val_array.shape
+    new_raster_creation_options = []
+    if creation_options is not None:
+        new_raster_creation_options = creation_options
+    new_raster = gtiff_driver.Create(
+        target_path, nx, ny, 1, gdal_type,
+        options=new_raster_creation_options)
+    new_raster.SetProjection(wgs84_wkt)
+    new_raster.SetGeoTransform([1, 1.0, 0.0, 1, 0.0, -1.0])
+    new_band = new_raster.GetRasterBand(1)
+    if nodata_val is not None:
+        new_band.SetNoDataValue(nodata_val)
+    new_band.WriteArray(val_array)
+    new_raster.FlushCache()
+    new_band = None
+    new_raster = None
+
+
+def _read_raster_to_array(raster_path):
+    """Return the contents of a single band raster as a numpy array.
+
+    Parameters:
+        raster_path (str): path to raster.
+
+    Returns:
+        equivalent of opening GDAL raster, first band, and .ReadAsArray()
+
+    """
+    raster = gdal.OpenEx(raster_path, gdal.OF_RASTER)
+    band = raster.GetRasterBand(1)
+    array = band.ReadAsArray()
+    band = None
+    raster = None
+    return array
+
+
 class PyGeoprocessing10(unittest.TestCase):
     """Tests for the PyGeoprocesing 1.0 refactor."""
 
@@ -3981,6 +4037,245 @@ class PyGeoprocessing10(unittest.TestCase):
         expected_message = 'Invalid value for'
         actual_message = str(cm.exception)
         self.assertTrue(expected_message in actual_message, actual_message)
+
+    def test_evaluate_raster_calculator_expression(self):
+        """PGP: test evaluate raster symbolic expression."""
+        import pygeoprocessing.symbolic
+
+        n = 10
+        raster_a_path = os.path.join(self.workspace_dir, 'a.tif')
+        raster_b_path = os.path.join(self.workspace_dir, 'b.tif')
+        val_array = numpy.array(
+            range(n*n), dtype=numpy.float32).reshape((n, n))
+        nodata_val = None
+        _make_simple_raster(
+            val_array, nodata_val, gdal.GDT_Float32, raster_a_path)
+        _make_simple_raster(
+            val_array, nodata_val, gdal.GDT_Float32, raster_b_path)
+
+        raster_c_path = os.path.join(self.workspace_dir, 'c.tif')
+        val_array = numpy.array(
+            range(n*n), dtype=numpy.float32).reshape((n, n))
+        c_d_nodata = -1
+        val_array[0, 0] = c_d_nodata  # set as nodata
+        _make_simple_raster(
+            val_array, c_d_nodata, gdal.GDT_Float32, raster_c_path)
+        raster_d_path = os.path.join(self.workspace_dir, 'd.tif')
+        val_array = numpy.array(
+            range(n*n), dtype=numpy.float32).reshape((n, n))
+        val_array[-1, -1] = c_d_nodata
+        _make_simple_raster(
+            val_array, c_d_nodata, gdal.GDT_Float32, raster_d_path)
+
+        zero_array = numpy.zeros((n, n), dtype=numpy.float32)
+        raster_zero_path = os.path.join(self.workspace_dir, 'zero.tif')
+        _make_simple_raster(
+            zero_array, nodata_val, gdal.GDT_Float32, raster_zero_path)
+
+        ones_array = numpy.ones((n, n), dtype=numpy.float32)
+        raster_ones_path = os.path.join(self.workspace_dir, 'ones.tif')
+        _make_simple_raster(
+            ones_array, nodata_val, gdal.GDT_Float32, raster_ones_path)
+
+        bytes_array = numpy.ones((n, n), dtype=numpy.int8) * -1
+        bytes_path = os.path.join(self.workspace_dir, 'bytes.tif')
+        _make_simple_raster(
+            bytes_array, nodata_val, gdal.GDT_Byte, bytes_path,
+            creation_options=['PIXELTYPE=SIGNEDBYTE'])
+
+        # test regular addition
+        sum_expression = 'a+b'
+        symbol_to_path_band_map = {
+            'a': (raster_a_path, 1),
+            'b': (raster_b_path, 1),
+            'c': (raster_c_path, 1),
+            'd': (raster_d_path, 1),
+            'all_ones': (raster_ones_path, 1),
+            'all_zeros': (raster_zero_path, 1),
+            'byte_val': (bytes_path, 1),
+        }
+        target_nodata = None
+        target_raster_path = os.path.join(self.workspace_dir, 'target.tif')
+        pygeoprocessing.symbolic.evaluate_raster_calculator_expression(
+            sum_expression, symbol_to_path_band_map, target_nodata,
+            target_raster_path)
+        target_array = _read_raster_to_array(target_raster_path)
+        numpy.testing.assert_almost_equal(
+            target_array, 2*numpy.array(range(n*n)).reshape((n, n)))
+
+        # test with two values as nodata
+        target_nodata = -1
+        mult_expression = 'c*d'
+        pygeoprocessing.symbolic.evaluate_raster_calculator_expression(
+            mult_expression, symbol_to_path_band_map, target_nodata,
+            target_raster_path)
+        target_array = _read_raster_to_array(target_raster_path)
+        expected_array = val_array * val_array
+        expected_array[0, 0] = -1
+        expected_array[-1, -1] = -1
+        numpy.testing.assert_almost_equal(target_array, expected_array)
+
+        # test the case where the input raster has a nodata value but the
+        # target nodata is None -- this should be an error.
+        with self.assertRaises(ValueError) as cm:
+            pygeoprocessing.symbolic.evaluate_raster_calculator_expression(
+                mult_expression, symbol_to_path_band_map, None,
+                target_raster_path)
+        expected_message = '`target_nodata` is undefined (None)'
+        actual_message = str(cm.exception)
+        self.assertTrue(expected_message in actual_message, actual_message)
+
+        # test divide by zero
+        divide_by_zero_expr = 'all_ones / all_zeros'
+        target_raster_path = os.path.join(self.workspace_dir, 'target.tif')
+        with self.assertRaises(ValueError) as cm:
+            pygeoprocessing.symbolic.evaluate_raster_calculator_expression(
+                divide_by_zero_expr, symbol_to_path_band_map, target_nodata,
+                target_raster_path)
+        expected_message = 'Encountered inf in calculation'
+        actual_message = str(cm.exception)
+        self.assertTrue(expected_message in actual_message, actual_message)
+
+        pygeoprocessing.symbolic.evaluate_raster_calculator_expression(
+            divide_by_zero_expr, symbol_to_path_band_map, target_nodata,
+            target_raster_path, default_inf=-9999)
+        expected_array = numpy.empty(val_array.shape)
+        expected_array[:] = -9999
+        target_array = _read_raster_to_array(target_raster_path)
+        numpy.testing.assert_almost_equal(target_array, expected_array)
+
+        zero_by_zero_expr = 'all_zeros / a'
+        with self.assertRaises(ValueError) as cm:
+            pygeoprocessing.symbolic.evaluate_raster_calculator_expression(
+                zero_by_zero_expr, symbol_to_path_band_map, target_nodata,
+                target_raster_path)
+        expected_message = 'Encountered NaN in calculation'
+        actual_message = str(cm.exception)
+        self.assertTrue(expected_message in actual_message, actual_message)
+
+        pygeoprocessing.symbolic.evaluate_raster_calculator_expression(
+            zero_by_zero_expr, symbol_to_path_band_map, target_nodata,
+            target_raster_path, default_nan=-9999)
+        expected_array = numpy.zeros(val_array.shape)
+        expected_array[0, 0] = -9999
+        target_array = _read_raster_to_array(target_raster_path)
+        numpy.testing.assert_almost_equal(target_array, expected_array)
+        # ensure it's a float32
+        self.assertEqual(pygeoprocessing.get_raster_info(
+            target_raster_path)['numpy_type'], numpy.float32)
+
+        # test that a symbolic implementation that reduces to a constant
+        # raises a ValueError
+        simplifies_to_1 = 'a*b**-1*a*d**2 / a**2 * d**-2 / b**-1'
+        with self.assertRaises(ValueError) as cm:
+            pygeoprocessing.symbolic.evaluate_raster_calculator_expression(
+                simplifies_to_1, symbol_to_path_band_map, target_nodata,
+                target_raster_path)
+        expected_message = 'Symbolic expression reduces to a constant'
+        actual_message = str(cm.exception)
+        self.assertTrue(expected_message in actual_message, actual_message)
+
+        target_byte_raster_path = os.path.join(
+            self.workspace_dir, 'byte.tif')
+        byte_expression = '1+byte_val'
+        pygeoprocessing.symbolic.evaluate_raster_calculator_expression(
+            byte_expression, symbol_to_path_band_map, target_nodata,
+            target_byte_raster_path)
+        # we should get out a *signed* byte
+        self.assertEqual(
+            pygeoprocessing.get_raster_info(
+                target_byte_raster_path)['numpy_type'], numpy.int8)
+
+    def test_evaluate_symbolic_bad_type(self):
+        """PGP: evaluate raster calculator expression gets the right type."""
+        import pygeoprocessing.symbolic
+
+        not_a_str_expression = False
+        with self.assertRaises(ValueError) as cm:
+            pygeoprocessing.symbolic.evaluate_raster_calculator_expression(
+                not_a_str_expression, {}, None, 'raster.tif')
+        actual_message = str(cm.exception)
+        self.assertTrue(
+            'Expected type `str` for `expression`' in actual_message,
+            actual_message)
+
+    def test_get_gis_type(self):
+        """PGP: test geoprocessing type."""
+        import pygeoprocessing
+        gpkg_driver = ogr.GetDriverByName('GPKG')
+        vector_path = os.path.join(self.workspace_dir, 'small_vector.gpkg')
+        vector = gpkg_driver.CreateDataSource(vector_path)
+
+        srs = osr.SpatialReference()
+        srs.ImportFromEPSG(4326)
+        layer = vector.CreateLayer('small_vector', srs=srs)
+        layer.CreateField(ogr.FieldDefn('expected_value', ogr.OFTInteger))
+        layer_defn = layer.GetLayerDefn()
+
+        # make an n x n raster with 2*m x 2*m polygons inside.
+        pixel_size = 1.0
+        subpixel_size = 1./5. * pixel_size
+        origin_x = 1.0
+        origin_y = -1.0
+        n = 16
+        layer.StartTransaction()
+        for row_index in range(n * 2):
+            for col_index in range(n * 2):
+                x_pos = origin_x + (
+                    col_index*2 + 1 + col_index // 2) * subpixel_size
+                y_pos = origin_y - (
+                    row_index*2 + 1 + row_index // 2) * subpixel_size
+                shapely_feature = shapely.geometry.Polygon([
+                    (x_pos, y_pos),
+                    (x_pos+subpixel_size, y_pos),
+                    (x_pos+subpixel_size, y_pos-subpixel_size),
+                    (x_pos, y_pos-subpixel_size),
+                    (x_pos, y_pos)])
+                new_feature = ogr.Feature(layer_defn)
+                new_geometry = ogr.CreateGeometryFromWkb(shapely_feature.wkb)
+                new_feature.SetGeometry(new_geometry)
+                expected_value = row_index // 2 * n + col_index // 2
+                new_feature.SetField('expected_value', expected_value)
+                layer.CreateFeature(new_feature)
+        layer.CommitTransaction()
+        layer.SyncToDisk()
+        layer = None
+        vector = None
+
+        gtiff_driver = gdal.GetDriverByName('GTiff')
+        raster_path = os.path.join(self.workspace_dir, 'small_raster.tif')
+        new_raster = gtiff_driver.Create(
+            raster_path, n, n, 1, gdal.GDT_Int32, options=[
+                'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
+                'BLOCKXSIZE=16', 'BLOCKYSIZE=16'])
+        new_raster.SetProjection(srs.ExportToWkt())
+        new_raster.SetGeoTransform([origin_x, 1.0, 0.0, origin_y, 0.0, -1.0])
+        new_band = new_raster.GetRasterBand(1)
+        new_band.SetNoDataValue(-1)
+        array = numpy.array(range(n*n), dtype=numpy.int32).reshape((n, n))
+        new_band.WriteArray(array)
+        new_raster.FlushCache()
+        new_band = None
+        new_raster = None
+
+        text_file_path = os.path.join(self.workspace_dir, 'text_file.txt')
+        with open(text_file_path, 'w') as text_file:
+            text_file.write('test')
+
+        self.assertEqual(
+            pygeoprocessing.get_gis_type(text_file_path),
+            pygeoprocessing.UNKNOWN_TYPE)
+        self.assertEqual(
+            pygeoprocessing.get_gis_type(raster_path),
+            pygeoprocessing.RASTER_TYPE)
+        self.assertEqual(
+            pygeoprocessing.get_gis_type(vector_path),
+            pygeoprocessing.VECTOR_TYPE)
+
+        with self.assertRaises(ValueError) as cm:
+            pygeoprocessing.get_gis_type('totally_fake_file')
+        actual_message = str(cm.exception)
+        self.assertTrue('does not exist' in actual_message, actual_message)
 
     def test_get_raster_info_type(self):
         """PGP: test get_raster_info's type."""

@@ -3,6 +3,9 @@ Release History
 
 Unreleased Changes
 ------------------
+* Added a ``pygeoprocessing.symbolic.evaluate_raster_calculator_expression``
+  function that can parse a string expression and a map of symbols to
+  calculate a raster calculation operation.
 * Modified ``pygeoprocessing.routing.fill_pits`` to create a single band
   raster of the input DEM raster/path band rather than a copy of the input
   DEM raster irrespective of the band number.
@@ -20,6 +23,12 @@ Unreleased Changes
   ``raster_driver_creation_tuple``. This allows the caller to create any type
   of ``GDAL`` writable driver along with the option list associated with that
   driver.
+* Added a ``'numpy_type'`` field to the result of ``get_raster_info`` that
+  contains the equivalent numpy datatype of the GDAL type in the raster. This
+  includes functionality differentate between the unsigned and signed
+  ``gdal.GDT_Byte`` vs. ``numpy.int8`` and ``numpy.uint8``.
+* Changed default compression routine for GeoTIFFs to ZSTD (thanks Facebook
+  https://facebook.github.io/zstd/).
 * Added a ``'file_list'`` key to the dictionary returned by
   ``get_raster_info`` and ``get_vector_info`` that contains a list of all the
   files associated with that GIS object. The first parameter of these lists
