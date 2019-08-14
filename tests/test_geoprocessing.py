@@ -4095,6 +4095,11 @@ class PyGeoprocessing10(unittest.TestCase):
             (double_raster_path, 1), self.workspace_dir, percentile_cutoffs)
         numpy.testing.assert_almost_equal(
             actual_percentiles, expected_float_percentiles)
+        # ensure heapfiles were removed
+        self.assertEquals(
+            len([path for path in os.listdir(self.workspace_dir)]), 1,
+            "Expected only one file in the workspace directory after "
+            "the call")
 
     def test_percentile_unsupported_type(self):
         """PGP: test percentile with unsupported type."""
