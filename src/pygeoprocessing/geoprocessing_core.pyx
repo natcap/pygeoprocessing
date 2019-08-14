@@ -610,7 +610,7 @@ def raster_band_percentile(
 
     Returns:
         A list of len(percentile_list) elements long containing the
-        percentile values (ranging from [0, 100]) in `base_raster_path_band
+        percentile values (ranging from [0, 100]) in ``base_raster_path_band``
         where the interpolation scheme is "higher" (i.e. any percentile splits
         will select the next element higher than the percentile cutoff).
 
@@ -655,7 +655,7 @@ def _raster_band_percentile_int(
 
     Returns:
         A list of len(percentile_list) elements long containing the
-        percentile values (ranging from [0, 100]) in `base_raster_path_band
+        percentile values (ranging from [0, 100]) in ``base_raster_path_band``
         where the interpolation scheme is "higher" (i.e. any percentile splits
         will select the next element higher than the percentile cutoff).
 
@@ -749,7 +749,7 @@ def _raster_band_percentile_double(
 
     Returns:
         A list of len(percentile_list) elements long containing the
-        percentile values (ranging from [0, 100]) in `base_raster_path_band
+        percentile values (ranging from [0, 100]) in ``base_raster_path_band``
         where the interpolation scheme is "higher" (i.e. any percentile splits
         will select the next element higher than the percentile cutoff).
 
