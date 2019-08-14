@@ -3,11 +3,14 @@ Release History
 
 Unreleased Changes
 ------------------
-* Added a ``gtiff_creation_options`` parameter to ``reclassify_raster`` to be
-  consistent with the rest of the raster creation functions in
-  PyGeoprocessing.
 * Added an out-of-core high performance raster percentile function at
   pygeoprocessing.raster_band_percentile.
+* Modified ``pygeoprocessing.routing.fill_pits`` to create a single band
+  raster of the input DEM raster/path band rather than a copy of the input
+  DEM raster irrespective of the band number.
+
+1.8.0 (2019-08-12)
+------------------
 * Added a ``'numpy_type'`` field to the result of ``get_raster_info`` that
   contains the equivalent numpy datatype of the GDAL type in the raster. This
   includes functionality differentate between the unsigned and signed
