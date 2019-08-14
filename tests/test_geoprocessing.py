@@ -4021,10 +4021,14 @@ class PyGeoprocessing10(unittest.TestCase):
         # manually rounding up the percentiles
         expected_int_percentiles = [
             array[0], array[23], array[73], array[99], array[99]]
+        working_dir = os.path.join(
+            self.workspace_dir, 'percentile_working_dir')
         actual_int_percentiles = pygeoprocessing.raster_band_percentile(
-            (int_raster_path, 1), self.workspace_dir, percentile_cutoffs)
+            (int_raster_path, 1), working_dir, percentile_cutoffs)
         numpy.testing.assert_almost_equal(
             actual_int_percentiles, expected_int_percentiles)
+        self.assertTrue(
+            not os.path.exists(working_dir), 'working dir was not deleted')
 
     def test_percentile_double_type(self):
         """PGP: test percentile function with double type."""
