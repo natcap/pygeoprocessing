@@ -940,6 +940,7 @@ def new_raster_from_base(
                         float(pixels_processed) / n_pixels * 100.0),
                     _LOGGING_PERIOD)
             target_band = None
+    target_band = None
     target_raster = None
 
 

@@ -39,7 +39,7 @@ class TestRouting(unittest.TestCase):
         dem_array[3:8, 3:8] = -1.0
         dem_array[0, 0] = -1.0
         raster = driver.Create(
-            base_path, dem_array.shape[1], dem_array.shape[0], 1,
+            base_path, dem_array.shape[1], dem_array.shape[0], 2,
             gdal.GDT_Float32)
         band = raster.GetRasterBand(1)
         band.WriteArray(dem_array)
@@ -52,10 +52,12 @@ class TestRouting(unittest.TestCase):
             (base_path, 1), fill_path, working_dir=self.workspace_dir)
 
         result_raster = gdal.OpenEx(fill_path, gdal.OF_RASTER)
+        raster_count = result_raster.RasterCount
         result_band = result_raster.GetRasterBand(1)
         result_array = result_band.ReadAsArray()
         result_band = None
         result_raster = None
+        self.assertEqual(raster_count, 1, "expect 1 band output")
         self.assertEqual(result_array.dtype, numpy.float32)
         # the expected result is that the pit is filled in
         dem_array[3:8, 3:8] = 0.0

@@ -3,6 +3,19 @@ Release History
 
 Unreleased Changes
 ------------------
+* Added a ``pygeoprocessing.symbolic.evaluate_raster_calculator_expression``
+  function that can parse a string expression and a map of symbols to
+  calculate a raster calculation operation.
+* Modified ``pygeoprocessing.routing.fill_pits`` to create a single band
+  raster of the input DEM raster/path band rather than a copy of the input
+  DEM raster irrespective of the band number.
+
+1.8.0 (2019-08-12)
+------------------
+* Added a ``'numpy_type'`` field to the result of ``get_raster_info`` that
+  contains the equivalent numpy datatype of the GDAL type in the raster. This
+  includes functionality differentate between the unsigned and signed
+  ``gdal.GDT_Byte`` vs. ``numpy.int8`` and ``numpy.uint8``.
 * Changed default compression routine for GeoTIFFs to ZSTD (thanks Facebook
   https://facebook.github.io/zstd/).
 * Added a **non-backwards compatible change** by replacing the
@@ -25,9 +38,6 @@ Unreleased Changes
   ``pygeoprocessing.VECTOR_TYPE``.
 * Modified ``iterblocks`` to raise a helpful ValueError instead of a general
   NoneTypeError if a raster does not open.
-* Added a ``pygeoprocessing.symbolic.evaluate_raster_calculator_expression``
-  function that can parse a string expression and a map of symbols to
-  calculate a raster calculation operation.
 
 1.7.0 (2019-06-27)
 ------------------
