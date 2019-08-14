@@ -664,7 +664,6 @@ def _raster_band_percentile_int(
 
     """
     cdef FILE *fptr
-    cdef int[:] buffer_data
     cdef FastFileIteratorIntPtr fast_file_iterator
     cdef vector[FastFileIteratorIntPtr] fast_file_iterator_vector
     cdef vector[FastFileIteratorIntPtr].iterator ffiv_iter
@@ -679,6 +678,14 @@ def _raster_band_percentile_int(
         rm_dir_when_done = True
     except OSError:
         pass
+
+    cdef long[:] buffer_data_int
+    cdef unsigned long[:] buffer_data_uint
+    cdef double[:] buffer_data_double
+
+    raster_type = pygeoprocessing.get_raster_info(
+        base_raster_path_band[0])['numpy_type']
+
     heapfile_list = []
     file_index = 0
     nodata = pygeoprocessing.get_raster_info(
