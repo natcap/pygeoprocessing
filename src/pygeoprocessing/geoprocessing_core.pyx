@@ -601,7 +601,8 @@ def raster_band_percentile(
             with sizes no larger than `buffer_size` which are written in the
             of the pattern N.dat where N is in the numbering 0, 1, 2, ... up
             to the number of files necessary to handle the raster.
-        percentile_list (list): sorted list of percentiles to report.
+        percentile_list (list): sorted list of percentiles to report must
+            contain values in the range [0, 100].
         buffer_size (int): defines approximately how many elements to hold in
             a single heap file. This is proportional to the amount of maximum
             memory to use when storing elements before a sort and write to
@@ -609,9 +610,9 @@ def raster_band_percentile(
 
     Returns:
         A list of len(percentile_list) elements long containing the
-        percentile values in `base_raster_path_band where the interpolation
-        scheme is "higher" (i.e. any percentile splits will select the next
-        element higher than the percentile cutoff).
+        percentile values (ranging from [0, 100]) in `base_raster_path_band
+        where the interpolation scheme is "higher" (i.e. any percentile splits
+        will select the next element higher than the percentile cutoff).
 
     """
     raster_type = pygeoprocessing.get_raster_info(
@@ -645,7 +646,8 @@ def _raster_band_percentile_int(
             with sizes no larger than `buffer_size` which are written in the
             of the pattern N.dat where N is in the numbering 0, 1, 2, ... up
             to the number of files necessary to handle the raster.
-        percentile_list (list): sorted list of percentiles to report.
+        percentile_list (list): sorted list of percentiles to report must
+            contain values in the range [0, 100].
         buffer_size (int): defines approximately how many elements to hold in
             a single heap file. This is proportional to the amount of maximum
             memory to use when storing elements before a sort and write to
@@ -653,9 +655,9 @@ def _raster_band_percentile_int(
 
     Returns:
         A list of len(percentile_list) elements long containing the
-        percentile values in `base_raster_path_band where the interpolation
-        scheme is "higher" (i.e. any percentile splits will select the next
-        element higher than the percentile cutoff).
+        percentile values (ranging from [0, 100]) in `base_raster_path_band
+        where the interpolation scheme is "higher" (i.e. any percentile splits
+        will select the next element higher than the percentile cutoff).
 
     """
     cdef FILE *fptr
@@ -738,7 +740,8 @@ def _raster_band_percentile_double(
             with sizes no larger than `buffer_size` which are written in the
             of the pattern N.dat where N is in the numbering 0, 1, 2, ... up
             to the number of files necessary to handle the raster.
-        percentile_list (list): sorted list of percentiles to report.
+        percentile_list (list): sorted list of percentiles to report must
+            contain values in the range [0, 100].
         buffer_size (int): defines approximately how many elements to hold in
             a single heap file. This is proportional to the amount of maximum
             memory to use when storing elements before a sort and write to
@@ -746,9 +749,9 @@ def _raster_band_percentile_double(
 
     Returns:
         A list of len(percentile_list) elements long containing the
-        percentile values in `base_raster_path_band where the interpolation
-        scheme is "higher" (i.e. any percentile splits will select the next
-        element higher than the percentile cutoff).
+        percentile values (ranging from [0, 100]) in `base_raster_path_band
+        where the interpolation scheme is "higher" (i.e. any percentile splits
+        will select the next element higher than the percentile cutoff).
 
     """
     cdef FILE *fptr
