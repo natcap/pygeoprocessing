@@ -594,17 +594,18 @@ def raster_band_percentile(
     """Calculate percentiles of a raster band.
 
     Parameters:
-        base_raster_path_band (tuple): path to raster that is of a long
-            integer type.
+        base_raster_path_band (tuple): raster path band tuple to a raster
+            that is of any integer or real type.
         working_sort_directory (str): path to a directory that does not
             exist or is empty. This directory will be used to create heapfiles
             with sizes no larger than `buffer_size` which are written in the
             of the pattern N.dat where N is in the numbering 0, 1, 2, ... up
             to the number of files necessary to handle the raster.
         percentile_list (list): sorted list of percentiles to report.
-        buffer_size (int): defines how large to make each heapfile which
-            is close to the amount of maximum memory to use when storing
-            elements before a sort and write to disk.
+        buffer_size (int): defines approximately how many elements to hold in
+            a single heap file. This is proportional to the amount of maximum
+            memory to use when storing elements before a sort and write to
+            disk.
 
     Returns:
         A list of len(percentile_list) elements long containing the
@@ -620,11 +621,11 @@ def raster_band_percentile(
             gdal.GDT_UInt32):
         return _raster_band_percentile_int(
             base_raster_path_band, working_sort_directory, percentile_list,
-            buffer_size=buffer_size)
+            buffer_size)
     elif raster_type in (gdal.GDT_Float32, gdal.GDT_Float64):
         return _raster_band_percentile_double(
             base_raster_path_band, working_sort_directory, percentile_list,
-            buffer_size=buffer_size)
+            buffer_size)
     else:
         raise ValueError(
             'Cannot process raster type %s (not a known integer nor float '
@@ -637,17 +638,18 @@ def _raster_band_percentile_int(
     """Calculate percentiles of a raster band of an integer type.
 
     Parameters:
-        base_raster_path_band (tuple): path to raster that is of a long
-            integer type.
+        base_raster_path_band (tuple): raster path band tuple to a raster that
+            is of an integer type.
         working_sort_directory (str): path to a directory that does not
             exist or is empty. This directory will be used to create heapfiles
             with sizes no larger than `buffer_size` which are written in the
             of the pattern N.dat where N is in the numbering 0, 1, 2, ... up
             to the number of files necessary to handle the raster.
         percentile_list (list): sorted list of percentiles to report.
-        buffer_size (int): defines how large to make each heapfile which
-            is close to the amount of maximum memory to use when storing
-            elements before a sort and write to disk.
+        buffer_size (int): defines approximately how many elements to hold in
+            a single heap file. This is proportional to the amount of maximum
+            memory to use when storing elements before a sort and write to
+            disk.
 
     Returns:
         A list of len(percentile_list) elements long containing the
@@ -729,17 +731,18 @@ def _raster_band_percentile_double(
     """Calculate percentiles of a raster band of a real type.
 
     Parameters:
-        base_raster_path_band (tuple): path to raster that is of a long
-            real type.
+        base_raster_path_band (tuple): raster path band tuple to raster that
+            is a real/float type.
         working_sort_directory (str): path to a directory that does not
             exist or is empty. This directory will be used to create heapfiles
             with sizes no larger than `buffer_size` which are written in the
             of the pattern N.dat where N is in the numbering 0, 1, 2, ... up
             to the number of files necessary to handle the raster.
         percentile_list (list): sorted list of percentiles to report.
-        buffer_size (int): defines how large to make each heapfile which
-            is close to the amount of maximum memory to use when storing
-            elements before a sort and write to disk.
+        buffer_size (int): defines approximately how many elements to hold in
+            a single heap file. This is proportional to the amount of maximum
+            memory to use when storing elements before a sort and write to
+            disk.
 
     Returns:
         A list of len(percentile_list) elements long containing the
