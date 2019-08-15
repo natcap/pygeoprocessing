@@ -586,8 +586,8 @@ def stats_worker(stats_work_queue, exception_queue):
             stats_work_queue.get()
         raise
 
-
-ctypedef FastFileIterator[int]* FastFileIteratorIntPtr
+ctypedef long long int64t
+ctypedef FastFileIterator[long long]* FastFileIteratorLongLongIntPtr
 ctypedef FastFileIterator[double]* FastFileIteratorDoublePtr
 
 
@@ -664,11 +664,11 @@ def _raster_band_percentile_int(
 
     """
     cdef FILE *fptr
-    cdef FastFileIteratorIntPtr fast_file_iterator
-    cdef vector[FastFileIteratorIntPtr] fast_file_iterator_vector
-    cdef vector[FastFileIteratorIntPtr].iterator ffiv_iter
+    cdef FastFileIteratorLongLongIntPtr fast_file_iterator
+    cdef vector[FastFileIteratorLongLongIntPtr] fast_file_iterator_vector
+    cdef vector[FastFileIteratorLongLongIntPtr].iterator ffiv_iter
     cdef long i, percentile_index = 0, n_elements = 0
-    cdef int next_val = 0L
+    cdef int64t next_val = 0L
     cdef double step_size, current_percentile
     cdef double current_step = 0.0
     result_list = []
@@ -679,9 +679,7 @@ def _raster_band_percentile_int(
     except OSError:
         pass
 
-    cdef long[:] buffer_data_int
-    cdef unsigned long[:] buffer_data_uint
-    cdef double[:] buffer_data_double
+    cdef int64t[:] buffer_data
 
     raster_type = pygeoprocessing.get_raster_info(
         base_raster_path_band[0])['numpy_type']
@@ -694,7 +692,7 @@ def _raster_band_percentile_int(
             base_raster_path_band, largest_block=buffer_size):
         buffer_data = numpy.sort(
             block_data[~numpy.isclose(block_data, nodata)]).astype(
-            numpy.int32)
+            numpy.int64)
         if buffer_data.size == 0:
             continue
         n_elements += buffer_data.size
@@ -702,17 +700,19 @@ def _raster_band_percentile_int(
             working_sort_directory, '%d.dat' % file_index)
         heapfile_list.append(file_path)
         fptr = fopen(bytes(file_path.encode()), "wb")
-        fwrite(<int*>&buffer_data[0], sizeof(int), buffer_data.size, fptr)
+        fwrite(
+            <int64t*>&buffer_data[0], sizeof(int64t), buffer_data.size,
+            fptr)
         fclose(fptr)
         file_index += 1
 
-        fast_file_iterator = new FastFileIterator[int](
+        fast_file_iterator = new FastFileIterator[int64t](
             (bytes(file_path.encode())), 2**30)
         fast_file_iterator_vector.push_back(fast_file_iterator)
         push_heap(
             fast_file_iterator_vector.begin(),
             fast_file_iterator_vector.end(),
-            FastFileIteratorCompare[int])
+            FastFileIteratorCompare[int64t])
 
     current_percentile = percentile_list[percentile_index]
     step_size = 100.0 / n_elements
@@ -729,12 +729,12 @@ def _raster_band_percentile_int(
         pop_heap(
             fast_file_iterator_vector.begin(),
             fast_file_iterator_vector.end(),
-            FastFileIteratorCompare[int])
+            FastFileIteratorCompare[int64t])
         if fast_file_iterator_vector.back().size() > 0:
             push_heap(
                 fast_file_iterator_vector.begin(),
                 fast_file_iterator_vector.end(),
-                FastFileIteratorCompare[int])
+                FastFileIteratorCompare[int64t])
         else:
             fast_file_iterator = fast_file_iterator_vector.back()
             del fast_file_iterator

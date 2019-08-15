@@ -4067,7 +4067,7 @@ class PyGeoprocessing10(unittest.TestCase):
             7438680, 7713058, 7759246, 7878338, 7882983, 7974409, 8223956,
             8226559, 8355570, 8433741, 8523959, 8853540, 8999076, 9109444,
             9250199, 9262560, 9365311, 9404229, 9529068, 9597598,
-            2**31])
+            2**31], dtype=numpy.uint32)
         int_band.WriteArray(array.reshape((n_length, n_length)))
         int_raster.FlushCache()
         int_band = None
