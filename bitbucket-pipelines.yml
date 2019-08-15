@@ -31,7 +31,7 @@ pipelines:
               - tox -e py36 --sitepackages
       - step:
           name: "Tests: python 3.7 on linux"
-          image: natcap/py37-spatial-build:5daac5b1d630949a2b81d1d0f8b017789a3bdeab
+          image: natcap/py37-spatial-build:bd34b700f80160cfb1e4d37ac2a4538623069ab6
           caches:
               - pip
           script:
