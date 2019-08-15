@@ -31,9 +31,8 @@ pipelines:
               - tox -e py36 --sitepackages
       - step:
           name: "Tests: python 3.7 on linux"
-          image: natcap/py37-spatial-build:aa912e194998f1b8f48ba8ba58cdcaac98f87bdb
+          image: natcap/py37-spatial-build:9efbd6ed99bb3af10b28c37ad212ca337b8b1e84
           caches:
               - pip
           script:
-              - pip install setuptools_scm cython tox
               - tox -e py37 --sitepackages
