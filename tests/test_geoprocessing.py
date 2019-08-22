@@ -2440,14 +2440,14 @@ class PyGeoprocessing10(unittest.TestCase):
 
         # Willamette valley in lat/lng
         bounding_box = [-123.587984, 44.415778, -123.397976, 44.725814]
-        base_ref = osr.SpatialReference()
-        base_ref.ImportFromEPSG(4326)  # WGS84 EPSG
+        wgs84_srs = osr.SpatialReference()
+        wgs84_srs.ImportFromEPSG(4326)  # WGS84 EPSG
 
-        target_ref = osr.SpatialReference()
-        target_ref.ImportFromEPSG(26910)  # UTM10N EPSG
+        target_srs = osr.SpatialReference()
+        target_srs.ImportFromEPSG(26910)  # UTM10N EPSG
 
         result = pygeoprocessing.transform_bounding_box(
-            bounding_box, base_ref.ExportToWkt(), target_ref.ExportToWkt())
+            bounding_box, wgs84_srs.ExportToWkt(), target_srs.ExportToWkt())
         # I have confidence this function works by taking the result and
         # plotting it in a GIS polygon, so the expected result below is
         # regression data
@@ -2457,6 +2457,19 @@ class PyGeoprocessing10(unittest.TestCase):
         self.assertIs(
             numpy.testing.assert_allclose(
                 result, expected_result), None)
+
+        # this test case came up where the y coordinates got flipped
+        gibraltar_bb = [6598990.0, 15315600.0, 7152690.0, 16058800.0]
+        utm_30n_srs = osr.SpatialReference()
+        utm_30n_srs.ImportFromEPSG(32630)
+        gibraltar_bb_wgs84 = pygeoprocessing.transform_bounding_box(
+            gibraltar_bb, utm_30n_srs.ExportToWkt(), wgs84_srs.ExportToWkt())
+        self.assertTrue(
+            gibraltar_bb_wgs84[0] < gibraltar_bb_wgs84[2] and
+            gibraltar_bb_wgs84[1] < gibraltar_bb_wgs84[3],
+            'format should be [xmin, ymin, xmax, ymax]: '
+            '%s' % gibraltar_bb_wgs84)
+
 
     def test_iterblocks(self):
         """PGP.geoprocessing: test iterblocks."""
