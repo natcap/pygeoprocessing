@@ -2805,7 +2805,7 @@ def transform_bounding_box(
     p_1 = numpy.array((bounding_box[0], bounding_box[1]))
     p_2 = numpy.array((bounding_box[2], bounding_box[1]))
     p_3 = numpy.array((bounding_box[2], bounding_box[3]))
-    transformed_bounding_box = [
+    raw_bounding_box = [
         bounding_fn(
             [_transform_point(
                 p_a * v + p_b * (1 - v)) for v in numpy.linspace(
@@ -2815,6 +2815,14 @@ def transform_bounding_box(
             (p_1, p_2, lambda p_list: min([p[1] for p in p_list])),
             (p_2, p_3, lambda p_list: max([p[0] for p in p_list])),
             (p_3, p_0, lambda p_list: max([p[1] for p in p_list]))]]
+
+    # sometimes a transform will be so tight that a sampling around it may
+    # flip the coordinate system. This flips it back. I found this when
+    # transforming the bounding box of Gibraltar in a utm coordinate system
+    # to lat/lng.
+    minx, maxx = sorted([raw_bounding_box[0], raw_bounding_box[2]])
+    miny, maxy = sorted([raw_bounding_box[1], raw_bounding_box[3]])
+    transformed_bounding_box = [minx, miny, maxx, maxy]
     return transformed_bounding_box
 
 
