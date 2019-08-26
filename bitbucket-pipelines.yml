@@ -35,4 +35,5 @@ pipelines:
           caches:
               - pip
           script:
-              - tox -e py37 --sitepackages
+              - python3 setup.py install
+              - python3 -m pytest -v tests
