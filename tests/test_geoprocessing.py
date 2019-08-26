@@ -4165,7 +4165,7 @@ class PyGeoprocessing10(unittest.TestCase):
         numpy.testing.assert_almost_equal(
             actual_percentiles, expected_float_percentiles)
         # ensure heapfiles were removed
-        self.assertEquals(
+        self.assertEqual(
             len([path for path in os.listdir(self.workspace_dir)]), 1,
             "Expected only one file in the workspace directory after "
             "the call")
