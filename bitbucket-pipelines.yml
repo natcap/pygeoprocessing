@@ -37,7 +37,7 @@ pipelines:
     - parallel:
       - step:
           name: "Tests: python 3.6 on linux"
-          image: natcap/pygeoprocessing-env
+          image: natcap/pygeoprocessing-docker:latest
           caches:
               - pip
           script:
@@ -45,7 +45,7 @@ pipelines:
               - conda run -n py36 pytest -v tests
       - step:
           name: "Tests: python 3.7 on linux"
-          image: natcap/pygeoprocessing-env
+          image: natcap/pygeoprocessing-docker:latest
           caches:
               - pip
           script:
