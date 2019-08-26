@@ -189,7 +189,7 @@ class PyGeoprocessing10(unittest.TestCase):
         target_array = target_band.ReadAsArray()
         target_band = None
         target_raster = None
-        self.assertEqual(
+        self.assertAlmostEqual(
             numpy.sum(target_array), n_pixels**2 * value_map[test_value])
 
     def test_reclassify_raster_no_raster_path_band(self):
@@ -2492,7 +2492,7 @@ class PyGeoprocessing10(unittest.TestCase):
         for _, block in pygeoprocessing.iterblocks(
                 (raster_path, 1), largest_block=0):
             total += numpy.sum(block)
-        self.assertEqual(total, test_value * n_pixels**2)
+        self.assertAlmostEqual(total, test_value * n_pixels**2)
 
     def test_iterblocks_bad_raster_band(self):
         """PGP.geoprocessing: test iterblocks."""
@@ -2587,7 +2587,7 @@ class PyGeoprocessing10(unittest.TestCase):
         # the sides and realizing diagonals got subtracted twice
         expected_result = test_value * (
             n_pixels ** 2 * 9 - n_pixels * 4 * 3 + 4)
-        self.assertEqual(numpy.sum(target_array), expected_result)
+        self.assertAlmostEqual(numpy.sum(target_array), expected_result)
 
     def test_convolve_2d_multiprocess(self):
         """PGP.geoprocessing: test convolve 2d (multiprocess)."""
@@ -2624,7 +2624,7 @@ class PyGeoprocessing10(unittest.TestCase):
         # the sides and realizing diagonals got subtracted twice
         expected_result = test_value * (
             n_pixels ** 2 * 9 - n_pixels * 4 * 3 + 4)
-        self.assertEqual(numpy.sum(target_array), expected_result)
+        self.assertAlmostEqual(numpy.sum(target_array), expected_result)
 
     def test_convolve_2d_normalize_ignore_nodata(self):
         """PGP.geoprocessing: test convolve 2d w/ normalize and ignore."""
@@ -2657,7 +2657,7 @@ class PyGeoprocessing10(unittest.TestCase):
         target_band = None
         target_raster = None
         expected_result = test_value * n_pixels ** 2
-        self.assertEqual(numpy.sum(target_array), expected_result)
+        self.assertAlmostEqual(numpy.sum(target_array), expected_result)
 
     def test_convolve_2d_ignore_nodata(self):
         """PGP.geoprocessing: test convolve 2d w/ normalize and ignore."""
@@ -2692,7 +2692,7 @@ class PyGeoprocessing10(unittest.TestCase):
 
         # calculate by working on some graph paper
         expected_result = 9*9*.5
-        self.assertEqual(numpy.sum(target_array), expected_result)
+        self.assertAlmostEqual(numpy.sum(target_array), expected_result)
 
     def test_convolve_2d_normalize(self):
         """PGP.geoprocessing: test convolve 2d w/ normalize."""
@@ -2793,7 +2793,7 @@ class PyGeoprocessing10(unittest.TestCase):
         # calculate expected result by adding up all squares, subtracting off
         # the sides and realizing diagonals got subtracted twice
         expected_result = test_value * (n_pixels ** 4)
-        self.assertEqual(numpy.sum(target_array), expected_result)
+        self.assertAlmostEqual(numpy.sum(target_array), expected_result)
 
     def test_convolve_2d_large(self):
         """PGP.geoprocessing: test convolve 2d with large kernel & signal."""
@@ -2831,7 +2831,7 @@ class PyGeoprocessing10(unittest.TestCase):
         # calculate expected result by adding up all squares, subtracting off
         # the sides and realizing diagonals got subtracted twice
         expected_result = test_value * (n_pixels ** 2)
-        self.assertEqual(numpy.sum(target_array), expected_result)
+        self.assertAlmostEqual(numpy.sum(target_array), expected_result)
 
     def test_calculate_slope(self):
         """PGP.geoprocessing: test calculate slope."""

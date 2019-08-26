@@ -23,17 +23,17 @@ pipelines:
     - parallel:
       - step:
           name: "Tests: python 3.6 on linux"
-          image: natcap/py36-spatial-build:743e6fa5d57d9d84770414b69aab518490f24008
+          image: natcap/pygeoprocessing:743e6fa5d57d9d84770414b69aab518490f24008
           caches:
               - pip
           script:
-              - pip install setuptools_scm cython tox
-              - tox -e py36 --sitepackages
+              - conda run -n py36 python setup.py install
+              - conda run -n py36 pytest -v tests
       - step:
           name: "Tests: python 3.7 on linux"
-          image: natcap/py37-spatial-build:9efbd6ed99bb3af10b28c37ad212ca337b8b1e84
+          image: natcap/pygeoprocessing:9efbd6ed99bb3af10b28c37ad212ca337b8b1e84
           caches:
               - pip
           script:
-              - python3 setup.py install
-              - python3 -m pytest -v tests
+              - conda run -n py37 python setup.py install
+              - conda run -n py37 pytest -v tests
