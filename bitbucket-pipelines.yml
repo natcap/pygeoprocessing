@@ -38,16 +38,20 @@ pipelines:
       - step:
           name: "Tests: python 3.6 on linux"
           image: natcap/pygeoprocessing-docker:a8731f093fdbf156abada31dec3888a5cf9ddb1e
+          services:
+              - docker
           caches:
-              - pip
+              - docker
           script:
               - conda run -n py36 python setup.py install
               - conda run -n py36 pytest -v tests
       - step:
           name: "Tests: python 3.7 on linux"
           image: natcap/pygeoprocessing-docker:a8731f093fdbf156abada31dec3888a5cf9ddb1e
+          services:
+              - docker
           caches:
-              - pip
+              - docker
           script:
               - conda run -n py37 python setup.py install
               - conda run -n py37 pytest -v tests
