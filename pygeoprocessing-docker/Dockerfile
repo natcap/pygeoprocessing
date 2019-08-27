@@ -28,16 +28,22 @@ RUN hg clone https://bitbucket.org/natcap/pygeoprocessing -r develop
 
 # build the python environments for 3.6 and 3.7 using conda, pip, and
 # python setup.py install
-RUN /bin/bash ./install-conda-environment.sh 3 7
+RUN /bin/bash -c "\
+    conda create -y --name py37 python=3.7 \
+    && conda clean -a -y"
+RUN /bin/bash -c "conda run -v -n py37 install -c conda-forge gdal=2.4.1"
 RUN /bin/bash ./install-pip-packages.sh 3 7
 RUN /bin/bash -c "\
     pushd pygeoprocessing; \
-    conda run -v -n 37 python setup.py install; \
+    conda run -v -n py37 python setup.py install; \
     popd"
 
-RUN /bin/bash ./install-conda-environment.sh 3 6
+RUN /bin/bash -c \
+    "conda create -y --name py36 python=3.6 \
+    && conda clean -a -y"
+RUN /bin/bash -c "conda run -v -n py36 install -c conda-forge gdal=2.4.1"
 RUN /bin/bash ./install-pip-packages.sh 3 6
 RUN /bin/bash -c "\
     pushd pygeoprocessing; \
-    conda run -v -n 36 python setup.py install; \
+    conda run -v -n py36 python setup.py install; \
     popd"
