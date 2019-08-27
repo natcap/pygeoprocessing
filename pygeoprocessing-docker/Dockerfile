@@ -20,7 +20,6 @@ ENV SETUSER pygeoprocessing
 RUN useradd -m $SETUSER
 USER $SETUSER
 WORKDIR /home/$SETUSER
-COPY install-conda-environment.sh .
 COPY install-pip-packages.sh .
 
 # pre-fetch pygeoprocessing in anticipation of a faster build step
