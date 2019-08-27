@@ -34,24 +34,24 @@ pipelines:
             - echo "Build history at "
             - echo "    https://ci.appveyor.com/project/$APPVEYOR_ACC_NAME/$APPVEYOR_PROJ_SLUG/history"
   default:
-    - parallel:
-      - step:
-          name: "Tests: python 3.6 on linux"
-          image: natcap/pygeoprocessing-env:latest
-          services:
-              - docker
-          caches:
-              - docker
-          script:
-              - conda run -n py36 python setup.py install
-              - conda run -n py36 pytest -v tests
-      - step:
-          name: "Tests: python 3.7 on linux"
-          image: natcap/pygeoprocessing-env:latest
-          services:
-              - docker
-          caches:
-              - docker
-          script:
-              - conda run -n py37 python setup.py install
-              - conda run -n py37 pytest -v tests
+      - parallel:
+        - step:
+            name: "Tests: python 3.6 on linux"
+            image: natcap/pygeoprocessing-env:latest
+            services:
+                - docker
+            caches:
+                - docker
+            script:
+                - conda run -n py36 python setup.py install
+                - conda run -n py36 pytest -v tests
+        - step:
+            name: "Tests: python 3.7 on linux"
+            image: natcap/pygeoprocessing-env:latest
+            services:
+                - docker
+            caches:
+                - docker
+            script:
+                - conda run -n py37 python setup.py install
+                - conda run -n py37 pytest -v tests
