@@ -30,7 +30,7 @@ RUN hg clone https://bitbucket.org/natcap/pygeoprocessing -r develop
 RUN /bin/bash -c "\
     conda create -y --name py37 python=3.7 \
     && conda clean -a -y"
-RUN /bin/bash -c "conda run -v -n py37 install -c conda-forge gdal=2.4.1"
+RUN /bin/bash -c "conda run -v -n py37 conda install -c conda-forge gdal=2.4.1"
 RUN /bin/bash ./install-pip-packages.sh 3 7
 RUN /bin/bash -c "\
     pushd pygeoprocessing; \
@@ -40,7 +40,7 @@ RUN /bin/bash -c "\
 RUN /bin/bash -c \
     "conda create -y --name py36 python=3.6 \
     && conda clean -a -y"
-RUN /bin/bash -c "conda run -v -n py36 install -c conda-forge gdal=2.4.1"
+RUN /bin/bash -c "conda run -v -n py36 conda install -c conda-forge gdal=2.4.1"
 RUN /bin/bash ./install-pip-packages.sh 3 6
 RUN /bin/bash -c "\
     pushd pygeoprocessing; \
