@@ -1,6 +1,6 @@
 pipelines:
   custom:
-    pygeoprocessing-env-image:
+    pygeoprocessing-docker-image:
       - step:
           name: "Build PyGeoprocessing Docker image"
           services:
