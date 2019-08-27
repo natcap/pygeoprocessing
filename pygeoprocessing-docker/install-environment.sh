@@ -24,6 +24,6 @@ conda run -v -n $1$2 pip install --no-cache-dir \
     shapely \
     sympy
 pushd pygeoprocessing
-conda run -v -n $1 python setup.py install
+conda run -v -n $1$2 python setup.py install
 popd
 conda clean -a -y
