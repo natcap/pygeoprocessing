@@ -13,7 +13,7 @@ RUN apt-get update \
 && rm -rf /var/lib/apt/lists/*
 
 # update conda to fix conda error reported that is not an error
-RUN conda update -n base -c defaults conda
+RUN conda update -n base -c defaults conda && conda clean -a -y
 
 # make a new user called pygeoprocessing to avoid running everything as root
 ENV SETUSER pygeoprocessing
@@ -31,13 +31,13 @@ RUN hg clone https://bitbucket.org/natcap/pygeoprocessing -r develop
 RUN /bin/bash ./install-conda-environment.sh 3 7
 RUN /bin/bash ./install-pip-packages.sh 3 7
 RUN /bin/bash -c "\
-    pushd pygeoprocessing'; \
+    pushd pygeoprocessing; \
     conda run -v -n 37 python setup.py install; \
     popd"
 
 RUN /bin/bash ./install-conda-environment.sh 3 6
 RUN /bin/bash ./install-pip-packages.sh 3 6
 RUN /bin/bash -c "\
-    pushd pygeoprocessing'; \
+    pushd pygeoprocessing; \
     conda run -v -n 36 python setup.py install; \
     popd"
