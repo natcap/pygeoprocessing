@@ -1,7 +1,10 @@
 FROM conda/miniconda3
 
 # install build essentials & mercurial then delete the cache to minimize
-# the docker size
+# the docker size:
+#   build-essential to build cython extensions
+#   libspatialindex-c4v5 for the rtree python extension
+#   mercurial for source control repo of PyGeoprocessing
 RUN apt-get update \
 && apt-get install -y \
     build-essential \
