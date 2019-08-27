@@ -12,9 +12,6 @@ RUN apt-get update \
     mercurial \
 && rm -rf /var/lib/apt/lists/*
 
-# update conda to fix conda error reported that is not an error
-RUN conda update -n base -c defaults conda && conda clean -a -y
-
 # make a new user called pygeoprocessing to avoid running everything as root
 ENV SETUSER pygeoprocessing
 RUN useradd -m $SETUSER
