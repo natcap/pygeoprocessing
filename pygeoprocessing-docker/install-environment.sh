@@ -9,7 +9,7 @@
 # 1) build an environment for both python 3.6 and 3.7, install as much as
 #    possible from pip to minimize the expensive conda dep resolution
 #    algorithm
-conda create -y --name -c conda-forge \
+conda create -y --name $1$2 -c conda-forge \
     gdal=2.4.2 \
     python=$1.$2
 conda run -v -n $1$2 pip install --no-cache-dir \
