@@ -32,10 +32,3 @@ RUN /bin/bash -c \
     && conda clean -a -y"
 RUN /bin/bash -c "conda run -v -n py36 conda install -c conda-forge gdal=2.4.1"
 RUN /bin/bash ./install-pip-packages.sh 3 6
-
-# pre-fetch pygeoprocessing in anticipation of a faster build step
-RUN /bin/bash -c "\
-    hg clone https://bitbucket.org/natcap/pygeoprocessing -r develop; \
-    pushd pygeoprocessing; \
-    conda run -v -n py36 python setup.py install; \
-    conda run -v -n py37 python setup.py install"
