@@ -34,6 +34,7 @@ template <class DATA_T> class FastFileIterator{
             this->buffer = reinterpret_cast<DATA_T*>(malloc(
                 this->cache_size * sizeof(DATA_T)));
             FILE *fptr = fopen(this->file_path, "rb");
+            fseek(fptr, this->global_offset * sizeof(DATA_T), SEEK_SET);
             size_t elements_to_read = this->cache_size;
             size_t elements_read = 0;
             while (elements_to_read) {

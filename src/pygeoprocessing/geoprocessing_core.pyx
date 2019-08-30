@@ -667,7 +667,8 @@ def _raster_band_percentile_int(
     cdef FastFileIteratorLongLongIntPtr fast_file_iterator
     cdef vector[FastFileIteratorLongLongIntPtr] fast_file_iterator_vector
     cdef vector[FastFileIteratorLongLongIntPtr].iterator ffiv_iter
-    cdef long i, percentile_index = 0, n_elements = 0
+    cdef int i, percentile_index = 0
+    cdef long long n_elements = 0
     cdef int64t next_val = 0L
     cdef double step_size, current_percentile
     cdef double current_step = 0.0
@@ -707,7 +708,7 @@ def _raster_band_percentile_int(
         file_index += 1
 
         fast_file_iterator = new FastFileIterator[int64t](
-            (bytes(file_path.encode())), 2**30)
+            (bytes(file_path.encode())), 2**15)
         fast_file_iterator_vector.push_back(fast_file_iterator)
         push_heap(
             fast_file_iterator_vector.begin(),
@@ -792,7 +793,8 @@ def _raster_band_percentile_double(
     cdef double[:] buffer_data
     cdef FastFileIteratorDoublePtr fast_file_iterator
     cdef vector[FastFileIteratorDoublePtr] fast_file_iterator_vector
-    cdef long i, percentile_index = 0, n_elements = 0
+    cdef int i, percentile_index = 0
+    cdef long long n_elements = 0
     cdef double next_val = 0.0
     cdef double current_step = 0.0
     cdef double step_size, current_percentile
@@ -801,8 +803,8 @@ def _raster_band_percentile_double(
     try:
         os.makedirs(working_sort_directory)
         rm_dir_when_done = True
-    except OSError:
-        pass
+    except OSError as e:
+        LOGGER.warn("couldn't make working_sort_directory: %s", str(e))
     file_index = 0
     nodata = pygeoprocessing.get_raster_info(
         base_raster_path_band[0])['nodata'][base_raster_path_band[1]-1]
@@ -826,7 +828,7 @@ def _raster_band_percentile_double(
         file_index += 1
 
         fast_file_iterator = new FastFileIterator[double](
-            (bytes(file_path.encode())), 2**30)
+            (bytes(file_path.encode())), 2**15)
         fast_file_iterator_vector.push_back(fast_file_iterator)
         push_heap(
             fast_file_iterator_vector.begin(),
