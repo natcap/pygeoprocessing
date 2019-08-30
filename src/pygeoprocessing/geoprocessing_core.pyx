@@ -756,7 +756,7 @@ def _raster_band_percentile_int(
             os.remove(file_path)
         except OSError:
             # you never know if this might fail!
-            LOGGER.warn('unable to remove %s', file_path)
+            LOGGER.warning('unable to remove %s', file_path)
     if rm_dir_when_done:
         shutil.rmtree(working_sort_directory)
     return result_list
@@ -804,7 +804,7 @@ def _raster_band_percentile_double(
         os.makedirs(working_sort_directory)
         rm_dir_when_done = True
     except OSError as e:
-        LOGGER.warn("couldn't make working_sort_directory: %s", str(e))
+        LOGGER.warning("couldn't make working_sort_directory: %s", str(e))
     file_index = 0
     nodata = pygeoprocessing.get_raster_info(
         base_raster_path_band[0])['nodata'][base_raster_path_band[1]-1]
@@ -872,7 +872,7 @@ def _raster_band_percentile_double(
             os.remove(file_path)
         except OSError:
             # you never know if this might fail!
-            LOGGER.warn('unable to remove %s', file_path)
+            LOGGER.warning('unable to remove %s', file_path)
     if rm_dir_when_done:
         shutil.rmtree(working_sort_directory)
     return result_list
