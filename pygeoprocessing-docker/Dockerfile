@@ -17,6 +17,7 @@ RUN apt-get update \
 ENV DOCKER_USER docker_user
 RUN useradd -m $DOCKER_USER
 USER $DOCKER_USER
+RUN umask 0022
 WORKDIR ~/
 COPY install-pip-packages.sh .
 
