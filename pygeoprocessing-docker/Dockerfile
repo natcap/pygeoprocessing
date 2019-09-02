@@ -5,6 +5,7 @@ FROM conda/miniconda3
 #   build-essential to build cython extensions
 #   libspatialindex-c4v5 for the rtree python extension
 #   mercurial for source control repo of PyGeoprocessing
+USER root
 RUN apt-get update \
 && apt-get install -y \
     build-essential \
@@ -12,11 +13,11 @@ RUN apt-get update \
     mercurial \
 && rm -rf /var/lib/apt/lists/*
 
-# make a new user called pygeoprocessing to avoid running everything as root
-ENV SETUSER pygeoprocessing
-RUN useradd -m $SETUSER
-USER $SETUSER
-WORKDIR /home/$SETUSER
+# make a new user to avoid running everything as root
+ENV DOCKER_USER docker_user
+RUN useradd -m $DOCKER_USER
+USER $DOCKER_USER
+WORKDIR ~/
 COPY install-pip-packages.sh .
 
 # build the python environments for 3.6 and 3.7 using conda, pip, and
@@ -32,3 +33,5 @@ RUN /bin/bash -c \
     && conda clean -a -y"
 RUN /bin/bash -c "conda run -v -n py36 conda install -c conda-forge gdal=2.4.1"
 RUN /bin/bash ./install-pip-packages.sh 3 6
+
+RUN chmod -R g=u ~/
