@@ -75,8 +75,8 @@ template <class DATA_T> class FastFileIterator{
         update_buffer();
     }
     ~FastFileIterator() {
-        if (buffer != nullptr) {
-            free(buffer);
+        if (this->buffer != nullptr) {
+            free(this->buffer);
             free(this->file_path);
         }
     }

@@ -793,8 +793,8 @@ def _raster_band_percentile_double(
     cdef double[:] buffer_data
     cdef FastFileIteratorDoublePtr fast_file_iterator
     cdef vector[FastFileIteratorDoublePtr] fast_file_iterator_vector
-    cdef int i, percentile_index = 0
-    cdef long long n_elements = 0
+    cdef int percentile_index = 0
+    cdef long long i, n_elements = 0
     cdef double next_val = 0.0
     cdef double current_step = 0.0
     cdef double step_size, current_percentile
@@ -812,6 +812,8 @@ def _raster_band_percentile_double(
 
     for _, block_data in pygeoprocessing.iterblocks(
             base_raster_path_band, largest_block=buffer_size):
+        print(block_data)
+        print(buffer_size)
         buffer_data = numpy.sort(
             block_data[~numpy.isclose(block_data, nodata)]).astype(
             numpy.double)

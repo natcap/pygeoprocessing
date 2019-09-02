@@ -4161,7 +4161,8 @@ class PyGeoprocessing10(unittest.TestCase):
         expected_float_percentiles = [
             array[0], array[23], array[73], array[99], array[99]]
         actual_percentiles = pygeoprocessing.raster_band_percentile(
-            (double_raster_path, 1), self.workspace_dir, percentile_cutoffs)
+            (double_raster_path, 1), self.workspace_dir, percentile_cutoffs,
+            buffer_size=0)
         numpy.testing.assert_almost_equal(
             actual_percentiles, expected_float_percentiles)
         # ensure heapfiles were removed
