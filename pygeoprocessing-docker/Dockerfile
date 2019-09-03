@@ -18,7 +18,7 @@ ENV DOCKER_USER docker_user
 RUN useradd -m $DOCKER_USER
 USER $DOCKER_USER
 RUN umask 0022
-WORKDIR ~/
+WORKDIR /home/docker_user
 COPY install-pip-packages.sh .
 
 # build the python environments for 3.6 and 3.7 using conda, pip, and
@@ -35,4 +35,4 @@ RUN /bin/bash -c \
 RUN /bin/bash -c "conda run -v -n py36 conda install -c conda-forge gdal=2.4.1"
 RUN /bin/bash ./install-pip-packages.sh 3 6
 
-RUN chmod -R g=u ~/
+RUN chmod -R g=u /home/docker_user
