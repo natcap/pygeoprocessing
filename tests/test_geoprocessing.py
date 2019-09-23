@@ -4093,7 +4093,8 @@ class PyGeoprocessing10(unittest.TestCase):
         working_dir = os.path.join(
             self.workspace_dir, 'percentile_working_dir')
         actual_int_percentiles = pygeoprocessing.raster_band_percentile(
-            (int_raster_path, 1), working_dir, percentile_cutoffs)
+            (int_raster_path, 1), working_dir, percentile_cutoffs,
+            heap_buffer_size=8, ffi_buffer_size=4)
         numpy.testing.assert_almost_equal(
             actual_int_percentiles, expected_int_percentiles)
         self.assertTrue(

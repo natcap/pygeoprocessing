@@ -845,9 +845,16 @@ def _raster_band_percentile_double(
 
     current_percentile = percentile_list[percentile_index]
     step_size = 100.0 / n_elements
+    cdef double last_val
     for i in range(n_elements):
         current_step = step_size * i
         next_val = fast_file_iterator_vector.front().next()
+        if i > 0:
+            if next_val < last_val:
+                raise Exception(
+                    'something is out of order %f is < %f on step %d of %d',
+                    next_val, last_val, i, n_elements)
+        last_val = next_val
         if current_step >= current_percentile:
             result_list.append(next_val)
             percentile_index += 1
@@ -883,4 +890,5 @@ def _raster_band_percentile_double(
             LOGGER.warning('unable to remove %s', file_path)
     if rm_dir_when_done:
         shutil.rmtree(working_sort_directory)
+    LOGGER.debug('here is percentile_list: %s', str(result_list))
     return result_list
