@@ -852,8 +852,8 @@ def _raster_band_percentile_double(
         if i > 0:
             if next_val < last_val:
                 raise Exception(
-                    'something is out of order %f is < %f on step %d of %d',
-                    next_val, last_val, i, n_elements)
+                    'something is out of order next_val %f is < last_val %f '
+                    'on step %d of %d', next_val, last_val, i, n_elements)
         last_val = next_val
         if current_step >= current_percentile:
             result_list.append(next_val)

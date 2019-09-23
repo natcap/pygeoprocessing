@@ -18,6 +18,8 @@ template <class DATA_T> class FastFileIterator{
     size_t cache_size;
     size_t buffer_size;
     size_t file_length;
+    DATA_T last_val;
+    DATA_T step_count = 0;
 
     void update_buffer() {
         if (this->local_offset >= this->cache_size) {
@@ -93,7 +95,17 @@ template <class DATA_T> class FastFileIterator{
         update_buffer();
         if (size() > 0) {
             this->local_offset += 1;
-            return this->buffer[this->local_offset-1];
+            DATA_T val = this->buffer[this->local_offset-1];
+            if (step_count > 0) {
+                if (val < this->last_val) {
+                    printf(
+                        "val is < last val: %f %f (step %d)", val,
+                        this->last_val, this->step_count);
+                }
+            }
+            this->step_count++;
+            this->last_val = val;
+            return val;
         } else {
             return -1;
         }
