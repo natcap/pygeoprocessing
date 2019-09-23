@@ -593,7 +593,7 @@ ctypedef FastFileIterator[double]* FastFileIteratorDoublePtr
 
 def raster_band_percentile(
         base_raster_path_band, working_sort_directory, percentile_list,
-        buffer_size=2**28):
+        heap_buffer_size=2**28, ffi_buffer_size=2**10):
     """Calculate percentiles of a raster band.
 
     Parameters:
@@ -601,15 +601,17 @@ def raster_band_percentile(
             that is of any integer or real type.
         working_sort_directory (str): path to a directory that does not
             exist or is empty. This directory will be used to create heapfiles
-            with sizes no larger than ``buffer_size`` which are written in the
+            with sizes no larger than ``heap_buffer_size`` which are written in the
             of the pattern N.dat where N is in the numbering 0, 1, 2, ... up
             to the number of files necessary to handle the raster.
         percentile_list (list): sorted list of percentiles to report must
             contain values in the range [0, 100].
-        buffer_size (int): defines approximately how many elements to hold in
+        heap_buffer_size (int): defines approximately how many elements to hold in
             a single heap file. This is proportional to the amount of maximum
             memory to use when storing elements before a sort and write to
             disk.
+        ffi_buffer_size (int): defines how many elements will be stored per
+            heap file buffer for iteration.
 
     Returns:
         A list of len(percentile_list) elements long containing the
@@ -625,11 +627,11 @@ def raster_band_percentile(
             gdal.GDT_UInt32):
         return _raster_band_percentile_int(
             base_raster_path_band, working_sort_directory, percentile_list,
-            buffer_size)
+            heap_buffer_size, ffi_buffer_size)
     elif raster_type in (gdal.GDT_Float32, gdal.GDT_Float64):
         return _raster_band_percentile_double(
             base_raster_path_band, working_sort_directory, percentile_list,
-            buffer_size)
+            heap_buffer_size, ffi_buffer_size)
     else:
         raise ValueError(
             'Cannot process raster type %s (not a known integer nor float '
@@ -638,7 +640,7 @@ def raster_band_percentile(
 
 def _raster_band_percentile_int(
         base_raster_path_band, working_sort_directory, percentile_list,
-        buffer_size):
+        heap_buffer_size, ffi_buffer_size):
     """Calculate percentiles of a raster band of an integer type.
 
     Parameters:
@@ -646,15 +648,17 @@ def _raster_band_percentile_int(
             is of an integer type.
         working_sort_directory (str): path to a directory that does not
             exist or is empty. This directory will be used to create heapfiles
-            with sizes no larger than ``buffer_size`` which are written in the
+            with sizes no larger than ``heap_buffer_size`` which are written in the
             of the pattern N.dat where N is in the numbering 0, 1, 2, ... up
             to the number of files necessary to handle the raster.
         percentile_list (list): sorted list of percentiles to report must
             contain values in the range [0, 100].
-        buffer_size (int): defines approximately how many elements to hold in
+        heap_buffer_size (int): defines approximately how many elements to hold in
             a single heap file. This is proportional to the amount of maximum
             memory to use when storing elements before a sort and write to
             disk.
+        ffi_buffer_size (int): defines how many elements to store in a file
+            buffer at any time.
 
     Returns:
         A list of len(percentile_list) elements long containing the
@@ -690,7 +694,7 @@ def _raster_band_percentile_int(
     nodata = pygeoprocessing.get_raster_info(
         base_raster_path_band[0])['nodata'][base_raster_path_band[1]-1]
     for _, block_data in pygeoprocessing.iterblocks(
-            base_raster_path_band, largest_block=buffer_size):
+            base_raster_path_band, largest_block=heap_buffer_size):
         buffer_data = numpy.sort(
             block_data[~numpy.isclose(block_data, nodata)]).astype(
             numpy.int64)
@@ -708,7 +712,7 @@ def _raster_band_percentile_int(
         file_index += 1
 
         fast_file_iterator = new FastFileIterator[int64t](
-            (bytes(file_path.encode())), 2**15)
+            (bytes(file_path.encode())), ffi_buffer_size)
         fast_file_iterator_vector.push_back(fast_file_iterator)
         push_heap(
             fast_file_iterator_vector.begin(),
@@ -764,7 +768,7 @@ def _raster_band_percentile_int(
 
 def _raster_band_percentile_double(
         base_raster_path_band, working_sort_directory, percentile_list,
-        buffer_size):
+        heap_buffer_size, ffi_buffer_size):
     """Calculate percentiles of a raster band of a real type.
 
     Parameters:
@@ -772,15 +776,17 @@ def _raster_band_percentile_double(
             is a real/float type.
         working_sort_directory (str): path to a directory that does not
             exist or is empty. This directory will be used to create heapfiles
-            with sizes no larger than ``buffer_size`` which are written in the
+            with sizes no larger than ``heap_buffer_size`` which are written in the
             of the pattern N.dat where N is in the numbering 0, 1, 2, ... up
             to the number of files necessary to handle the raster.
         percentile_list (list): sorted list of percentiles to report must
             contain values in the range [0, 100].
-        buffer_size (int): defines approximately how many elements to hold in
+        heap_buffer_size (int): defines approximately how many elements to hold in
             a single heap file. This is proportional to the amount of maximum
             memory to use when storing elements before a sort and write to
             disk.
+        ffi_buffer_size (int): defines how many elements to store in a file
+            buffer at any time.
 
     Returns:
         A list of len(percentile_list) elements long containing the
@@ -811,9 +817,9 @@ def _raster_band_percentile_double(
     heapfile_list = []
 
     for _, block_data in pygeoprocessing.iterblocks(
-            base_raster_path_band, largest_block=buffer_size):
+            base_raster_path_band, largest_block=heap_buffer_size):
         print(block_data)
-        print(buffer_size)
+        print(heap_buffer_size)
         buffer_data = numpy.sort(
             block_data[~numpy.isclose(block_data, nodata)]).astype(
             numpy.double)
@@ -830,7 +836,7 @@ def _raster_band_percentile_double(
         file_index += 1
 
         fast_file_iterator = new FastFileIterator[double](
-            (bytes(file_path.encode())), 2**15)
+            (bytes(file_path.encode())), ffi_buffer_size)
         fast_file_iterator_vector.push_back(fast_file_iterator)
         push_heap(
             fast_file_iterator_vector.begin(),
