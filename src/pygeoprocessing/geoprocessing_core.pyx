@@ -720,7 +720,9 @@ def _raster_band_percentile_int(
             FastFileIteratorCompare[int64t])
 
     current_percentile = percentile_list[percentile_index]
-    step_size = 100.0 / n_elements
+    step_size = 0
+    if n_elements > 0:
+        step_size = 100.0 / n_elements
 
     for i in range(n_elements):
         current_step = step_size * i
@@ -844,7 +846,10 @@ def _raster_band_percentile_double(
             FastFileIteratorCompare[double])
 
     current_percentile = percentile_list[percentile_index]
-    step_size = 100.0 / n_elements
+    step_size = 0
+    if n_elements > 0:
+        step_size = 100.0 / n_elements
+
     for i in range(n_elements):
         current_step = step_size * i
         next_val = fast_file_iterator_vector.front().next()
