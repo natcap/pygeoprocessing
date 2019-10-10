@@ -671,8 +671,8 @@ def _raster_band_percentile_int(
     cdef FastFileIteratorLongLongIntPtr fast_file_iterator
     cdef vector[FastFileIteratorLongLongIntPtr] fast_file_iterator_vector
     cdef vector[FastFileIteratorLongLongIntPtr].iterator ffiv_iter
-    cdef int i, percentile_index = 0
-    cdef long long n_elements = 0
+    cdef int percentile_index = 0
+    cdef long long i, n_elements = 0
     cdef int64t next_val = 0L
     cdef double step_size, current_percentile
     cdef double current_step = 0.0
@@ -726,7 +726,7 @@ def _raster_band_percentile_int(
         step_size = 100.0 / n_elements
 
     for i in range(n_elements):
-        if i % 10000:
+        if i % 10000000 == 0:
             LOGGER.debug(
                 'step %s of %s %.2f%%', i, n_elements,
                 100.0 * i / float(n_elements))
@@ -823,6 +823,7 @@ def _raster_band_percentile_double(
         base_raster_path_band[0])['nodata'][base_raster_path_band[1]-1]
     heapfile_list = []
 
+    LOGGER.debug('sorting data to heap')
     for _, block_data in pygeoprocessing.iterblocks(
             base_raster_path_band, largest_block=heap_buffer_size):
         print(block_data)
@@ -855,7 +856,12 @@ def _raster_band_percentile_double(
     if n_elements > 0:
         step_size = 100.0 / n_elements
 
+    LOGGER.debug('calculating percentiles')
     for i in range(n_elements):
+        if i % 10000000 == 0:
+            LOGGER.debug(
+                'step %s of %s %.2f%%', i, n_elements,
+                100.0 * i / float(n_elements))
         current_step = step_size * i
         next_val = fast_file_iterator_vector.front().next()
         if current_step >= current_percentile:
