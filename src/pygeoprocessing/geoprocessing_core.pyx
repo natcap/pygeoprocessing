@@ -693,6 +693,7 @@ def _raster_band_percentile_int(
     file_index = 0
     nodata = pygeoprocessing.get_raster_info(
         base_raster_path_band[0])['nodata'][base_raster_path_band[1]-1]
+    LOGGER.debug('sorting data to heap')
     for _, block_data in pygeoprocessing.iterblocks(
             base_raster_path_band, largest_block=heap_buffer_size):
         buffer_data = numpy.sort(
@@ -718,13 +719,17 @@ def _raster_band_percentile_int(
             fast_file_iterator_vector.begin(),
             fast_file_iterator_vector.end(),
             FastFileIteratorCompare[int64t])
-
+    LOGGER.debug('calculating percentiles')
     current_percentile = percentile_list[percentile_index]
     step_size = 0
     if n_elements > 0:
         step_size = 100.0 / n_elements
 
     for i in range(n_elements):
+        if i % 10000:
+            LOGGER.debug(
+                'step %s of %s %.2f%%', i, n_elements,
+                100.0 * i / float(n_elements))
         current_step = step_size * i
         next_val = fast_file_iterator_vector.front().next()
         if current_step >= current_percentile:
