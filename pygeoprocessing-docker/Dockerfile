@@ -13,7 +13,6 @@ RUN apt-get update \
     mercurial \
 && rm -rf /var/lib/apt/lists/*
 
-WORKDIR /workdir
 
 # build the python environments for 3.6 and 3.7 using conda, pip, and
 # python setup.py install
@@ -28,3 +27,8 @@ RUN /bin/bash -c \
     && conda clean -a -y"
 RUN /bin/bash -c "conda run -v -n py36 conda install -c conda-forge gdal=2.4.1"
 RUN /bin/bash -c "conda run -v -n py36 pip install -r requirements.txt"
+
+RUN conda init bash && echo "source activate py37" > ~/.bashrc
+
+WORKDIR /usr/local/pgp_workdir
+ENTRYPOINT ["/bin/bash", "-l", "-c"]
