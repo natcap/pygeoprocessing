@@ -691,11 +691,21 @@ def _raster_band_percentile_int(
 
     heapfile_list = []
     file_index = 0
-    nodata = pygeoprocessing.get_raster_info(
-        base_raster_path_band[0])['nodata'][base_raster_path_band[1]-1]
+    raster_info = pygeoprocessing.get_raster_info(
+        base_raster_path_band[0])
+    nodata = raster_info['nodata'][base_raster_path_band[1]-1]
+    n_pixels = numpy.prod(raster_info['raster_size'])
+    pixels_processed = 0
     LOGGER.debug('sorting data to heap')
+    last_update = time.time()
     for _, block_data in pygeoprocessing.iterblocks(
             base_raster_path_band, largest_block=heap_buffer_size):
+        pixels_processed += block_data
+        if time.time() - last_update > 5.0:
+            LOGGER.debug(
+                'data sort to heap %.2f%% complete',
+                (100.*pixels_processed)/n_pixels)
+            last_update = time.time()
         buffer_data = numpy.sort(
             block_data[~numpy.isclose(block_data, nodata)]).astype(
             numpy.int64)
@@ -726,10 +736,11 @@ def _raster_band_percentile_int(
         step_size = 100.0 / n_elements
 
     for i in range(n_elements):
-        if i % 10000000 == 0:
+        if time.time() - last_update > 5.0:
             LOGGER.debug(
-                'step %s of %s %.2f%%', i, n_elements,
+                'calculating percentiles %.2f%% complete',
                 100.0 * i / float(n_elements))
+            last_update = time.time()
         current_step = step_size * i
         next_val = fast_file_iterator_vector.front().next()
         if current_step >= current_percentile:
@@ -823,9 +834,22 @@ def _raster_band_percentile_double(
         base_raster_path_band[0])['nodata'][base_raster_path_band[1]-1]
     heapfile_list = []
 
+    raster_info = pygeoprocessing.get_raster_info(
+        base_raster_path_band[0])
+    nodata = raster_info['nodata'][base_raster_path_band[1]-1]
+    n_pixels = numpy.prod(raster_info['raster_size'])
+    pixels_processed = 0
+
+    last_update = time.time()
     LOGGER.debug('sorting data to heap')
     for _, block_data in pygeoprocessing.iterblocks(
             base_raster_path_band, largest_block=heap_buffer_size):
+        pixels_processed += block_data
+        if time.time() - last_update > 5.0:
+            LOGGER.debug(
+                'data sort to heap %.2f%% complete',
+                (100.*pixels_processed)/n_pixels)
+            last_update = time.time()
         print(block_data)
         print(heap_buffer_size)
         buffer_data = numpy.sort(
@@ -858,10 +882,11 @@ def _raster_band_percentile_double(
 
     LOGGER.debug('calculating percentiles')
     for i in range(n_elements):
-        if i % 10000000 == 0:
+        if time.time() - last_update > 5.0:
             LOGGER.debug(
-                'step %s of %s %.2f%%', i, n_elements,
+                'calculating percentiles %.2f%% complete',
                 100.0 * i / float(n_elements))
+            last_update = time.time()
         current_step = step_size * i
         next_val = fast_file_iterator_vector.front().next()
         if current_step >= current_percentile:
