@@ -21,14 +21,14 @@ RUN apt-get update \
 RUN /bin/bash -c "\
     conda create -y --name py37 python=3.7 \
     && conda clean -a -y"
-RUN /bin/bash -c "conda run -v -n py37 conda install -c conda-forge gdal=2.4.1 --target=/src"
-RUN /bin/bash -c "conda run -v -n py37 pip install -r requirements.txt --target=/src"
+RUN /bin/bash -c "conda run -v -n py37 conda install -c conda-forge gdal=2.4.1"
+RUN /bin/bash -c "conda run -v -n py37 pip install -r requirements.txt"
 
 RUN /bin/bash -c \
     "conda create -y --name py36 python=3.6 \
     && conda clean -a -y"
-RUN /bin/bash -c "conda run -v -n py36 conda install -c conda-forge gdal=2.4.1 --target=/src"
-RUN /bin/bash -c "conda run -v -n py36 pip install -r requirements.txt --target=/src"
+RUN /bin/bash -c "conda run -v -n py36 conda install -c conda-forge gdal=2.4.1"
+RUN /bin/bash -c "conda run -v -n py36 pip install -r requirements.txt"
 
 RUN conda init bash && echo "source activate py37" > ~/.bashrc
 
