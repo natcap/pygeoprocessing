@@ -17,7 +17,7 @@ RUN apt-get update \
 
 # build the python environments for 3.6 and 3.7 using conda, pip, and
 # python setup.py install
-COPY requirements.txt
+COPY requirements.txt .
 RUN /bin/bash -c "\
     conda create -y --name py37 python=3.7 \
     && conda clean -a -y"
