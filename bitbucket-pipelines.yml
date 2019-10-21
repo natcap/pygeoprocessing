@@ -7,7 +7,8 @@ pipelines:
             - docker
           script: # Modify the commands below to build your repository.
             # Set $DOCKER_HUB_USERNAME and $DOCKER_HUB_PASSWORD as environment variables in repository settings
-            - export IMAGE_NAME=natcap/pygeoprocessing-env:latest
+            - export IMAGE_NAME=natcap/pygeoprocessing-pipelines:$BITBUCKET_BUILD_NUMBER
+            - cp requirements.txt ./pygeoprocessing-docker
             # build the Docker image (this will use the Dockerfile in the root of the repo)
             - docker build -t $IMAGE_NAME pygeoprocessing-docker
             # authenticate with the Docker Hub registry
@@ -37,7 +38,7 @@ pipelines:
       - parallel:
         - step:
             name: "Tests: python 3.6 on linux"
-            image: natcap/pygeoprocessing-env:latest
+            image: natcap/pygeoprocessing-pipelines:$BITBUCKET_BUILD_NUMBER
             services:
                 - docker
             caches:
@@ -47,7 +48,7 @@ pipelines:
                 - conda run -n py36 pytest -v tests
         - step:
             name: "Tests: python 3.7 on linux"
-            image: natcap/pygeoprocessing-env:latest
+            image: natcap/pygeoprocessing-pipelines:$BITBUCKET_BUILD_NUMBER
             services:
                 - docker
             caches:
