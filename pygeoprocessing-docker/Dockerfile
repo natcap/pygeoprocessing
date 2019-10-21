@@ -1,6 +1,5 @@
 FROM atlassian/default-image:2
 
-USER root
 RUN wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh && /bin/bash ./Miniconda3-latest-Linux-x86_64.sh -b -p/usr/local/miniconda
 ENV PATH="/usr/local/miniconda/bin":$PATH
 
@@ -18,6 +17,7 @@ RUN apt-get update \
 
 # build the python environments for 3.6 and 3.7 using conda, pip, and
 # python setup.py install
+CP requirements.txt
 RUN /bin/bash -c "\
     conda create -y --name py37 python=3.7 \
     && conda clean -a -y"
@@ -29,8 +29,3 @@ RUN /bin/bash -c \
     && conda clean -a -y"
 RUN /bin/bash -c "conda run -v -n py36 conda install -c conda-forge gdal=2.4.1"
 RUN /bin/bash -c "conda run -v -n py36 pip install -r requirements.txt"
-
-RUN conda init bash && echo "source activate py37" > ~/.bashrc
-
-WORKDIR /usr/local/pgp_workdir
-ENTRYPOINT ["/bin/bash", "-l", "-c"]

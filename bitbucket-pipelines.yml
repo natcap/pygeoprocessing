@@ -8,7 +8,6 @@ pipelines:
           script: # Modify the commands below to build your repository.
             # Set $DOCKER_HUB_USERNAME and $DOCKER_HUB_PASSWORD as environment variables in repository settings
             - export IMAGE_NAME=natcap/pygeoprocessing-pipelines:dev
-            - cp requirements.txt ./pygeoprocessing-docker
             # build the Docker image (this will use the Dockerfile in the root of the repo)
             - docker build -t $IMAGE_NAME pygeoprocessing-docker
             # authenticate with the Docker Hub registry
@@ -33,7 +32,7 @@ pipelines:
                          'commitID': '$(hg log -r . -T \"{node}\")'}" \
                 "https://ci.appveyor.com/api/builds"
             - echo "Build history at "
-            - echo "    https://ci.appveyor.com/project/$APPVEYOR_ACC_NAME/$APPVEYOR_PROJ_SLUG/history"
+            - echo "   https://ci.appveyor.com/project/$APPVEYOR_ACC_NAME/$APPVEYOR_PROJ_SLUG/history"
   default:
       - parallel:
         - step:
