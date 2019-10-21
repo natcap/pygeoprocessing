@@ -9,8 +9,8 @@
 
 template <class DATA_T> class FastFileIterator{
  private:
-    DATA_T* buffer = nullptr;
-    char* file_path = nullptr;
+    DATA_T* buffer = NULL;
+    char* file_path = NULL;
     // these offsets and sizes are in numbers of items instead of bytes, or
     // number of bytes / sizeof(DATA_T)
     size_t global_offset;
@@ -28,7 +28,7 @@ template <class DATA_T> class FastFileIterator{
             } else {
                 this->cache_size = this->buffer_size;
             }
-            if (this->buffer != nullptr) {
+            if (this->buffer != NULL) {
                 free(this->buffer);
             }
             this->buffer = reinterpret_cast<DATA_T*>(malloc(
@@ -75,7 +75,7 @@ template <class DATA_T> class FastFileIterator{
         update_buffer();
     }
     ~FastFileIterator() {
-        if (this->buffer != nullptr) {
+        if (this->buffer != NULL) {
             free(this->buffer);
             free(this->file_path);
         }
