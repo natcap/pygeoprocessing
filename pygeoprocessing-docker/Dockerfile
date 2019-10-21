@@ -1,18 +1,20 @@
-FROM conda/miniconda3
+FROM atlassian/default-image:2
+
+USER root
+WORKDIR /usr/local/minconda
+RUN wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh && /bin/bash Miniconda3-latest-Linux-x86_64.sh
 
 # install build essentials & mercurial then delete the cache to minimize
 # the docker size:
 #   build-essential to build cython extensions
 #   libspatialindex-c4v5 for the rtree python extension
 #   mercurial for source control repo of PyGeoprocessing
-USER root
 RUN apt-get update \
 && apt-get install -y \
     build-essential \
     libspatialindex-c4v5 \
     mercurial \
 && rm -rf /var/lib/apt/lists/*
-
 
 # build the python environments for 3.6 and 3.7 using conda, pip, and
 # python setup.py install
