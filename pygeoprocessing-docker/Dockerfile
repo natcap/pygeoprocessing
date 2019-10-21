@@ -23,9 +23,12 @@ RUN /bin/bash -c "\
     && conda clean -a -y"
 RUN /bin/bash -c "conda run -v -n py37 conda install -c conda-forge gdal=2.4.1"
 RUN /bin/bash -c "conda run -v -n py37 pip install -r requirements.txt"
+RUN /bin/bash -c "conda run -v -n py37 pip install pytest"
+
 
 RUN /bin/bash -c \
     "conda create -y --name py36 python=3.6 \
     && conda clean -a -y"
 RUN /bin/bash -c "conda run -v -n py36 conda install -c conda-forge gdal=2.4.1"
 RUN /bin/bash -c "conda run -v -n py36 pip install -r requirements.txt"
+RUN /bin/bash -c "conda run -v -n py36 pip install pytest"
