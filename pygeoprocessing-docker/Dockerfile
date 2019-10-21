@@ -23,7 +23,7 @@ RUN /bin/bash -c "\
     && conda clean -a -y"
 RUN /bin/bash -c "conda run -v -n py37 conda install -c conda-forge gdal=2.4.1"
 RUN /bin/bash -c "conda run -v -n py37 pip install -r requirements.txt"
-RUN /bin/bash -c "conda run -v -n py37 pip install pytest"
+RUN /bin/bash -c "conda run -v -n py37 pip install pytest mock"
 
 
 RUN /bin/bash -c \
@@ -31,4 +31,4 @@ RUN /bin/bash -c \
     && conda clean -a -y"
 RUN /bin/bash -c "conda run -v -n py36 conda install -c conda-forge gdal=2.4.1"
 RUN /bin/bash -c "conda run -v -n py36 pip install -r requirements.txt"
-RUN /bin/bash -c "conda run -v -n py36 pip install pytest"
+RUN /bin/bash -c "conda run -v -n py36 pip install pytest mock"
