@@ -13,13 +13,7 @@ RUN apt-get update \
     mercurial \
 && rm -rf /var/lib/apt/lists/*
 
-# make a new user to avoid running everything as root
-ENV DOCKER_USER docker_user
-RUN useradd -m $DOCKER_USER
-USER $DOCKER_USER
-RUN umask 0022
-WORKDIR /home/docker_user
-COPY install-pip-packages.sh .
+WORKDIR /workdir
 
 # build the python environments for 3.6 and 3.7 using conda, pip, and
 # python setup.py install
@@ -34,5 +28,3 @@ RUN /bin/bash -c \
     && conda clean -a -y"
 RUN /bin/bash -c "conda run -v -n py36 conda install -c conda-forge gdal=2.4.1"
 RUN /bin/bash -c "conda run -v -n py36 pip install -r requirements.txt"
-
-RUN chmod -R g=u /home/docker_user
