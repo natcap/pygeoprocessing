@@ -700,7 +700,7 @@ def _raster_band_percentile_int(
     last_update = time.time()
     for _, block_data in pygeoprocessing.iterblocks(
             base_raster_path_band, largest_block=heap_buffer_size):
-        pixels_processed += block_data
+        pixels_processed += block_data.size
         if time.time() - last_update > 5.0:
             LOGGER.debug(
                 'data sort to heap %.2f%% complete',
@@ -844,14 +844,12 @@ def _raster_band_percentile_double(
     LOGGER.debug('sorting data to heap')
     for _, block_data in pygeoprocessing.iterblocks(
             base_raster_path_band, largest_block=heap_buffer_size):
-        pixels_processed += block_data
+        pixels_processed += block_data.size
         if time.time() - last_update > 5.0:
             LOGGER.debug(
                 'data sort to heap %.2f%% complete',
                 (100.*pixels_processed)/n_pixels)
             last_update = time.time()
-        print(block_data)
-        print(heap_buffer_size)
         buffer_data = numpy.sort(
             block_data[~numpy.isclose(block_data, nodata)]).astype(
             numpy.double)
