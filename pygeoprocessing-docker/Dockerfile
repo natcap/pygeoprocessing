@@ -1,7 +1,6 @@
 FROM atlassian/default-image:2
 
 USER root
-WORKDIR /usr/local/miniconda
 RUN wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh && /bin/bash ./Miniconda3-latest-Linux-x86_64.sh -b -p/usr/local/miniconda
 ENV PATH="/usr/local/miniconda/bin":$PATH
 
