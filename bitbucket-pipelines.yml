@@ -8,6 +8,8 @@ pipelines:
           script: # Modify the commands below to build your repository.
             # Set $DOCKER_HUB_USERNAME and $DOCKER_HUB_PASSWORD as environment variables in repository settings
             - export IMAGE_NAME=natcap/pygeoprocessing-pipelines:$BITBUCKET_BUILD_NUMBER
+            - echo $IMAGE_NAME
+            - echo $BITBUCKET_BUILD_NUMBER
             - cp requirements.txt ./pygeoprocessing-docker
             # build the Docker image (this will use the Dockerfile in the root of the repo)
             - docker build -t $IMAGE_NAME pygeoprocessing-docker
