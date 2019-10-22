@@ -39,7 +39,7 @@ cdef int MANAGED_RASTER_N_BLOCKS = 2**7
 
 # these are the creation options that'll be used for all the rasters
 GTIFF_CREATION_OPTIONS = (
-    'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=ZSTD',
+    'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
     'SPARSE_OK=TRUE',
     'BLOCKXSIZE=%d' % (1 << BLOCK_BITS),
     'BLOCKYSIZE=%d' % (1 << BLOCK_BITS))

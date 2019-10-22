@@ -17,7 +17,6 @@ from cython.operator cimport preincrement as inc
 from libcpp.vector cimport vector
 from libcpp.algorithm cimport push_heap
 from libcpp.algorithm cimport pop_heap
-
 from libc.stdio cimport FILE
 from libc.stdio cimport fopen
 from libc.stdio cimport fwrite
@@ -26,8 +25,8 @@ from libc.stdio cimport fclose
 from osgeo import gdal
 import pygeoprocessing
 
-DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS = (
-    'GTIFF', ('TILED=YES', 'BIGTIFF=YES', 'COMPRESS=ZSTD',
+DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS = ('GTIFF', (
+    'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
     'BLOCKXSIZE=256', 'BLOCKYSIZE=256'))
 LOGGER = logging.getLogger('pygeoprocessing.geoprocessing_core')
 
@@ -520,6 +519,7 @@ def calculate_slope(
 
 
 @cython.boundscheck(False)
+@cython.cdivision(True)
 def stats_worker(stats_work_queue, exception_queue):
     """Worker to calculate continuous min, max, mean and standard deviation.
 
@@ -685,9 +685,6 @@ def _raster_band_percentile_int(
         pass
 
     cdef int64t[:] buffer_data
-
-    raster_type = pygeoprocessing.get_raster_info(
-        base_raster_path_band[0])['numpy_type']
 
     heapfile_list = []
     file_index = 0
