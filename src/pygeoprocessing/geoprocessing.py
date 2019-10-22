@@ -418,8 +418,7 @@ def raster_calculator(
                                 blocksize[dim_index],)
                             tile_dims[dim_index] = 1
                     data_blocks.append(
-                        numpy.tile(
-                            tuple(value[tuple(slice_list)]), tile_dims))
+                        numpy.tile(value[tuple(slice_list)], tile_dims))
                 else:
                     # must be a raw tuple
                     data_blocks.append(value[0])

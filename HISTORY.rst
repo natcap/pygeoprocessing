@@ -3,6 +3,8 @@ Release History
 
 Unreleased Changes
 ------------------
+* Added an out-of-core high performance raster percentile function at
+  pygeoprocessing.raster_band_percentile.
 * Added a ``pygeoprocessing.symbolic.evaluate_raster_calculator_expression``
   function that can parse a string expression and a map of symbols to
   calculate a raster calculation operation.
@@ -84,9 +86,6 @@ Unreleased Changes
   or string ids. In all cases changing ``layer_index`` to ``layer_id`` in
   the functions: ``get_vector_info``, ``reproject_vector``, ``warp_raster``,
   ``rasterize``, ``calculate_disjoint_polygon_set``, and ``mask_raster``.
-* Added a ``gtiff_creation_options`` parameter to ``reclassify_raster`` to be
-  consistent with the rest of the raster creation functions in
-  PyGeoprocessing.
 
 1.6.1 (2019-02-13)
 ------------------

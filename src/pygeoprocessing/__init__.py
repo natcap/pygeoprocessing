@@ -12,10 +12,10 @@ import pkg_resources
 
 from . import geoprocessing
 from .geoprocessing_core import calculate_slope
+from .geoprocessing_core import raster_band_percentile
 
 LOGGER = logging.getLogger(__name__)
 LOGGER.addHandler(logging.NullHandler())  # silence logging by default
-
 
 try:
     __version__ = pkg_resources.get_distribution(__name__).version
@@ -34,7 +34,7 @@ except pkg_resources.DistributionNotFound:
         "  * python setup.py develop\n"
         "  * pip install <distribution>")
 
-__all__ = ('calculate_slope',)
+__all__ = ('calculate_slope','raster_band_percentile')
 for attrname in dir(geoprocessing):
     attribute = getattr(geoprocessing, attrname)
     if isinstance(attribute, types.FunctionType):
