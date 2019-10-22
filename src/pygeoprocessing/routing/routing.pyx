@@ -701,7 +701,6 @@ def fill_pits(
         pit_mask_path, 1, 1)
 
     # copy the base DEM to the target and set up for writing
-    raster_driver = gdal.GetDriverByName(raster_driver_creation_tuple[0])
     base_datatype = pygeoprocessing.get_raster_info(
         dem_raster_path_band[0])['datatype']
     pygeoprocessing.new_raster_from_base(
