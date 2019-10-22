@@ -5,6 +5,7 @@ import os
 import unittest
 import shutil
 import types
+import importlib
 
 from osgeo import gdal
 from osgeo import ogr
@@ -13,11 +14,6 @@ import numpy
 import scipy.ndimage
 import shapely.geometry
 import mock
-
-try:
-    from builtins import reload
-except ImportError:
-    from imp import reload
 
 
 def passthrough(x):
@@ -130,7 +126,7 @@ class PyGeoprocessing10(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 # RuntimeError is a side effect of `import pygeoprocessing`,
                 # so we reload it to retrigger the metadata load.
-                pygeoprocessing = reload(pygeoprocessing)
+                pygeoprocessing = importlib.reload(pygeoprocessing)
 
     def test_reclassify_raster_missing_pixel_value(self):
         """PGP.geoprocessing: test reclassify raster with missing value."""
@@ -193,7 +189,7 @@ class PyGeoprocessing10(unittest.TestCase):
         target_array = target_band.ReadAsArray()
         target_band = None
         target_raster = None
-        self.assertEqual(
+        self.assertAlmostEqual(
             numpy.sum(target_array), n_pixels**2 * value_map[test_value])
 
     def test_reclassify_raster_no_raster_path_band(self):
@@ -2496,7 +2492,7 @@ class PyGeoprocessing10(unittest.TestCase):
         for _, block in pygeoprocessing.iterblocks(
                 (raster_path, 1), largest_block=0):
             total += numpy.sum(block)
-        self.assertEqual(total, test_value * n_pixels**2)
+        self.assertAlmostEqual(total, test_value * n_pixels**2)
 
     def test_iterblocks_bad_raster_band(self):
         """PGP.geoprocessing: test iterblocks."""
@@ -2591,7 +2587,7 @@ class PyGeoprocessing10(unittest.TestCase):
         # the sides and realizing diagonals got subtracted twice
         expected_result = test_value * (
             n_pixels ** 2 * 9 - n_pixels * 4 * 3 + 4)
-        self.assertEqual(numpy.sum(target_array), expected_result)
+        self.assertAlmostEqual(numpy.sum(target_array), expected_result)
 
     def test_convolve_2d_multiprocess(self):
         """PGP.geoprocessing: test convolve 2d (multiprocess)."""
@@ -2628,7 +2624,7 @@ class PyGeoprocessing10(unittest.TestCase):
         # the sides and realizing diagonals got subtracted twice
         expected_result = test_value * (
             n_pixels ** 2 * 9 - n_pixels * 4 * 3 + 4)
-        self.assertEqual(numpy.sum(target_array), expected_result)
+        self.assertAlmostEqual(numpy.sum(target_array), expected_result)
 
     def test_convolve_2d_normalize_ignore_nodata(self):
         """PGP.geoprocessing: test convolve 2d w/ normalize and ignore."""
@@ -2661,7 +2657,7 @@ class PyGeoprocessing10(unittest.TestCase):
         target_band = None
         target_raster = None
         expected_result = test_value * n_pixels ** 2
-        self.assertEqual(numpy.sum(target_array), expected_result)
+        self.assertAlmostEqual(numpy.sum(target_array), expected_result)
 
     def test_convolve_2d_ignore_nodata(self):
         """PGP.geoprocessing: test convolve 2d w/ normalize and ignore."""
@@ -2696,7 +2692,7 @@ class PyGeoprocessing10(unittest.TestCase):
 
         # calculate by working on some graph paper
         expected_result = 9*9*.5
-        self.assertEqual(numpy.sum(target_array), expected_result)
+        self.assertAlmostEqual(numpy.sum(target_array), expected_result)
 
     def test_convolve_2d_normalize(self):
         """PGP.geoprocessing: test convolve 2d w/ normalize."""
@@ -2797,7 +2793,7 @@ class PyGeoprocessing10(unittest.TestCase):
         # calculate expected result by adding up all squares, subtracting off
         # the sides and realizing diagonals got subtracted twice
         expected_result = test_value * (n_pixels ** 4)
-        self.assertEqual(numpy.sum(target_array), expected_result)
+        self.assertAlmostEqual(numpy.sum(target_array), expected_result)
 
     def test_convolve_2d_large(self):
         """PGP.geoprocessing: test convolve 2d with large kernel & signal."""
@@ -2835,7 +2831,7 @@ class PyGeoprocessing10(unittest.TestCase):
         # calculate expected result by adding up all squares, subtracting off
         # the sides and realizing diagonals got subtracted twice
         expected_result = test_value * (n_pixels ** 2)
-        self.assertEqual(numpy.sum(target_array), expected_result)
+        self.assertAlmostEqual(numpy.sum(target_array), expected_result)
 
     def test_calculate_slope(self):
         """PGP.geoprocessing: test calculate slope."""
@@ -4051,6 +4047,160 @@ class PyGeoprocessing10(unittest.TestCase):
         actual_message = str(cm.exception)
         self.assertTrue(expected_message in actual_message, actual_message)
 
+    def test_percentile_long_type(self):
+        """PGP: test percentile with long type."""
+        import pygeoprocessing
+        srs = osr.SpatialReference()
+        srs.ImportFromEPSG(4326)
+        gtiff_driver = gdal.GetDriverByName('GTiff')
+        int_raster_path = os.path.join(self.workspace_dir, 'int_raster.tif')
+        n_length = 10
+        int_raster = gtiff_driver.Create(
+            int_raster_path, n_length, n_length, 1, gdal.GDT_UInt32, options=[
+                'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
+                'BLOCKXSIZE=16', 'BLOCKYSIZE=16'])
+        int_raster.SetProjection(srs.ExportToWkt())
+        int_raster.SetGeoTransform([0.0, 1.0, 0.0, 0.0, 0.0, -1.0])
+        int_band = int_raster.GetRasterBand(1)
+        int_band.SetNoDataValue(-1)
+        # I made this array from a random set and since it's 100 elements long
+        # I know exactly the percentile cutoffs.
+        array = numpy.array([
+            1975, 153829, 346236, 359534, 372568, 432350, 468065, 620239,
+            757710, 835119, 870788, 880695, 899211, 939183, 949597, 976023,
+            1210404, 1242155, 1395436, 1484104, 1563806, 1787749, 2001579,
+            2015145, 2080141, 2107594, 2331278, 2335667, 2508967, 2513463,
+            2529240, 2764320, 2782388, 2892567, 3131013, 3242402, 3313283,
+            3353958, 3427341, 3473886, 3507842, 3552610, 3730904, 3800470,
+            3871533, 3955725, 4114781, 4326231, 4333170, 4464510, 4585432,
+            4632068, 4671364, 4770370, 4927815, 4962157, 4974890, 5153019,
+            5370756, 5592526, 5611672, 5688083, 5746114, 5833862, 5890515,
+            5948526, 6030964, 6099825, 6162147, 6169317, 6181528, 6186133,
+            6225623, 6732204, 6800472, 7059916, 7097505, 7112239, 7435668,
+            7438680, 7713058, 7759246, 7878338, 7882983, 7974409, 8223956,
+            8226559, 8355570, 8433741, 8523959, 8853540, 8999076, 9109444,
+            9250199, 9262560, 9365311, 9404229, 9529068, 9597598,
+            2**31], dtype=numpy.uint32)
+        int_band.WriteArray(array.reshape((n_length, n_length)))
+        int_raster.FlushCache()
+        int_band = None
+        int_raster = None
+
+        percentile_cutoffs = [0.0, 22.5, 72.1, 99.0, 100.0]
+        # manually rounding up the percentiles
+        expected_int_percentiles = [
+            array[0], array[23], array[73], array[99], array[99]]
+        working_dir = os.path.join(
+            self.workspace_dir, 'percentile_working_dir')
+        actual_int_percentiles = pygeoprocessing.raster_band_percentile(
+            (int_raster_path, 1), working_dir, percentile_cutoffs,
+            heap_buffer_size=8, ffi_buffer_size=4)
+        numpy.testing.assert_almost_equal(
+            actual_int_percentiles, expected_int_percentiles)
+        self.assertTrue(
+            not os.path.exists(working_dir), 'working dir was not deleted')
+
+    def test_percentile_double_type(self):
+        """PGP: test percentile function with double type."""
+        import pygeoprocessing
+        srs = osr.SpatialReference()
+        srs.ImportFromEPSG(4326)
+        gtiff_driver = gdal.GetDriverByName('GTiff')
+        percentile_cutoffs = [0.0, 22.5, 72.1, 99.0, 100.0]
+
+        array = numpy.array([
+            0.003998113607125986, 0.012483605193988612, 0.015538926080136628,
+            0.0349541783138948, 0.056811563936455145, 0.06472245939357957,
+            0.06763766500876733, 0.0996146617328485, 0.10319174490493743,
+            0.1108529662149651, 0.11748524088704182, 0.13932099810203546,
+            0.14593634331220395, 0.17290496444623904, 0.18410163405268687,
+            0.19228618118906593, 0.19472498766411306, 0.19600894348473485,
+            0.19675234705931377, 0.22294217186343712, 0.24301516135472034,
+            0.25174824011708297, 0.25961212269403156, 0.2633977735981743,
+            0.26432729041437664, 0.26786682579209775, 0.29237261233784806,
+            0.29255695849184316, 0.2964090298109583, 0.2990174003705779,
+            0.30405728527347686, 0.3264688470028486, 0.33514871371769506,
+            0.3482838254608601, 0.35647966026887656, 0.3610103066480047,
+            0.36266883466382505, 0.3722525921166677, 0.3732773924434396,
+            0.37359492466545774, 0.3782442911035093, 0.38183103184230927,
+            0.4061775627324341, 0.40752141481722104, 0.42563138319552407,
+            0.45240943914984344, 0.48131663894772847, 0.48452027730035463,
+            0.5080370178708488, 0.5160581721673511, 0.5207327746991738,
+            0.5218827923543758, 0.5254400558377796, 0.5314284222888134,
+            0.5399960806407419, 0.5540251419037007, 0.567883875779636,
+            0.5759479782760882, 0.5762026663686868, 0.5851386281066929,
+            0.6023424727834, 0.6224012318616832, 0.6349951577963391,
+            0.6352127038584446, 0.6361159542649262, 0.6369708440504545,
+            0.6432382687009855, 0.6449485473328685, 0.6458541196589433,
+            0.6638401540497775, 0.6810857637187034, 0.6914374635530586,
+            0.7146862236370655, 0.7335122551062899, 0.7380305619344611,
+            0.7481552829167317, 0.7534333422153502, 0.7659278079221241,
+            0.7802925160056647, 0.7840515443802779, 0.7858175566560684,
+            0.7882952522603599, 0.7931210734787487, 0.8054471062280362,
+            0.8369260071883123, 0.8448121201845042, 0.8457743106122408,
+            0.8725394176743159, 0.8776084968191854, 0.8932892524100567,
+            0.8974703081229631, 0.9246294314690737, 0.9470450112295367,
+            0.9497456418201979, 0.9599420128556164, 0.9777130042139013,
+            0.9913972371243881, 0.9930411737585775, 0.9963741185277734,
+            0.9971933068336024])
+        double_raster_path = os.path.join(
+            self.workspace_dir, 'double_raster.tif')
+        n_length = 10
+        double_raster = gtiff_driver.Create(
+            double_raster_path, n_length, n_length, 1, gdal.GDT_Float32,
+            options=['TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
+                     'BLOCKXSIZE=16', 'BLOCKYSIZE=16'])
+        double_raster.SetProjection(srs.ExportToWkt())
+        double_raster.SetGeoTransform([0.0, 1.0, 0.0, 0.0, 0.0, -1.0])
+        double_band = double_raster.GetRasterBand(1)
+        double_band.SetNoDataValue(-1)
+        double_band.WriteArray(array.reshape((n_length, n_length)))
+        double_raster.FlushCache()
+        double_band = None
+        double_raster = None
+
+        expected_float_percentiles = [
+            array[0], array[23], array[73], array[99], array[99]]
+        actual_percentiles = pygeoprocessing.raster_band_percentile(
+            (double_raster_path, 1), self.workspace_dir, percentile_cutoffs,
+            heap_buffer_size=0)
+        numpy.testing.assert_almost_equal(
+            actual_percentiles, expected_float_percentiles)
+        # ensure heapfiles were removed
+        self.assertEqual(
+            len([path for path in os.listdir(self.workspace_dir)]), 1,
+            "Expected only one file in the workspace directory after "
+            "the call")
+
+    def test_percentile_unsupported_type(self):
+        """PGP: test percentile with unsupported type."""
+        import pygeoprocessing
+        srs = osr.SpatialReference()
+        srs.ImportFromEPSG(4326)
+        gtiff_driver = gdal.GetDriverByName('GTiff')
+        percentile_cutoffs = [0.0, 22.5, 72.1, 99.0, 100.0]
+        cdouble_raster_path = os.path.join(
+            self.workspace_dir, 'cdouble_raster.tif')
+        n_length = 10
+        cdouble_raster = gtiff_driver.Create(
+            cdouble_raster_path, n_length, n_length, 1, gdal.GDT_CFloat32,
+            options=['TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
+                     'BLOCKXSIZE=16', 'BLOCKYSIZE=16'])
+        cdouble_raster.SetProjection(srs.ExportToWkt())
+        cdouble_raster.SetGeoTransform([0.0, 1.0, 0.0, 0.0, 0.0, -1.0])
+        cdouble_band = cdouble_raster.GetRasterBand(1)
+        cdouble_band.SetNoDataValue(-1)
+        cdouble_band = None
+        cdouble_raster = None
+
+        with self.assertRaises(ValueError) as cm:
+            _ = pygeoprocessing.raster_band_percentile(
+                (cdouble_raster_path, 1), self.workspace_dir,
+                percentile_cutoffs)
+        expected_message = 'Cannot process raster type'
+        actual_message = str(cm.exception)
+        self.assertTrue(expected_message in actual_message, actual_message)
+
     def test_evaluate_raster_calculator_expression(self):
         """PGP: test evaluate raster symbolic expression."""
         import pygeoprocessing.symbolic
@@ -4382,84 +4532,6 @@ class PyGeoprocessing10(unittest.TestCase):
         vector = None
         vector_info = pygeoprocessing.get_vector_info(vector_path)
         self.assertEqual(vector_info['file_list'], vector_file_list)
-
-    def test_get_gis_type(self):
-        """PGP: test geoprocessing type."""
-        import pygeoprocessing
-        gpkg_driver = ogr.GetDriverByName('GPKG')
-        vector_path = os.path.join(self.workspace_dir, 'small_vector.gpkg')
-        vector = gpkg_driver.CreateDataSource(vector_path)
-
-        srs = osr.SpatialReference()
-        srs.ImportFromEPSG(4326)
-        layer = vector.CreateLayer('small_vector', srs=srs)
-        layer.CreateField(ogr.FieldDefn('expected_value', ogr.OFTInteger))
-        layer_defn = layer.GetLayerDefn()
-
-        # make an n x n raster with 2*m x 2*m polygons inside.
-        pixel_size = 1.0
-        subpixel_size = 1./5. * pixel_size
-        origin_x = 1.0
-        origin_y = -1.0
-        n = 16
-        layer.StartTransaction()
-        for row_index in range(n * 2):
-            for col_index in range(n * 2):
-                x_pos = origin_x + (
-                    col_index*2 + 1 + col_index // 2) * subpixel_size
-                y_pos = origin_y - (
-                    row_index*2 + 1 + row_index // 2) * subpixel_size
-                shapely_feature = shapely.geometry.Polygon([
-                    (x_pos, y_pos),
-                    (x_pos+subpixel_size, y_pos),
-                    (x_pos+subpixel_size, y_pos-subpixel_size),
-                    (x_pos, y_pos-subpixel_size),
-                    (x_pos, y_pos)])
-                new_feature = ogr.Feature(layer_defn)
-                new_geometry = ogr.CreateGeometryFromWkb(shapely_feature.wkb)
-                new_feature.SetGeometry(new_geometry)
-                expected_value = row_index // 2 * n + col_index // 2
-                new_feature.SetField('expected_value', expected_value)
-                layer.CreateFeature(new_feature)
-        layer.CommitTransaction()
-        layer.SyncToDisk()
-        layer = None
-        vector = None
-
-        gtiff_driver = gdal.GetDriverByName('GTiff')
-        raster_path = os.path.join(self.workspace_dir, 'small_raster.tif')
-        new_raster = gtiff_driver.Create(
-            raster_path, n, n, 1, gdal.GDT_Int32, options=[
-                'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
-                'BLOCKXSIZE=16', 'BLOCKYSIZE=16'])
-        new_raster.SetProjection(srs.ExportToWkt())
-        new_raster.SetGeoTransform([origin_x, 1.0, 0.0, origin_y, 0.0, -1.0])
-        new_band = new_raster.GetRasterBand(1)
-        new_band.SetNoDataValue(-1)
-        array = numpy.array(range(n*n), dtype=numpy.int32).reshape((n, n))
-        new_band.WriteArray(array)
-        new_raster.FlushCache()
-        new_band = None
-        new_raster = None
-
-        text_file_path = os.path.join(self.workspace_dir, 'text_file.txt')
-        with open(text_file_path, 'w') as text_file:
-            text_file.write('test')
-
-        self.assertEqual(
-            pygeoprocessing.get_gis_type(text_file_path),
-            pygeoprocessing.UNKNOWN_TYPE)
-        self.assertEqual(
-            pygeoprocessing.get_gis_type(raster_path),
-            pygeoprocessing.RASTER_TYPE)
-        self.assertEqual(
-            pygeoprocessing.get_gis_type(vector_path),
-            pygeoprocessing.VECTOR_TYPE)
-
-        with self.assertRaises(ValueError) as cm:
-            pygeoprocessing.get_gis_type('totally_fake_file')
-        actual_message = str(cm.exception)
-        self.assertTrue('does not exist' in actual_message, actual_message)
 
     def test_iterblocks_bad_raster(self):
         """PGP: tests iterblocks presents useful error on missing raster."""
