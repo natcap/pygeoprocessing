@@ -26,8 +26,8 @@ from libc.stdio cimport fclose
 from osgeo import gdal
 import pygeoprocessing
 
-DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS = (
-    'GTIFF', ('TILED=YES', 'BIGTIFF=YES', 'COMPRESS=ZSTD',
+DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS = ('GTIFF', (
+    'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
     'BLOCKXSIZE=256', 'BLOCKYSIZE=256'))
 LOGGER = logging.getLogger('pygeoprocessing.geoprocessing_core')
 
@@ -685,9 +685,6 @@ def _raster_band_percentile_int(
         pass
 
     cdef int64t[:] buffer_data
-
-    raster_type = pygeoprocessing.get_raster_info(
-        base_raster_path_band[0])['numpy_type']
 
     heapfile_list = []
     file_index = 0
