@@ -3,6 +3,8 @@ Release History
 
 Unreleased Changes
 ------------------
+* Added PEP518-compatible build dependencies to ``pyproject.toml``, which has
+  been added to source distributions of pygeoprocessing.
 * Added an out-of-core high performance raster percentile function at
   pygeoprocessing.raster_band_percentile.
 * Added a ``pygeoprocessing.symbolic.evaluate_raster_calculator_expression``
