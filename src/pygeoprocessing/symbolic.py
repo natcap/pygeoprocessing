@@ -2,12 +2,10 @@
 """Module to hold symbolic PyGeoprocessing utilities."""
 import logging
 import inspect
+import ast
 
 from osgeo import gdal
-import sympy
-import sympy.parsing.sympy_parser
 import numpy
-import numpy.ma
 from . import geoprocessing
 from .geoprocessing import DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS
 
@@ -72,30 +70,31 @@ def evaluate_raster_calculator_expression(
 
     # remove any raster bands that don't have corresponding symbols in the
     # expression
-    active_symbols = sorted(
-        [str(x) for x in sympy.parsing.sympy_parser.parse_expr(
-            expression).free_symbols])
-    raster_op = sympy.lambdify(active_symbols, expression, 'numpy')
-    raster_op_source = inspect.getsource(raster_op)
-    if not active_symbols:
-        raise ValueError(
-            'Symbolic expression reduces to a constant and does not need '
-            'evaluation. See inferred implementation:\n%s' % raster_op_source)
+    active_symbols = set()
+    for tree_node in ast.walk(ast.parse(expression)):
+        if isinstance(tree_node, ast.Name):
+            active_symbols.add(tree_node.id)
 
     LOGGER.debug(
-        'evaluating: %s\nactive symbols: %s\nraster_op:\n%s',
-        expression, active_symbols, raster_op_source)
+        'evaluating: %s\nactive symbols: %s\n',
+        expression, sorted(active_symbols))
     symbol_list, raster_path_band_list = zip(*[
         (symbol, raster_path_band) for symbol, raster_path_band in
         sorted(symbol_to_path_band_map.items()) if symbol in active_symbols])
+
+    missing_symbols = set(active_symbols) - set(symbol_list)
+    if len(missing_symbols) > 0:
+        raise ValueError(
+            'The variables %s are defined in the expression but are not in '
+            'symbol_to_path_band_map' % ', '.join(sorted(missing_symbols)))
 
     raster_path_band_const_list = (
         [path_band for path_band in raster_path_band_list] +
         [(geoprocessing.get_raster_info(
             path_band[0])['nodata'][path_band[1]-1], 'raw')
          for path_band in raster_path_band_list] + [
-            (raster_op, 'raw'), (target_nodata, 'raw'), (default_nan, 'raw'),
-            (default_inf, 'raw')])
+            (expression, 'raw'), (target_nodata, 'raw'), (default_nan, 'raw'),
+            (default_inf, 'raw'), (symbol_list, 'raw')])
 
     # Determine the target gdal type by gathering all the numpy types to
     # determine what the result type would be if they were all applied in
@@ -140,24 +139,26 @@ def _generic_raster_op(*arg_list):
     """General raster array operation with well conditioned args.
 
     Parameters:
-        arg_list (list): a list of length 2*n+4 defined as:
+        arg_list (list): a list of length 2*n+5 defined as:
             [array_0, ... array_n, nodata_0, ... nodata_n,
-             func, target_nodata, default_nan, default_inf]
+             expression, target_nodata, default_nan, default_inf, kwarg_names]
 
-            Where ``func`` is a function that takes 2*n elements. The first
-            ``n`` elements are ``numpy.ndarrays`` and the second set of ``n``
-            elements are the corresponding nodata for those arrays.
+            Where ``expression`` is a string expression to be evaluated by
+            ``eval`` that takes ``n`` ``numpy.ndarray``elements.
 
-            ``target_nodata`` is the result of an element in ``func`` if any
-            of the array values that would produce the result contain a nodata
-            value.
+            ``target_nodata`` is the result of an element in ``expression`` if
+            any of the array values that would produce the result contain a
+            nodata value.
 
             ``default_nan`` and ``default_inf`` is the value that should be
-            replaced if the result of applying ``func`` to its arguments
+            replaced if the result of applying ``expression`` to its arguments
             results in an ``numpy.nan`` or ``numpy.inf`` value. A ValueError
             exception is raised if a ``numpy.nan`` or ``numpy.inf`` is
             produced by ``func`` but the corresponding ``default_*`` argument
             is ``None``.
+
+            ``kwarg_names`` is a list of the variable names present in
+            ``expression`` in the same order as the incoming numpy arrays.
 
     Returns:
         func applied to a masked version of array_0, ... array_n where only
@@ -170,10 +171,11 @@ def _generic_raster_op(*arg_list):
     target_dtype = numpy.result_type(*[x.dtype for x in array_list])
     result = numpy.empty(arg_list[0].shape, dtype=target_dtype)
     nodata_list = arg_list[n:2*n]
-    func = arg_list[2*n]
+    expression = arg_list[2*n]
     target_nodata = arg_list[2*n+1]
     default_nan = arg_list[2*n+2]
     default_inf = arg_list[2*n+3]
+    kwarg_names = arg_list[-1]
     nodata_present = any([x is not None for x in nodata_list])
     if target_nodata is not None:
         result[:] = target_nodata
@@ -188,10 +190,18 @@ def _generic_raster_op(*arg_list):
             raise ValueError(
                 "`target_nodata` is undefined (None) but there are nodata "
                 "values present in the input rasters.")
-        func_result = func(*[array[valid_mask] for array in array_list])
+        user_symbols = dict((symbol, array[valid_mask]) for (symbol, array) in
+                            zip(kwarg_names, array_list))
     else:
         # there's no nodata values to mask so operate directly
-        func_result = func(*array_list)
+        user_symbols = dict((symbol, array) for (symbol, array) in
+                            zip(kwarg_names, array_list))
+
+    # They say ``eval`` is dangerous, and it honestly probably is.
+    # As far as we can tell, the benefits of being able to evaluate these sorts
+    # of expressions will outweight the risks and, as always, folks shouldn't
+    # be running code they don't trust.
+    func_result = eval(expression, {}, user_symbols)
 
     if nodata_present:
         result[valid_mask] = func_result
