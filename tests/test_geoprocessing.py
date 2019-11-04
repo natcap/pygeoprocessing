@@ -4333,17 +4333,6 @@ class PyGeoprocessing10(unittest.TestCase):
         self.assertEqual(pygeoprocessing.get_raster_info(
             target_raster_path)['numpy_type'], numpy.float32)
 
-        # test that a symbolic implementation that reduces to a constant
-        # raises a ValueError
-        simplifies_to_1 = 'a*b**-1*a*d**2 / a**2 * d**-2 / b**-1'
-        with self.assertRaises(ValueError) as cm:
-            pygeoprocessing.symbolic.evaluate_raster_calculator_expression(
-                simplifies_to_1, symbol_to_path_band_map, target_nodata,
-                target_raster_path)
-        expected_message = 'Symbolic expression reduces to a constant'
-        actual_message = str(cm.exception)
-        self.assertTrue(expected_message in actual_message, actual_message)
-
         target_byte_raster_path = os.path.join(
             self.workspace_dir, 'byte.tif')
         byte_expression = '1+byte_val'
