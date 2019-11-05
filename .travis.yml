@@ -6,8 +6,7 @@ services:
 
 before_install:
   - docker pull natcap/pygeoprocessing-env:dev
-  - docker run -it -v %CD%:/usr/local/pygeoprocessing natcap/pygeoprocessing-env:dev /bin/bash -ic "pip install -r requirements.txt && python setup.py install"
-
+  - docker run -it -v `pwd`:/usr/local/pygeoprocessing natcap/pygeoprocessing-env:dev /bin/bash -ic "ls && pip install -r requirements.txt && python setup.py install"
 
 script:
 - pytest -xv tests
