@@ -8,4 +8,4 @@ before_install:
   - docker pull natcap/pygeoprocessing-env:3b27a68c619de5fd8e214817ee05bcd0e8221a3e
 
 script:
-- docker run -d --name pygeoprocessing-test natcap/pygeoprocessing-env:3b27a68c619de5fd8e214817ee05bcd0e8221a3e "python setup.py install && pytest -xv"
+- docker run -d --name pygeoprocessing-test natcap/pygeoprocessing-env:3b27a68c619de5fd8e214817ee05bcd0e8221a3e "/bin/bash -c \"python setup.py install && pytest -xv\""
