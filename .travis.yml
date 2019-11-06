@@ -6,7 +6,7 @@ services:
   - docker
 
 install:
-  - docker pull natcap/pygeoprocessing-test:dev
+  - docker pull natcap/pygeoprocessing-test:0.0.1
 
 script:
-  - docker run -it --rm -v `pwd`:/usr/local/pygeoprocessing natcap/pygeoprocessing-test:dev
+  - docker run -it --rm -v `pwd`:/usr/local/pygeoprocessing natcap/pygeoprocessing-test:0.0.1
