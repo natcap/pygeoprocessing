@@ -9,4 +9,4 @@ install:
   - docker pull natcap/pygeoprocessing-test:dev
 
 script:
-  - docker run -it --rm natcap/pygeoprocessing-test:dev
+  - docker run -it --rm -v `pwd`:/usr/local/pygeoprocessing natcap/pygeoprocessing-test:dev
