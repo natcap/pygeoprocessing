@@ -12,4 +12,3 @@ script:
   - echo "pip install -r requirements.txt" > runit.sh
   - echo "python setup.py install" >> runit.sh
   - echo "pytest -xv tests" >> runit.sh
-  - docker run -it -v `pwd`:/usr/local/pygeoprocessing natcap/pygeoprocessing-env:dev /bin/bash -ic runit.sh
