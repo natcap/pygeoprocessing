@@ -2588,7 +2588,7 @@ class PyGeoprocessing10(unittest.TestCase):
         expected_result = test_value * (
             n_pixels ** 2 * 9 - n_pixels * 4 * 3 + 4)
         self.assertAlmostEqual(numpy.sum(target_array), expected_result,
-                              places=3)
+                               places=3)
 
     def test_convolve_2d_multiprocess(self):
         """PGP.geoprocessing: test convolve 2d (multiprocess)."""
@@ -2626,7 +2626,7 @@ class PyGeoprocessing10(unittest.TestCase):
         expected_result = test_value * (
             n_pixels ** 2 * 9 - n_pixels * 4 * 3 + 4)
         self.assertAlmostEqual(numpy.sum(target_array), expected_result,
-                              places=3)
+                               places=3)
 
     def test_convolve_2d_normalize_ignore_nodata(self):
         """PGP.geoprocessing: test convolve 2d w/ normalize and ignore."""
