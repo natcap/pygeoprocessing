@@ -175,7 +175,7 @@ def _generic_raster_op(*arg_list):
     target_nodata = arg_list[2*n+1]
     default_nan = arg_list[2*n+2]
     default_inf = arg_list[2*n+3]
-    kwarg_names = arg_list[-1]
+    kwarg_names = arg_list[2*n+4]
     nodata_present = any([x is not None for x in nodata_list])
     if target_nodata is not None:
         result[:] = target_nodata
