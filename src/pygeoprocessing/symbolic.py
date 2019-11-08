@@ -190,12 +190,11 @@ def _generic_raster_op(*arg_list):
             raise ValueError(
                 "`target_nodata` is undefined (None) but there are nodata "
                 "values present in the input rasters.")
-        user_symbols = dict((symbol, array[valid_mask]) for (symbol, array) in
-                            zip(kwarg_names, array_list))
+        user_symbols = {symbol: array[valid_mask] for (symbol, array) in
+                        zip(kwarg_names, array_list)}
     else:
         # there's no nodata values to mask so operate directly
-        user_symbols = dict((symbol, array) for (symbol, array) in
-                            zip(kwarg_names, array_list))
+        user_symbols = dict(zip(kwarg_names, array_list))
 
     # They say ``eval`` is dangerous, and it honestly probably is.
     # As far as we can tell, the benefits of being able to evaluate these sorts
