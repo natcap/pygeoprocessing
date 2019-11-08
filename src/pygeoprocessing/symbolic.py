@@ -83,7 +83,7 @@ def evaluate_raster_calculator_expression(
         sorted(symbol_to_path_band_map.items()) if symbol in active_symbols])
 
     missing_symbols = set(active_symbols) - set(symbol_list)
-    if len(missing_symbols) > 0:
+    if missing_symbols:
         raise ValueError(
             'The variables %s are defined in the expression but are not in '
             'symbol_to_path_band_map' % ', '.join(sorted(missing_symbols)))
