@@ -1,7 +1,7 @@
 Release History
 ===============
 
-Unreleased Changes
+1.9.0 (2019-10-22)
 ------------------
 * Added PEP518-compatible build dependencies to ``pyproject.toml``, which has
   been added to source distributions of pygeoprocessing.
