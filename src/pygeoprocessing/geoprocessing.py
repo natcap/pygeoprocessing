@@ -59,7 +59,6 @@ from . import geoprocessing_core
 
 from functools import reduce
 LOGGER = logging.getLogger(__name__)
-LOGGER.addHandler(logging.NullHandler())  # silence logging by default
 
 _MAX_TIMEOUT = 60.0
 
@@ -419,8 +418,7 @@ def raster_calculator(
                                 blocksize[dim_index],)
                             tile_dims[dim_index] = 1
                     data_blocks.append(
-                        numpy.tile(
-                            tuple(value[tuple(slice_list)]), tile_dims))
+                        numpy.tile(value[tuple(slice_list)], tile_dims))
                 else:
                     # must be a raw tuple
                     data_blocks.append(value[0])
@@ -941,6 +939,7 @@ def new_raster_from_base(
                         float(pixels_processed) / n_pixels * 100.0),
                     _LOGGING_PERIOD)
             target_band = None
+    target_band = None
     target_raster = None
 
 
@@ -2806,7 +2805,7 @@ def transform_bounding_box(
     p_1 = numpy.array((bounding_box[0], bounding_box[1]))
     p_2 = numpy.array((bounding_box[2], bounding_box[1]))
     p_3 = numpy.array((bounding_box[2], bounding_box[3]))
-    transformed_bounding_box = [
+    raw_bounding_box = [
         bounding_fn(
             [_transform_point(
                 p_a * v + p_b * (1 - v)) for v in numpy.linspace(
@@ -2816,6 +2815,14 @@ def transform_bounding_box(
             (p_1, p_2, lambda p_list: min([p[1] for p in p_list])),
             (p_2, p_3, lambda p_list: max([p[0] for p in p_list])),
             (p_3, p_0, lambda p_list: max([p[1] for p in p_list]))]]
+
+    # sometimes a transform will be so tight that a sampling around it may
+    # flip the coordinate system. This flips it back. I found this when
+    # transforming the bounding box of Gibraltar in a utm coordinate system
+    # to lat/lng.
+    minx, maxx = sorted([raw_bounding_box[0], raw_bounding_box[2]])
+    miny, maxy = sorted([raw_bounding_box[1], raw_bounding_box[3]])
+    transformed_bounding_box = [minx, miny, maxx, maxy]
     return transformed_bounding_box
 
 
@@ -3300,7 +3307,7 @@ def _make_logger_callback(message):
         except AttributeError:
             logger_callback.last_time = time.time()
             logger_callback.total_time = 0.0
-        except:
+        except Exception:
             LOGGER.exception("Unhandled error occurred while logging "
                              "progress.  df_complete: %s, p_progress_arg: %s",
                              df_complete, p_progress_arg)

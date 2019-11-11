@@ -7,25 +7,38 @@ import logging
 import time
 import sys
 import traceback
+import shutil
 
 cimport numpy
 import numpy
 cimport cython
-from libcpp.map cimport map
-
-from libc.math cimport sqrt
-from libc.math cimport exp
-from libc.math cimport ceil
-
+from cython.operator cimport dereference as deref
+from cython.operator cimport preincrement as inc
+from libcpp.vector cimport vector
+from libcpp.algorithm cimport push_heap
+from libcpp.algorithm cimport pop_heap
+from libc.stdio cimport FILE
+from libc.stdio cimport fopen
+from libc.stdio cimport fwrite
+from libc.stdio cimport fread
+from libc.stdio cimport fclose
 from osgeo import gdal
 import pygeoprocessing
 
-DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS = (
-    'GTIFF', ('TILED=YES', 'BIGTIFF=YES', 'COMPRESS=ZSTD',
+DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS = ('GTIFF', (
+    'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
     'BLOCKXSIZE=256', 'BLOCKYSIZE=256'))
 LOGGER = logging.getLogger('pygeoprocessing.geoprocessing_core')
 
 cdef float _NODATA = -1.0
+
+cdef extern from "FastFileIterator.h" nogil:
+    cdef cppclass FastFileIterator[DATA_T]:
+        FastFileIterator(const char*, size_t)
+        DATA_T next()
+        size_t size()
+    int FastFileIteratorCompare[DATA_T](FastFileIterator[DATA_T]*,
+                                        FastFileIterator[DATA_T]*)
 
 @cython.boundscheck(False)
 @cython.wraparound(False)
@@ -199,9 +212,9 @@ def _distance_transform_edt(
                     sq = u_index
                     gsq = g_block[local_y_index, sq]**2
                 else:
-                    w = sample_d_x + ((
+                    w = (float)(sample_d_x + ((
                         (sample_d_x*u_index)**2 - (sample_d_x*sq)**2 +
-                        gu - gsq) / (2*sample_d_x*(u_index-sq)))
+                        gu - gsq) / (2*sample_d_x*(u_index-sq))))
                     if w < n_cols*sample_d_x:
                         q_index += 1
                         s_array[q_index] = u_index
@@ -506,6 +519,7 @@ def calculate_slope(
 
 
 @cython.boundscheck(False)
+@cython.cdivision(True)
 def stats_worker(stats_work_queue, exception_queue):
     """Worker to calculate continuous min, max, mean and standard deviation.
 
@@ -571,3 +585,341 @@ def stats_worker(stats_work_queue, exception_queue):
         while not stats_work_queue.empty():
             stats_work_queue.get()
         raise
+
+ctypedef long long int64t
+ctypedef FastFileIterator[long long]* FastFileIteratorLongLongIntPtr
+ctypedef FastFileIterator[double]* FastFileIteratorDoublePtr
+
+
+def raster_band_percentile(
+        base_raster_path_band, working_sort_directory, percentile_list,
+        heap_buffer_size=2**28, ffi_buffer_size=2**10):
+    """Calculate percentiles of a raster band.
+
+    Parameters:
+        base_raster_path_band (tuple): raster path band tuple to a raster
+            that is of any integer or real type.
+        working_sort_directory (str): path to a directory that does not
+            exist or is empty. This directory will be used to create heapfiles
+            with sizes no larger than ``heap_buffer_size`` which are written in the
+            of the pattern N.dat where N is in the numbering 0, 1, 2, ... up
+            to the number of files necessary to handle the raster.
+        percentile_list (list): sorted list of percentiles to report must
+            contain values in the range [0, 100].
+        heap_buffer_size (int): defines approximately how many elements to hold in
+            a single heap file. This is proportional to the amount of maximum
+            memory to use when storing elements before a sort and write to
+            disk.
+        ffi_buffer_size (int): defines how many elements will be stored per
+            heap file buffer for iteration.
+
+    Returns:
+        A list of len(percentile_list) elements long containing the
+        percentile values (ranging from [0, 100]) in ``base_raster_path_band``
+        where the interpolation scheme is "higher" (i.e. any percentile splits
+        will select the next element higher than the percentile cutoff).
+
+    """
+    raster_type = pygeoprocessing.get_raster_info(
+        base_raster_path_band[0])['datatype']
+    if raster_type in (
+            gdal.GDT_Byte, gdal.GDT_Int16, gdal.GDT_UInt16, gdal.GDT_Int32,
+            gdal.GDT_UInt32):
+        return _raster_band_percentile_int(
+            base_raster_path_band, working_sort_directory, percentile_list,
+            heap_buffer_size, ffi_buffer_size)
+    elif raster_type in (gdal.GDT_Float32, gdal.GDT_Float64):
+        return _raster_band_percentile_double(
+            base_raster_path_band, working_sort_directory, percentile_list,
+            heap_buffer_size, ffi_buffer_size)
+    else:
+        raise ValueError(
+            'Cannot process raster type %s (not a known integer nor float '
+            'type)', raster_type)
+
+
+def _raster_band_percentile_int(
+        base_raster_path_band, working_sort_directory, percentile_list,
+        heap_buffer_size, ffi_buffer_size):
+    """Calculate percentiles of a raster band of an integer type.
+
+    Parameters:
+        base_raster_path_band (tuple): raster path band tuple to a raster that
+            is of an integer type.
+        working_sort_directory (str): path to a directory that does not
+            exist or is empty. This directory will be used to create heapfiles
+            with sizes no larger than ``heap_buffer_size`` which are written in the
+            of the pattern N.dat where N is in the numbering 0, 1, 2, ... up
+            to the number of files necessary to handle the raster.
+        percentile_list (list): sorted list of percentiles to report must
+            contain values in the range [0, 100].
+        heap_buffer_size (int): defines approximately how many elements to hold in
+            a single heap file. This is proportional to the amount of maximum
+            memory to use when storing elements before a sort and write to
+            disk.
+        ffi_buffer_size (int): defines how many elements to store in a file
+            buffer at any time.
+
+    Returns:
+        A list of len(percentile_list) elements long containing the
+        percentile values (ranging from [0, 100]) in ``base_raster_path_band``
+        where the interpolation scheme is "higher" (i.e. any percentile splits
+        will select the next element higher than the percentile cutoff).
+
+    """
+    cdef FILE *fptr
+    cdef FastFileIteratorLongLongIntPtr fast_file_iterator
+    cdef vector[FastFileIteratorLongLongIntPtr] fast_file_iterator_vector
+    cdef vector[FastFileIteratorLongLongIntPtr].iterator ffiv_iter
+    cdef int percentile_index = 0
+    cdef long long i, n_elements = 0
+    cdef int64t next_val = 0L
+    cdef double step_size, current_percentile
+    cdef double current_step = 0.0
+    result_list = []
+    rm_dir_when_done = False
+    try:
+        os.makedirs(working_sort_directory)
+        rm_dir_when_done = True
+    except OSError:
+        pass
+
+    cdef int64t[:] buffer_data
+
+    heapfile_list = []
+    file_index = 0
+    raster_info = pygeoprocessing.get_raster_info(
+        base_raster_path_band[0])
+    nodata = raster_info['nodata'][base_raster_path_band[1]-1]
+    cdef long long n_pixels = raster_info['raster_size'][0] * raster_info['raster_size'][1]
+
+    LOGGER.debug('total number of pixels %s (%s)', n_pixels, raster_info['raster_size'])
+    cdef long long pixels_processed = 0
+    LOGGER.debug('sorting data to heap')
+    last_update = time.time()
+    for _, block_data in pygeoprocessing.iterblocks(
+            base_raster_path_band, largest_block=heap_buffer_size):
+        pixels_processed += block_data.size
+        if time.time() - last_update > 5.0:
+            LOGGER.debug(
+                'data sort to heap %.2f%% complete',
+                (100.*pixels_processed)/n_pixels)
+            last_update = time.time()
+        buffer_data = numpy.sort(
+            block_data[~numpy.isclose(block_data, nodata)]).astype(
+            numpy.int64)
+        if buffer_data.size == 0:
+            continue
+        n_elements += buffer_data.size
+        file_path = os.path.join(
+            working_sort_directory, '%d.dat' % file_index)
+        heapfile_list.append(file_path)
+        fptr = fopen(bytes(file_path.encode()), "wb")
+        fwrite(
+            <int64t*>&buffer_data[0], sizeof(int64t), buffer_data.size,
+            fptr)
+        fclose(fptr)
+        file_index += 1
+
+        fast_file_iterator = new FastFileIterator[int64t](
+            (bytes(file_path.encode())), ffi_buffer_size)
+        fast_file_iterator_vector.push_back(fast_file_iterator)
+        push_heap(
+            fast_file_iterator_vector.begin(),
+            fast_file_iterator_vector.end(),
+            FastFileIteratorCompare[int64t])
+    LOGGER.debug('calculating percentiles')
+    current_percentile = percentile_list[percentile_index]
+    step_size = 0
+    if n_elements > 0:
+        step_size = 100.0 / n_elements
+
+    for i in range(n_elements):
+        if time.time() - last_update > 5.0:
+            LOGGER.debug(
+                'calculating percentiles %.2f%% complete',
+                100.0 * i / float(n_elements))
+            last_update = time.time()
+        current_step = step_size * i
+        next_val = fast_file_iterator_vector.front().next()
+        if current_step >= current_percentile:
+            result_list.append(next_val)
+            percentile_index += 1
+            if percentile_index >= len(percentile_list):
+                break
+            current_percentile = percentile_list[percentile_index]
+        pop_heap(
+            fast_file_iterator_vector.begin(),
+            fast_file_iterator_vector.end(),
+            FastFileIteratorCompare[int64t])
+        if fast_file_iterator_vector.back().size() > 0:
+            push_heap(
+                fast_file_iterator_vector.begin(),
+                fast_file_iterator_vector.end(),
+                FastFileIteratorCompare[int64t])
+        else:
+            fast_file_iterator = fast_file_iterator_vector.back()
+            del fast_file_iterator
+            fast_file_iterator_vector.pop_back()
+    if percentile_index < len(percentile_list):
+        result_list.append(next_val)
+
+    # free all the iterator memory
+    ffiv_iter = fast_file_iterator_vector.begin()
+    while ffiv_iter != fast_file_iterator_vector.end():
+        fast_file_iterator = deref(ffiv_iter)
+        del fast_file_iterator
+        inc(ffiv_iter)
+    fast_file_iterator_vector.clear()
+    # delete all the heap files
+    for file_path in heapfile_list:
+        try:
+            os.remove(file_path)
+        except OSError:
+            # you never know if this might fail!
+            LOGGER.warning('unable to remove %s', file_path)
+    if rm_dir_when_done:
+        shutil.rmtree(working_sort_directory)
+    return result_list
+
+
+def _raster_band_percentile_double(
+        base_raster_path_band, working_sort_directory, percentile_list,
+        heap_buffer_size, ffi_buffer_size):
+    """Calculate percentiles of a raster band of a real type.
+
+    Parameters:
+        base_raster_path_band (tuple): raster path band tuple to raster that
+            is a real/float type.
+        working_sort_directory (str): path to a directory that does not
+            exist or is empty. This directory will be used to create heapfiles
+            with sizes no larger than ``heap_buffer_size`` which are written in the
+            of the pattern N.dat where N is in the numbering 0, 1, 2, ... up
+            to the number of files necessary to handle the raster.
+        percentile_list (list): sorted list of percentiles to report must
+            contain values in the range [0, 100].
+        heap_buffer_size (int): defines approximately how many elements to hold in
+            a single heap file. This is proportional to the amount of maximum
+            memory to use when storing elements before a sort and write to
+            disk.
+        ffi_buffer_size (int): defines how many elements to store in a file
+            buffer at any time.
+
+    Returns:
+        A list of len(percentile_list) elements long containing the
+        percentile values (ranging from [0, 100]) in ``base_raster_path_band``
+        where the interpolation scheme is "higher" (i.e. any percentile splits
+        will select the next element higher than the percentile cutoff).
+
+    """
+    cdef FILE *fptr
+    cdef double[:] buffer_data
+    cdef FastFileIteratorDoublePtr fast_file_iterator
+    cdef vector[FastFileIteratorDoublePtr] fast_file_iterator_vector
+    cdef int percentile_index = 0
+    cdef long long i, n_elements = 0
+    cdef double next_val = 0.0
+    cdef double current_step = 0.0
+    cdef double step_size, current_percentile
+    result_list = []
+    rm_dir_when_done = False
+    try:
+        os.makedirs(working_sort_directory)
+        rm_dir_when_done = True
+    except OSError as e:
+        LOGGER.warning("couldn't make working_sort_directory: %s", str(e))
+    file_index = 0
+    nodata = pygeoprocessing.get_raster_info(
+        base_raster_path_band[0])['nodata'][base_raster_path_band[1]-1]
+    heapfile_list = []
+
+    raster_info = pygeoprocessing.get_raster_info(
+        base_raster_path_band[0])
+    nodata = raster_info['nodata'][base_raster_path_band[1]-1]
+    n_pixels = numpy.prod(raster_info['raster_size'])
+    pixels_processed = 0
+
+    last_update = time.time()
+    LOGGER.debug('sorting data to heap')
+    for _, block_data in pygeoprocessing.iterblocks(
+            base_raster_path_band, largest_block=heap_buffer_size):
+        pixels_processed += block_data.size
+        if time.time() - last_update > 5.0:
+            LOGGER.debug(
+                'data sort to heap %.2f%% complete',
+                (100.*pixels_processed)/n_pixels)
+            last_update = time.time()
+        buffer_data = numpy.sort(
+            block_data[~numpy.isclose(block_data, nodata)]).astype(
+            numpy.double)
+        if buffer_data.size == 0:
+            continue
+        n_elements += buffer_data.size
+        file_path = os.path.join(
+            working_sort_directory, '%d.dat' % file_index)
+        heapfile_list.append(file_path)
+        fptr = fopen(bytes(file_path.encode()), "wb")
+        fwrite(
+            <double*>&buffer_data[0], sizeof(double), buffer_data.size, fptr)
+        fclose(fptr)
+        file_index += 1
+
+        fast_file_iterator = new FastFileIterator[double](
+            (bytes(file_path.encode())), ffi_buffer_size)
+        fast_file_iterator_vector.push_back(fast_file_iterator)
+        push_heap(
+            fast_file_iterator_vector.begin(),
+            fast_file_iterator_vector.end(),
+            FastFileIteratorCompare[double])
+
+    current_percentile = percentile_list[percentile_index]
+    step_size = 0
+    if n_elements > 0:
+        step_size = 100.0 / n_elements
+
+    LOGGER.debug('calculating percentiles')
+    for i in range(n_elements):
+        if time.time() - last_update > 5.0:
+            LOGGER.debug(
+                'calculating percentiles %.2f%% complete',
+                100.0 * i / float(n_elements))
+            last_update = time.time()
+        current_step = step_size * i
+        next_val = fast_file_iterator_vector.front().next()
+        if current_step >= current_percentile:
+            result_list.append(next_val)
+            percentile_index += 1
+            if percentile_index >= len(percentile_list):
+                break
+            current_percentile = percentile_list[percentile_index]
+        pop_heap(
+            fast_file_iterator_vector.begin(),
+            fast_file_iterator_vector.end(),
+            FastFileIteratorCompare[double])
+        if fast_file_iterator_vector.back().size() > 0:
+            push_heap(
+                fast_file_iterator_vector.begin(),
+                fast_file_iterator_vector.end(),
+                FastFileIteratorCompare[double])
+        else:
+            fast_file_iterator_vector.pop_back()
+    if percentile_index < len(percentile_list):
+        result_list.append(next_val)
+    # free all the iterator memory
+    ffiv_iter = fast_file_iterator_vector.begin()
+    while ffiv_iter != fast_file_iterator_vector.end():
+        fast_file_iterator = deref(ffiv_iter)
+        del fast_file_iterator
+        inc(ffiv_iter)
+    fast_file_iterator_vector.clear()
+    # delete all the heap files
+    for file_path in heapfile_list:
+        try:
+            os.remove(file_path)
+        except OSError:
+            # you never know if this might fail!
+            LOGGER.warning('unable to remove %s', file_path)
+    if rm_dir_when_done:
+        shutil.rmtree(working_sort_directory)
+    LOGGER.debug('here is percentile_list: %s', str(result_list))
+    return result_list

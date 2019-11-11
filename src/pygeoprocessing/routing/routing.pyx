@@ -41,7 +41,6 @@ from libcpp.deque cimport deque
 from libcpp.set cimport set as cset
 
 LOGGER = logging.getLogger(__name__)
-LOGGER.addHandler(logging.NullHandler())  # silence logging by default
 
 # This module creates rasters with a memory xy block size of 2**BLOCK_BITS
 cdef int BLOCK_BITS = 8
@@ -51,7 +50,7 @@ cdef int MANAGED_RASTER_N_BLOCKS = 2**6
 
 # these are the creation options that'll be used for all the rasters
 DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS = ('GTiff', (
-    'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=DEFLATE',
+    'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
     'BLOCKXSIZE=%d' % (1 << BLOCK_BITS),
     'BLOCKYSIZE=%d' % (1 << BLOCK_BITS)))
 
@@ -577,10 +576,11 @@ def fill_pits(
             DEM calculate flow direction.
         target_filled_dem_raster_path (string): path the pit filled dem,
             that's created by a call to this function. It is functionally a
-            copy of `dem_raster_path_band[0]` with the pit pixels raised to
-            the pour point. For runtime efficiency, this raster is tiled and
-            its blocksize is set to (1<<BLOCK_BITS, 1<<BLOCK_BITS) even if
-            `dem_raster_path_band[0]` was not tiled or a different block size.
+            single band copy of ``dem_raster_path_band`` with the pit pixels
+            raised to the pour point. For runtime efficiency, this raster is
+            tiled and its blocksize is set to (1<<BLOCK_BITS, 1<<BLOCK_BITS)
+            even if `dem_raster_path_band[0]` was not tiled or a different
+            block size.
         working_dir (string): If not None, indicates where temporary files
             should be created during this run. If this directory doesn't exist
             it is created by this call. If None, a temporary directory is
@@ -701,13 +701,25 @@ def fill_pits(
         pit_mask_path, 1, 1)
 
     # copy the base DEM to the target and set up for writing
-    raster_driver = gdal.GetDriverByName(raster_driver_creation_tuple[0])
-    base_dem_raster = gdal.OpenEx(dem_raster_path_band[0], gdal.OF_RASTER)
-    raster_driver.CreateCopy(
-        target_filled_dem_raster_path, base_dem_raster,
-        options=raster_driver_creation_tuple[1])
+    base_datatype = pygeoprocessing.get_raster_info(
+        dem_raster_path_band[0])['datatype']
+    pygeoprocessing.new_raster_from_base(
+        dem_raster_path_band[0], target_filled_dem_raster_path,
+        base_datatype, [dem_nodata],
+        raster_driver_creation_tuple=raster_driver_creation_tuple)
+    filled_dem_raster = gdal.OpenEx(
+        target_filled_dem_raster_path, gdal.OF_RASTER | gdal.GA_Update)
+    filled_dem_band = filled_dem_raster.GetRasterBand(1)
+    for offset_info, block_array in pygeoprocessing.iterblocks(
+                dem_raster_path_band):
+        filled_dem_band.WriteArray(
+            block_array, xoff=offset_info['xoff'], yoff=offset_info['yoff'])
+    filled_dem_band.FlushCache()
+    filled_dem_raster.FlushCache()
+    filled_dem_band = None
+    filled_dem_raster = None
     filled_dem_managed_raster = _ManagedRaster(
-        target_filled_dem_raster_path, dem_raster_path_band[1], 1)
+        target_filled_dem_raster_path, 1, 1)
 
     # feature_id will start at 1 since the mask nodata is 0.
     feature_id = 0
