@@ -3,6 +3,8 @@ Release History
 
 Unreleased Changes
 ------------------
+* Fixed a memory error issue that could occur on multiple flow direction flow
+  accumulation calculations.
 * Added PEP518-compatible build dependencies to ``pyproject.toml``, which has
   been added to source distributions of pygeoprocessing.
 * Added an out-of-core high performance raster percentile function at

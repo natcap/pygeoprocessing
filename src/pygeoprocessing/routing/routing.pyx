@@ -2061,6 +2061,9 @@ def flow_accumulation_mfd(
     cdef numpy.ndarray[numpy.int32_t, ndim=2] flow_dir_mfd_buffer_array
     cdef int win_ysize, win_xsize, xoff, yoff
 
+    # These are used to estimate % complete
+    cdef long long visit_count, pixel_count
+
     # the _root variables remembers the pixel index where the plateau/pit
     # region was first detected when iterating over the DEM.
     cdef int xi_root, yi_root
@@ -2109,6 +2112,7 @@ def flow_accumulation_mfd(
             "%s is supposed to be a raster band tuple but it's not." % (
                 weight_raster_path_band))
 
+    LOGGER.debug('creating target flow accum raster layer')
     pygeoprocessing.new_raster_from_base(
         flow_dir_mfd_raster_path_band[0], target_flow_accum_raster_path,
         gdal.GDT_Float64, [flow_accum_nodata],
@@ -2117,6 +2121,20 @@ def flow_accumulation_mfd(
 
     flow_accum_managed_raster = _ManagedRaster(
         target_flow_accum_raster_path, 1, 1)
+
+    # make a temporary raster to mark where we have visisted
+    LOGGER.debug('creating visited raster layer')
+    tmp_dir_root = os.path.dirname(target_flow_accum_raster_path)
+    tmp_dir = tempfile.mkdtemp(dir=tmp_dir_root, prefix='mfd_flow_dir_')
+    visited_raster_path = os.path.join(tmp_dir, 'visited.tif')
+    pygeoprocessing.new_raster_from_base(
+        flow_dir_mfd_raster_path_band[0], visited_raster_path,
+        gdal.GDT_Byte, [0],
+        raster_driver_creation_tuple=('GTiff', (
+            'SPARSE_OK=TRUE', 'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
+            'BLOCKXSIZE=%d' % (1 << BLOCK_BITS),
+            'BLOCKYSIZE=%d' % (1 << BLOCK_BITS))))
+    visited_managed_raster = _ManagedRaster(visited_raster_path, 1, 1)
 
     flow_dir_managed_raster = _ManagedRaster(
         flow_dir_mfd_raster_path_band[0], flow_dir_mfd_raster_path_band[1], 0)
@@ -2138,7 +2156,10 @@ def flow_accumulation_mfd(
     flow_dir_raster_info = pygeoprocessing.get_raster_info(
         flow_dir_mfd_raster_path_band[0])
     raster_x_size, raster_y_size = flow_dir_raster_info['raster_size']
+    pixel_count = raster_x_size * raster_y_size
+    visit_count = 0
 
+    LOGGER.debug('starting search')
     # this outer loop searches for a pixel that is locally undrained
     for offset_dict in pygeoprocessing.iterblocks(
             flow_dir_mfd_raster_path_band, offset_only=True,
@@ -2201,11 +2222,19 @@ def flow_accumulation_mfd(
                             weight_val = 1.0
                         search_stack.push(
                             FlowPixelType(xi_root, yi_root, 0, weight_val))
+                        visited_managed_raster.set(xi_root, yi_root, 1)
+                        visit_count += 1
                         break
 
                 while not search_stack.empty():
                     flow_pixel = search_stack.top()
                     search_stack.pop()
+
+                    if ctime(NULL) - last_log_time > 5.0:
+                        last_log_time = ctime(NULL)
+                        LOGGER.info(
+                            'mfd flow accum %.1f%% complete',
+                            100.0 * visit_count / float(pixel_count))
 
                     preempted = 0
                     for i_n in range(flow_pixel.last_flow_dir, 8):
@@ -2225,7 +2254,9 @@ def flow_accumulation_mfd(
                             continue
                         upstream_flow_accum = (
                             flow_accum_managed_raster.get(xi_n, yi_n))
-                        if is_close(upstream_flow_accum, flow_accum_nodata):
+                        if (is_close(upstream_flow_accum, flow_accum_nodata)
+                                and not visited_managed_raster.get(
+                                    xi_n, yi_n)):
                             # process upstream before this one
                             flow_pixel.last_flow_dir = i_n
                             search_stack.push(flow_pixel)
@@ -2238,6 +2269,8 @@ def flow_accumulation_mfd(
                                 weight_val = 1.0
                             search_stack.push(
                                 FlowPixelType(xi_n, yi_n, 0, weight_val))
+                            visited_managed_raster.set(xi_n, yi_n, 1)
+                            visit_count += 1
                             preempted = 1
                             break
                         upstream_flow_dir_sum = 0
@@ -2257,6 +2290,11 @@ def flow_accumulation_mfd(
     flow_dir_managed_raster.close()
     if weight_raster is not None:
         weight_raster.close()
+    visited_managed_raster.close()
+    try:
+        shutil.rmtree(tmp_dir)
+    except OSError:
+        LOGGER.exception("couldn't remove temp dir")
     LOGGER.info('%.1f%% complete', 100.0)
 
 
