@@ -1,7 +1,7 @@
 Release History
 ===============
 
-Unreleased Changes
+1.9.0 (2019-10-22)
 ------------------
 * Fixed a memory error issue that could occur on multiple flow direction flow
   accumulation calculations.
