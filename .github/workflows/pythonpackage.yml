@@ -28,9 +28,15 @@ jobs:
       run: |
           conda install -y $GDAL shapely numpy scipy shapely cython rtree pytest
           conda upgrade -y pip setuptools
+
+    - name: Install PyGeoprocessing (mac)
+      if: {{ matrix.os == 'macos-latest' }}
+      run: CFLAGS="-stdlib=libc++" python setup.py install
+
     - name: Install PyGeoprocessing
-      env: ${{ matrix.env }}
+      if: {{ matrix.os != 'macos-latest' }}
       run: python setup.py install
+
     - name: Lint with flake8
       run: |
         pip install flake8
