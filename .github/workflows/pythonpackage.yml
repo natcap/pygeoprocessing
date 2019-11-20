@@ -1,0 +1,38 @@
+name: Test PyGeoprocessing
+
+on: [push, pull_request]
+
+jobs:
+  Test:
+
+    runs-on: ${{ matrix.os }}
+    strategy:
+      max-parallel: 4
+      matrix:
+        python-version: [3.5, 3.6, 3.7]
+        os: [ubuntu-16.04, windows-latest, macos-latest]
+        env: 
+            - GDAL: "gdal>=2.4.0,<3"
+            - GDAL: "gdal>=3"
+
+    steps:
+    - uses: actions/checkout@v1
+    - name: setup-conda
+      uses: s-weigand/setup-conda@v1.0.0
+      with:
+        update-conda: true
+        python-version: ${{ matrix.python-version }}
+        conda-channels: ''
+    - name: Install dependencies
+      shell: bash
+      run: conda install $GDAL shapely numpy scipy shapely cython rtree pytest
+    - name: Install PyGeoprocessing
+    - name: Lint with flake8
+      run: |
+        pip install flake8
+        # stop the build if there are Python syntax errors or undefined names
+        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+        # exit-zero treats all errors as warnings. The GitHub editor is 127 chars wide
+        flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+    - name: Test with pytest
+      run: pytest
