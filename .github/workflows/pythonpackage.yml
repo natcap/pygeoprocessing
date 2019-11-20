@@ -12,11 +12,7 @@ jobs:
         os: [ubuntu-16.04, windows-latest, macos-latest]
         env:
             - GDAL: "gdal>=2.2,<3"
-        include:
-          - os: macos-latest
-            python-version: [3.6, 3.7]
-            env: 
-                - CFLAGS: "-stdlib=libc++"
+            - CFLAGS: "-stdlib=libc++"
 
     steps:
     - uses: actions/checkout@v1
@@ -29,7 +25,9 @@ jobs:
     - name: Install dependencies
       shell: bash
       env: ${{ matrix.env }}
-      run: conda install -y $GDAL shapely numpy scipy shapely cython rtree pytest
+      run: |
+          conda install -y $GDAL shapely numpy scipy shapely cython rtree pytest
+          conda upgrade -y pip setuptools
     - name: Install PyGeoprocessing
       env: ${{ matrix.env }}
       run: python setup.py install
