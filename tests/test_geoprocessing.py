@@ -2835,7 +2835,7 @@ class PyGeoprocessing10(unittest.TestCase):
         # the sides and realizing diagonals got subtracted twice
         expected_result = test_value * (n_pixels ** 2)
         numpy.testing.assert_allclose(numpy.sum(target_array),
-                                      expected_result)
+                                      expected_result, rtol=1e-6)
 
     def test_calculate_slope(self):
         """PGP.geoprocessing: test calculate slope."""
