@@ -22,6 +22,7 @@ jobs:
       with:
         update-conda: false
         python-version: ${{ matrix.python-version }}
+        conda-channels: defaults
     - name: Install dependencies
       shell: bash
       env: ${{ matrix.env }}
