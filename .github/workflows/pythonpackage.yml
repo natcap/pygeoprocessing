@@ -15,7 +15,7 @@ jobs:
         include:
           - os: macos-latest
             env: 
-                - CFLAGS "-stdlib=libc++"
+                - CFLAGS: "-stdlib=libc++"
 
     steps:
     - uses: actions/checkout@v1
