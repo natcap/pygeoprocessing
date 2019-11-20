@@ -29,11 +29,11 @@ jobs:
           conda install -y $GDAL shapely numpy scipy shapely cython rtree pytest
           conda upgrade -y pip setuptools
 
-    - name: Install PyGeoprocessing (mac)
+    - name: Install PyGeoprocessing (mac only)
       if: matrix.os == 'macos-latest'
       run: CFLAGS="-stdlib=libc++" python setup.py install
 
-    - name: Install PyGeoprocessing
+    - name: Install PyGeoprocessing (non-mac)
       if: matrix.os != 'macos-latest'
       run: python setup.py install
 
