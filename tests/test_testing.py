@@ -1,6 +1,7 @@
 # coding=UTF-8
 """Tests for ``pygeoprocessing.testing`` functionality."""
 import unittest
+import unittest.mock
 import tempfile
 import os
 import shutil
@@ -12,7 +13,6 @@ import json
 import numpy
 from osgeo import ogr
 from shapely.geometry import Point, LineString
-import mock
 
 
 class JSONTests(unittest.TestCase):
@@ -582,7 +582,7 @@ class DigestEquality(unittest.TestCase):
         # Simulate being on Windows.
         # On *NIX systems, this shouldn't affect the output files at all, since
         # we're replacing os.sep ('/' on *NIX) with '/'.
-        with mock.patch('platform.system', lambda: 'Windows'):
+        with unittest.mock.patch('platform.system', lambda: 'Windows'):
             # Just to verify that sys.platform() is currently set to Windows.
             self.assertEqual(platform.system(), 'Windows')
             checksum_folder(sample_folder, checksum_file, style='GNU')
@@ -734,7 +734,7 @@ class SCMTest(unittest.TestCase):
         nonexistent_folder = os.path.join(self.workspace, 'dir_not_found')
         remote_path = 'svn://foo'
 
-        with mock.patch('subprocess.call'):
+        with unittest.mock.patch('subprocess.call'):
             checkout_svn(nonexistent_folder, remote_path)
             self.assertTrue(subprocess.call.called)
             self.assertEqual(subprocess.call.call_args[0][0],
@@ -745,7 +745,7 @@ class SCMTest(unittest.TestCase):
         """Verify that SVN update is called with the correct parameters."""
         from pygeoprocessing.testing.scm import checkout_svn
 
-        with mock.patch('subprocess.call'):
+        with unittest.mock.patch('subprocess.call'):
             checkout_svn(self.workspace, 'svn://foo')
             self.assertTrue(subprocess.call.called)
             self.assertEqual(subprocess.call.call_args[0][0],
@@ -755,7 +755,7 @@ class SCMTest(unittest.TestCase):
         """Verify SVN update -r <rev> is called with the correct params."""
         from pygeoprocessing.testing.scm import checkout_svn
 
-        with mock.patch('subprocess.call'):
+        with unittest.mock.patch('subprocess.call'):
             checkout_svn(self.workspace, 'svn://foo', rev='25')
             self.assertTrue(subprocess.call.called)
             self.assertEqual(subprocess.call.call_args[0][0],

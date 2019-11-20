@@ -3,6 +3,7 @@ import time
 import tempfile
 import os
 import unittest
+import unittest.mock
 import shutil
 import types
 import importlib
@@ -13,7 +14,6 @@ from osgeo import osr
 import numpy
 import scipy.ndimage
 import shapely.geometry
-import mock
 
 
 def passthrough(x):
@@ -121,7 +121,7 @@ class PyGeoprocessing10(unittest.TestCase):
         from pkg_resources import DistributionNotFound
         import pygeoprocessing
 
-        with mock.patch('pygeoprocessing.pkg_resources.get_distribution',
+        with unittest.mock.patch('pygeoprocessing.pkg_resources.get_distribution',
                         side_effect=DistributionNotFound('pygeoprocessing')):
             with self.assertRaises(RuntimeError):
                 # RuntimeError is a side effect of `import pygeoprocessing`,
@@ -3013,7 +3013,7 @@ class PyGeoprocessing10(unittest.TestCase):
             # Patching the function that makes a logger callback so that
             # it will raise an exception (ZeroDivisionError in this case,
             # but any exception should do).
-            with mock.patch(
+            with unittest.mock.patch(
                     'pygeoprocessing.geoprocessing._make_logger_callback',
                     return_value=lambda x, y, z: 1/0.):
                 pygeoprocessing.rasterize(
