@@ -11,7 +11,7 @@ jobs:
       matrix:
         python-version: [3.5, 3.6, 3.7]
         os: [ubuntu-16.04, windows-latest, macos-latest]
-        env: 
+        env:
             - GDAL: "gdal>=2.4.0,<3"
             - GDAL: "gdal>=3"
 
@@ -25,8 +25,10 @@ jobs:
         conda-channels: ''
     - name: Install dependencies
       shell: bash
+      env: ${{ matrix.env }}
       run: conda install $GDAL shapely numpy scipy shapely cython rtree pytest
     - name: Install PyGeoprocessing
+      run: python setup.py install
     - name: Lint with flake8
       run: |
         pip install flake8
