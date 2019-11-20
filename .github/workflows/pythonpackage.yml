@@ -30,11 +30,11 @@ jobs:
           conda upgrade -y pip setuptools
 
     - name: Install PyGeoprocessing (mac)
-      if: {{ matrix.os == 'macos-latest' }}
+      if: matrix.os == 'macos-latest'
       run: CFLAGS="-stdlib=libc++" python setup.py install
 
     - name: Install PyGeoprocessing
-      if: {{ matrix.os != 'macos-latest' }}
+      if: matrix.os != 'macos-latest'
       run: python setup.py install
 
     - name: Lint with flake8
