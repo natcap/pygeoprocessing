@@ -4,7 +4,6 @@ on: [push, pull_request]
 
 jobs:
   Test:
-
     runs-on: ${{ matrix.os }}
     strategy:
       max-parallel: 4
@@ -13,7 +12,6 @@ jobs:
         os: [ubuntu-16.04, windows-latest, macos-latest]
         env:
             - GDAL: "gdal>=2.2,<3"
-            - GDAL: "gdal>=3"
 
     steps:
     - uses: actions/checkout@v1
