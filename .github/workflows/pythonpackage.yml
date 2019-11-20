@@ -22,7 +22,6 @@ jobs:
       with:
         update-conda: false
         python-version: ${{ matrix.python-version }}
-        conda-channels: 'conda-forge'
     - name: Install dependencies
       shell: bash
       env: ${{ matrix.env }}
