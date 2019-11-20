@@ -2587,8 +2587,7 @@ class PyGeoprocessing10(unittest.TestCase):
         # the sides and realizing diagonals got subtracted twice
         expected_result = test_value * (
             n_pixels ** 2 * 9 - n_pixels * 4 * 3 + 4)
-        self.assertAlmostEqual(numpy.sum(target_array), expected_result,
-                               places=3)
+        numpy.testing.assert_allclose(numpy.sum(target_array), expected_result)
 
     def test_convolve_2d_multiprocess(self):
         """PGP.geoprocessing: test convolve 2d (multiprocess)."""
@@ -2625,8 +2624,7 @@ class PyGeoprocessing10(unittest.TestCase):
         # the sides and realizing diagonals got subtracted twice
         expected_result = test_value * (
             n_pixels ** 2 * 9 - n_pixels * 4 * 3 + 4)
-        self.assertAlmostEqual(numpy.sum(target_array), expected_result,
-                               places=3)
+        numpy.testing.assert_allclose(numpy.sum(target_array), expected_result)
 
     def test_convolve_2d_normalize_ignore_nodata(self):
         """PGP.geoprocessing: test convolve 2d w/ normalize and ignore."""
@@ -2659,8 +2657,8 @@ class PyGeoprocessing10(unittest.TestCase):
         target_band = None
         target_raster = None
         expected_result = test_value * n_pixels ** 2
-        self.assertAlmostEqual(numpy.sum(target_array), expected_result,
-                               places=4)
+        numpy.testing.assert_allclose(numpy.sum(target_array),
+                                      expected_result)
 
     def test_convolve_2d_ignore_nodata(self):
         """PGP.geoprocessing: test convolve 2d w/ normalize and ignore."""
@@ -2836,8 +2834,8 @@ class PyGeoprocessing10(unittest.TestCase):
         # calculate expected result by adding up all squares, subtracting off
         # the sides and realizing diagonals got subtracted twice
         expected_result = test_value * (n_pixels ** 2)
-        self.assertAlmostEqual(numpy.sum(target_array), expected_result,
-                               places=3)
+        numpy.testing.assert_allclose(numpy.sum(target_array),
+                                      expected_result)
 
     def test_calculate_slope(self):
         """PGP.geoprocessing: test calculate slope."""
