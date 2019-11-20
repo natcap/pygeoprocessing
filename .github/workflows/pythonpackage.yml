@@ -20,13 +20,13 @@ jobs:
     - name: setup-conda
       uses: s-weigand/setup-conda@v1.0.0
       with:
-        update-conda: true
+        update-conda: false
         python-version: ${{ matrix.python-version }}
-        conda-channels: ''
+        conda-channels: 'conda-forge'
     - name: Install dependencies
       shell: bash
       env: ${{ matrix.env }}
-      run: conda install $GDAL shapely numpy scipy shapely cython rtree pytest
+      run: conda install -y $GDAL shapely numpy scipy shapely cython rtree pytest
     - name: Install PyGeoprocessing
       run: python setup.py install
     - name: Lint with flake8
