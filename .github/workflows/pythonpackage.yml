@@ -10,7 +10,7 @@ jobs:
       max-parallel: 4
       matrix:
         python-version: [3.6, 3.7]
-        os: [ubuntu-16.04, windows-latest, macos-latest]
+        os: [ubuntu-16.04, windows-latest]
         env:
             - GDAL: "gdal>=2.2,<3"
 
@@ -29,14 +29,11 @@ jobs:
           conda install -y $GDAL shapely numpy scipy shapely cython rtree pytest
           conda upgrade -y pip setuptools
 
-    - name: Install PyGeoprocessing (Mac)
-      if: matrix.os == 'macos-latest'
-      shell: bash
-      run: CFLAGS="-stdlib=libc++ -mmacosx-version-min=10.9" python setup.py install
-
     - name: Install PyGeoprocessing (Windows)
       if: matrix.os == 'windows-latest'
-      shell: cmd
+      env:
+          - GDAL_DATA: "$env.CONDA\\Library\\share\\gdal\\"
+      shell: powershell
       # Replace numpy and scipy with PyPI versions to circumvent import issue.
       # https://stackoverflow.com/a/37110747/299084
       run: |
