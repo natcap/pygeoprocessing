@@ -32,7 +32,7 @@ jobs:
     - name: Install PyGeoprocessing (Windows)
       if: matrix.os == 'windows-latest'
       env:
-          - GDAL_DATA: "$env.CONDA\\Library\\share\\gdal\\"
+          GDAL_DATA: "$env.CONDA\\Library\\share\\gdal\\"
       shell: powershell
       # Replace numpy and scipy with PyPI versions to circumvent import issue.
       # https://stackoverflow.com/a/37110747/299084
