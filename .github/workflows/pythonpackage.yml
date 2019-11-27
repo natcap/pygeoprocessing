@@ -31,19 +31,18 @@ jobs:
 
     - name: Install PyGeoprocessing (Mac)
       if: matrix.os == 'macos-latest'
+      shell: bash
       run: CFLAGS="-stdlib=libc++" python setup.py install
 
     - name: Install PyGeoprocessing (Windows)
       if: matrix.os == 'windows-latest'
-      shell: bash
+      shell: cmd
       run: |
-          which python
           python setup.py install
 
     - name: Install PyGeoprocessing (Linux)
       if: matrix.os == 'ubuntu-16.04'
       run: |
-          which python
           python setup.py install
 
     - name: Lint with flake8
