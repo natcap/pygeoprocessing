@@ -32,13 +32,13 @@ jobs:
     - name: Install PyGeoprocessing (Windows)
       if: matrix.os == 'windows-latest'
       env:
-          GDAL_DATA: "$env.CONDA\\Library\\share\\gdal\\"
-      shell: powershell
+          GDAL_DATA: "%CONDA%\\Library\\share\\gdal\\"
+      shell: cmd
       # Replace numpy and scipy with PyPI versions to circumvent import issue.
       # https://stackoverflow.com/a/37110747/299084
       run: |
           pip install --upgrade numpy scipy
-          python setup.py install
+          %CONDA%\python setup.py install
 
     - name: Install PyGeoprocessing (Linux)
       if: matrix.os == 'ubuntu-16.04'
