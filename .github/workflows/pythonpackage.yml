@@ -6,7 +6,7 @@ jobs:
   Test:
     runs-on: ${{ matrix.os }}
     env:
-        PACKAGES: "shapely numpy scipy cython rtree pytest flake8 gdal<3"
+        PACKAGES: "shapely numpy scipy cython 'rtree!=0.9.1' pytest flake8 gdal<3"
     strategy:
       fail-fast: false
       max-parallel: 4
