@@ -8,7 +8,7 @@ jobs:
     env:
         PACKAGES: "shapely numpy scipy cython rtree!=0.9.1 pytest flake8 gdal<3"
     strategy:
-      fail-fast: true
+      fail-fast: false
       max-parallel: 4
       matrix:
         python-version: [3.6, 3.7]
@@ -36,8 +36,7 @@ jobs:
       # Replace numpy and scipy with PyPI versions to circumvent import issue.
       # https://stackoverflow.com/a/37110747/299084
       run: |
-          conda install $PACKAGES
-          $CONDA/python -m pip install -I numpy scipy
+          $CONDA/python -m pip install $PACKAGES
           $CONDA/python setup.py install
 
     - name: Install PyGeoprocessing (Linux)
