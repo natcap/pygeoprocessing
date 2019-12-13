@@ -1,4 +1,6 @@
 """setup.py module for PyGeoprocessing."""
+import platform
+
 import numpy
 from setuptools.extension import Extension
 from setuptools import setup
@@ -11,6 +13,14 @@ _REQUIREMENTS = [
 LONG_DESCRIPTION = open('README.rst').read().format(
     requirements='\n'.join(['    ' + r for r in _REQUIREMENTS]))
 LONG_DESCRIPTION += '\n' + open('HISTORY.rst').read() + '\n'
+
+# Since OSX Mavericks, the stdlib has been renamed.  So if we're on OSX, we
+# need to be sure to define which standard c++ library to use.  I don't have
+# access to a pre-Mavericks mac, so hopefully this won't break on someone's
+# older system.  Tested and it works on Mac OSX Catalina.
+compiler_and_linker_args = []
+if platform.system() == 'Darwin':
+    compiler_and_linker_args = ['-stdlib=libc++']
 
 setup(
     name='pygeoprocessing',
@@ -57,6 +67,8 @@ setup(
             include_dirs=[
                 numpy.get_include(),
                 'src/pygeoprocessing/routing'],
+            extra_compile_args=compiler_and_linker_args,
+            extra_link_args=compiler_and_linker_args,
             language="c++",
         ),
         Extension(
@@ -65,14 +77,18 @@ setup(
             include_dirs=[
                 numpy.get_include(),
                 'src/pygeoprocessing/routing'],
+            extra_compile_args=compiler_and_linker_args,
+            extra_link_args=compiler_and_linker_args,
             language="c++",
         ),
         Extension(
-             "pygeoprocessing.geoprocessing_core",
-             sources=[
-                 'src/pygeoprocessing/geoprocessing_core.pyx'],
-             include_dirs=[numpy.get_include()],
-             language="c++"
+            "pygeoprocessing.geoprocessing_core",
+            sources=[
+                'src/pygeoprocessing/geoprocessing_core.pyx'],
+            include_dirs=[numpy.get_include()],
+            extra_compile_args=compiler_and_linker_args,
+            extra_link_args=compiler_and_linker_args,
+            language="c++"
         ),
     ]
 )
