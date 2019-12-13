@@ -12,7 +12,7 @@ jobs:
       max-parallel: 4
       matrix:
         python-version: [3.6, 3.7]
-        os: [ubuntu-16.04, windows-latest]
+        os: [ubuntu-16.04, windows-latest, macos-latest]
 
     steps:
     - uses: actions/checkout@v1
@@ -39,8 +39,8 @@ jobs:
           $CONDA/python -m pip install $PACKAGES
           $CONDA/python setup.py install
 
-    - name: Install PyGeoprocessing (Linux)
-      if: matrix.os == 'ubuntu-16.04'
+    - name: Install PyGeoprocessing (Linux, Mac)
+      if: matrix.os != 'windows-latest'
       run: |
           conda install $PACKAGES
           python setup.py install
