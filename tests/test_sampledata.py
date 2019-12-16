@@ -1,6 +1,7 @@
 # encoding=UTF-8
 """Tests for the creation of geospatial sample data."""
 import unittest
+import unittest.mock
 import os
 import subprocess
 import shutil
@@ -11,7 +12,6 @@ from osgeo import ogr
 from osgeo import osr
 import numpy
 from shapely.geometry import Polygon
-import mock
 
 
 class RasterCreationTest(unittest.TestCase):
@@ -325,7 +325,7 @@ class GISBrowserTest(unittest.TestCase):
         from pygeoprocessing.testing.sampledata import \
             open_files_in_gis_browser
         file_list = ['foo']
-        with mock.patch('subprocess.call'):
+        with unittest.mock.patch('subprocess.call'):
             open_files_in_gis_browser(file_list)
             self.assertTrue(subprocess.call.called)
             self.assertEqual(subprocess.call.call_args[0][0],
@@ -339,13 +339,13 @@ class CleanupTest(unittest.TestCase):
     def test_cleanup_dir(self):
         """Verify shutil.rmtree is called by cleanup()."""
         from pygeoprocessing.testing.sampledata import cleanup
-        with mock.patch('shutil.rmtree'):
+        with unittest.mock.patch('shutil.rmtree'):
             cleanup('/')
             self.assertTrue(shutil.rmtree.called)
 
     def test_cleanup_file(self):
         """Verify os.remove is called by cleanup()."""
         from pygeoprocessing.testing.sampledata import cleanup
-        with mock.patch('os.remove'):
+        with unittest.mock.patch('os.remove'):
             cleanup('/foo')
             self.assertTrue(os.remove.called)

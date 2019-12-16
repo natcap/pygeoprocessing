@@ -1,6 +1,16 @@
 Release History
 ===============
 
+Unreleased Changes
+------------------
+* Fixed a compilation issue on Mac OS X Catalina related to the compilation
+  of a template in the file iteration component of the out-of-core percentile
+  function.
+* Resolved a compilation issue on Mac OS X (Mavericks and later) where
+  pygeoprocessing would not compile unless some additional compiler and linker
+  flags were provided.  These are now accounted for in the package's compilation
+  steps in ``setup.py``.
+
 1.9.0 (2019-10-22)
 ------------------
 * Fixed a memory error issue that could occur on multiple flow direction flow

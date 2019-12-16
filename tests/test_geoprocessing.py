@@ -3,6 +3,7 @@ import time
 import tempfile
 import os
 import unittest
+import unittest.mock
 import shutil
 import types
 import importlib
@@ -13,7 +14,6 @@ from osgeo import osr
 import numpy
 import scipy.ndimage
 import shapely.geometry
-import mock
 
 
 def passthrough(x):
@@ -121,7 +121,7 @@ class PyGeoprocessing10(unittest.TestCase):
         from pkg_resources import DistributionNotFound
         import pygeoprocessing
 
-        with mock.patch('pygeoprocessing.pkg_resources.get_distribution',
+        with unittest.mock.patch('pygeoprocessing.pkg_resources.get_distribution',
                         side_effect=DistributionNotFound('pygeoprocessing')):
             with self.assertRaises(RuntimeError):
                 # RuntimeError is a side effect of `import pygeoprocessing`,
@@ -2587,8 +2587,7 @@ class PyGeoprocessing10(unittest.TestCase):
         # the sides and realizing diagonals got subtracted twice
         expected_result = test_value * (
             n_pixels ** 2 * 9 - n_pixels * 4 * 3 + 4)
-        self.assertAlmostEqual(numpy.sum(target_array), expected_result,
-                               places=3)
+        numpy.testing.assert_allclose(numpy.sum(target_array), expected_result)
 
     def test_convolve_2d_multiprocess(self):
         """PGP.geoprocessing: test convolve 2d (multiprocess)."""
@@ -2625,8 +2624,7 @@ class PyGeoprocessing10(unittest.TestCase):
         # the sides and realizing diagonals got subtracted twice
         expected_result = test_value * (
             n_pixels ** 2 * 9 - n_pixels * 4 * 3 + 4)
-        self.assertAlmostEqual(numpy.sum(target_array), expected_result,
-                               places=3)
+        numpy.testing.assert_allclose(numpy.sum(target_array), expected_result)
 
     def test_convolve_2d_normalize_ignore_nodata(self):
         """PGP.geoprocessing: test convolve 2d w/ normalize and ignore."""
@@ -2659,8 +2657,8 @@ class PyGeoprocessing10(unittest.TestCase):
         target_band = None
         target_raster = None
         expected_result = test_value * n_pixels ** 2
-        self.assertAlmostEqual(numpy.sum(target_array), expected_result,
-                               places=4)
+        numpy.testing.assert_allclose(numpy.sum(target_array),
+                                      expected_result)
 
     def test_convolve_2d_ignore_nodata(self):
         """PGP.geoprocessing: test convolve 2d w/ normalize and ignore."""
@@ -2836,8 +2834,8 @@ class PyGeoprocessing10(unittest.TestCase):
         # calculate expected result by adding up all squares, subtracting off
         # the sides and realizing diagonals got subtracted twice
         expected_result = test_value * (n_pixels ** 2)
-        self.assertAlmostEqual(numpy.sum(target_array), expected_result,
-                               places=3)
+        numpy.testing.assert_allclose(numpy.sum(target_array),
+                                      expected_result, rtol=1e-6)
 
     def test_calculate_slope(self):
         """PGP.geoprocessing: test calculate slope."""
@@ -3013,7 +3011,7 @@ class PyGeoprocessing10(unittest.TestCase):
             # Patching the function that makes a logger callback so that
             # it will raise an exception (ZeroDivisionError in this case,
             # but any exception should do).
-            with mock.patch(
+            with unittest.mock.patch(
                     'pygeoprocessing.geoprocessing._make_logger_callback',
                     return_value=lambda x, y, z: 1/0.):
                 pygeoprocessing.rasterize(
