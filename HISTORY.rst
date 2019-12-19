@@ -1,7 +1,7 @@
 Release History
 ===============
 
-Unreleased Changes
+1.9.1 (2019-12-19)
 ------------------
 * Fixed a compilation issue on Mac OS X Catalina related to the compilation
   of a template in the file iteration component of the out-of-core percentile
