@@ -10,6 +10,8 @@ Unreleased Changes
   pygeoprocessing would not compile unless some additional compiler and linker
   flags were provided.  These are now accounted for in the package's compilation
   steps in ``setup.py``.
+* ``pygeoprocessing.symbolic.evaluate_raster_calculator_expression``
+  no longer depends on ``sympy`` for its expression evaluation.
 
 1.9.0 (2019-10-22)
 ------------------
