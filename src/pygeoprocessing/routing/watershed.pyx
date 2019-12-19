@@ -1,3 +1,4 @@
+# coding=UTF-8
 # cython: language_level=3
 import time
 import os
@@ -29,7 +30,6 @@ from libcpp.map cimport map as cmap
 
 
 LOGGER = logging.getLogger(__name__)
-LOGGER.addHandler(logging.NullHandler())  # silence logging by default
 
 # This module creates rasters with a memory xy block size of 2**BLOCK_BITS
 cdef int BLOCK_BITS = 8
@@ -39,7 +39,7 @@ cdef int MANAGED_RASTER_N_BLOCKS = 2**7
 
 # these are the creation options that'll be used for all the rasters
 GTIFF_CREATION_OPTIONS = (
-    'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=ZSTD',
+    'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
     'SPARSE_OK=TRUE',
     'BLOCKXSIZE=%d' % (1 << BLOCK_BITS),
     'BLOCKYSIZE=%d' % (1 << BLOCK_BITS))
