@@ -15,8 +15,7 @@ cimport cython
 from cython.operator cimport dereference as deref
 from cython.operator cimport preincrement as inc
 from libcpp.vector cimport vector
-from libcpp.algorithm cimport push_heap
-from libcpp.algorithm cimport pop_heap
+cimport libcpp.algorithm
 from libc.stdio cimport FILE
 from libc.stdio cimport fopen
 from libc.stdio cimport fwrite
@@ -39,6 +38,18 @@ cdef extern from "FastFileIterator.h" nogil:
         size_t size()
     int FastFileIteratorCompare[DATA_T](FastFileIterator[DATA_T]*,
                                         FastFileIterator[DATA_T]*)
+
+# This resolves an issue on Mac OS X Catalina where cimporting ``push_heap``
+# and ``pop_heap`` from the Standard Library would cause compilation to fail
+# with an error message about the candidate function template not being
+# viable.  The SO answer to a related question 
+# (https://stackoverflow.com/a/57586789/299084) suggests a workaround: don't
+# tell Cython that we have a template function.  Using ``...`` here allows
+# us to not have to specify all of the types for which we need a working
+# ``push_heap`` and ``pop_heap``.
+cdef extern from "<algorithm>" namespace "std":
+    void push_heap(...)
+    void pop_heap(...)
 
 @cython.boundscheck(False)
 @cython.wraparound(False)

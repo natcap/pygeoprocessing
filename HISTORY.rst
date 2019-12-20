@@ -1,8 +1,22 @@
 Release History
 ===============
 
+1.9.1 (2019-12-19)
+------------------
+* Fixed a compilation issue on Mac OS X Catalina related to the compilation
+  of a template in the file iteration component of the out-of-core percentile
+  function.
+* Resolved a compilation issue on Mac OS X (Mavericks and later) where
+  pygeoprocessing would not compile unless some additional compiler and linker
+  flags were provided.  These are now accounted for in the package's compilation
+  steps in ``setup.py``.
+* ``pygeoprocessing.symbolic.evaluate_raster_calculator_expression``
+  no longer depends on ``sympy`` for its expression evaluation.
+
 1.9.0 (2019-10-22)
 ------------------
+* Fixed a memory error issue that could occur on multiple flow direction flow
+  accumulation calculations.
 * Added PEP518-compatible build dependencies to ``pyproject.toml``, which has
   been added to source distributions of pygeoprocessing.
 * Added an out-of-core high performance raster percentile function at
