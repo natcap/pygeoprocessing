@@ -2432,22 +2432,16 @@ def convolve_2d(
             kernel_block[numpy.isclose(kernel_block, kernel_nodata)] = 0.0
         kernel_sum += numpy.sum(kernel_block)
 
-    # process workers is 1 - number of threads because we count the current
-    # thread
-    if n_threads > 1:
-        WorkerConstructor = multiprocessing.Process
-    else:
-        WorkerConstructor = threading.Thread
-
     # limit the size of the write queue so we don't accidentally load a whole
     # array into memory, work queue is okay because it's only passing block
     # indexes
-    work_queue = multiprocessing.Queue()
-    write_queue = multiprocessing.Queue(n_threads * 2)
+    work_queue = queue.Queue()
+    write_queue = queue.Queue(n_threads * 2)
 
+    # workers is n_threads - 1 because we count the current thread
     worker_list = []
     for worker_id in range(max(1, n_threads-1)):
-        worker = WorkerConstructor(
+        worker = threading.Thread(
             target=_convolve_2d_worker,
             args=(
                 signal_path_band, kernel_path_band,
@@ -2577,8 +2571,6 @@ def convolve_2d(
 
     for worker in worker_list:
         worker.join(_MAX_TIMEOUT)
-        if n_threads > 1:
-            worker.terminate()
     target_band.FlushCache()
     target_raster.FlushCache()
     gdal.Dataset.__swig_destroy__(target_raster)
