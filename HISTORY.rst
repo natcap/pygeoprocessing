@@ -3,6 +3,13 @@ Release History
 
 1.9.1 (2019-12-19)
 ------------------
+* Removed the ``multiprocessing`` dependency to avoid an occasional deadlock 
+  that occurred on Mac OS X during ``align_and_resize_raster_stack``. 
+  That function now operates serially, but multithreading can be used by
+  passing ``gdal_warp_options``.
+
+1.9.1 (2019-12-19)
+------------------
 * Fixed a compilation issue on Mac OS X Catalina related to the compilation
   of a template in the file iteration component of the out-of-core percentile
   function.
