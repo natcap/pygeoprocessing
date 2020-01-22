@@ -13,8 +13,6 @@ import functools
 import math
 import time
 import tempfile
-import multiprocessing
-import multiprocessing.pool
 import threading
 import collections
 import shutil
@@ -736,73 +734,22 @@ def align_and_resize_raster_stack(
                 n_pixels * align_pixel_size[index] +
                 align_bounding_box[index])
 
-    # using half the number of CPUs because in practice ``warp_raster`` seems
-    # to use 2 cores.
-    n_workers = max(min(multiprocessing.cpu_count(), n_rasters) // 2, 1)
-
-    if n_workers > 1:
-        # We could use multiple processes to take advantage of the
-        # parallelization offered.
+    for index, (base_path, target_path, resample_method) in enumerate(zip(
+            base_raster_path_list, target_raster_path_list,
+            resample_method_list)):
+        warp_raster(
+            base_path, target_pixel_size, target_path, resample_method,
+            target_bb=target_bounding_box,
+            raster_driver_creation_tuple=(raster_driver_creation_tuple),
+            target_sr_wkt=target_sr_wkt,
+            base_sr_wkt=(
+                    None if not base_sr_wkt_list else
+                    base_sr_wkt_list[index]),
+            vector_mask_options=vector_mask_options,
+            gdal_warp_options=gdal_warp_options)
         LOGGER.info(
-            "n_workers > 1 (%d) so starting a processes pool.", n_workers)
-        try:
-            worker_pool = multiprocessing.Pool(n_workers)
-            if HAS_PSUTIL:
-                parent = psutil.Process()
-                parent.nice(PROCESS_LOW_PRIORITY)
-                for child in parent.children():
-                    try:
-                        child.nice(PROCESS_LOW_PRIORITY)
-                    except psutil.NoSuchProcess:
-                        LOGGER.warning(
-                            "NoSuchProcess exception encountered when trying "
-                            "to nice %s. This might be a bug in ``psutil`` so "
-                            "it should be okay to ignore." % parent)
-        except RuntimeError:
-            LOGGER.warning(
-                "Runtime error when starting multiprocessing pool. This is "
-                "likely because this process is running on Windows and the "
-                "main entry point is not wrapped in an ``if __name__ == "
-                "'__main__': block. Returning from this function to attempt "
-                "to recover.")
-            return
-    else:
-        LOGGER.debug("n_workers == 1 so a threadpool is sufficient")
-        worker_pool = multiprocessing.pool.ThreadPool(n_workers)
-
-    try:
-        result_list = []
-        for index, (base_path, target_path, resample_method) in enumerate(zip(
-                base_raster_path_list, target_raster_path_list,
-                resample_method_list)):
-            result = worker_pool.apply_async(
-                func=warp_raster, args=(
-                    base_path, target_pixel_size, target_path,
-                    resample_method),
-                kwds={
-                    'target_bb': target_bounding_box,
-                    'raster_driver_creation_tuple': (
-                        raster_driver_creation_tuple),
-                    'target_sr_wkt': target_sr_wkt,
-                    'base_sr_wkt': (
-                        None if not base_sr_wkt_list else
-                        base_sr_wkt_list[index]),
-                    'vector_mask_options': vector_mask_options,
-                    'gdal_warp_options': gdal_warp_options})
-            result_list.append(result)
-        worker_pool.close()
-        for index, result in enumerate(result_list):
-            result.get()
-            LOGGER.info(
-                '%d of %d aligned: %s', index+1, len(result_list),
-                os.path.basename(target_raster_path_list[index]))
-    except BaseException:
-        worker_pool.terminate()
-        LOGGER.exception("Exception occurred in worker")
-        raise
-    finally:
-        worker_pool.join()
-        worker_pool.terminate()
+            '%d of %d aligned: %s', index+1, n_rasters,
+            os.path.basename(target_path))
 
     LOGGER.info("aligned all %d rasters.", n_rasters)
 
@@ -2483,22 +2430,16 @@ def convolve_2d(
             kernel_block[numpy.isclose(kernel_block, kernel_nodata)] = 0.0
         kernel_sum += numpy.sum(kernel_block)
 
-    # process workers is 1 - number of threads because we count the current
-    # thread
-    if n_threads > 1:
-        WorkerConstructor = multiprocessing.Process
-    else:
-        WorkerConstructor = threading.Thread
-
     # limit the size of the write queue so we don't accidentally load a whole
     # array into memory, work queue is okay because it's only passing block
     # indexes
-    work_queue = multiprocessing.Queue()
-    write_queue = multiprocessing.Queue(n_threads * 2)
+    work_queue = queue.Queue()
+    write_queue = queue.Queue(n_threads * 2)
 
+    # workers is n_threads - 1 because we count the current thread
     worker_list = []
     for worker_id in range(max(1, n_threads-1)):
-        worker = WorkerConstructor(
+        worker = threading.Thread(
             target=_convolve_2d_worker,
             args=(
                 signal_path_band, kernel_path_band,
@@ -2628,8 +2569,6 @@ def convolve_2d(
 
     for worker in worker_list:
         worker.join(_MAX_TIMEOUT)
-        if n_threads > 1:
-            worker.terminate()
     target_band.FlushCache()
     target_raster.FlushCache()
     gdal.Dataset.__swig_destroy__(target_raster)
