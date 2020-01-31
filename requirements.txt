@@ -6,7 +6,7 @@
 GDAL>=2.2.0
 numpy>=1.10.1
 scipy>=0.14.1,!=0.19.1
-Shapely>=1.6.4
+Shapely>=1.6.4,!=1.7.0
 future
 Cython
 Rtree>=0.8.3
