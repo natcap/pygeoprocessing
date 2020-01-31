@@ -5,7 +5,8 @@ on: [push, pull_request]
 jobs:
   Test:
     runs-on: ${{ matrix.os }}
-
+    env:
+        PACKAGES: "pytest flake8"
     strategy:
       fail-fast: false
       max-parallel: 4
@@ -36,12 +37,14 @@ jobs:
       # https://stackoverflow.com/a/37110747/299084
       run: |
           $CONDA/python -m pip install -r requirements.txt
+          $CONDA/python -m pip install $PACKAGES
           $CONDA/python setup.py install
 
     - name: Install PyGeoprocessing (Linux, Mac)
       if: matrix.os != 'windows-latest'
       run: |
           conda install --file requirements.txt
+          conda install $PACKAGES
           python setup.py install
 
     - name: Lint with flake8
