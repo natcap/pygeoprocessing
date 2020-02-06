@@ -1,7 +1,11 @@
 Release History
 ===============
 
-1.9.1 (2019-12-19)
+..
+  Unreleased Changes
+  -----------------
+
+1.9.2 (2020-02-06)
 ------------------
 * Removed the ``multiprocessing`` dependency to avoid an occasional deadlock 
   that occurred on Mac OS X during ``align_and_resize_raster_stack``. 
