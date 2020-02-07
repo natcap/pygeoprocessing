@@ -1,14 +1,18 @@
 Release History
 ===============
 
-..
-  Unreleased Changes
-  -----------------
+
+Unreleased Changes
+------------------
+* Updated ``MANIFEST.in`` to only include files that should be there in the
+  pygeoprocessing source distribution.  This fixes an issue where files
+  matching a variety of extensions anywhere in the pygeoprocessing directory
+  might be included with the source distribution.
 
 1.9.2 (2020-02-06)
 ------------------
-* Removed the ``multiprocessing`` dependency to avoid an occasional deadlock 
-  that occurred on Mac OS X during ``align_and_resize_raster_stack``. 
+* Removed the ``multiprocessing`` dependency to avoid an occasional deadlock
+  that occurred on Mac OS X during ``align_and_resize_raster_stack``.
   That function now operates serially, but multithreading can be used by
   passing ``gdal_warp_options``.
 
