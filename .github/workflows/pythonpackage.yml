@@ -35,7 +35,10 @@ jobs:
       shell: bash
       # Replace numpy and scipy with PyPI versions to circumvent import issue.
       # https://stackoverflow.com/a/37110747/299084
+      #
+      # Shapely 1.7.0 on PyPI has GEOS cdll issues in some environments. Gohlke builds work.
       run: |
+          $CONDA/python -m pip install shapely --index-url http://pypi.naturalcapitalproject.org/simple/ -c requirements.txt
           $CONDA/python -m pip install -r requirements.txt
           $CONDA/python -m pip install $PACKAGES
           $CONDA/python setup.py install
