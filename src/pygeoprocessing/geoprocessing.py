@@ -1630,8 +1630,18 @@ def reproject_vector(
     # Get the SR of the original_layer to use in transforming
     base_sr = layer.GetSpatialRef()
 
-    # Create a coordinate transformation
-    coord_trans = osr.CoordinateTransformation(base_sr, target_sr)
+    # Create a coordinate transformation [GDAL 2 NOT supported]
+    # In GDAL 3.0 spatial references have been updated. One difference is 
+    # how transforms work with lat/lon coordinate systems. Transforms
+    # expect (lat, lon) order in GDAL 3.0 as opposed to thge GIS friendly
+    # (lon, lat). Thus if using a (lat, lon) srs set for backwards 
+    # compatability. 
+    if not base_sr.IsProjected():
+        base_sr.SetAxisMappingStrategy(osr.OAMS_TRADITIONAL_GIS_ORDER)
+    if not target_sr.IsProjected():
+        target_sr.SetAxisMappingStrategy(osr.OAMS_TRADITIONAL_GIS_ORDER)
+        
+    coord_trans = osr.CreateCoordinateTransformation(base_sr, target_sr)
 
     # Copy all of the features in layer to the new shapefile
     target_layer.StartTransaction()
@@ -2722,10 +2732,23 @@ def transform_bounding_box(
     target_ref = osr.SpatialReference()
     target_ref.ImportFromWkt(target_ref_wkt)
 
-    transformer = osr.CoordinateTransformation(base_ref, target_ref)
+    # Create a coordinate transformation [GDAL 2 NOT supported]
+    # In GDAL 3.0 spatial references have been updated. One difference is 
+    # how transforms work with lat/lon coordinate systems. Transforms
+    # expect (lat, lon) order in GDAL 3.0 as opposed to thge GIS friendly
+    # (lon, lat). Thus if using a (lat, lon) srs set for backwards 
+    # compatability. 
+    if not base_ref.IsProjected():
+        base_ref.SetAxisMappingStrategy(osr.OAMS_TRADITIONAL_GIS_ORDER)
+    if not target_ref.IsProjected():
+        target_ref.SetAxisMappingStrategy(osr.OAMS_TRADITIONAL_GIS_ORDER)
+        
+    transformer = osr.CreateCoordinateTransformation(base_ref, target_ref)
 
     def _transform_point(point):
         """Transform an (x,y) point tuple from base_ref to target_ref."""
+        # NOTE: In GDAL 3, if SetAxisMappingStrategy not used then
+        # TransformPoint expects Lat,Lon and NOT Lon,Lat. 
         trans_x, trans_y, _ = (transformer.TransformPoint(*point))
         return (trans_x, trans_y)
 

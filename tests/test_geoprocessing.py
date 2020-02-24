@@ -2448,8 +2448,7 @@ class PyGeoprocessing10(unittest.TestCase):
         # plotting it in a GIS polygon, so the expected result below is
         # regression data
         expected_result = [
-            453189.3366727062, 4918131.085894576,
-            468484.1637522648, 4952660.678869661]
+            453188.671769, 4918131.799327, 468483.727558, 4952661.553935]
         self.assertIs(
             numpy.testing.assert_allclose(
                 result, expected_result), None)
