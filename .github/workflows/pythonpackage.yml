@@ -6,7 +6,7 @@ jobs:
   Test:
     runs-on: ${{ matrix.os }}
     env:
-        PACKAGES: "shapely numpy scipy cython rtree!=0.9.1 pytest flake8 gdal<3"
+        PACKAGES: "pytest flake8"
     strategy:
       fail-fast: false
       max-parallel: 4
@@ -35,13 +35,18 @@ jobs:
       shell: bash
       # Replace numpy and scipy with PyPI versions to circumvent import issue.
       # https://stackoverflow.com/a/37110747/299084
+      #
+      # Shapely 1.7.0 on PyPI has GEOS cdll issues in some environments. Gohlke builds work.
       run: |
+          $CONDA/python -m pip install shapely --index-url http://pypi.naturalcapitalproject.org/simple/ -c requirements.txt
+          $CONDA/python -m pip install -r requirements.txt
           $CONDA/python -m pip install $PACKAGES
           $CONDA/python setup.py install
 
     - name: Install PyGeoprocessing (Linux, Mac)
       if: matrix.os != 'windows-latest'
       run: |
+          conda install --file requirements.txt
           conda install $PACKAGES
           python setup.py install
 
