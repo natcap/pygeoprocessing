@@ -8,6 +8,8 @@ Unreleased Changes
   pygeoprocessing source distribution.  This fixes an issue where files
   matching a variety of extensions anywhere in the pygeoprocessing directory
   might be included with the source distribution.
+* Adding GDAL 3 support and dropping GDAL 2 support.
+* Adding Python 3.8 support.
 
 1.9.2 (2020-02-06)
 ------------------
