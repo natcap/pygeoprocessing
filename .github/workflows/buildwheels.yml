@@ -1,4 +1,4 @@
-name: Build wheels
+name: Python distributions
 on: [push, pull_request]
 jobs:
     build-wheels:
@@ -45,7 +45,7 @@ jobs:
                   path: dist
 
     build-sdist:
-        name: Sdist
+        name: Source Dist
         runs-on: ubuntu-latest
         steps:
             - uses: actions/checkout@v1
