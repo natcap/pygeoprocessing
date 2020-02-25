@@ -21,21 +21,21 @@ jobs:
                     - os: windows-latest
                       python-arch: x86
 
-            steps:
-                - uses: actions/checkout@v1
+        steps:
+            - uses: actions/checkout@v1
 
-                - name: Set up python ${{ matrix.python-version }} ${{ matrix.python-arch }}
-                  with:
-                      python-version: ${{ matrix.python-version }}
-                      architecture: ${{ matrix.python-arch }}
+            - name: Set up python ${{ matrix.python-version }} ${{ matrix.python-arch }}
+              with:
+                  python-version: ${{ matrix.python-version }}
+                  architecture: ${{ matrix.python-arch }}
 
-                - name: Install dependencie
-                  run: python -m pip install ${{ matrix.numpy }} cibuildwheel setuptools_scm cython
+            - name: Install dependencie
+              run: python -m pip install ${{ matrix.numpy }} cibuildwheel setuptools_scm cython
 
-                - name: Build wheel
-                  run: python -m cibuildwheel --output-dir=wheelhouse
+            - name: Build wheel
+              run: python -m cibuildwheel --output-dir=wheelhouse
 
-                - uses: actions/upload-artifact@v1
-                  with:
-                      name: Wheel for ${{ matrix.os }} ${{ matrix.python-version }} ${{ matrix.python-arch }}
-                      path: wheelhouse
+            - uses: actions/upload-artifact@v1
+              with:
+                  name: Wheel for ${{ matrix.os }} ${{ matrix.python-version }} ${{ matrix.python-arch }}
+                  path: wheelhouse
