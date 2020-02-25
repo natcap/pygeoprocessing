@@ -7,7 +7,7 @@ jobs:
         strategy:
             fail-fast: false
             matrix:
-                os: [ubuntu-latest, windows-latest, macos-latest]
+                os: [windows-latest, macos-latest]
                 python-version: [3.6, 3.7, 3.8]
                 python-arch: [x86, x64]
                 include:
@@ -21,9 +21,6 @@ jobs:
                       numpy: "numpy~=1.17"
 
                 exclude:
-                    - os: ubuntu-latest
-                      python-arch: x86
-
                     - os: macos-latest
                       python-arch: x86
 
