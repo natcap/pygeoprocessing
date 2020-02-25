@@ -2,7 +2,7 @@ name: Build wheels
 on: [push, pull_request]
 jobs:
     build-wheels:
-        name: Build wheel
+        name: Wheel
         runs-on: ${{ matrix.os }}
         strategy:
             fail-fast: false
