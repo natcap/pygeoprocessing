@@ -19,7 +19,10 @@ jobs:
                       numpy: "numpy~=1.17"
 
                 exclude:
-                    - os: [ubuntu-latest, macos-latest]
+                    - os: ubuntu-latest
+                      python-arch: x86
+
+                    - os: macos-latest
                       python-arch: x86
 
         steps:
