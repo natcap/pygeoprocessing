@@ -2,8 +2,10 @@ name: Build wheels
 on: [push, pull_request]
 jobs:
     build-wheels:
+        name: Build wheel
         runs-on: ${{ matrix.os }}
         strategy:
+            fail-fast: false
             matrix:
                 os: [ubuntu-latest, windows-latest, macos-latest]
                 python-version: [3.6, 3.7, 3.8]
@@ -34,7 +36,7 @@ jobs:
                   python-version: ${{ matrix.python-version }}
                   architecture: ${{ matrix.python-arch }}
 
-            - name: Install dependencie
+            - name: Install dependencies
               run: python -m pip install ${{ matrix.numpy }} cibuildwheel setuptools_scm cython
 
             - name: Build wheel
