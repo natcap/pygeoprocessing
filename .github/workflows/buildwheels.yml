@@ -37,12 +37,14 @@ jobs:
                   architecture: ${{ matrix.python-arch }}
 
             - name: Install dependencies
-              run: python -m pip install ${{ matrix.numpy }} cibuildwheel setuptools_scm cython
+              run: python -m pip install ${{ matrix.numpy }} cibuildwheel setuptools_scm cython wheel
 
             - name: Build wheel
-              run: python -m cibuildwheel --output-dir=wheelhouse
+              run: |
+                  # python -m cibuildwheel --output-dir=wheelhouse
+                  python setup.py bdist_wheel
 
             - uses: actions/upload-artifact@v1
               with:
                   name: Wheel for ${{ matrix.os }} ${{ matrix.python-version }} ${{ matrix.python-arch }}
-                  path: wheelhouse
+                  path: dist
