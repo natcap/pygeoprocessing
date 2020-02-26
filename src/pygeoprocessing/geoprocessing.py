@@ -1630,17 +1630,6 @@ def reproject_vector(
     # Get the SR of the original_layer to use in transforming
     base_sr = layer.GetSpatialRef()
 
-    # Create a coordinate transformation [GDAL 2 NOT supported]
-    # In GDAL 3.0 spatial references have been updated. One difference is 
-    # how transforms work with lat/lon coordinate systems. Transforms
-    # expect (lat, lon) order in GDAL 3.0 as opposed to thge GIS friendly
-    # (lon, lat). Thus if using a (lat, lon) srs set for backwards 
-    # compatability. 
-    if not base_sr.IsProjected():
-        base_sr.SetAxisMappingStrategy(osr.OAMS_TRADITIONAL_GIS_ORDER)
-    if not target_sr.IsProjected():
-        target_sr.SetAxisMappingStrategy(osr.OAMS_TRADITIONAL_GIS_ORDER)
-        
     coord_trans = osr.CreateCoordinateTransformation(base_sr, target_sr)
 
     # Copy all of the features in layer to the new shapefile
@@ -2732,23 +2721,23 @@ def transform_bounding_box(
     target_ref = osr.SpatialReference()
     target_ref.ImportFromWkt(target_ref_wkt)
 
-    # Create a coordinate transformation [GDAL 2 NOT supported]
-    # In GDAL 3.0 spatial references have been updated. One difference is 
-    # how transforms work with lat/lon coordinate systems. Transforms
-    # expect (lat, lon) order in GDAL 3.0 as opposed to thge GIS friendly
-    # (lon, lat). Thus if using a (lat, lon) srs set for backwards 
-    # compatability. 
-    if not base_ref.IsProjected():
-        base_ref.SetAxisMappingStrategy(osr.OAMS_TRADITIONAL_GIS_ORDER)
-    if not target_ref.IsProjected():
-        target_ref.SetAxisMappingStrategy(osr.OAMS_TRADITIONAL_GIS_ORDER)
-        
+    # Create a coordinate transformation
+    # In GDAL 3.0 spatial references no longer ignore Geographic CRS 
+    # Axis Order and conform to Lat first, Lon Second. Transforms
+    # expect (lat, lon) order as opposed to the GIS friendly (lon, lat). 
+    # See https://trac.osgeo.org/gdal/wiki/rfc73_proj6_wkt2_srsbarn Axis order
+    # issues. SetAxisMappingStrategy(osr.OAMS_TRADITIONAL_GIS_ORDER) swaps 
+    # the axis order, which will use Lon,Lat order for Geographic CRS, 
+    # but otherwise leaves Projected CRS alone
+    base_ref.SetAxisMappingStrategy(osr.OAMS_TRADITIONAL_GIS_ORDER)
+    target_ref.SetAxisMappingStrategy(osr.OAMS_TRADITIONAL_GIS_ORDER)
+    
     transformer = osr.CreateCoordinateTransformation(base_ref, target_ref)
 
     def _transform_point(point):
         """Transform an (x,y) point tuple from base_ref to target_ref."""
-        # NOTE: In GDAL 3, if SetAxisMappingStrategy not used then
-        # TransformPoint expects Lat,Lon and NOT Lon,Lat. 
+        # NOTE: In GDAL 3, if osr.OAMS_TRADITIONAL_GIS_ORDER not set then
+        # TransformPoint expects Lat,Lon and NOT Lon,Lat for Geographic CRS. 
         trans_x, trans_y, _ = (transformer.TransformPoint(*point))
         return (trans_x, trans_y)
 
