@@ -8,7 +8,14 @@ Unreleased Changes
   pygeoprocessing source distribution.  This fixes an issue where files
   matching a variety of extensions anywhere in the pygeoprocessing directory
   might be included with the source distribution.
-* Adding GDAL 3 support and dropping GDAL 2 support.
+* Adding GDAL 3 support and dropping GDAL 2 support. The only non-backwards 
+  compatible issue in GDAL 2 to GDAL 3 is the need to handle Axis Ordering with
+  osr.SetAxisMappingStrategy(osr.OAMS_TRADITIONAL_GIS_ORDER) because of 
+  https://trac.osgeo.org/gdal/wiki/rfc73_proj6_wkt2_srsbarn#Axisorderissues?.
+  Since Axis ordering now matters for Geographic CRS the expected order is
+  Lat,Lon but we use osr.OAMS_TRADITIONAL_GIS_ORDER to swap to Lon,Lat.
+* Using osr.CreateCoordinateTransformation() instead of 
+  osr.CoordinateTransformation() as the GDAL 3 call.
 
 1.9.2 (2020-02-06)
 ------------------
