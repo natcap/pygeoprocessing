@@ -248,30 +248,39 @@ class PyGeoprocessing10(unittest.TestCase):
     def test_reproject_vector(self):
         """PGP.geoprocessing: test reproject vector."""
         import pygeoprocessing
-        import pygeoprocessing.testing
-        from pygeoprocessing.testing import sampledata
-        reference = sampledata.SRS_WILLAMETTE
-        pixel_size = 30.0
-        n_pixels = 9
+        # Create polygon shapefile to reproject
+        base_srs = osr.SpatialReference()
+        base_srs.ImportFromEPSG(3157) # NAD83(CSRS) / UTM zone 10N
+        extents = [443723.1273278, 4956276.905980, 443993.1273278, 4956546.905980]
+
         polygon_a = shapely.geometry.Polygon([
-            (reference.origin[0], reference.origin[1]),
-            (reference.origin[0], -pixel_size * n_pixels+reference.origin[1]),
-            (reference.origin[0]+pixel_size * n_pixels,
-             -pixel_size * n_pixels+reference.origin[1]),
-            (reference.origin[0]+pixel_size * n_pixels, reference.origin[1]),
-            (reference.origin[0], reference.origin[1])])
+            (extents[0], extents[3]), (extents[0], extents[1]),
+            (extents[2], extents[1]), (extents[2], extents[3]),
+            (extents[0], extents[3])])
+
         base_vector_path = os.path.join(
-            self.workspace_dir, 'base_vector.json')
-        aggregate_field_name = 'id'
-        pygeoprocessing.testing.create_vector_on_disk(
-            [polygon_a], reference.projection,
-            fields={'id': 'int'}, attributes=[
-                {aggregate_field_name: 0}],
-            vector_format='GeoJSON', filename=base_vector_path)
+            self.workspace_dir, 'base_vector.shp')
+        field_name = 'id'
+        test_driver = ogr.GetDriverByName('ESRI Shapefile')
+        test_vector = test_driver.CreateDataSource(base_vector_path)
+        test_layer = test_vector.CreateLayer('base_layer', srs=base_srs)
+
+        field_defn = ogr.FieldDefn(field_name, ogr.OFTInteger)
+        test_layer.CreateField(field_defn)
+        layer_defn = test_layer.GetLayerDefn()
+
+        test_feature = ogr.Feature(layer_defn)
+        test_geometry = ogr.CreateGeometryFromWkb(polygon_a.wkb)
+        test_feature.SetGeometry(test_geometry)
+        test_feature.SetField(field_name, 0)
+        test_layer.CreateFeature(test_feature)
+
+        test_layer = None
+        test_vector = None
+        test_driver = None
 
         target_reference = osr.SpatialReference()
-        # UTM zone 18N
-        target_reference.ImportFromEPSG(26918)
+        target_reference.ImportFromEPSG(26918) # UTM zone 18N
 
         target_vector_path = os.path.join(
             self.workspace_dir, 'target_vector.shp')
@@ -285,41 +294,53 @@ class PyGeoprocessing10(unittest.TestCase):
         vector = ogr.Open(target_vector_path)
         layer = vector.GetLayer()
         result_reference = layer.GetSpatialRef()
+
         layer = None
         vector = None
+
         self.assertTrue(
             osr.SpatialReference(result_reference.ExportToWkt()).IsSame(
                 osr.SpatialReference(target_reference.ExportToWkt())))
-                
+
     def test_reproject_vector_partial_fields(self):
         """PGP.geoprocessing: reproject vector with partial field copy."""
         import pygeoprocessing
-        import pygeoprocessing.testing
-        from pygeoprocessing.testing import sampledata
-        reference = sampledata.SRS_WILLAMETTE
-        pixel_size = 30.0
-        n_pixels = 9
+        # Create polygon shapefile to reproject
+        base_srs = osr.SpatialReference()
+        base_srs.ImportFromEPSG(3157) # NAD83(CSRS) / UTM zone 10N
+        extents = [443723.1273278, 4956276.905980, 443993.1273278, 4956546.905980]
+
         polygon_a = shapely.geometry.Polygon([
-            (reference.origin[0], reference.origin[1]),
-            (reference.origin[0], -pixel_size * n_pixels+reference.origin[1]),
-            (reference.origin[0]+pixel_size * n_pixels,
-             -pixel_size * n_pixels+reference.origin[1]),
-            (reference.origin[0]+pixel_size * n_pixels, reference.origin[1]),
-            (reference.origin[0], reference.origin[1])])
+            (extents[0], extents[3]), (extents[0], extents[1]),
+            (extents[2], extents[1]), (extents[2], extents[3]),
+            (extents[0], extents[3])])
+
         base_vector_path = os.path.join(
-            self.workspace_dir, 'base_vector.json')
-        aggregate_field_name = 'id'
-        pygeoprocessing.testing.create_vector_on_disk(
-            [polygon_a], reference.projection,
-            fields={
-                'id': 'int',
-                'foo': 'string'},
-            attributes=[{aggregate_field_name: 0}],
-            vector_format='GeoJSON', filename=base_vector_path)
+            self.workspace_dir, 'base_vector.shp')
+        fields = {'id':0, 'foo': 'bar'}
+        ogr_types = {'id': ogr.OFTInteger, 'foo': ogr.OFTString}
+        test_driver = ogr.GetDriverByName('ESRI Shapefile')
+        test_vector = test_driver.CreateDataSource(base_vector_path)
+        test_layer = test_vector.CreateLayer('base_layer', srs=base_srs)
+
+        for field_name in fields.keys():
+            field_defn = ogr.FieldDefn(field_name, ogr_types[field_name])
+            test_layer.CreateField(field_defn)
+        layer_defn = test_layer.GetLayerDefn()
+
+        test_feature = ogr.Feature(layer_defn)
+        test_geometry = ogr.CreateGeometryFromWkb(polygon_a.wkb)
+        test_feature.SetGeometry(test_geometry)
+        for field_name, field_val in fields.items():
+            test_feature.SetField(field_name, field_val)
+        test_layer.CreateFeature(test_feature)
+
+        test_layer = None
+        test_vector = None
+        test_driver = None
 
         target_reference = osr.SpatialReference()
-        # UTM zone 18N
-        target_reference.ImportFromEPSG(26918)
+        target_reference.ImportFromEPSG(26918) # UTM zone 18N
 
         target_vector_path = os.path.join(
             self.workspace_dir, 'target_vector.shp')
@@ -358,36 +379,43 @@ class PyGeoprocessing10(unittest.TestCase):
         self.assertTrue(layer_defn.GetFieldCount(), 0)
         layer = None
         vector = None
-    
+
     def test_reproject_vector_latlon_to_utm(self):
         """PGP.geoprocessing: reproject vector from lat/lon to utm."""
         import pygeoprocessing
-        import pygeoprocessing.testing
-        from pygeoprocessing.testing import sampledata
-        reference = sampledata.SRS_WGS84
-        pixel_size = 0.00027 # 30m is about 0.00027 degrees
-        n_pixels = 9
+        # Create polygon shapefile to reproject
+        base_srs = osr.SpatialReference()
+        base_srs.ImportFromEPSG(4326) # WGS84
+        extents = [-123.71107369, 44.7600990, -121.71107369, 43.7600990]
+
         polygon_a = shapely.geometry.Polygon([
-            (reference.origin[0], reference.origin[1]),
-            (reference.origin[0], -pixel_size * n_pixels+reference.origin[1]),
-            (reference.origin[0]+pixel_size * n_pixels,
-             -pixel_size * n_pixels+reference.origin[1]),
-            (reference.origin[0]+pixel_size * n_pixels, reference.origin[1]),
-            (reference.origin[0], reference.origin[1])])
+            (extents[0], extents[3]), (extents[0], extents[1]),
+            (extents[2], extents[1]), (extents[2], extents[3]),
+            (extents[0], extents[3])])
+
         base_vector_path = os.path.join(
-            self.workspace_dir, 'base_vector.json')
-        aggregate_field_name = 'id'
-        pygeoprocessing.testing.create_vector_on_disk(
-            [polygon_a], reference.projection,
-            fields={
-                'id': 'int',
-                'foo': 'string'},
-            attributes=[{aggregate_field_name: 0}],
-            vector_format='GeoJSON', filename=base_vector_path)
+            self.workspace_dir, 'base_vector.shp')
+        field_name = 'id'
+        test_driver = ogr.GetDriverByName('ESRI Shapefile')
+        test_vector = test_driver.CreateDataSource(base_vector_path)
+        test_layer = test_vector.CreateLayer('base_layer', srs=base_srs)
+
+        field_defn = ogr.FieldDefn(field_name, ogr.OFTInteger)
+        test_layer.CreateField(field_defn)
+        layer_defn = test_layer.GetLayerDefn()
+
+        test_feature = ogr.Feature(layer_defn)
+        test_geometry = ogr.CreateGeometryFromWkb(polygon_a.wkb)
+        test_feature.SetGeometry(test_geometry)
+        test_feature.SetField(field_name, 0)
+        test_layer.CreateFeature(test_feature)
+
+        test_layer = None
+        test_vector = None
+        test_driver = None
 
         target_reference = osr.SpatialReference()
-        # UTM zone 10N
-        target_reference.ImportFromEPSG(3157)
+        target_reference.ImportFromEPSG(3157) # UTM zone 10N
 
         target_vector_path = os.path.join(
             self.workspace_dir, 'target_vector.shp')
@@ -407,32 +435,40 @@ class PyGeoprocessing10(unittest.TestCase):
                 osr.SpatialReference(target_reference.ExportToWkt())))
         self.assertTrue(layer_defn.GetFieldCount(), 1)
         self.assertEqual(layer_defn.GetFieldIndex('id'), 0)
-                   
+
     def test_reproject_vector_utm_to_latlon(self):
         """PGP.geoprocessing: reproject vector from utm to lat/lon."""
         import pygeoprocessing
-        import pygeoprocessing.testing
-        from pygeoprocessing.testing import sampledata
-        reference = sampledata.SRS_WILLAMETTE
-        pixel_size = 30.0
-        n_pixels = 9
+        # Create polygon shapefile to reproject
+        base_srs = osr.SpatialReference()
+        base_srs.ImportFromEPSG(3157) # NAD83(CSRS) / UTM zone 10N
+        extents = [443723.1273278, 4956276.905980, 443993.1273278, 4956546.905980]
+
         polygon_a = shapely.geometry.Polygon([
-            (reference.origin[0], reference.origin[1]),
-            (reference.origin[0], -pixel_size * n_pixels+reference.origin[1]),
-            (reference.origin[0]+pixel_size * n_pixels,
-             -pixel_size * n_pixels+reference.origin[1]),
-            (reference.origin[0]+pixel_size * n_pixels, reference.origin[1]),
-            (reference.origin[0], reference.origin[1])])
+            (extents[0], extents[3]), (extents[0], extents[1]),
+            (extents[2], extents[1]), (extents[2], extents[3]),
+            (extents[0], extents[3])])
+
         base_vector_path = os.path.join(
-            self.workspace_dir, 'base_vector.json')
-        aggregate_field_name = 'id'
-        pygeoprocessing.testing.create_vector_on_disk(
-            [polygon_a], reference.projection,
-            fields={
-                'id': 'int',
-                'foo': 'string'},
-            attributes=[{aggregate_field_name: 0}],
-            vector_format='GeoJSON', filename=base_vector_path)
+            self.workspace_dir, 'base_vector.shp')
+        field_name = 'id'
+        test_driver = ogr.GetDriverByName('ESRI Shapefile')
+        test_vector = test_driver.CreateDataSource(base_vector_path)
+        test_layer = test_vector.CreateLayer('base_layer', srs=base_srs)
+
+        field_defn = ogr.FieldDefn(field_name, ogr.OFTInteger)
+        test_layer.CreateField(field_defn)
+        layer_defn = test_layer.GetLayerDefn()
+
+        test_feature = ogr.Feature(layer_defn)
+        test_geometry = ogr.CreateGeometryFromWkb(polygon_a.wkb)
+        test_feature.SetGeometry(test_geometry)
+        test_feature.SetField(field_name, 0)
+        test_layer.CreateFeature(test_feature)
+
+        test_layer = None
+        test_vector = None
+        test_driver = None
 
         # Lat/Lon WGS84
         target_reference = osr.SpatialReference()
@@ -456,32 +492,40 @@ class PyGeoprocessing10(unittest.TestCase):
                 osr.SpatialReference(target_reference.ExportToWkt())))
         self.assertTrue(layer_defn.GetFieldCount(), 1)
         self.assertEqual(layer_defn.GetFieldIndex('id'), 0)
-                
+
     def test_reproject_vector_latlon_to_latlon(self):
         """PGP.geoprocessing: reproject vector from lat/lon to utm."""
         import pygeoprocessing
-        import pygeoprocessing.testing
-        from pygeoprocessing.testing import sampledata
-        reference = sampledata.SRS_WGS84
-        pixel_size = 0.00027 # 30m is about 0.00027 degrees
-        n_pixels = 9
-        
+        # Create polygon shapefile to reproject
+        base_srs = osr.SpatialReference()
+        base_srs.ImportFromEPSG(4326) # WGS84
+        extents = [-123.71107369, 44.7600990, -121.71107369, 43.7600990]
+
         polygon_a = shapely.geometry.Polygon([
-            (reference.origin[0], reference.origin[1]),
-            (reference.origin[0], -pixel_size * n_pixels+reference.origin[1]),
-            (reference.origin[0]+pixel_size * n_pixels,
-             -pixel_size * n_pixels+reference.origin[1]),
-            (reference.origin[0]+pixel_size * n_pixels, reference.origin[1]),
-            (reference.origin[0], reference.origin[1])])
-            
+            (extents[0], extents[3]), (extents[0], extents[1]),
+            (extents[2], extents[1]), (extents[2], extents[3]),
+            (extents[0], extents[3])])
+
         base_vector_path = os.path.join(
             self.workspace_dir, 'base_vector.shp')
-        aggregate_field_name = 'id'
-        pygeoprocessing.testing.create_vector_on_disk(
-            [polygon_a], reference.projection,
-            fields={'id': 'int'}, attributes=[
-                {aggregate_field_name: 0}],
-            vector_format='ESRI Shapefile', filename=base_vector_path)
+        field_name = 'id'
+        test_driver = ogr.GetDriverByName('ESRI Shapefile')
+        test_vector = test_driver.CreateDataSource(base_vector_path)
+        test_layer = test_vector.CreateLayer('base_layer', srs=base_srs)
+
+        field_defn = ogr.FieldDefn(field_name, ogr.OFTInteger)
+        test_layer.CreateField(field_defn)
+        layer_defn = test_layer.GetLayerDefn()
+
+        test_feature = ogr.Feature(layer_defn)
+        test_geometry = ogr.CreateGeometryFromWkb(polygon_a.wkb)
+        test_feature.SetGeometry(test_geometry)
+        test_feature.SetField(field_name, 0)
+        test_layer.CreateFeature(test_feature)
+
+        test_layer = None
+        test_vector = None
+        test_driver = None
 
         # Lat/Lon WGS84
         target_reference = osr.SpatialReference()
@@ -505,33 +549,41 @@ class PyGeoprocessing10(unittest.TestCase):
                 osr.SpatialReference(target_reference.ExportToWkt())))
         # Since projecting to the same SRS, the vectors should be identical
         pygeoprocessing.testing.assert_vectors_equal(
-            base_vector_path, target_vector_path, 1e-3)  
-    
+            base_vector_path, target_vector_path, 1e-3)
+
     def test_reproject_vector_utm_to_utm(self):
         """PGP.geoprocessing: reproject vector from utm to utm."""
         import pygeoprocessing
-        import pygeoprocessing.testing
-        from pygeoprocessing.testing import sampledata
-        reference = sampledata.SRS_WILLAMETTE
-        pixel_size = 30.0
-        n_pixels = 9
-        
+        # Create polygon shapefile to reproject
+        base_srs = osr.SpatialReference()
+        base_srs.ImportFromEPSG(3157) # NAD83(CSRS) / UTM zone 10N
+        extents = [443723.1273278, 4956276.905980, 443993.1273278, 4956546.905980]
+
         polygon_a = shapely.geometry.Polygon([
-            (reference.origin[0], reference.origin[1]),
-            (reference.origin[0], -pixel_size * n_pixels+reference.origin[1]),
-            (reference.origin[0]+pixel_size * n_pixels,
-             -pixel_size * n_pixels+reference.origin[1]),
-            (reference.origin[0]+pixel_size * n_pixels, reference.origin[1]),
-            (reference.origin[0], reference.origin[1])])
-            
+            (extents[0], extents[3]), (extents[0], extents[1]),
+            (extents[2], extents[1]), (extents[2], extents[3]),
+            (extents[0], extents[3])])
+
         base_vector_path = os.path.join(
             self.workspace_dir, 'base_vector.shp')
-        aggregate_field_name = 'id'
-        pygeoprocessing.testing.create_vector_on_disk(
-            [polygon_a], reference.projection,
-            fields={'id': 'int'}, attributes=[
-                {aggregate_field_name: 0}],
-            vector_format='ESRI Shapefile', filename=base_vector_path)
+        field_name = 'id'
+        test_driver = ogr.GetDriverByName('ESRI Shapefile')
+        test_vector = test_driver.CreateDataSource(base_vector_path)
+        test_layer = test_vector.CreateLayer('base_layer', srs=base_srs)
+
+        field_defn = ogr.FieldDefn(field_name, ogr.OFTInteger)
+        test_layer.CreateField(field_defn)
+        layer_defn = test_layer.GetLayerDefn()
+
+        test_feature = ogr.Feature(layer_defn)
+        test_geometry = ogr.CreateGeometryFromWkb(polygon_a.wkb)
+        test_feature.SetGeometry(test_geometry)
+        test_feature.SetField(field_name, 0)
+        test_layer.CreateFeature(test_feature)
+
+        test_layer = None
+        test_vector = None
+        test_driver = None
 
         # Lat/Lon WGS84
         target_reference = osr.SpatialReference()
@@ -553,7 +605,7 @@ class PyGeoprocessing10(unittest.TestCase):
         self.assertTrue(
             osr.SpatialReference(result_reference.ExportToWkt()).IsSame(
                 osr.SpatialReference(target_reference.ExportToWkt())))
-        
+
     def test_calculate_disjoint_polygon_set(self):
         """PGP.geoprocessing: test calc_disjoint_poly no/intersection."""
         import pygeoprocessing
@@ -2664,7 +2716,7 @@ class PyGeoprocessing10(unittest.TestCase):
         """PGP.geoprocessing: test geotransforming lat/lon box to UTM19N."""
         import pygeoprocessing
 
-        # lat/lon bounds for Coast of New England from shapefile created in 
+        # lat/lon bounds for Coast of New England from shapefile created in
         # QGIS 3.10.2 running GDAL 3.0.3
         bounding_box = [-72.3638439, 40.447948, -68.0041948, 43.1441579]
 
@@ -2676,7 +2728,7 @@ class PyGeoprocessing10(unittest.TestCase):
 
         result = pygeoprocessing.transform_bounding_box(
             bounding_box, wgs84_srs.ExportToWkt(), target_srs.ExportToWkt())
-        # Expected result taken from QGIS UTM19N - WGS84 reference and 
+        # Expected result taken from QGIS UTM19N - WGS84 reference and
         # converting extents from above bounding box (extents) of shapefile
         expected_result = [
             214722.122449, 4477484.382162, 584444.275934, 4782318.029707]
@@ -2701,19 +2753,19 @@ class PyGeoprocessing10(unittest.TestCase):
 
         result = pygeoprocessing.transform_bounding_box(
             bounding_box, utm19n_srs.ExportToWkt(), target_srs.ExportToWkt())
-        # Expected result taken from QGIS UTM19N - WGS84 reference and 
+        # Expected result taken from QGIS UTM19N - WGS84 reference and
         # converting extents from above bounding box (extents) of shapefile
         expected_result = [-72.507803,  40.399122, -67.960794,  43.193562]
 
         self.assertIs(
             numpy.testing.assert_allclose(
                 result, expected_result), None)
-                
+
     def test_transform_box_latlon_to_latlon(self):
         """PGP.geoprocessing: test geotransforming lat/lon box to lat/lon."""
         import pygeoprocessing
 
-        # lat/lon bounds for Coast of New England from shapefile created in 
+        # lat/lon bounds for Coast of New England from shapefile created in
         # QGIS 3.10.2 running GDAL 3.0.3
         bounding_box = [-72.3638439, 40.447948, -68.0041948, 43.1441579]
 
@@ -2731,7 +2783,7 @@ class PyGeoprocessing10(unittest.TestCase):
         self.assertIs(
             numpy.testing.assert_allclose(
                 result, expected_result), None)
-                
+
     def test_transform_box_utm_to_utm(self):
         """PGP.geoprocessing: test geotransforming utm box to utm."""
         import pygeoprocessing
