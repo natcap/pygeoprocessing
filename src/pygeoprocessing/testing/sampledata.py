@@ -113,6 +113,11 @@ SRS_WILLAMETTE = ReferenceData(
     origin=(443723.127327877911739, 4956546.905980412848294),
     pixel_size=lambda x: (x, -1. * x)
 )
+SRS_WGS84 = ReferenceData(
+    projection=projection_wkt(4326),
+    origin=(-123.71107369348861, 44.76009901797307),
+    pixel_size=lambda x: (x, -1. * x)
+)
 
 VECTOR_FIELD_TYPES = {
     'int': ogr.OFTInteger,
