@@ -6,6 +6,8 @@ Unreleased Changes
 ------------------
 * Adding a GitHub Actions-based build job for building wheels and a source
   distribution for a given commit of pygeoprocessing.
+* Updated ``setup.py`` to point the URL project link to the project's new
+  home on GitHub.
 * Updated ``MANIFEST.in`` to only include files that should be there in the
   pygeoprocessing source distribution.  This fixes an issue where files
   matching a variety of extensions anywhere in the pygeoprocessing directory
