@@ -28,7 +28,7 @@ setup(
     long_description=LONG_DESCRIPTION,
     maintainer='Rich Sharp',
     maintainer_email='richpsharp@gmail.com',
-    url='https://bitbucket.org/natcap/pygeoprocessing',
+    url='https://github.com/natcap/pygeoprocessing',
     packages=[
         'pygeoprocessing',
         'pygeoprocessing.routing',
