@@ -12,7 +12,7 @@ jobs:
       max-parallel: 4
       matrix:
         python-version: [3.6, 3.7]
-        os: [ubuntu-16.04, windows-latest, macos-latest]
+        os: [ubuntu-18.04, windows-latest, macos-latest]
 
     steps:
     - uses: actions/checkout@v2
@@ -25,8 +25,7 @@ jobs:
       with:
         update-conda: false
         python-version: ${{ matrix.python-version }}
-        conda-channels: defaults
-    - name: Install dependencies
+        conda-channels: anaconda, conda-forge
       shell: bash
       run: conda upgrade -y pip setuptools
 
