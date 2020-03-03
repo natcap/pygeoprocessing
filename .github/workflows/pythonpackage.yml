@@ -26,6 +26,7 @@ jobs:
         update-conda: false
         python-version: ${{ matrix.python-version }}
         conda-channels: anaconda, conda-forge
+    - name: Install dependencies
       shell: bash
       run: conda upgrade -y pip setuptools
 
