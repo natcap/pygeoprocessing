@@ -3,7 +3,7 @@
 # This file records the packages and requirements needed in order for
 # pygeoprocessing to work as expected.
 
-GDAL>=3.0
+GDAL==3.0.4
 numpy>=1.10.1
 scipy>=0.14.1,!=0.19.1
 Shapely>=1.6.4
