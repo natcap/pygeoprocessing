@@ -121,7 +121,8 @@ class PyGeoprocessing10(unittest.TestCase):
         from pkg_resources import DistributionNotFound
         import pygeoprocessing
 
-        with unittest.mock.patch('pygeoprocessing.pkg_resources.get_distribution',
+        with unittest.mock.patch(
+                        'pygeoprocessing.pkg_resources.get_distribution',
                         side_effect=DistributionNotFound('pygeoprocessing')):
             with self.assertRaises(RuntimeError):
                 # RuntimeError is a side effect of `import pygeoprocessing`,
@@ -248,15 +249,16 @@ class PyGeoprocessing10(unittest.TestCase):
     def test_reproject_vector(self):
         """PGP.geoprocessing: test reproject vector."""
         import pygeoprocessing
+
         # Create polygon shapefile to reproject
         base_srs = osr.SpatialReference()
-        base_srs.ImportFromEPSG(3157) # NAD83(CSRS) / UTM zone 10N
-        extents = [443723.1273278, 4956276.905980, 443993.1273278, 4956546.905980]
+        # NAD83(CSRS) / UTM zone 10N
+        base_srs.ImportFromEPSG(3157)
+        extents = [
+            443723.1273278, 4956276.905980, 443993.1273278, 4956546.905980]
 
-        polygon_a = shapely.geometry.Polygon([
-            (extents[0], extents[3]), (extents[0], extents[1]),
-            (extents[2], extents[1]), (extents[2], extents[3]),
-            (extents[0], extents[3])])
+        polygon_a = shapely.geometry.box(
+            extents[0], extents[1], extents[2], extents[3])
 
         base_vector_path = os.path.join(
             self.workspace_dir, 'base_vector.shp')
@@ -280,7 +282,8 @@ class PyGeoprocessing10(unittest.TestCase):
         test_driver = None
 
         target_reference = osr.SpatialReference()
-        target_reference.ImportFromEPSG(26918) # UTM zone 18N
+        # UTM zone 18N
+        target_reference.ImportFromEPSG(26918)
 
         target_vector_path = os.path.join(
             self.workspace_dir, 'target_vector.shp')
@@ -305,19 +308,20 @@ class PyGeoprocessing10(unittest.TestCase):
     def test_reproject_vector_partial_fields(self):
         """PGP.geoprocessing: reproject vector with partial field copy."""
         import pygeoprocessing
+
         # Create polygon shapefile to reproject
         base_srs = osr.SpatialReference()
-        base_srs.ImportFromEPSG(3157) # NAD83(CSRS) / UTM zone 10N
-        extents = [443723.1273278, 4956276.905980, 443993.1273278, 4956546.905980]
+        # NAD83(CSRS) / UTM zone 10N
+        base_srs.ImportFromEPSG(3157)
+        extents = [
+            443723.1273278, 4956276.905980, 443993.1273278, 4956546.905980]
 
-        polygon_a = shapely.geometry.Polygon([
-            (extents[0], extents[3]), (extents[0], extents[1]),
-            (extents[2], extents[1]), (extents[2], extents[3]),
-            (extents[0], extents[3])])
+        polygon_a = shapely.geometry.box(
+            extents[0], extents[1], extents[2], extents[3])
 
         base_vector_path = os.path.join(
             self.workspace_dir, 'base_vector.shp')
-        fields = {'id':0, 'foo': 'bar'}
+        fields = {'id': 0, 'foo': 'bar'}
         ogr_types = {'id': ogr.OFTInteger, 'foo': ogr.OFTString}
         test_driver = ogr.GetDriverByName('ESRI Shapefile')
         test_vector = test_driver.CreateDataSource(base_vector_path)
@@ -340,7 +344,8 @@ class PyGeoprocessing10(unittest.TestCase):
         test_driver = None
 
         target_reference = osr.SpatialReference()
-        target_reference.ImportFromEPSG(26918) # UTM zone 18N
+        # UTM zone 18N
+        target_reference.ImportFromEPSG(26918)
 
         target_vector_path = os.path.join(
             self.workspace_dir, 'target_vector.shp')
@@ -383,15 +388,15 @@ class PyGeoprocessing10(unittest.TestCase):
     def test_reproject_vector_latlon_to_utm(self):
         """PGP.geoprocessing: reproject vector from lat/lon to utm."""
         import pygeoprocessing
+
         # Create polygon shapefile to reproject
         base_srs = osr.SpatialReference()
-        base_srs.ImportFromEPSG(4326) # WGS84
+        # WGS84
+        base_srs.ImportFromEPSG(4326)
         extents = [-123.71107369, 44.7600990, -121.71107369, 43.7600990]
 
-        polygon_a = shapely.geometry.Polygon([
-            (extents[0], extents[3]), (extents[0], extents[1]),
-            (extents[2], extents[1]), (extents[2], extents[3]),
-            (extents[0], extents[3])])
+        polygon_a = shapely.geometry.box(
+            extents[0], extents[1], extents[2], extents[3])
 
         base_vector_path = os.path.join(
             self.workspace_dir, 'base_vector.shp')
@@ -415,7 +420,8 @@ class PyGeoprocessing10(unittest.TestCase):
         test_driver = None
 
         target_reference = osr.SpatialReference()
-        target_reference.ImportFromEPSG(3157) # UTM zone 10N
+        # UTM zone 10N
+        target_reference.ImportFromEPSG(3157)
 
         target_vector_path = os.path.join(
             self.workspace_dir, 'target_vector.shp')
@@ -439,15 +445,16 @@ class PyGeoprocessing10(unittest.TestCase):
     def test_reproject_vector_utm_to_latlon(self):
         """PGP.geoprocessing: reproject vector from utm to lat/lon."""
         import pygeoprocessing
+
         # Create polygon shapefile to reproject
         base_srs = osr.SpatialReference()
-        base_srs.ImportFromEPSG(3157) # NAD83(CSRS) / UTM zone 10N
-        extents = [443723.1273278, 4956276.905980, 443993.1273278, 4956546.905980]
+        # NAD83(CSRS) / UTM zone 10N
+        base_srs.ImportFromEPSG(3157)
+        extents = [
+            443723.1273278, 4956276.905980, 443993.1273278, 4956546.905980]
 
-        polygon_a = shapely.geometry.Polygon([
-            (extents[0], extents[3]), (extents[0], extents[1]),
-            (extents[2], extents[1]), (extents[2], extents[3]),
-            (extents[0], extents[3])])
+        polygon_a = shapely.geometry.box(
+            extents[0], extents[1], extents[2], extents[3])
 
         base_vector_path = os.path.join(
             self.workspace_dir, 'base_vector.shp')
@@ -496,15 +503,15 @@ class PyGeoprocessing10(unittest.TestCase):
     def test_reproject_vector_latlon_to_latlon(self):
         """PGP.geoprocessing: reproject vector from lat/lon to utm."""
         import pygeoprocessing
+
         # Create polygon shapefile to reproject
         base_srs = osr.SpatialReference()
-        base_srs.ImportFromEPSG(4326) # WGS84
+        # WGS84
+        base_srs.ImportFromEPSG(4326)
         extents = [-123.71107369, 44.7600990, -121.71107369, 43.7600990]
 
-        polygon_a = shapely.geometry.Polygon([
-            (extents[0], extents[3]), (extents[0], extents[1]),
-            (extents[2], extents[1]), (extents[2], extents[3]),
-            (extents[0], extents[3])])
+        polygon_a = shapely.geometry.box(
+            extents[0], extents[1], extents[2], extents[3])
 
         base_vector_path = os.path.join(
             self.workspace_dir, 'base_vector.shp')
@@ -554,15 +561,16 @@ class PyGeoprocessing10(unittest.TestCase):
     def test_reproject_vector_utm_to_utm(self):
         """PGP.geoprocessing: reproject vector from utm to utm."""
         import pygeoprocessing
+
         # Create polygon shapefile to reproject
         base_srs = osr.SpatialReference()
-        base_srs.ImportFromEPSG(3157) # NAD83(CSRS) / UTM zone 10N
-        extents = [443723.1273278, 4956276.905980, 443993.1273278, 4956546.905980]
+        # NAD83(CSRS) / UTM zone 10N
+        base_srs.ImportFromEPSG(3157)
+        extents = [
+            443723.1273278, 4956276.905980, 443993.1273278, 4956546.905980]
 
-        polygon_a = shapely.geometry.Polygon([
-            (extents[0], extents[3]), (extents[0], extents[1]),
-            (extents[2], extents[1]), (extents[2], extents[3]),
-            (extents[0], extents[3])])
+        polygon_a = shapely.geometry.box(
+            extents[0], extents[1], extents[2], extents[3])
 
         base_vector_path = os.path.join(
             self.workspace_dir, 'base_vector.shp')
@@ -585,9 +593,9 @@ class PyGeoprocessing10(unittest.TestCase):
         test_vector = None
         test_driver = None
 
-        # Lat/Lon WGS84
         target_reference = osr.SpatialReference()
-        target_reference.ImportFromEPSG(26910) # NAD83 / UTM 10N
+        # NAD83 / UTM 10N
+        target_reference.ImportFromEPSG(26910)
 
         target_vector_path = os.path.join(
             self.workspace_dir, 'target_vector.shp')
