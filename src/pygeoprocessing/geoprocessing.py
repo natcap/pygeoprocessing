@@ -578,9 +578,10 @@ def align_and_resize_raster_stack(
             name string as the first element and a GDAL creation options
             tuple/list as the second. Defaults to a GTiff driver tuple
             defined at geoprocessing.DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS.
-        osr_axis_mapping_strategy (OSR object): The OSR Axis Mapping Strategy 
-            as the first element. Defaults to a GIS friendly Lon,Lat order 
-            defined at geoprocessing.DEFAULT_OSR_AXIS_MAPPING_STRATEGY.
+        osr_axis_mapping_strategy (int): OSR axis mapping strategy for 
+            ``SpatialReference`` objects. Defaults to 
+            ``geoprocessing.DEFAULT_OSR_AXIS_MAPPING_STRATEGY``. This parameter
+            should not be changed unless you know what you are doing.
 
     Returns:
         None
@@ -1589,9 +1590,10 @@ def reproject_vector(
             reprojection step. If it is an iterable, it will contain the
             field names to exclusively copy. An unmatched fieldname will be
             ignored. If ``False`` no fields are copied into the new vector.
-        osr_axis_mapping_strategy (OSR object): The OSR Axis Mapping Strategy 
-            as the first element. Defaults to a GIS friendly Lon,Lat order 
-            defined at geoprocessing.DEFAULT_OSR_AXIS_MAPPING_STRATEGY.
+        osr_axis_mapping_strategy (int): OSR axis mapping strategy for 
+            ``SpatialReference`` objects. Defaults to 
+            ``geoprocessing.DEFAULT_OSR_AXIS_MAPPING_STRATEGY``. This parameter
+            should not be changed unless you know what you are doing.
 
     Returns:
         None
@@ -1836,9 +1838,10 @@ def warp_raster(
             name string as the first element and a GDAL creation options
             tuple/list as the second. Defaults to a GTiff driver tuple
             defined at geoprocessing.DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS.
-        osr_axis_mapping_strategy (OSR object): The OSR Axis Mapping Strategy 
-            as the first element. Defaults to a GIS friendly Lon,Lat order 
-            defined at geoprocessing.DEFAULT_OSR_AXIS_MAPPING_STRATEGY.
+        osr_axis_mapping_strategy (int): OSR axis mapping strategy for 
+            ``SpatialReference`` objects. Defaults to 
+            ``geoprocessing.DEFAULT_OSR_AXIS_MAPPING_STRATEGY``. This parameter
+            should not be changed unless you know what you are doing.
 
     Returns:
         None
@@ -2734,9 +2737,10 @@ def transform_bounding_box(
             bounding box edge to sample along. A value of 2 will sample just
             the corners while a value of 3 will also sample the corners and
             the midpoint.
-        osr_axis_mapping_strategy (OSR object): The OSR Axis Mapping Strategy 
-            as the first element. Defaults to a GIS friendly Lon,Lat order 
-            defined at geoprocessing.DEFAULT_OSR_AXIS_MAPPING_STRATEGY.
+        osr_axis_mapping_strategy (int): OSR axis mapping strategy for 
+            ``SpatialReference`` objects. Defaults to 
+            ``geoprocessing.DEFAULT_OSR_AXIS_MAPPING_STRATEGY``. This parameter
+            should not be changed unless you know what you are doing.
 
 
     Returns:
