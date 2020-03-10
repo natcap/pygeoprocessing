@@ -2742,7 +2742,6 @@ def transform_bounding_box(
             ``geoprocessing.DEFAULT_OSR_AXIS_MAPPING_STRATEGY``. This parameter
             should not be changed unless you know what you are doing.
 
-
     Returns:
         A list of the form [xmin, ymin, xmax, ymax] that describes the largest
         fitting bounding box around the original warped bounding box in
@@ -2763,8 +2762,6 @@ def transform_bounding_box(
 
     def _transform_point(point):
         """Transform an (x,y) point tuple from base_ref to target_ref."""
-        # NOTE: In GDAL 3, if osr.OAMS_TRADITIONAL_GIS_ORDER not set then
-        # TransformPoint expects Lat,Lon and NOT Lon,Lat for Geographic CRS. 
         trans_x, trans_y, _ = (transformer.TransformPoint(*point))
         return (trans_x, trans_y)
 
