@@ -257,8 +257,7 @@ class PyGeoprocessing10(unittest.TestCase):
         extents = [
             443723.1273278, 4956276.905980, 443993.1273278, 4956546.905980]
 
-        polygon_a = shapely.geometry.box(
-            extents[0], extents[1], extents[2], extents[3])
+        polygon_a = shapely.geometry.box(*extents)
 
         base_vector_path = os.path.join(
             self.workspace_dir, 'base_vector.shp')
@@ -316,8 +315,7 @@ class PyGeoprocessing10(unittest.TestCase):
         extents = [
             443723.1273278, 4956276.905980, 443993.1273278, 4956546.905980]
 
-        polygon_a = shapely.geometry.box(
-            extents[0], extents[1], extents[2], extents[3])
+        polygon_a = shapely.geometry.box(*extents)
 
         base_vector_path = os.path.join(
             self.workspace_dir, 'base_vector.shp')
@@ -395,8 +393,7 @@ class PyGeoprocessing10(unittest.TestCase):
         base_srs.ImportFromEPSG(4326)
         extents = [-123.71107369, 44.7600990, -121.71107369, 43.7600990]
 
-        polygon_a = shapely.geometry.box(
-            extents[0], extents[1], extents[2], extents[3])
+        polygon_a = shapely.geometry.box(*extents)
 
         base_vector_path = os.path.join(
             self.workspace_dir, 'base_vector.shp')
@@ -453,8 +450,7 @@ class PyGeoprocessing10(unittest.TestCase):
         extents = [
             443723.1273278, 4956276.905980, 443993.1273278, 4956546.905980]
 
-        polygon_a = shapely.geometry.box(
-            extents[0], extents[1], extents[2], extents[3])
+        polygon_a = shapely.geometry.box(*extents)
 
         base_vector_path = os.path.join(
             self.workspace_dir, 'base_vector.shp')
@@ -510,8 +506,7 @@ class PyGeoprocessing10(unittest.TestCase):
         base_srs.ImportFromEPSG(4326)
         extents = [-123.71107369, 44.7600990, -121.71107369, 43.7600990]
 
-        polygon_a = shapely.geometry.box(
-            extents[0], extents[1], extents[2], extents[3])
+        polygon_a = shapely.geometry.box(*extents)
 
         base_vector_path = os.path.join(
             self.workspace_dir, 'base_vector.shp')
@@ -569,8 +564,7 @@ class PyGeoprocessing10(unittest.TestCase):
         extents = [
             443723.1273278, 4956276.905980, 443993.1273278, 4956546.905980]
 
-        polygon_a = shapely.geometry.box(
-            extents[0], extents[1], extents[2], extents[3])
+        polygon_a = shapely.geometry.box(*extents)
 
         base_vector_path = os.path.join(
             self.workspace_dir, 'base_vector.shp')
