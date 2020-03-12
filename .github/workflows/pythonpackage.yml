@@ -15,13 +15,17 @@ jobs:
         os: [ubuntu-16.04, windows-latest, macos-latest]
 
     steps:
-    - uses: actions/checkout@v1
+    - uses: actions/checkout@v2
+      with:
+          # Fetch all history so that setuptool_scm can build the correct version string.
+          fetch-depth: 0
+
     - name: setup-conda
       uses: s-weigand/setup-conda@v1.0.0
       with:
         update-conda: false
         python-version: ${{ matrix.python-version }}
-        conda-channels: defaults
+        conda-channels: anaconda, conda-forge
     - name: Install dependencies
       shell: bash
       run: conda upgrade -y pip setuptools

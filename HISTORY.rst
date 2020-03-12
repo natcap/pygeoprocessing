@@ -4,10 +4,22 @@ Release History
 
 Unreleased Changes
 ------------------
+* Adding a GitHub Actions-based build job for building wheels and a source
+  distribution for a given commit of pygeoprocessing.
+* Updated ``setup.py`` to point the URL project link to the project's new
+  home on GitHub.
 * Updated ``MANIFEST.in`` to only include files that should be there in the
   pygeoprocessing source distribution.  This fixes an issue where files
   matching a variety of extensions anywhere in the pygeoprocessing directory
   might be included with the source distribution.
+* Adding GDAL 3 support and dropping GDAL 2 support. The only non-backwards 
+  compatible issue in GDAL 2 to GDAL 3 is the need to handle Axis Ordering with
+  osr.SetAxisMappingStrategy(osr.OAMS_TRADITIONAL_GIS_ORDER) because of 
+  https://trac.osgeo.org/gdal/wiki/rfc73_proj6_wkt2_srsbarn#Axisorderissues?.
+  Since Axis ordering now matters for Geographic CRS the expected order is
+  Lat,Lon but we use osr.OAMS_TRADITIONAL_GIS_ORDER to swap to Lon,Lat.
+* Using osr.CreateCoordinateTransformation() instead of 
+  osr.CoordinateTransformation() as the GDAL 3 call.
 
 1.9.2 (2020-02-06)
 ------------------

@@ -84,6 +84,15 @@ _GDAL_TYPE_TO_NUMPY_LOOKUP = {
     gdal.GDT_CFloat64: numpy.complex64,
 }
 
+# In GDAL 3.0 spatial references no longer ignore Geographic CRS Axis Order
+# and conform to Lat first, Lon Second. Transforms expect (lat, lon) order
+# as opposed to the GIS friendly (lon, lat). See
+# https://trac.osgeo.org/gdal/wiki/rfc73_proj6_wkt2_srsbarn Axis order
+# issues. SetAxisMappingStrategy(osr.OAMS_TRADITIONAL_GIS_ORDER) swaps the
+# axis order, which will use Lon,Lat order for Geographic CRS, but otherwise
+# leaves Projected CRS alone
+DEFAULT_OSR_AXIS_MAPPING_STRATEGY = osr.OAMS_TRADITIONAL_GIS_ORDER
+
 
 def raster_calculator(
         base_raster_path_band_const_list, local_op, target_raster_path,
@@ -503,7 +512,8 @@ def align_and_resize_raster_stack(
         target_pixel_size, bounding_box_mode, base_vector_path_list=None,
         raster_align_index=None, base_sr_wkt_list=None, target_sr_wkt=None,
         vector_mask_options=None, gdal_warp_options=None,
-        raster_driver_creation_tuple=DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS):
+        raster_driver_creation_tuple=DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS,
+        osr_axis_mapping_strategy=DEFAULT_OSR_AXIS_MAPPING_STRATEGY):
     """Generate rasters from a base such that they align geospatially.
 
     This function resizes base rasters that are in the same geospatial
@@ -574,6 +584,10 @@ def align_and_resize_raster_stack(
             name string as the first element and a GDAL creation options
             tuple/list as the second. Defaults to a GTiff driver tuple
             defined at geoprocessing.DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS.
+        osr_axis_mapping_strategy (int): OSR axis mapping strategy for
+            ``SpatialReference`` objects. Defaults to
+            ``geoprocessing.DEFAULT_OSR_AXIS_MAPPING_STRATEGY``. This parameter
+            should not be changed unless you know what you are doing.
 
     Returns:
         None
@@ -1561,7 +1575,8 @@ def get_raster_info(raster_path):
 
 def reproject_vector(
         base_vector_path, target_wkt, target_path, layer_id=0,
-        driver_name='ESRI Shapefile', copy_fields=True):
+        driver_name='ESRI Shapefile', copy_fields=True,
+        osr_axis_mapping_strategy=DEFAULT_OSR_AXIS_MAPPING_STRATEGY):
     """Reproject OGR DataSource (vector).
 
     Transforms the features of the base vector to the desired output
@@ -1581,6 +1596,10 @@ def reproject_vector(
             reprojection step. If it is an iterable, it will contain the
             field names to exclusively copy. An unmatched fieldname will be
             ignored. If ``False`` no fields are copied into the new vector.
+        osr_axis_mapping_strategy (int): OSR axis mapping strategy for
+            ``SpatialReference`` objects. Defaults to
+            ``geoprocessing.DEFAULT_OSR_AXIS_MAPPING_STRATEGY``. This parameter
+            should not be changed unless you know what you are doing.
 
     Returns:
         None
@@ -1630,8 +1649,11 @@ def reproject_vector(
     # Get the SR of the original_layer to use in transforming
     base_sr = layer.GetSpatialRef()
 
+    base_sr.SetAxisMappingStrategy(osr_axis_mapping_strategy)
+    target_sr.SetAxisMappingStrategy(osr_axis_mapping_strategy)
+
     # Create a coordinate transformation
-    coord_trans = osr.CoordinateTransformation(base_sr, target_sr)
+    coord_trans = osr.CreateCoordinateTransformation(base_sr, target_sr)
 
     # Copy all of the features in layer to the new shapefile
     target_layer.StartTransaction()
@@ -1768,7 +1790,8 @@ def warp_raster(
         resample_method, target_bb=None, base_sr_wkt=None, target_sr_wkt=None,
         n_threads=None, vector_mask_options=None,
         gdal_warp_options=None, working_dir=None,
-        raster_driver_creation_tuple=DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS):
+        raster_driver_creation_tuple=DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS,
+        osr_axis_mapping_strategy=DEFAULT_OSR_AXIS_MAPPING_STRATEGY):
     """Resize/resample raster to desired pixel size, bbox and projection.
 
     Parameters:
@@ -1815,6 +1838,10 @@ def warp_raster(
             name string as the first element and a GDAL creation options
             tuple/list as the second. Defaults to a GTiff driver tuple
             defined at geoprocessing.DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS.
+        osr_axis_mapping_strategy (int): OSR axis mapping strategy for
+            ``SpatialReference`` objects. Defaults to
+            ``geoprocessing.DEFAULT_OSR_AXIS_MAPPING_STRATEGY``. This parameter
+            should not be changed unless you know what you are doing.
 
     Returns:
         None
@@ -2688,7 +2715,8 @@ def iterblocks(
 
 
 def transform_bounding_box(
-        bounding_box, base_ref_wkt, target_ref_wkt, edge_samples=11):
+        bounding_box, base_ref_wkt, target_ref_wkt, edge_samples=11,
+        osr_axis_mapping_strategy=DEFAULT_OSR_AXIS_MAPPING_STRATEGY):
     """Transform input bounding box to output projection.
 
     This transform accounts for the fact that the reprojected square bounding
@@ -2709,6 +2737,10 @@ def transform_bounding_box(
             bounding box edge to sample along. A value of 2 will sample just
             the corners while a value of 3 will also sample the corners and
             the midpoint.
+        osr_axis_mapping_strategy (int): OSR axis mapping strategy for
+            ``SpatialReference`` objects. Defaults to
+            ``geoprocessing.DEFAULT_OSR_AXIS_MAPPING_STRATEGY``. This parameter
+            should not be changed unless you know what you are doing.
 
     Returns:
         A list of the form [xmin, ymin, xmax, ymax] that describes the largest
@@ -2722,7 +2754,11 @@ def transform_bounding_box(
     target_ref = osr.SpatialReference()
     target_ref.ImportFromWkt(target_ref_wkt)
 
-    transformer = osr.CoordinateTransformation(base_ref, target_ref)
+    base_ref.SetAxisMappingStrategy(osr_axis_mapping_strategy)
+    target_ref.SetAxisMappingStrategy(osr_axis_mapping_strategy)
+
+    # Create a coordinate transformation
+    transformer = osr.CreateCoordinateTransformation(base_ref, target_ref)
 
     def _transform_point(point):
         """Transform an (x,y) point tuple from base_ref to target_ref."""
