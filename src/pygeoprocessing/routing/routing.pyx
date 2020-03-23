@@ -3011,12 +3011,18 @@ def connected_components(
     base_raster = _ManagedRaster(
         base_raster_path_band[0], base_raster_path_band[1], 0)
 
+
     # connected id start at 0
     connected_id = -1
 
     # this outer loop searches for a pixel that is locally unconnected
-    for offset_dict, raster_buffer in pygeoprocessing.iterblocks(
-            base_raster_path_band, largest_block=0):
+    for offset_dict in pygeoprocessing.iterblocks(
+            base_raster_path_band, largest_block=0, offset_only=True):
+        _raster = gdal.OpenEx(base_raster_path_band[0])
+        _band = _raster.GetRasterBand(base_raster_path_band[1])
+        raster_buffer = _band.ReadAsArray(**offset_dict).astype(numpy.int32)
+        _band = None
+        _raster = None
         win_xsize = offset_dict['win_xsize']
         win_ysize = offset_dict['win_ysize']
         xoff = offset_dict['xoff']
@@ -3053,9 +3059,10 @@ def connected_components(
                         if (xi_n < 0 or xi_n >= raster_x_size or
                                 yi_n < 0 or yi_n >= raster_y_size):
                             continue
-                        if (base_raster.get(xi_n, yi_n) == pixel_val and
-                                connected_component_raster.get(xi_n, yi_n) !=
-                                connected_nodata):
+
+                        if ((base_raster.get(xi_n, yi_n) == pixel_val) and
+                                (connected_component_raster.get(xi_n, yi_n) ==
+                                 connected_nodata)):
                             connected_component_raster.set(
                                 xi_n, yi_n, connected_id)
                             search_stack.push(CoordinateType(xi_n, yi_n))
