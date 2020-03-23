@@ -42,7 +42,7 @@ cdef extern from "FastFileIterator.h" nogil:
 # This resolves an issue on Mac OS X Catalina where cimporting ``push_heap``
 # and ``pop_heap`` from the Standard Library would cause compilation to fail
 # with an error message about the candidate function template not being
-# viable.  The SO answer to a related question 
+# viable.  The SO answer to a related question
 # (https://stackoverflow.com/a/57586789/299084) suggests a workaround: don't
 # tell Cython that we have a template function.  Using ``...`` here allows
 # us to not have to specify all of the types for which we need a working

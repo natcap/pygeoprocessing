@@ -2944,3 +2944,122 @@ def _is_raster_path_band_formatted(raster_path_band):
         return False
     else:
         return True
+
+
+def connected_components(
+        base_raster_path_band, target_connected_components_raster_path,
+        raster_driver_creation_tuple=DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS):
+    """Create an integer raster that has the same ids where base is the same.
+
+    Parameters:
+        raster_path_band (tuple): a path, band number tuple indicating an
+            integer base raster.
+        target_connected_componets (str): 32-bit integer raster. Pixels with
+            the same ID are areas in the original raster that are the same
+            value and touch each other. Connected components need to connect
+            directly with an up/down/left/right -- no diagonal direction.
+        raster_driver_creation_tuple (tuple): a tuple containing a GDAL driver
+            name string as the first element and a GDAL creation options
+            tuple/list as the second. Defaults to a GTiff driver tuple
+            defined at geoprocessing.DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS.
+
+    Returns:
+        None.
+    """
+    cdef numpy.ndarray[numpy.int32_t, ndim=2] raster_buffer
+    cdef int win_ysize, win_xsize, xoff, yoff, raster_x_size, raster_y_size
+
+    # these variables are used as pixel or neighbor indexes. where _q
+    # represents a value out of a queue, and _n is related to a neighbor pixel
+    cdef int i_n, xi, yi, xi_s, yi_s, xi_n, yi_n
+    cdef int pixel_val, raster_nodata
+
+    # used to uniquely identify each connected region
+    cdef int connected_id
+
+    # constant for connected raster
+    cdef int connected_nodata = -1
+
+    # used for pushing the next value
+    cdef stack[CoordinateType] search_stack
+
+    # used for time-delayed logging
+    cdef time_t last_log_time
+    last_log_time = ctime(NULL)
+
+    # determine dem nodata in the working type, or set an improbable value
+    # if one can't be determined
+    base_raster_info = pygeoprocessing.get_raster_info(
+        base_raster_path_band[0])
+    base_nodata = base_raster_info['nodata'][base_raster_path_band[1]-1]
+    if base_nodata is not None:
+        # cast to a float64 since that's our operating array type
+        raster_nodata = numpy.float64(base_nodata)
+    else:
+        # pick some very improbable value since it's hard to deal with NaNs
+        raster_nodata = -99999999
+
+    # these are used to determine if a sample is within the raster
+    raster_x_size, raster_y_size = base_raster_info['raster_size']
+
+    pygeoprocessing.new_raster_from_base(
+        base_raster_path_band[0], target_connected_components_raster_path,
+        gdal.GDT_Int32, [connected_nodata], fill_value_list=[connected_nodata],
+        raster_driver_creation_tuple=raster_driver_creation_tuple)
+    connected_component_raster = _ManagedRaster(
+        target_connected_components_raster_path, 1, 1)
+    base_raster = _ManagedRaster(
+        base_raster_path_band[0], base_raster_path_band[1], 0)
+
+    # connected id start at 0
+    connected_id = -1
+
+    # this outer loop searches for a pixel that is locally unconnected
+    for offset_dict, raster_buffer in pygeoprocessing.iterblocks(
+            base_raster_path_band, largest_block=0):
+        win_xsize = offset_dict['win_xsize']
+        win_ysize = offset_dict['win_ysize']
+        xoff = offset_dict['xoff']
+        yoff = offset_dict['yoff']
+
+        if ctime(NULL) - last_log_time > 5.0:
+            last_log_time = ctime(NULL)
+            current_pixel = xoff + yoff * raster_x_size
+            LOGGER.info('%.1f%% complete', 100.0 * current_pixel / <float>(
+                raster_x_size * raster_y_size))
+
+        # search block for locally undrained pixels
+        for yi in range(win_ysize):
+            for xi in range(win_xsize):
+                pixel_val = raster_buffer[yi, xi]
+                if pixel_val == raster_nodata:
+                    continue
+                if connected_component_raster.get(xi+xoff, yi+yoff) != \
+                        connected_nodata:
+                    # already connected
+                    continue
+
+                connected_id += 1
+                connected_component_raster.set(xi+xoff, yi+yoff, connected_id)
+                search_stack.push(CoordinateType(xi+xoff, yi+yoff))
+                while not search_stack.empty():
+                    xi_s = search_stack.top().xi
+                    yi_s = search_stack.top().yi
+                    search_stack.pop()
+
+                    for i_n in range(8):
+                        xi_n = xi_s+NEIGHBOR_OFFSET_ARRAY[2*i_n]
+                        yi_n = yi_s+NEIGHBOR_OFFSET_ARRAY[2*i_n+1]
+                        if (xi_n < 0 or xi_n >= raster_x_size or
+                                yi_n < 0 or yi_n >= raster_y_size):
+                            continue
+                        if (base_raster.get(xi_n, yi_n) == pixel_val and
+                                connected_component_raster.get(xi_n, yi_n) !=
+                                connected_nodata):
+                            connected_component_raster.set(
+                                xi_n, yi_n, connected_id)
+                            search_stack.push(CoordinateType(xi_n, yi_n))
+
+    connected_component_raster.close()
+    base_raster.close()
+    LOGGER.info('%.1f%% complete', 100.0)
