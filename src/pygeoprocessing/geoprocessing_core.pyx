@@ -940,7 +940,8 @@ def _raster_band_percentile_double(
 
 def raster_optimization(
         raster_path_band_list, target_sum_list,
-        target_working_directory, target_suffix=None):
+        target_working_directory, target_suffix=None,
+        heap_buffer_size=2**28):
     """Create a optimized raster selection given the target sum list.
 
     Parameters:
@@ -969,12 +970,66 @@ def raster_optimization(
 
     task_graph = taskgraph.TaskGraph(churn_dir, -1)
 
-    sum_task_list = []
+    heapfile_list = []
     for raster_path_band in raster_path_band_list:
         # sort the raster from high to low including pixel loc
         # calculate the sum along with it
         # calculate the target proportion based on that sum
         LOGGER.debug(raster_path_band)
+        pixels_processed = 0
+        last_update = time.time()
+        LOGGER.debug('sorting data to heap')
+
+        raster_id = os.path.splitext(os.path.basename(raster_path_band[0]))[0]
+        working_sort_directory = os.path.join(
+            target_working_directory, raster_id)
+
+        try:
+            os.makedirs(working_sort_directory)
+        except OSError:
+            pass
+
+        raster_info = pygeoprocessing.get_raster_info(
+            raster_path_band[0])
+        nodata = raster_info['nodata'][raster_path_band[1]-1]
+        n_pixels = numpy.prod(raster_info['raster_size'])
+        sum_val = 0.0
+        n_elements = 0
+        file_index = 0
+        for _, block_data in pygeoprocessing.iterblocks(
+                raster_path_band, largest_block=heap_buffer_size):
+            pixels_processed += block_data.size
+            if time.time() - last_update > 5.0:
+                LOGGER.debug(
+                    'data sort to %s heap %.2f%% complete',
+                    raster_id, (100.*pixels_processed)/n_pixels)
+                last_update = time.time()
+            buffer_data = numpy.sort(
+                block_data[~numpy.isclose(block_data, nodata)]).astype(
+                numpy.double)
+            if buffer_data.size == 0:
+                continue
+            sum_val += numpy.sum(buffer_data)
+            n_elements += buffer_data.size
+            file_path = os.path.join(
+                working_sort_directory, '%d.dat' % file_index)
+            heapfile_list.append(file_path)
+
+            # fptr = fopen(bytes(file_path.encode()), "wb")
+            # fwrite(
+            #     <double*>&buffer_data[0],
+            #     sizeof(double), buffer_data.size, fptr)
+            # fclose(fptr)
+            # file_index += 1
+
+            # fast_file_iterator = new FastFileIterator[double](
+            #     (bytes(file_path.encode())), ffi_buffer_size)
+            # fast_file_iterator_vector.push_back(fast_file_iterator)
+            # push_heap(
+            #     fast_file_iterator_vector.begin(),
+            #     fast_file_iterator_vector.end(),
+            #     FastFileIteratorCompare[double])
+
 
     task_graph.close()
     task_graph.join()
