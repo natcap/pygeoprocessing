@@ -11,7 +11,7 @@ template <class DATA_T> class FastFileIteratorIndex{
  private:
     DATA_T* buffer = NULL;
     long long* index_buffer = NULL;
-    char* file_path = NULL;
+    char* value_path = NULL;
     char* index_path = NULL;
     DATA_T last_val = -1;
     // these offsets and sizes are in numbers of items instead of bytes, or
@@ -39,16 +39,37 @@ template <class DATA_T> class FastFileIteratorIndex{
                 this->cache_size * sizeof(DATA_T)));
             this->index_buffer = reinterpret_cast<long long*>(malloc(
                 this->cache_size * sizeof(long long)));
-            FILE *fptr = fopen(this->file_path, "rb");
-            fseek(fptr, this->global_offset * sizeof(DATA_T), SEEK_SET);
+
             FILE *index_fptr = fopen(this->index_path, "rb");
+            fseek(
+                index_fptr, this->global_offset * sizeof(long long), SEEK_SET);
             size_t elements_to_read = this->cache_size;
             size_t elements_read = 0;
+            //read index
             while (elements_to_read) {
-                fread(
+                elements_read += fread(
                     reinterpret_cast<void*>(
                         this->index_buffer+elements_read*sizeof(long long)),
                     sizeof(long long), elements_to_read, index_fptr);
+
+                if (ferror(index_fptr)) {
+                    perror("error occured");
+                    elements_to_read = 0;
+                } else if (feof(index_fptr)) {
+                    printf("end of file\n");
+                    break;
+                } else {
+                    elements_to_read = this->cache_size - elements_read;
+                }
+            }
+            fclose(index_fptr);
+
+            //read values
+            FILE *fptr = fopen(this->value_path, "rb");
+            fseek(fptr, this->global_offset * sizeof(DATA_T), SEEK_SET);
+            elements_to_read = this->cache_size;
+            elements_read = 0;
+            while (elements_to_read) {
                 elements_read += fread(
                     reinterpret_cast<void*>(
                         this->buffer+elements_read*sizeof(DATA_T)),
@@ -65,24 +86,23 @@ template <class DATA_T> class FastFileIteratorIndex{
                 }
             }
             fclose(fptr);
-            fclose(index_fptr);
         }
     }
 
  public:
     FastFileIteratorIndex(
-            const char *file_path, const char *index_path, size_t buffer_size) {
+            const char *value_path, const char *index_path, size_t buffer_size) {
         global_offset = 0;
         local_offset = 0;
         cache_size = 0;
         this->buffer_size = buffer_size;
-        this->file_path = reinterpret_cast<char*>(malloc(
-            (strlen(file_path)+1)*sizeof(char)));
-        strncpy(this->file_path, file_path, strlen(file_path)+1);
+        this->value_path = reinterpret_cast<char*>(malloc(
+            (strlen(value_path)+1)*sizeof(char)));
+        strncpy(this->value_path, value_path, strlen(value_path)+1);
         this->index_path = reinterpret_cast<char*>(malloc(
             (strlen(index_path)+1)*sizeof(char)));
         strncpy(this->index_path, index_path, strlen(index_path)+1);
-        std::ifstream is(this->file_path, std::ifstream::binary);
+        std::ifstream is(this->value_path, std::ifstream::binary);
         is.seekg(0, is.end);
         this->file_length = is.tellg() / sizeof(DATA_T);
         if (this->buffer_size > this->file_length) {
@@ -94,7 +114,7 @@ template <class DATA_T> class FastFileIteratorIndex{
     ~FastFileIteratorIndex() {
         if (this->buffer != NULL) {
             free(this->buffer);
-            free(this->file_path);
+            free(this->value_path);
             free(this->index_path);
         }
     }

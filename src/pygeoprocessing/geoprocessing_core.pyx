@@ -1419,9 +1419,10 @@ def raster_optimization(
             xx, yy = numpy.meshgrid(
                 range(block_data.shape[1]), range(block_data.shape[0]))
             valid_mask = ~numpy.isclose(block_data, nodata)
+            LOGGER.debug(offset_data)
             flat_indexes = (
-                (yy+offset_data['yoff'])*n_cols +
-                (xx+offset_data['xoff']))[valid_mask].flatten()
+                (yy.astype(numpy.int64)+offset_data['yoff'])*n_cols +
+                (xx.astype(numpy.int64)+offset_data['xoff']))[valid_mask].flatten()
             # -1 to reverse sort from large to small
             sort_args = numpy.argsort(-block_data[valid_mask], axis=None)
             if sort_args.size == 0:
@@ -1468,9 +1469,12 @@ def raster_optimization(
 
         max_sum_list[raster_index] = sum_val
         max_proportion_list[raster_index] = (
-            sum_val / target_sum_list[raster_index])
+            target_sum_list[raster_index] / sum_val)
         fast_file_iterator_vector_ptr_vector.push_back(
             fast_file_iterator_vector_ptr)
+        LOGGER.debug(
+            'push back maxp prop: %f neles: %d',
+            max_proportion_list[raster_index], n_elements)
 
     # core algorithm, visit each pixel
     if target_suffix is not None:
@@ -1487,16 +1491,19 @@ def raster_optimization(
     cdef double[:] running_goal_sums = numpy.zeros(len(target_sum_list))
     cdef double[:] prop_to_meet_vals = max_proportion_list.copy()
 
-    cdef int i, max_prop_index
+    cdef int i, max_prop_index, x, y
+    cdef int64t active_index
     cdef double max_prop_to_meet = 0.0  # start low
     cdef double active_prop_to_meet = 0.0
+    cdef int count = 0
     while n_goals_to_meet > 0:
         for i in range(len(target_sum_list)):
             if prop_to_meet_vals[i] > active_prop_to_meet:
                 max_prop_index = i
                 active_prop_to_meet = prop_to_meet_vals[i]
 
-        fast_file_iterator_vector_ptr = fast_file_iterator_vector_ptr_vector[i]
+        fast_file_iterator_vector_ptr = \
+            fast_file_iterator_vector_ptr_vector[max_prop_index]
         while True:
             active_index = (
                 deref(fast_file_iterator_vector_ptr).front().next())
@@ -1510,15 +1517,19 @@ def raster_optimization(
             y = active_index // n_cols
             if mask_managed_raster.get(x, y) != mask_nodata:
                 # it's already set
+                LOGGER.debug('already set')
                 continue
             mask_managed_raster.set(x, y, 1)
-            running_goal_sums[i] += active_val
-            prop_to_meet_vals[i] = (
-                target_sum_list[i]-running_goal_sums[i]) / max_sum_list[i]
+            running_goal_sums[max_prop_index] += active_val
+            prop_to_meet_vals[max_prop_index] = (
+                target_sum_list[max_prop_index] -
+                running_goal_sums[max_prop_index]) / (
+                    max_sum_list[max_prop_index])
 
             LOGGER.debug(
-                '%d, %f, %f, %s', active_index, active_val,
-                prop_to_meet_vals[i], raster_path_band_list[i][0])
+                '%d, %d, %f, %f, %s', count, active_index, active_val,
+                prop_to_meet_vals[max_prop_index],
+                raster_path_band_list[max_prop_index][0])
 
             pop_heap(
                 deref(fast_file_iterator_vector_ptr).begin(),
@@ -1534,6 +1545,7 @@ def raster_optimization(
                     fast_file_iterator_vector_ptr).back()
                 del fast_file_iterator
                 deref(fast_file_iterator_vector_ptr).pop_back()
+            count += 1
         break
 
     task_graph.close()
