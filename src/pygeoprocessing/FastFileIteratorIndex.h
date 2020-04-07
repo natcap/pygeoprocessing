@@ -45,14 +45,14 @@ template <class DATA_T> class FastFileIteratorIndex{
             size_t elements_to_read = this->cache_size;
             size_t elements_read = 0;
             while (elements_to_read) {
-                elements_read += fread(
-                    reinterpret_cast<void*>(
-                        this->buffer+elements_read*sizeof(DATA_T)),
-                    sizeof(DATA_T), elements_to_read, fptr);
                 fread(
                     reinterpret_cast<void*>(
                         this->index_buffer+elements_read*sizeof(long long)),
                     sizeof(long long), elements_to_read, index_fptr);
+                elements_read += fread(
+                    reinterpret_cast<void*>(
+                        this->buffer+elements_read*sizeof(DATA_T)),
+                    sizeof(DATA_T), elements_to_read, fptr);
 
                 if (ferror(fptr)) {
                     perror("error occured");
@@ -114,8 +114,8 @@ template <class DATA_T> class FastFileIteratorIndex{
     DATA_T next() {
         if (size() > 0) {
             DATA_T val = this->buffer[this->local_offset];
-            this->local_offset += 1;
             this->last_index = this->index_buffer[this->local_offset];
+            this->local_offset += 1;
             update_buffer();
             return val;
         } else {

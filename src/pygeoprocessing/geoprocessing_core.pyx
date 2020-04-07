@@ -608,6 +608,7 @@ def stats_worker(stats_work_queue, exception_queue):
             stats_work_queue.get()
         raise
 
+
 ctypedef long long int64t
 ctypedef FastFileIterator[long long]* FastFileIteratorLongLongIntPtr
 ctypedef FastFileIterator[double]* FastFileIteratorDoublePtr
@@ -1027,7 +1028,7 @@ def raster_optimization(
                     raster_id, (100.*pixels_processed)/n_pixels)
                 last_update = time.time()
             xx, yy = numpy.meshgrid(
-                range(block_data.shape[0]), range(block_data.shape[1]))
+                range(block_data.shape[1]), range(block_data.shape[0]))
             flat_indexes = (
                 (yy+offset_data['yoff'])*n_cols +
                 (xx+offset_data['xoff'])).flatten()
@@ -1038,6 +1039,8 @@ def raster_optimization(
             buffer_data = (
                 block_data.flatten()[sort_args]).astype(numpy.double)
             index_data = flat_indexes[sort_args].astype(numpy.int64)
+            LOGGER.debug(buffer_data.size)
+            LOGGER.debug(index_data.size)
             sum_val += numpy.sum(buffer_data)
             n_elements += buffer_data.size
             file_path = os.path.join(
@@ -1070,7 +1073,7 @@ def raster_optimization(
             push_heap(
                 deref(fast_file_iterator_vector_ptr).begin(),
                 deref(fast_file_iterator_vector_ptr).end(),
-                FastFileIteratorCompare[double])
+                FastFileIteratorIndexCompare[double])
         fast_file_iterator_vector_ptr_vector.push_back(
             fast_file_iterator_vector_ptr)
 
