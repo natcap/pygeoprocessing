@@ -127,7 +127,7 @@ template <class DATA_T> class FastFileIteratorIndex{
 template <class DATA_T>
 int FastFileIteratorIndexCompare(FastFileIteratorIndex<DATA_T>* a,
                             FastFileIteratorIndex<DATA_T>* b) {
-    return a->peek() > b->peek();
+    return a->peek() < b->peek();
 }
 
 #endif  // SRC_PYGEOPROCESSING_FASTFILEITERATORINDEX_H_

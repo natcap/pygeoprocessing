@@ -1422,7 +1422,8 @@ def raster_optimization(
             flat_indexes = (
                 (yy+offset_data['yoff'])*n_cols +
                 (xx+offset_data['xoff']))[valid_mask].flatten()
-            sort_args = numpy.argsort(block_data[valid_mask], axis=None)
+            # -1 to reverse sort from large to small
+            sort_args = numpy.argsort(-block_data[valid_mask], axis=None)
             if sort_args.size == 0:
                 continue
             buffer_data = (
@@ -1499,6 +1500,10 @@ def raster_optimization(
         while True:
             active_index = (
                 deref(fast_file_iterator_vector_ptr).front().next())
+
+            if active_index == -1:
+                break
+
             active_val = (
                 deref(fast_file_iterator_vector_ptr).front().get_last_val())
             LOGGER.debug('%d, %f', active_index, active_val)
@@ -1517,7 +1522,6 @@ def raster_optimization(
                     fast_file_iterator_vector_ptr).back()
                 del fast_file_iterator
                 deref(fast_file_iterator_vector_ptr).pop_back()
-            break
         break
 
     task_graph.close()
