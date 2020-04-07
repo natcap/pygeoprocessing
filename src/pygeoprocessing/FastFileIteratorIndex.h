@@ -13,7 +13,7 @@ template <class DATA_T> class FastFileIteratorIndex{
     long long* index_buffer = NULL;
     char* file_path = NULL;
     char* index_path = NULL;
-    long long last_index = -1;
+    long long last_val = -1;
     // these offsets and sizes are in numbers of items instead of bytes, or
     // number of bytes / sizeof(DATA_T)
     size_t global_offset;
@@ -107,17 +107,17 @@ template <class DATA_T> class FastFileIteratorIndex{
         return this->file_length - (this->global_offset + this->local_offset);
     }
 
-    long long get_last_index() {
-        return this->last_index;
+    DATA_T get_last_val() {
+        return this->last_val;
     }
 
-    DATA_T next() {
+    long long next() {
         if (size() > 0) {
-            DATA_T val = this->buffer[this->local_offset];
-            this->last_index = this->index_buffer[this->local_offset];
+            this->last_val = this->buffer[this->local_offset];
+            long long index = this->index_buffer[this->local_offset];
             this->local_offset += 1;
             update_buffer();
-            return val;
+            return index;
         } else {
             return -1;
         }
