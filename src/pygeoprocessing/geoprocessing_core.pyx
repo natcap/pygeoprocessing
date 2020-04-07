@@ -1418,15 +1418,16 @@ def raster_optimization(
                 last_update = time.time()
             xx, yy = numpy.meshgrid(
                 range(block_data.shape[1]), range(block_data.shape[0]))
+            valid_mask = ~numpy.isclose(block_data, nodata)
             flat_indexes = (
                 (yy+offset_data['yoff'])*n_cols +
-                (xx+offset_data['xoff'])).flatten()
-            valid_mask = ~numpy.isclose(block_data, nodata)
+                (xx+offset_data['xoff']))[valid_mask].flatten()
             sort_args = numpy.argsort(block_data[valid_mask], axis=None)
             if sort_args.size == 0:
                 continue
             buffer_data = (
-                block_data.flatten()[sort_args]).astype(numpy.double)
+                block_data[valid_mask].flatten()[sort_args]).astype(
+                numpy.double)
             index_data = flat_indexes[sort_args].astype(numpy.int64)
             LOGGER.debug(buffer_data.size)
             LOGGER.debug(index_data.size)
