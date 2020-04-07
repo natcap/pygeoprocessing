@@ -1418,7 +1418,11 @@ def raster_optimization(
                 last_update = time.time()
             xx, yy = numpy.meshgrid(
                 range(block_data.shape[1]), range(block_data.shape[0]))
-            valid_mask = ~numpy.isclose(block_data, nodata)
+            # Don't keep data that's nodata or zero (should never be negative
+            # but don't do those either)
+            valid_mask = (
+                ~numpy.isclose(block_data, nodata) &
+                (block_data > 0))
             LOGGER.debug(offset_data)
             flat_indexes = (
                 (yy.astype(numpy.int64)+offset_data['yoff'])*n_cols +
@@ -1495,12 +1499,18 @@ def raster_optimization(
     cdef int64t active_index
     cdef double max_prop_to_meet = 0.0  # start low
     cdef double active_prop_to_meet = 0.0
-    cdef int count = 0
+
     while n_goals_to_meet > 0:
+        max_prop_index = -1
+        active_prop_to_meet = 0.0
         for i in range(len(target_sum_list)):
-            if prop_to_meet_vals[i] > active_prop_to_meet:
+            if (prop_to_meet_vals[i] > 0 and
+                    (prop_to_meet_vals[i] > active_prop_to_meet)):
                 max_prop_index = i
                 active_prop_to_meet = prop_to_meet_vals[i]
+        if max_prop_index == -1:
+            LOGGER.debug('all targets met')
+            break
 
         fast_file_iterator_vector_ptr = \
             fast_file_iterator_vector_ptr_vector[max_prop_index]
@@ -1527,7 +1537,7 @@ def raster_optimization(
                     max_sum_list[max_prop_index])
 
             LOGGER.debug(
-                '%d, %d, %f, %f, %s', count, active_index, active_val,
+                '%d, %f, %f, %s', active_index, active_val,
                 prop_to_meet_vals[max_prop_index],
                 raster_path_band_list[max_prop_index][0])
 
@@ -1545,8 +1555,7 @@ def raster_optimization(
                     fast_file_iterator_vector_ptr).back()
                 del fast_file_iterator
                 deref(fast_file_iterator_vector_ptr).pop_back()
-            count += 1
-        break
+            break
 
     task_graph.close()
     task_graph.join()
