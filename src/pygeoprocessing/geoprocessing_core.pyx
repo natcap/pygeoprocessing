@@ -1503,10 +1503,22 @@ def raster_optimization(
 
             if active_index == -1:
                 break
-
             active_val = (
                 deref(fast_file_iterator_vector_ptr).front().get_last_val())
-            LOGGER.debug('%d, %f', active_index, active_val)
+
+            x = active_index % n_cols
+            y = active_index // n_cols
+            if mask_managed_raster.get(x, y) != mask_nodata:
+                # it's already set
+                continue
+            mask_managed_raster.set(x, y, 1)
+            running_goal_sums[i] += active_val
+            prop_to_meet_vals[i] = (
+                target_sum_list[i]-running_goal_sums[i]) / max_sum_list[i]
+
+            LOGGER.debug(
+                '%d, %f, %f, %s', active_index, active_val,
+                prop_to_meet_vals[i], raster_path_band_list[i][0])
 
             pop_heap(
                 deref(fast_file_iterator_vector_ptr).begin(),
