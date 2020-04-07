@@ -1365,7 +1365,8 @@ def raster_optimization(
     cdef FastFileIteratorIndexDoublePtr fast_file_iterator
     cdef FastFileIteratorIndexVectorPtr fast_file_iterator_vector_ptr
     cdef vector[FastFileIteratorIndexVectorPtr] fast_file_iterator_vector_ptr_vector
-    cdef int n_cols
+    cdef int n_cols = 0
+    cdef int n_rasters = len(target_sum_list)
     churn_dir = os.path.join(target_working_directory)
     try:
         os.makedirs(churn_dir)
@@ -1375,10 +1376,8 @@ def raster_optimization(
     task_graph = taskgraph.TaskGraph(churn_dir, -1)
 
     heapfile_list = []
-    cdef double[:] max_sum_list = (
-        numpy.zeros(len(raster_path_band_list)))
-    cdef double[:] max_proportion_list = numpy.zeros(
-        len(raster_path_band_list))
+    cdef double[:] max_sum_array = numpy.zeros(n_rasters)
+    cdef double[:] max_proportion_list = numpy.zeros(n_rasters)
     cdef int raster_index
     for raster_index, raster_path_band in enumerate(raster_path_band_list):
         # sort the raster from high to low including pixel loc
@@ -1471,7 +1470,7 @@ def raster_optimization(
                 deref(fast_file_iterator_vector_ptr).end(),
                 FastFileIteratorIndexCompare[double])
 
-        max_sum_list[raster_index] = sum_val
+        max_sum_array[raster_index] = sum_val
         max_proportion_list[raster_index] = (
             target_sum_list[raster_index] / sum_val)
         fast_file_iterator_vector_ptr_vector.push_back(
@@ -1489,21 +1488,32 @@ def raster_optimization(
     pygeoprocessing.new_raster_from_base(
         raster_path_band_list[0][0], mask_raster_path, gdal.GDT_Byte,
         [mask_nodata])
-    mask_managed_raster = _ManagedRaster(mask_raster_path, 1, 1)
+    cdef _ManagedRaster mask_managed_raster = _ManagedRaster(
+        mask_raster_path, 1, 1)
 
-    cdef int n_goals_to_meet = len(target_sum_list)
-    cdef double[:] running_goal_sums = numpy.zeros(len(target_sum_list))
+    cdef double[:] running_goal_sum_array = numpy.zeros(n_rasters)
     cdef double[:] prop_to_meet_vals = max_proportion_list.copy()
+    cdef double[:] target_sum_array = numpy.array(target_sum_list)
 
     cdef int i, max_prop_index, x, y
     cdef int64t active_index
-    cdef double max_prop_to_meet = 0.0  # start low
-    cdef double active_prop_to_meet = 0.0
+    cdef double active_prop_to_meet
 
-    while n_goals_to_meet > 0:
+    cdef _ManagedRaster[:] managed_raster_array
+
+    managed_raster_array = numpy.array([
+        _ManagedRaster(
+            raster_path_band_list[i][0],
+            raster_path_band_list[i][1], 0) for i in range(n_rasters)])
+
+    cdef long long count = 0
+
+    while True:
         max_prop_index = -1
         active_prop_to_meet = 0.0
-        for i in range(len(target_sum_list)):
+        for i in range(n_rasters):
+            if count % 10000 == 0:
+                LOGGER.debug(prop_to_meet_vals[i])
             if (prop_to_meet_vals[i] > 0 and
                     (prop_to_meet_vals[i] > active_prop_to_meet)):
                 max_prop_index = i
@@ -1515,32 +1525,10 @@ def raster_optimization(
         fast_file_iterator_vector_ptr = \
             fast_file_iterator_vector_ptr_vector[max_prop_index]
         while True:
+            count += 1
             active_index = (
                 deref(fast_file_iterator_vector_ptr).front().next())
-
-            if active_index == -1:
-                break
-            active_val = (
-                deref(fast_file_iterator_vector_ptr).front().get_last_val())
-
-            x = active_index % n_cols
-            y = active_index // n_cols
-            if mask_managed_raster.get(x, y) != mask_nodata:
-                # it's already set
-                LOGGER.debug('already set')
-                continue
-            mask_managed_raster.set(x, y, 1)
-            running_goal_sums[max_prop_index] += active_val
-            prop_to_meet_vals[max_prop_index] = (
-                target_sum_list[max_prop_index] -
-                running_goal_sums[max_prop_index]) / (
-                    max_sum_list[max_prop_index])
-
-            LOGGER.debug(
-                '%d, %f, %f, %s', active_index, active_val,
-                prop_to_meet_vals[max_prop_index],
-                raster_path_band_list[max_prop_index][0])
-
+            # update the heap
             pop_heap(
                 deref(fast_file_iterator_vector_ptr).begin(),
                 deref(fast_file_iterator_vector_ptr).end(),
@@ -1555,7 +1543,42 @@ def raster_optimization(
                     fast_file_iterator_vector_ptr).back()
                 del fast_file_iterator
                 deref(fast_file_iterator_vector_ptr).pop_back()
+
+            # i don't think we should ever have this but check anyway
+            if active_index == -1:
+                LOGGER.debug('got active index -1!!!')
+                break
+
+            x = active_index % n_cols
+            y = active_index // n_cols
+            # check that the pixel hasn't already been selected
+            if mask_managed_raster.get(x, y) == mask_nodata:
+                mask_managed_raster.set(x, y, 1)
+                # update all the pools
+                for i in range(n_rasters):
+                    active_val = (<_ManagedRaster>managed_raster_array[i]).get(x, y)
+                    # we could get a garbage area so check first
+                    if active_val > 0:
+                        running_goal_sum_array[i] += active_val
+                        prop_to_meet_vals[i] = (
+                            target_sum_array[i] -
+                            running_goal_sum_array[i]) / (
+                                max_sum_array[i])
+                        # LOGGER.debug(
+                        #     '%d, %f, %f, %s', active_index, active_val,
+                        #     prop_to_meet_vals[i],
+                        #     raster_path_band_list[i][0])
+            else:
+                # it's already set
+                # LOGGER.debug('already set')
+                continue
             break
 
+    for i in range(n_rasters):
+        if count % 10000 == 0:
+            LOGGER.debug(
+                '%s: %f', raster_path_band_list[i], prop_to_meet_vals[i])
+
+    # TOOD: clean up all the allocated memory
     task_graph.close()
     task_graph.join()
