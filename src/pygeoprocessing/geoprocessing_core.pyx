@@ -38,8 +38,17 @@ cdef extern from "FastFileIterator.h" nogil:
         FastFileIterator(const char*, size_t)
         DATA_T next()
         size_t size()
-    int FastFileIteratorCompare[DATA_T](FastFileIterator[DATA_T]*,
-                                        FastFileIterator[DATA_T]*)
+    int FastFileIteratorCompare[DATA_T](
+        FastFileIterator[DATA_T]*, FastFileIterator[DATA_T]*)
+
+cdef extern from "FastFileIteratorIndex.h" nogil:
+    cdef cppclass FastFileIteratorIndex[DATA_T]:
+        FastFileIteratorIndex(const char*, const char*, size_t)
+        DATA_T next()
+        size_t size()
+    int FastFileIteratorIndexCompare[DATA_T](
+        FastFileIteratorIndex[DATA_T]*, FastFileIteratorIndex[DATA_T]*)
+
 
 # This resolves an issue on Mac OS X Catalina where cimporting ``push_heap``
 # and ``pop_heap`` from the Standard Library would cause compilation to fail
@@ -938,10 +947,14 @@ def _raster_band_percentile_double(
     return result_list
 
 
+ctypedef FastFileIteratorIndex[double]* FastFileIteratorIndexDoublePtr
+ctypedef vector[FastFileIteratorIndexDoublePtr]* FastFileIteratorIndexVectorPtr
+
+
 def raster_optimization(
         raster_path_band_list, target_sum_list,
         target_working_directory, target_suffix=None,
-        heap_buffer_size=2**28):
+        heap_buffer_size=2**28, ffi_buffer_size=2**10):
     """Create a optimized raster selection given the target sum list.
 
     Parameters:
@@ -962,6 +975,12 @@ def raster_optimization(
         None
 
     """
+    cdef double[:] buffer_data
+    cdef int64t[:] index_data
+    cdef FastFileIteratorIndexDoublePtr fast_file_iterator
+    cdef FastFileIteratorIndexVectorPtr fast_file_iterator_vector_ptr
+    cdef vector[FastFileIteratorIndexVectorPtr] fast_file_iterator_vector_ptr_vector
+    cdef int n_cols
     churn_dir = os.path.join(target_working_directory)
     try:
         os.makedirs(churn_dir)
@@ -996,7 +1015,10 @@ def raster_optimization(
         sum_val = 0.0
         n_elements = 0
         file_index = 0
-        for _, block_data in pygeoprocessing.iterblocks(
+        n_cols = raster_info['raster_size'][0]
+
+        fast_file_iterator_vector_ptr = new vector[FastFileIteratorIndexDoublePtr]()
+        for offset_data, block_data in pygeoprocessing.iterblocks(
                 raster_path_band, largest_block=heap_buffer_size):
             pixels_processed += block_data.size
             if time.time() - last_update > 5.0:
@@ -1004,32 +1026,53 @@ def raster_optimization(
                     'data sort to %s heap %.2f%% complete',
                     raster_id, (100.*pixels_processed)/n_pixels)
                 last_update = time.time()
-            buffer_data = numpy.sort(
-                block_data[~numpy.isclose(block_data, nodata)]).astype(
-                numpy.double)
-            if buffer_data.size == 0:
+            xx, yy = numpy.meshgrid(
+                range(block_data.shape[0]), range(block_data.shape[1]))
+            flat_indexes = (
+                (yy+offset_data['yoff'])*n_cols +
+                (xx+offset_data['xoff'])).flatten()
+            valid_mask = ~numpy.isclose(block_data, nodata)
+            sort_args = numpy.argsort(block_data[valid_mask], axis=None)
+            if sort_args.size == 0:
                 continue
+            buffer_data = (
+                block_data.flatten()[sort_args]).astype(numpy.double)
+            index_data = flat_indexes[sort_args].astype(numpy.int64)
             sum_val += numpy.sum(buffer_data)
             n_elements += buffer_data.size
             file_path = os.path.join(
                 working_sort_directory, '%d.dat' % file_index)
+            index_path = os.path.join(
+                working_sort_directory, 'index_%d.dat' % file_index)
             heapfile_list.append(file_path)
 
-            # fptr = fopen(bytes(file_path.encode()), "wb")
-            # fwrite(
-            #     <double*>&buffer_data[0],
-            #     sizeof(double), buffer_data.size, fptr)
-            # fclose(fptr)
-            # file_index += 1
+            fptr = fopen(bytes(file_path.encode()), "wb")
+            fwrite(
+                <double*>&buffer_data[0],
+                sizeof(double), buffer_data.size, fptr)
+            fclose(fptr)
 
-            # fast_file_iterator = new FastFileIterator[double](
-            #     (bytes(file_path.encode())), ffi_buffer_size)
-            # fast_file_iterator_vector.push_back(fast_file_iterator)
-            # push_heap(
-            #     fast_file_iterator_vector.begin(),
-            #     fast_file_iterator_vector.end(),
-            #     FastFileIteratorCompare[double])
+            index_fptr = fopen(bytes(index_path.encode()), "wb")
+            fwrite(
+                <int64t*>&index_data[0],
+                sizeof(int64t), index_data.size, index_fptr)
+            fclose(index_fptr)
 
+            file_index += 1
+
+            fast_file_iterator = new FastFileIteratorIndex[double](
+                (bytes(file_path.encode())),
+                (bytes(index_path.encode())),
+                ffi_buffer_size)
+
+            # put on back and heapify
+            deref(fast_file_iterator_vector_ptr).push_back(fast_file_iterator)
+            push_heap(
+                deref(fast_file_iterator_vector_ptr).begin(),
+                deref(fast_file_iterator_vector_ptr).end(),
+                FastFileIteratorCompare[double])
+        fast_file_iterator_vector_ptr_vector.push_back(
+            fast_file_iterator_vector_ptr)
 
     task_graph.close()
     task_graph.join()
