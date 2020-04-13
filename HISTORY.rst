@@ -4,6 +4,7 @@ Release History
 
 Unreleased Changes
 ------------------
+* Adding Python 3.8 support
 * Adding a GitHub Actions-based build job for building wheels and a source
   distribution for a given commit of pygeoprocessing.
 * Updated ``setup.py`` to point the URL project link to the project's new
