@@ -1444,9 +1444,7 @@ def raster_optimization(
     cdef int raster_index
 
     dim_set = set()
-    LOGGER.debug(raster_path_band_list)
     for raster_path_band in raster_path_band_list:
-        LOGGER.debug(raster_path_band)
         n_cols, n_rows = pygeoprocessing.get_raster_info(
             raster_path_band[0])['raster_size']
         dim_set.add((n_cols, n_rows))
@@ -1460,8 +1458,6 @@ def raster_optimization(
     for raster_path_band in raster_path_band_list:
         sum_list.append(sum_raster(raster_path_band))
 
-    LOGGER.debug(raster_path_band_list)
-    LOGGER.debug(sum_list)
     raster_nodata_list = []
     normalized_raster_band_path_list = []
     normalized_nodata_list = []
@@ -1507,11 +1503,11 @@ def raster_optimization(
         # calculate the target proportion based on that sum
         pixels_processed = 0
         last_update = time.time()
-        LOGGER.debug('sorting data to heap: %s', raster_path_band)
 
         raster_id = os.path.splitext(os.path.basename(raster_path_band[0]))[0]
         working_sort_directory = os.path.join(
             target_working_directory, raster_id)
+        LOGGER.debug(working_sort_directory)
         heapfile_directory_list.append(working_sort_directory)
         try:
             os.makedirs(working_sort_directory)
@@ -1557,7 +1553,6 @@ def raster_optimization(
                     valid_mask].flatten()
             sorted_data = numpy.diff(numpy.sort(base_data))
             min_eps = 1e-4 * numpy.min(sorted_data[sorted_data > 0])
-            LOGGER.debug('********************** min eps: %f', min_eps)
             # add enough randomness that same values are not the same
             sort_args = numpy.argsort(
                 base_data + min_eps*numpy.random.random(base_data.shape),
@@ -1644,7 +1639,8 @@ def raster_optimization(
     fast_file_iterator_vector_ptr = fast_file_iterator_vector_ptr_vector.back()
     fast_file_iterator_vector_ptr_vector.pop_back()
     # iterate through proportional sum using deterministic simulated annealing
-    LOGGER.debug('valid pixel count: %d', valid_pixel_count)
+
+    cdef long long pixel_set_in_preconditioner = 0
 
     # all but 1-preconditioner_weight will be determined by preconditioner
     cdef double precondition_threshold = 1.0 - preconditioner_weight
@@ -1670,7 +1666,7 @@ def raster_optimization(
 
         # i don't think we should ever have this but check anyway
         if active_index == -1:
-            LOGGER.debug('got active index -1!!!')
+            LOGGER.error('got active index -1!!!')
             break
 
         x = active_index % n_cols
@@ -1687,7 +1683,7 @@ def raster_optimization(
                 if active_val > 0:
                     threshold_prop = precondition_threshold * (
                         <double>(count+1)/<double>(valid_pixel_count))
-
+                    LOGGER.debug('threshold/prop to meet: %f %f', threshold_prop, prop_to_meet_vals[i])
                     if prop_to_meet_vals[i] <= threshold_prop:
                         okay_to_fill = 0
                         break
@@ -1703,6 +1699,7 @@ def raster_optimization(
                         running_goal_sum_array[i]) / (
                             max_sum_array[i+1])
                 mask_managed_raster.set(x, y, 1)
+                pixel_set_in_preconditioner += 1
         else:
             # it's already set
             continue
@@ -1712,6 +1709,7 @@ def raster_optimization(
 
     # iterate remaining props to meet through individual targets
     count = 0
+    cdef long long pixel_set_in_general = 0
     while True:
         max_prop_index = -1
         active_prop_to_meet = 0.0
@@ -1758,6 +1756,7 @@ def raster_optimization(
             # check that the pixel hasn't already been selected
             if mask_managed_raster.get(x, y) == mask_nodata:
                 mask_managed_raster.set(x, y, 1)
+                pixel_set_in_general += 1
                 # update all the pools
                 for i in range(n_rasters):
                     active_val = (<_ManagedRaster>managed_raster_array[i]).get(
@@ -1769,6 +1768,7 @@ def raster_optimization(
                             target_sum_array[i] -
                             running_goal_sum_array[i]) / (
                                 max_sum_array[i])
+
                         # LOGGER.debug(
                         #     '%d, %f, %f, %s', active_index, active_val,
                         #     prop_to_meet_vals[i],
@@ -1802,6 +1802,10 @@ def raster_optimization(
             fast_file_iterator = deref(fast_file_iterator_vector_ptr).back()
             del fast_file_iterator
             deref(fast_file_iterator_vector_ptr).pop_back()
+
+    LOGGER.debug(
+        'pixels set in preconditioner vs general: %d %d',
+        pixel_set_in_preconditioner, pixel_set_in_general)
 
     # delete all the heap files
     for heapfile_dir in heapfile_directory_list:
