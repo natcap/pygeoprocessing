@@ -155,13 +155,10 @@ def raster_calculator(
             name string as the first element and a GDAL creation options
             tuple/list as the second. Defaults to
             geoprocessing.DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS.
-
     Returns:
         None
-
     Raises:
         ValueError: invalid input provided
-
     """
     if not base_raster_path_band_const_list:
         raise ValueError(
@@ -2398,10 +2395,8 @@ def convolve_2d(
             name string as the first element and a GDAL creation options
             tuple/list as the second. Defaults to a GTiff driver tuple
             defined at geoprocessing.DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS.
-
     Returns:
         None
-
     """
     if target_datatype is not gdal.GDT_Float64 and target_nodata is None:
         raise ValueError(
@@ -3163,7 +3158,7 @@ def _gdal_to_numpy_type(band):
 def merge_bounding_box_list(bounding_box_list, bounding_box_mode):
     """Create a single bounding box by union or intersection of the list.
 
-    Parameters:
+    Args:
         bounding_box_list (sequence): a sequence of bounding box coordinates
             in the order [minx,miny,maxx,maxy].
         mode (string): either 'union' or 'intersection' for the corresponding
@@ -3181,7 +3176,7 @@ def merge_bounding_box_list(bounding_box_list, bounding_box_mode):
     def _merge_bounding_boxes(bb1, bb2, mode):
         """Merge two bounding boxes through union or intersection.
 
-        Parameters:
+        Args:
             bb1, bb2 (sequence): sequence of float representing bounding box
                 in the form bb=[minx,miny,maxx,maxy]
             mode (string); one of 'union' or 'intersection'
@@ -3221,7 +3216,7 @@ def merge_bounding_box_list(bounding_box_list, bounding_box_mode):
 def get_gis_type(path):
     """Calculate the GIS type of the file located at `path`.
 
-    Parameters:
+    Args:
         path (str): path to a file on disk.
 
 

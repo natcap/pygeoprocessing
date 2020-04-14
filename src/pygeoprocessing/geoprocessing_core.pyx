@@ -1336,13 +1336,74 @@ ctypedef FastFileIteratorIndex[double]* FastFileIteratorIndexDoublePtr
 ctypedef vector[FastFileIteratorIndexDoublePtr]* FastFileIteratorIndexVectorPtr
 
 
+def normalize_op(base_array, total_sum, base_nodata, target_nodata):
+    """Divide base by total and guard against nodata."""
+    result = numpy.empty(base_array.shape, dtype=numpy.float64)
+    result[:] = target_nodata
+    valid_mask = ~numpy.isclose(base_array, base_nodata)
+    result[valid_mask] = (
+        base_array[valid_mask].astype(numpy.float64) / total_sum)
+    return result
+
+
+def sum_rasters_op(*array_nodata_list):
+    """Sum all non-nodata pixels in array_list.
+
+    Args:
+        array_nodata_list (list): 2*n+1 length list where the first n elements
+            are arrays, the second n elements are nodata values for those
+            arrays and the last element is the target nodata
+
+    Returns:
+        sum of valid pixels and target nodata where no coverage.
+
+    """
+    result = numpy.zeros(array_nodata_list[0].shape, dtype=numpy.float64)
+    total_valid_mask = numpy.zeros(
+        array_nodata_list[0].shape, dtype=numpy.bool)
+    n = len(array_nodata_list)
+    for array, nodata in zip(
+            array_nodata_list[0:n//2], array_nodata_list[n//2::]):
+        valid_mask = ~numpy.isclose(array, nodata)
+        total_valid_mask |= valid_mask
+        result[valid_mask] += array[valid_mask]
+    result[~total_valid_mask] = array_nodata_list[-1]
+    return result
+
+
+def sum_raster(raster_path_band):
+    """Sum the raster and return the result."""
+    nodata = pygeoprocessing.get_raster_info(
+        raster_path_band[0])['nodata'][raster_path_band[1]-1]
+
+    raster_sum = 0.0
+    for _, array in pygeoprocessing.iterblocks(raster_path_band):
+        valid_mask = ~numpy.isclose(array, nodata)
+        raster_sum += numpy.sum(array[valid_mask])
+
+    return raster_sum
+
+
+def count_valid(raster_path_band):
+    """Sum the raster and return the result."""
+    nodata = pygeoprocessing.get_raster_info(
+        raster_path_band[0])['nodata'][raster_path_band[1]-1]
+
+    valid_count = 0
+    for _, array in pygeoprocessing.iterblocks(raster_path_band):
+        valid_mask = ~numpy.isclose(array, nodata) & (array > 0)
+        valid_count += numpy.count_nonzero(valid_mask)
+
+    return valid_count
+
+
 def raster_optimization(
-        raster_path_band_list, target_sum_list,
-        target_working_directory, target_suffix=None,
+        raster_path_band_list,
+        target_sum_list, target_working_directory, target_suffix=None,
         heap_buffer_size=2**28, ffi_buffer_size=2**10):
     """Create a optimized raster selection given the target sum list.
 
-    Parameters:
+    Args:
         raster_band_list (list): list of (raster_path, band_id) tuples.
         target_sum_list (list): list of floating point values for the target
             sums in each of the raster path bands.
@@ -1365,21 +1426,78 @@ def raster_optimization(
     cdef FastFileIteratorIndexDoublePtr fast_file_iterator
     cdef FastFileIteratorIndexVectorPtr fast_file_iterator_vector_ptr
     cdef vector[FastFileIteratorIndexVectorPtr] fast_file_iterator_vector_ptr_vector
-    cdef int n_cols = 0
-    cdef int n_rasters = len(target_sum_list)
+    cdef int n_cols = 0, okay_to_fill = 0
+    cdef int n_rasters = len(raster_path_band_list)
     churn_dir = os.path.join(target_working_directory)
     try:
         os.makedirs(churn_dir)
     except OSError:
         pass
 
-    task_graph = taskgraph.TaskGraph(churn_dir, -1)
-
     heapfile_list = []
     cdef double[:] max_sum_array = numpy.zeros(n_rasters)
     cdef double[:] max_proportion_list = numpy.zeros(n_rasters)
     cdef int raster_index
-    for raster_index, raster_path_band in enumerate(raster_path_band_list):
+
+    dim_set = set()
+    LOGGER.debug(raster_path_band_list)
+    for raster_path_band in raster_path_band_list:
+        LOGGER.debug(raster_path_band)
+        n_cols, n_rows = pygeoprocessing.get_raster_info(
+            raster_path_band[0])['raster_size']
+        dim_set.add((n_cols, n_rows))
+
+    if len(dim_set) > 1:
+        error_message = f"dimensions don't match: {str(dim_set)}"
+        LOGGER.error(error_message)
+        raise RuntimeError(error_message)
+
+    sum_list = []
+    for raster_path_band in raster_path_band_list:
+        sum_list.append(sum_raster(raster_path_band))
+
+    LOGGER.debug(raster_path_band_list)
+    LOGGER.debug(sum_list)
+    raster_nodata_list = []
+    normalized_raster_band_path_list = []
+    normalized_nodata_list = []
+    prop_nodata = -1
+    # calculate normalized rasters of their total
+    for (path, band_id), sum_val in zip(raster_path_band_list, sum_list):
+        if sum_val > 0:
+            raster_path_band_list.append((path, 1))
+            raster_nodata_list.append(
+                (pygeoprocessing.get_raster_info(path)[
+                    'nodata'][band_id-1], 'raw'))
+            proportional_path = os.path.join(
+                churn_dir, f'prop_{os.path.basename(path)}')
+            pygeoprocessing.raster_calculator([
+                (path, 1), (sum_val, 'raw'),
+                (pygeoprocessing.get_raster_info(path)['nodata'][band_id-1],
+                 'raw'),
+                (prop_nodata, 'raw')], normalize_op, proportional_path,
+                gdal.GDT_Float64, prop_nodata)
+            normalized_raster_band_path_list.append((proportional_path, 1))
+            normalized_nodata_list.append((prop_nodata, 'raw'))
+        else:
+            normalized_raster_band_path_list.append((path, band_id))
+            normalized_nodata_list.append(
+                (pygeoprocessing.get_raster_info(path)['nodata'][0], 'raw'))
+
+    normalized_sum_raster_path = os.path.join(churn_dir, 'prop_sum.tif')
+    pygeoprocessing.raster_calculator(
+        [*normalized_raster_band_path_list, *normalized_nodata_list,
+         (prop_nodata, 'raw')],
+        sum_rasters_op, normalized_sum_raster_path, gdal.GDT_Float64,
+        prop_nodata)
+
+    cdef long long valid_pixel_count = count_valid(
+        (normalized_sum_raster_path, 1))
+
+    # sort proportional and base rasters
+    heapfile_directory_list = []
+    for raster_index, raster_path_band in enumerate(
+            [*raster_path_band_list, (normalized_sum_raster_path, 1)]):
         # sort the raster from high to low including pixel loc
         # calculate the sum along with it
         # calculate the target proportion based on that sum
@@ -1391,7 +1509,7 @@ def raster_optimization(
         raster_id = os.path.splitext(os.path.basename(raster_path_band[0]))[0]
         working_sort_directory = os.path.join(
             target_working_directory, raster_id)
-
+        heapfile_directory_list.append(working_sort_directory)
         try:
             os.makedirs(working_sort_directory)
         except OSError:
@@ -1406,7 +1524,8 @@ def raster_optimization(
         file_index = 0
         n_cols = raster_info['raster_size'][0]
 
-        fast_file_iterator_vector_ptr = new vector[FastFileIteratorIndexDoublePtr]()
+        fast_file_iterator_vector_ptr = \
+            new vector[FastFileIteratorIndexDoublePtr]()
         for offset_data, block_data in pygeoprocessing.iterblocks(
                 raster_path_band, largest_block=heap_buffer_size):
             pixels_processed += block_data.size
@@ -1421,6 +1540,7 @@ def raster_optimization(
             # but don't do those either)
             valid_mask = (
                 ~numpy.isclose(block_data, nodata) &
+                ~numpy.isclose(block_data, 0) &
                 (block_data > 0))
             LOGGER.debug(offset_data)
             flat_indexes = (
@@ -1470,34 +1590,41 @@ def raster_optimization(
                 deref(fast_file_iterator_vector_ptr).end(),
                 FastFileIteratorIndexCompare[double])
 
-        max_sum_array[raster_index] = sum_val
-        max_proportion_list[raster_index] = (
-            target_sum_list[raster_index] / sum_val)
-        fast_file_iterator_vector_ptr_vector.push_back(
-            fast_file_iterator_vector_ptr)
-        LOGGER.debug(
-            'push back maxp prop: %f neles: %d',
-            max_proportion_list[raster_index], n_elements)
+        if raster_index < n_rasters:
+            max_sum_array[raster_index] = sum_val
+            max_proportion_list[raster_index] = (
+                target_sum_list[raster_index] / sum_val)
+            fast_file_iterator_vector_ptr_vector.push_back(
+                fast_file_iterator_vector_ptr)
+            LOGGER.debug(
+                'push back maxp prop: %f neles: %d',
+                max_proportion_list[raster_index-1], n_elements)
 
     # core algorithm, visit each pixel
     if target_suffix is not None:
         target_suffix = '_%s' % target_suffix
+    else:
+        target_suffix = ''
     mask_raster_path = os.path.join(
         target_working_directory, 'optimal_mask%s.tif' % target_suffix)
-    cdef int mask_nodata = 2
+    cdef int mask_nodata = 0
     pygeoprocessing.new_raster_from_base(
         raster_path_band_list[0][0], mask_raster_path, gdal.GDT_Byte,
         [mask_nodata])
     cdef _ManagedRaster mask_managed_raster = _ManagedRaster(
         mask_raster_path, 1, 1)
 
+    # n_rasters-1 because the first raster is a proportional raster that's
+    # used as an optimization preconditioner
     cdef double[:] running_goal_sum_array = numpy.zeros(n_rasters)
+    cdef double[:] active_val_array = numpy.zeros(n_rasters)
     cdef double[:] prop_to_meet_vals = max_proportion_list.copy()
     cdef double[:] target_sum_array = numpy.array(target_sum_list)
 
     cdef int i, max_prop_index, x, y
     cdef int64t active_index
     cdef double active_prop_to_meet
+    cdef double threshold_prop
 
     cdef _ManagedRaster[:] managed_raster_array
 
@@ -1507,13 +1634,84 @@ def raster_optimization(
             raster_path_band_list[i][1], 0) for i in range(n_rasters)])
 
     cdef long long count = 0
+    # this sets the lower bound on the "highest temperature"/lowest iteration
+    # of the simulated annealing
+    cdef float base_annealing_prop = 0.1
+    # 0 index because that is the proportion sum index
+    fast_file_iterator_vector_ptr = fast_file_iterator_vector_ptr_vector.back()
+    fast_file_iterator_vector_ptr_vector.pop_back()
+    # iterate through proportional sum using deterministic simulated annealing
+    LOGGER.debug('valid pixel count: %d', valid_pixel_count)
+    while True:
+        count += 1
+        active_index = (
+            deref(fast_file_iterator_vector_ptr).front().next())
+        # update the heap
+        pop_heap(
+            deref(fast_file_iterator_vector_ptr).begin(),
+            deref(fast_file_iterator_vector_ptr).end(),
+            FastFileIteratorIndexCompare[double])
+        if deref(fast_file_iterator_vector_ptr).back().size() > 0:
+            push_heap(
+                deref(fast_file_iterator_vector_ptr).begin(),
+                deref(fast_file_iterator_vector_ptr).end(),
+                FastFileIteratorIndexCompare[double])
+        else:
+            fast_file_iterator = deref(
+                fast_file_iterator_vector_ptr).back()
+            del fast_file_iterator
+            deref(fast_file_iterator_vector_ptr).pop_back()
 
+        # i don't think we should ever have this but check anyway
+        if active_index == -1:
+            LOGGER.debug('got active index -1!!!')
+            break
+
+        x = active_index % n_cols
+        y = active_index // n_cols
+        # check that the pixel hasn't already been selected
+        if mask_managed_raster.get(x, y) == mask_nodata:
+            # check if any of the pools that are already full would be
+            # additionally filled by selecting this pixel, if so, skip it
+            okay_to_fill = 1
+            for i in range(n_rasters):
+                active_val = (<_ManagedRaster>managed_raster_array[i]).get(
+                    x, y)
+                # we could get a garbage area so check first
+                if active_val > 0:
+                    threshold_prop = (
+                        base_annealing_prop + (1-base_annealing_prop) * (
+                            <double>(count)/<double>(valid_pixel_count)))
+                    if prop_to_meet_vals[i] >= threshold_prop:
+                        okay_to_fill = 0
+                        break
+                    active_val_array[i] = active_val
+                else:
+                    active_val_array[i] = 0
+
+            if okay_to_fill:
+                for i in range(n_rasters):
+                    running_goal_sum_array[i] += active_val_array[i]
+                    prop_to_meet_vals[i] = (
+                        target_sum_array[i] -
+                        running_goal_sum_array[i]) / (
+                            max_sum_array[i+1])
+                mask_managed_raster.set(x, y, 1)
+        else:
+            # it's already set
+            continue
+        break
+
+    del fast_file_iterator_vector_ptr
+
+    # iterate remaining props to meet through individual targets
+    count = 0
     while True:
         max_prop_index = -1
         active_prop_to_meet = 0.0
+        if count % 1000000 == 0:
+            LOGGER.debug(count)
         for i in range(n_rasters):
-            if count % 10000 == 0:
-                LOGGER.debug(prop_to_meet_vals[i])
             if (prop_to_meet_vals[i] > 0 and
                     (prop_to_meet_vals[i] > active_prop_to_meet)):
                 max_prop_index = i
@@ -1556,7 +1754,8 @@ def raster_optimization(
                 mask_managed_raster.set(x, y, 1)
                 # update all the pools
                 for i in range(n_rasters):
-                    active_val = (<_ManagedRaster>managed_raster_array[i]).get(x, y)
+                    active_val = (<_ManagedRaster>managed_raster_array[i]).get(
+                        x, y)
                     # we could get a garbage area so check first
                     if active_val > 0:
                         running_goal_sum_array[i] += active_val
@@ -1574,11 +1773,34 @@ def raster_optimization(
                 continue
             break
 
-    for i in range(n_rasters):
-        if count % 10000 == 0:
-            LOGGER.debug(
-                '%s: %f', raster_path_band_list[i], prop_to_meet_vals[i])
+    with open(os.path.join(
+            target_working_directory, f'results{target_suffix}.csv'), 'w') as \
+            results_file:
+        results_file.write(
+                'base raster,target sum,final sum,proportion beyond optimal\n')
+        for i in range(n_rasters):
+            results_file.write(
+                '%s,%f,%f,%f\n' % (
+                    os.path.basename(raster_path_band_list[i][0]),
+                    target_sum_list[i],
+                    running_goal_sum_array[i],
+                    prop_to_meet_vals[i]))
 
-    # TOOD: clean up all the allocated memory
-    task_graph.close()
-    task_graph.join()
+    # free all the iterator memory
+    while fast_file_iterator_vector_ptr_vector.size() > 0:
+        fast_file_iterator_vector_ptr = \
+            fast_file_iterator_vector_ptr_vector.back()
+        fast_file_iterator_vector_ptr_vector.pop_back()
+
+        while deref(fast_file_iterator_vector_ptr).size() > 0:
+            fast_file_iterator = deref(fast_file_iterator_vector_ptr).back()
+            del fast_file_iterator
+            deref(fast_file_iterator_vector_ptr).pop_back()
+
+    # delete all the heap files
+    for heapfile_dir in heapfile_directory_list:
+        try:
+            shutil.rmtree(heapfile_dir)
+        except OSError:
+            # you never know if this might fail!
+            LOGGER.warning('unable to remove %s', heapfile_dir)
