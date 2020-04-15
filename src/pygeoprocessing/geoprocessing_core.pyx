@@ -1651,8 +1651,11 @@ def raster_optimization(
     cdef double prop_met_so_far = 0.  # used to threshold picks
     while True:
         count += 1
-        threshold_prop = precondition_threshold * (
-            <double>(count+1)/<double>(valid_pixel_count))
+        if valid_pixel_count > 0:
+            threshold_prop = precondition_threshold * (
+                <double>(count+1)/<double>(valid_pixel_count))
+        else:
+            threshold_prop = 0
         active_index = (
             deref(fast_file_iterator_vector_ptr).front().next())
         # update the heap
