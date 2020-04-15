@@ -1648,6 +1648,7 @@ def raster_optimization(
 
     # all but preconditioner_weight will be determined by preconditioner
     cdef double precondition_threshold = preconditioner_weight
+    cdef double prop_met_so_far = 0.  # used to threshold picks
     while True:
         count += 1
         threshold_prop = precondition_threshold * (
@@ -1690,12 +1691,17 @@ def raster_optimization(
             okay_to_fill = 1
             nonzero = 0
             for i in range(n_rasters):
+                if max_proportion_list[i] == 0:
+                    continue
                 active_val = (<_ManagedRaster>managed_raster_array[i]).get(
                     x, y)
                 # we could get a garbage area so check first
                 if active_val > 0:
-                    #LOGGER.warning('threshold/prop to meet: %f %f', threshold_prop, prop_to_meet_vals[i])
-                    if prop_to_meet_vals[i] <= threshold_prop:
+                    prop_met_so_far = (
+                        (max_proportion_list[i] - prop_to_meet_vals[i]) / (
+                            max_proportion_list[i]))
+                    if prop_met_so_far >= threshold_prop:
+                        # too much prop is met than the threshold allows, skip
                         okay_to_fill = 0
                         break
                     active_val_array[i] = active_val
@@ -1806,7 +1812,7 @@ def raster_optimization(
         total_over_sum = numpy.sum(
             [prop_to_meet_vals[i] for i in range(n_rasters)])
         results_file.write(
-            '\n%d,%d,%d,%f\n' % (
+            '\n%d,%d,%d,%f,%f\n' % (
                 pixel_set_in_preconditioner, pixel_set_in_general,
                 pixel_set_in_preconditioner+pixel_set_in_general,
                 total_over_sum, preconditioner_weight))
