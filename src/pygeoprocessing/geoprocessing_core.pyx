@@ -1716,7 +1716,7 @@ def raster_optimization(
                         target_sum_array[i] -
                         running_goal_sum_array[i]) / (
                             max_sum_array[i]+1e-15)
-                # mask_managed_raster.set(x, y, 1)
+                mask_managed_raster.set(x, y, 1)
                 pixel_set_in_preconditioner += 1
         else:
             # it's already set
