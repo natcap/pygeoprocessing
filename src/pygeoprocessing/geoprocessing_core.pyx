@@ -1454,16 +1454,18 @@ def raster_optimization(
         LOGGER.error(error_message)
         raise RuntimeError(error_message)
 
-    sum_list = []
+    raster_sum_list = []
     for raster_path_band in raster_path_band_list:
-        sum_list.append(sum_raster(raster_path_band))
+        raster_sum_list.append(sum_raster(raster_path_band))
 
     raster_nodata_list = []
     normalized_raster_band_path_list = []
     normalized_nodata_list = []
     prop_nodata = -1
+
     # calculate normalized rasters of their total
-    for (path, band_id), sum_val in zip(raster_path_band_list, sum_list):
+    for (path, band_id), sum_val in zip(
+            raster_path_band_list, raster_sum_list):
         if sum_val > 0:
             raster_path_band_list.append((path, 1))
             raster_nodata_list.append(
@@ -1484,7 +1486,8 @@ def raster_optimization(
             normalized_nodata_list.append(
                 (pygeoprocessing.get_raster_info(path)['nodata'][0], 'raw'))
 
-    normalized_sum_raster_path = os.path.join(churn_dir, 'prop_sum.tif')
+    # calcualte the sum of all the normalized rasters for a preconditioner
+    normalized_sum_raster_path = os.path.join(churn_dir, 'norm_sum.tif')
     pygeoprocessing.raster_calculator(
         [*normalized_raster_band_path_list, *normalized_nodata_list,
          (prop_nodata, 'raw')],
@@ -1494,16 +1497,12 @@ def raster_optimization(
     cdef long long valid_pixel_count = count_valid(
         (normalized_sum_raster_path, 1))
 
-    # sort proportional and base rasters
+    # sort base rasters and the normalized sum
     heapfile_directory_list = []
     for raster_index, raster_path_band in enumerate(
             [*raster_path_band_list, (normalized_sum_raster_path, 1)]):
-        # sort the raster from high to low including pixel loc
-        # calculate the sum along with it
-        # calculate the target proportion based on that sum
-        pixels_processed = 0
-        last_update = time.time()
 
+        pixels_processed = 0
         raster_id = os.path.splitext(os.path.basename(raster_path_band[0]))[0]
         working_sort_directory = os.path.join(
             target_working_directory, raster_id)
@@ -1559,7 +1558,6 @@ def raster_optimization(
                 axis=None)
             buffer_data = (base_data.flatten()[sort_args]).astype(numpy.double)
             index_data = flat_indexes[sort_args].astype(numpy.int64)
-            sum_val += numpy.sum(buffer_data)
             n_elements += buffer_data.size
             file_path = os.path.join(
                 working_sort_directory, '%d.dat' % file_index)
@@ -1593,12 +1591,22 @@ def raster_optimization(
                 deref(fast_file_iterator_vector_ptr).end(),
                 FastFileIteratorIndexCompare[double])
 
+        # if this is one of the base rasters, define the max prop list for that
+        # raster based on the desired target
         if raster_index < n_rasters:
-            max_sum_array[raster_index] = sum_val
-            max_proportion_list[raster_index] = (
-                target_sum_list[raster_index] / sum_val)
-            fast_file_iterator_vector_ptr_vector.push_back(
-                fast_file_iterator_vector_ptr)
+            max_sum_array[raster_index] = raster_sum_list[raster_index]
+            if raster_sum_list[raster_index] > 0:
+                max_proportion_list[raster_index] = (
+                    target_sum_list[raster_index] /
+                    raster_sum_list[raster_index])
+            else:
+                max_proportion_list[raster_index] = 0.0
+        fast_file_iterator_vector_ptr_vector.push_back(
+            fast_file_iterator_vector_ptr)
+
+    LOGGER.warning(str([raster_sum_list[i] for i in range(n_rasters)]))
+    LOGGER.warning(str([max_proportion_list[i] for i in range(n_rasters)]))
+    return
 
     # core algorithm, visit each pixel
     if target_suffix is not None:
@@ -1642,10 +1650,12 @@ def raster_optimization(
 
     cdef long long pixel_set_in_preconditioner = 0
 
-    # all but 1-preconditioner_weight will be determined by preconditioner
-    cdef double precondition_threshold = 1.0 - preconditioner_weight
+    # all but preconditioner_weight will be determined by preconditioner
+    cdef double precondition_threshold = preconditioner_weight
     while True:
         count += 1
+        threshold_prop = precondition_threshold * (
+            <double>(count+1)/<double>(valid_pixel_count))
         active_index = (
             deref(fast_file_iterator_vector_ptr).front().next())
         # update the heap
@@ -1659,10 +1669,16 @@ def raster_optimization(
                 deref(fast_file_iterator_vector_ptr).end(),
                 FastFileIteratorIndexCompare[double])
         else:
+            LOGGER.warning('done with that file')
+            LOGGER.warning(
+                'length: %d' % deref(fast_file_iterator_vector_ptr).size())
             fast_file_iterator = deref(
                 fast_file_iterator_vector_ptr).back()
-            del fast_file_iterator
             deref(fast_file_iterator_vector_ptr).pop_back()
+            del fast_file_iterator
+            if deref(fast_file_iterator_vector_ptr).size() == 0:
+                break
+            LOGGER.warning('continuing...')
 
         # i don't think we should ever have this but check anyway
         if active_index == -1:
@@ -1681,9 +1697,7 @@ def raster_optimization(
                     x, y)
                 # we could get a garbage area so check first
                 if active_val > 0:
-                    threshold_prop = precondition_threshold * (
-                        <double>(count+1)/<double>(valid_pixel_count))
-                    LOGGER.debug('threshold/prop to meet: %f %f', threshold_prop, prop_to_meet_vals[i])
+                    #LOGGER.warning('threshold/prop to meet: %f %f', threshold_prop, prop_to_meet_vals[i])
                     if prop_to_meet_vals[i] <= threshold_prop:
                         okay_to_fill = 0
                         break
@@ -1698,13 +1712,12 @@ def raster_optimization(
                         target_sum_array[i] -
                         running_goal_sum_array[i]) / (
                             max_sum_array[i+1])
-                mask_managed_raster.set(x, y, 1)
+                # mask_managed_raster.set(x, y, 1)
                 pixel_set_in_preconditioner += 1
         else:
             # it's already set
             continue
-        break
-
+    LOGGER.warning('done with preconditioner')
     del fast_file_iterator_vector_ptr
 
     # iterate remaining props to meet through individual targets
@@ -1721,7 +1734,7 @@ def raster_optimization(
                 max_prop_index = i
                 active_prop_to_meet = prop_to_meet_vals[i]
         if max_prop_index == -1:
-            LOGGER.debug('all targets met')
+            LOGGER.warning('all targets met')
             break
 
         fast_file_iterator_vector_ptr = \
@@ -1748,7 +1761,7 @@ def raster_optimization(
 
             # i don't think we should ever have this but check anyway
             if active_index == -1:
-                LOGGER.debug('got active index -1!!!')
+                LOGGER.warning('got active index -1!!!')
                 break
 
             x = active_index % n_cols
@@ -1803,7 +1816,7 @@ def raster_optimization(
             del fast_file_iterator
             deref(fast_file_iterator_vector_ptr).pop_back()
 
-    LOGGER.debug(
+    LOGGER.warning(
         'pixels set in preconditioner vs general: %d %d',
         pixel_set_in_preconditioner, pixel_set_in_general)
 
