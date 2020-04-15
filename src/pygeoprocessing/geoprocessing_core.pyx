@@ -1501,7 +1501,7 @@ def raster_optimization(
     heapfile_directory_list = []
     for raster_index, raster_path_band in enumerate(
             [*raster_path_band_list, (normalized_sum_raster_path, 1)]):
-
+        last_update = time.time()
         pixels_processed = 0
         raster_id = os.path.splitext(os.path.basename(raster_path_band[0]))[0]
         working_sort_directory = os.path.join(
@@ -1603,10 +1603,6 @@ def raster_optimization(
                 max_proportion_list[raster_index] = 0.0
         fast_file_iterator_vector_ptr_vector.push_back(
             fast_file_iterator_vector_ptr)
-
-    LOGGER.warning(str([raster_sum_list[i] for i in range(n_rasters)]))
-    LOGGER.warning(str([max_proportion_list[i] for i in range(n_rasters)]))
-    return
 
     # core algorithm, visit each pixel
     if target_suffix is not None:
@@ -1711,7 +1707,7 @@ def raster_optimization(
                     prop_to_meet_vals[i] = (
                         target_sum_array[i] -
                         running_goal_sum_array[i]) / (
-                            max_sum_array[i+1])
+                            max_sum_array[i]+1e-15)
                 # mask_managed_raster.set(x, y, 1)
                 pixel_set_in_preconditioner += 1
         else:
@@ -1804,6 +1800,11 @@ def raster_optimization(
                     target_sum_list[i],
                     running_goal_sum_array[i],
                     prop_to_meet_vals[i]))
+        results_file.write('\npreconditioner,general,total')
+        results_file.write(
+            '\n%d,%d,%d\n',
+            pixel_set_in_preconditioner, pixel_set_in_general,
+            pixel_set_in_preconditioner+pixel_set_in_general)
 
     # free all the iterator memory
     while fast_file_iterator_vector_ptr_vector.size() > 0:
