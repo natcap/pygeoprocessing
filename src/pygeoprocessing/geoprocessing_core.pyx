@@ -1430,7 +1430,7 @@ def raster_optimization(
     cdef FastFileIteratorIndexDoublePtr fast_file_iterator
     cdef FastFileIteratorIndexVectorPtr fast_file_iterator_vector_ptr
     cdef vector[FastFileIteratorIndexVectorPtr] fast_file_iterator_vector_ptr_vector
-    cdef int n_cols = 0, okay_to_fill = 0
+    cdef int n_cols=0, okay_to_fill=0, nonzero=0
     cdef int n_rasters = len(raster_path_band_list)
     churn_dir = os.path.join(target_working_directory)
     try:
@@ -1688,6 +1688,7 @@ def raster_optimization(
             # check if any of the pools that are already full would be
             # additionally filled by selecting this pixel, if so, skip it
             okay_to_fill = 1
+            nonzero = 0
             for i in range(n_rasters):
                 active_val = (<_ManagedRaster>managed_raster_array[i]).get(
                     x, y)
@@ -1698,10 +1699,11 @@ def raster_optimization(
                         okay_to_fill = 0
                         break
                     active_val_array[i] = active_val
+                    nonzero = 1
                 else:
                     active_val_array[i] = 0
 
-            if okay_to_fill:
+            if okay_to_fill and nonzero:
                 for i in range(n_rasters):
                     running_goal_sum_array[i] += active_val_array[i]
                     prop_to_meet_vals[i] = (
@@ -1801,10 +1803,13 @@ def raster_optimization(
                     running_goal_sum_array[i],
                     prop_to_meet_vals[i]))
         results_file.write('\npreconditioner,general,total')
+        total_over_sum = numpy.sum(
+            [prop_to_meet_vals[i] for i in range(n_rasters)])
         results_file.write(
-            '\n%d,%d,%d\n',
-            pixel_set_in_preconditioner, pixel_set_in_general,
-            pixel_set_in_preconditioner+pixel_set_in_general)
+            '\n%d,%d,%d,%f\n' % (
+                pixel_set_in_preconditioner, pixel_set_in_general,
+                pixel_set_in_preconditioner+pixel_set_in_general,
+                total_over_sum, preconditioner_weight))
 
     # free all the iterator memory
     while fast_file_iterator_vector_ptr_vector.size() > 0:
