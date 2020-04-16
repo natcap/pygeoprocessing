@@ -30,8 +30,9 @@ jobs:
                   set -x
                   BRANCHES=$(git ls-remote --heads origin | grep release | cut -d '/' -f 3-)
                   echo $BRANCHES  # debugging
-                  for RELEASE_BRANCH in `echo $BRANCHES`
+                  for BRANCH in $BRANCHES
                   do
+                      RELEASE_BRANCH=$BRANCH  # needed for envsubst
                       PR_BODY_FILE=pr_body.txt
                       cat ci/bugfix-release-pr-body.md | envsubst > $PR_BODY_FILE
                       cat $PR_BODY_FILE  # for debugging
