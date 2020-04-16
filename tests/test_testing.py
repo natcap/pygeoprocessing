@@ -315,7 +315,7 @@ class CSVEquality(unittest.TestCase):
     def make_guild_csv(workspace):
         """Make a guilds CSV at workspace/guild.csv.
 
-        Parameters:
+        Args:
             workspace (string): The absolute path to the directory where the
                 new file should be stored.
         Returns:
@@ -333,7 +333,7 @@ class CSVEquality(unittest.TestCase):
     def make_landuse_csv(workspace):
         """Make a landuse CSV at workspace/LU.csv.
 
-        Parameters:
+        Args:
             workspace (string): The absolute path to the directory where the
                 new file should be stored.
         Returns:
@@ -409,7 +409,7 @@ class DigestEquality(unittest.TestCase):
     def create_sample_folder(dirname):
         """Create a sample file/directory structure at `dirname`.
 
-        Parameters:
+        Args:
             dirname (string): the path to a directory where simple
                 files/folders should be created.
 
@@ -831,7 +831,7 @@ class RasterTests(unittest.TestCase):
             * ``nodata``: ``-1``
             * ``pixel_size``: ``SRS_COLOMBIA.pixel_size(30)``.
 
-        Parameters:
+        Args:
             Any of these parameters (and any parameters accepted by
             ``create_raster_on_disk`` may be overridden by the caller.
 

@@ -1,13 +1,12 @@
 # coding=UTF-8
 """Module to hold symbolic PyGeoprocessing utilities."""
-import logging
-import inspect
 import ast
+import logging
 
-from osgeo import gdal
-import numpy
 from . import geoprocessing
 from .geoprocessing import DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS
+from osgeo import gdal
+import numpy
 
 LOGGER = logging.getLogger(__name__)
 
@@ -31,7 +30,7 @@ def evaluate_raster_calculator_expression(
         * the following arithmetic operators are available:
           +, -, *, /, <, <=, >, >=, !=, &, and |.
 
-    Parameters:
+    Args:
         expression (str): a valid arithmetic expression whose variables
             are defined in ``symbol_to_path_band_map``.
         symbol_to_path_band_map (dict): a dict of symbol/(path, band) pairs to
@@ -138,7 +137,7 @@ def evaluate_raster_calculator_expression(
 def _generic_raster_op(*arg_list):
     """General raster array operation with well conditioned args.
 
-    Parameters:
+    Args:
         arg_list (list): a list of length 2*n+5 defined as:
             [array_0, ... array_n, nodata_0, ... nodata_n,
              expression, target_nodata, default_nan, default_inf, kwarg_names]
