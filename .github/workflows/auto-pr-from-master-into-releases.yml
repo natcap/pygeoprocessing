@@ -38,11 +38,14 @@ jobs:
                       cat ci/bugfix-release-pr-body.md | envsubst > $PR_BODY_FILE
                       cat $PR_BODY_FILE  # for debugging
 
+                      # This PR will be assigned to $GITHUB_ACTOR, which should be
+                      # the person who merged the PR that caused this commit to be
+                      # created.  Others could of course be assigned later.
                       hub pull-request \
                           --head $GITHUB_REPOSITORY:$SOURCE_BRANCH \
                           --base $GITHUB_REPOSITORY:$RELEASE_BRANCH \
-                          --reviewer "natcap/software-team" \
-                          --assign "natcap/software-team" \
+                          --reviewer "$GITHUB_ACTOR" \
+                          --assign "$GITHUB_ACTOR" \
                           --file $PR_BODY_FILE || ERRORSPRESENT=$(($ERRORSPRESENT | $?))
                   done
 
