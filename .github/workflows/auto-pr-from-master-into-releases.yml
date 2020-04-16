@@ -7,7 +7,7 @@ on:
     # part of the automated bugfix release process.
     push:
         branches:
-            # ${{ env.SOURCE_BRANCH }} does not seem to work here.
+            # The context variable ${{ env.SOURCE_BRANCH }} does not seem to work here.
             - master
 
 jobs:
