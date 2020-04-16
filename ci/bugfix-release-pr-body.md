@@ -3,31 +3,41 @@ AUTO: merge $RELEASE_BRANCH into $SOURCE_BRANCH
 This PR was automatically generated in response to a push to `master`,
 and is a chance to review any changes that will be included in the release
 branch before merging.  Under most circumstances, this PR will probably be
-a formality.  However, there are a few cases where we may need to be some
+a formality.  However, there are a few cases where we may need to do some
 extra work to make sure `$RELEASE_BRANCH` contains what it should after the
 merge:
 
-## If this PR causes a trivial merge conflict
+## There is a merge conflict in this PR
 
-Use the github merge conflict resolution editor to resolve the change and
-commit the change to a new branch, *not to master*.
+1. Leave a comment on this PR about the merge conflict and close the PR.
+2. In your fork, make a new `pr-resolution` branch off of `$SOURCE_BRANCH`:
+   ```shell
+   $ git checkout $SOURCE_BRANCH
+   $ git pull upstream $SOURCE_BRANCH  # Include the latest changes on the upstream master
+   $ git checkout -b pr-resolution
+   $ git merge $RELEASE_BRANCH
+   ```
+3. Resolve the conflicts locally
+4. Commit the changes to `pr-resolution`.
+5. Create a PR from `pr-resolution` into `$RELEASE_BRANCH`, and include a link
+   to the origin PR in the description.
 
-## If this PR causes a nontrivial merge conflict
+## This PR contains content that should not be in `$RELEASE_BRANCH`
 
-1. Decline this PR
-2. Make a new bugfix branch off of `master`
-3. Merge `$RELEASE_BRANCH` into the bugfix branch, resolving the conflict.
-4. PR the bugfix branch into `$RELEASE_BRANCH`
-
-## If this PR contains content that should not be in $RELEASE_BRANCH
-
-1. Decline this PR
-2. Make a new bugfix branch off of `master`
-3. Merge `$RELEASE_BRANCH` into the bugfix branch
-4. Handle the content that should not end up in `$RELEASE_BRANCH` however it
-   needs to be handled
-5. Commit the updated content
-6. PR the bugfix branch into `$RELEASE_BRANCH`
+1. Leave a comment on this PR about the content that should not be included
+   and close the PR.
+2. In your fork, make a new `pr-resolution` branch off of `$SOURCE_BRANCH`:
+   ```shell
+   $ git checkout $SOURCE_BRANCH
+   $ git pull upstream $SOURCE_BRANCH  # Include the latest changes on the upstream master
+   $ git checkout -b pr-resolution
+   $ git merge $RELEASE_BRANCH
+   ```
+3. Handle the content that should not end up in `$RELEASE_BRANCH` however it
+   needs to be handled.
+4. Commit the updated content to `pr-resolution`.
+5. Create a PR from `pr-resolution` into `$RELEASE_BRANCH`, and include a link
+   to the origin PR in the description.
 
 ## What happens if we accidentally merge something we shouldn't?
 
@@ -41,12 +51,13 @@ There are several possibilities for recovery if we get to such a state.
 
 ### Why was this PR created?
 
-Possible events that can trigger this include:
+The workflow defining this PR is located at
+`.github/workflows/auto-pr-from-master-into-releases.yml`.  In short, this PR
+was created because there was a push to `$SOURCE_BRANCH` that triggered this
+workflow.  Some events that can trigger this include:
 
-* Other pull requests for feature or bugfixes being merged into `master`
-* Automated bugfix releases
-* Any manual push to `master`, if ever that happens (which shouldn't be the
+* Other pull requests being merged into `$SOURCE_BRANCH`
+* Automated releases on `$SOURCE_BRANCH`
+* Any manual push to `$SOURCE_BRANCH`, if ever that happens (which shouldn't be the
   case given our branch protections)
 
-The workflow defining this PR is located at
-`.github/workflows/auto-pr-from-master-into-releases.yml`.
