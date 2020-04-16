@@ -7,7 +7,7 @@ on:
     # part of the automated bugfix release process.
     push:
         branches:
-            - ${{ env.SOURCE_BRANCH }}
+            - feature/auto-pr-on-commit-to-master
 
 jobs:
     create-pr:
