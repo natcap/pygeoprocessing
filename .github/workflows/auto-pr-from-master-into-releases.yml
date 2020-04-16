@@ -23,10 +23,12 @@ jobs:
             - run: sudo apt-get update && sudo apt-get install gettext-base
 
             - name: Open a PR into each open release branch
+              shell: bash -x
               env:
                   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
               run: |
                   BRANCHES=$(git ls-remote --heads origin | grep release | cut -d '/' -f 3-)
+                  echo $BRANCHES  # debugging
                   for RELEASE_BRANCH in `echo $BRANCHES`
                   do
                       PR_BODY_FILE=pr_body.txt
