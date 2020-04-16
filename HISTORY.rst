@@ -4,6 +4,9 @@ Release History
 
 Unreleased Changes
 ------------------
+* When new Pull Requests are merged into ``master``, GitHub actions will
+  now create a PR from master into each open release branch in the
+  destination repository.
 * Adding a GitHub Actions-based build job for building wheels and a source
   distribution for a given commit of pygeoprocessing.
 * Updated ``setup.py`` to point the URL project link to the project's new
