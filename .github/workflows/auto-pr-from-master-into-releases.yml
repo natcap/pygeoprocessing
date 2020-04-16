@@ -30,6 +30,7 @@ jobs:
                   set -x
                   BRANCHES=$(git ls-remote --heads origin | grep release | cut -d '/' -f 3-)
                   echo $BRANCHES  # debugging
+                  ERRORSPRESENT=0
                   for BRANCH in $BRANCHES
                   do
                       RELEASE_BRANCH=$BRANCH  # needed for envsubst
@@ -42,5 +43,11 @@ jobs:
                           --head $GITHUB_REPOSITORY:$RELEASE_BRANCH \
                           --reviewer "natcap/software-team" \
                           --assign "natcap/software-team" \
-                          --file $PR_BODY_FILE
+                          --file $PR_BODY_FILE || ERRORSPRESENT=$(($ERRORSPRESENT | $?))
                   done
+
+                  if [[ $ERRORSPRESENT -gt 0 ]]
+                  then
+                      echo "At least one of the PRs failed and might need to be revisited."
+                      exit 1
+                  fi
