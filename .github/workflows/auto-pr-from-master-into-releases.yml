@@ -1,0 +1,41 @@
+name: PR changes on master into release branches
+on:
+    # This workflow should trigger when changes are pushed to master.
+    # We expect this will happen when PRs into master are merged and also as
+    # part of the automated bugfix release process.
+    push:
+        branches:
+            - master
+
+jobs:
+    create-pr:
+        name: PR master into release/**
+        runs-on: ubuntu-latest
+        env:
+            SOURCE_BRANCH: master
+        steps:
+            - uses: actions/checkout@v2
+              with:
+                  fetch-depth: 0
+            - run: git fetch origin +refs/tags/*:refs/tags/*
+
+            # Needed for envsubst
+            - run: sudo apt-get update && sudo apt-get install gettext-base
+
+            - name: Open a PR into each open release branch
+              env:
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              run: |
+                  PR_BODY_FILE=pr_body.txt
+                  envsubst ci/bugfix-release-pr-body.md > $PR_BODY_FILE
+
+                  BRANCHES=$(git ls-remote --heads origin | grep release | cut -d '/' -f 3-)
+                  for RELEASE_BRANCH in `echo $BRANCHES`
+                  do
+                      hub pull-request \
+                          --base $GITHUB_REPOSITORY:$SOURCE_BRANCH \
+                          --head $GITHUB_REPOSITORY:$RELEASE_BRANCH \
+                          --reviewer "natcap/software-team" \
+                          --assign "natcap/software-team" \
+                          --file $PR_BODY_FILE
+                  done
