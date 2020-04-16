@@ -26,6 +26,7 @@ jobs:
               shell: bash
               env:
                   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+                  SOURCE_BRANCH: ${{ env.SOURCE_BRANCH }}
               run: |
                   set -x
                   BRANCHES=$(git ls-remote --heads origin | grep release | cut -d '/' -f 3-)
@@ -33,7 +34,7 @@ jobs:
                   ERRORSPRESENT=0
                   for BRANCH in $BRANCHES
                   do
-                      RELEASE_BRANCH=$BRANCH  # needed for envsubst
+                      export RELEASE_BRANCH=$BRANCH  # needed for envsubst
                       PR_BODY_FILE=pr_body.txt
                       cat ci/bugfix-release-pr-body.md | envsubst > $PR_BODY_FILE
                       cat $PR_BODY_FILE  # for debugging

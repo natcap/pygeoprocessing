@@ -1,4 +1,4 @@
-Auto: include the latest changes from master into $RELEASE_BRANCH
+AUTO: merge $RELEASE_BRANCH into $SOURCE_BRANCH
 
 This PR was automatically generated in response to a push to `master`,
 and is a chance to review any changes that will be included in the release
