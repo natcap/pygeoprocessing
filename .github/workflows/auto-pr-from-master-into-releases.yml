@@ -1,18 +1,18 @@
 name: PR changes on master into release branches
+env:
+    SOURCE_BRANCH: feature/auto-pr-on-commit-to-master
 on:
     # This workflow should trigger when changes are pushed to master.
     # We expect this will happen when PRs into master are merged and also as
     # part of the automated bugfix release process.
     push:
         branches:
-            - feature/auto-pr-on-commit-to-master
+            - ${{ env.SOURCE_BRANCH }}
 
 jobs:
     create-pr:
         name: PR master into release/**
         runs-on: ubuntu-latest
-        env:
-            SOURCE_BRANCH: master
         steps:
             - uses: actions/checkout@v2
               with:
