@@ -33,7 +33,7 @@ jobs:
                   for RELEASE_BRANCH in `echo $BRANCHES`
                   do
                       PR_BODY_FILE=pr_body.txt
-                      envsubst ci/bugfix-release-pr-body.md > $PR_BODY_FILE
+                      cat ci/bugfix-release-pr-body.md | envsubst > $PR_BODY_FILE
                       cat $PR_BODY_FILE  # for debugging
 
                       hub pull-request \
