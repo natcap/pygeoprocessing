@@ -30,7 +30,8 @@ jobs:
                   SOURCE_BRANCH: ${{ env.SOURCE_BRANCH }}
               run: |
                   set -x
-                  BRANCHES=$(git ls-remote --heads origin | grep release | cut -d '/' -f 3-)
+                  # Using grep with pattern ^release filters out any autorelease branches.
+                  BRANCHES=$(git ls-remote --heads origin | cut -d '/' -f 3- | grep ^release)
                   echo $BRANCHES  # debugging
                   ERRORSPRESENT=0
                   for BRANCH in $BRANCHES
