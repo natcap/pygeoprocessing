@@ -21,6 +21,8 @@ merge:
 4. Commit the changes to `pr-resolution`.
 5. Create a PR from `pr-resolution` into `$RELEASE_BRANCH`, and include a link
    to the origin PR in the description.
+6. When the PR is complete, delete the `pr-resolution` branch.  That will
+   help us avoid confusion and extra work down the road when we do this again.
 
 ## This PR contains content that should not be in `$RELEASE_BRANCH`
 
@@ -38,6 +40,8 @@ merge:
 4. Commit the updated content to `pr-resolution`.
 5. Create a PR from `pr-resolution` into `$RELEASE_BRANCH`, and include a link
    to the origin PR in the description.
+6. When the PR is complete, delete the `pr-resolution` branch.  That will
+   help us avoid confusion and extra work down the road when we do this again.
 
 ## What happens if we accidentally merge something we shouldn't?
 
