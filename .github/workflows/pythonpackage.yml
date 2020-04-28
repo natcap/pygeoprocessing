@@ -24,9 +24,9 @@ jobs:
       uses: goanpeca/setup-miniconda@v1.1.2
       with:
         activate-environment: pyenv
-        auto-update-conda: true 
+        auto-update-conda: true
         python-version: ${{ matrix.python-version }}
-        channels: conda-forge, anaconda
+        conda-channels: anaconda, conda-forge
     - name: Install dependencies
       shell: bash -l {0}
       run: conda upgrade -y pip setuptools

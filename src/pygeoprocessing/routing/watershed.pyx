@@ -88,7 +88,7 @@ cdef class _ManagedRaster:
     def __init__(self, raster_path, band_id, write_mode):
         """Create new instance of Managed Raster.
 
-        Parameters:
+        Args:
             raster_path (char*): path to raster that has block sizes that are
                 powers of 2. If not, an exception is raised.
             band_id (int): which band in `raster_path` to index. Uses GDAL
@@ -133,7 +133,7 @@ cdef class _ManagedRaster:
     def __cinit__(self, raster_path, band_id, write_mode):
         """Create new instance of Managed Raster.
 
-        Parameters:
+        Args:
             raster_path (char*): path to raster that has block sizes that are
                 powers of 2. If not, an exception is raised.
             band_id (int): which band in `raster_path` to index. Uses GDAL
@@ -406,7 +406,7 @@ cdef cset[CoordinatePair] _c_split_geometry_into_seeds(
         target_raster_path, diagnostic_vector_path=None):
     """Split a geometry into 'seeds' of (x, y) coordinate pairs.
 
-    Parameters:
+    Args:
         source_geom_wkb (string): A string of bytes in WKB representing
             a geometry. Must be in the same projected coordinate system
             as the flow direction raster from which
@@ -572,7 +572,7 @@ def _split_geometry_into_seeds(
     This function is a python wrapper around ``_c_split_geometry_into_seeds``
     that is useful for testing.
 
-    Parameters:
+    Args:
         source_geom_wkb (string): A string of bytes in WKB representing
             a geometry. Must be in the same projected coordinate system
             as the flow direction raster from which
@@ -622,7 +622,7 @@ def delineate_watersheds_d8(
         remove_temp_files=True):
     """Delineate watersheds for a vector of geometries using D8 flow dir.
 
-    Parameters:
+    Args:
         d8_flow_dir_raster_path_band (tuple): A (path, band_id) tuple
             to a D8 flow direction raster.  This raster must be a tiled raster
             with block sizes being a power of 2.
