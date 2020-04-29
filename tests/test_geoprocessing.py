@@ -4566,8 +4566,7 @@ class PyGeoprocessing10(unittest.TestCase):
 
         pygeoprocessing.warp_raster(
             base_a_path, base_a_raster_info['pixel_size'], target_raster_path,
-            'near', target_sr_wkt=wgs84_wkt, n_threads=1,
-            gdal_warp_options=['COPYMETADATA=TRUE'])
+            'near', target_sr_wkt=wgs84_wkt, n_threads=1)
 
         base_a_raster = gdal.OpenEx(base_a_path, gdal.OF_RASTER)
         base_a_band = base_a_raster.GetRasterBand(1)
