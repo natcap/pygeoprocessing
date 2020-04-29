@@ -4540,15 +4540,9 @@ class PyGeoprocessing10(unittest.TestCase):
         import pygeoprocessing
         import pygeoprocessing.testing
 
-        workspace_dir = 'test_workspace'
-        try:
-            os.makedirs(workspace_dir)
-        except OSError:
-            pass
-
         pixel_a_matrix = numpy.full((5, 5), -1, numpy.int8)
         nodata_target = -128
-        base_a_path = os.path.join(workspace_dir, 'base_a.tif')
+        base_a_path = os.path.join(self.workspace_dir, 'base_a.tif')
 
         wgs84_sr = osr.SpatialReference()
         wgs84_sr.ImportFromEPSG(4326)
@@ -4567,7 +4561,7 @@ class PyGeoprocessing10(unittest.TestCase):
         new_band = None
         new_raster = None
 
-        target_raster_path = os.path.join(workspace_dir, 'target_a.tif')
+        target_raster_path = os.path.join(self.workspace_dir, 'target_a.tif')
         base_a_raster_info = pygeoprocessing.get_raster_info(base_a_path)
 
         pygeoprocessing.warp_raster(
