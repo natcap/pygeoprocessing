@@ -4,6 +4,7 @@ Release History
 
 Unreleased Changes
 ------------------
+* Supporting Python 3.8 and dropping 3.6 support.
 * Fixed an issue in ``warp_raster`` that would cause the warping of an signed
   byte raster to become an unsigned byte raster. This indirectly fixes the
   same issue with ``align_and_resize_raster_stack`` since it uses
