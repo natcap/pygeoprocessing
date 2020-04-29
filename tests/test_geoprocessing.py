@@ -4534,3 +4534,55 @@ class PyGeoprocessing10(unittest.TestCase):
         expected_message = 'could not be opened'
         actual_message = str(cm.exception)
         self.assertTrue(expected_message in actual_message, actual_message)
+
+    def test_warp_raster_signedbyte(self):
+        """PGP.geoprocessing: warp raster test."""
+        import pygeoprocessing
+        import pygeoprocessing.testing
+
+        workspace_dir = 'test_workspace'
+        try:
+            os.makedirs(workspace_dir)
+        except OSError:
+            pass
+
+        pixel_a_matrix = numpy.full((5, 5), -1, numpy.int8)
+        nodata_target = -128
+        base_a_path = os.path.join(workspace_dir, 'base_a.tif')
+
+        wgs84_sr = osr.SpatialReference()
+        wgs84_sr.ImportFromEPSG(4326)
+        wgs84_wkt = wgs84_sr.ExportToWkt()
+        gtiff_driver = gdal.GetDriverByName('GTiff')
+        ny, nx = pixel_a_matrix.shape
+        new_raster = gtiff_driver.Create(
+            base_a_path, nx, ny, 1, gdal.GDT_Byte,
+            options=['PIXELTYPE=SIGNEDBYTE'])
+        new_raster.SetProjection(wgs84_wkt)
+        new_raster.SetGeoTransform([1, 1.0, 0.0, 1, 0.0, -1.0])
+        new_band = new_raster.GetRasterBand(1)
+        new_band.SetNoDataValue(nodata_target)
+        new_band.WriteArray(pixel_a_matrix)
+        new_raster.FlushCache()
+        new_band = None
+        new_raster = None
+
+        target_raster_path = os.path.join(workspace_dir, 'target_a.tif')
+        base_a_raster_info = pygeoprocessing.get_raster_info(base_a_path)
+
+        pygeoprocessing.warp_raster(
+            base_a_path, base_a_raster_info['pixel_size'], target_raster_path,
+            'near', target_sr_wkt=wgs84_wkt, n_threads=1,
+            gdal_warp_options=['COPYMETADATA=TRUE'])
+
+        base_a_raster = gdal.OpenEx(base_a_path, gdal.OF_RASTER)
+        base_a_band = base_a_raster.GetRasterBand(1)
+        base_array = base_a_band.ReadAsArray()
+        base_a_band = None
+        base_a_raster = None
+        numpy.testing.assert_array_equal(pixel_a_matrix, base_array)
+
+        raster = gdal.Open(target_raster_path)
+        array = raster.ReadAsArray()
+        raster = None
+        numpy.testing.assert_array_equal(pixel_a_matrix, array)
