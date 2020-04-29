@@ -1771,7 +1771,7 @@ def warp_raster(
         raster_driver_creation_tuple=DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS):
     """Resize/resample raster to desired pixel size, bbox and projection.
 
-    Parameters:
+    Args:
         base_raster_path (string): path to base raster.
         target_pixel_size (list/tuple): a two element sequence indicating
             the x and y pixel size in projected units.
@@ -1920,6 +1920,12 @@ def warp_raster(
         # if there is no vector path the result is the warp
         warped_raster_path = target_raster_path
     base_raster = gdal.OpenEx(base_raster_path, gdal.OF_RASTER)
+
+    raster_creation_options = list(raster_driver_creation_tuple[1])
+    if (base_raster_info['numpy_type'] == numpy.int8 and
+            'PIXELTYPE' not in ' '.join(raster_creation_options)):
+        raster_creation_options.append('PIXELTYPE=SIGNEDBYTE')
+
     gdal.Warp(
         warped_raster_path, base_raster,
         format=raster_driver_creation_tuple[0],
@@ -1932,7 +1938,7 @@ def warp_raster(
         dstSRS=target_sr_wkt,
         multithread=True if warp_options else False,
         warpOptions=warp_options,
-        creationOptions=raster_driver_creation_tuple[1],
+        creationOptions=raster_creation_options,
         callback=reproject_callback,
         callback_data=[target_raster_path])
 
