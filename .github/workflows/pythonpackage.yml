@@ -26,7 +26,7 @@ jobs:
         activate-environment: pyenv
         auto-update-conda: true
         python-version: ${{ matrix.python-version }}
-        conda-channels: anaconda, conda-forge
+        channels: conda-forge, anaconda
     - name: Install dependencies
       shell: bash -l {0}
       run: conda upgrade -y pip setuptools
