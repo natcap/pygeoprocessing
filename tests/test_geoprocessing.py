@@ -2837,6 +2837,62 @@ class PyGeoprocessing10(unittest.TestCase):
         numpy.testing.assert_allclose(numpy.sum(target_array),
                                       expected_result, rtol=1e-6)
 
+    def test_convolve_2d_numerical_zero(self):
+        """PGP.geoprocessing: test convolve 2d for numerical 0.0 set to 0.0."""
+        import pygeoprocessing
+        import pygeoprocessing.testing
+        from pygeoprocessing.testing import sampledata
+
+        reference = sampledata.SRS_COLOMBIA
+
+        # set tiny signal with one pixel on so we get lots of numerical noise
+        n_pixels = 100
+        n_kernel_pixels = 100
+        signal_array = numpy.zeros((n_pixels, n_pixels), numpy.float32)
+        signal_array[n_pixels//2, int(0.05*n_pixels)] = 1
+        nodata_target = -1
+        signal_path = os.path.join(self.workspace_dir, 'signal.tif')
+        pygeoprocessing.testing.create_raster_on_disk(
+            [signal_array], reference.origin, reference.projection,
+            nodata_target, reference.pixel_size(30), filename=signal_path)
+
+        # make a linear decay kernel
+        kernel_path = os.path.join(self.workspace_dir, 'kernel.tif')
+        kernel_x, kernel_y = numpy.meshgrid(
+            range(n_kernel_pixels), range(n_kernel_pixels))
+        kernel_radius = n_kernel_pixels//2
+        dist_array = 1.0 - numpy.sqrt(
+            (kernel_x-kernel_radius)**2 +
+            (kernel_y-kernel_radius)**2)/kernel_radius
+        dist_array[dist_array < 0] = 0
+        kernel_array = dist_array / numpy.sum(dist_array)
+        pygeoprocessing.testing.create_raster_on_disk(
+            [kernel_array], reference.origin, reference.projection,
+            nodata_target, reference.pixel_size(30), filename=kernel_path)
+
+        # ensure non-tolerance has some negative noise
+        raw_result_path = os.path.join(self.workspace_dir, 'raw_result.tif')
+        pygeoprocessing.convolve_2d(
+            (signal_path, 1), (kernel_path, 1), raw_result_path,
+            set_tol_to_zero=None)
+        raw_raster = gdal.OpenEx(raw_result_path, gdal.OF_RASTER)
+        raw_array = raw_raster.ReadAsArray()
+        raw_raster = None
+        self.assertTrue(
+            numpy.count_nonzero(raw_array < 0) != 0.0,
+            msg='we expect numerical noise in this result')
+
+        # ensure tolerant clamped has no negative noise
+        tol_result_path = os.path.join(self.workspace_dir, 'tol_result.tif')
+        pygeoprocessing.convolve_2d(
+            (signal_path, 1), (kernel_path, 1), tol_result_path)
+        tol_raster = gdal.OpenEx(tol_result_path, gdal.OF_RASTER)
+        tol_array = tol_raster.ReadAsArray()
+        tol_raster = None
+        self.assertTrue(
+            numpy.count_nonzero(tol_array < 0) == 0.0,
+            msg='we expect no noise in this result')
+
     def test_calculate_slope(self):
         """PGP.geoprocessing: test calculate slope."""
         import pygeoprocessing
