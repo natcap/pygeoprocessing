@@ -2510,7 +2510,7 @@ def convolve_2d(
             # If the tolerance is set, set all absolute values less than this
             # to 0.0
             output_array[
-                numpy.isclose(output_array, atol=set_tol_to_zero)] = 0.0
+                numpy.isclose(output_array, 0.0, atol=set_tol_to_zero)] = 0.0
 
         target_band.WriteArray(
             output_array, xoff=index_dict['xoff'],
