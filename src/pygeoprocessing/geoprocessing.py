@@ -2333,6 +2333,7 @@ def convolve_2d(
         ignore_nodata=False, mask_nodata=True, normalize_kernel=False,
         target_datatype=gdal.GDT_Float64,
         target_nodata=None, n_threads=1, working_dir=None,
+        set_tol_to_zero=1e-8,
         raster_driver_creation_tuple=DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS):
     """Convolve 2D kernel over 2D signal.
 
@@ -2373,6 +2374,11 @@ def convolve_2d(
             manages the reads and writes.
          working_dir (string): If not None, indicates where temporary files
             should be created during this run.
+        set_tol_to_zero (float): any value within +- this from 0.0 will get
+            set to 0.0. This is to handle numerical roundoff errors that
+            sometimes result in "numerical zero", such as -1.782e-18 that
+            cannot be tolerated by users of this function. If `None` no
+            adjustment will be done to output values.
         raster_driver_creation_tuple (tuple): a tuple containing a GDAL driver
             name string as the first element and a GDAL creation options
             tuple/list as the second. Defaults to a GTiff driver tuple
@@ -2500,6 +2506,11 @@ def convolve_2d(
             (result[top_index_result:bottom_index_result,
                     left_index_result:right_index_result])[valid_mask] +
             current_output[valid_mask])
+        if set_tol_to_zero:
+            # If the tolerance is set, set all absolute values less than this
+            # to 0.0
+            output_array[
+                numpy.isclose(output_array, atol=set_tol_to_zero)] = 0.0
 
         target_band.WriteArray(
             output_array, xoff=index_dict['xoff'],

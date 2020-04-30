@@ -13,6 +13,8 @@ Unreleased Changes
   pygeoprocessing source distribution.  This fixes an issue where files
   matching a variety of extensions anywhere in the pygeoprocessing directory
   might be included with the source distribution.
+* Added ``set_tol_to_zero`` to ``convolve_2d`` to allow for in-function masking
+  of near-zero results to be set to 0.0.
 
 1.9.2 (2020-02-06)
 ------------------
