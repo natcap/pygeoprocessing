@@ -2840,21 +2840,28 @@ class PyGeoprocessing10(unittest.TestCase):
     def test_convolve_2d_numerical_zero(self):
         """PGP.geoprocessing: test convolve 2d for numerical 0.0 set to 0.0."""
         import pygeoprocessing
-        import pygeoprocessing.testing
-        from pygeoprocessing.testing import sampledata
 
-        reference = sampledata.SRS_COLOMBIA
+        wgs84_sr = osr.SpatialReference()
+        wgs84_sr.ImportFromEPSG(4326)
+        wgs84_wkt = wgs84_sr.ExportToWkt()
+        gtiff_driver = gdal.GetDriverByName('GTiff')
 
         # set tiny signal with one pixel on so we get lots of numerical noise
         n_pixels = 100
         n_kernel_pixels = 100
         signal_array = numpy.zeros((n_pixels, n_pixels), numpy.float32)
         signal_array[n_pixels//2, int(0.05*n_pixels)] = 1
-        nodata_target = -1
         signal_path = os.path.join(self.workspace_dir, 'signal.tif')
-        pygeoprocessing.testing.create_raster_on_disk(
-            [signal_array], reference.origin, reference.projection,
-            nodata_target, reference.pixel_size(30), filename=signal_path)
+
+        ny, nx = signal_array.shape
+        signal_raster = gtiff_driver.Create(
+            signal_path, nx, ny, 1, gdal.GDT_Float32)
+        signal_raster.SetProjection(wgs84_wkt)
+        signal_raster.SetGeoTransform([1, 1.0, 0.0, 1, 0.0, -1.0])
+        signal_band = signal_raster.GetRasterBand(1)
+        signal_band.WriteArray(signal_array)
+        signal_band = None
+        signal_raster = None
 
         # make a linear decay kernel
         kernel_path = os.path.join(self.workspace_dir, 'kernel.tif')
@@ -2866,9 +2873,16 @@ class PyGeoprocessing10(unittest.TestCase):
             (kernel_y-kernel_radius)**2)/kernel_radius
         dist_array[dist_array < 0] = 0
         kernel_array = dist_array / numpy.sum(dist_array)
-        pygeoprocessing.testing.create_raster_on_disk(
-            [kernel_array], reference.origin, reference.projection,
-            nodata_target, reference.pixel_size(30), filename=kernel_path)
+
+        ny, nx = kernel_array.shape
+        kernel_raster = gtiff_driver.Create(
+            kernel_path, nx, ny, 1, gdal.GDT_Float32)
+        kernel_raster.SetProjection(wgs84_wkt)
+        kernel_raster.SetGeoTransform([1, 1.0, 0.0, 1, 0.0, -1.0])
+        kernel_band = kernel_raster.GetRasterBand(1)
+        kernel_band.WriteArray(kernel_array)
+        kernel_band = None
+        kernel_raster = None
 
         # ensure non-tolerance has some negative noise
         raw_result_path = os.path.join(self.workspace_dir, 'raw_result.tif')
