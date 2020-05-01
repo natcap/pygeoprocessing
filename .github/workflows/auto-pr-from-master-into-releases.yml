@@ -12,6 +12,9 @@ on:
 
 jobs:
     create-pr:
+        # Only create a PR from master into release branches if we're on the
+        # main pygeoprocessing repository.
+        if: github.repository == 'natcap/pygeoprocessing'
         name: PR master into release/**
         runs-on: ubuntu-latest
         steps:
