@@ -1,9 +1,20 @@
 Release History
 ===============
 
+Unreleased Changes (2.0)
+------------------------
+* Adding Python 3.8 support and dropping Python 3.6 support.
+* Adding GDAL 3 support and dropping GDAL 2 support. The only non-backwards
+  compatible issue in GDAL 2 to GDAL 3 is the need to handle Axis Ordering with
+  osr.SetAxisMappingStrategy(osr.OAMS_TRADITIONAL_GIS_ORDER) because of
+  https://trac.osgeo.org/gdal/wiki/rfc73_proj6_wkt2_srsbarn#Axisorderissues?.
+  Since Axis ordering now matters for Geographic CRS the expected order is
+  Lat,Lon but we use osr.OAMS_TRADITIONAL_GIS_ORDER to swap to Lon,Lat.
+* Using osr.CreateCoordinateTransformation() instead of
+  osr.CoordinateTransformation() as the GDAL 3 call.
 
-Unreleased Changes
-------------------
+Unreleased Changes (master)
+---------------------------
 * Warped signed byte rasters are now also signed byte rasters.
 * Adding a GitHub Actions-based build job for building wheels and a source
   distribution for a given commit of pygeoprocessing.
