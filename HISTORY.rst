@@ -12,6 +12,9 @@ Unreleased Changes (2.0)
   Lat,Lon but we use osr.OAMS_TRADITIONAL_GIS_ORDER to swap to Lon,Lat.
 * Using osr.CreateCoordinateTransformation() instead of
   osr.CoordinateTransformation() as the GDAL 3 call.
+* Fixed a bug in convolve_2d that would not ``ignore_nodata`` if the signal
+  raster's nodata value was undefined. Changed the name of this flag to
+  ``ignore_nodata_and_edges`` to reflect its expected functionality.
 
 Unreleased Changes (master)
 ---------------------------

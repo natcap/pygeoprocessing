@@ -2919,7 +2919,7 @@ class PyGeoprocessing10(unittest.TestCase):
         target_path = os.path.join(self.workspace_dir, 'target.tif')
         pygeoprocessing.convolve_2d(
             (signal_path, 1), (kernel_path, 1), target_path,
-            n_threads=1, ignore_nodata=False)
+            n_threads=1, ignore_nodata_and_edges=False)
         target_raster = gdal.OpenEx(target_path, gdal.OF_RASTER)
         target_band = target_raster.GetRasterBand(1)
         target_array = target_band.ReadAsArray()
@@ -2993,7 +2993,8 @@ class PyGeoprocessing10(unittest.TestCase):
         target_path = os.path.join(self.workspace_dir, 'target.tif')
         pygeoprocessing.convolve_2d(
             (signal_path, 1), (kernel_path, 1), target_path,
-            mask_nodata=False, ignore_nodata=True, normalize_kernel=True)
+            mask_nodata=False, ignore_nodata_and_edges=True,
+            normalize_kernel=True)
         target_raster = gdal.OpenEx(target_path, gdal.OF_RASTER)
         target_band = target_raster.GetRasterBand(1)
         target_array = target_band.ReadAsArray()
@@ -3027,7 +3028,7 @@ class PyGeoprocessing10(unittest.TestCase):
         target_path = os.path.join(self.workspace_dir, 'target.tif')
         pygeoprocessing.convolve_2d(
             (signal_path, 1), (kernel_path, 1), target_path,
-            ignore_nodata=True)
+            ignore_nodata_and_edges=True)
         target_raster = gdal.OpenEx(target_path, gdal.OF_RASTER)
         target_band = target_raster.GetRasterBand(1)
         target_array = target_band.ReadAsArray()
