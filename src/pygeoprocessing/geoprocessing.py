@@ -2553,6 +2553,7 @@ def convolve_2d(
             # we'll need to save off the mask convolution so we can divide
             # it in total later
             current_mask = mask_band.ReadAsArray(**index_dict)
+
             output_array[valid_mask] = (
                 (mask_result[
                     top_index_result:bottom_index_result,
@@ -3421,11 +3422,15 @@ def _convolve_2d_worker(
         signal_block = signal_band.ReadAsArray(**signal_offset)
         kernel_block = kernel_band.ReadAsArray(**kernel_offset)
 
-        if signal_nodata is not None and ignore_nodata:
-            # if we're ignoring nodata, we don't want to add it up in the
-            # convolution, so we zero those values out
-            signal_nodata_mask = numpy.isclose(signal_block, signal_nodata)
-            signal_block[signal_nodata_mask] = 0.0
+        if ignore_nodata:
+            if signal_nodata is not None:
+                # if we're ignoring nodata, we don't want to add it up in the
+                # convolution, so we zero those values out
+                signal_nodata_mask = numpy.isclose(signal_block, signal_nodata)
+                signal_block[signal_nodata_mask] = 0.0
+            else:
+                signal_nodata_mask = numpy.zeros(
+                    signal_block.shape, dtype=numpy.bool)
 
         left_index_raster = (
             signal_offset['xoff'] - n_cols_kernel // 2 +
@@ -3479,7 +3484,7 @@ def _convolve_2d_worker(
 
         # if we're ignoring nodata, we need to make a convolution of the
         # nodata mask too
-        if signal_nodata is not None and ignore_nodata:
+        if ignore_nodata:
             mask_fft = _mask_fft_cache(
                 fshape, signal_offset['xoff'], signal_offset['yoff'],
                 numpy.where(signal_nodata_mask, 0.0, 1.0))

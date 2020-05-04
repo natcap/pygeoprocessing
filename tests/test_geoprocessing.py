@@ -3251,6 +3251,88 @@ class PyGeoprocessing10(unittest.TestCase):
             numpy.count_nonzero(tol_array < 0) == 0.0,
             msg='we expect no noise in this result')
 
+    def test_convolve_2d_ignore_undefined_nodata(self):
+        """PGP.geoprocessing: test convolve 2d ignore nodata when None."""
+        import pygeoprocessing
+
+        wgs84_sr = osr.SpatialReference()
+        wgs84_sr.ImportFromEPSG(4326)
+        wgs84_wkt = wgs84_sr.ExportToWkt()
+        gtiff_driver = gdal.GetDriverByName('GTiff')
+
+        # set tiny signal with one pixel on so we get lots of numerical noise
+        n_pixels = 100
+        n_kernel_pixels = 100
+        signal_array = numpy.zeros((n_pixels, n_pixels), numpy.float32)
+        signal_array[n_pixels//2, int(0.05*n_pixels)] = 1
+        signal_path = os.path.join(self.workspace_dir, 'signal.tif')
+
+        ny, nx = signal_array.shape
+        signal_raster = gtiff_driver.Create(
+            signal_path, nx, ny, 1, gdal.GDT_Float32)
+        signal_raster.SetProjection(wgs84_wkt)
+        signal_raster.SetGeoTransform([1, 1.0, 0.0, 1, 0.0, -1.0])
+        signal_band = signal_raster.GetRasterBand(1)
+        signal_band.WriteArray(signal_array)
+        signal_band.SetNoDataValue(-1)
+        signal_band = None
+        signal_raster = None
+
+        signal_nodata_none_path = os.path.join(
+            self.workspace_dir, 'signal_none.tif')
+        signal_nodata_none_raster = gtiff_driver.Create(
+            signal_nodata_none_path, nx, ny, 1, gdal.GDT_Float32)
+        signal_nodata_none_raster.SetProjection(wgs84_wkt)
+        signal_nodata_none_raster.SetGeoTransform([1, 1.0, 0.0, 1, 0.0, -1.0])
+        signal_nodata_band = signal_nodata_none_raster.GetRasterBand(1)
+        signal_nodata_band.WriteArray(signal_array)
+        signal_nodata_band = None
+        signal_nodata_none_raster = None
+
+        # make a linear decay kernel
+        kernel_path = os.path.join(self.workspace_dir, 'kernel.tif')
+        kernel_x, kernel_y = numpy.meshgrid(
+            range(n_kernel_pixels), range(n_kernel_pixels))
+        kernel_radius = n_kernel_pixels//2
+        dist_array = 1.0 - numpy.sqrt(
+            (kernel_x-kernel_radius)**2 +
+            (kernel_y-kernel_radius)**2)/kernel_radius
+        dist_array[dist_array < 0] = 0
+        kernel_array = dist_array / numpy.sum(dist_array)
+
+        ny, nx = kernel_array.shape
+        kernel_raster = gtiff_driver.Create(
+            kernel_path, nx, ny, 1, gdal.GDT_Float32)
+        kernel_raster.SetProjection(wgs84_wkt)
+        kernel_raster.SetGeoTransform([1, 1.0, 0.0, 1, 0.0, -1.0])
+        kernel_band = kernel_raster.GetRasterBand(1)
+        kernel_band.WriteArray(kernel_array)
+        kernel_band = None
+        kernel_raster = None
+
+        nodata_result_path = os.path.join(
+            self.workspace_dir, 'nodata_result.tif')
+        none_result_path = os.path.join(self.workspace_dir, 'none_result.tif')
+
+        pygeoprocessing.convolve_2d(
+            (signal_path, 1), (kernel_path, 1), nodata_result_path,
+            ignore_nodata_and_edges=True)
+        signal_nodata_raster = gdal.OpenEx(nodata_result_path, gdal.OF_RASTER)
+        signal_nodata_array = signal_nodata_raster.ReadAsArray()
+        signal_nodata_raster = None
+
+        pygeoprocessing.convolve_2d(
+            (signal_nodata_none_path, 1), (kernel_path, 1), none_result_path,
+            ignore_nodata_and_edges=True)
+        signal_nodata_none_raster = gdal.OpenEx(
+            none_result_path, gdal.OF_RASTER)
+        signal_nodata_none_array = signal_nodata_none_raster.ReadAsArray()
+        signal_nodata_none_raster = None
+
+        self.assertTrue(
+            numpy.isclose(signal_nodata_array, signal_nodata_none_array).all(),
+            'signal with nodata should be the same as signal with none')
+
     def test_calculate_slope(self):
         """PGP.geoprocessing: test calculate slope."""
         import pygeoprocessing
