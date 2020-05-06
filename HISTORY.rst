@@ -19,6 +19,8 @@ Unreleased Changes
   encountered in ``raster_calculator``.
 * Fixes an uncessary calculation that pre-fills slope raster GeoTIFFs with
   nodata values.
+* Added a check to ``convolve_2d`` to verify that raster path/band tuples were
+  passed where expected and raise a useful Exception  if not.
 
 1.9.2 (2020-02-06)
 ------------------
