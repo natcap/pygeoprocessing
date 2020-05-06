@@ -680,12 +680,13 @@ def align_and_resize_raster_stack(
                 if base_projection_wkt_list and \
                         base_projection_wkt_list[raster_index]:
                     # a base is defined, use that
-                    base_raster_sr_wkt = base_projection_wkt_list[raster_index]
+                    base_raster_projection_wkt = \
+                        base_projection_wkt_list[raster_index]
                 else:
                     # otherwise use the raster's projection and there must
                     # be one since we're reprojecting
-                    base_raster_sr_wkt = raster_info['projection_wkt']
-                    if not base_raster_sr_wkt:
+                    base_raster_projection_wkt = raster_info['projection_wkt']
+                    if not base_raster_projection_wkt:
                         raise ValueError(
                             "no projection for raster %s" %
                             base_raster_path_list[raster_index])
@@ -696,8 +697,8 @@ def align_and_resize_raster_stack(
                 # system
                 raster_bounding_box_list.append(
                     transform_bounding_box(
-                        raster_info['bounding_box'], base_raster_sr_wkt,
-                        target_projection_wkt))
+                        raster_info['bounding_box'],
+                        base_raster_projection_wkt, target_projection_wkt))
             else:
                 raster_bounding_box_list.append(raster_info['bounding_box'])
 
@@ -721,8 +722,8 @@ def align_and_resize_raster_stack(
                 '"mask_vector_path": %s', vector_mask_options)
         mask_vector_info = get_vector_info(
             vector_mask_options['mask_vector_path'])
-        mask_vector_sr_wkt = mask_vector_info['projection_wkt']
-        if mask_vector_sr_wkt is not None and \
+        mask_vector_projection_wkt = mask_vector_info['projection_wkt']
+        if mask_vector_projection_wkt is not None and \
                 target_projection_wkt is not None:
             mask_vector_bb = transform_bounding_box(
                 mask_vector_info['bounding_box'],
@@ -1473,10 +1474,10 @@ def get_vector_info(vector_path, layer_id=0):
     # projection is same for all layers, so just use the first one
     spatial_ref = layer.GetSpatialRef()
     if spatial_ref:
-        vector_sr_wkt = spatial_ref.ExportToWkt()
+        vector_projection_wkt = spatial_ref.ExportToWkt()
     else:
-        vector_sr_wkt = None
-    vector_properties['projection_wkt'] = vector_sr_wkt
+        vector_projection_wkt = None
+    vector_properties['projection_wkt'] = vector_projection_wkt
     layer_bb = layer.GetExtent()
     layer = None
     vector = None
