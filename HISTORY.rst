@@ -15,6 +15,8 @@ Unreleased Changes
   might be included with the source distribution.
 * Added ``set_tol_to_zero`` to ``convolve_2d`` to allow for in-function masking
   of near-zero results to be set to 0.0.
+* Fixed a malformed ``ValueError`` message when a corrupt raster was
+  encountered in ``raster_calculator``.
 * Fixes an uncessary calculation that pre-fills slope raster GeoTIFFs with
   nodata values.
 
