@@ -122,8 +122,8 @@ class PyGeoprocessing10(unittest.TestCase):
         import pygeoprocessing
 
         with unittest.mock.patch(
-                        'pygeoprocessing.pkg_resources.get_distribution',
-                        side_effect=DistributionNotFound('pygeoprocessing')):
+            'pygeoprocessing.pkg_resources.get_distribution',
+                side_effect=DistributionNotFound('pygeoprocessing')):
             with self.assertRaises(RuntimeError):
                 # RuntimeError is a side effect of `import pygeoprocessing`,
                 # so we reload it to retrigger the metadata load.
