@@ -1354,7 +1354,7 @@ class PyGeoprocessing10(unittest.TestCase):
 
         pygeoprocessing.warp_raster(
             base_a_path, base_a_raster_info['pixel_size'], target_raster_path,
-            'near', target_sr_wkt=reference.projection, n_threads=1)
+            'near', target_projection_wkt=reference.projection, n_threads=1)
 
         pygeoprocessing.testing.assert_rasters_equal(
             base_a_path, target_raster_path)
@@ -1379,7 +1379,7 @@ class PyGeoprocessing10(unittest.TestCase):
         # convert 1x1 pixel to a 30x30m pixel
         pygeoprocessing.warp_raster(
             base_a_path, [-30, 30], target_raster_path,
-            'near', target_sr_wkt=reference.projection)
+            'near', target_projection_wkt=reference.projection)
 
         expected_raster_path = os.path.join(
             self.workspace_dir, 'expected.tif')
@@ -1415,7 +1415,7 @@ class PyGeoprocessing10(unittest.TestCase):
         pygeoprocessing.warp_raster(
             base_a_path, base_a_raster_info['pixel_size'], target_raster_path,
             'near', target_bb=target_bb,
-            target_sr_wkt=reference.projection)
+            target_projection_wkt=reference.projection)
 
         expected_raster_path = os.path.join(
             self.workspace_dir, 'expected.tif')
@@ -1745,8 +1745,8 @@ class PyGeoprocessing10(unittest.TestCase):
             [base_raster_path], [target_raster_path],
             ['near'], target_pixel_size, 'intersection',
             raster_align_index=0,
-            base_sr_wkt_list=[wgs84_sr.ExportToWkt()],
-            target_sr_wkt=utm_30n_sr.ExportToWkt())
+            base_projection_wkt_list=[wgs84_sr.ExportToWkt()],
+            target_projection_wkt=utm_30n_sr.ExportToWkt())
 
         target_raster = gdal.OpenEx(target_raster_path, gdal.OF_RASTER)
         target_band = target_raster.GetRasterBand(1)
@@ -1784,8 +1784,8 @@ class PyGeoprocessing10(unittest.TestCase):
                 [base_raster_path], [target_raster_path],
                 ['near'], target_pixel_size, 'intersection',
                 raster_align_index=0,
-                base_sr_wkt_list=[None],
-                target_sr_wkt=utm_30n_sr.ExportToWkt())
+                base_projection_wkt_list=[None],
+                target_projection_wkt=utm_30n_sr.ExportToWkt())
             expected_message = "no projection for raster"
             actual_message = str(cm.exception)
             self.assertTrue(
@@ -4072,7 +4072,7 @@ class PyGeoprocessing10(unittest.TestCase):
         pygeoprocessing.align_and_resize_raster_stack(
             [base_path], [target_path], ['near'],
             (3e4, -3e4), 'intersection',
-            target_sr_wkt=target_ref.ExportToWkt())
+            target_projection_wkt=target_ref.ExportToWkt())
 
         target_raster_info = pygeoprocessing.get_raster_info(target_path)
 
@@ -4247,7 +4247,7 @@ class PyGeoprocessing10(unittest.TestCase):
             resample_method_list,
             base_a_raster_info['pixel_size'], bounding_box_mode,
             raster_align_index=0,
-            target_sr_wkt=reference.projection,
+            target_projection_wkt=reference.projection,
             vector_mask_options={
                 'mask_vector_path': dual_poly_path,
                 'mask_layer_name': 'dual_poly',
@@ -4979,7 +4979,7 @@ class PyGeoprocessing10(unittest.TestCase):
 
         pygeoprocessing.warp_raster(
             base_a_path, base_a_raster_info['pixel_size'], target_raster_path,
-            'near', target_sr_wkt=wgs84_wkt, n_threads=1)
+            'near', target_projection_wkt=wgs84_wkt, n_threads=1)
 
         base_a_raster = gdal.OpenEx(base_a_path, gdal.OF_RASTER)
         base_a_band = base_a_raster.GetRasterBand(1)

@@ -510,8 +510,9 @@ def raster_calculator(
 def align_and_resize_raster_stack(
         base_raster_path_list, target_raster_path_list, resample_method_list,
         target_pixel_size, bounding_box_mode, base_vector_path_list=None,
-        raster_align_index=None, base_sr_wkt_list=None, target_sr_wkt=None,
-        vector_mask_options=None, gdal_warp_options=None,
+        raster_align_index=None, base_projection_wkt_list=None,
+        target_projection_wkt=None, vector_mask_options=None,
+        gdal_warp_options=None,
         raster_driver_creation_tuple=DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS,
         osr_axis_mapping_strategy=DEFAULT_OSR_AXIS_MAPPING_STRATEGY):
     """Generate rasters from a base such that they align geospatially.
@@ -554,12 +555,12 @@ def align_and_resize_raster_stack(
             grid layout.  If ``None`` then the bounding box of the target
             rasters is calculated as the precise intersection, union, or
             bounding box.
-        base_sr_wkt_list (sequence): if not None, this is a sequence of base
-            projections of the rasters in ``base_raster_path_list``. If a value
-            is ``None`` the ``base_sr`` is assumed to be whatever is defined in
-            that raster. This value is useful if there are rasters with no
-            projection defined, but otherwise known.
-        target_sr_wkt (string): if not None, this is the desired
+        base_projection_wkt_list (sequence): if not None, this is a sequence of
+            base projections of the rasters in ``base_raster_path_list``. If a
+            value is ``None`` the ``base_sr`` is assumed to be whatever is
+            defined in that raster. This value is useful if there are rasters
+            with no projection defined, but otherwise known.
+        target_projection_wkt (string): if not None, this is the desired
             projection of all target rasters in Well Known Text format. If
             None, the base SRS will be passed to the target.
         vector_mask_options (dict): optional, if not None, this is a
@@ -673,16 +674,17 @@ def align_and_resize_raster_stack(
         raster_bounding_box_list = []
         for raster_index, raster_info in enumerate(raster_info_list):
             # this block calculates the base projection of ``raster_info`` if
-            # ``target_sr_wkt`` is defined, thus implying a reprojection will
-            # be necessary.
-            if target_sr_wkt:
-                if base_sr_wkt_list and base_sr_wkt_list[raster_index]:
+            # ``target_projection_wkt`` is defined, thus implying a
+            # reprojection will be necessary.
+            if target_projection_wkt:
+                if base_projection_wkt_list and \
+                        base_projection_wkt_list[raster_index]:
                     # a base is defined, use that
-                    base_raster_sr_wkt = base_sr_wkt_list[raster_index]
+                    base_raster_sr_wkt = base_projection_wkt_list[raster_index]
                 else:
                     # otherwise use the raster's projection and there must
                     # be one since we're reprojecting
-                    base_raster_sr_wkt = raster_info['projection']
+                    base_raster_sr_wkt = raster_info['projection_wkt']
                     if not base_raster_sr_wkt:
                         raise ValueError(
                             "no projection for raster %s" %
@@ -695,17 +697,17 @@ def align_and_resize_raster_stack(
                 raster_bounding_box_list.append(
                     transform_bounding_box(
                         raster_info['bounding_box'], base_raster_sr_wkt,
-                        target_sr_wkt))
+                        target_projection_wkt))
             else:
                 raster_bounding_box_list.append(raster_info['bounding_box'])
 
         # include the vector bounding box information to make a global list
         # of target bounding boxes
         bounding_box_list = [
-            vector_info['bounding_box'] if target_sr_wkt is None else
+            vector_info['bounding_box'] if target_projection_wkt is None else
             transform_bounding_box(
                 vector_info['bounding_box'],
-                vector_info['projection'], target_sr_wkt)
+                vector_info['projection_wkt'], target_projection_wkt)
             for vector_info in vector_info_list] + raster_bounding_box_list
 
         target_bounding_box = merge_bounding_box_list(
@@ -719,11 +721,12 @@ def align_and_resize_raster_stack(
                 '"mask_vector_path": %s', vector_mask_options)
         mask_vector_info = get_vector_info(
             vector_mask_options['mask_vector_path'])
-        mask_vector_sr_wkt = mask_vector_info['projection']
-        if mask_vector_sr_wkt is not None and target_sr_wkt is not None:
+        mask_vector_sr_wkt = mask_vector_info['projection_wkt']
+        if mask_vector_sr_wkt is not None and \
+                target_projection_wkt is not None:
             mask_vector_bb = transform_bounding_box(
                 mask_vector_info['bounding_box'],
-                mask_vector_info['projection'], target_sr_wkt)
+                mask_vector_info['projection_wkt'], target_projection_wkt)
         else:
             mask_vector_bb = mask_vector_info['bounding_box']
         # Calling `merge_bounding_box_list` will raise an ValueError if the
@@ -755,10 +758,10 @@ def align_and_resize_raster_stack(
             base_path, target_pixel_size, target_path, resample_method,
             target_bb=target_bounding_box,
             raster_driver_creation_tuple=(raster_driver_creation_tuple),
-            target_sr_wkt=target_sr_wkt,
-            base_sr_wkt=(
-                    None if not base_sr_wkt_list else
-                    base_sr_wkt_list[index]),
+            target_projection_wkt=target_projection_wkt,
+            base_projection_wkt=(
+                    None if not base_projection_wkt_list else
+                    base_projection_wkt_list[index]),
             vector_mask_options=vector_mask_options,
             gdal_warp_options=gdal_warp_options)
         LOGGER.info(
@@ -1453,7 +1456,7 @@ def get_vector_info(vector_path, layer_id=0):
         raster_properties (dictionary): a dictionary with the following
             properties stored under relevant keys.
 
-            'projection' (string): projection of the vector in Well Known
+            'projection_wkt' (string): projection of the vector in Well Known
                 Text.
             'bounding_box' (sequence): sequence of floats representing the
                 bounding box in projected coordinates in the order
@@ -1473,7 +1476,7 @@ def get_vector_info(vector_path, layer_id=0):
         vector_sr_wkt = spatial_ref.ExportToWkt()
     else:
         vector_sr_wkt = None
-    vector_properties['projection'] = vector_sr_wkt
+    vector_properties['projection_wkt'] = vector_sr_wkt
     layer_bb = layer.GetExtent()
     layer = None
     vector = None
@@ -1508,7 +1511,7 @@ def get_raster_info(raster_path):
                  y origin, yx-increase, y-increase).
             'datatype' (int): An instance of an enumerated gdal.GDT_* int
                 that represents the datatype of the raster.
-            'projection' (string): projection of the raster in Well Known
+            'projection_wkt' (string): projection of the raster in Well Known
                 Text.
             'bounding_box' (sequence): sequence of floats representing the
                 bounding box in projected coordinates in the order
@@ -1528,7 +1531,7 @@ def get_raster_info(raster_path):
     projection_wkt = raster.GetProjection()
     if not projection_wkt:
         projection_wkt = None
-    raster_properties['projection'] = projection_wkt
+    raster_properties['projection_wkt'] = projection_wkt
     geo_transform = raster.GetGeoTransform()
     raster_properties['geotransform'] = geo_transform
     raster_properties['pixel_size'] = (geo_transform[1], geo_transform[5])
@@ -1574,7 +1577,7 @@ def get_raster_info(raster_path):
 
 
 def reproject_vector(
-        base_vector_path, target_wkt, target_path, layer_id=0,
+        base_vector_path, target_projection_wkt, target_path, layer_id=0,
         driver_name='ESRI Shapefile', copy_fields=True,
         osr_axis_mapping_strategy=DEFAULT_OSR_AXIS_MAPPING_STRATEGY):
     """Reproject OGR DataSource (vector).
@@ -1584,8 +1587,8 @@ def reproject_vector(
 
     Parameters:
         base_vector_path (string): Path to the base shapefile to transform.
-        target_wkt (string): the desired output projection in Well Known Text
-            (by layer.GetSpatialRef().ExportToWkt())
+        target_projection_wkt (string): the desired output projection in Well
+            Known Text (by layer.GetSpatialRef().ExportToWkt())
         target_path (string): the filepath to the transformed shapefile
         layer_id (str/int): name or index of layer in ``base_vector_path`` to
             reproject. Defaults to 0.
@@ -1613,7 +1616,7 @@ def reproject_vector(
             "%s already exists, removing and overwriting", target_path)
         os.remove(target_path)
 
-    target_sr = osr.SpatialReference(target_wkt)
+    target_sr = osr.SpatialReference(target_projection_wkt)
 
     # create a new shapefile from the orginal_datasource
     target_driver = ogr.GetDriverByName(driver_name)
@@ -1787,8 +1790,8 @@ def reclassify_raster(
 
 def warp_raster(
         base_raster_path, target_pixel_size, target_raster_path,
-        resample_method, target_bb=None, base_sr_wkt=None, target_sr_wkt=None,
-        n_threads=None, vector_mask_options=None,
+        resample_method, target_bb=None, base_projection_wkt=None,
+        target_projection_wkt=None, n_threads=None, vector_mask_options=None,
         gdal_warp_options=None, working_dir=None,
         raster_driver_creation_tuple=DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS,
         osr_axis_mapping_strategy=DEFAULT_OSR_AXIS_MAPPING_STRATEGY):
@@ -1807,10 +1810,10 @@ def warp_raster(
             source bounding box.  Otherwise it's a sequence of float
             describing target bounding box in target coordinate system as
             [minx, miny, maxx, maxy].
-        base_sr_wkt (string): if not None, interpret the projection of
+        base_projection_wkt (string): if not None, interpret the projection of
             ``base_raster_path`` as this.
-        target_sr_wkt (string): if not None, desired target projection in Well
-            Known Text format.
+        target_projection_wkt (string): if not None, desired target projection
+            in Well Known Text format.
         n_threads (int): optional, if not None this sets the ``N_THREADS``
             option for ``gdal.Warp``.
         vector_mask_options (dict): optional, if not None, this is a
@@ -1856,19 +1859,19 @@ def warp_raster(
     _assert_is_valid_pixel_size(target_pixel_size)
 
     base_raster_info = get_raster_info(base_raster_path)
-    if target_sr_wkt is None:
-        target_sr_wkt = base_raster_info['projection']
+    if target_projection_wkt is None:
+        target_projection_wkt = base_raster_info['projection_wkt']
 
     if target_bb is None:
         # ensure it's a sequence so we can modify it
         working_bb = list(get_raster_info(base_raster_path)['bounding_box'])
-        # transform the working_bb if target_sr_wkt is not None
-        if target_sr_wkt is not None:
+        # transform the working_bb if target_projection_wkt is not None
+        if target_projection_wkt is not None:
             LOGGER.debug(
                 "transforming bounding box from %s ", working_bb)
             working_bb = transform_bounding_box(
                 base_raster_info['bounding_box'],
-                base_raster_info['projection'], target_sr_wkt)
+                base_raster_info['projection_wkt'], target_projection_wkt)
             LOGGER.debug(
                 "transforming bounding to %s ", working_bb)
     else:
@@ -1960,9 +1963,9 @@ def warp_raster(
         xRes=abs(target_pixel_size[0]),
         yRes=abs(target_pixel_size[1]),
         resampleAlg=resample_method,
-        outputBoundsSRS=target_sr_wkt,
-        srcSRS=base_sr_wkt,
-        dstSRS=target_sr_wkt,
+        outputBoundsSRS=target_projection_wkt,
+        srcSRS=base_projection_wkt,
+        dstSRS=target_projection_wkt,
         multithread=True if warp_options else False,
         warpOptions=warp_options,
         creationOptions=raster_creation_options,
@@ -2732,7 +2735,8 @@ def iterblocks(
 
 
 def transform_bounding_box(
-        bounding_box, base_ref_wkt, target_ref_wkt, edge_samples=11,
+        bounding_box, base_projection_wkt, target_projection_wkt,
+        edge_samples=11,
         osr_axis_mapping_strategy=DEFAULT_OSR_AXIS_MAPPING_STRATEGY):
     """Transform input bounding box to output projection.
 
@@ -2746,10 +2750,10 @@ def transform_bounding_box(
         bounding_box (sequence): a sequence of 4 coordinates in ``base_epsg``
             coordinate system describing the bound in the order
             [xmin, ymin, xmax, ymax].
-        base_ref_wkt (string): the spatial reference of the input coordinate
-            system in Well Known Text.
-        target_ref_wkt (string): the spatial reference of the desired output
+        base_projection_wkt (string): the spatial reference of the input
             coordinate system in Well Known Text.
+        target_projection_wkt (string): the spatial reference of the desired
+            output coordinate system in Well Known Text.
         edge_samples (int): the number of interpolated points along each
             bounding box edge to sample along. A value of 2 will sample just
             the corners while a value of 3 will also sample the corners and
@@ -2766,10 +2770,10 @@ def transform_bounding_box(
 
     """
     base_ref = osr.SpatialReference()
-    base_ref.ImportFromWkt(base_ref_wkt)
+    base_ref.ImportFromWkt(base_projection_wkt)
 
     target_ref = osr.SpatialReference()
-    target_ref.ImportFromWkt(target_ref_wkt)
+    target_ref.ImportFromWkt(target_projection_wkt)
 
     base_ref.SetAxisMappingStrategy(osr_axis_mapping_strategy)
     target_ref.SetAxisMappingStrategy(osr_axis_mapping_strategy)
@@ -2887,11 +2891,11 @@ def merge_rasters(
                     (path, x['nodata']) for path, x in zip(
                         raster_path_list, raster_info_list)]))
 
-    projection_set = set([x['projection'] for x in raster_info_list])
+    projection_set = set([x['projection_wkt'] for x in raster_info_list])
     if len(projection_set) != 1:
         raise ValueError(
             "Projections are not identical. Here's the projections: %s" % str(
-                [(path, x['projection']) for path, x in zip(
+                [(path, x['projection_wkt']) for path, x in zip(
                     raster_path_list, raster_info_list)]))
 
     pixeltype_set = set()
@@ -3033,8 +3037,7 @@ def mask_raster(
         mask_layer_id=0, target_mask_value=None, working_dir=None,
         all_touched=False, where_clause=None,
         raster_driver_creation_tuple=DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS):
-    """
-    Mask a raster band with a given vector.
+    """Mask a raster band with a given vector.
 
     Parameters:
         base_raster_path_band (tuple): a (path, band number) tuple indicating
