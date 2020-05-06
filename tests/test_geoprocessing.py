@@ -3180,6 +3180,76 @@ class PyGeoprocessing10(unittest.TestCase):
         numpy.testing.assert_allclose(numpy.sum(target_array),
                                       expected_result, rtol=1e-6)
 
+    def test_convolve_2d_numerical_zero(self):
+        """PGP.geoprocessing: test convolve 2d for numerical 0.0 set to 0.0."""
+        import pygeoprocessing
+
+        wgs84_sr = osr.SpatialReference()
+        wgs84_sr.ImportFromEPSG(4326)
+        wgs84_wkt = wgs84_sr.ExportToWkt()
+        gtiff_driver = gdal.GetDriverByName('GTiff')
+
+        # set tiny signal with one pixel on so we get lots of numerical noise
+        n_pixels = 100
+        n_kernel_pixels = 100
+        signal_array = numpy.zeros((n_pixels, n_pixels), numpy.float32)
+        signal_array[n_pixels//2, int(0.05*n_pixels)] = 1
+        signal_path = os.path.join(self.workspace_dir, 'signal.tif')
+
+        ny, nx = signal_array.shape
+        signal_raster = gtiff_driver.Create(
+            signal_path, nx, ny, 1, gdal.GDT_Float32)
+        signal_raster.SetProjection(wgs84_wkt)
+        signal_raster.SetGeoTransform([1, 1.0, 0.0, 1, 0.0, -1.0])
+        signal_band = signal_raster.GetRasterBand(1)
+        signal_band.WriteArray(signal_array)
+        signal_band = None
+        signal_raster = None
+
+        # make a linear decay kernel
+        kernel_path = os.path.join(self.workspace_dir, 'kernel.tif')
+        kernel_x, kernel_y = numpy.meshgrid(
+            range(n_kernel_pixels), range(n_kernel_pixels))
+        kernel_radius = n_kernel_pixels//2
+        dist_array = 1.0 - numpy.sqrt(
+            (kernel_x-kernel_radius)**2 +
+            (kernel_y-kernel_radius)**2)/kernel_radius
+        dist_array[dist_array < 0] = 0
+        kernel_array = dist_array / numpy.sum(dist_array)
+
+        ny, nx = kernel_array.shape
+        kernel_raster = gtiff_driver.Create(
+            kernel_path, nx, ny, 1, gdal.GDT_Float32)
+        kernel_raster.SetProjection(wgs84_wkt)
+        kernel_raster.SetGeoTransform([1, 1.0, 0.0, 1, 0.0, -1.0])
+        kernel_band = kernel_raster.GetRasterBand(1)
+        kernel_band.WriteArray(kernel_array)
+        kernel_band = None
+        kernel_raster = None
+
+        # ensure non-tolerance has some negative noise
+        raw_result_path = os.path.join(self.workspace_dir, 'raw_result.tif')
+        pygeoprocessing.convolve_2d(
+            (signal_path, 1), (kernel_path, 1), raw_result_path,
+            set_tol_to_zero=None)
+        raw_raster = gdal.OpenEx(raw_result_path, gdal.OF_RASTER)
+        raw_array = raw_raster.ReadAsArray()
+        raw_raster = None
+        self.assertTrue(
+            numpy.count_nonzero(raw_array < 0) != 0.0,
+            msg='we expect numerical noise in this result')
+
+        # ensure tolerant clamped has no negative noise
+        tol_result_path = os.path.join(self.workspace_dir, 'tol_result.tif')
+        pygeoprocessing.convolve_2d(
+            (signal_path, 1), (kernel_path, 1), tol_result_path)
+        tol_raster = gdal.OpenEx(tol_result_path, gdal.OF_RASTER)
+        tol_array = tol_raster.ReadAsArray()
+        tol_raster = None
+        self.assertTrue(
+            numpy.count_nonzero(tol_array < 0) == 0.0,
+            msg='we expect no noise in this result')
+
     def test_calculate_slope(self):
         """PGP.geoprocessing: test calculate slope."""
         import pygeoprocessing
@@ -4877,3 +4947,48 @@ class PyGeoprocessing10(unittest.TestCase):
         expected_message = 'could not be opened'
         actual_message = str(cm.exception)
         self.assertTrue(expected_message in actual_message, actual_message)
+
+    def test_warp_raster_signedbyte(self):
+        """PGP.geoprocessing: warp raster test."""
+        import pygeoprocessing
+        import pygeoprocessing.testing
+
+        pixel_a_matrix = numpy.full((5, 5), -1, numpy.int8)
+        nodata_target = -128
+        base_a_path = os.path.join(self.workspace_dir, 'base_a.tif')
+
+        wgs84_sr = osr.SpatialReference()
+        wgs84_sr.ImportFromEPSG(4326)
+        wgs84_wkt = wgs84_sr.ExportToWkt()
+        gtiff_driver = gdal.GetDriverByName('GTiff')
+        ny, nx = pixel_a_matrix.shape
+        new_raster = gtiff_driver.Create(
+            base_a_path, nx, ny, 1, gdal.GDT_Byte,
+            options=['PIXELTYPE=SIGNEDBYTE'])
+        new_raster.SetProjection(wgs84_wkt)
+        new_raster.SetGeoTransform([1, 1.0, 0.0, 1, 0.0, -1.0])
+        new_band = new_raster.GetRasterBand(1)
+        new_band.SetNoDataValue(nodata_target)
+        new_band.WriteArray(pixel_a_matrix)
+        new_raster.FlushCache()
+        new_band = None
+        new_raster = None
+
+        target_raster_path = os.path.join(self.workspace_dir, 'target_a.tif')
+        base_a_raster_info = pygeoprocessing.get_raster_info(base_a_path)
+
+        pygeoprocessing.warp_raster(
+            base_a_path, base_a_raster_info['pixel_size'], target_raster_path,
+            'near', target_sr_wkt=wgs84_wkt, n_threads=1)
+
+        base_a_raster = gdal.OpenEx(base_a_path, gdal.OF_RASTER)
+        base_a_band = base_a_raster.GetRasterBand(1)
+        base_array = base_a_band.ReadAsArray()
+        base_a_band = None
+        base_a_raster = None
+        numpy.testing.assert_array_equal(pixel_a_matrix, base_array)
+
+        raster = gdal.Open(target_raster_path)
+        array = raster.ReadAsArray()
+        raster = None
+        numpy.testing.assert_array_equal(pixel_a_matrix, array)
