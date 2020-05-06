@@ -409,9 +409,9 @@ def raster_calculator(
                     # than lead to confusing values of ``data_blocks`` later.
                     if not isinstance(data_blocks[-1], numpy.ndarray):
                         raise ValueError(
-                            "got a %s when trying to read %s at %s",
-                            data_blocks[-1], value.GetDataset().GetFileList(),
-                            block_offset)
+                            f"got a {data_blocks[-1]} when trying to read "
+                            f"{value.GetDataset().GetFileList()} at "
+                            f"{block_offset}, expected numpy.ndarray.")
                 elif isinstance(value, numpy.ndarray):
                     # must be numpy array and all have been conditioned to be
                     # 2d, so start with 0:1 slices and expand if possible
