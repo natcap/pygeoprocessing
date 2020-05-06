@@ -17,6 +17,8 @@ Unreleased Changes
   of near-zero results to be set to 0.0.
 * Fixed a malformed ``ValueError`` message when a corrupt raster was
   encountered in ``raster_calculator``.
+* Fixes an uncessary calculation that pre-fills slope raster GeoTIFFs with
+  nodata values.
 
 1.9.2 (2020-02-06)
 ------------------

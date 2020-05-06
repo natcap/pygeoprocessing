@@ -42,7 +42,7 @@ cdef extern from "FastFileIterator.h" nogil:
 # This resolves an issue on Mac OS X Catalina where cimporting ``push_heap``
 # and ``pop_heap`` from the Standard Library would cause compilation to fail
 # with an error message about the candidate function template not being
-# viable.  The SO answer to a related question 
+# viable.  The SO answer to a related question
 # (https://stackoverflow.com/a/57586789/299084) suggests a workaround: don't
 # tell Cython that we have a template function.  Using ``...`` here allows
 # us to not have to specify all of the types for which we need a working
@@ -118,7 +118,6 @@ def _distance_transform_edt(
     raster_info = pygeoprocessing.get_raster_info(region_raster_path)
     pygeoprocessing.new_raster_from_base(
         region_raster_path, g_raster_path, gdal.GDT_Float32, [_NODATA],
-        fill_value_list=None,
         raster_driver_creation_tuple=raster_driver_creation_tuple)
     g_raster = gdal.OpenEx(g_raster_path, gdal.OF_RASTER | gdal.GA_Update)
     g_band = g_raster.GetRasterBand(1)
@@ -172,7 +171,7 @@ def _distance_transform_edt(
 
     pygeoprocessing.new_raster_from_base(
         region_raster_path, target_distance_raster_path.encode('utf-8'),
-        gdal.GDT_Float32, [distance_nodata], fill_value_list=None,
+        gdal.GDT_Float32, [distance_nodata],
         raster_driver_creation_tuple=raster_driver_creation_tuple)
     target_distance_raster = gdal.OpenEx(
         target_distance_raster_path, gdal.OF_RASTER | gdal.GA_Update)
@@ -338,7 +337,6 @@ def calculate_slope(
     pygeoprocessing.new_raster_from_base(
         base_elevation_raster_path_band[0], target_slope_path,
         gdal.GDT_Float32, [slope_nodata],
-        fill_value_list=[float(slope_nodata)],
         raster_driver_creation_tuple=raster_driver_creation_tuple)
     target_slope_raster = gdal.OpenEx(target_slope_path, gdal.GA_Update)
     target_slope_band = target_slope_raster.GetRasterBand(1)
