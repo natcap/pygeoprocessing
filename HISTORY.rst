@@ -12,6 +12,9 @@ Unreleased Changes
   Lat,Lon but we use osr.OAMS_TRADITIONAL_GIS_ORDER to swap to Lon,Lat.
 * Using osr.CreateCoordinateTransformation() instead of
   osr.CoordinateTransformation() as the GDAL 3 call.
+* Fixed a bug in convolve_2d that would not ``ignore_nodata`` if the signal
+  raster's nodata value was undefined. Changed the name of this flag to
+  ``ignore_nodata_and_edges`` to reflect its expected functionality.
 * Warped signed byte rasters are now also signed byte rasters.
 * Adding a GitHub Actions-based build job for building wheels and a source
   distribution for a given commit of pygeoprocessing.
@@ -28,6 +31,10 @@ Unreleased Changes
   ``reproject_vector``, ``warp_raster``, ``transform_bounding_box``,
   and ``align_and_resize_raster_stack`` as well as the return value from
   ``get_raster_info`` and ``get_vector_info``.
+* Fixed a malformed ``ValueError`` message when a corrupt raster was
+  encountered in ``raster_calculator``.
+* Fixes an unnecessary calculation that pre-fills slope raster GeoTIFFs with
+  nodata values.
 
 1.9.2 (2020-02-06)
 ------------------
