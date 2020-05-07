@@ -29,6 +29,8 @@ Unreleased Changes
   nodata values.
 * Fixed an issue in ``flow_dir_mfd`` that would cause invalid flow directions
   on DEMs that had very small numerical delta heights.
+* Added a check to ``convolve_2d`` to verify that raster path/band tuples were
+  passed where expected and raise a useful Exception if not.
 
 1.9.2 (2020-02-06)
 ------------------

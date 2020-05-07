@@ -2420,6 +2420,17 @@ def convolve_2d(
             "`target_datatype` is set, but `target_nodata` is None. "
             "`target_nodata` must be set if `target_datatype` is not "
             "`gdal.GDT_Float64`.  `target_nodata` is set to None.")
+
+    bad_raster_path_list = []
+    for raster_id, raster_path_band in [
+            ('signal', signal_path_band), ('kernel', kernel_path_band)]:
+        if (not _is_raster_path_band_formatted(raster_path_band)):
+            bad_raster_path_list.append((raster_id, raster_path_band))
+    if bad_raster_path_list:
+        raise ValueError(
+            "Expected raster path band sequences for the following arguments "
+            f"but instead got: {bad_raster_path_list}")
+
     if target_nodata is None:
         target_nodata = numpy.finfo(numpy.float32).min
     new_raster_from_base(
