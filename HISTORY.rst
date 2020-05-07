@@ -17,6 +17,15 @@ Unreleased Changes
   of near-zero results to be set to 0.0.
 * Fixed malformed logging outputs which could be seen during long running
   ``rasterize`` calls.
+* Fixed an issue in ``zonal_statistics`` that would crash if an aggregate
+  vector had a feature with no geometry defined. Now the function ignores
+  such features and prints a warning to the log.
+* Fixed a malformed ``ValueError`` message when a corrupt raster was
+  encountered in ``raster_calculator``.
+* Fixes an uncessary calculation that pre-fills slope raster GeoTIFFs with
+  nodata values.
+* Added a check to ``convolve_2d`` to verify that raster path/band tuples were
+  passed where expected and raise a useful Exception  if not.
 
 1.9.2 (2020-02-06)
 ------------------

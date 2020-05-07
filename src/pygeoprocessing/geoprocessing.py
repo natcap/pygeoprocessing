@@ -400,9 +400,9 @@ def raster_calculator(
                     # than lead to confusing values of ``data_blocks`` later.
                     if not isinstance(data_blocks[-1], numpy.ndarray):
                         raise ValueError(
-                            "got a %s when trying to read %s at %s",
-                            data_blocks[-1], value.GetDataset().GetFileList(),
-                            block_offset)
+                            f"got a {data_blocks[-1]} when trying to read "
+                            f"{value.GetDataset().GetFileList()} at "
+                            f"{block_offset}, expected numpy.ndarray.")
                 elif isinstance(value, numpy.ndarray):
                     # must be numpy array and all have been conditioned to be
                     # 2d, so start with 0:1 slices and expand if possible
@@ -1086,9 +1086,9 @@ def zonal_statistics(
     Parameters:
         base_raster_path_band (tuple): a str/int tuple indicating the path to
             the base raster and the band index of that raster to analyze.
-        aggregate_vector_path (string): a path to an ogr compatable polygon
-            vector whose geometric features indicate the areas over
-            ``base_raster_path_band`` to calculate statistics over.
+        aggregate_vector_path (string): a path to a polygon vector whose
+            geometric features indicate the areas in
+            ``base_raster_path_band`` to calculate zonal statistics.
         aggregate_layer_name (string): name of shapefile layer that will be
             used to aggregate results over.  If set to None, the first layer
             in the DataSource will be used as retrieved by ``.GetLayer()``.
@@ -1240,8 +1240,9 @@ def zonal_statistics(
                     os.path.basename(aggregate_vector_path)),
                 _LOGGING_PERIOD)
             agg_feat = aggregate_layer.GetFeature(feature_fid)
+            agg_geom_ref = agg_feat.GetGeometryRef()
             disjoint_feat = ogr.Feature(disjoint_layer_defn)
-            disjoint_feat.SetGeometry(agg_feat.GetGeometryRef().Clone())
+            disjoint_feat.SetGeometry(agg_geom_ref.Clone())
             disjoint_feat.SetField(
                 local_aggregate_field_name, feature_fid)
             disjoint_layer.CreateFeature(disjoint_feat)
@@ -1325,7 +1326,12 @@ def zonal_statistics(
     LOGGER.debug("gt %s for %s", clipped_gt, base_raster_path_band)
     for unset_fid in unset_fids:
         unset_feat = aggregate_layer.GetFeature(unset_fid)
-        unset_geom_envelope = list(unset_feat.GetGeometryRef().GetEnvelope())
+        unset_geom_ref = unset_feat.GetGeometryRef()
+        if unset_geom_ref is None:
+            LOGGER.warn(
+                f'no geometry in {aggregate_vector_path} FID: {unset_fid}')
+            continue
+        unset_geom_envelope = list(unset_geom_ref.GetEnvelope())
         if clipped_gt[1] < 0:
             unset_geom_envelope[0], unset_geom_envelope[1] = (
                 unset_geom_envelope[1], unset_geom_envelope[0])
@@ -2096,8 +2102,15 @@ def calculate_disjoint_polygon_set(
     # what's in the debian:stretch repos.)
     shapely_polygon_lookup = {}
     for poly_feat in vector_layer:
+        poly_geom_ref = poly_feat.GetGeometryRef()
+        if poly_geom_ref is None:
+            LOGGER.warn(
+                f'no geometry in {vector_path} FID: {poly_feat.GetFID()}, '
+                'skipping...')
+            continue
         shapely_polygon_lookup[poly_feat.GetFID()] = (
-            shapely.wkb.loads(poly_feat.GetGeometryRef().ExportToWkb()))
+            shapely.wkb.loads(poly_geom_ref.ExportToWkb()))
+        poly_geom_ref = None
 
     LOGGER.info("build shapely rtree index")
     r_tree_index_stream = [
@@ -2393,6 +2406,17 @@ def convolve_2d(
             "`target_datatype` is set, but `target_nodata` is None. "
             "`target_nodata` must be set if `target_datatype` is not "
             "`gdal.GDT_Float64`.  `target_nodata` is set to None.")
+
+    bad_raster_path_list = []
+    for raster_id, raster_path_band in [
+            ('signal', signal_path_band), ('kernel', kernel_path_band)]:
+        if (not _is_raster_path_band_formatted(raster_path_band)):
+            bad_raster_path_list.append((raster_id, raster_path_band))
+    if bad_raster_path_list:
+        raise ValueError(
+            "Expected raster path band sequences for the following arguments "
+            f"but instead got: {bad_raster_path_list}")
+
     if target_nodata is None:
         target_nodata = numpy.finfo(numpy.float32).min
     new_raster_from_base(
