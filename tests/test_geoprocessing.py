@@ -697,6 +697,11 @@ class PyGeoprocessing10(unittest.TestCase):
                 expected_value = row_index // 2 * n + col_index // 2
                 new_feature.SetField('expected_value', expected_value)
                 layer.CreateFeature(new_feature)
+
+        # create one feature with no geometry for testing
+        empty_feature = ogr.Feature(layer_defn)
+        layer.CreateFeature(empty_feature)
+        empty_feature = None
         layer.CommitTransaction()
         layer.SyncToDisk()
 
@@ -718,12 +723,17 @@ class PyGeoprocessing10(unittest.TestCase):
 
         zonal_stats = pygeoprocessing.zonal_statistics(
             (raster_path, 1), vector_path)
-        self.assertEqual(len(zonal_stats), 4*n*n)
+        # the +1 is for the feature with no geometry
+        self.assertEqual(len(zonal_stats), 4*n*n+1)
+        none_seen = False
         for poly_id in zonal_stats:
             feature = layer.GetFeature(poly_id)
-            self.assertEqual(
-                feature.GetField('expected_value'),
-                zonal_stats[poly_id]['sum'])
+            expected_value = feature.GetField('expected_value')
+            # we expect one value only to be None
+            if expected_value is None and not none_seen:
+                none_seen = True
+                continue
+            self.assertEqual(expected_value, zonal_stats[poly_id]['sum'])
 
     def test_zonal_stats_no_bb_overlap(self):
         """PGP.geoprocessing: test no vector bb raster overlap."""
