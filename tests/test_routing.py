@@ -1,25 +1,22 @@
-"""PyGeoprocessing 1.0 test suite."""
+"""PyGeoprocessing routing test suite."""
+import os
+import logging
+import shutil
 import tempfile
 import unittest
-import shutil
-import os
 
 from osgeo import gdal
-from osgeo import osr
-from osgeo import ogr
 import numpy
 import numpy.testing
-import shapely.geometry
-import shapely.wkb
 
-import logging
+import pygeoprocessing
+import pygeoprocessing.routing
 
 LOGGER = logging.getLogger(__name__)
 
 
 class TestRouting(unittest.TestCase):
     """Tests for pygeoprocessing.routing."""
-
     def setUp(self):
         """Create a temporary workspace that's deleted later."""
         self.workspace_dir = tempfile.mkdtemp()
@@ -32,7 +29,6 @@ class TestRouting(unittest.TestCase):
 
     def test_pit_filling(self):
         """PGP.routing: test pitfilling."""
-        import pygeoprocessing.routing
         driver = gdal.GetDriverByName('GTiff')
         base_path = os.path.join(self.workspace_dir, 'base.tif')
         dem_array = numpy.zeros((11, 11))
@@ -65,8 +61,6 @@ class TestRouting(unittest.TestCase):
 
     def test_pit_filling_path_band_checking(self):
         """PGP.routing: test pitfilling catches path-band formatting errors."""
-        import pygeoprocessing.routing
-
         with self.assertRaises(ValueError):
             pygeoprocessing.routing.fill_pits(
                 ('invalid path', 1), 'foo')
@@ -77,7 +71,6 @@ class TestRouting(unittest.TestCase):
 
     def test_pit_filling_nodata_int(self):
         """PGP.routing: test pitfilling with nodata value."""
-        import pygeoprocessing.routing
         driver = gdal.GetDriverByName('GTiff')
         base_path = os.path.join(self.workspace_dir, 'base.tif')
         dem_array = numpy.zeros((11, 11), dtype=numpy.int32)
@@ -110,8 +103,6 @@ class TestRouting(unittest.TestCase):
 
     def test_flow_dir_d8(self):
         """PGP.routing: test D8 flow."""
-        import pygeoprocessing.routing
-
         driver = gdal.GetDriverByName('GTiff')
         dem_path = os.path.join(self.workspace_dir, 'dem.tif')
         dem_array = numpy.zeros((11, 11))
@@ -157,8 +148,6 @@ class TestRouting(unittest.TestCase):
 
     def test_flow_accum_d8(self):
         """PGP.routing: test D8 flow accum."""
-        import pygeoprocessing.routing
-
         driver = gdal.GetDriverByName('GTiff')
         flow_dir_path = os.path.join(self.workspace_dir, 'flow_dir.tif')
         # this was generated from a pre-calculated plateau drain dem
@@ -218,8 +207,6 @@ class TestRouting(unittest.TestCase):
 
     def test_flow_accum_d8_flow_weights(self):
         """PGP.routing: test D8 flow accum with flow weights."""
-        import pygeoprocessing.routing
-
         driver = gdal.GetDriverByName('GTiff')
         flow_dir_path = os.path.join(self.workspace_dir, 'flow_dir.tif')
         # this was generated from a pre-calculated plateau drain dem
@@ -343,8 +330,6 @@ class TestRouting(unittest.TestCase):
 
     def test_flow_dir_mfd(self):
         """PGP.routing: test multiple flow dir."""
-        import pygeoprocessing.routing
-
         driver = gdal.GetDriverByName('GTiff')
         dem_path = os.path.join(self.workspace_dir, 'dem.tif')
         # this makes a flat raster with a left-to-right central channel
@@ -410,7 +395,6 @@ class TestRouting(unittest.TestCase):
 
     def test_flow_accum_mfd(self):
         """PGP.routing: test flow accumulation for multiple flow."""
-        import pygeoprocessing.routing
         driver = gdal.GetDriverByName('GTiff')
 
         n = 11
@@ -477,7 +461,6 @@ class TestRouting(unittest.TestCase):
 
     def test_flow_accum_mfd_with_weights(self):
         """PGP.routing: test flow accum for mfd with weights."""
-        import pygeoprocessing.routing
         driver = gdal.GetDriverByName('GTiff')
 
         n = 11
@@ -593,7 +576,6 @@ class TestRouting(unittest.TestCase):
 
     def test_extract_streams_mfd(self):
         """PGP.routing: stream extraction on multiple flow direction."""
-        import pygeoprocessing.routing
         driver = gdal.GetDriverByName('GTiff')
 
         n = 11
@@ -649,7 +631,6 @@ class TestRouting(unittest.TestCase):
 
     def test_distance_to_channel_d8(self):
         """PGP.routing: test distance to channel D8."""
-        import pygeoprocessing.routing
         driver = gdal.GetDriverByName('GTiff')
         flow_dir_d8_path = os.path.join(self.workspace_dir, 'flow_dir.d8_tif')
 
@@ -736,7 +717,6 @@ class TestRouting(unittest.TestCase):
 
     def test_distance_to_channel_d8_with_weights(self):
         """PGP.routing: test distance to channel D8."""
-        import pygeoprocessing.routing
         driver = gdal.GetDriverByName('GTiff')
         flow_dir_d8_path = os.path.join(self.workspace_dir, 'flow_dir.d8_tif')
 
@@ -873,7 +853,6 @@ class TestRouting(unittest.TestCase):
 
     def test_distance_to_channel_mfd(self):
         """PGP.routing: test distance to channel mfd."""
-        import pygeoprocessing.routing
         driver = gdal.GetDriverByName('GTiff')
         flow_dir_mfd_path = os.path.join(
             self.workspace_dir, 'flow_dir_mfd.tif')
@@ -996,7 +975,6 @@ class TestRouting(unittest.TestCase):
 
     def test_distance_to_channel_mfd_with_weights(self):
         """PGP.routing: test distance to channel mfd with weights."""
-        import pygeoprocessing.routing
         driver = gdal.GetDriverByName('GTiff')
         flow_dir_mfd_path = os.path.join(
             self.workspace_dir, 'flow_dir_mfd.tif')
