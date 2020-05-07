@@ -1,33 +1,32 @@
 # coding=UTF-8
 # cython: language_level=3
-import time
-import os
 import logging
+import os
 import shutil
 import tempfile
+import time
 
-import numpy
-import pygeoprocessing
-from osgeo import gdal
-from osgeo import osr
-from osgeo import ogr
-import shapely.wkb
-import shapely.geometry
-import shapely.prepared
-
-cimport numpy
 cimport cython
+cimport numpy
 from cpython.mem cimport PyMem_Malloc, PyMem_Free
 from cython.operator cimport dereference as deref
 from cython.operator cimport preincrement as inc
-from libc.time cimport time_t
 from libc.time cimport time as ctime
+from libc.time cimport time_t
 from libcpp.list cimport list as clist
+from libcpp.map cimport map as cmap
 from libcpp.pair cimport pair
 from libcpp.queue cimport queue
 from libcpp.set cimport set as cset
-from libcpp.map cimport map as cmap
+from osgeo import gdal
+from osgeo import ogr
+from osgeo import osr
+import numpy
+import shapely.geometry
+import shapely.prepared
+import shapely.wkb
 
+import pygeoprocessing
 
 LOGGER = logging.getLogger(__name__)
 

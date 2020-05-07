@@ -16,29 +16,28 @@ is encoded as:
      4x0
      567
 """
-import time
-import os
 import logging
+import os
 import shutil
 import tempfile
+import time
 
-import numpy
-import pygeoprocessing
-from osgeo import gdal
-
-cimport numpy
 cimport cython
+cimport numpy
 from cpython.mem cimport PyMem_Malloc, PyMem_Free
 from cython.operator cimport dereference as deref
 from cython.operator cimport preincrement as inc
-from libc.time cimport time_t
 from libc.time cimport time as ctime
+from libc.time cimport time_t
+from libcpp.deque cimport deque
 from libcpp.list cimport list as clist
 from libcpp.pair cimport pair
 from libcpp.queue cimport queue
-from libcpp.stack cimport stack
-from libcpp.deque cimport deque
 from libcpp.set cimport set as cset
+from libcpp.stack cimport stack
+from osgeo import gdal
+import numpy
+import pygeoprocessing
 
 LOGGER = logging.getLogger(__name__)
 
