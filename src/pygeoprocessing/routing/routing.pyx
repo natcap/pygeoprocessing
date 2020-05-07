@@ -1946,8 +1946,8 @@ def flow_dir_mfd(
                         n_drain_distance = drain_distance + (
                             SQRT2 if i_n & 1 else 1.0)
 
-                        if is_close(dem_managed_raster.get(
-                                xi_n, yi_n), root_height) and (
+                        if (<double>(dem_managed_raster.get(
+                                xi_n, yi_n)) == root_height) and (
                                 plateau_distance_managed_raster.get(
                                     xi_n, yi_n) > n_drain_distance):
                             # neighbor is at same level and has longer drain
@@ -2012,7 +2012,6 @@ def flow_dir_mfd(
     flat_region_mask_managed_raster.close()
     dem_managed_raster.close()
     plateau_distance_managed_raster.close()
-    shutil.rmtree(working_dir_path)
     LOGGER.info('%.1f%% complete', 100.0)
 
 

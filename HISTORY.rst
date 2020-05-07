@@ -25,8 +25,10 @@ Unreleased Changes
   of near-zero results to be set to 0.0.
 * Fixed a malformed ``ValueError`` message when a corrupt raster was
   encountered in ``raster_calculator``.
-* Fixes an unnecessary calculation that pre-fills slope raster GeoTIFFs with
+* Fixed an unnecessary calculation that pre-filled slope raster GeoTIFFs with
   nodata values.
+* Fixed an issue in ``flow_dir_mfd`` that would cause invalid flow directions
+  on DEMs that had very small numerical delta heights.
 
 1.9.2 (2020-02-06)
 ------------------
