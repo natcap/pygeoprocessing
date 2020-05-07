@@ -82,6 +82,7 @@ def _read_raster_to_array(raster_path):
 
 class PyGeoprocessing10(unittest.TestCase):
     """Tests for the PyGeoprocesing 1.0 refactor."""
+
     def setUp(self):
         """Create a temporary workspace that's deleted later."""
         self.workspace_dir = tempfile.mkdtemp()
