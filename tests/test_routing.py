@@ -408,6 +408,55 @@ class TestRouting(unittest.TestCase):
 
         numpy.testing.assert_almost_equal(flow_array, expected_result)
 
+    def test_flow_dir_mfd_plateau(self):
+        """PGP.routing: MFD on a plateau."""
+        import pygeoprocessing.routing
+
+        driver = gdal.GetDriverByName('GTiff')
+        workspace_dir = 'flow_dir_debug'
+        try:
+            os.makedirs(workspace_dir)
+        except OSError:
+            pass
+        dem_path = os.path.join(workspace_dir, 'dem.tif')
+        # this makes a flat raster
+        n = 100
+        dem_array = numpy.zeros((n, n))
+        dem_nodata = -1
+        dem_array[2, :] = 1e-12
+        dem_array[n//2, :] = 1e-12
+        dem_array[3*n//4, :] = 1e-12
+        dem_raster = driver.Create(
+            dem_path, dem_array.shape[1], dem_array.shape[0], 1,
+            gdal.GDT_Float32)
+        wgs84 = osr.SpatialReference()
+        wgs84.ImportFromEPSG(4326)
+        dem_raster.SetGeoTransform([1, 1.0, 0.0, 1, 0.0, -1.0])
+        dem_raster.SetProjection(wgs84.ExportToWkt())
+
+        dem_band = dem_raster.GetRasterBand(1)
+        dem_band.WriteArray(dem_array)
+        dem_band.SetNoDataValue(dem_nodata)
+        dem_band.FlushCache()
+        dem_band = None
+        dem_raster = None
+
+        target_flow_dir_path = os.path.join(
+            workspace_dir, 'flow_dir.tif')
+
+        pygeoprocessing.routing.flow_dir_mfd(
+            (dem_path, 1), target_flow_dir_path,
+            working_dir=self.workspace_dir)
+
+        flow_dir_raster = gdal.OpenEx(target_flow_dir_path, gdal.OF_RASTER)
+        flow_dir_array = flow_dir_raster.ReadAsArray()
+        flow_dir_raster = None
+        flow_dir_nodata = pygeoprocessing.get_raster_info(
+            target_flow_dir_path)['nodata'][0]
+        self.assertTrue(not numpy.isclose(
+            flow_dir_array[1:-1, 1: -1], flow_dir_nodata).any(),
+            'all flow directions should be defined')
+
     def test_flow_accum_mfd(self):
         """PGP.routing: test flow accumulation for multiple flow."""
         import pygeoprocessing.routing
