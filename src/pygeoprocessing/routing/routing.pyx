@@ -468,8 +468,17 @@ cdef class _ManagedRaster:
 
         raster_band = None
         if self.write_mode:
-            raster = gdal.OpenEx(
-                self.raster_path, gdal.GA_Update | gdal.OF_RASTER)
+            max_retries = 5
+            while max_retries > 0:
+                raster = gdal.OpenEx(
+                    self.raster_path, gdal.GA_Update | gdal.OF_RASTER)
+                if raster is None:
+                    max_retries -= 1
+                    LOGGER.error(
+                        f'unable to open {self.raster_path}, retrying...')
+                    time.sleep(0.2)
+                    continue
+                break
             raster_band = raster.GetRasterBand(self.band_id)
 
         block_array = numpy.empty(
