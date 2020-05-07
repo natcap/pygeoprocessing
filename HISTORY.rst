@@ -15,6 +15,8 @@ Unreleased Changes
   might be included with the source distribution.
 * Added ``set_tol_to_zero`` to ``convolve_2d`` to allow for in-function masking
   of near-zero results to be set to 0.0.
+* Fixed malformed logging outputs which could be seen during long running
+  ``rasterize`` calls.
 * Fixed an issue in ``zonal_statistics`` that would crash if an aggregate
   vector had a feature with no geometry defined. Now the function ignores
   such features and prints a warning to the log.
