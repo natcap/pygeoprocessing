@@ -400,9 +400,9 @@ def raster_calculator(
                     # than lead to confusing values of ``data_blocks`` later.
                     if not isinstance(data_blocks[-1], numpy.ndarray):
                         raise ValueError(
-                            "got a %s when trying to read %s at %s",
-                            data_blocks[-1], value.GetDataset().GetFileList(),
-                            block_offset)
+                            f"got a {data_blocks[-1]} when trying to read "
+                            f"{value.GetDataset().GetFileList()} at "
+                            f"{block_offset}, expected numpy.ndarray.")
                 elif isinstance(value, numpy.ndarray):
                     # must be numpy array and all have been conditioned to be
                     # 2d, so start with 0:1 slices and expand if possible
@@ -2406,6 +2406,17 @@ def convolve_2d(
             "`target_datatype` is set, but `target_nodata` is None. "
             "`target_nodata` must be set if `target_datatype` is not "
             "`gdal.GDT_Float64`.  `target_nodata` is set to None.")
+
+    bad_raster_path_list = []
+    for raster_id, raster_path_band in [
+            ('signal', signal_path_band), ('kernel', kernel_path_band)]:
+        if (not _is_raster_path_band_formatted(raster_path_band)):
+            bad_raster_path_list.append((raster_id, raster_path_band))
+    if bad_raster_path_list:
+        raise ValueError(
+            "Expected raster path band sequences for the following arguments "
+            f"but instead got: {bad_raster_path_list}")
+
     if target_nodata is None:
         target_nodata = numpy.finfo(numpy.float32).min
     new_raster_from_base(
