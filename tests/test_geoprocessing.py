@@ -33,13 +33,15 @@ def passthrough(x):
 
 def _geometry_to_vector(
         geometry_list, target_vector_path, projection_epsg=3116,
-        vector_format='GeoJSON', fields=None, attribute_list=None):
+        vector_format='GeoJSON', fields=None, attribute_list=None,
+        ogr_geom_type=ogr.wkbPolygon):
     """Passthrough to pygeoprocessing.shapely_geometry_to_vector."""
     projection = osr.SpatialReference()
     projection.ImportFromEPSG(projection_epsg)
     pygeoprocessing.shapely_geometry_to_vector(
         geometry_list, target_vector_path, projection.ExportToWkt(),
-        vector_format, fields, attribute_list)
+        vector_format, fields=fields, attribute_list=attribute_list,
+        ogr_geom_type=ogr.wkbPolygon)
 
 
 def _array_to_raster(
@@ -53,7 +55,7 @@ def _array_to_raster(
     if projection_epsg is not None:
         projection.ImportFromEPSG(projection_epsg)
         projection_wkt = projection.ExportToWkt()
-    pygeoprocessing.array_to_raster(
+    pygeoprocessing.numpy_array_to_raster(
         base_array, target_nodata, pixel_size, origin, projection_wkt,
         target_path, raster_driver_creation_tuple=('GTiff', creation_options))
 
@@ -141,11 +143,7 @@ class PyGeoprocessing10(unittest.TestCase):
         pygeoprocessing.reclassify_raster(
             (raster_path, 1), value_map, target_path, gdal.GDT_Float32,
             target_nodata, values_required=True)
-        target_raster = gdal.OpenEx(target_path, gdal.OF_RASTER)
-        target_band = target_raster.GetRasterBand(1)
-        target_array = target_band.ReadAsArray()
-        target_band = None
-        target_raster = None
+        target_array = pygeoprocessing.raster_to_numpy_array(target_path)
         self.assertAlmostEqual(
             numpy.sum(target_array), n_pixels**2 * value_map[test_value])
 
@@ -823,9 +821,8 @@ class PyGeoprocessing10(unittest.TestCase):
             (raster_path, 1), vector_path, target_mask_raster_path,
             target_mask_value=None, working_dir=self.workspace_dir)
 
-        mask_raster = gdal.OpenEx(target_mask_raster_path, gdal.OF_RASTER)
-        mask_band = mask_raster.GetRasterBand(1)
-        mask_array = mask_band.ReadAsArray()
+        mask_array = pygeoprocessing.raster_to_numpy_array(
+            target_mask_raster_path)
         expected_result = numpy.empty((n, n))
         expected_result[0:8, :] = test_val
         expected_result[8::, :] = 0
@@ -838,9 +835,8 @@ class PyGeoprocessing10(unittest.TestCase):
             (raster_path, 1), vector_path, target_mask_raster_path,
             target_mask_value=12, working_dir=self.workspace_dir)
 
-        mask_raster = gdal.OpenEx(target_mask_raster_path, gdal.OF_RASTER)
-        mask_band = mask_raster.GetRasterBand(1)
-        mask_array = mask_band.ReadAsArray()
+        mask_array = pygeoprocessing.raster_to_numpy_array(
+            target_mask_raster_path)
         expected_result = numpy.empty((16, 16))
         expected_result[0:8, :] = 2
         expected_result[8::, :] = 12
@@ -1132,11 +1128,7 @@ class PyGeoprocessing10(unittest.TestCase):
             source_vector_path, 'value', (result_path, 1), 'near')
 
         # verify that result is expected
-        result_raster = gdal.OpenEx(result_path, gdal.OF_RASTER)
-        result_band = result_raster.GetRasterBand(1)
-        result_array = result_band.ReadAsArray()
-        result_band = None
-        result_raster = None
+        result_array = pygeoprocessing.raster_to_numpy_array(result_path)
 
         # we expect the first 4 rows to be 0, then the last ones to be 1
         expected_result = numpy.ones((9, 9), numpy.float32)
@@ -1418,10 +1410,8 @@ class PyGeoprocessing10(unittest.TestCase):
         for raster_index in range(len(target_raster_path_list)):
             target_raster_info = pygeoprocessing.get_raster_info(
                 target_raster_path_list[raster_index])
-            target_raster = gdal.OpenEx(
-                target_raster_path_list[raster_index], gdal.OF_RASTER)
-            target_band = target_raster.GetRasterBand(1)
-            target_array = target_band.ReadAsArray()
+            target_array = pygeoprocessing.raster_to_numpy_array(
+                target_raster_path_list[raster_index])
             numpy.testing.assert_array_equal(pixel_a_matrix, target_array)
             self.assertEqual(
                 target_raster_info['pixel_size'],
@@ -1473,10 +1463,8 @@ class PyGeoprocessing10(unittest.TestCase):
         for raster_index in range(2):
             target_raster_info = pygeoprocessing.get_raster_info(
                 target_raster_path_list[raster_index])
-            target_raster = gdal.OpenEx(
-                target_raster_path_list[raster_index], gdal.OF_RASTER)
-            target_band = target_raster.GetRasterBand(1)
-            target_array = target_band.ReadAsArray()
+            target_array = pygeoprocessing.raster_to_numpy_array(
+                target_raster_path_list[raster_index])
             numpy.testing.assert_array_equal(expected_matrix, target_array)
             self.assertEqual(
                 target_raster_info['pixel_size'],
@@ -1504,11 +1492,8 @@ class PyGeoprocessing10(unittest.TestCase):
             base_sr_wkt_list=[wgs84_sr.ExportToWkt()],
             target_sr_wkt=utm_30n_sr.ExportToWkt())
 
-        target_raster = gdal.OpenEx(target_raster_path, gdal.OF_RASTER)
-        target_band = target_raster.GetRasterBand(1)
-        target_array = target_band.ReadAsArray()
-        target_band = None
-        target_raster = None
+        target_array = pygeoprocessing.raster_to_numpy_array(
+            target_raster_path)
         numpy.testing.assert_almost_equal(
             target_array, numpy.ones((4, 4)))
 
@@ -1619,9 +1604,8 @@ class PyGeoprocessing10(unittest.TestCase):
         expected_matrix_a[5:, :] = target_nodata
         expected_matrix_a[:, 5:] = target_nodata
 
-        target_raster = gdal.OpenEx(target_raster_path_list[0], gdal.OF_RASTER)
-        target_band = target_raster.GetRasterBand(1)
-        target_array = target_band.ReadAsArray()
+        target_array = pygeoprocessing.raster_to_numpy_array(
+            target_raster_path_list[0])
         numpy.testing.assert_array_equal(expected_matrix_a, target_array)
 
     def test_align_and_resize_raster_stack_bb(self):
@@ -1656,9 +1640,8 @@ class PyGeoprocessing10(unittest.TestCase):
 
         # we expect this to be twice as big since second base raster has a
         # pixel size twice that of the first.
-        target_raster = gdal.OpenEx(target_raster_path_list[0], gdal.OF_RASTER)
-        target_band = target_raster.GetRasterBand(1)
-        target_array = target_band.ReadAsArray()
+        target_array = pygeoprocessing.raster_to_numpy_array(
+            target_raster_path_list[0])
         target_band = None
         target_raster = None
         numpy.testing.assert_array_equal(pixel_a_matrix, target_array)
@@ -1915,9 +1898,7 @@ class PyGeoprocessing10(unittest.TestCase):
             [(a_arg, 'raw'), x_arg, y_arg, z_arg], lambda a, x, y, z: a*x*y*z,
             target_path, gdal.GDT_Float32, 0)
 
-        target_raster = gdal.OpenEx(target_path, gdal.OF_RASTER)
-        target_array = target_raster.GetRasterBand(1).ReadAsArray()
-        target_raster = None
+        target_array = pygeoprocessing.raster_to_numpy_array(target_path)
         expected_result = numpy.array([[0, 0], [0, 3], [0, 6]])
         numpy.testing.assert_array_almost_equal(target_array, expected_result)
 
@@ -1948,9 +1929,7 @@ class PyGeoprocessing10(unittest.TestCase):
             [y_arg], lambda y: y, target_path,
             gdal.GDT_Float32, None)
 
-        target_raster = gdal.OpenEx(target_path, gdal.OF_RASTER)
-        target_array = target_raster.GetRasterBand(1).ReadAsArray()
-        target_raster = None
+        target_array = pygeoprocessing.raster_to_numpy_array(target_path)
         numpy.testing.assert_array_almost_equal(target_array, y_arg)
 
         target_path = os.path.join(self.workspace_dir, 'target_1d_only.tif')
@@ -1958,9 +1937,7 @@ class PyGeoprocessing10(unittest.TestCase):
             [x_arg], lambda x: x, target_path,
             gdal.GDT_Float32, None)
 
-        target_raster = gdal.OpenEx(target_path, gdal.OF_RASTER)
-        target_array = target_raster.GetRasterBand(1).ReadAsArray()
-        target_raster = None
+        target_array = pygeoprocessing.raster_to_numpy_array(target_path)
         numpy.testing.assert_array_almost_equal(
             target_array, x_arg.reshape((1, x_arg.size)))
 
@@ -1969,9 +1946,7 @@ class PyGeoprocessing10(unittest.TestCase):
             [x_arg, (list_arg, 'raw')], lambda x, y_list: x * y_list[3],
             target_path, gdal.GDT_Float32, None)
 
-        target_raster = gdal.OpenEx(target_path, gdal.OF_RASTER)
-        target_array = target_raster.GetRasterBand(1).ReadAsArray()
-        target_raster = None
+        target_array = pygeoprocessing.raster_to_numpy_array(target_path)
         numpy.testing.assert_array_almost_equal(
             target_array, -x_arg.reshape((1, x_arg.size)))
 
@@ -1981,9 +1956,7 @@ class PyGeoprocessing10(unittest.TestCase):
             lambda x, y_list: x * y_list[3], target_path, gdal.GDT_Float32,
             None)
 
-        target_raster = gdal.OpenEx(target_path, gdal.OF_RASTER)
-        target_array = target_raster.GetRasterBand(1).ReadAsArray()
-        target_raster = None
+        target_array = pygeoprocessing.raster_to_numpy_array(target_path)
         numpy.testing.assert_array_almost_equal(
             target_array, -x_arg.reshape((1, x_arg.size)))
 
@@ -2013,9 +1986,7 @@ class PyGeoprocessing10(unittest.TestCase):
             [(10, 'raw'), (base_path, 1), numpy.array(range(128))],
             local_op, target_path, gdal.GDT_Float32, None, largest_block=0)
 
-        target_raster = gdal.OpenEx(target_path, gdal.OF_RASTER)
-        result = target_raster.GetRasterBand(1).ReadAsArray()
-
+        result = pygeoprocessing.raster_to_numpy_array(target_path)
         expected_result = (
             10 * numpy.ones((128, 128)) * numpy.array(range(128)))
         # we expect one pixel to have been masked out
@@ -2024,12 +1995,12 @@ class PyGeoprocessing10(unittest.TestCase):
 
     def test_new_raster_from_base_unsigned_byte(self):
         """PGP.geoprocessing: test that signed byte rasters copy over."""
-        pixel_matrix = numpy.ones((128, 128), numpy.byte)
-        pixel_matrix[0, 0] = 255  # 255 ubyte is -1 byte
+        pixel_array = numpy.ones((128, 128), numpy.byte)
+        pixel_array[0, 0] = 255  # 255 ubyte is -1 byte
         nodata_base = -1
         base_path = os.path.join(self.workspace_dir, 'base.tif')
         _array_to_raster(
-            pixel_matrix, nodata_base, base_path,
+            pixel_array, nodata_base, base_path,
             creation_options=['PIXELTYPE=SIGNEDBYTE'])
 
         target_path = os.path.join(self.workspace_dir, 'target.tif')
@@ -2038,14 +2009,10 @@ class PyGeoprocessing10(unittest.TestCase):
             base_path, target_path, gdal.GDT_Byte, [0],
             fill_value_list=[255])
 
-        target_raster = gdal.OpenEx(target_path, gdal.OF_RASTER)
-        target_band = target_raster.GetRasterBand(1)
-        target_matrix = target_band.ReadAsArray()
-        target_band = None
-        target_raster = None
+        target_array = pygeoprocessing.raster_to_numpy_array(target_path)
         # we expect a negative result even though we put in a positive because
         # we know signed bytes will convert
-        self.assertEqual(target_matrix[0, 0], -1)
+        self.assertEqual(target_array[0, 0], -1)
 
     def test_new_raster_from_base_nodata_not_set(self):
         """PGP.geoprocessing: test new raster with nodata not set."""
@@ -2255,11 +2222,7 @@ class PyGeoprocessing10(unittest.TestCase):
         self.assertEqual(raster_properties['raster_size'][0], n_pixels_x)
         self.assertEqual(raster_properties['raster_size'][1], n_pixels_y)
         expected_result = numpy.zeros((19, 9))
-        raster = gdal.OpenEx(target_raster_path, gdal.OF_RASTER)
-        band = raster.GetRasterBand(1)
-        result = band.ReadAsArray()
-        band = None
-        raster = None
+        result = pygeoprocessing.raster_to_numpy_array(target_raster_path)
         numpy.testing.assert_array_equal(expected_result, result)
 
     def test_transform_box(self):
@@ -2463,11 +2426,7 @@ class PyGeoprocessing10(unittest.TestCase):
         pygeoprocessing.convolve_2d(
             (signal_path, 1), (kernel_path, 1), target_path,
             n_threads=1, ignore_nodata_and_edges=False)
-        target_raster = gdal.OpenEx(target_path, gdal.OF_RASTER)
-        target_band = target_raster.GetRasterBand(1)
-        target_array = target_band.ReadAsArray()
-        target_band = None
-        target_raster = None
+        target_array = pygeoprocessing.raster_to_numpy_array(target_path)
 
         # calculate expected result by adding up all squares, subtracting off
         # the sides and realizing diagonals got subtracted twice
@@ -2491,11 +2450,7 @@ class PyGeoprocessing10(unittest.TestCase):
         pygeoprocessing.convolve_2d(
             (signal_path, 1), (kernel_path, 1), target_path,
             n_threads=3)
-        target_raster = gdal.OpenEx(target_path, gdal.OF_RASTER)
-        target_band = target_raster.GetRasterBand(1)
-        target_array = target_band.ReadAsArray()
-        target_band = None
-        target_raster = None
+        target_array = pygeoprocessing.raster_to_numpy_array(target_path)
 
         # calculate expected result by adding up all squares, subtracting off
         # the sides and realizing diagonals got subtracted twice
@@ -2520,11 +2475,7 @@ class PyGeoprocessing10(unittest.TestCase):
             (signal_path, 1), (kernel_path, 1), target_path,
             mask_nodata=False, ignore_nodata_and_edges=True,
             normalize_kernel=True)
-        target_raster = gdal.OpenEx(target_path, gdal.OF_RASTER)
-        target_band = target_raster.GetRasterBand(1)
-        target_array = target_band.ReadAsArray()
-        target_band = None
-        target_raster = None
+        target_array = pygeoprocessing.raster_to_numpy_array(target_path)
         expected_result = test_value * n_pixels ** 2
         numpy.testing.assert_allclose(numpy.sum(target_array),
                                       expected_result)
@@ -2545,11 +2496,7 @@ class PyGeoprocessing10(unittest.TestCase):
         pygeoprocessing.convolve_2d(
             (signal_path, 1), (kernel_path, 1), target_path,
             ignore_nodata_and_edges=True)
-        target_raster = gdal.OpenEx(target_path, gdal.OF_RASTER)
-        target_band = target_raster.GetRasterBand(1)
-        target_array = target_band.ReadAsArray()
-        target_band = None
-        target_raster = None
+        target_array = pygeoprocessing.raster_to_numpy_array(target_path)
 
         # calculate by working on some graph paper
         expected_result = 9*9*.5
@@ -2572,11 +2519,7 @@ class PyGeoprocessing10(unittest.TestCase):
         pygeoprocessing.convolve_2d(
             (signal_path, 1), (kernel_path, 1), target_path,
             normalize_kernel=True)
-        target_raster = gdal.OpenEx(target_path, gdal.OF_RASTER)
-        target_band = target_raster.GetRasterBand(1)
-        target_array = target_band.ReadAsArray()
-        target_band = None
-        target_raster = None
+        target_array = pygeoprocessing.raster_to_numpy_array(target_path)
 
         # I calculated this by manually doing a grid on graph paper
         expected_result = .5 + 4 * 5./9.
@@ -2619,11 +2562,7 @@ class PyGeoprocessing10(unittest.TestCase):
         target_path = os.path.join(self.workspace_dir, 'target.tif')
         pygeoprocessing.convolve_2d(
             (signal_path, 1), (kernel_path, 1), target_path)
-        target_raster = gdal.OpenEx(target_path, gdal.OF_RASTER)
-        target_band = target_raster.GetRasterBand(1)
-        target_array = target_band.ReadAsArray()
-        target_band = None
-        target_raster = None
+        target_array = pygeoprocessing.raster_to_numpy_array(target_path)
 
         # calculate expected result by adding up all squares, subtracting off
         # the sides and realizing diagonals got subtracted twice
@@ -2649,11 +2588,7 @@ class PyGeoprocessing10(unittest.TestCase):
         target_path = os.path.join(self.workspace_dir, 'target.tif')
         pygeoprocessing.convolve_2d(
             (signal_path, 1), (kernel_path, 1), target_path)
-        target_raster = gdal.OpenEx(target_path, gdal.OF_RASTER)
-        target_band = target_raster.GetRasterBand(1)
-        target_array = target_band.ReadAsArray()
-        target_band = None
-        target_raster = None
+        target_array = pygeoprocessing.raster_to_numpy_array(target_path)
 
         # calculate expected result by adding up all squares, subtracting off
         # the sides and realizing diagonals got subtracted twice
@@ -2694,9 +2629,7 @@ class PyGeoprocessing10(unittest.TestCase):
         pygeoprocessing.convolve_2d(
             (signal_path, 1), (kernel_path, 1), raw_result_path,
             set_tol_to_zero=None)
-        raw_raster = gdal.OpenEx(raw_result_path, gdal.OF_RASTER)
-        raw_array = raw_raster.ReadAsArray()
-        raw_raster = None
+        raw_array = pygeoprocessing.raster_to_numpy_array(raw_result_path)
         self.assertTrue(
             numpy.count_nonzero(raw_array < 0) != 0.0,
             msg='we expect numerical noise in this result')
@@ -2705,9 +2638,7 @@ class PyGeoprocessing10(unittest.TestCase):
         tol_result_path = os.path.join(self.workspace_dir, 'tol_result.tif')
         pygeoprocessing.convolve_2d(
             (signal_path, 1), (kernel_path, 1), tol_result_path)
-        tol_raster = gdal.OpenEx(tol_result_path, gdal.OF_RASTER)
-        tol_array = tol_raster.ReadAsArray()
-        tol_raster = None
+        tol_array = pygeoprocessing.raster_to_numpy_array(tol_result_path)
         self.assertTrue(
             numpy.count_nonzero(tol_array < 0) == 0.0,
             msg='we expect no noise in this result')
@@ -2753,17 +2684,14 @@ class PyGeoprocessing10(unittest.TestCase):
         pygeoprocessing.convolve_2d(
             (signal_path, 1), (kernel_path, 1), nodata_result_path,
             ignore_nodata_and_edges=True)
-        signal_nodata_raster = gdal.OpenEx(nodata_result_path, gdal.OF_RASTER)
-        signal_nodata_array = signal_nodata_raster.ReadAsArray()
-        signal_nodata_raster = None
+        signal_nodata_array = pygeoprocessing.raster_to_numpy_array(
+            nodata_result_path)
 
         pygeoprocessing.convolve_2d(
             (signal_nodata_none_path, 1), (kernel_path, 1), none_result_path,
             ignore_nodata_and_edges=True)
-        signal_nodata_none_raster = gdal.OpenEx(
-            none_result_path, gdal.OF_RASTER)
-        signal_nodata_none_array = signal_nodata_none_raster.ReadAsArray()
-        signal_nodata_none_raster = None
+        signal_nodata_none_array = pygeoprocessing.raster_to_numpy_array(
+            none_result_path)
 
         self.assertTrue(
             numpy.isclose(signal_nodata_array, signal_nodata_none_array).all(),
@@ -2813,11 +2741,8 @@ class PyGeoprocessing10(unittest.TestCase):
             pixel_size=(1, -1), origin=(0.1, 0))
 
         pygeoprocessing.calculate_slope((dem_path, 1), target_slope_path)
-        slope_raster = gdal.OpenEx(target_slope_path, gdal.OF_RASTER)
-        slope_band = slope_raster.GetRasterBand(1)
-        actual_slope = slope_band.ReadAsArray()
-        slope_band = None
-        slope_raster = None
+
+        actual_slope = pygeoprocessing.raster_to_numpy_array(target_slope_path)
         expected_slope = numpy.zeros((n_pixels, n_pixels), numpy.float32)
         numpy.testing.assert_almost_equal(expected_slope, actual_slope)
 
@@ -2852,21 +2777,14 @@ class PyGeoprocessing10(unittest.TestCase):
             base_vector_path, target_raster_path, [test_value], None,
             layer_id=0)
 
-        target_raster = gdal.OpenEx(target_raster_path, gdal.OF_RASTER)
-        target_band = target_raster.GetRasterBand(1)
-        result = target_band.ReadAsArray()
-        target_band = None
-        target_raster = None
+        result = pygeoprocessing.raster_to_numpy_array(target_raster_path)
         self.assertTrue((result == test_value).all())
 
         pygeoprocessing.rasterize(
             base_vector_path, target_raster_path, None,
             ["ATTRIBUTE=id"], layer_id=0)
-        target_raster = gdal.OpenEx(target_raster_path, gdal.OF_RASTER)
-        target_band = target_raster.GetRasterBand(1)
-        result = target_band.ReadAsArray()
-        target_band = None
-        target_raster = None
+        result = pygeoprocessing.raster_to_numpy_array(
+            target_raster_path)
         self.assertTrue((result == 5).all())
 
     def test_rasterize_error(self):
@@ -3622,11 +3540,7 @@ class PyGeoprocessing10(unittest.TestCase):
             },
             gdal_warp_options=["CUTLINE_ALL_TOUCHED=FALSE"])
 
-        target_raster = gdal.OpenEx(target_path, gdal.OF_RASTER)
-        target_band = target_raster.GetRasterBand(1)
-        target_array = target_band.ReadAsArray()
-        target_band = None
-        target_raster = None
+        target_array = pygeoprocessing.raster_to_numpy_array(target_path)
         # the first pass doesn't do any filtering, so we should have 2 pixels
         self.assertEqual(
             numpy.count_nonzero(target_array[target_array == 1]), 2)
@@ -3643,11 +3557,7 @@ class PyGeoprocessing10(unittest.TestCase):
                 'mask_vector_where_filter': 'value=1'
             })
 
-        target_raster = gdal.OpenEx(target_path, gdal.OF_RASTER)
-        target_band = target_raster.GetRasterBand(1)
-        target_array = target_band.ReadAsArray()
-        target_band = None
-        target_raster = None
+        target_array = pygeoprocessing.raster_to_numpy_array(target_path)
         # we should have only one pixel left
         self.assertEqual(
             numpy.count_nonzero(target_array[target_array == 1]), 1)
@@ -3993,7 +3903,8 @@ class PyGeoprocessing10(unittest.TestCase):
         pygeoprocessing.symbolic.evaluate_raster_calculator_expression(
             sum_expression, symbol_to_path_band_map, target_nodata,
             target_raster_path)
-        target_array = pygeoprocessing.raster_to_array(target_raster_path)
+        target_array = pygeoprocessing.raster_to_numpy_array(
+            target_raster_path)
         numpy.testing.assert_almost_equal(
             target_array, 2*numpy.array(range(n*n)).reshape((n, n)))
 
@@ -4003,7 +3914,8 @@ class PyGeoprocessing10(unittest.TestCase):
         pygeoprocessing.symbolic.evaluate_raster_calculator_expression(
             mult_expression, symbol_to_path_band_map, target_nodata,
             target_raster_path)
-        target_array = pygeoprocessing.raster_to_array(target_raster_path)
+        target_array = pygeoprocessing.raster_to_numpy_array(
+            target_raster_path)
         expected_array = val_array * val_array
         expected_array[0, 0] = -1
         expected_array[-1, -1] = -1
@@ -4035,7 +3947,8 @@ class PyGeoprocessing10(unittest.TestCase):
             target_raster_path, default_inf=-9999)
         expected_array = numpy.empty(val_array.shape)
         expected_array[:] = -9999
-        target_array = pygeoprocessing.raster_to_array(target_raster_path)
+        target_array = pygeoprocessing.raster_to_numpy_array(
+            target_raster_path)
         numpy.testing.assert_almost_equal(target_array, expected_array)
 
         zero_by_zero_expr = 'all_zeros / a'
@@ -4052,7 +3965,8 @@ class PyGeoprocessing10(unittest.TestCase):
             target_raster_path, default_nan=-9999)
         expected_array = numpy.zeros(val_array.shape)
         expected_array[0, 0] = -9999
-        target_array = pygeoprocessing.raster_to_array(target_raster_path)
+        target_array = pygeoprocessing.raster_to_numpy_array(
+            target_raster_path)
         numpy.testing.assert_almost_equal(target_array, expected_array)
         # ensure it's a float32
         self.assertEqual(pygeoprocessing.get_raster_info(
@@ -4240,9 +4154,9 @@ class PyGeoprocessing10(unittest.TestCase):
         base_array = base_a_band.ReadAsArray()
         base_a_band = None
         base_a_raster = None
+
+        base_array = pygeoprocessing.raster_to_numpy_array(base_a_path)
         numpy.testing.assert_array_equal(pixel_a_matrix, base_array)
 
-        raster = gdal.OpenEx(target_raster_path, gdal.OF_RASTER)
-        array = raster.ReadAsArray()
-        raster = None
+        array = pygeoprocessing.raster_to_numpy_array(target_raster_path)
         numpy.testing.assert_array_equal(pixel_a_matrix, array)
