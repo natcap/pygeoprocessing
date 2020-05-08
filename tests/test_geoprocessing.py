@@ -17,7 +17,6 @@ import shapely.wkt
 
 import pygeoprocessing
 import pygeoprocessing.symbolic
-import pygeoprocessing.testing
 from pygeoprocessing.geoprocessing_core import \
     DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS
 
