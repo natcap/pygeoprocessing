@@ -119,7 +119,8 @@ def _array_to_raster(
         numpy.dtype(numpy.complex64): gdal.GDT_CFloat64,
     }
     projection = osr.SpatialReference()
-    projection.ImportFromEPSG(projection_epsg)
+    if projection_epsg is not None:
+        projection.ImportFromEPSG(projection_epsg)
     projection_wkt = projection.ExportToWkt()
     gtiff_driver = gdal.GetDriverByName('GTiff')
     ny, nx = base_array.shape
@@ -1665,7 +1666,9 @@ class PyGeoprocessing10(unittest.TestCase):
         """PGP.geoprocessing: align/resize with manual projections."""
         base_raster_path = os.path.join(self.workspace_dir, 'base_raster.tif')
         pixel_matrix = numpy.ones((1, 1), numpy.int16)
-        _array_to_raster(pixel_matrix, base_raster_path, projection_epsg=4326)
+        _array_to_raster(
+            pixel_matrix, -1, base_raster_path, projection_epsg=4326,
+            origin=(1, 1), pixel_size=(1, -1))
         utm_30n_sr = osr.SpatialReference()
         utm_30n_sr.ImportFromEPSG(32630)
         wgs84_sr = osr.SpatialReference()
@@ -1693,7 +1696,9 @@ class PyGeoprocessing10(unittest.TestCase):
         """PGP.geoprocessing: align raise error if no base projection."""
         base_raster_path = os.path.join(self.workspace_dir, 'base_raster.tif')
         pixel_matrix = numpy.ones((1, 1), numpy.int16)
-        _array_to_raster(pixel_matrix, base_raster_path, projection_epsg=4326)
+        _array_to_raster(
+            pixel_matrix, -1, base_raster_path, projection_epsg=None,
+            origin=(1, 1), pixel_size=(1, -1))
 
         utm_30n_sr = osr.SpatialReference()
         utm_30n_sr.ImportFromEPSG(32630)
@@ -2035,7 +2040,8 @@ class PyGeoprocessing10(unittest.TestCase):
     def test_raster_calculator_array_raster_mismatch(self):
         """PGP.geoprocessing: bad array shape with raster raise error."""
         base_path = os.path.join(self.workspace_dir, 'base.tif')
-        _array_to_raster(numpy.ones(128, 128, dtype=numpy.int32), base_path)
+        _array_to_raster(
+            numpy.ones((128, 128), dtype=numpy.int32), -1, base_path)
 
         target_path = os.path.join(self.workspace_dir, 'target.tif')
         z_arg = numpy.ones((4, 4))
@@ -2064,7 +2070,8 @@ class PyGeoprocessing10(unittest.TestCase):
         """PGP.geoprocessing: tuples that don't match (x, 'raw')."""
         target_path = os.path.join(self.workspace_dir, 'target.tif')
         base_path = os.path.join(self.workspace_dir, 'base.tif')
-        _array_to_raster(numpy.ones(128, 128, dtype=numpy.int32), base_path)
+        _array_to_raster(
+            numpy.ones((128, 128), dtype=numpy.int32), -1, base_path)
 
         with self.assertRaises(ValueError) as cm:
             pygeoprocessing.raster_calculator(
