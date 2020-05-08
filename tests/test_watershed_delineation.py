@@ -13,7 +13,6 @@ import shapely.geometry
 from pygeoprocessing.routing import watershed
 import pygeoprocessing
 import pygeoprocessing.routing
-import pygeoprocessing.testing
 
 
 class WatershedDelineationTests(unittest.TestCase):
