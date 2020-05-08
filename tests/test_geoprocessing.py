@@ -2888,21 +2888,9 @@ class PyGeoprocessing10(unittest.TestCase):
         dem_array[int(n_pixels/2), int(n_pixels/2)] = nodata_value
         dem_path = os.path.join(self.workspace_dir, 'dem.tif')
         target_slope_path = os.path.join(self.workspace_dir, 'slope.tif')
-        driver = gdal.GetDriverByName('GTiff')
-        wgs84_ref = osr.SpatialReference()
-        wgs84_ref.ImportFromEPSG(4326)  # WGS84 EPSG
-        dem_raster = driver.Create(
-            dem_path, dem_array.shape[1], dem_array.shape[0],
-            2, gdal.GDT_Int32)
-        dem_raster_geotransform = [0.1, 1., 0., 0., 0., -1.]
-        dem_raster.SetGeoTransform(dem_raster_geotransform)
-        dem_raster.SetProjection(wgs84_ref.ExportToWkt())
-        dem_band = dem_raster.GetRasterBand(1)
-        dem_band.SetNoDataValue(nodata_value)
-        dem_band.WriteArray(dem_array)
-        dem_band.FlushCache()
-        dem_band = None
-        dem_raster = None
+        _array_to_raster(
+            dem_array, nodata_value, dem_path, projection_epsg=4326,
+            pixel_size=(1, -1), origin=(0.1, 0))
 
         pygeoprocessing.calculate_slope((dem_path, 1), target_slope_path)
         slope_raster = gdal.OpenEx(target_slope_path, gdal.OF_RASTER)
@@ -2929,20 +2917,9 @@ class PyGeoprocessing10(unittest.TestCase):
         dem_array = numpy.ones((n_pixels, n_pixels), numpy.float32)
         dem_path = os.path.join(self.workspace_dir, 'dem.tif')
         target_slope_path = os.path.join(self.workspace_dir, 'slope.tif')
-        driver = gdal.GetDriverByName('GTiff')
-        wgs84_ref = osr.SpatialReference()
-        wgs84_ref.ImportFromEPSG(4326)  # WGS84 EPSG
-        dem_raster = driver.Create(
-            dem_path, dem_array.shape[1], dem_array.shape[0],
-            1, gdal.GDT_Int32)
-        dem_raster_geotransform = [0.1, 1., 0., 0., 0., -1.]
-        dem_raster.SetGeoTransform(dem_raster_geotransform)
-        dem_raster.SetProjection(wgs84_ref.ExportToWkt())
-        dem_band = dem_raster.GetRasterBand(1)
-        dem_band.WriteArray(dem_array)
-        dem_band.FlushCache()
-        dem_band = None
-        dem_raster = None
+        _array_to_raster(
+            dem_array, None, dem_path, projection_epsg=4326,
+            pixel_size=(1, -1), origin=(0.1, 0))
 
         pygeoprocessing.calculate_slope((dem_path, 1), target_slope_path)
         slope_raster = gdal.OpenEx(target_slope_path, gdal.OF_RASTER)
