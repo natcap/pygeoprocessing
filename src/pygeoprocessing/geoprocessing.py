@@ -59,8 +59,6 @@ from functools import reduce
 LOGGER = logging.getLogger(__name__)
 
 _MAX_TIMEOUT = 60.0
-_REL_TOL_DEFAULT = 1e-09
-_ABS_TOL_DEFAULT = 0.0
 
 try:
     from builtins import basestring
@@ -3583,52 +3581,6 @@ def _assert_is_valid_pixel_size(target_pixel_size):
         raise ValueError(
             "Invalid value for `target_pixel_size`, expected two numerical "
             "elements, got: %s", repr(target_pixel_size))
-    return True
-
-
-def raster_values_almost_equal(
-        raster_a_path, raster_b_path,
-        rel_tol=_REL_TOL_DEFAULT, abs_tol=_ABS_TOL_DEFAULT):
-    """Test that the rasters a and b are almost equal.
-
-    Each raster must have the same height and width and same number of bands.
-
-    Args:
-        raster_a_path (string): a path to a raster
-        raster_b_path (string): a path to a raster
-        rel_tol (int or float): the relative tolerance to which
-            values should be asserted.  This is a numerical tolerance,
-            not the number of places to which a value should be rounded.  If
-            the relative value is below this value then the assert passes.
-        abs_tol (int or float): absolute tolerance to which values should be
-            asserted.  If absolute difference in values is below this value
-            then the assert passes.
-
-    Returns:
-        True if the rasters have the same shape, band count, and all pixels in
-        raster_a are almost equal to raster_b within the given `rel_tol` and
-        `abs_tol`.
-
-    """
-    raster_a = gdal.OpenEx(raster_a_path, gdal.OF_RASTER)
-    raster_b = gdal.OpenEx(raster_b_path, gdal.OF_RASTER)
-
-    if raster_a.RasterXSize != raster_b.RasterXSize:
-        return False
-
-    if raster_a.RasterYSize != raster_b.RasterYSize:
-        return False
-
-    if raster_a.RasterCount != raster_b.RasterCount:
-        return False
-
-    for band_index in range(raster_a.RasterCount):
-        for (_, a_block), (_, b_block) in zip(
-                iterblocks((raster_a_path, band_index+1)),
-                iterblocks((raster_b_path, band_index+1))):
-            if not numpy.isclose(
-                    a_block, b_block, rtol=rel_tol, atol=abs_tol).all():
-                return False
     return True
 
 

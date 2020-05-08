@@ -1160,8 +1160,9 @@ class PyGeoprocessing10(unittest.TestCase):
             'near', n_threads=1)
 
         self.assertTrue(
-            pygeoprocessing.raster_values_almost_equal(
-                base_a_path, target_raster_path))
+            numpy.isclose(
+                pygeoprocessing.raster_to_numpy_array(base_a_path),
+                pygeoprocessing.raster_to_numpy_array(target_raster_path)).all())
 
     def test_warp_raster_unusual_pixel_size(self):
         """PGP.geoprocessing: warp on unusual pixel types and sizes."""
@@ -1190,8 +1191,9 @@ class PyGeoprocessing10(unittest.TestCase):
             projection_epsg=4326)
 
         self.assertTrue(
-            pygeoprocessing.raster_values_almost_equal(
-                expected_raster_path, target_raster_path))
+            numpy.isclose(
+                pygeoprocessing.raster_to_numpy_array(base_a_path),
+                pygeoprocessing.raster_to_numpy_array(expected_raster_path)).all())
 
     def test_warp_raster_0x0_size(self):
         """PGP.geoprocessing: test warp where so small it would be 0x0."""
@@ -1220,8 +1222,9 @@ class PyGeoprocessing10(unittest.TestCase):
             expected_matrix, target_nodata, expected_raster_path)
 
         self.assertTrue(
-            pygeoprocessing.raster_values_almost_equal(
-                expected_raster_path, target_raster_path))
+            numpy.isclose(
+                pygeoprocessing.raster_to_numpy_array(base_a_path),
+                pygeoprocessing.raster_to_numpy_array(expected_raster_path)).all())
 
     def test_align_and_resize_raster_stack_bad_values(self):
         """PGP.geoprocessing: align/resize raster bad base values."""
@@ -1658,8 +1661,9 @@ class PyGeoprocessing10(unittest.TestCase):
             gdal.GDT_Int32, target_nodata, calc_raster_stats=True)
 
         self.assertTrue(
-            pygeoprocessing.raster_values_almost_equal(
-                base_path, target_path))
+            numpy.isclose(
+                pygeoprocessing.raster_to_numpy_array(base_path),
+                pygeoprocessing.raster_to_numpy_array(target_path)).all())
 
     def test_raster_calculator_bad_target_type(self):
         """PGP.geoprocessing: raster_calculator bad target type value."""
@@ -1728,9 +1732,11 @@ class PyGeoprocessing10(unittest.TestCase):
         pygeoprocessing.raster_calculator(
             [(base_path, 1)], passthrough, target_path,
             gdal.GDT_Int32, target_nodata, calc_raster_stats=True)
+
         self.assertTrue(
-            pygeoprocessing.raster_values_almost_equal(
-                base_path, target_path))
+            numpy.isclose(
+                pygeoprocessing.raster_to_numpy_array(base_path),
+                pygeoprocessing.raster_to_numpy_array(target_path)).all())
 
     def test_rs_calculator_output_alias(self):
         """PGP.geoprocessing: rs_calculator expected error for aliasing."""
