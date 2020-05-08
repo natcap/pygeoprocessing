@@ -1082,20 +1082,10 @@ class PyGeoprocessing10(unittest.TestCase):
         vector = None
 
         # create raster with nodata value of 0
-        gtiff_driver = gdal.GetDriverByName('GTiff')
         raster_path = os.path.join(self.workspace_dir, 'small_raster.tif')
-        new_raster = gtiff_driver.Create(
-            raster_path, n, n, 1, gdal.GDT_Int32, options=[
-                'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
-                'BLOCKXSIZE=16', 'BLOCKYSIZE=16'])
-        new_raster.SetProjection(srs.ExportToWkt())
-        new_raster.SetGeoTransform([origin_x, 1.0, 0.0, origin_y, 0.0, -1.0])
-        new_band = new_raster.GetRasterBand(1)
-        new_band.WriteArray(numpy.array([[1, 0], [1, 0]]))
-        new_band.SetNoDataValue(0)
-        new_raster.FlushCache()
-        new_band = None
-        new_raster = None
+        _array_to_raster(
+            numpy.array([[1, 0], [1, 0]], dtype=numpy.int32), 0, raster_path,
+            origin=(origin_x, origin_y), pixel_size=(1.0, -1.0))
 
         result = pygeoprocessing.zonal_statistics(
             (raster_path, 1), vector_path,
@@ -2108,30 +2098,13 @@ class PyGeoprocessing10(unittest.TestCase):
 
     def test_combined_constant_args_raster(self):
         """PGP.geoprocessing: test raster calc with constant args."""
-        driver = gdal.GetDriverByName('GTiff')
         base_path = os.path.join(self.workspace_dir, 'base.tif')
-
-        wgs84_ref = osr.SpatialReference()
-        wgs84_ref.ImportFromEPSG(4326)  # WGS84 EPSG
-
-        new_raster = driver.Create(
-            base_path, 128, 128, 1, gdal.GDT_Int32,
-            options=(
-                'TILED=YES', 'BLOCKXSIZE=32', 'BLOCKYSIZE=32'))
-        geotransform = [0.1, 1., 0., 0., 0., -1.]
-        new_raster.SetGeoTransform(geotransform)
-        new_raster.SetProjection(wgs84_ref.ExportToWkt())
-        new_band = new_raster.GetRasterBand(1)
-
         nodata = 0
-        new_band.SetNoDataValue(nodata)
         raster_array = numpy.ones((128, 128), dtype=numpy.int32)
         raster_array[127, 127] = nodata
-        new_band.WriteArray(raster_array)
-        new_band.FlushCache()
-        new_raster.FlushCache()
-        new_band = None
-        new_raster = None
+        _array_to_raster(
+            raster_array, nodata, base_path, projection_epsg=4326,
+            origin=(0.1, 0), pixel_size=(1, -1))
 
         target_path = os.path.join(self.workspace_dir, 'target.tif')
 
