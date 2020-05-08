@@ -1,16 +1,12 @@
 """PyGeoprocessing 1.0 test suite."""
+import os
+import shutil
 import tempfile
 import unittest
-import shutil
-import os
 
 from osgeo import gdal
-from osgeo import osr
-from osgeo import ogr
 import numpy
 import numpy.testing
-import shapely.geometry
-import shapely.wkb
 
 import logging
 
@@ -98,11 +94,7 @@ class TestRouting(unittest.TestCase):
         pygeoprocessing.routing.fill_pits(
             (base_path, 1), fill_path, working_dir=self.workspace_dir)
 
-        result_raster = gdal.OpenEx(fill_path, gdal.OF_RASTER)
-        result_band = result_raster.GetRasterBand(1)
-        result_array = result_band.ReadAsArray()
-        result_band = None
-        result_raster = None
+        result_array = pygeoprocessing.raster_to_numpy_array(fill_path)
         self.assertEqual(result_array.dtype, numpy.int32)
         # the expected result is that the pit is filled in
         dem_array[3:8, 3:8] = 0.0
@@ -134,11 +126,8 @@ class TestRouting(unittest.TestCase):
             (dem_path, 1), target_flow_dir_path,
             working_dir=self.workspace_dir)
 
-        flow_dir_raster = gdal.OpenEx(target_flow_dir_path, gdal.OF_RASTER)
-        flow_dir_band = flow_dir_raster.GetRasterBand(1)
-        flow_array = flow_dir_band.ReadAsArray()
-        flow_dir_band = None
-        flow_dir_raster = None
+        flow_array = pygeoprocessing.raster_to_numpy_array(
+            target_flow_dir_path)
         self.assertEqual(flow_array.dtype, numpy.uint8)
         # this is a regression result saved by hand
         expected_result = numpy.array([
@@ -192,12 +181,8 @@ class TestRouting(unittest.TestCase):
         pygeoprocessing.routing.flow_accumulation_d8(
             (flow_dir_path, 1), target_flow_accum_path)
 
-        flow_accum_raster = gdal.OpenEx(
-            target_flow_accum_path, gdal.OF_RASTER)
-        flow_accum_band = flow_accum_raster.GetRasterBand(1)
-        flow_accum_array = flow_accum_band.ReadAsArray()
-        flow_accum_band = None
-        flow_accum_raster = None
+        flow_accum_array = pygeoprocessing.raster_to_numpy_array(
+            target_flow_accum_path)
         self.assertEqual(flow_accum_array.dtype, numpy.float64)
 
         # this is a regression result saved by hand
@@ -272,12 +257,8 @@ class TestRouting(unittest.TestCase):
             (flow_dir_path, 1), target_flow_accum_path,
             weight_raster_path_band=(flow_weight_raster_path, 1))
 
-        flow_accum_raster = gdal.OpenEx(
-            target_flow_accum_path, gdal.OF_RASTER)
-        flow_accum_band = flow_accum_raster.GetRasterBand(1)
-        flow_accum_array = flow_accum_band.ReadAsArray()
-        flow_accum_band = None
-        flow_accum_raster = None
+        flow_accum_array = pygeoprocessing.raster_to_numpy_array(
+            target_flow_accum_path)
         self.assertEqual(flow_accum_array.dtype, numpy.float64)
 
         # this is a regression result saved by hand from a simple run but
@@ -302,12 +283,8 @@ class TestRouting(unittest.TestCase):
             (flow_dir_path, 1), target_flow_accum_path,
             weight_raster_path_band=(flow_weight_raster_path, 1))
 
-        flow_accum_raster = gdal.OpenEx(
-            target_flow_accum_path, gdal.OF_RASTER)
-        flow_accum_band = flow_accum_raster.GetRasterBand(1)
-        flow_accum_array = flow_accum_band.ReadAsArray()
-        flow_accum_band = None
-        flow_accum_raster = None
+        flow_accum_array = pygeoprocessing.raster_to_numpy_array(
+            target_flow_accum_path)
         self.assertEqual(flow_accum_array.dtype, numpy.float64)
 
         # this is a regression result saved by hand from a simple run but
@@ -330,12 +307,8 @@ class TestRouting(unittest.TestCase):
         pygeoprocessing.routing.flow_accumulation_d8(
             (flow_dir_path, 1), target_flow_accum_path,
             weight_raster_path_band=(zero_raster_path, 1))
-        flow_accum_raster = gdal.OpenEx(
-            target_flow_accum_path, gdal.OF_RASTER)
-        flow_accum_band = flow_accum_raster.GetRasterBand(1)
-        flow_accum_array = flow_accum_band.ReadAsArray()
-        flow_accum_band = None
-        flow_accum_raster = None
+        flow_accum_array = pygeoprocessing.raster_to_numpy_array(
+            target_flow_accum_path)
         self.assertEqual(flow_accum_array.dtype, numpy.float64)
 
         numpy.testing.assert_almost_equal(
@@ -580,12 +553,8 @@ class TestRouting(unittest.TestCase):
         pygeoprocessing.routing.flow_accumulation_mfd(
             (flow_dir_path, 1), target_flow_accum_path,
             weight_raster_path_band=(zero_raster_path, 1))
-        flow_accum_raster = gdal.OpenEx(
-            target_flow_accum_path, gdal.OF_RASTER)
-        flow_accum_band = flow_accum_raster.GetRasterBand(1)
-        flow_accum_array = flow_accum_band.ReadAsArray()
-        flow_accum_band = None
-        flow_accum_raster = None
+        flow_accum_array = pygeoprocessing.raster_to_numpy_array(
+            target_flow_accum_path)
         self.assertEqual(flow_accum_array.dtype, numpy.float64)
 
         numpy.testing.assert_almost_equal(
@@ -627,11 +596,8 @@ class TestRouting(unittest.TestCase):
             (target_flow_accum_path, 1), (flow_dir_path, 1), 30,
             target_stream_raster_path, trace_threshold_proportion=0.5)
 
-        stream_raster = gdal.OpenEx(target_stream_raster_path, gdal.OF_RASTER)
-        stream_band = stream_raster.GetRasterBand(1)
-        stream_array = stream_band.ReadAsArray()
-        stream_band = None
-        stream_raster = None
+        stream_array = pygeoprocessing.raster_to_numpy_array(
+            target_stream_raster_path)
         expected_stream_array = numpy.array(
             [[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
              [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
@@ -709,14 +675,8 @@ class TestRouting(unittest.TestCase):
             (flow_dir_d8_path, 1), (channel_path, 1),
             distance_to_channel_d8_path)
 
-        distance_to_channel_d8_raster = gdal.OpenEx(
-            distance_to_channel_d8_path, gdal.OF_RASTER)
-        distance_to_channel_d8_band = (
-            distance_to_channel_d8_raster.GetRasterBand(1))
-        distance_to_channel_d8_array = (
-            distance_to_channel_d8_band.ReadAsArray())
-        distance_to_channel_d8_band = None
-        distance_to_channel_d8_raster = None
+        distance_to_channel_d8_array = pygeoprocessing.raster_to_numpy_array(
+            distance_to_channel_d8_path)
 
         expected_result = numpy.array(
             [[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
@@ -813,14 +773,8 @@ class TestRouting(unittest.TestCase):
             distance_to_channel_d8_path,
             weight_raster_path_band=(flow_dir_d8_weight_path, 1))
 
-        distance_to_channel_d8_raster = gdal.OpenEx(
-            distance_to_channel_d8_path, gdal.OF_RASTER)
-        distance_to_channel_d8_band = (
-            distance_to_channel_d8_raster.GetRasterBand(1))
-        distance_to_channel_d8_array = (
-            distance_to_channel_d8_band.ReadAsArray())
-        distance_to_channel_d8_band = None
-        distance_to_channel_d8_raster = None
+        distance_to_channel_d8_array = pygeoprocessing.raster_to_numpy_array(
+            distance_to_channel_d8_path)
 
         expected_result = weight_factor * numpy.array(
             [[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
@@ -859,14 +813,8 @@ class TestRouting(unittest.TestCase):
             distance_to_channel_d8_path,
             weight_raster_path_band=(zero_raster_path, 1))
 
-        distance_to_channel_d8_raster = gdal.OpenEx(
-            distance_to_channel_d8_path, gdal.OF_RASTER)
-        distance_to_channel_d8_band = (
-            distance_to_channel_d8_raster.GetRasterBand(1))
-        distance_to_channel_d8_array = (
-            distance_to_channel_d8_band.ReadAsArray())
-        distance_to_channel_d8_band = None
-        distance_to_channel_d8_raster = None
+        distance_to_channel_d8_array = pygeoprocessing.raster_to_numpy_array(
+            distance_to_channel_d8_path)
 
         numpy.testing.assert_almost_equal(
             distance_to_channel_d8_array, zero_array)
@@ -948,14 +896,8 @@ class TestRouting(unittest.TestCase):
             (flow_dir_mfd_path, 1), (channel_path, 1),
             distance_to_channel_mfd_path)
 
-        distance_to_channel_mfd_raster = gdal.OpenEx(
-            distance_to_channel_mfd_path, gdal.OF_RASTER)
-        distance_to_channel_mfd_band = (
-            distance_to_channel_mfd_raster.GetRasterBand(1))
-        distance_to_channel_mfd_array = (
-            distance_to_channel_mfd_band.ReadAsArray())
-        distance_to_channel_mfd_band = None
-        distance_to_channel_mfd_raster = None
+        distance_to_channel_mfd_array = pygeoprocessing.raster_to_numpy_array(
+            distance_to_channel_mfd_path)
 
         # this is a regression result copied by hand
         expected_result = numpy.array(
@@ -1087,14 +1029,8 @@ class TestRouting(unittest.TestCase):
             distance_to_channel_mfd_path,
             weight_raster_path_band=(flow_dir_mfd_weight_path, 1))
 
-        distance_to_channel_mfd_raster = gdal.OpenEx(
-            distance_to_channel_mfd_path, gdal.OF_RASTER)
-        distance_to_channel_mfd_band = (
-            distance_to_channel_mfd_raster.GetRasterBand(1))
-        distance_to_channel_mfd_array = (
-            distance_to_channel_mfd_band.ReadAsArray())
-        distance_to_channel_mfd_band = None
-        distance_to_channel_mfd_raster = None
+        distance_to_channel_mfd_array = pygeoprocessing.raster_to_numpy_array(
+            distance_to_channel_mfd_path)
 
         # this is a regression result copied by hand
         expected_result = numpy.array(
@@ -1136,14 +1072,8 @@ class TestRouting(unittest.TestCase):
             distance_to_channel_mfd_path,
             weight_raster_path_band=(zero_raster_path, 1))
 
-        distance_to_channel_d8_raster = gdal.OpenEx(
-            distance_to_channel_mfd_path, gdal.OF_RASTER)
-        distance_to_channel_d8_band = (
-            distance_to_channel_d8_raster.GetRasterBand(1))
-        distance_to_channel_d8_array = (
-            distance_to_channel_d8_band.ReadAsArray())
-        distance_to_channel_d8_band = None
-        distance_to_channel_d8_raster = None
+        distance_to_channel_mfd_array = pygeoprocessing.raster_to_numpy_array(
+            distance_to_channel_mfd_path)
 
         numpy.testing.assert_almost_equal(
-            distance_to_channel_d8_array, zero_array)
+            distance_to_channel_mfd_array, zero_array)
