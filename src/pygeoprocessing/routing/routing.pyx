@@ -479,6 +479,11 @@ cdef class _ManagedRaster:
                     time.sleep(0.2)
                     continue
                 break
+            if max_retries == 0:
+                raise ValueError(
+                    f'unable to open {self.raster_path} in '
+                    'ManagedRaster.flush')
+            raster_band = raster.GetRasterBand(self.band_id)
 
         block_array = numpy.empty(
             (self.block_ysize, self.block_xsize), dtype=numpy.double)
