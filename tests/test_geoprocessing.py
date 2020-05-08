@@ -1663,17 +1663,9 @@ class PyGeoprocessing10(unittest.TestCase):
 
     def test_align_and_resize_raster_stack_manual_projection(self):
         """PGP.geoprocessing: align/resize with manual projections."""
-        geotiff_driver = gdal.GetDriverByName('GTiff')
         base_raster_path = os.path.join(self.workspace_dir, 'base_raster.tif')
-        base_raster = geotiff_driver.Create(
-            base_raster_path, 1, 1, 1, gdal.GDT_Byte)
-        base_raster.SetGeoTransform([0.1, 1, 0, 0.1, 0, -1])
-        base_band = base_raster.GetRasterBand(1)
         pixel_matrix = numpy.ones((1, 1), numpy.int16)
-        base_band.WriteArray(pixel_matrix)
-        base_band = None
-        base_raster = None
-
+        _array_to_raster(pixel_matrix, base_raster_path, projection_epsg=4326)
         utm_30n_sr = osr.SpatialReference()
         utm_30n_sr.ImportFromEPSG(32630)
         wgs84_sr = osr.SpatialReference()
@@ -1699,16 +1691,9 @@ class PyGeoprocessing10(unittest.TestCase):
 
     def test_align_and_resize_raster_stack_no_base_projection(self):
         """PGP.geoprocessing: align raise error if no base projection."""
-        geotiff_driver = gdal.GetDriverByName('GTiff')
         base_raster_path = os.path.join(self.workspace_dir, 'base_raster.tif')
-        base_raster = geotiff_driver.Create(
-            base_raster_path, 1, 1, 1, gdal.GDT_Byte)
-        base_raster.SetGeoTransform([0.1, 1, 0, 0.1, 0, -1])
-        base_band = base_raster.GetRasterBand(1)
         pixel_matrix = numpy.ones((1, 1), numpy.int16)
-        base_band.WriteArray(pixel_matrix)
-        base_band = None
-        base_raster = None
+        _array_to_raster(pixel_matrix, base_raster_path, projection_epsg=4326)
 
         utm_30n_sr = osr.SpatialReference()
         utm_30n_sr.ImportFromEPSG(32630)
@@ -2049,18 +2034,10 @@ class PyGeoprocessing10(unittest.TestCase):
 
     def test_raster_calculator_array_raster_mismatch(self):
         """PGP.geoprocessing: bad array shape with raster raise error."""
-        target_path = os.path.join(self.workspace_dir, 'target.tif')
-        driver = gdal.GetDriverByName('GTiff')
         base_path = os.path.join(self.workspace_dir, 'base.tif')
-        new_raster = driver.Create(
-            base_path, 128, 128, 1, gdal.GDT_Int32,
-            options=(
-                'TILED=YES', 'BLOCKXSIZE=16', 'BLOCKYSIZE=16'))
-        new_raster.GetRasterBand(1).WriteArray(
-            numpy.ones((128, 128)))
-        new_raster.FlushCache()
-        new_raster = None
+        _array_to_raster(numpy.ones(128, 128, dtype=numpy.int32), base_path)
 
+        target_path = os.path.join(self.workspace_dir, 'target.tif')
         z_arg = numpy.ones((4, 4))
         with self.assertRaises(ValueError) as cm:
             pygeoprocessing.raster_calculator(
@@ -2086,16 +2063,8 @@ class PyGeoprocessing10(unittest.TestCase):
     def test_raster_calculator_bad_raw_args(self):
         """PGP.geoprocessing: tuples that don't match (x, 'raw')."""
         target_path = os.path.join(self.workspace_dir, 'target.tif')
-        driver = gdal.GetDriverByName('GTiff')
         base_path = os.path.join(self.workspace_dir, 'base.tif')
-        new_raster = driver.Create(
-            base_path, 128, 128, 1, gdal.GDT_Int32,
-            options=(
-                'TILED=YES', 'BLOCKXSIZE=16', 'BLOCKYSIZE=16'))
-        new_raster.GetRasterBand(1).WriteArray(
-            numpy.ones((128, 128)))
-        new_raster.FlushCache()
-        new_raster = None
+        _array_to_raster(numpy.ones(128, 128, dtype=numpy.int32), base_path)
 
         with self.assertRaises(ValueError) as cm:
             pygeoprocessing.raster_calculator(
