@@ -2776,7 +2776,6 @@ class PyGeoprocessing10(unittest.TestCase):
         pygeoprocessing.rasterize(
             base_vector_path, target_raster_path, [test_value], None,
             layer_id=0)
-
         result = pygeoprocessing.raster_to_numpy_array(target_raster_path)
         self.assertTrue((result == test_value).all())
 
@@ -2948,12 +2947,8 @@ class PyGeoprocessing10(unittest.TestCase):
                 (base_raster_path, 1), target_distance_raster_path,
                 sampling_distance=sampling_distance,
                 working_dir=self.workspace_dir)
-            target_raster = gdal.OpenEx(
-                target_distance_raster_path, gdal.OF_RASTER)
-            target_band = target_raster.GetRasterBand(1)
-            target_array = target_band.ReadAsArray()
-            target_band = None
-            target_raster = None
+            target_array = pygeoprocessing.raster_to_numpy_array(
+                target_distance_raster_path)
             expected_result = scipy.ndimage.morphology.distance_transform_edt(
                 1 - (base_raster_array == 1), sampling=(
                     sampling_distance[1], sampling_distance[0]))
@@ -2967,12 +2962,8 @@ class PyGeoprocessing10(unittest.TestCase):
             (base_raster_path, 1), target_distance_raster_path,
             sampling_distance=sampling_distance,
             working_dir=self.workspace_dir)
-        target_raster = gdal.OpenEx(
-            target_distance_raster_path, gdal.OF_RASTER)
-        target_band = target_raster.GetRasterBand(1)
-        target_array = target_band.ReadAsArray()
-        target_band = None
-        target_raster = None
+        target_array = pygeoprocessing.raster_to_numpy_array(
+            target_distance_raster_path)
         numpy.testing.assert_array_almost_equal(
             target_array, expected_result, decimal=2)
 
@@ -2994,12 +2985,8 @@ class PyGeoprocessing10(unittest.TestCase):
             (base_raster_path, 1), target_distance_raster_path,
             sampling_distance=sampling_distance,
             working_dir=self.workspace_dir)
-        target_raster = gdal.OpenEx(
-            target_distance_raster_path, gdal.OF_RASTER)
-        target_band = target_raster.GetRasterBand(1)
-        target_array = target_band.ReadAsArray()
-        target_band = None
-        target_raster = None
+        target_array = pygeoprocessing.raster_to_numpy_array(
+            target_distance_raster_path)
         expected_result = scipy.ndimage.morphology.distance_transform_edt(
             1 - (base_raster_array == 1), sampling=(
                 sampling_distance[1], sampling_distance[0]))
@@ -4148,12 +4135,6 @@ class PyGeoprocessing10(unittest.TestCase):
         pygeoprocessing.warp_raster(
             base_a_path, base_a_raster_info['pixel_size'], target_raster_path,
             'near', target_sr_wkt=wgs84_wkt, n_threads=1)
-
-        base_a_raster = gdal.OpenEx(base_a_path, gdal.OF_RASTER)
-        base_a_band = base_a_raster.GetRasterBand(1)
-        base_array = base_a_band.ReadAsArray()
-        base_a_band = None
-        base_a_raster = None
 
         base_array = pygeoprocessing.raster_to_numpy_array(base_a_path)
         numpy.testing.assert_array_equal(pixel_a_matrix, base_array)
