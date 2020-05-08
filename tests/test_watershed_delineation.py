@@ -5,6 +5,7 @@ import tempfile
 import unittest
 
 from osgeo import gdal
+from osgeo import ogr
 from osgeo import osr
 import numpy
 import shapely.geometry

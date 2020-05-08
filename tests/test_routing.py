@@ -11,8 +11,6 @@ import numpy.testing
 import pygeoprocessing
 import pygeoprocessing.routing
 
-LOGGER = logging.getLogger(__name__)
-
 
 class TestRouting(unittest.TestCase):
     """Tests for pygeoprocessing.routing."""
