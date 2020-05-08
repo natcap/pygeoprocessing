@@ -38,6 +38,13 @@ Unreleased Changes
 * Removed most of the `pygeoprocessing.testing` module.
   Added ``raster_values_almost_equal``, ``array_to_raster``, and
   ``shapely_to_vector`` to ``pygeoprocessing``.
+* Added convenience functions to ``pygeoprocessing``, these should not be used
+  for scalable applications, but are useful for testing and scripting:
+  * ``raster_to_numpy_array`` - read a single band of a raster into a ``numpy``
+    array, runs the risk of memory error if the raster is too large.
+  * ``numpy_array_to_raster`` - writes a ``numpy`` array to a raster on disk.
+  * ``shapely_geometry_to_vector`` - creates a vector from a list of
+    ``Shapely`` geometry.
 
 1.9.2 (2020-02-06)
 ------------------

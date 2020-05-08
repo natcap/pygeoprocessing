@@ -1642,8 +1642,6 @@ class PyGeoprocessing10(unittest.TestCase):
         # pixel size twice that of the first.
         target_array = pygeoprocessing.raster_to_numpy_array(
             target_raster_path_list[0])
-        target_band = None
-        target_raster = None
         numpy.testing.assert_array_equal(pixel_a_matrix, target_array)
 
     def test_raster_calculator(self):
