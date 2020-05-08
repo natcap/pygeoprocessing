@@ -2784,15 +2784,9 @@ class PyGeoprocessing10(unittest.TestCase):
         signal_array[n_pixels//2, int(0.05*n_pixels)] = 1
         signal_path = os.path.join(self.workspace_dir, 'signal.tif')
 
-        ny, nx = signal_array.shape
-        signal_raster = gtiff_driver.Create(
-            signal_path, nx, ny, 1, gdal.GDT_Float32)
-        signal_raster.SetProjection(wgs84_wkt)
-        signal_raster.SetGeoTransform([1, 1.0, 0.0, 1, 0.0, -1.0])
-        signal_band = signal_raster.GetRasterBand(1)
-        signal_band.WriteArray(signal_array)
-        signal_band = None
-        signal_raster = None
+        _array_to_raster(
+            signal_array, None, signal_path, projection_epsg=4326,
+            origin=(1, 1), pixel_size=(1, -1))
 
         # make a linear decay kernel
         kernel_path = os.path.join(self.workspace_dir, 'kernel.tif')
@@ -2805,15 +2799,9 @@ class PyGeoprocessing10(unittest.TestCase):
         dist_array[dist_array < 0] = 0
         kernel_array = dist_array / numpy.sum(dist_array)
 
-        ny, nx = kernel_array.shape
-        kernel_raster = gtiff_driver.Create(
-            kernel_path, nx, ny, 1, gdal.GDT_Float32)
-        kernel_raster.SetProjection(wgs84_wkt)
-        kernel_raster.SetGeoTransform([1, 1.0, 0.0, 1, 0.0, -1.0])
-        kernel_band = kernel_raster.GetRasterBand(1)
-        kernel_band.WriteArray(kernel_array)
-        kernel_band = None
-        kernel_raster = None
+        _array_to_raster(
+            kernel_array, None, kernel_path, projection_epsg=4326,
+            origin=(1, 1), pixel_size=(1, -1))
 
         # ensure non-tolerance has some negative noise
         raw_result_path = os.path.join(self.workspace_dir, 'raw_result.tif')
@@ -2852,27 +2840,15 @@ class PyGeoprocessing10(unittest.TestCase):
         signal_array[n_pixels//2, int(0.05*n_pixels)] = 1
         signal_path = os.path.join(self.workspace_dir, 'signal.tif')
 
-        ny, nx = signal_array.shape
-        signal_raster = gtiff_driver.Create(
-            signal_path, nx, ny, 1, gdal.GDT_Float32)
-        signal_raster.SetProjection(wgs84_wkt)
-        signal_raster.SetGeoTransform([1, 1.0, 0.0, 1, 0.0, -1.0])
-        signal_band = signal_raster.GetRasterBand(1)
-        signal_band.WriteArray(signal_array)
-        signal_band.SetNoDataValue(-1)
-        signal_band = None
-        signal_raster = None
+        _array_to_raster(
+            signal_array, -1, signal_path, projection_epsg=4326,
+            origin=(1, 1), pixel_size=(1, -1))
 
         signal_nodata_none_path = os.path.join(
             self.workspace_dir, 'signal_none.tif')
-        signal_nodata_none_raster = gtiff_driver.Create(
-            signal_nodata_none_path, nx, ny, 1, gdal.GDT_Float32)
-        signal_nodata_none_raster.SetProjection(wgs84_wkt)
-        signal_nodata_none_raster.SetGeoTransform([1, 1.0, 0.0, 1, 0.0, -1.0])
-        signal_nodata_band = signal_nodata_none_raster.GetRasterBand(1)
-        signal_nodata_band.WriteArray(signal_array)
-        signal_nodata_band = None
-        signal_nodata_none_raster = None
+        _array_to_raster(
+            signal_array, None, signal_nodata_none_path, projection_epsg=4326,
+            origin=(1, 1), pixel_size=(1, -1))
 
         # make a linear decay kernel
         kernel_path = os.path.join(self.workspace_dir, 'kernel.tif')
@@ -2885,15 +2861,9 @@ class PyGeoprocessing10(unittest.TestCase):
         dist_array[dist_array < 0] = 0
         kernel_array = dist_array / numpy.sum(dist_array)
 
-        ny, nx = kernel_array.shape
-        kernel_raster = gtiff_driver.Create(
-            kernel_path, nx, ny, 1, gdal.GDT_Float32)
-        kernel_raster.SetProjection(wgs84_wkt)
-        kernel_raster.SetGeoTransform([1, 1.0, 0.0, 1, 0.0, -1.0])
-        kernel_band = kernel_raster.GetRasterBand(1)
-        kernel_band.WriteArray(kernel_array)
-        kernel_band = None
-        kernel_raster = None
+        _array_to_raster(
+            kernel_array, None, kernel_path, projection_epsg=4326,
+            origin=(1, 1), pixel_size=(1, -1))
 
         nodata_result_path = os.path.join(
             self.workspace_dir, 'nodata_result.tif')
