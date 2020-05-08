@@ -1153,12 +1153,11 @@ class TestRouting(unittest.TestCase):
         import pygeoprocessing.routing
 
         driver = gdal.GetDriverByName('GTiff')
-        workspace_dir = 'flow_dir_debug'
         try:
-            os.makedirs(workspace_dir)
+            os.makedirs(self.workspace_dir)
         except OSError:
             pass
-        dem_path = os.path.join(workspace_dir, 'dem.tif')
+        dem_path = os.path.join(self.workspace_dir, 'dem.tif')
         # this makes a flat raster
         n = 100
         dem_array = numpy.zeros((n, n))
