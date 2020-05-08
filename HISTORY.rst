@@ -26,12 +26,19 @@ Unreleased Changes
   might be included with the source distribution.
 * Added ``set_tol_to_zero`` to ``convolve_2d`` to allow for in-function masking
   of near-zero results to be set to 0.0.
+* Fixed malformed logging outputs which could be seen during long running
+  ``rasterize`` calls.
+* Renamed all parameters involving Spatial Projections to the form
+  ``[var_id]_projection_wkt``, this involves optional arguments in
+  ``reproject_vector``, ``warp_raster``, ``transform_bounding_box``,
+  and ``align_and_resize_raster_stack`` as well as the return value from
+  ``get_raster_info`` and ``get_vector_info``.
 * Fixed an issue in ``zonal_statistics`` that would crash if an aggregate
   vector had a feature with no geometry defined. Now the function ignores
   such features and prints a warning to the log.
 * Fixed a malformed ``ValueError`` message when a corrupt raster was
   encountered in ``raster_calculator``.
-* Fixes an uncessary calculation that pre-fills slope raster GeoTIFFs with
+* Fixes an unnecessary calculation that pre-fills slope raster GeoTIFFs with
   nodata values.
 * Added a check to ``convolve_2d`` to verify that raster path/band tuples were
   passed where expected and raise a useful Exception  if not.

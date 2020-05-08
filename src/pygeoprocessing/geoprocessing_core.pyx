@@ -1,27 +1,27 @@
 # coding=UTF-8
 # distutils: language=c++
 # cython: language_level=3
-import os
-import tempfile
 import logging
-import time
-import sys
-import traceback
+import os
 import shutil
+import sys
+import tempfile
+import time
+import traceback
 
-cimport numpy
-import numpy
 cimport cython
+cimport libcpp.algorithm
+cimport numpy
 from cython.operator cimport dereference as deref
 from cython.operator cimport preincrement as inc
-from libcpp.vector cimport vector
-cimport libcpp.algorithm
+from libc.stdio cimport fclose
 from libc.stdio cimport FILE
 from libc.stdio cimport fopen
-from libc.stdio cimport fwrite
 from libc.stdio cimport fread
-from libc.stdio cimport fclose
+from libc.stdio cimport fwrite
+from libcpp.vector cimport vector
 from osgeo import gdal
+import numpy
 import pygeoprocessing
 
 DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS = ('GTIFF', (

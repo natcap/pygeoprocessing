@@ -4,24 +4,25 @@ import shutil
 import tempfile
 import unittest
 
+from osgeo import gdal
+from osgeo import osr
 import numpy
 import shapely.geometry
-from osgeo import gdal
-from osgeo import ogr
-from osgeo import osr
 
+from pygeoprocessing.routing import watershed
+import pygeoprocessing
 import pygeoprocessing.routing
+import pygeoprocessing.testing
 
 
 class WatershedDelineationTests(unittest.TestCase):
-    """Test suite for pygeoprocessing.watershed."""
-
+    """Main Watershed test module."""
     def setUp(self):
-        """Make a temporary workspace."""
+        """Create empty workspace dir."""
         self.workspace_dir = tempfile.mkdtemp()
 
     def tearDown(self):
-        """Delete the temporary directory after each test."""
+        """Delete workspace dir."""
         shutil.rmtree(self.workspace_dir)
 
     def test_watersheds_trivial(self):
@@ -72,9 +73,11 @@ class WatershedDelineationTests(unittest.TestCase):
             [horizontal_line, vertical_line, square, point],
             outflow_vector_path, srs_wkt,
             'GPKG',
-            {'polygon_id': ogr.OFTInteger,
-             'field_string': ogr.OFTString,
-             'other': ogr.OFTReal},
+            {
+                'polygon_id': ogr.OFTInteger,
+                'field_string': ogr.OFTString,
+                'other': ogr.OFTReal
+            },
             [
                 {'polygon_id': 1, 'field_string': 'hello world',
                  'other': 1.111},
@@ -103,7 +106,6 @@ class WatershedDelineationTests(unittest.TestCase):
             shapely.geometry.box(20, -2, 22, -10))
         expected_watershed_geometry = expected_watershed_geometry.difference(
             shapely.geometry.box(20, -12, 22, -22))
-
         pygeoprocessing.shapely_geometry_to_vector(
             [expected_watershed_geometry],
             os.path.join(self.workspace_dir, 'foo.gpkg'), srs_wkt,
@@ -139,8 +141,6 @@ class WatershedDelineationTests(unittest.TestCase):
 
     def test_split_geometry_into_seeds(self):
         """PGP watersheds: Test geometry-to-seed extraction."""
-        import pygeoprocessing
-        from pygeoprocessing.routing import watershed
         nodata = 255
         flow_dir_array = numpy.array([
             [0, 0, 0, 0, 0, 0, 0],
@@ -192,8 +192,6 @@ class WatershedDelineationTests(unittest.TestCase):
 
     def test_split_geometry_into_seeds_willamette(self):
         """PGP watersheds: Test geometry-to-seed extraction in Willamette."""
-        import pygeoprocessing
-        from pygeoprocessing.routing import watershed
         flow_dir_array = numpy.array([
             [0, 0, 0, 0, 0, 0, 0],
             [0, 0, 0, 0, 0, 0, 0],

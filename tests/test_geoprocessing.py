@@ -24,6 +24,10 @@ _DEFAULT_ORIGIN = (444720, 3751320)
 _DEFAULT_PIXEL_SIZE = (30, -30)
 _DEFAULT_EPSG = 3116
 
+import pygeoprocessing
+import pygeoprocessing.symbolic
+from pygeoprocessing.testing import sampledata
+
 
 def passthrough(x):
     """Use in testing simple raster calculator calls."""
@@ -1491,8 +1495,8 @@ class PyGeoprocessing10(unittest.TestCase):
             [base_raster_path], [target_raster_path],
             ['near'], target_pixel_size, 'intersection',
             raster_align_index=0,
-            base_sr_wkt_list=[wgs84_sr.ExportToWkt()],
-            target_sr_wkt=utm_30n_sr.ExportToWkt())
+            base_projection_wkt_list=[wgs84_sr.ExportToWkt()],
+            target_projection_wkt=utm_30n_sr.ExportToWkt())
 
         target_array = pygeoprocessing.raster_to_numpy_array(
             target_raster_path)
@@ -1520,8 +1524,8 @@ class PyGeoprocessing10(unittest.TestCase):
                 [base_raster_path], [target_raster_path],
                 ['near'], target_pixel_size, 'intersection',
                 raster_align_index=0,
-                base_sr_wkt_list=[None],
-                target_sr_wkt=utm_30n_sr.ExportToWkt())
+                base_projection_wkt_list=[None],
+                target_projection_wkt=utm_30n_sr.ExportToWkt())
             expected_message = "no projection for raster"
             actual_message = str(cm.exception)
             self.assertTrue(
@@ -3406,7 +3410,7 @@ class PyGeoprocessing10(unittest.TestCase):
         pygeoprocessing.align_and_resize_raster_stack(
             [base_path], [target_path], ['near'],
             (3e4, -3e4), 'intersection',
-            target_sr_wkt=target_ref.ExportToWkt())
+            target_projection_wkt=target_ref.ExportToWkt())
 
         target_raster_info = pygeoprocessing.get_raster_info(target_path)
 
@@ -4137,7 +4141,7 @@ class PyGeoprocessing10(unittest.TestCase):
         print(base_a_raster_info)
         pygeoprocessing.warp_raster(
             base_a_path, base_a_raster_info['pixel_size'], target_raster_path,
-            'near', target_sr_wkt=wgs84_wkt, n_threads=1)
+            'near', target_projection_wkt=wgs84_wkt, n_threads=1)
 
         base_array = pygeoprocessing.raster_to_numpy_array(base_a_path)
         numpy.testing.assert_array_equal(pixel_a_matrix, base_array)
