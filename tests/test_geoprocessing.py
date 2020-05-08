@@ -2772,11 +2772,6 @@ class PyGeoprocessing10(unittest.TestCase):
 
     def test_convolve_2d_numerical_zero(self):
         """PGP.geoprocessing: test convolve 2d for numerical 0.0 set to 0.0."""
-        wgs84_sr = osr.SpatialReference()
-        wgs84_sr.ImportFromEPSG(4326)
-        wgs84_wkt = wgs84_sr.ExportToWkt()
-        gtiff_driver = gdal.GetDriverByName('GTiff')
-
         # set tiny signal with one pixel on so we get lots of numerical noise
         n_pixels = 100
         n_kernel_pixels = 100
@@ -2828,11 +2823,6 @@ class PyGeoprocessing10(unittest.TestCase):
 
     def test_convolve_2d_ignore_undefined_nodata(self):
         """PGP.geoprocessing: test convolve 2d ignore nodata when None."""
-        wgs84_sr = osr.SpatialReference()
-        wgs84_sr.ImportFromEPSG(4326)
-        wgs84_wkt = wgs84_sr.ExportToWkt()
-        gtiff_driver = gdal.GetDriverByName('GTiff')
-
         # set tiny signal with one pixel on so we get lots of numerical noise
         n_pixels = 100
         n_kernel_pixels = 100
@@ -4308,25 +4298,10 @@ class PyGeoprocessing10(unittest.TestCase):
 
     def test_non_geotiff_raster_types(self):
         """PGP: test mixed GTiff and gpkg raster types."""
-        gtiff_driver = gdal.GetDriverByName('GTiff')
         raster_path = os.path.join(self.workspace_dir, 'small_raster.tif')
         n = 5
-        new_raster = gtiff_driver.Create(
-            raster_path, n, n, 1, gdal.GDT_Byte, options=[
-                'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
-                'BLOCKXSIZE=16', 'BLOCKYSIZE=16'])
-
-        srs = osr.SpatialReference()
-        srs.ImportFromEPSG(4326)
-        new_raster.SetProjection(srs.ExportToWkt())
-        new_raster.SetGeoTransform([1.0, 1.0, 0.0, 1.0, 0.0, -1.0])
-        new_band = new_raster.GetRasterBand(1)
-        new_band.SetNoDataValue(-1)
         array = numpy.array(range(n*n), dtype=numpy.int32).reshape((n, n))
-        new_band.WriteArray(array)
-        new_raster.FlushCache()
-        new_band = None
-        new_raster = None
+        _array_to_raster(array, -1, raster_path)
 
         target_path = os.path.join(self.workspace_dir, 'target.gpkg')
         pygeoprocessing.raster_calculator(
@@ -4374,29 +4349,20 @@ class PyGeoprocessing10(unittest.TestCase):
     def test_warp_raster_signedbyte(self):
         """PGP.geoprocessing: warp raster test."""
         pixel_a_matrix = numpy.full((5, 5), -1, numpy.int8)
-        target_nodata = -128
+        target_nodata = -127
         base_a_path = os.path.join(self.workspace_dir, 'base_a.tif')
+        _array_to_raster(
+            pixel_a_matrix, target_nodata, base_a_path,
+            creation_options=['PIXELTYPE=SIGNEDBYTE'], projection_epsg=4326,
+            pixel_size=(1, -1), origin=(1, 1))
 
         wgs84_sr = osr.SpatialReference()
         wgs84_sr.ImportFromEPSG(4326)
         wgs84_wkt = wgs84_sr.ExportToWkt()
-        gtiff_driver = gdal.GetDriverByName('GTiff')
-        ny, nx = pixel_a_matrix.shape
-        new_raster = gtiff_driver.Create(
-            base_a_path, nx, ny, 1, gdal.GDT_Byte,
-            options=['PIXELTYPE=SIGNEDBYTE'])
-        new_raster.SetProjection(wgs84_wkt)
-        new_raster.SetGeoTransform([1, 1.0, 0.0, 1, 0.0, -1.0])
-        new_band = new_raster.GetRasterBand(1)
-        new_band.SetNoDataValue(target_nodata)
-        new_band.WriteArray(pixel_a_matrix)
-        new_raster.FlushCache()
-        new_band = None
-        new_raster = None
 
         target_raster_path = os.path.join(self.workspace_dir, 'target_a.tif')
         base_a_raster_info = pygeoprocessing.get_raster_info(base_a_path)
-
+        print(base_a_raster_info)
         pygeoprocessing.warp_raster(
             base_a_path, base_a_raster_info['pixel_size'], target_raster_path,
             'near', target_sr_wkt=wgs84_wkt, n_threads=1)
@@ -4408,7 +4374,7 @@ class PyGeoprocessing10(unittest.TestCase):
         base_a_raster = None
         numpy.testing.assert_array_equal(pixel_a_matrix, base_array)
 
-        raster = gdal.Open(target_raster_path)
+        raster = gdal.OpenEx(target_raster_path, gdal.OF_RASTER)
         array = raster.ReadAsArray()
         raster = None
         numpy.testing.assert_array_equal(pixel_a_matrix, array)
