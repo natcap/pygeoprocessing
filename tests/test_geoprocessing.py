@@ -3799,19 +3799,10 @@ class PyGeoprocessing10(unittest.TestCase):
         pixel_a_matrix = numpy.ones((5, 5), numpy.int16)
         target_nodata = -1
         base_a_path = os.path.join(self.workspace_dir, 'base_a.tif')
-
-        geotiff_driver = gdal.GetDriverByName('GTiff')
-        base_raster = geotiff_driver.Create(
-            base_a_path, 10, 10, 1, gdal.GDT_Byte)
         pixel_size = 30
-        base_raster.SetGeoTransform([0.1, pixel_size, 0, 0.1, 0, -pixel_size])
-        base_band = base_raster.GetRasterBand(1)
-        base_band.WriteArray(pixel_a_matrix)
-        base_band.SetNoDataValue(target_nodata)
-        base_band.FlushCache()
-        base_raster.FlushCache()
-        base_band = None
-        base_raster = None
+        _array_to_raster(
+            pixel_a_matrix, target_nodata, base_a_path, origin=[0.1, 0.1],
+            pixel_size=(pixel_size, -pixel_size))
 
         resample_method_list = ['near']
         bounding_box_mode = 'intersection'
@@ -3961,17 +3952,8 @@ class PyGeoprocessing10(unittest.TestCase):
         """PGP: test percentile with long type."""
         srs = osr.SpatialReference()
         srs.ImportFromEPSG(4326)
-        gtiff_driver = gdal.GetDriverByName('GTiff')
         int_raster_path = os.path.join(self.workspace_dir, 'int_raster.tif')
         n_length = 10
-        int_raster = gtiff_driver.Create(
-            int_raster_path, n_length, n_length, 1, gdal.GDT_UInt32, options=[
-                'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
-                'BLOCKXSIZE=16', 'BLOCKYSIZE=16'])
-        int_raster.SetProjection(srs.ExportToWkt())
-        int_raster.SetGeoTransform([0.0, 1.0, 0.0, 0.0, 0.0, -1.0])
-        int_band = int_raster.GetRasterBand(1)
-        int_band.SetNoDataValue(-1)
         # I made this array from a random set and since it's 100 elements long
         # I know exactly the percentile cutoffs.
         array = numpy.array([
@@ -3990,10 +3972,8 @@ class PyGeoprocessing10(unittest.TestCase):
             8226559, 8355570, 8433741, 8523959, 8853540, 8999076, 9109444,
             9250199, 9262560, 9365311, 9404229, 9529068, 9597598,
             2**31], dtype=numpy.uint32)
-        int_band.WriteArray(array.reshape((n_length, n_length)))
-        int_raster.FlushCache()
-        int_band = None
-        int_raster = None
+        _array_to_raster(
+            array.reshape((n_length, n_length)), -1, int_raster_path)
 
         percentile_cutoffs = [0.0, 22.5, 72.1, 99.0, 100.0]
         # manually rounding up the percentiles
@@ -4013,9 +3993,7 @@ class PyGeoprocessing10(unittest.TestCase):
         """PGP: test percentile function with double type."""
         srs = osr.SpatialReference()
         srs.ImportFromEPSG(4326)
-        gtiff_driver = gdal.GetDriverByName('GTiff')
         percentile_cutoffs = [0.0, 22.5, 72.1, 99.0, 100.0]
-
         array = numpy.array([
             0.003998113607125986, 0.012483605193988612, 0.015538926080136628,
             0.0349541783138948, 0.056811563936455145, 0.06472245939357957,
@@ -4050,22 +4028,12 @@ class PyGeoprocessing10(unittest.TestCase):
             0.8974703081229631, 0.9246294314690737, 0.9470450112295367,
             0.9497456418201979, 0.9599420128556164, 0.9777130042139013,
             0.9913972371243881, 0.9930411737585775, 0.9963741185277734,
-            0.9971933068336024])
+            0.9971933068336024], dtype=numpy.float32)
         double_raster_path = os.path.join(
             self.workspace_dir, 'double_raster.tif')
         n_length = 10
-        double_raster = gtiff_driver.Create(
-            double_raster_path, n_length, n_length, 1, gdal.GDT_Float32,
-            options=['TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
-                     'BLOCKXSIZE=16', 'BLOCKYSIZE=16'])
-        double_raster.SetProjection(srs.ExportToWkt())
-        double_raster.SetGeoTransform([0.0, 1.0, 0.0, 0.0, 0.0, -1.0])
-        double_band = double_raster.GetRasterBand(1)
-        double_band.SetNoDataValue(-1)
-        double_band.WriteArray(array.reshape((n_length, n_length)))
-        double_raster.FlushCache()
-        double_band = None
-        double_raster = None
+        _array_to_raster(
+            array.reshape((n_length, n_length)), -1, double_raster_path)
 
         expected_float_percentiles = [
             array[0], array[23], array[73], array[99], array[99]]
@@ -4296,21 +4264,9 @@ class PyGeoprocessing10(unittest.TestCase):
         layer = None
         vector = None
 
-        gtiff_driver = gdal.GetDriverByName('GTiff')
         raster_path = os.path.join(self.workspace_dir, 'small_raster.tif')
-        new_raster = gtiff_driver.Create(
-            raster_path, n, n, 1, gdal.GDT_Int32, options=[
-                'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
-                'BLOCKXSIZE=16', 'BLOCKYSIZE=16'])
-        new_raster.SetProjection(srs.ExportToWkt())
-        new_raster.SetGeoTransform([origin_x, 1.0, 0.0, origin_y, 0.0, -1.0])
-        new_band = new_raster.GetRasterBand(1)
-        new_band.SetNoDataValue(-1)
         array = numpy.array(range(n*n), dtype=numpy.int32).reshape((n, n))
-        new_band.WriteArray(array)
-        new_raster.FlushCache()
-        new_band = None
-        new_raster = None
+        _array_to_raster(array, -1, raster_path)
 
         text_file_path = os.path.join(self.workspace_dir, 'text_file.txt')
         with open(text_file_path, 'w') as text_file:
@@ -4343,22 +4299,10 @@ class PyGeoprocessing10(unittest.TestCase):
             ('cfloat32.tif', gdal.GDT_CFloat32, numpy.csingle),
             ('cfloat64.tif', gdal.GDT_CFloat64, numpy.complex64))
 
-        gtiff_driver = gdal.GetDriverByName('GTiff')
-        srs = osr.SpatialReference()
-        srs.ImportFromEPSG(4326)
-        wgs84_wkt = srs.ExportToWkt()
         for raster_filename, gdal_type, numpy_type in gdal_type_numpy_pairs:
             raster_path = os.path.join(self.workspace_dir, raster_filename)
-            new_raster = gtiff_driver.Create(raster_path, 1, 1, 1, gdal_type)
-            new_raster.SetProjection(wgs84_wkt)
-            new_raster.SetGeoTransform([1.0, 1.0, 0.0, 1.0, 0.0, -1.0])
-            new_band = new_raster.GetRasterBand(1)
             array = numpy.array([[1]], dtype=numpy_type)
-            new_band.WriteArray(array)
-            new_raster.FlushCache()
-            new_band = None
-            new_raster = None
-
+            _array_to_raster(array, None, raster_path)
             raster_info = pygeoprocessing.get_raster_info(raster_path)
             self.assertEqual(raster_info['numpy_type'], numpy_type)
 
