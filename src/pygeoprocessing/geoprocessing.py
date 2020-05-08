@@ -3634,7 +3634,8 @@ def raster_values_almost_equal(
 
 def shapely_geometry_to_vector(
         shapely_geometry_list, target_vector_path, projection_wkt,
-        vector_format, fields, attribute_list, ogr_geom_type=ogr.wkbPolygon):
+        vector_format, fields=None, attribute_list=None,
+        ogr_geom_type=ogr.wkbPolygon):
     """Convert list of geometry to vector on disk.
 
     Args:
@@ -3642,11 +3643,11 @@ def shapely_geometry_to_vector(
         target_vector_path (str): path to target vector.
         projection_wkt (str): WKT for target vector.
         vector_format (str): GDAL driver name for target vector.
-        fields (dict or None): a python dictionary mapping string fieldname
-            to OGR Fieldtypes.
+        fields (dict): a python dictionary mapping string fieldname
+            to OGR Fieldtypes, if None no fields are added
         attribute_list (list of dicts): a list of python dictionary mapping
             fieldname to field value for each geometry in
-            `shapely_geometry_list`.
+            `shapely_geometry_list`, if None, no attributes are created.
         ogr_geom_type (ogr geometry enumerated type): defaults to wkbPolygon.
 
     Returns:
