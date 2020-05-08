@@ -26,6 +26,8 @@ Unreleased Changes
   might be included with the source distribution.
 * Added ``set_tol_to_zero`` to ``convolve_2d`` to allow for in-function masking
   of near-zero results to be set to 0.0.
+* Fixed malformed logging outputs which could be seen during long running
+  ``rasterize`` calls.
 * Renamed all parameters involving Spatial Projections to the form
   ``[var_id]_projection_wkt``, this involves optional arguments in
   ``reproject_vector``, ``warp_raster``, ``transform_bounding_box``,
