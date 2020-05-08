@@ -1180,7 +1180,7 @@ class PyGeoprocessing10(unittest.TestCase):
         wgs84_projection.ImportFromEPSG(4326)
         pygeoprocessing.warp_raster(
             base_a_path, [-30, 30], target_raster_path,
-            'near', target_sr_wkt=wgs84_projection.ExportToWkt())
+            'near', target_projection_wkt=wgs84_projection.ExportToWkt())
 
         expected_raster_path = os.path.join(
             self.workspace_dir, 'expected.tif')
