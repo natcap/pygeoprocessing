@@ -13,10 +13,11 @@ from osgeo import osr
 import numpy
 import scipy.ndimage
 import shapely.geometry
+import shapely.wkt
 
 import pygeoprocessing
 import pygeoprocessing.symbolic
-import pygeoprocessing.testing.testing
+import pygeoprocessing.testing
 from pygeoprocessing.geoprocessing_core import \
     DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS
 
@@ -588,8 +589,13 @@ class PyGeoprocessing10(unittest.TestCase):
             osr.SpatialReference(result_reference.ExportToWkt()).IsSame(
                 osr.SpatialReference(target_reference.ExportToWkt())))
         # Since projecting to the same SRS, the vectors should be identical
-        pygeoprocessing.testing.assert_vectors_equal(
-            base_vector_path, target_vector_path, 1e-3)
+        target_vector = gdal.OpenEx(target_vector_path, gdal.OF_VECTOR)
+        target_layer = target_vector.GetLayer()
+        self.assertEqual(target_layer.GetFeatureCount(), 1)
+        feature = next(iter(target_layer))
+        feature_geom = shapely.wkt.loads(
+            feature.GetGeometryRef().ExportToWkt())
+        self.assertTrue(feature_geom.almost_equals(polygon_a))
 
     def test_reproject_vector_utm_to_utm(self):
         """PGP.geoprocessing: reproject vector from utm to utm."""
@@ -1051,35 +1057,18 @@ class PyGeoprocessing10(unittest.TestCase):
     def test_zonal_statistics_nodata_is_zero(self):
         """PGP.geoprocessing: test zonal stats function w/ nodata set to 0."""
         # create aggregating polygon
-        gpkg_driver = ogr.GetDriverByName('GPKG')
         vector_path = os.path.join(self.workspace_dir, 'small_vector.gpkg')
-        vector = gpkg_driver.CreateDataSource(vector_path)
-
-        srs = osr.SpatialReference()
-        srs.ImportFromEPSG(4326)
-        layer = vector.CreateLayer('small_vector', srs=srs)
-        layer_defn = layer.GetLayerDefn()
-
         origin_x = 1.0
         origin_y = -1.0
         n = 2
-
-        layer.StartTransaction()
-        shapely_feature = shapely.geometry.Polygon([
-            (origin_x, origin_y),
-            (origin_x+n, origin_y),
-            (origin_x+n, origin_y-n),
-            (origin_x, origin_y-n),
-            (origin_x, origin_y)])
-        new_feature = ogr.Feature(layer_defn)
-        new_geometry = ogr.CreateGeometryFromWkb(shapely_feature.wkb)
-        new_feature.SetGeometry(new_geometry)
-        layer.CreateFeature(new_feature)
-        layer.CommitTransaction()
-        layer.SyncToDisk()
-
-        layer = None
-        vector = None
+        geometry_to_vector(
+            [shapely.geometry.Polygon([
+                 (origin_x, origin_y),
+                 (origin_x+n, origin_y),
+                 (origin_x+n, origin_y-n),
+                 (origin_x, origin_y-n),
+                 (origin_x, origin_y)])],
+            vector_path, projection_epsg=4326, vector_format='gpkg')
 
         # create raster with nodata value of 0
         raster_path = os.path.join(self.workspace_dir, 'small_raster.tif')
@@ -1281,7 +1270,7 @@ class PyGeoprocessing10(unittest.TestCase):
             base_a_path, base_a_raster_info['pixel_size'], target_raster_path,
             'near', n_threads=1)
 
-        pygeoprocessing.testing.testing.assert_raster_values_equal(
+        pygeoprocessing.testing.assert_raster_values_equal(
             base_a_path, target_raster_path)
 
     def test_warp_raster_unusual_pixel_size(self):
@@ -1310,7 +1299,7 @@ class PyGeoprocessing10(unittest.TestCase):
             creation_options=['PIXELTYPE=SIGNEDBYTE'], pixel_size=(30, -30),
             projection_epsg=4326)
 
-        pygeoprocessing.testing.testing.assert_raster_values_equal(
+        pygeoprocessing.testing.assert_raster_values_equal(
             expected_raster_path, target_raster_path)
 
     def test_warp_raster_0x0_size(self):
@@ -1339,7 +1328,7 @@ class PyGeoprocessing10(unittest.TestCase):
         _array_to_raster(
             expected_matrix, target_nodata, expected_raster_path)
 
-        pygeoprocessing.testing.testing.assert_raster_values_equal(
+        pygeoprocessing.testing.assert_raster_values_equal(
             expected_raster_path, target_raster_path)
 
     def test_align_and_resize_raster_stack_bad_values(self):
@@ -1787,7 +1776,7 @@ class PyGeoprocessing10(unittest.TestCase):
             [(base_path, 1)], passthrough, target_path,
             gdal.GDT_Int32, target_nodata, calc_raster_stats=True)
 
-        pygeoprocessing.testing.testing.assert_raster_values_equal(
+        pygeoprocessing.testing.assert_raster_values_equal(
             base_path, target_path)
 
     def test_raster_calculator_bad_target_type(self):
@@ -1857,7 +1846,7 @@ class PyGeoprocessing10(unittest.TestCase):
         pygeoprocessing.raster_calculator(
             [(base_path, 1)], passthrough, target_path,
             gdal.GDT_Int32, target_nodata, calc_raster_stats=True)
-        pygeoprocessing.testing.testing.assert_raster_values_equal(
+        pygeoprocessing.testing.assert_raster_values_equal(
             base_path, target_path)
 
     def test_rs_calculator_output_alias(self):
