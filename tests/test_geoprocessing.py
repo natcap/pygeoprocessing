@@ -2920,7 +2920,7 @@ class PyGeoprocessing10(unittest.TestCase):
         n_pixels = 1000
         target_nodata = 0
         base_raster_array = numpy.zeros(
-            (n_pixels, n_pixels), dtype=numpy.int)
+            (n_pixels, n_pixels), dtype=numpy.int32)
         base_raster_array[:, n_pixels//2:] = target_nodata
         base_raster_array[int(n_pixels/2), int(n_pixels/2)] = 1
         base_raster_array[0, 0] = 1
@@ -2975,7 +2975,7 @@ class PyGeoprocessing10(unittest.TestCase):
         n_pixels = 10
         target_nodata = None
         base_raster_array = numpy.zeros(
-            (n_pixels, n_pixels), dtype=numpy.int)
+            (n_pixels, n_pixels), dtype=numpy.int32)
         base_raster_array[n_pixels//2:, :] = 1
         base_raster_path = os.path.join(self.workspace_dir, 'base_raster.tif')
         _array_to_raster(base_raster_array, target_nodata, base_raster_path)
@@ -3000,7 +3000,7 @@ class PyGeoprocessing10(unittest.TestCase):
         """PGP.geoprocessing: test distance transform EDT with bad values."""
         n_pixels = 10
         base_raster_array = numpy.zeros(
-            (n_pixels, n_pixels), dtype=numpy.int)
+            (n_pixels, n_pixels), dtype=numpy.int32)
         base_raster_array[int(n_pixels/2), int(n_pixels/2)] = 1
         base_raster_array[0, 0] = 1
         base_raster_array[0, n_pixels-1] = 1
