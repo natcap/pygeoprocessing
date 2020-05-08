@@ -6,11 +6,8 @@ import os
 
 from osgeo import gdal
 from osgeo import osr
-from osgeo import ogr
 import numpy
 import numpy.testing
-import shapely.geometry
-import shapely.wkb
 
 import logging
 
@@ -1181,7 +1178,7 @@ class TestRouting(unittest.TestCase):
         dem_raster = None
 
         target_flow_dir_path = os.path.join(
-            workspace_dir, 'flow_dir.tif')
+            self.workspace_dir, 'flow_dir.tif')
 
         pygeoprocessing.routing.flow_dir_mfd(
             (dem_path, 1), target_flow_dir_path,
