@@ -32,7 +32,6 @@ setup(
     packages=[
         'pygeoprocessing',
         'pygeoprocessing.routing',
-        'pygeoprocessing.testing',
     ],
     package_dir={
         'pygeoprocessing': 'src/pygeoprocessing'

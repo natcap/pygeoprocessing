@@ -35,6 +35,9 @@ Unreleased Changes
   nodata values.
 * Added a check to ``convolve_2d`` to verify that raster path/band tuples were
   passed where expected and raise a useful Exception  if not.
+* Removed most of the `pygeoprocessing.testing` module.
+  Added ``raster_values_almost_equal``, ``array_to_raster``, and
+  ``shapely_to_vector`` to ``pygeoprocessing``.
 
 1.9.2 (2020-02-06)
 ------------------
