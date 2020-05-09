@@ -776,7 +776,6 @@ def new_raster_from_base(
 
     Returns:
         None
-
     """
     base_raster = gdal.OpenEx(base_path, gdal.OF_RASTER)
     if n_rows is None:
@@ -906,7 +905,6 @@ def create_raster_from_vector_extents(
 
     Returns:
         None
-
     """
     # Determine the width and height of the tiff in pixels based on the
     # maximum size of the combined envelope of all the features
@@ -1006,8 +1004,7 @@ def interpolate_points(
             scipy.interpolate.griddata, one of 'linear', near', or 'cubic'.
 
     Returns:
-       None
-
+        None
     """
     source_vector = gdal.OpenEx(base_vector_path, gdal.OF_VECTOR)
     point_list = []
@@ -1581,7 +1578,6 @@ def reproject_vector(
 
     Returns:
         None
-
     """
     base_vector = gdal.OpenEx(base_vector_path, gdal.OF_VECTOR)
 
@@ -2014,7 +2010,6 @@ def rasterize(
 
     Returns:
         None
-
     """
     gdal.PushErrorHandler('CPLQuietErrorHandler')
     raster = gdal.OpenEx(target_raster_path, gdal.GA_Update | gdal.OF_RASTER)
@@ -2233,7 +2228,6 @@ def distance_transform_edt(
 
     Returns:
         None
-
     """
     working_raster_paths = {}
     for raster_prefix in ['region_mask_raster', 'g_raster']:
@@ -2403,7 +2397,6 @@ def convolve_2d(
 
     Returns:
         None
-
     """
     if target_datatype is not gdal.GDT_Float64 and target_nodata is None:
         raise ValueError(
@@ -2852,8 +2845,7 @@ def merge_rasters(
             defined at geoprocessing.DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS.
 
     Returns:
-        None.
-
+        None
     """
     raster_info_list = [
         get_raster_info(path) for path in raster_path_list]
@@ -3070,8 +3062,7 @@ def mask_raster(
             defined at geoprocessing.DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS.
 
     Returns:
-        None.
-
+        None
     """
     with tempfile.NamedTemporaryFile(
             prefix='mask_raster', delete=False, suffix='.tif',
@@ -3376,7 +3367,6 @@ def _convolve_2d_worker(
 
     Returns:
         None
-
     """
     signal_raster = gdal.OpenEx(signal_path_band[0], gdal.OF_RASTER)
     kernel_raster = gdal.OpenEx(kernel_path_band[0], gdal.OF_RASTER)
@@ -3571,7 +3561,7 @@ def shapely_geometry_to_vector(
         ogr_geom_type (ogr geometry enumerated type): defaults to wkbPolygon.
 
     Returns:
-        None.
+        None
     """
     if fields is None:
         fields = {}
@@ -3631,8 +3621,7 @@ def numpy_array_to_raster(
             geoprocessing.DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS.
 
     Returns:
-        None.
-
+        None
     """
     numpy_to_gdal_type = {
         numpy.dtype(numpy.int8): gdal.GDT_Byte,
