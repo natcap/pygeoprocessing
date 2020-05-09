@@ -1,4 +1,4 @@
-"""PyGeoprocessing 1.0 test suite."""
+"""pygeoprocessing.routing test suite."""
 import os
 import shutil
 import tempfile

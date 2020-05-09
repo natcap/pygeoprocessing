@@ -1,4 +1,4 @@
-"""pygeoprocessing.watersheds testing module."""
+"""pygeoprocessing.watersheds testing suite."""
 import os
 import shutil
 import tempfile
