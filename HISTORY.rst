@@ -42,11 +42,9 @@ Unreleased Changes
   nodata values.
 * Added a check to ``convolve_2d`` to verify that raster path/band tuples were
   passed where expected and raise a useful Exception  if not.
-* Removed most of the `pygeoprocessing.testing` module.
-  Added ``raster_values_almost_equal``, ``array_to_raster``, and
-  ``shapely_to_vector`` to ``pygeoprocessing``.
-* Added convenience functions to ``pygeoprocessing``, these should not be used
-  for scalable applications, but are useful for testing and scripting:
+* Removed most of the `pygeoprocessing.testing` module and added the following
+  convenience functions to ``pygeoprocessing``, which should not be used
+  for production code but are useful for testing and scripting:
   * ``raster_to_numpy_array`` - read a single band of a raster into a ``numpy``
     array, runs the risk of memory error if the raster is too large.
   * ``numpy_array_to_raster`` - writes a ``numpy`` array to a raster on disk.
