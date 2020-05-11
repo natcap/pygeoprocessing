@@ -468,8 +468,21 @@ cdef class _ManagedRaster:
 
         raster_band = None
         if self.write_mode:
-            raster = gdal.OpenEx(
-                self.raster_path, gdal.GA_Update | gdal.OF_RASTER)
+            max_retries = 5
+            while max_retries > 0:
+                raster = gdal.OpenEx(
+                    self.raster_path, gdal.GA_Update | gdal.OF_RASTER)
+                if raster is None:
+                    max_retries -= 1
+                    LOGGER.error(
+                        f'unable to open {self.raster_path}, retrying...')
+                    time.sleep(0.2)
+                    continue
+                break
+            if max_retries == 0:
+                raise ValueError(
+                    f'unable to open {self.raster_path} in '
+                    'ManagedRaster.flush')
             raster_band = raster.GetRasterBand(self.band_id)
 
         block_array = numpy.empty(
@@ -1946,8 +1959,8 @@ def flow_dir_mfd(
                         n_drain_distance = drain_distance + (
                             SQRT2 if i_n & 1 else 1.0)
 
-                        if is_close(dem_managed_raster.get(
-                                xi_n, yi_n), root_height) and (
+                        if (<double>(dem_managed_raster.get(
+                                xi_n, yi_n)) == root_height) and (
                                 plateau_distance_managed_raster.get(
                                     xi_n, yi_n) > n_drain_distance):
                             # neighbor is at same level and has longer drain
