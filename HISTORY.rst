@@ -41,7 +41,9 @@ Unreleased Changes
 * Fixes an unnecessary calculation that pre-fills slope raster GeoTIFFs with
   nodata values.
 * Added a check to ``convolve_2d`` to verify that raster path/band tuples were
-  passed where expected and raise a useful Exception  if not.
+  passed where expected and raise a useful Exception if not.
+* Fixed an issue in ``flow_dir_mfd`` that would cause invalid flow directions
+  on DEMs that had very small numerical delta heights.
 
 1.9.2 (2020-02-06)
 ------------------
