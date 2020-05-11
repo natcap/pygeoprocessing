@@ -1,33 +1,32 @@
 # coding=UTF-8
 # cython: language_level=3
-import time
-import os
 import logging
+import os
 import shutil
 import tempfile
+import time
 
-import numpy
-import pygeoprocessing
-from osgeo import gdal
-from osgeo import osr
-from osgeo import ogr
-import shapely.wkb
-import shapely.geometry
-import shapely.prepared
-
-cimport numpy
 cimport cython
+cimport numpy
 from cpython.mem cimport PyMem_Malloc, PyMem_Free
 from cython.operator cimport dereference as deref
 from cython.operator cimport preincrement as inc
-from libc.time cimport time_t
 from libc.time cimport time as ctime
+from libc.time cimport time_t
 from libcpp.list cimport list as clist
+from libcpp.map cimport map as cmap
 from libcpp.pair cimport pair
 from libcpp.queue cimport queue
 from libcpp.set cimport set as cset
-from libcpp.map cimport map as cmap
+from osgeo import gdal
+from osgeo import ogr
+from osgeo import osr
+import numpy
+import shapely.geometry
+import shapely.prepared
+import shapely.wkb
 
+import pygeoprocessing
 
 LOGGER = logging.getLogger(__name__)
 
@@ -677,7 +676,7 @@ def delineate_watersheds_d8(
 
     gtiff_driver = gdal.GetDriverByName('GTiff')
     flow_dir_srs = osr.SpatialReference()
-    flow_dir_srs.ImportFromWkt(flow_dir_info['projection'])
+    flow_dir_srs.ImportFromWkt(flow_dir_info['projection_wkt'])
 
     outflow_vector = gdal.OpenEx(outflow_vector_path, gdal.OF_VECTOR)
     if outflow_vector is None:
@@ -685,7 +684,7 @@ def delineate_watersheds_d8(
 
     driver = ogr.GetDriverByName('GPKG')
     watersheds_srs = osr.SpatialReference()
-    watersheds_srs.ImportFromWkt(flow_dir_info['projection'])
+    watersheds_srs.ImportFromWkt(flow_dir_info['projection_wkt'])
     watersheds_vector = driver.CreateDataSource(target_watersheds_vector_path)
     polygonized_watersheds_layer = watersheds_vector.CreateLayer(
         'polygonized_watersheds', watersheds_srs, ogr.wkbPolygon)
@@ -723,7 +722,7 @@ def delineate_watersheds_d8(
     outflow_layer = outflow_vector.GetLayer()
     outflow_feature_count = outflow_layer.GetFeatureCount()
     flow_dir_srs = osr.SpatialReference()
-    flow_dir_srs.ImportFromWkt(flow_dir_info['projection'])
+    flow_dir_srs.ImportFromWkt(flow_dir_info['projection_wkt'])
     for feature in outflow_layer:
         # Some vectors start indexing their FIDs at 0.
         # The mask raster input to polygonization, however, only regards pixels
@@ -793,7 +792,7 @@ def delineate_watersheds_d8(
             gdal.GDT_UInt32,
             options=GTIFF_CREATION_OPTIONS)
         scratch_raster.SetGeoTransform(source_gt)
-        scratch_raster.SetProjection(flow_dir_info['projection'])
+        scratch_raster.SetProjection(flow_dir_info['projection_wkt'])
         # strictly speaking, there's no need to set the nodata value on the band.
         scratch_raster = None
 

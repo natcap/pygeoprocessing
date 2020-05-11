@@ -1,9 +1,20 @@
 Release History
 ===============
 
-
 Unreleased Changes
 ------------------
+* Adding Python 3.8 support and dropping Python 3.6 support.
+* Adding GDAL 3 support and dropping GDAL 2 support. The only non-backwards
+  compatible issue in GDAL 2 to GDAL 3 is the need to handle Axis Ordering with
+  osr.SetAxisMappingStrategy(osr.OAMS_TRADITIONAL_GIS_ORDER) because of
+  https://trac.osgeo.org/gdal/wiki/rfc73_proj6_wkt2_srsbarn#Axisorderissues?.
+  Since Axis ordering now matters for Geographic CRS the expected order is
+  Lat,Lon but we use osr.OAMS_TRADITIONAL_GIS_ORDER to swap to Lon,Lat.
+* Using osr.CreateCoordinateTransformation() instead of
+  osr.CoordinateTransformation() as the GDAL 3 call.
+* Fixed a bug in convolve_2d that would not ``ignore_nodata`` if the signal
+  raster's nodata value was undefined. Changed the name of this flag to
+  ``ignore_nodata_and_edges`` to reflect its expected functionality.
 * Warped signed byte rasters are now also signed byte rasters.
 * Adding a GitHub Actions-based build job for building wheels and a source
   distribution for a given commit of pygeoprocessing.
@@ -17,6 +28,11 @@ Unreleased Changes
   of near-zero results to be set to 0.0.
 * Fixed malformed logging outputs which could be seen during long running
   ``rasterize`` calls.
+* Renamed all parameters involving Spatial Projections to the form
+  ``[var_id]_projection_wkt``, this involves optional arguments in
+  ``reproject_vector``, ``warp_raster``, ``transform_bounding_box``,
+  and ``align_and_resize_raster_stack`` as well as the return value from
+  ``get_raster_info`` and ``get_vector_info``.
 * Fixed an issue in ``zonal_statistics`` that would crash if an aggregate
   vector had a feature with no geometry defined. Now the function ignores
   such features and prints a warning to the log.
