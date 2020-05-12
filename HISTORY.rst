@@ -50,6 +50,8 @@ Unreleased Changes
   * ``numpy_array_to_raster`` - writes a ``numpy`` array to a raster on disk.
   * ``shapely_geometry_to_vector`` - creates a vector from a list of
     ``Shapely`` geometry.
+* Fixed an issue in ``flow_dir_mfd`` that would cause invalid flow directions
+  on DEMs that had very small numerical delta heights.
 
 1.9.2 (2020-02-06)
 ------------------
