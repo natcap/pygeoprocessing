@@ -4124,7 +4124,6 @@ class PyGeoprocessing10(unittest.TestCase):
 
         target_raster_path = os.path.join(self.workspace_dir, 'target_a.tif')
         base_a_raster_info = pygeoprocessing.get_raster_info(base_a_path)
-        print(base_a_raster_info)
         pygeoprocessing.warp_raster(
             base_a_path, base_a_raster_info['pixel_size'], target_raster_path,
             'near', target_projection_wkt=wgs84_wkt, n_threads=1)
