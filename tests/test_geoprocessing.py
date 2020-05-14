@@ -3492,26 +3492,15 @@ class PyGeoprocessing10(unittest.TestCase):
         base_a_raster_info = pygeoprocessing.get_raster_info(base_a_path)
 
         # make a vector whose bounding box is 1 pixel large
-        poly_a = shapely.geometry.Polygon([
-            (_DEFAULT_ORIGIN[0], _DEFAULT_ORIGIN[1]),
-            (_DEFAULT_ORIGIN[0] +
-             _DEFAULT_PIXEL_SIZE[0], _DEFAULT_ORIGIN[1]),
-            (_DEFAULT_ORIGIN[0] + _DEFAULT_PIXEL_SIZE[0],
-             _DEFAULT_ORIGIN[1] + _DEFAULT_PIXEL_SIZE[1]),
-            (_DEFAULT_ORIGIN[0],
-             _DEFAULT_ORIGIN[1] + _DEFAULT_PIXEL_SIZE[1]),
-            (_DEFAULT_ORIGIN[0], _DEFAULT_ORIGIN[1])])
-        poly_b = shapely.geometry.Polygon([
-            (_DEFAULT_ORIGIN[0] + 2*_DEFAULT_PIXEL_SIZE[0],
-             _DEFAULT_ORIGIN[1] + 2*_DEFAULT_PIXEL_SIZE[1]),
-            (_DEFAULT_ORIGIN[0] + 3*_DEFAULT_PIXEL_SIZE[0],
-             _DEFAULT_ORIGIN[1] + 2*_DEFAULT_PIXEL_SIZE[1]),
-            (_DEFAULT_ORIGIN[0] + 3*_DEFAULT_PIXEL_SIZE[0],
-             _DEFAULT_ORIGIN[1] + 3*_DEFAULT_PIXEL_SIZE[1]),
-            (_DEFAULT_ORIGIN[0] + 2*_DEFAULT_PIXEL_SIZE[0],
-             _DEFAULT_ORIGIN[1] + 3*_DEFAULT_PIXEL_SIZE[1]),
-            (_DEFAULT_ORIGIN[0] + 2*_DEFAULT_PIXEL_SIZE[0],
-             _DEFAULT_ORIGIN[1] + 2*_DEFAULT_PIXEL_SIZE[1])])
+        poly_a = shapely.geometry.box(
+            _DEFAULT_ORIGIN[0], _DEFAULT_ORIGIN[1],
+            _DEFAULT_ORIGIN[0] + _DEFAULT_PIXEL_SIZE[0],
+            _DEFAULT_ORIGIN[1] + _DEFAULT_PIXEL_SIZE[1])
+        poly_b = shapely.geometry.box(
+            _DEFAULT_ORIGIN[0] + 2*_DEFAULT_PIXEL_SIZE[0],
+            _DEFAULT_ORIGIN[1] + 2*_DEFAULT_PIXEL_SIZE[1],
+            _DEFAULT_ORIGIN[0] + 3*_DEFAULT_PIXEL_SIZE[0]
+            _DEFAULT_ORIGIN[1] + 3*_DEFAULT_PIXEL_SIZE[1])
 
         dual_poly_path = os.path.join(self.workspace_dir, 'dual_poly.gpkg')
         _geometry_to_vector(
