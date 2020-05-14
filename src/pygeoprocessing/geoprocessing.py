@@ -3558,7 +3558,8 @@ def shapely_geometry_to_vector(
         attribute_list (list of dicts): a list of python dictionary mapping
             fieldname to field value for each geometry in
             `shapely_geometry_list`, if None, no attributes are created.
-        ogr_geom_type (ogr geometry enumerated type): defaults to wkbPolygon.
+        ogr_geom_type (ogr geometry enumerated type): sets the target layer
+            geometry type. Defaults to wkbPolygon.
 
     Returns:
         None
