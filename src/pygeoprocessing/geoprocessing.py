@@ -3606,7 +3606,7 @@ def numpy_array_to_raster(
         base_array, target_nodata, pixel_size, origin, projection_wkt,
         target_path,
         raster_driver_creation_tuple=DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS):
-    """Create a single band raster of size `base_array.shape` at `target_path`.
+    """Create a single band raster of size ``base_array.shape``.
 
     Args:
         base_array (numpy.array): a 2d numpy array.
