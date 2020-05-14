@@ -11,7 +11,12 @@ import numpy.testing
 
 import pygeoprocessing
 import pygeoprocessing.routing
+from test_geoprocessing import _array_to_raster
 
+# base_array, target_nodata, target_path,
+#         creation_options=DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS[1],
+#         pixel_size=_DEFAULT_PIXEL_SIZE, projection_epsg=_DEFAULT_EPSG,
+#         origin=_DEFAULT_ORIGIN):
 
 class TestRouting(unittest.TestCase):
     """Tests for pygeoprocessing.routing."""
@@ -27,33 +32,15 @@ class TestRouting(unittest.TestCase):
 
     def test_pit_filling(self):
         """PGP.routing: test pitfilling."""
-        driver = gdal.GetDriverByName('GTiff')
         base_path = os.path.join(self.workspace_dir, 'base.tif')
-        dem_array = numpy.zeros((11, 11))
+        dem_array = numpy.zeros((11, 11), dtype=numpy.float32)
         dem_array[3:8, 3:8] = -1.0
         dem_array[0, 0] = -1.0
-        raster = driver.Create(
-            base_path, dem_array.shape[1], dem_array.shape[0], 2,
-            gdal.GDT_Float32)
-        band = raster.GetRasterBand(1)
-        band.WriteArray(dem_array)
-        band.FlushCache()
-        band = None
-        raster = None
+        _array_to_raster(dem_array, None, base_path)
         fill_path = os.path.join(self.workspace_dir, 'filled.tif')
-
         pygeoprocessing.routing.fill_pits(
             (base_path, 1), fill_path, working_dir=self.workspace_dir)
-
-        result_raster = gdal.OpenEx(fill_path, gdal.OF_RASTER)
-        raster_count = result_raster.RasterCount
-        result_band = result_raster.GetRasterBand(1)
-        result_array = result_band.ReadAsArray()
-        result_band = None
-        result_raster = None
-        self.assertEqual(raster_count, 1, "expect 1 band output")
-        self.assertEqual(result_array.dtype, numpy.float32)
-        # the expected result is that the pit is filled in
+        result_array = pygeoprocessing.raster_to_numpy_array(fill_path)
         dem_array[3:8, 3:8] = 0.0
         numpy.testing.assert_almost_equal(result_array, dem_array)
 
@@ -69,23 +56,15 @@ class TestRouting(unittest.TestCase):
 
     def test_pit_filling_nodata_int(self):
         """PGP.routing: test pitfilling with nodata value."""
-        driver = gdal.GetDriverByName('GTiff')
         base_path = os.path.join(self.workspace_dir, 'base.tif')
         dem_array = numpy.zeros((11, 11), dtype=numpy.int32)
         nodata = 9999
         dem_array[3:8, 3:8] = -1
         dem_array[0, 0] = -1
         dem_array[1, 1] = nodata
-        raster = driver.Create(
-            base_path, dem_array.shape[1], dem_array.shape[0], 1,
-            gdal.GDT_Int32)
-        band = raster.GetRasterBand(1)
-        band.WriteArray(dem_array)
-        band.FlushCache()
-        band = None
-        raster = None
-        fill_path = os.path.join(self.workspace_dir, 'filled.tif')
+        _array_to_raster(dem_array, nodata, base_path)
 
+        fill_path = os.path.join(self.workspace_dir, 'filled.tif')
         pygeoprocessing.routing.fill_pits(
             (base_path, 1), fill_path, working_dir=self.workspace_dir)
 
@@ -97,20 +76,12 @@ class TestRouting(unittest.TestCase):
 
     def test_flow_dir_d8(self):
         """PGP.routing: test D8 flow."""
-        driver = gdal.GetDriverByName('GTiff')
         dem_path = os.path.join(self.workspace_dir, 'dem.tif')
-        dem_array = numpy.zeros((11, 11))
-        dem_raster = driver.Create(
-            dem_path, dem_array.shape[1], dem_array.shape[0], 1,
-            gdal.GDT_Float32, options=(
+        dem_array = numpy.zeros((11, 11), dtype=numpy.float32)
+        _array_to_raster(
+            dem_array, None, dem_path, creation_options=(
                 'TILED=NO', 'BIGTIFF=YES', 'COMPRESS=LZW',
                 'BLOCKXSIZE=11', 'BLOCKYSIZE=1'))
-
-        dem_band = dem_raster.GetRasterBand(1)
-        dem_band.WriteArray(dem_array)
-        dem_band.FlushCache()
-        dem_band = None
-        dem_raster = None
 
         target_flow_dir_path = os.path.join(
             self.workspace_dir, 'flow_dir.tif')
@@ -139,8 +110,6 @@ class TestRouting(unittest.TestCase):
 
     def test_flow_accum_d8(self):
         """PGP.routing: test D8 flow accum."""
-        driver = gdal.GetDriverByName('GTiff')
-        flow_dir_path = os.path.join(self.workspace_dir, 'flow_dir.tif')
         # this was generated from a pre-calculated plateau drain dem
         flow_dir_array = numpy.array([
             [2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 0],
@@ -153,18 +122,13 @@ class TestRouting(unittest.TestCase):
             [4, 4, 4, 4, 6, 6, 6, 0, 0, 0, 0],
             [4, 4, 4, 6, 6, 6, 6, 6, 0, 0, 0],
             [4, 4, 6, 6, 6, 6, 6, 6, 6, 0, 0],
-            [4, 6, 6, 6, 6, 6, 6, 6, 6, 6, 0]])
-        flow_dir_raster = driver.Create(
-            flow_dir_path, flow_dir_array.shape[1], flow_dir_array.shape[0],
-            1, gdal.GDT_Float32, options=(
+            [4, 6, 6, 6, 6, 6, 6, 6, 6, 6, 0]], numpy.float32)
+
+        flow_dir_path = os.path.join(self.workspace_dir, 'flow_dir.tif')
+        _array_to_raster(
+            flow_dir_array, None, flow_dir_path, creation_options=(
                 'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
                 'BLOCKXSIZE=32', 'BLOCKYSIZE=32'))
-
-        flow_dir_band = flow_dir_raster.GetRasterBand(1)
-        flow_dir_band.WriteArray(flow_dir_array)
-        flow_dir_band.FlushCache()
-        flow_dir_band = None
-        flow_dir_raster = None
 
         target_flow_accum_path = os.path.join(
             self.workspace_dir, 'flow_accum.tif')
@@ -194,8 +158,6 @@ class TestRouting(unittest.TestCase):
 
     def test_flow_accum_d8_flow_weights(self):
         """PGP.routing: test D8 flow accum with flow weights."""
-        driver = gdal.GetDriverByName('GTiff')
-        flow_dir_path = os.path.join(self.workspace_dir, 'flow_dir.tif')
         # this was generated from a pre-calculated plateau drain dem
         flow_dir_array = numpy.array([
             [2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 0],
@@ -209,35 +171,24 @@ class TestRouting(unittest.TestCase):
             [4, 4, 4, 6, 6, 6, 6, 6, 0, 0, 0],
             [4, 4, 6, 6, 6, 6, 6, 6, 6, 0, 0],
             [4, 6, 6, 6, 6, 6, 6, 6, 6, 6, 0]])
-        flow_dir_raster = driver.Create(
-            flow_dir_path, flow_dir_array.shape[1], flow_dir_array.shape[0],
-            1, gdal.GDT_Float32, options=(
+
+        flow_dir_path = os.path.join(self.workspace_dir, 'flow_dir.tif')
+        _array_to_raster(
+            flow_dir_array, None, flow_dir_path, creation_options=(
                 'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
                 'BLOCKXSIZE=32', 'BLOCKYSIZE=32'))
-
-        flow_dir_band = flow_dir_raster.GetRasterBand(1)
-        flow_dir_band.WriteArray(flow_dir_array)
-        flow_dir_band.FlushCache()
-        flow_dir_band = None
-        flow_dir_raster = None
 
         flow_weight_raster_path = os.path.join(
             self.workspace_dir, 'flow_weights.tif')
         flow_weight_array = numpy.empty(
-            flow_dir_array.shape)
+            flow_dir_array.shape, dtype=numpy.float32)
         flow_weight_constant = 2.7
         flow_weight_array[:] = flow_weight_constant
-
-        flow_weight_raster = driver.Create(
-            flow_weight_raster_path, flow_weight_array.shape[1],
-            flow_weight_array.shape[0], 1, gdal.GDT_Float32, options=(
+        _array_to_raster(
+            flow_weight_array, None, flow_weight_raster_path,
+            creation_options=(
                 'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
                 'BLOCKXSIZE=32', 'BLOCKYSIZE=32'))
-        flow_weight_band = flow_weight_raster.GetRasterBand(1)
-        flow_weight_band.WriteArray(flow_weight_array)
-        flow_weight_band.FlushCache()
-        flow_weight_band = None
-        flow_weight_raster = None
 
         target_flow_accum_path = os.path.join(
             self.workspace_dir, 'flow_accum.tif')
@@ -278,20 +229,12 @@ class TestRouting(unittest.TestCase):
 
         # this is a regression result saved by hand from a simple run but
         # multiplied by the flow weight constant so we know flow weights work.
-        zero_array = numpy.zeros(flow_dir_array.shape)
+        zero_array = numpy.zeros(flow_dir_array.shape, dtype=numpy.float32)
         zero_raster_path = os.path.join(self.workspace_dir, 'zero.tif')
-        zero_raster = driver.Create(
-            zero_raster_path, zero_array.shape[1],
-            zero_array.shape[0], 1, gdal.GDT_Float32, options=(
+        _array_to_raster(
+            zero_array, None, zero_raster_path, creation_options=(
                 'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
                 'BLOCKXSIZE=32', 'BLOCKYSIZE=32'))
-        zero_band = zero_raster.GetRasterBand(1)
-        zero_band.WriteArray(zero_array)
-        # doing this on purpose to make the weights as complicated as possible
-        zero_band.SetNoDataValue(0)
-        zero_band.FlushCache()
-        zero_band = None
-        zero_raster = None
 
         pygeoprocessing.routing.flow_accumulation_d8(
             (flow_dir_path, 1), target_flow_accum_path,
@@ -300,27 +243,19 @@ class TestRouting(unittest.TestCase):
             target_flow_accum_path)
         self.assertEqual(flow_accum_array.dtype, numpy.float64)
 
-        numpy.testing.assert_almost_equal(
-            flow_accum_array, zero_array, 6)
+        numpy.testing.assert_almost_equal(flow_accum_array, zero_array, 6)
 
     def test_flow_dir_mfd(self):
         """PGP.routing: test multiple flow dir."""
-        driver = gdal.GetDriverByName('GTiff')
         dem_path = os.path.join(self.workspace_dir, 'dem.tif')
         # this makes a flat raster with a left-to-right central channel
         dem_array = numpy.zeros((11, 11))
         dem_array[5, :] = -1
-        dem_raster = driver.Create(
-            dem_path, dem_array.shape[1], dem_array.shape[0], 1,
-            gdal.GDT_Float32, options=(
-                'TILED=NO', 'BIGTIFF=YES', 'COMPRESS=LZW',
-                'BLOCKXSIZE=11', 'BLOCKYSIZE=1'))
 
-        dem_band = dem_raster.GetRasterBand(1)
-        dem_band.WriteArray(dem_array)
-        dem_band.FlushCache()
-        dem_band = None
-        dem_raster = None
+        _array_to_raster(
+            dem_array, None, dem_path, creation_options=(
+                'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
+                'BLOCKXSIZE=32', 'BLOCKYSIZE=32'))
 
         target_flow_dir_path = os.path.join(
             self.workspace_dir, 'flow_dir.tif')
@@ -329,11 +264,7 @@ class TestRouting(unittest.TestCase):
             (dem_path, 1), target_flow_dir_path,
             working_dir=self.workspace_dir)
 
-        flow_dir_raster = gdal.OpenEx(target_flow_dir_path, gdal.OF_RASTER)
-        flow_dir_band = flow_dir_raster.GetRasterBand(1)
-        flow_array = flow_dir_band.ReadAsArray()
-        flow_dir_band = None
-        flow_dir_raster = None
+        flow_array = pygeoprocessing.raster_to_numpy_array(target_flow_dir_path)
         self.assertEqual(flow_array.dtype, numpy.int32)
 
         # this was generated from a hand checked result
@@ -371,23 +302,14 @@ class TestRouting(unittest.TestCase):
     def test_flow_accum_mfd(self):
         """PGP.routing: test flow accumulation for multiple flow."""
         driver = gdal.GetDriverByName('GTiff')
-
         n = 11
         dem_path = os.path.join(self.workspace_dir, 'dem.tif')
-        dem_array = numpy.zeros((n, n))
-        dem_raster = driver.Create(
-            dem_path, dem_array.shape[1], dem_array.shape[0], 1,
-            gdal.GDT_Float32, options=(
+        dem_array = numpy.zeros((n, n), dtype=numpy.float32)
+        dem_array[int(n/2), :] = -1
+        _array_to_raster(
+            dem_array, None, dem_path, creation_options=(
                 'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
                 'BLOCKXSIZE=32', 'BLOCKYSIZE=32'))
-
-        dem_array[int(n/2), :] = -1
-
-        dem_band = dem_raster.GetRasterBand(1)
-        dem_band.WriteArray(dem_array)
-        dem_band.FlushCache()
-        dem_band = None
-        dem_raster = None
 
         flow_dir_path = os.path.join(self.workspace_dir, 'flow_dir.tif')
         pygeoprocessing.routing.flow_dir_mfd(
@@ -400,12 +322,8 @@ class TestRouting(unittest.TestCase):
         pygeoprocessing.routing.flow_accumulation_mfd(
             (flow_dir_path, 1), target_flow_accum_path)
 
-        flow_accum_raster = gdal.OpenEx(
-            target_flow_accum_path, gdal.OF_RASTER)
-        flow_accum_band = flow_accum_raster.GetRasterBand(1)
-        flow_array = flow_accum_band.ReadAsArray()
-        flow_accum_band = None
-        flow_accum_raster = None
+        flow_array = pygeoprocessing.raster_to_numpy_array(
+            target_flow_accum_path)
         self.assertEqual(flow_array.dtype, numpy.float64)
 
         # this was generated from a hand-checked result
@@ -436,24 +354,15 @@ class TestRouting(unittest.TestCase):
 
     def test_flow_accum_mfd_with_weights(self):
         """PGP.routing: test flow accum for mfd with weights."""
-        driver = gdal.GetDriverByName('GTiff')
-
         n = 11
         dem_raster_path = os.path.join(self.workspace_dir, 'dem.tif')
-        dem_array = numpy.zeros((n, n))
-        dem_raster = driver.Create(
-            dem_raster_path, dem_array.shape[1], dem_array.shape[0], 1,
-            gdal.GDT_Float32, options=(
-                'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
-                'BLOCKXSIZE=32', 'BLOCKYSIZE=32'))
-
+        dem_array = numpy.zeros((n, n), dtype=numpy.float32)
         dem_array[int(n/2), :] = -1
 
-        dem_band = dem_raster.GetRasterBand(1)
-        dem_band.WriteArray(dem_array)
-        dem_band.FlushCache()
-        dem_band = None
-        dem_raster = None
+        _array_to_raster(
+            dem_array, None, dem_raster_path, creation_options=(
+                'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
+                'BLOCKXSIZE=32', 'BLOCKYSIZE=32'))
 
         flow_dir_path = os.path.join(self.workspace_dir, 'flow_dir.tif')
         pygeoprocessing.routing.flow_dir_mfd(
@@ -483,12 +392,8 @@ class TestRouting(unittest.TestCase):
             (flow_dir_path, 1), target_flow_accum_path,
             weight_raster_path_band=(flow_weight_raster_path, 1))
 
-        flow_accum_raster = gdal.OpenEx(
-            target_flow_accum_path, gdal.OF_RASTER)
-        flow_accum_band = flow_accum_raster.GetRasterBand(1)
-        flow_array = flow_accum_band.ReadAsArray()
-        flow_accum_band = None
-        flow_accum_raster = None
+        flow_array = pygeoprocessing.raster_to_numpy_array(
+            target_flow_accum_path)
         self.assertEqual(flow_array.dtype, numpy.float64)
 
         # this was generated from a hand-checked result with flow weight of
@@ -522,18 +427,11 @@ class TestRouting(unittest.TestCase):
         # try with zero weights
         zero_array = numpy.zeros(expected_result.shape, dtype=numpy.float32)
         zero_raster_path = os.path.join(self.workspace_dir, 'zero.tif')
-        zero_raster = driver.Create(
-            zero_raster_path, zero_array.shape[1],
-            zero_array.shape[0], 1, gdal.GDT_Float32, options=(
+
+        _array_to_raster(
+            zero_array, None, zero_raster_path, creation_options=(
                 'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
                 'BLOCKXSIZE=32', 'BLOCKYSIZE=32'))
-        zero_band = zero_raster.GetRasterBand(1)
-        zero_band.WriteArray(zero_array)
-        zero_band.SetNoDataValue(0)
-        zero_band.FlushCache()
-        zero_raster.FlushCache()
-        zero_band = None
-        zero_raster = None
 
         pygeoprocessing.routing.flow_accumulation_mfd(
             (flow_dir_path, 1), target_flow_accum_path,
