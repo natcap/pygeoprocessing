@@ -13,10 +13,6 @@ import pygeoprocessing
 import pygeoprocessing.routing
 from test_geoprocessing import _array_to_raster
 
-# base_array, target_nodata, target_path,
-#         creation_options=DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS[1],
-#         pixel_size=_DEFAULT_PIXEL_SIZE, projection_epsg=_DEFAULT_EPSG,
-#         origin=_DEFAULT_ORIGIN):
 
 class TestRouting(unittest.TestCase):
     """Tests for pygeoprocessing.routing."""
@@ -78,10 +74,7 @@ class TestRouting(unittest.TestCase):
         """PGP.routing: test D8 flow."""
         dem_path = os.path.join(self.workspace_dir, 'dem.tif')
         dem_array = numpy.zeros((11, 11), dtype=numpy.float32)
-        _array_to_raster(
-            dem_array, None, dem_path, creation_options=(
-                'TILED=NO', 'BIGTIFF=YES', 'COMPRESS=LZW',
-                'BLOCKXSIZE=11', 'BLOCKYSIZE=1'))
+        _array_to_raster(dem_array, None, dem_path)
 
         target_flow_dir_path = os.path.join(
             self.workspace_dir, 'flow_dir.tif')
@@ -125,10 +118,7 @@ class TestRouting(unittest.TestCase):
             [4, 6, 6, 6, 6, 6, 6, 6, 6, 6, 0]], numpy.float32)
 
         flow_dir_path = os.path.join(self.workspace_dir, 'flow_dir.tif')
-        _array_to_raster(
-            flow_dir_array, None, flow_dir_path, creation_options=(
-                'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
-                'BLOCKXSIZE=32', 'BLOCKYSIZE=32'))
+        _array_to_raster(flow_dir_array, None, flow_dir_path)
 
         target_flow_accum_path = os.path.join(
             self.workspace_dir, 'flow_accum.tif')
@@ -173,10 +163,7 @@ class TestRouting(unittest.TestCase):
             [4, 6, 6, 6, 6, 6, 6, 6, 6, 6, 0]])
 
         flow_dir_path = os.path.join(self.workspace_dir, 'flow_dir.tif')
-        _array_to_raster(
-            flow_dir_array, None, flow_dir_path, creation_options=(
-                'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
-                'BLOCKXSIZE=32', 'BLOCKYSIZE=32'))
+        _array_to_raster(flow_dir_array, None, flow_dir_path)
 
         flow_weight_raster_path = os.path.join(
             self.workspace_dir, 'flow_weights.tif')
@@ -184,11 +171,7 @@ class TestRouting(unittest.TestCase):
             flow_dir_array.shape, dtype=numpy.float32)
         flow_weight_constant = 2.7
         flow_weight_array[:] = flow_weight_constant
-        _array_to_raster(
-            flow_weight_array, None, flow_weight_raster_path,
-            creation_options=(
-                'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
-                'BLOCKXSIZE=32', 'BLOCKYSIZE=32'))
+        _array_to_raster(flow_weight_array, None, flow_weight_raster_path)
 
         target_flow_accum_path = os.path.join(
             self.workspace_dir, 'flow_accum.tif')
@@ -231,10 +214,7 @@ class TestRouting(unittest.TestCase):
         # multiplied by the flow weight constant so we know flow weights work.
         zero_array = numpy.zeros(flow_dir_array.shape, dtype=numpy.float32)
         zero_raster_path = os.path.join(self.workspace_dir, 'zero.tif')
-        _array_to_raster(
-            zero_array, None, zero_raster_path, creation_options=(
-                'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
-                'BLOCKXSIZE=32', 'BLOCKYSIZE=32'))
+        _array_to_raster(zero_array, None, zero_raster_path)
 
         pygeoprocessing.routing.flow_accumulation_d8(
             (flow_dir_path, 1), target_flow_accum_path,
@@ -252,10 +232,7 @@ class TestRouting(unittest.TestCase):
         dem_array = numpy.zeros((11, 11))
         dem_array[5, :] = -1
 
-        _array_to_raster(
-            dem_array, None, dem_path, creation_options=(
-                'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
-                'BLOCKXSIZE=32', 'BLOCKYSIZE=32'))
+        _array_to_raster(dem_array, None, dem_path)
 
         target_flow_dir_path = os.path.join(
             self.workspace_dir, 'flow_dir.tif')
@@ -306,10 +283,7 @@ class TestRouting(unittest.TestCase):
         dem_path = os.path.join(self.workspace_dir, 'dem.tif')
         dem_array = numpy.zeros((n, n), dtype=numpy.float32)
         dem_array[int(n/2), :] = -1
-        _array_to_raster(
-            dem_array, None, dem_path, creation_options=(
-                'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
-                'BLOCKXSIZE=32', 'BLOCKYSIZE=32'))
+        _array_to_raster(dem_array, None, dem_path)
 
         flow_dir_path = os.path.join(self.workspace_dir, 'flow_dir.tif')
         pygeoprocessing.routing.flow_dir_mfd(
@@ -359,10 +333,7 @@ class TestRouting(unittest.TestCase):
         dem_array = numpy.zeros((n, n), dtype=numpy.float32)
         dem_array[int(n/2), :] = -1
 
-        _array_to_raster(
-            dem_array, None, dem_raster_path, creation_options=(
-                'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
-                'BLOCKXSIZE=32', 'BLOCKYSIZE=32'))
+        _array_to_raster(dem_array, None, dem_raster_path)
 
         flow_dir_path = os.path.join(self.workspace_dir, 'flow_dir.tif')
         pygeoprocessing.routing.flow_dir_mfd(
@@ -428,10 +399,7 @@ class TestRouting(unittest.TestCase):
         zero_array = numpy.zeros(expected_result.shape, dtype=numpy.float32)
         zero_raster_path = os.path.join(self.workspace_dir, 'zero.tif')
 
-        _array_to_raster(
-            zero_array, None, zero_raster_path, creation_options=(
-                'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
-                'BLOCKXSIZE=32', 'BLOCKYSIZE=32'))
+        _array_to_raster(zero_array, None, zero_raster_path)
 
         pygeoprocessing.routing.flow_accumulation_mfd(
             (flow_dir_path, 1), target_flow_accum_path,
@@ -445,23 +413,12 @@ class TestRouting(unittest.TestCase):
 
     def test_extract_streams_mfd(self):
         """PGP.routing: stream extraction on multiple flow direction."""
-        driver = gdal.GetDriverByName('GTiff')
-
         n = 11
         dem_path = os.path.join(self.workspace_dir, 'dem.tif')
-        dem_array = numpy.zeros((n, n))
-        dem_raster = driver.Create(
-            dem_path, dem_array.shape[1], dem_array.shape[0], 1,
-            gdal.GDT_Float32, options=(
-                'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
-                'BLOCKXSIZE=32', 'BLOCKYSIZE=32'))
-        dem_raster.SetGeoTransform([0, 1, 0, 0, 0, -1])
+        dem_array = numpy.zeros((n, n), dtype=numpy.float32)
         dem_array[int(n/2), :] = -1
-        dem_band = dem_raster.GetRasterBand(1)
-        dem_band.WriteArray(dem_array)
-        dem_band.FlushCache()
-        dem_band = None
-        dem_raster = None
+
+        _array_to_raster(dem_array, None, dem_path)
 
         flow_dir_path = os.path.join(self.workspace_dir, 'flow_dir.tif')
         pygeoprocessing.routing.flow_dir_mfd(
@@ -497,7 +454,6 @@ class TestRouting(unittest.TestCase):
 
     def test_distance_to_channel_d8(self):
         """PGP.routing: test distance to channel D8."""
-        driver = gdal.GetDriverByName('GTiff')
         flow_dir_d8_path = os.path.join(self.workspace_dir, 'flow_dir.d8_tif')
 
         # this is a flow direction raster that was created from a plateau drain
@@ -512,17 +468,9 @@ class TestRouting(unittest.TestCase):
             [4, 4, 4, 4, 6, 6, 6, 0, 0, 0, 0],
             [4, 4, 4, 6, 6, 6, 6, 6, 0, 0, 0],
             [4, 4, 6, 6, 6, 6, 6, 6, 6, 0, 0],
-            [4, 6, 6, 6, 6, 6, 6, 6, 6, 6, 0]])
-        flow_dir_d8_raster = driver.Create(
-            flow_dir_d8_path, flow_dir_d8_array.shape[1],
-            flow_dir_d8_array.shape[0], 1, gdal.GDT_Byte, options=(
-                'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
-                'BLOCKXSIZE=32', 'BLOCKYSIZE=32'))
-        flow_dir_d8_band = flow_dir_d8_raster.GetRasterBand(1)
-        flow_dir_d8_band.WriteArray(flow_dir_d8_array)
-        flow_dir_d8_band.FlushCache()
-        flow_dir_d8_band = None
-        flow_dir_d8_raster = None
+            [4, 6, 6, 6, 6, 6, 6, 6, 6, 6, 0]], dtype=numpy.uint8)
+
+        _array_to_raster(flow_dir_d8_array, None, flow_dir_d8_path)
 
         # taken from a manual inspection of a flow accumulation run
         channel_path = os.path.join(self.workspace_dir, 'channel.tif')
@@ -537,18 +485,8 @@ class TestRouting(unittest.TestCase):
              [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
              [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
              [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-             [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]])
-
-        channel_raster = driver.Create(
-            channel_path, channel_array.shape[1],
-            channel_array.shape[0], 1, gdal.GDT_Byte, options=(
-                'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
-                'BLOCKXSIZE=32', 'BLOCKYSIZE=32'))
-        channel_band = channel_raster.GetRasterBand(1)
-        channel_band.WriteArray(channel_array)
-        channel_band.FlushCache()
-        channel_band = None
-        channel_raster = None
+             [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]], dtype=numpy.uint8)
+        _array_to_raster(channel_array, None, channel_path)
 
         distance_to_channel_d8_path = os.path.join(
             self.workspace_dir, 'distance_to_channel_d8.tif')
@@ -592,17 +530,8 @@ class TestRouting(unittest.TestCase):
             [4, 4, 4, 4, 6, 6, 6, 0, 0, 0, 0],
             [4, 4, 4, 6, 6, 6, 6, 6, 0, 0, 0],
             [4, 4, 6, 6, 6, 6, 6, 6, 6, 0, 0],
-            [4, 6, 6, 6, 6, 6, 6, 6, 6, 6, 0]])
-        flow_dir_d8_raster = driver.Create(
-            flow_dir_d8_path, flow_dir_d8_array.shape[1],
-            flow_dir_d8_array.shape[0], 1, gdal.GDT_Byte, options=(
-                'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
-                'BLOCKXSIZE=32', 'BLOCKYSIZE=32'))
-        flow_dir_d8_band = flow_dir_d8_raster.GetRasterBand(1)
-        flow_dir_d8_band.WriteArray(flow_dir_d8_array)
-        flow_dir_d8_band.FlushCache()
-        flow_dir_d8_band = None
-        flow_dir_d8_raster = None
+            [4, 6, 6, 6, 6, 6, 6, 6, 6, 6, 0]], dtype=numpy.uint8)
+        _array_to_raster(flow_dir_d8_array, None, flow_dir_d8_path)
 
         # taken from a manual inspection of a flow accumulation run
         channel_path = os.path.join(self.workspace_dir, 'channel.tif')
@@ -617,34 +546,18 @@ class TestRouting(unittest.TestCase):
              [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
              [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
              [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-             [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]])
+             [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]], dtype=numpy.uint8)
 
-        channel_raster = driver.Create(
-            channel_path, channel_array.shape[1],
-            channel_array.shape[0], 1, gdal.GDT_Byte, options=(
-                'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
-                'BLOCKXSIZE=32', 'BLOCKYSIZE=32'))
-        channel_band = channel_raster.GetRasterBand(1)
-        channel_band.WriteArray(channel_array)
-        channel_band.FlushCache()
-        channel_band = None
-        channel_raster = None
+        _array_to_raster(channel_array, None, channel_path)
 
-        flow_weight_array = numpy.empty(flow_dir_d8_array.shape)
+        flow_weight_array = numpy.empty(
+            flow_dir_d8_array.shape, dtype=numpy.int32)
         weight_factor = 2.0
         flow_weight_array[:] = weight_factor
         flow_dir_d8_weight_path = os.path.join(
             self.workspace_dir, 'flow_dir_d8.tif')
-        flow_dir_d8_weight_raster = driver.Create(
-            flow_dir_d8_weight_path, flow_weight_array.shape[1],
-            flow_weight_array.shape[0], 1, gdal.GDT_Int32, options=(
-                'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
-                'BLOCKXSIZE=32', 'BLOCKYSIZE=32'))
-        flow_dir_d8_weight_band = flow_dir_d8_weight_raster.GetRasterBand(1)
-        flow_dir_d8_weight_band.WriteArray(flow_weight_array)
-        flow_dir_d8_weight_band.FlushCache()
-        flow_dir_d8_weight_band = None
-        flow_dir_d8_weight_raster = None
+
+        _array_to_raster(flow_weight_array, None, flow_dir_d8_weight_path)
 
         distance_to_channel_d8_path = os.path.join(
             self.workspace_dir, 'distance_to_channel_d8.tif')
@@ -676,18 +589,9 @@ class TestRouting(unittest.TestCase):
         zero_array = numpy.zeros(
             distance_to_channel_d8_array.shape, dtype=numpy.float32)
         zero_raster_path = os.path.join(self.workspace_dir, 'zero.tif')
-        zero_raster = driver.Create(
-            zero_raster_path, zero_array.shape[1],
-            zero_array.shape[0], 1, gdal.GDT_Float32, options=(
-                'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
-                'BLOCKXSIZE=32', 'BLOCKYSIZE=32'))
-        zero_band = zero_raster.GetRasterBand(1)
-        zero_band.WriteArray(zero_array)
-        zero_band.SetNoDataValue(0)
-        zero_band.FlushCache()
-        zero_raster.FlushCache()
-        zero_band = None
-        zero_raster = None
+
+        _array_to_raster(zero_array, None, zero_raster_path)
+
         pygeoprocessing.routing.distance_to_channel_d8(
             (flow_dir_d8_path, 1), (channel_path, 1),
             distance_to_channel_d8_path,
@@ -701,9 +605,6 @@ class TestRouting(unittest.TestCase):
 
     def test_distance_to_channel_mfd(self):
         """PGP.routing: test distance to channel mfd."""
-        driver = gdal.GetDriverByName('GTiff')
-        flow_dir_mfd_path = os.path.join(
-            self.workspace_dir, 'flow_dir_mfd.tif')
         flow_dir_mfd_array = numpy.array([
             [1761607680, 1178599424, 1178599424, 1178599424, 1178599424,
              1178599424, 1178599424, 1178599424, 1178599424, 1178599424,
@@ -731,20 +632,13 @@ class TestRouting(unittest.TestCase):
             [2400, 17984, 17984, 17984, 17984, 17984, 17984, 17984, 17984,
              17984, 26880],
             [2400, 17984, 17984, 17984, 17984, 17984, 17984, 17984, 17984,
-             17984, 26880]])
-        flow_dir_mfd_raster = driver.Create(
-            flow_dir_mfd_path, flow_dir_mfd_array.shape[1],
-            flow_dir_mfd_array.shape[0], 1, gdal.GDT_Int32, options=(
-                'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
-                'BLOCKXSIZE=32', 'BLOCKYSIZE=32'))
-        flow_dir_mfd_band = flow_dir_mfd_raster.GetRasterBand(1)
-        flow_dir_mfd_band.WriteArray(flow_dir_mfd_array)
-        flow_dir_mfd_band.FlushCache()
-        flow_dir_mfd_band = None
-        flow_dir_mfd_raster = None
+             17984, 26880]], dtype=numpy.int32)
+
+        flow_dir_mfd_path = os.path.join(
+            self.workspace_dir, 'flow_dir_mfd.tif')
+        _array_to_raster(flow_dir_mfd_array, None, flow_dir_mfd_path)
 
         # taken from a manual inspection of a flow accumulation run
-        channel_path = os.path.join(self.workspace_dir, 'channel.tif')
         channel_array = numpy.array(
             [[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
              [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
@@ -756,18 +650,10 @@ class TestRouting(unittest.TestCase):
              [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
              [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
              [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-             [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]])
+             [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]], dtype=numpy.uint8)
+        channel_path = os.path.join(self.workspace_dir, 'channel.tif')
 
-        channel_raster = driver.Create(
-            channel_path, channel_array.shape[1],
-            channel_array.shape[0], 1, gdal.GDT_Byte, options=(
-                'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
-                'BLOCKXSIZE=32', 'BLOCKYSIZE=32'))
-        channel_band = channel_raster.GetRasterBand(1)
-        channel_band.WriteArray(channel_array)
-        channel_band.FlushCache()
-        channel_band = None
-        channel_raster = None
+        _array_to_raster(channel_array, None, channel_path)
 
         distance_to_channel_mfd_path = os.path.join(
             self.workspace_dir, 'distance_to_channel_mfd.tif')
@@ -817,9 +703,6 @@ class TestRouting(unittest.TestCase):
 
     def test_distance_to_channel_mfd_with_weights(self):
         """PGP.routing: test distance to channel mfd with weights."""
-        driver = gdal.GetDriverByName('GTiff')
-        flow_dir_mfd_path = os.path.join(
-            self.workspace_dir, 'flow_dir_mfd.tif')
         flow_dir_mfd_array = numpy.array([
             [1761607680, 1178599424, 1178599424, 1178599424, 1178599424,
              1178599424, 1178599424, 1178599424, 1178599424, 1178599424,
@@ -847,32 +730,19 @@ class TestRouting(unittest.TestCase):
             [2400, 17984, 17984, 17984, 17984, 17984, 17984, 17984, 17984,
              17984, 26880],
             [2400, 17984, 17984, 17984, 17984, 17984, 17984, 17984, 17984,
-             17984, 26880]])
-        flow_dir_mfd_raster = driver.Create(
-            flow_dir_mfd_path, flow_dir_mfd_array.shape[1],
-            flow_dir_mfd_array.shape[0], 1, gdal.GDT_Int32, options=(
-                'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
-                'BLOCKXSIZE=32', 'BLOCKYSIZE=32'))
-        flow_dir_mfd_band = flow_dir_mfd_raster.GetRasterBand(1)
-        flow_dir_mfd_band.WriteArray(flow_dir_mfd_array)
-        flow_dir_mfd_band.FlushCache()
-        flow_dir_mfd_band = None
-        flow_dir_mfd_raster = None
+             17984, 26880]], dtype=numpy.int32)
 
-        flow_weight_array = numpy.empty(flow_dir_mfd_array.shape)
+        flow_dir_mfd_path = os.path.join(
+            self.workspace_dir, 'flow_dir_mfd.tif')
+        _array_to_raster(flow_dir_mfd_array, None, flow_dir_mfd_path)
+
+        flow_weight_array = numpy.empty(
+            flow_dir_mfd_array.shape, dtype=numpy.int32)
         flow_weight_array[:] = 2.0
         flow_dir_mfd_weight_path = os.path.join(
             self.workspace_dir, 'flow_dir_mfd_weights.tif')
-        flow_dir_mfd_weight_raster = driver.Create(
-            flow_dir_mfd_weight_path, flow_weight_array.shape[1],
-            flow_weight_array.shape[0], 1, gdal.GDT_Int32, options=(
-                'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
-                'BLOCKXSIZE=32', 'BLOCKYSIZE=32'))
-        flow_dir_mfd_weight_band = flow_dir_mfd_weight_raster.GetRasterBand(1)
-        flow_dir_mfd_weight_band.WriteArray(flow_weight_array)
-        flow_dir_mfd_weight_band.FlushCache()
-        flow_dir_mfd_weight_band = None
-        flow_dir_mfd_weight_raster = None
+
+        _array_to_raster(flow_weight_array, None, flow_dir_mfd_weight_path)
 
         # taken from a manual inspection of a flow accumulation run
         channel_path = os.path.join(self.workspace_dir, 'channel.tif')
@@ -887,18 +757,8 @@ class TestRouting(unittest.TestCase):
              [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
              [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
              [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-             [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]])
-
-        channel_raster = driver.Create(
-            channel_path, channel_array.shape[1],
-            channel_array.shape[0], 1, gdal.GDT_Byte, options=(
-                'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
-                'BLOCKXSIZE=32', 'BLOCKYSIZE=32'))
-        channel_band = channel_raster.GetRasterBand(1)
-        channel_band.WriteArray(channel_array)
-        channel_band.FlushCache()
-        channel_band = None
-        channel_raster = None
+             [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]], dtype=numpy.uint8)
+        _array_to_raster(channel_array, None, channel_path)
 
         distance_to_channel_mfd_path = os.path.join(
             self.workspace_dir, 'distance_to_channel_mfd.tif')
@@ -933,18 +793,8 @@ class TestRouting(unittest.TestCase):
         zero_array = numpy.zeros(
             expected_result.shape, dtype=numpy.float32)
         zero_raster_path = os.path.join(self.workspace_dir, 'zero.tif')
-        zero_raster = driver.Create(
-            zero_raster_path, zero_array.shape[1],
-            zero_array.shape[0], 1, gdal.GDT_Float32, options=(
-                'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
-                'BLOCKXSIZE=32', 'BLOCKYSIZE=32'))
-        zero_band = zero_raster.GetRasterBand(1)
-        zero_band.WriteArray(zero_array)
-        zero_band.SetNoDataValue(0)
-        zero_band.FlushCache()
-        zero_raster.FlushCache()
-        zero_band = None
-        zero_raster = None
+        _array_to_raster(zero_array, 0, zero_raster_path)
+
         pygeoprocessing.routing.distance_to_channel_mfd(
             (flow_dir_mfd_path, 1), (channel_path, 1),
             distance_to_channel_mfd_path,
@@ -958,13 +808,6 @@ class TestRouting(unittest.TestCase):
 
     def test_flow_dir_mfd_plateau(self):
         """PGP.routing: MFD on a plateau."""
-        import pygeoprocessing.routing
-
-        driver = gdal.GetDriverByName('GTiff')
-        try:
-            os.makedirs(self.workspace_dir)
-        except OSError:
-            pass
         dem_path = os.path.join(self.workspace_dir, 'dem.tif')
         # this makes a flat raster
         n = 100
@@ -973,20 +816,8 @@ class TestRouting(unittest.TestCase):
         dem_array[2, :] = 1e-12
         dem_array[n//2, :] = 1e-12
         dem_array[3*n//4, :] = 1e-12
-        dem_raster = driver.Create(
-            dem_path, dem_array.shape[1], dem_array.shape[0], 1,
-            gdal.GDT_Float32)
-        wgs84 = osr.SpatialReference()
-        wgs84.ImportFromEPSG(4326)
-        dem_raster.SetGeoTransform([1, 1.0, 0.0, 1, 0.0, -1.0])
-        dem_raster.SetProjection(wgs84.ExportToWkt())
 
-        dem_band = dem_raster.GetRasterBand(1)
-        dem_band.WriteArray(dem_array)
-        dem_band.SetNoDataValue(dem_nodata)
-        dem_band.FlushCache()
-        dem_band = None
-        dem_raster = None
+        _array_to_raster(dem_array, dem_nodata, dem_path)
 
         target_flow_dir_path = os.path.join(
             self.workspace_dir, 'flow_dir.tif')
@@ -995,11 +826,12 @@ class TestRouting(unittest.TestCase):
             (dem_path, 1), target_flow_dir_path,
             working_dir=self.workspace_dir)
 
-        flow_dir_raster = gdal.OpenEx(target_flow_dir_path, gdal.OF_RASTER)
-        flow_dir_array = flow_dir_raster.ReadAsArray()
-        flow_dir_raster = None
         flow_dir_nodata = pygeoprocessing.get_raster_info(
             target_flow_dir_path)['nodata'][0]
+
+        flow_dir_array = pygeoprocessing.raster_to_numpy_array(
+            target_flow_dir_path)
+
         self.assertTrue(not numpy.isclose(
             flow_dir_array[1:-1, 1: -1], flow_dir_nodata).any(),
             'all flow directions should be defined')
