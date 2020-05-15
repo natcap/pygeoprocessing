@@ -4148,3 +4148,25 @@ class PyGeoprocessing10(unittest.TestCase):
         self.assertTrue('signal' in actual_message)
         self.assertTrue('kernel' in actual_message)
 
+    def test_convolve_2d_nodata(self):
+        """PGP.geoprocessing: test convolve 2d (single thread)."""
+        n_pixels = 100
+        signal_array = numpy.empty((n_pixels//10, n_pixels//10), numpy.float32)
+        base_nodata = -1
+        signal_array[:] = base_nodata
+        signal_array[n_pixels//20, n_pixels//20] = 0
+        signal_array[0, 0] = 1
+        signal_path = os.path.join(self.workspace_dir, 'signal.tif')
+        _array_to_raster(signal_array, base_nodata, signal_path)
+        kernel_path = os.path.join(self.workspace_dir, 'kernel.tif')
+        kernel_array = numpy.ones((n_pixels, n_pixels), numpy.float32)
+        _array_to_raster(kernel_array, base_nodata, kernel_path)
+        target_path = os.path.join(self.workspace_dir, 'target.tif')
+        pygeoprocessing.convolve_2d(
+            (signal_path, 1), (kernel_path, 1), target_path,
+            n_threads=1, ignore_nodata_and_edges=True, mask_nodata=False)
+        target_array = pygeoprocessing.raster_to_numpy_array(target_path)
+
+        expected_output = numpy.empty(signal_array.shape, numpy.float32)
+        expected_output[:] = n_pixels**2 // 2
+        numpy.testing.assert_allclose(target_array, expected_output)
