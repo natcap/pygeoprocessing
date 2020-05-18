@@ -1,10 +1,11 @@
-"""test for watershed module."""
+"""pygeoprocessing.watersheds testing suite."""
 import os
 import shutil
 import tempfile
 import unittest
 
 from osgeo import gdal
+from osgeo import ogr
 from osgeo import osr
 import numpy
 import shapely.geometry
@@ -12,7 +13,6 @@ import shapely.geometry
 from pygeoprocessing.routing import watershed
 import pygeoprocessing
 import pygeoprocessing.routing
-import pygeoprocessing.testing
 
 
 class WatershedDelineationTests(unittest.TestCase):
@@ -69,20 +69,23 @@ class WatershedDelineationTests(unittest.TestCase):
         point = shapely.geometry.Point(21, -11)
 
         outflow_vector_path = os.path.join(self.workspace_dir, 'outflow.gpkg')
-        pygeoprocessing.testing.create_vector_on_disk(
+        pygeoprocessing.shapely_geometry_to_vector(
             [horizontal_line, vertical_line, square, point],
-            projection=srs_wkt,
-            fields={'polygon_id': 'int',
-                    'field_string': 'string',
-                    'other': 'real'},
-            attributes=[
+            outflow_vector_path, srs_wkt,
+            'GPKG',
+            {
+                'polygon_id': ogr.OFTInteger,
+                'field_string': ogr.OFTString,
+                'other': ogr.OFTReal
+            },
+            [
                 {'polygon_id': 1, 'field_string': 'hello world',
                  'other': 1.111},
                 {'polygon_id': 2, 'field_string': 'hello foo', 'other': 2.222},
                 {'polygon_id': 3, 'field_string': 'hello bar', 'other': 3.333},
                 {'polygon_id': 4, 'field_string': 'hello baz', 'other': 4.444}
             ],
-            vector_format='GPKG', filename=outflow_vector_path)
+            ogr_geom_type=ogr.wkbGeometryCollection)
 
         target_watersheds_path = os.path.join(
             self.workspace_dir, 'watersheds.gpkg')
@@ -103,9 +106,10 @@ class WatershedDelineationTests(unittest.TestCase):
             shapely.geometry.box(20, -2, 22, -10))
         expected_watershed_geometry = expected_watershed_geometry.difference(
             shapely.geometry.box(20, -12, 22, -22))
-        pygeoprocessing.testing.create_vector_on_disk(
-            [expected_watershed_geometry], srs_wkt, vector_format='GPKG',
-            filename=os.path.join(self.workspace_dir, 'foo.gpkg'))
+        pygeoprocessing.shapely_geometry_to_vector(
+            [expected_watershed_geometry],
+            os.path.join(self.workspace_dir, 'foo.gpkg'), srs_wkt,
+            'GPKG', ogr_geom_type=ogr.wkbGeometryCollection)
 
         id_to_fields = {}
         for feature in watersheds_layer:

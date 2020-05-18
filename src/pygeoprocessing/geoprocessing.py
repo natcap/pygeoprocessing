@@ -776,7 +776,6 @@ def new_raster_from_base(
 
     Returns:
         None
-
     """
     base_raster = gdal.OpenEx(base_path, gdal.OF_RASTER)
     if n_rows is None:
@@ -906,7 +905,6 @@ def create_raster_from_vector_extents(
 
     Returns:
         None
-
     """
     # Determine the width and height of the tiff in pixels based on the
     # maximum size of the combined envelope of all the features
@@ -1006,8 +1004,7 @@ def interpolate_points(
             scipy.interpolate.griddata, one of 'linear', near', or 'cubic'.
 
     Returns:
-       None
-
+        None
     """
     source_vector = gdal.OpenEx(base_vector_path, gdal.OF_VECTOR)
     point_list = []
@@ -1581,7 +1578,6 @@ def reproject_vector(
 
     Returns:
         None
-
     """
     base_vector = gdal.OpenEx(base_vector_path, gdal.OF_VECTOR)
 
@@ -2014,7 +2010,6 @@ def rasterize(
 
     Returns:
         None
-
     """
     gdal.PushErrorHandler('CPLQuietErrorHandler')
     raster = gdal.OpenEx(target_raster_path, gdal.GA_Update | gdal.OF_RASTER)
@@ -2233,7 +2228,6 @@ def distance_transform_edt(
 
     Returns:
         None
-
     """
     working_raster_paths = {}
     for raster_prefix in ['region_mask_raster', 'g_raster']:
@@ -2403,7 +2397,6 @@ def convolve_2d(
 
     Returns:
         None
-
     """
     if target_datatype is not gdal.GDT_Float64 and target_nodata is None:
         raise ValueError(
@@ -2852,8 +2845,7 @@ def merge_rasters(
             defined at geoprocessing.DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS.
 
     Returns:
-        None.
-
+        None
     """
     raster_info_list = [
         get_raster_info(path) for path in raster_path_list]
@@ -3070,8 +3062,7 @@ def mask_raster(
             defined at geoprocessing.DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS.
 
     Returns:
-        None.
-
+        None
     """
     with tempfile.NamedTemporaryFile(
             prefix='mask_raster', delete=False, suffix='.tif',
@@ -3376,7 +3367,6 @@ def _convolve_2d_worker(
 
     Returns:
         None
-
     """
     signal_raster = gdal.OpenEx(signal_path_band[0], gdal.OF_RASTER)
     kernel_raster = gdal.OpenEx(kernel_path_band[0], gdal.OF_RASTER)
@@ -3550,3 +3540,134 @@ def _assert_is_valid_pixel_size(target_pixel_size):
             "Invalid value for `target_pixel_size`, expected two numerical "
             "elements, got: %s", repr(target_pixel_size))
     return True
+
+
+def shapely_geometry_to_vector(
+        shapely_geometry_list, target_vector_path, projection_wkt,
+        vector_format, fields=None, attribute_list=None,
+        ogr_geom_type=ogr.wkbPolygon):
+    """Convert list of geometry to vector on disk.
+
+    Args:
+        shapely_geometry_list (list): a list of Shapely objects.
+        target_vector_path (str): path to target vector.
+        projection_wkt (str): WKT for target vector.
+        vector_format (str): GDAL driver name for target vector.
+        fields (dict): a python dictionary mapping string fieldname
+            to OGR Fieldtypes, if None no fields are added
+        attribute_list (list of dicts): a list of python dictionary mapping
+            fieldname to field value for each geometry in
+            `shapely_geometry_list`, if None, no attributes are created.
+        ogr_geom_type (ogr geometry enumerated type): sets the target layer
+            geometry type. Defaults to wkbPolygon.
+
+    Returns:
+        None
+    """
+    if fields is None:
+        fields = {}
+
+    if attribute_list is None:
+        attribute_list = [{} for _ in range(len(shapely_geometry_list))]
+
+    num_geoms = len(shapely_geometry_list)
+    num_attrs = len(attribute_list)
+    if num_geoms != num_attrs:
+        raise ValueError(
+            f"Geometry count ({num_geoms}) and attribute count "
+            f"({num_attrs}) do not match.")
+
+    vector_driver = ogr.GetDriverByName(vector_format)
+    target_vector = vector_driver.CreateDataSource(target_vector_path)
+    layer_name = os.path.basename(os.path.splitext(target_vector_path)[0])
+    projection = osr.SpatialReference()
+    projection.ImportFromWkt(projection_wkt)
+    target_layer = target_vector.CreateLayer(
+        layer_name, srs=projection, geom_type=ogr_geom_type)
+
+    for field_name, field_type in fields.items():
+        target_layer.CreateField(ogr.FieldDefn(field_name, field_type))
+    layer_defn = target_layer.GetLayerDefn()
+
+    for shapely_feature, fields in zip(shapely_geometry_list, attribute_list):
+        new_feature = ogr.Feature(layer_defn)
+        new_geometry = ogr.CreateGeometryFromWkb(shapely_feature.wkb)
+        new_feature.SetGeometry(new_geometry)
+
+        for field_name, field_value in fields.items():
+            new_feature.SetField(field_name, field_value)
+        target_layer.CreateFeature(new_feature)
+
+    target_layer = None
+    target_vector = None
+
+
+def numpy_array_to_raster(
+        base_array, target_nodata, pixel_size, origin, projection_wkt,
+        target_path,
+        raster_driver_creation_tuple=DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS):
+    """Create a single band raster of size ``base_array.shape``.
+
+    Args:
+        base_array (numpy.array): a 2d numpy array.
+        target_nodata (numeric): nodata value of target array, can be None.
+        pixel_size (int): square dimensions of pixel.
+        origin (tuple/list): x/y coordinate of the raster origin.
+        projection_wkt (str): target projection in wkt.
+        target_path (str): path to raster to create that will be of the
+            same type of base_array with contents of base_array.
+        raster_driver_creation_tuple (tuple): a tuple containing a GDAL driver
+            name string as the first element and a GDAL creation options
+            tuple/list as the second. Defaults to
+            geoprocessing.DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS.
+
+    Returns:
+        None
+    """
+    numpy_to_gdal_type = {
+        numpy.dtype(numpy.int8): gdal.GDT_Byte,
+        numpy.dtype(numpy.uint8): gdal.GDT_Byte,
+        numpy.dtype(numpy.int16): gdal.GDT_Int16,
+        numpy.dtype(numpy.int32): gdal.GDT_Int32,
+        numpy.dtype(numpy.uint16): gdal.GDT_UInt16,
+        numpy.dtype(numpy.uint32): gdal.GDT_UInt32,
+        numpy.dtype(numpy.float32): gdal.GDT_Float32,
+        numpy.dtype(numpy.float64): gdal.GDT_Float64,
+        numpy.dtype(numpy.csingle): gdal.GDT_CFloat32,
+        numpy.dtype(numpy.complex64): gdal.GDT_CFloat64,
+    }
+    raster_driver = gdal.GetDriverByName(raster_driver_creation_tuple[0])
+    ny, nx = base_array.shape
+    new_raster = raster_driver.Create(
+        target_path, nx, ny, 1, numpy_to_gdal_type[base_array.dtype],
+        options=raster_driver_creation_tuple[1])
+    if projection_wkt is not None:
+        new_raster.SetProjection(projection_wkt)
+    new_raster.SetGeoTransform(
+        [origin[0], pixel_size[0], 0.0, origin[1], 0.0, pixel_size[1]])
+    new_band = new_raster.GetRasterBand(1)
+    if target_nodata is not None:
+        new_band.SetNoDataValue(target_nodata)
+    new_band.WriteArray(base_array)
+    new_raster.FlushCache()
+    new_band = None
+    new_raster = None
+
+
+def raster_to_numpy_array(raster_path, band_id=1):
+    """Read the entire contents of the raster band to a numpy array.
+
+    Args:
+        raster_path (str): path to raster.
+        band_id (int): band in the raster to read.
+
+    Returns:
+        numpy array contents of `band_id` in raster.
+
+    """
+    raster = gdal.OpenEx(raster_path, gdal.OF_RASTER)
+    band = raster.GetRasterBand(band_id)
+    array = band.ReadAsArray()
+    band = None
+    raster = None
+    return array

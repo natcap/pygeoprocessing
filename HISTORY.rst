@@ -41,7 +41,15 @@ Unreleased Changes
 * Fixes an unnecessary calculation that pre-fills slope raster GeoTIFFs with
   nodata values.
 * Added a check to ``convolve_2d`` to verify that raster path/band tuples were
-  passed where expected and raise a useful Exception if not.
+  passed where expected and raise a useful Exception  if not.
+* Removed most of the `pygeoprocessing.testing` module and added the following
+  convenience functions to ``pygeoprocessing``, which should not be used
+  for production code but are useful for testing and scripting:
+  * ``raster_to_numpy_array`` - read a single band of a raster into a ``numpy``
+    array, runs the risk of memory error if the raster is too large.
+  * ``numpy_array_to_raster`` - writes a ``numpy`` array to a raster on disk.
+  * ``shapely_geometry_to_vector`` - creates a vector from a list of
+    ``Shapely`` geometry.
 * Fixed an issue in ``flow_dir_mfd`` that would cause invalid flow directions
   on DEMs that had very small numerical delta heights.
 
