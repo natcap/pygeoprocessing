@@ -33,6 +33,16 @@ jobs:
                   SOURCE_BRANCH: ${{ env.SOURCE_BRANCH }}
               run: |
                   set -x
+
+                  # Get the number of the last PR merged into master.
+                  # This assumes that the default PR message was used and includes
+                  # the pattern #[1-9][0-9]*.
+                  PR_NUM=$(git log -1 --pretty=%B master | head -n1 | egrep -o '#[1-9][0-9]*' | sed 's|#||g')
+
+                  # Get the username of the person who opened up the last PR into `master`.
+                  PR_USERNAME=$(hub pr show -f "%au" $PR_NUM)
+                  echo "Latest PR on master ($PR_NUM) was authored by $PR_USERNAME."
+
                   # Using grep with pattern ^release filters out any autorelease branches.
                   BRANCHES=$(git ls-remote --heads origin | cut -d '/' -f 3- | grep ^release)
                   echo $BRANCHES  # debugging
@@ -50,8 +60,8 @@ jobs:
                       hub pull-request \
                           --head $GITHUB_REPOSITORY:$SOURCE_BRANCH \
                           --base $GITHUB_REPOSITORY:$RELEASE_BRANCH \
-                          --reviewer "$GITHUB_ACTOR" \
-                          --assign "$GITHUB_ACTOR" \
+                          --reviewer "$PR_USERNAME" \
+                          --assign "$PR_USERNAME" \
                           --file $PR_BODY_FILE || ERRORSPRESENT=$(($ERRORSPRESENT | $?))
                   done
 
