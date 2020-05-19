@@ -1,7 +1,7 @@
 Release History
 ===============
 
-Unreleased Changes
+2.0.0 (05-19-2020)
 ------------------
 * Adding Python 3.8 support and dropping Python 3.6 support.
 * Adding GDAL 3 support and dropping GDAL 2 support. The only non-backwards
