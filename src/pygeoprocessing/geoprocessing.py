@@ -2350,7 +2350,9 @@ def convolve_2d(
         signal_path_band (tuple): a 2 tuple of the form
             (filepath to signal raster, band index).
         kernel_path_band (tuple): a 2 tuple of the form
-            (filepath to kernel raster, band index).
+            (filepath to kernel raster, band index), all pixel values should
+            be valid -- output is not well defined if the kernel raster has
+            nodata values.
         target_path (string): filepath to target raster that's the convolution
             of signal with kernel.  Output will be a single band raster of
             same size and projection as ``signal_path_band``. Any nodata pixels
@@ -3404,15 +3406,15 @@ def _convolve_2d_worker(
         signal_block = signal_band.ReadAsArray(**signal_offset)
         kernel_block = kernel_band.ReadAsArray(**kernel_offset)
 
-        if ignore_nodata:
-            if signal_nodata is not None:
-                # if we're ignoring nodata, we don't want to add it up in the
-                # convolution, so we zero those values out
-                signal_nodata_mask = numpy.isclose(signal_block, signal_nodata)
-                signal_block[signal_nodata_mask] = 0.0
-            else:
-                signal_nodata_mask = numpy.zeros(
-                    signal_block.shape, dtype=numpy.bool)
+        # don't ever convolve the nodata value
+        if signal_nodata is not None:
+            signal_nodata_mask = numpy.isclose(signal_block, signal_nodata)
+            signal_block[signal_nodata_mask] = 0.0
+            if not ignore_nodata:
+                signal_nodata_mask[:] = 0
+        else:
+            signal_nodata_mask = numpy.zeros(
+                signal_block.shape, dtype=numpy.bool)
 
         left_index_raster = (
             signal_offset['xoff'] - n_cols_kernel // 2 +
@@ -3437,7 +3439,7 @@ def _convolve_2d_worker(
                 top_index_raster > n_rows_signal):
             continue
 
-        if kernel_nodata is not None and ignore_nodata:
+        if kernel_nodata is not None:
             kernel_block[numpy.isclose(kernel_block, kernel_nodata)] = 0.0
 
         if normalize_kernel:

@@ -52,6 +52,9 @@ Unreleased Changes
     ``Shapely`` geometry.
 * Fixed an issue in ``flow_dir_mfd`` that would cause invalid flow directions
   on DEMs that had very small numerical delta heights.
+* Fixes an issue in ``convolve_2d`` that would occasionally cause undefined
+  numerical noise in regions where the signal was nodata but ``mask_nodata``
+  was set to ``False``.
 
 1.9.2 (2020-02-06)
 ------------------
