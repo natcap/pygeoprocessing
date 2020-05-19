@@ -1,28 +1,32 @@
-import collections
+"""pygeoprocessing.watersheds testing suite."""
 import os
 import shutil
 import tempfile
 import unittest
 
-import numpy
-import shapely.geometry
 from osgeo import gdal
 from osgeo import ogr
 from osgeo import osr
+import numpy
+import shapely.geometry
+
+from pygeoprocessing.routing import watershed
+import pygeoprocessing
+import pygeoprocessing.routing
 
 
 class WatershedDelineationTests(unittest.TestCase):
+    """Main Watershed test module."""
     def setUp(self):
+        """Create empty workspace dir."""
         self.workspace_dir = tempfile.mkdtemp()
 
     def tearDown(self):
+        """Delete workspace dir."""
         shutil.rmtree(self.workspace_dir)
 
     def test_watersheds_trivial(self):
         """PGP watersheds: test trivial delineation."""
-        import pygeoprocessing.testing
-        import pygeoprocessing.routing
-
         flow_dir_array = numpy.array([
             [6, 6, 6, 6, 6, 6, 6, 6, 6, 6],
             [6, 6, 6, 6, 6, 6, 6, 6, 6, 6],
@@ -65,21 +69,26 @@ class WatershedDelineationTests(unittest.TestCase):
         point = shapely.geometry.Point(21, -11)
 
         outflow_vector_path = os.path.join(self.workspace_dir, 'outflow.gpkg')
-        pygeoprocessing.testing.create_vector_on_disk(
+        pygeoprocessing.shapely_geometry_to_vector(
             [horizontal_line, vertical_line, square, point],
-            projection=srs_wkt,
-            fields={'polygon_id': 'int',
-                    'field_string': 'string',
-                    'other': 'real'},
-            attributes=[
-                {'polygon_id': 1, 'field_string': 'hello world', 'other': 1.111},
+            outflow_vector_path, srs_wkt,
+            'GPKG',
+            {
+                'polygon_id': ogr.OFTInteger,
+                'field_string': ogr.OFTString,
+                'other': ogr.OFTReal
+            },
+            [
+                {'polygon_id': 1, 'field_string': 'hello world',
+                 'other': 1.111},
                 {'polygon_id': 2, 'field_string': 'hello foo', 'other': 2.222},
                 {'polygon_id': 3, 'field_string': 'hello bar', 'other': 3.333},
                 {'polygon_id': 4, 'field_string': 'hello baz', 'other': 4.444}
             ],
-            vector_format='GPKG', filename=outflow_vector_path)
+            ogr_geom_type=ogr.wkbGeometryCollection)
 
-        target_watersheds_path = os.path.join(self.workspace_dir, 'watersheds.gpkg')
+        target_watersheds_path = os.path.join(
+            self.workspace_dir, 'watersheds.gpkg')
 
         pygeoprocessing.routing.delineate_watersheds_d8(
             (flow_dir_path, 1), outflow_vector_path, target_watersheds_path)
@@ -90,21 +99,24 @@ class WatershedDelineationTests(unittest.TestCase):
 
         # All features should have the same watersheds, both in area and
         # geometry.
-        flow_dir_bbox = pygeoprocessing.get_raster_info(flow_dir_path)['bounding_box']
+        flow_dir_bbox = pygeoprocessing.get_raster_info(
+            flow_dir_path)['bounding_box']
         expected_watershed_geometry = shapely.geometry.box(*flow_dir_bbox)
         expected_watershed_geometry = expected_watershed_geometry.difference(
             shapely.geometry.box(20, -2, 22, -10))
         expected_watershed_geometry = expected_watershed_geometry.difference(
             shapely.geometry.box(20, -12, 22, -22))
-        pygeoprocessing.testing.create_vector_on_disk(
+        pygeoprocessing.shapely_geometry_to_vector(
             [expected_watershed_geometry],
-            srs_wkt, vector_format='GPKG', filename=os.path.join(self.workspace_dir, 'foo.gpkg'))
+            os.path.join(self.workspace_dir, 'foo.gpkg'), srs_wkt,
+            'GPKG', ogr_geom_type=ogr.wkbGeometryCollection)
 
         id_to_fields = {}
         for feature in watersheds_layer:
             geometry = feature.GetGeometryRef()
             shapely_geom = shapely.wkb.loads(geometry.ExportToWkb())
-            self.assertEqual(shapely_geom.area, expected_watershed_geometry.area)
+            self.assertEqual(
+                shapely_geom.area, expected_watershed_geometry.area)
             self.assertEqual(
                 shapely_geom.intersection(
                     expected_watershed_geometry).area,
@@ -129,10 +141,8 @@ class WatershedDelineationTests(unittest.TestCase):
 
     def test_split_geometry_into_seeds(self):
         """PGP watersheds: Test geometry-to-seed extraction."""
-        import pygeoprocessing
-        from pygeoprocessing.routing import watershed
         nodata = 255
-        flow_dir_array= numpy.array([
+        flow_dir_array = numpy.array([
             [0, 0, 0, 0, 0, 0, 0],
             [0, 0, 0, 0, 0, 0, 0],
             [nodata, nodata, nodata, nodata, nodata, nodata, nodata],
@@ -165,11 +175,14 @@ class WatershedDelineationTests(unittest.TestCase):
 
         for index, (geometry, expected_seeds) in enumerate((
                 (point, set([(0, 0)])),
-                (linestring, set([(4, 0), (4, 1), (4, 2), (4, 3)])),  # includes nodata pixel
-                (box, set([(1, 1), (2, 1), (1, 2), (2, 2)])))):  # includes nodata pixels
+                # includes nodata pixel
+                (linestring, set([(4, 0), (4, 1), (4, 2), (4, 3)])),
+                # includes nodata pixels
+                (box, set([(1, 1), (2, 1), (1, 2), (2, 2)])))):
 
             raster_path = os.path.join(self.workspace_dir, '%s.tif' % index)
-            diagnostic_path = os.path.join(self.workspace_dir, '%s.gpkg' % index)
+            diagnostic_path = os.path.join(
+                self.workspace_dir, '%s.gpkg' % index)
             result_seeds = watershed._split_geometry_into_seeds(
                 geometry.wkb, flow_dir_info['geotransform'], srs,
                 flow_dir_array.shape[1], flow_dir_array.shape[0],
@@ -179,10 +192,7 @@ class WatershedDelineationTests(unittest.TestCase):
 
     def test_split_geometry_into_seeds_willamette(self):
         """PGP watersheds: Test geometry-to-seed extraction in Willamette."""
-        import pygeoprocessing
-        from pygeoprocessing.routing import watershed
-        nodata = 255
-        flow_dir_array= numpy.array([
+        flow_dir_array = numpy.array([
             [0, 0, 0, 0, 0, 0, 0],
             [0, 0, 0, 0, 0, 0, 0],
             [0, 0, 0, 0, 0, 0, 0],
@@ -213,11 +223,12 @@ class WatershedDelineationTests(unittest.TestCase):
 
         pixel_indexes_array = numpy.arange(
             flow_dir_array.size).reshape(flow_dir_array.shape)
-        pixel_indexes_path = os.path.join(self.workspace_dir, 'pixel_indexes.tif')
+        pixel_indexes_path = os.path.join(
+            self.workspace_dir, 'pixel_indexes.tif')
         driver = gdal.GetDriverByName('GTiff')
         pixel_indexes_raster = driver.Create(
-            pixel_indexes_path, pixel_indexes_array.shape[1], pixel_indexes_array.shape[0],
-            1, gdal.GDT_Byte, options=(
+            pixel_indexes_path, pixel_indexes_array.shape[1],
+            pixel_indexes_array.shape[0], 1, gdal.GDT_Byte, options=(
                 'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
                 'BLOCKXSIZE=256', 'BLOCKYSIZE=256'))
         pixel_indexes_raster.SetProjection(srs_wkt)
@@ -237,7 +248,8 @@ class WatershedDelineationTests(unittest.TestCase):
             flow_dir_geotransform[3] + pixel_ysize / 2.)
         linestring = shapely.geometry.LineString([
             (flow_dir_geotransform[0] + pixel_xsize * 4,
-             flow_dir_geotransform[3] - pixel_ysize * 2),  # extend beyond y boundary
+             # extend beyond y boundary
+             flow_dir_geotransform[3] - pixel_ysize * 2),
             (flow_dir_geotransform[0] + pixel_xsize * 4,
              flow_dir_geotransform[3] + pixel_ysize * 5)])
         box = shapely.geometry.box(
