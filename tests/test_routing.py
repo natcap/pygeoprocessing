@@ -115,7 +115,7 @@ class TestRouting(unittest.TestCase):
             [4, 4, 4, 4, 6, 6, 6, 0, 0, 0, 0],
             [4, 4, 4, 6, 6, 6, 6, 6, 0, 0, 0],
             [4, 4, 6, 6, 6, 6, 6, 6, 6, 0, 0],
-            [4, 6, 6, 6, 6, 6, 6, 6, 6, 6, 0]], numpy.float32)
+            [4, 6, 6, 6, 6, 6, 6, 6, 6, 6, 0]], dtype=numpy.uint8)
 
         flow_dir_path = os.path.join(self.workspace_dir, 'flow_dir.tif')
         _array_to_raster(flow_dir_array, None, flow_dir_path)
@@ -160,7 +160,7 @@ class TestRouting(unittest.TestCase):
             [4, 4, 4, 4, 6, 6, 6, 0, 0, 0, 0],
             [4, 4, 4, 6, 6, 6, 6, 6, 0, 0, 0],
             [4, 4, 6, 6, 6, 6, 6, 6, 6, 0, 0],
-            [4, 6, 6, 6, 6, 6, 6, 6, 6, 6, 0]])
+            [4, 6, 6, 6, 6, 6, 6, 6, 6, 6, 0]], dtype=numpy.uint8)
 
         flow_dir_path = os.path.join(self.workspace_dir, 'flow_dir.tif')
         _array_to_raster(flow_dir_array, None, flow_dir_path)
