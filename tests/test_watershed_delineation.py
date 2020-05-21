@@ -45,19 +45,13 @@ class WatershedDelineationTests(unittest.TestCase):
         srs_wkt = srs.ExportToWkt()
 
         flow_dir_path = os.path.join(self.workspace_dir, 'flow_dir.tif')
-        driver = gdal.GetDriverByName('GTiff')
-        flow_dir_raster = driver.Create(
-            flow_dir_path, flow_dir_array.shape[1], flow_dir_array.shape[0],
-            1, gdal.GDT_Byte, options=(
-                'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
-                'BLOCKXSIZE=256', 'BLOCKYSIZE=256'))
-        flow_dir_raster.SetProjection(srs_wkt)
-        flow_dir_band = flow_dir_raster.GetRasterBand(1)
-        flow_dir_band.WriteArray(flow_dir_array)
-        flow_dir_band.SetNoDataValue(255)
-        flow_dir_geotransform = [2, 2, 0, -2, 0, -2]
-        flow_dir_raster.SetGeoTransform(flow_dir_geotransform)
-        flow_dir_raster = None
+        pygeoprocessing.numpy_array_to_raster(
+            base_array=flow_dir_array,
+            target_nodata=255,
+            pixel_size=(2, -2),
+            origin=(2, -2),
+            projection_wkt=srs_wkt,
+            target_path=flow_dir_path)
 
         # These geometries test:
         #  * Delineation works with varying geometry types
@@ -85,7 +79,7 @@ class WatershedDelineationTests(unittest.TestCase):
                 {'polygon_id': 3, 'field_string': 'hello bar', 'other': 3.333},
                 {'polygon_id': 4, 'field_string': 'hello baz', 'other': 4.444}
             ],
-            ogr_geom_type=ogr.wkbGeometryCollection)
+            ogr_geom_type=ogr.wkbUnknown)
 
         target_watersheds_path = os.path.join(
             self.workspace_dir, 'watersheds.gpkg')
