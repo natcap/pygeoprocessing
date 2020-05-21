@@ -624,7 +624,7 @@ def _split_geometry_into_seeds(
 def delineate_watersheds_d8(
         d8_flow_dir_raster_path_band, outflow_vector_path,
         target_watersheds_vector_path, working_dir=None,
-        remove_temp_files=True):
+        write_diagnostic_vector=False, remove_temp_files=True):
     """Delineate watersheds for a vector of geometries using D8 flow dir.
 
     Parameters:
@@ -642,6 +642,13 @@ def delineate_watersheds_d8(
         working_dir=None (string or None): The path to a directory on disk
             within which various intermediate files will be stored.  If None,
             a folder will be created within the system's temp directory.
+        write_diagnostic_vector=False (bool): If ``True``, a set of vectors will
+            be written to ``working_dir``, one per watershed.  Each vector
+            includes geometries for the watershed being represented and
+            for the watershed seed pixels the geometry overlaps.  Useful in
+            debugging issues with feature overlap of the DEM.  Setting this
+            parameter to ``True`` will dramatically increase runtime when
+            outflow geometries cover many pixels.
         remove_temp_files=True (bool): Whether to remove the created temp
             directory at the end of the watershed delineation run.
 
@@ -754,7 +761,10 @@ def delineate_watersheds_d8(
             continue
 
         seeds_raster_path = os.path.join(working_dir_path, '%s_rasterized.tif' % ws_id)
-        diagnostic_vector_path = os.path.join(working_dir_path, '%s_seeds.gpkg' % ws_id)
+        if write_diagnostic_vector:
+            diagnostic_vector_path = os.path.join(working_dir_path, '%s_seeds.gpkg' % ws_id)
+        else:
+            diagnostic_vector_path = None
         seeds_in_watershed = _c_split_geometry_into_seeds(
             geom_wkb,
             source_gt,
@@ -909,7 +919,8 @@ def delineate_watersheds_d8(
             if os.path.exists(seeds_raster_path):
                 os.remove(seeds_raster_path)
             os.remove(vrt_path)
-            if os.path.exists(diagnostic_vector_path):
+            if (diagnostic_vector_path
+                    and os.path.exists(diagnostic_vector_path)):
                 os.remove(diagnostic_vector_path)
 
     LOGGER.info('Finished delineating %s watersheds', watersheds_created)
