@@ -483,9 +483,11 @@ cdef cset[CoordinatePair] _c_split_geometry_into_seeds(
     memory_driver = gdal.GetDriverByName('Memory')
     new_vector = memory_driver.Create('mem', 0, 0, 0, gdal.GDT_Unknown)
     new_layer = new_vector.CreateLayer('user_geometry', flow_dir_srs, ogr.wkbUnknown)
+    new_layer.StartTransaction()
     new_feature = ogr.Feature(new_layer.GetLayerDefn())
     new_feature.SetGeometry(ogr.CreateGeometryFromWkb(source_geom_wkb))
     new_layer.CreateFeature(new_feature)
+    new_layer.CommitTransaction()
 
     local_origin_x = max(minx_aligned, x_origin)
     local_origin_y = min(maxy_aligned, y_origin)
@@ -518,9 +520,11 @@ cdef cset[CoordinatePair] _c_split_geometry_into_seeds(
             'seeds', flow_dir_srs, ogr.wkbPoint)
         user_geometry_layer = diagnostic_vector.CreateLayer(
             'user_geometry', flow_dir_srs, ogr.wkbUnknown)
+        user_geometry_layer.StartTransaction()
         user_feature = ogr.Feature(user_geometry_layer.GetLayerDefn())
         user_feature.SetGeometry(ogr.CreateGeometryFromWkb(source_geom_wkb))
         user_geometry_layer.CreateFeature(user_feature)
+        user_geometry_layer.CommitTransaction()
 
     cdef int row, col
     cdef int global_row, global_col
@@ -548,6 +552,7 @@ cdef cset[CoordinatePair] _c_split_geometry_into_seeds(
                 global_col = seed_raster_origin_col + block_xoff + col
 
                 if write_diagnostic_vector == 1:
+                    diagnostic_layer.StartTransaction()
                     new_feature = ogr.Feature(diagnostic_layer.GetLayerDefn())
                     new_feature.SetGeometry(ogr.CreateGeometryFromWkb(
                         shapely.geometry.Point(
@@ -556,6 +561,7 @@ cdef cset[CoordinatePair] _c_split_geometry_into_seeds(
                             y_origin + ((global_row*y_pixelwidth) +
                                         (y_pixelwidth / 2.))).wkb))
                     diagnostic_layer.CreateFeature(new_feature)
+                    diagnostic_layer.CommitTransaction()
 
                 seed_set.insert(CoordinatePair(global_col, global_row))
 
