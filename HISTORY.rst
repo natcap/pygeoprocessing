@@ -1,6 +1,18 @@
 Release History
 ===============
 
+Unreleased Changes
+------------------
+* Correcting the docstring for ``pygeoprocessing.numpy_array_to_raster`` to
+  specify that the ``pixel_size`` parameter must be a tuple or list, not an
+  int.
+* ``pygeoprocessing.routing.delineate_watersheds_d8`` now has an optional
+  parameter ``write_diagnostic_vector``.  When ``True``, this parameter will
+  cause a new vector per outflow feature to be created in the ``working_dir``.
+  This parameter defaults to ``False``.  This is a change from prior behavior,
+  when the diagnostic vectors were always created, which could occupy a lot of
+  computational time under large outflow geometries.
+
 2.0.0 (05-19-2020)
 ------------------
 * Adding Python 3.8 support and dropping Python 3.6 support.
