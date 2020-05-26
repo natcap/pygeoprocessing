@@ -3,6 +3,7 @@ import os
 import shutil
 import tempfile
 import unittest
+import glob
 
 from osgeo import gdal
 from osgeo import ogr
@@ -25,8 +26,8 @@ class WatershedDelineationTests(unittest.TestCase):
         """Delete workspace dir."""
         shutil.rmtree(self.workspace_dir)
 
-    def test_watersheds_trivial(self):
-        """PGP watersheds: test trivial delineation."""
+    def test_watersheds_diagnostic_vector(self):
+        """PGP watersheds: test diagnostic vector."""
         flow_dir_array = numpy.array([
             [6, 6, 6, 6, 6, 6, 6, 6, 6, 6],
             [6, 6, 6, 6, 6, 6, 6, 6, 6, 6],
@@ -45,19 +46,13 @@ class WatershedDelineationTests(unittest.TestCase):
         srs_wkt = srs.ExportToWkt()
 
         flow_dir_path = os.path.join(self.workspace_dir, 'flow_dir.tif')
-        driver = gdal.GetDriverByName('GTiff')
-        flow_dir_raster = driver.Create(
-            flow_dir_path, flow_dir_array.shape[1], flow_dir_array.shape[0],
-            1, gdal.GDT_Byte, options=(
-                'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
-                'BLOCKXSIZE=256', 'BLOCKYSIZE=256'))
-        flow_dir_raster.SetProjection(srs_wkt)
-        flow_dir_band = flow_dir_raster.GetRasterBand(1)
-        flow_dir_band.WriteArray(flow_dir_array)
-        flow_dir_band.SetNoDataValue(255)
-        flow_dir_geotransform = [2, 2, 0, -2, 0, -2]
-        flow_dir_raster.SetGeoTransform(flow_dir_geotransform)
-        flow_dir_raster = None
+        pygeoprocessing.numpy_array_to_raster(
+            base_array=flow_dir_array,
+            target_nodata=255,
+            pixel_size=(2, -2),
+            origin=(2, -2),
+            projection_wkt=srs_wkt,
+            target_path=flow_dir_path)
 
         # These geometries test:
         #  * Delineation works with varying geometry types
@@ -85,7 +80,78 @@ class WatershedDelineationTests(unittest.TestCase):
                 {'polygon_id': 3, 'field_string': 'hello bar', 'other': 3.333},
                 {'polygon_id': 4, 'field_string': 'hello baz', 'other': 4.444}
             ],
-            ogr_geom_type=ogr.wkbGeometryCollection)
+            ogr_geom_type=ogr.wkbUnknown)
+
+        target_watersheds_path = os.path.join(
+            self.workspace_dir, 'watersheds.gpkg')
+
+        pygeoprocessing.routing.delineate_watersheds_d8(
+            (flow_dir_path, 1), outflow_vector_path, target_watersheds_path,
+            write_diagnostic_vector=True, working_dir=self.workspace_dir,
+            remove_temp_files=False)
+
+        # I'm deliberately only testing that the diagnostic files exist, not
+        # the contents.  The diagnostic files should be for debugging only,
+        # so I just want to make sure that they're created.
+        num_diagnostic_files = len(
+            glob.glob(os.path.join(self.workspace_dir, '**/*_seeds.gpkg')))
+        self.assertEqual(num_diagnostic_files, 3)  # 3 features valid
+
+    def test_watersheds_trivial(self):
+        """PGP watersheds: test trivial delineation."""
+        flow_dir_array = numpy.array([
+            [6, 6, 6, 6, 6, 6, 6, 6, 6, 6],
+            [6, 6, 6, 6, 6, 6, 6, 6, 6, 6],
+            [6, 6, 6, 6, 6, 6, 6, 6, 6, 6],
+            [6, 6, 6, 6, 6, 6, 6, 6, 6, 255],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            [2, 2, 2, 2, 2, 2, 2, 2, 2, 255],
+            [2, 2, 2, 2, 2, 2, 2, 2, 2, 2],
+            [2, 2, 2, 2, 2, 2, 2, 2, 2, 2],
+            [2, 2, 2, 2, 2, 2, 2, 2, 2, 2],
+            [2, 2, 2, 2, 2, 2, 2, 2, 2, 2]],
+            dtype=numpy.int8)
+
+        srs = osr.SpatialReference()
+        srs.ImportFromEPSG(32731)  # WGS84 / UTM zone 31s
+        srs_wkt = srs.ExportToWkt()
+
+        flow_dir_path = os.path.join(self.workspace_dir, 'flow_dir.tif')
+        pygeoprocessing.numpy_array_to_raster(
+            base_array=flow_dir_array,
+            target_nodata=255,
+            pixel_size=(2, -2),
+            origin=(2, -2),
+            projection_wkt=srs_wkt,
+            target_path=flow_dir_path)
+
+        # These geometries test:
+        #  * Delineation works with varying geometry types
+        #  * That we exclude seed pixels that are over nodata
+        #  * That we exclude seed pixels off the bounds of the raster
+        horizontal_line = shapely.geometry.LineString([(19, -11), (25, -11)])
+        vertical_line = shapely.geometry.LineString([(21, -9), (21, -13)])
+        square = shapely.geometry.box(17, -13, 21, -9)
+        point = shapely.geometry.Point(21, -11)
+
+        outflow_vector_path = os.path.join(self.workspace_dir, 'outflow.gpkg')
+        pygeoprocessing.shapely_geometry_to_vector(
+            [horizontal_line, vertical_line, square, point],
+            outflow_vector_path, srs_wkt,
+            'GPKG',
+            {
+                'polygon_id': ogr.OFTInteger,
+                'field_string': ogr.OFTString,
+                'other': ogr.OFTReal
+            },
+            [
+                {'polygon_id': 1, 'field_string': 'hello world',
+                 'other': 1.111},
+                {'polygon_id': 2, 'field_string': 'hello foo', 'other': 2.222},
+                {'polygon_id': 3, 'field_string': 'hello bar', 'other': 3.333},
+                {'polygon_id': 4, 'field_string': 'hello baz', 'other': 4.444}
+            ],
+            ogr_geom_type=ogr.wkbUnknown)
 
         target_watersheds_path = os.path.join(
             self.workspace_dir, 'watersheds.gpkg')

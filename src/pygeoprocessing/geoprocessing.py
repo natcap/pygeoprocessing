@@ -3613,7 +3613,7 @@ def numpy_array_to_raster(
     Args:
         base_array (numpy.array): a 2d numpy array.
         target_nodata (numeric): nodata value of target array, can be None.
-        pixel_size (int): square dimensions of pixel.
+        pixel_size (tuple): square dimensions (in ``(x, y)``) of pixel.
         origin (tuple/list): x/y coordinate of the raster origin.
         projection_wkt (str): target projection in wkt.
         target_path (str): path to raster to create that will be of the

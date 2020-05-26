@@ -483,9 +483,11 @@ cdef cset[CoordinatePair] _c_split_geometry_into_seeds(
     memory_driver = gdal.GetDriverByName('Memory')
     new_vector = memory_driver.Create('mem', 0, 0, 0, gdal.GDT_Unknown)
     new_layer = new_vector.CreateLayer('user_geometry', flow_dir_srs, ogr.wkbUnknown)
+    new_layer.StartTransaction()
     new_feature = ogr.Feature(new_layer.GetLayerDefn())
     new_feature.SetGeometry(ogr.CreateGeometryFromWkb(source_geom_wkb))
     new_layer.CreateFeature(new_feature)
+    new_layer.CommitTransaction()
 
     local_origin_x = max(minx_aligned, x_origin)
     local_origin_y = min(maxy_aligned, y_origin)
@@ -518,9 +520,11 @@ cdef cset[CoordinatePair] _c_split_geometry_into_seeds(
             'seeds', flow_dir_srs, ogr.wkbPoint)
         user_geometry_layer = diagnostic_vector.CreateLayer(
             'user_geometry', flow_dir_srs, ogr.wkbUnknown)
+        user_geometry_layer.StartTransaction()
         user_feature = ogr.Feature(user_geometry_layer.GetLayerDefn())
         user_feature.SetGeometry(ogr.CreateGeometryFromWkb(source_geom_wkb))
         user_geometry_layer.CreateFeature(user_feature)
+        user_geometry_layer.CommitTransaction()
 
     cdef int row, col
     cdef int global_row, global_col
@@ -548,6 +552,7 @@ cdef cset[CoordinatePair] _c_split_geometry_into_seeds(
                 global_col = seed_raster_origin_col + block_xoff + col
 
                 if write_diagnostic_vector == 1:
+                    diagnostic_layer.StartTransaction()
                     new_feature = ogr.Feature(diagnostic_layer.GetLayerDefn())
                     new_feature.SetGeometry(ogr.CreateGeometryFromWkb(
                         shapely.geometry.Point(
@@ -556,6 +561,7 @@ cdef cset[CoordinatePair] _c_split_geometry_into_seeds(
                             y_origin + ((global_row*y_pixelwidth) +
                                         (y_pixelwidth / 2.))).wkb))
                     diagnostic_layer.CreateFeature(new_feature)
+                    diagnostic_layer.CommitTransaction()
 
                 seed_set.insert(CoordinatePair(global_col, global_row))
 
@@ -618,7 +624,7 @@ def _split_geometry_into_seeds(
 def delineate_watersheds_d8(
         d8_flow_dir_raster_path_band, outflow_vector_path,
         target_watersheds_vector_path, working_dir=None,
-        remove_temp_files=True):
+        write_diagnostic_vector=False, remove_temp_files=True):
     """Delineate watersheds for a vector of geometries using D8 flow dir.
 
     Parameters:
@@ -636,6 +642,13 @@ def delineate_watersheds_d8(
         working_dir=None (string or None): The path to a directory on disk
             within which various intermediate files will be stored.  If None,
             a folder will be created within the system's temp directory.
+        write_diagnostic_vector=False (bool): If ``True``, a set of vectors will
+            be written to ``working_dir``, one per watershed.  Each vector
+            includes geometries for the watershed being represented and
+            for the watershed seed pixels the geometry overlaps.  Useful in
+            debugging issues with feature overlap of the DEM.  Setting this
+            parameter to ``True`` will dramatically increase runtime when
+            outflow geometries cover many pixels.
         remove_temp_files=True (bool): Whether to remove the created temp
             directory at the end of the watershed delineation run.
 
@@ -748,7 +761,10 @@ def delineate_watersheds_d8(
             continue
 
         seeds_raster_path = os.path.join(working_dir_path, '%s_rasterized.tif' % ws_id)
-        diagnostic_vector_path = os.path.join(working_dir_path, '%s_seeds.gpkg' % ws_id)
+        if write_diagnostic_vector:
+            diagnostic_vector_path = os.path.join(working_dir_path, '%s_seeds.gpkg' % ws_id)
+        else:
+            diagnostic_vector_path = None
         seeds_in_watershed = _c_split_geometry_into_seeds(
             geom_wkb,
             source_gt,
@@ -903,7 +919,8 @@ def delineate_watersheds_d8(
             if os.path.exists(seeds_raster_path):
                 os.remove(seeds_raster_path)
             os.remove(vrt_path)
-            if os.path.exists(diagnostic_vector_path):
+            if (diagnostic_vector_path
+                    and os.path.exists(diagnostic_vector_path)):
                 os.remove(diagnostic_vector_path)
 
     LOGGER.info('Finished delineating %s watersheds', watersheds_created)
