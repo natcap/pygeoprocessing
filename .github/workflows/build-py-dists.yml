@@ -27,6 +27,9 @@ jobs:
                   # Fetch all history so that setuptools_scm can build the correct version string.
                   fetch-depth: 0
 
+            - name: Fetch git tags
+              run: git fetch origin +refs/tags/*:refs/tags/*
+
             - name: Set up python ${{ matrix.python-version }} ${{ matrix.python-arch }}
               uses: actions/setup-python@v1
               with:
@@ -52,6 +55,9 @@ jobs:
               with:
                   # Fetch all history so that setuptools_scm can build the correct version string.
                   fetch-depth: 0
+
+            - name: Fetch git tags
+              run: git fetch origin +refs/tags/*:refs/tags/*
 
             - name: Set up python
               uses: actions/setup-python@v1
