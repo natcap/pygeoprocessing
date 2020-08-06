@@ -29,6 +29,22 @@ import shapely.ops
 import shapely.prepared
 import shapely.wkb
 
+class ReclassificationMissingValuesError(Exception):
+    """Raised when a raster value is not a valid key to a dictionary.
+
+    Attributes:
+        missing_values (list) - a list of the missing values from the raster
+            that are not keys in the dictionary
+        value_map (dict) - the dictionary used to map raster values
+
+    """
+
+    def __init__(self, msg, missing_values, value_map):
+        self.msg = msg
+        self.missing_values = missing_values
+        self.value_map = value_map
+        super().__init__(msg, missing_values, value_map)
+
 LOGGER = logging.getLogger(__name__)
 
 # Used in joining finished TaskGraph Tasks.
@@ -1745,11 +1761,11 @@ def reclassify_raster(
             has_map = numpy.in1d(unique, keys)
             if not all(has_map):
                 missing_values = unique[~has_map]
-                raise ValueError(
-                    'The following %d raster values %s from "%s" do not have '
-                    'corresponding entries in the ``value_map``: %s' % (
-                        missing_values.size, str(missing_values),
-                        base_raster_path_band[0], str(value_map)))
+                raise ReclassificationMissingValuesError(
+                    f'The following {missing_values.size} raster values'
+                    f' {missing_values} from "{base_raster_path_band[0]}"'
+                    ' do not have corresponding entries in the ``value_map``:'
+                    f' {value_map}.', missing_values, value_map)
         index = numpy.digitize(original_values.ravel(), keys, right=True)
         return values[index].reshape(original_values.shape)
 

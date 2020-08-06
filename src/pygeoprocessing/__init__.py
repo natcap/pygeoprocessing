@@ -7,6 +7,7 @@ import sys
 import types
 
 from . import geoprocessing
+from .geoprocessing import ReclassificationMissingValuesError
 from .geoprocessing_core import calculate_slope
 from .geoprocessing_core import raster_band_percentile
 import pkg_resources
