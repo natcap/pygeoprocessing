@@ -98,8 +98,6 @@ class PyGeoprocessing10(unittest.TestCase):
 
     def test_reclassify_raster_missing_pixel_value(self):
         """PGP.geoprocessing: test reclassify raster with missing value."""
-        reclass_error = pygeoprocessing.ReclassificationMissingValuesError
-
         n_pixels = 9
         pixel_matrix = numpy.ones((n_pixels, n_pixels), numpy.float32)
         test_value = 0.5
@@ -115,11 +113,12 @@ class PyGeoprocessing10(unittest.TestCase):
             test_value: 100,
         }
         target_nodata = -1
-        with self.assertRaises(reclass_error) as cm:
+        with self.assertRaises(
+                pygeoprocessing.ReclassificationMissingValuesError) as cm:
             pygeoprocessing.reclassify_raster(
                 (raster_path, 1), value_map, target_path, gdal.GDT_Float32,
                 target_nodata, values_required=True)
-        expected_message = ('The following 1 raster values [-0.5]')
+        expected_message = 'The following 1 raster values [-0.5]'
         actual_message = str(cm.exception)
         self.assertTrue(expected_message in actual_message, actual_message)
 
