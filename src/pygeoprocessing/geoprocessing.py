@@ -33,6 +33,7 @@ class ReclassificationMissingValuesError(Exception):
     """Raised when a raster value is not a valid key to a dictionary.
 
     Attributes:
+        msg (str) - error message
         missing_values (list) - a list of the missing values from the raster
             that are not keys in the dictionary
         value_map (dict) - the dictionary used to map raster values
@@ -1734,8 +1735,9 @@ def reclassify_raster(
         None
 
     Raises:
-        ValueError if ``values_required`` is ``True`` and a pixel value from
-           ``base_raster_path_band`` is not a key in ``attr_dict``.
+        ReclassificationMissingValuesError if ``values_required`` is ``True``
+        and a pixel value from ``base_raster_path_band`` is not a key in
+        ``attr_dict``.
 
     """
     if len(value_map) == 0:
