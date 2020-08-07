@@ -82,8 +82,8 @@ class PyGeoprocessing10(unittest.TestCase):
                 func = getattr(pygeoprocessing, attrname)
                 self.assertTrue(
                     isinstance(func, (
-                        types.FunctionType, types.BuiltinFunctionType,
-                        types.MethodType)) or
+                        types.FunctionType, types.BuiltinFunctionType)) or
+                    issubclass(func, Exception) or
                     inspect.isroutine(func))
             except AttributeError:
                 self.fail(('Function %s is in pygeoprocessing.__all__ but '
