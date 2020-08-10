@@ -7,12 +7,14 @@ import sys
 import types
 
 from . import geoprocessing
+from .geoprocessing import ReclassificationMissingValuesError
 from .geoprocessing_core import calculate_slope
 from .geoprocessing_core import raster_band_percentile
 import pkg_resources
 __version__ = pkg_resources.get_distribution(__name__).version
 
-__all__ = ('calculate_slope', 'raster_band_percentile')
+__all__ = ('calculate_slope', 'raster_band_percentile', 
+           'ReclassificationMissingValuesError')
 for attrname in dir(geoprocessing):
     attribute = getattr(geoprocessing, attrname)
     if isinstance(attribute, types.FunctionType):

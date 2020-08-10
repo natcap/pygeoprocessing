@@ -83,6 +83,7 @@ class PyGeoprocessing10(unittest.TestCase):
                 self.assertTrue(
                     isinstance(func, (
                         types.FunctionType, types.BuiltinFunctionType)) or
+                    issubclass(func, Exception) or
                     inspect.isroutine(func))
             except AttributeError:
                 self.fail(('Function %s is in pygeoprocessing.__all__ but '
@@ -113,13 +114,12 @@ class PyGeoprocessing10(unittest.TestCase):
             test_value: 100,
         }
         target_nodata = -1
-        with self.assertRaises(ValueError) as cm:
+        with self.assertRaises(
+                pygeoprocessing.ReclassificationMissingValuesError) as cm:
             pygeoprocessing.reclassify_raster(
                 (raster_path, 1), value_map, target_path, gdal.GDT_Float32,
                 target_nodata, values_required=True)
-        expected_message = (
-            'The following 1 raster values [-0.5] from "%s" do not have ' %
-            (raster_path,))
+        expected_message = 'The following 1 raster values [-0.5]'
         actual_message = str(cm.exception)
         self.assertTrue(expected_message in actual_message, actual_message)
 

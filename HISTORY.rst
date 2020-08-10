@@ -3,6 +3,13 @@ Release History
 
 Unreleased Changes
 ------------------
+* Added a custom exception class ``ReclassificationMissingValuesError`` to 
+  ``pygeoprocessing``. ``pygeoprocessing.reclassify_raster`` raises this
+  exception instead of ``ValueError`` when a raster pixel value is not
+  represented in ``value_map``. This custom exception provides a list of 
+  missing raster pixel values in a ``missing_values`` attribute that allows
+  the caller access to the pixel values that are missing through a Python type
+  rather than indirectly through an error message.
 * Correcting the docstring for ``pygeoprocessing.numpy_array_to_raster`` to
   specify that the ``pixel_size`` parameter must be a tuple or list, not an
   int.
