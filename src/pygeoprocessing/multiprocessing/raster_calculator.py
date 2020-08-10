@@ -26,7 +26,9 @@ def count_complete_handler(total_steps, start_time):
         success_handler.steps_so_far += 1
         if time.time() - success_handler.last_time > 5.0:
             LOGGER.info(
-                f'raster_calculator {success_handler.steps_so_far/total_steps*100}%% complete')
+                'raster_calculator '
+                f'{success_handler.steps_so_far/total_steps*100:.2f}% '
+                'complete')
             success_handler.last_time = time.time()
 
     success_handler.steps_so_far = 0
