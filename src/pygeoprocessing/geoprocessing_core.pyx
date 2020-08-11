@@ -572,7 +572,7 @@ def stats_worker(stats_work_queue, expected_blocks):
                 except FileNotFoundError:
                     LOGGER.warning(
                         f'shared memory object not found while trying to '
-                        f'load {shm_name}')
+                        f'load {shm_name}, waiting {retry_delay}')
                     if retry_delay > 100:
                         raise
                     time.sleep(retry_delay)
