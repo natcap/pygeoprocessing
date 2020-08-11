@@ -361,7 +361,8 @@ def _validate_raster_input(
 
 def raster_calculator(
         base_raster_path_band_const_list, local_op, target_raster_path,
-        datatype_target, nodata_target, n_workers=multiprocessing.cpu_count(),
+        datatype_target, nodata_target,
+        n_workers=max(1, multiprocessing.cpu_count()),
         calc_raster_stats=True, largest_block=_LARGEST_ITERBLOCK,
         raster_driver_creation_tuple=DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS):
     """Apply local a raster operation on a stack of rasters.
@@ -543,21 +544,27 @@ def raster_calculator(
     LOGGER.info('all work sent, waiting for workers to finish')
     for worker, shared_memory in process_list:
         worker.join(_MAX_TIMEOUT)
-        if not worker.is_alive():
+        if worker.is_alive():
             LOGGER.error(
                 f'worker {worker.pid} didn\'t terminate, sending kill signal.')
-            os.kill(worker.pid, signal.SIGKILL)
+            try:
+                os.kill(stats_worker.pid, signal.SIGTERM)
+            except Exception:
+                LOGGER.exception(f'unable to kill {worker.pid}')
         if shared_memory is not None:
             shared_memory.close()
             shared_memory.unlink()
 
     LOGGER.info('wait for stats worker to complete')
     stats_worker.join(_MAX_TIMEOUT)
-    if not stats_worker.is_alive():
+    if stats_worker.is_alive():
         LOGGER.error(
             f'stats worker {stats_worker.pid} '
             'didn\'t terminate, sending kill signal.')
-        os.kill(stats_worker.pid, signal.SIGKILL)
+        try:
+            os.kill(stats_worker.pid, signal.SIGTERM)
+        except Exception:
+            LOGGER.exception(f'unable to kill {stats_worker.pid}')
 
     if calc_raster_stats:
         payload = stats_worker_queue.get(True, _MAX_TIMEOUT)
