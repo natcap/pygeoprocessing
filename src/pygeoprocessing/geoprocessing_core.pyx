@@ -593,11 +593,6 @@ def stats_worker(stats_work_queue, expected_blocks):
             LOGGER.exception(
                 "exception %s %s %s %s %s", x, M_local, S_local, n, payload)
             raise
-        finally:
-            if existing_shm is not None:
-                block = None
-                existing_shm.close()
-                existing_shm.unlink()
 
     if n > 0:
         stats_work_queue.put(
