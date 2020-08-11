@@ -29,6 +29,7 @@ import shapely.ops
 import shapely.prepared
 import shapely.wkb
 
+
 class ReclassificationMissingValuesError(Exception):
     """Raised when a raster value is not a valid key to a dictionary.
 
@@ -42,6 +43,7 @@ class ReclassificationMissingValuesError(Exception):
         self.msg = msg
         self.missing_values = missing_values
         super().__init__(msg, missing_values)
+
 
 LOGGER = logging.getLogger(__name__)
 
@@ -354,6 +356,10 @@ def raster_calculator(
             stats_worker_queue = None
             exception_queue = None
 
+        block_offset_list = list(iterblocks(
+            (target_raster_path, 1), offset_only=True,
+            largest_block=largest_block))
+
         if calc_raster_stats:
             # To avoid doing two passes on the raster to calculate standard
             # deviation, we implement a continuous statistics calculation
@@ -375,9 +381,7 @@ def raster_calculator(
         n_pixels = n_cols * n_rows
 
         # iterate over each block and calculate local_op
-        for block_offset in iterblocks(
-                (target_raster_path, 1), offset_only=True,
-                largest_block=largest_block):
+        for block_offset in block_offset_list:
             # read input blocks
             offset_list = (block_offset['yoff'], block_offset['xoff'])
             blocksize = (block_offset['win_ysize'], block_offset['win_xsize'])

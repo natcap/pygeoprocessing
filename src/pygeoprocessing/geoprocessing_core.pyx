@@ -3,11 +3,13 @@
 # cython: language_level=3
 import logging
 import os
+import pickle
 import shutil
 import sys
 import tempfile
 import time
 import traceback
+import zlib
 
 cimport cython
 cimport libcpp.algorithm
@@ -529,18 +531,21 @@ def calculate_slope(
 
 @cython.boundscheck(False)
 @cython.cdivision(True)
-def stats_worker(stats_work_queue, exception_queue):
+def stats_worker(stats_work_queue, expected_blocks):
     """Worker to calculate continuous min, max, mean and standard deviation.
 
     Parameters:
         stats_work_queue (Queue): a queue of 1D numpy arrays or None. If
             None, function puts a (min, max, mean, stddev) tuple to the
             queue and quits.
+        expected_blocks (int): number of expected payloads through
+            ``stats_work_queue``. Will terminate after this many.
 
     Returns:
         None
 
     """
+    LOGGER.debug(f'stats worker PID: {os.getpid()}')
     cdef numpy.ndarray[numpy.float64_t, ndim=1] block
     cdef double M_local = 0.0
     cdef double S_local = 0.0
@@ -552,12 +557,10 @@ def stats_worker(stats_work_queue, exception_queue):
     payload = None
 
     try:
-        while True:
-            payload = stats_work_queue.get()
-            if payload is None:
-                LOGGER.debug('payload is None, terminating')
-                break
-            block = payload.astype(numpy.float64)
+        for index in range(expected_blocks):
+            block = pickle.loads(zlib.decompress(stats_work_queue.get()))
+            if block.size == 0:
+                continue
             n_elements = block.size
             with nogil:
                 for i in range(n_elements):
@@ -590,10 +593,8 @@ def stats_worker(stats_work_queue, exception_queue):
     except Exception as e:
         LOGGER.exception(
             "exception %s %s %s %s %s", x, M_local, S_local, n, payload)
-        exception_queue.put(e)
-        while not stats_work_queue.empty():
-            stats_work_queue.get()
         raise
+
 
 ctypedef long long int64t
 ctypedef FastFileIterator[long long]* FastFileIteratorLongLongIntPtr
