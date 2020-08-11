@@ -168,7 +168,7 @@ def _raster_calculator_worker(
         if not existing_shm:
             raise Exception(f'shared memory object does not exist {shm_name}')
 
-        stats_worker_queue.put((shm_array.shape, shm_array.dtype, shm.name))
+        stats_worker_queue.put((shm_array.shape, shm_array.dtype, shm))
         with write_lock:
             success_handler(processing_state)
         last_time = time.time()
