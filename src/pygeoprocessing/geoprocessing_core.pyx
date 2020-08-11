@@ -2,6 +2,7 @@
 # distutils: language=c++
 # cython: language_level=3
 import logging
+import multiprocessing
 import os
 import pickle
 import shutil
@@ -556,9 +557,28 @@ def stats_worker(stats_work_queue, expected_blocks):
     cdef long long n = 0L
     payload = None
 
-    try:
-        for index in range(expected_blocks):
-            block = pickle.loads(zlib.decompress(stats_work_queue.get()))
+    for index in range(expected_blocks):
+        try:
+            existing_shm = None
+            payload = stats_work_queue.get()
+            if payload is None:
+                return
+            shape, dtype, shm_name = payload
+            initial_wait = 0.1
+            while True:
+                try:
+                    existing_shm = multiprocessing.shared_memory.SharedMemory(
+                        name=shm_name)
+                except FileNotFoundError:
+                    LOGGER.warning(
+                        f'shared memory object not found while trying to '
+                        f'load {shm_name}')
+                    if initial_wait > 10:
+                        raise
+                    time.sleep(initial_wait)
+                    initial_wait *= 2
+
+            block = numpy.ndarray(shape, dtype=dtype, buffer=existing_shm.buf)
             if block.size == 0:
                 continue
             n_elements = block.size
@@ -582,18 +602,23 @@ def stats_worker(stats_work_queue, expected_blocks):
                             min_value = x
                         elif x > max_value:
                             max_value = x
+        except Exception as e:
+            LOGGER.exception(
+                "exception %s %s %s %s %s", x, M_local, S_local, n, payload)
+            raise
+        finally:
+            if existing_shm is not None:
+                existing_shm.close()
+                existing_shm.unlink()
 
-        if n > 0:
-            stats_work_queue.put(
-                (min_value, max_value, M_local, (S_local / <double>n) ** 0.5))
-        else:
-            LOGGER.warning(
-                "No valid pixels were received, sending None.")
-            stats_work_queue.put(None)
-    except Exception as e:
-        LOGGER.exception(
-            "exception %s %s %s %s %s", x, M_local, S_local, n, payload)
-        raise
+    if n > 0:
+        stats_work_queue.put(
+            (min_value, max_value, M_local,
+                (S_local / <double>n) ** 0.5))
+    else:
+        LOGGER.warning(
+            "No valid pixels were received, sending None.")
+        stats_work_queue.put(None)
 
 
 ctypedef long long int64t

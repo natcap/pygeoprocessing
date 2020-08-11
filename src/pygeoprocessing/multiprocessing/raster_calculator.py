@@ -22,21 +22,14 @@ from osgeo import gdal
 import numpy
 
 
-def _build_raster_calc_reporting_handler(total_steps, start_time):
-    """Construct a reporting handler that can be passed to an async call."""
-    def success_handler(val):
-        success_handler.steps_so_far += 1
-        if time.time() - success_handler.last_time > 5.0:
-            LOGGER.info(
-                'raster_calculator '
-                f'{success_handler.steps_so_far/total_steps*100:.2f}% '
-                'complete')
-            success_handler.last_time = time.time()
-
-    success_handler.steps_so_far = 0
-    success_handler.last_time = start_time
-
-    return success_handler
+def success_handler(callback_state):
+    callback_state['steps_so_far'] += 1
+    if time.time() - callback_state['last_time'] > 5.0:
+        LOGGER.info(
+            'raster_calculator '
+            f"{callback_state['steps_so_far']/callback_state['total_steps']*100:.2f}% "
+            'complete')
+        callback_state['last_time'] = time.time()
 
 
 class RasterPathBand():
@@ -58,8 +51,9 @@ def _build_raster_calc_error_handler(pool):
 
 
 def _raster_calculator_worker(
-        block_offset, base_canonical_arg_list, local_op, stats_worker_queue,
-        nodata_target, target_raster_path, write_lock):
+        block_offset_queue, base_canonical_arg_list, local_op,
+        stats_worker_queue, nodata_target, target_raster_path, write_lock,
+        wait_time_dict, callback_handler, callback_state):
     """Process a single block of an array for raster_calculation.
 
     Args:
@@ -78,69 +72,92 @@ def _raster_calculator_worker(
 
     """
     # read input blocks
-    offset_list = (block_offset['yoff'], block_offset['xoff'])
-    blocksize = (block_offset['win_ysize'], block_offset['win_xsize'])
-    data_blocks = []
-    for value in base_canonical_arg_list:
-        if isinstance(value, RasterPathBand):
-            raster = gdal.OpenEx(value.path, gdal.OF_RASTER)
-            band = raster.GetRasterBand(value.band_id)
-            data_blocks.append(band.ReadAsArray(**block_offset))
-            # I've encountered the following error when a gdal raster
-            # is corrupt, often from multiple threads writing to the
-            # same file. This helps to catch the error early rather
-            # than lead to confusing values of ``data_blocks`` later.
-            if not isinstance(data_blocks[-1], numpy.ndarray):
-                raise ValueError(
-                    f"got a {data_blocks[-1]} when trying to read "
-                    f"{band.GetDataset().GetFileList()} at "
-                    f"{block_offset}, expected numpy.ndarray.")
-            raster = None
-            band = None
-        elif isinstance(value, numpy.ndarray):
-            # must be numpy array and all have been conditioned to be
-            # 2d, so start with 0:1 slices and expand if possible
-            slice_list = [slice(0, 1)] * 2
-            tile_dims = list(blocksize)
-            for dim_index in [0, 1]:
-                if value.shape[dim_index] > 1:
-                    slice_list[dim_index] = slice(
-                        offset_list[dim_index],
-                        offset_list[dim_index] +
-                        blocksize[dim_index],)
-                    tile_dims[dim_index] = 1
-            data_blocks.append(
-                numpy.tile(value[tuple(slice_list)], tile_dims))
-        else:
-            # must be a raw tuple
-            data_blocks.append(value[0])
+    while True:
+        block_offset = block_offset_queue.get()
+        if block_offset is None:
+            return
+        if os.getpid() in wait_time_dict:
+            delta = time.time() - wait_time_dict[os.getpid()]
+            if delta > 0.002:
+                LOGGER.warning(
+                    f''''waittime for {os.getpid():5d}: {delta:.4f}''')
 
-    target_block = local_op(*data_blocks)
+        offset_list = (block_offset['yoff'], block_offset['xoff'])
+        blocksize = (block_offset['win_ysize'], block_offset['win_xsize'])
+        data_blocks = []
+        for value in base_canonical_arg_list:
+            if isinstance(value, RasterPathBand):
+                raster = gdal.OpenEx(value.path, gdal.OF_RASTER)
+                band = raster.GetRasterBand(value.band_id)
+                data_blocks.append(band.ReadAsArray(**block_offset))
+                # I've encountered the following error when a gdal raster
+                # is corrupt, often from multiple threads writing to the
+                # same file. This helps to catch the error early rather
+                # than lead to confusing values of ``data_blocks`` later.
+                if not isinstance(data_blocks[-1], numpy.ndarray):
+                    raise ValueError(
+                        f"got a {data_blocks[-1]} when trying to read "
+                        f"{band.GetDataset().GetFileList()} at "
+                        f"{block_offset}, expected numpy.ndarray.")
+                raster = None
+                band = None
+            elif isinstance(value, numpy.ndarray):
+                # must be numpy array and all have been conditioned to be
+                # 2d, so start with 0:1 slices and expand if possible
+                slice_list = [slice(0, 1)] * 2
+                tile_dims = list(blocksize)
+                for dim_index in [0, 1]:
+                    if value.shape[dim_index] > 1:
+                        slice_list[dim_index] = slice(
+                            offset_list[dim_index],
+                            offset_list[dim_index] +
+                            blocksize[dim_index],)
+                        tile_dims[dim_index] = 1
+                data_blocks.append(
+                    numpy.tile(value[tuple(slice_list)], tile_dims))
+            else:
+                # must be a raw tuple
+                data_blocks.append(value[0])
 
-    if (not isinstance(target_block, numpy.ndarray) or
-            target_block.shape != blocksize):
-        raise ValueError(
-            "Expected `local_op` to return a numpy.ndarray of "
-            "shape %s but got this instead: %s" % (
-                blocksize, target_block))
+        target_block = local_op(*data_blocks)
 
-    # send result to stats calculator
-    if stats_worker_queue:
-        # guard against an undefined nodata target
-        if nodata_target is not None:
-            target_block = target_block[target_block != nodata_target]
+        if (not isinstance(target_block, numpy.ndarray) or
+                target_block.shape != blocksize):
+            raise ValueError(
+                "Expected `local_op` to return a numpy.ndarray of "
+                "shape %s but got this instead: %s" % (
+                    blocksize, target_block))
 
-    stats_worker_queue.put(
-        zlib.compress(pickle.dumps(
-            target_block.flatten().astype(numpy.float64))))
-
-    with write_lock:
+        #with write_lock:
         target_raster = gdal.OpenEx(
             target_raster_path, gdal.OF_RASTER | gdal.GA_Update)
         target_band = target_raster.GetRasterBand(1)
         target_band.WriteArray(
             target_block, yoff=block_offset['yoff'],
             xoff=block_offset['xoff'])
+
+        # send result to stats calculator
+        if not stats_worker_queue:
+            return
+
+        # guard against an undefined nodata target
+        if nodata_target is not None:
+            target_block = target_block[target_block != nodata_target]
+
+        target_block = target_block.astype(numpy.float64).flatten()
+
+        shm = multiprocessing.shared_memory.SharedMemory(
+            create=True, size=target_block.nbytes)
+        shm_array = numpy.ndarray(
+            target_block.shape, dtype=target_block.dtype, buffer=shm.buf)
+        shm_array[:] = target_block[:]
+
+        stats_worker_queue.put((shm_array.shape, shm_array.dtype, shm.name))
+
+        with write_lock:
+            callback_handler(callback_state)
+
+        wait_time_dict[os.getpid()] = time.time()
 
 
 def _calculate_target_raster_size(
@@ -458,6 +475,7 @@ def raster_calculator(
     target_raster = None
 
     manager = multiprocessing.Manager()
+    wait_time_dict = manager.dict()
 
     stats_worker_queue = None
     if calc_raster_stats:
@@ -470,13 +488,12 @@ def raster_calculator(
         (target_raster_path, 1), offset_only=True,
         largest_block=largest_block))
 
-    callback_handler = _build_raster_calc_reporting_handler(
-        len(block_offset_list), time.time())
-
+    callback_state = manager.dict()
+    callback_state
     target_write_lock = manager.Lock()
     stats_future = None
-    pool = multiprocessing.Pool(processes=n_workers)
-    raster_calc_error_handler = _build_raster_calc_error_handler(pool)
+    # pool = multiprocessing.Pool(processes=n_workers)
+    # raster_calc_error_handler = _build_raster_calc_error_handler(pool)
     worker_list = []
     if calc_raster_stats:
         LOGGER.debug('start stats')
@@ -488,34 +505,46 @@ def raster_calculator(
         # the raster's statistics. When ``None`` is pushed to the queue
         # the worker will finish and return a (min, max, mean, std)
         # tuple.
-        stats_result = pool.apply_async(
-            geoprocessing_core.stats_worker,
-            (stats_worker_queue, len(block_offset_list)))
+        stats_worker = multiprocessing.Process(
+            target=geoprocessing_core.stats_worker,
+            args=(stats_worker_queue, len(block_offset_list)))
+        stats_worker.start()
 
     LOGGER.debug('start workers')
-    for block_offset in block_offset_list:
-        worker_result = pool.apply_async(
-            _raster_calculator_worker,
-            (block_offset, base_canonical_arg_list, local_op,
-             stats_worker_queue, nodata_target, target_raster_path,
-             target_write_lock),
-            callback=callback_handler,
-            error_callback=raster_calc_error_handler)
-        worker_list.append(worker_result)
+    worker_list = []
 
-    pool.close()
+    callback_state['steps_so_far'] = 0
+    callback_state['total_steps'] = len(block_offset_list)
+    callback_state['last_time'] = time.time()
+
+    block_offset_queue = multiprocessing.Queue(n_workers * 2)
+    for _ in range(n_workers):
+        worker = multiprocessing.Process(
+            target=_raster_calculator_worker,
+            args=(block_offset_queue, base_canonical_arg_list, local_op,
+                  stats_worker_queue, nodata_target, target_raster_path,
+                  target_write_lock, wait_time_dict, success_handler,
+                  callback_state))
+        worker.start()
+        worker_list.append(worker)
+
+
+    for block_offset in block_offset_list:
+        block_offset_queue.put(block_offset)
+
+    for _ in range(n_workers):
+        block_offset_queue.put(None)
+
     LOGGER.info('wait for execution to complete')
     for worker_result in worker_list:
         # try to raise an exception if there is one
         try:
-            worker_result.get()
+            worker_result.join()
         except Exception:
             LOGGER.exception('error in raster_calculator worker')
-            pool.terminate()
             raise
 
-    pool.join()
-    stats_result.get()
+    stats_worker.join()
 
     if calc_raster_stats:
         (target_min, target_max, target_mean, target_stddev) = \
