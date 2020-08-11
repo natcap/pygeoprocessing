@@ -65,7 +65,7 @@ def _build_raster_calc_error_handler(pool):
 def _raster_calculator_worker(
         block_offset_queue, base_canonical_arg_list, local_op,
         stats_worker_queue, nodata_target, target_raster_path, write_lock,
-        processing_state, shared_memory):
+        processing_state, result_array_shared_memory):
     """Process a single block of an array for raster_calculation.
 
     Args:
@@ -73,11 +73,19 @@ def _raster_calculator_worker(
             and can be used to pass directly to Band.ReadAsArray.
         base_canonical_arg_list (list): list of RasterPathBand, numpy arrays,
             or 'raw' objects to pass to the ``local_op``.
-        stats_worker_queue (queue): pass the result of `local_op` to this
-            queue if stats are being calculated.
+        stats_worker_queue (queue): pass a shared memory object `local_op`
+            result to queue if stats are being calculated. None otherwise.
         nodata_target (numeric or None): desired target raster nodata
         target_raster_path (str): path to target raster.
-        write_lock (str): Lock object used to coordinate writes to raster_path.
+        write_lock (multiprocessing.Lock): Lock object used to coordinate
+            writes to raster_path.
+        processing_state (multiprocessing.Manager.dict): a global object to
+            pass to ``__block_success_handler`` for this execution context.
+        result_array_shared_memory (multiprocessing.shared_memory): Shared
+            memory object used to pass data to the stats worker process if
+            required. Should be pre-allocated with enough data to hold the
+            largest result from ``local_op`` given any ``block_offset`` from
+            ``block_offset_queue``. None otherwise.
 
     Returns:
         None.
@@ -158,12 +166,12 @@ def _raster_calculator_worker(
 
         shared_memory_array = numpy.ndarray(
             target_block.shape, dtype=target_block.dtype,
-            buffer=shared_memory.buf)
+            buffer=result_array_shared_memory.buf)
         shared_memory_array[:] = target_block[:]
 
         stats_worker_queue.put((
             shared_memory_array.shape, shared_memory_array.dtype,
-            shared_memory))
+            result_array_shared_memory))
 
 
 def _calculate_target_raster_size(
@@ -492,31 +500,29 @@ def raster_calculator(
         (target_raster_path, 1), offset_only=True,
         largest_block=largest_block))
 
-    target_write_lock = manager.Lock()
     if calc_raster_stats:
-        LOGGER.debug('start stats')
+        LOGGER.debug('start stats worker')
         stats_worker = multiprocessing.Process(
             target=geoprocessing_core.stats_worker,
             args=(stats_worker_queue, len(block_offset_list)))
         stats_worker.start()
 
     LOGGER.debug('start workers')
-
     processing_state = manager.dict()
     processing_state['blocks_complete'] = 0
     processing_state['total_blocks'] = len(block_offset_list)
     processing_state['last_time'] = time.time()
-
-    process_list = []
-    block_offset_queue = multiprocessing.Queue(n_workers)
-
     block_size_bytes = (
         numpy.dtype(numpy.float64).itemsize *
         block_offset_list[0]['win_xsize'] * block_offset_list[0]['win_ysize'])
-
+    target_write_lock = manager.Lock()
+    block_offset_queue = multiprocessing.Queue(n_workers)
+    process_list = []
     for _ in range(n_workers):
-        shared_memory = multiprocessing.shared_memory.SharedMemory(
-            create=True, size=block_size_bytes)
+        shared_memory = None
+        if calc_raster_stats:
+            shared_memory = multiprocessing.shared_memory.SharedMemory(
+                create=True, size=block_size_bytes)
         worker = multiprocessing.Process(
             target=_raster_calculator_worker,
             args=(
@@ -526,7 +532,7 @@ def raster_calculator(
         worker.start()
         process_list.append((worker, shared_memory))
 
-    # Try to put more work in the queue
+    # Fill the work queue
     for block_offset in block_offset_list:
         block_offset_queue.put(block_offset)
 
@@ -541,8 +547,9 @@ def raster_calculator(
             LOGGER.error(
                 f'worker {worker.pid} didn\'t terminate, sending kill signal.')
             os.kill(worker.pid, signal.SIGKILL)
-        shared_memory.close()
-        shared_memory.unlink()
+        if shared_memory is not None:
+            shared_memory.close()
+            shared_memory.unlink()
 
     LOGGER.info('wait for stats worker to complete')
     stats_worker.join(_MAX_TIMEOUT)
