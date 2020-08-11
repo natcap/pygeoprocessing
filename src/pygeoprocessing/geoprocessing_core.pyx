@@ -565,19 +565,6 @@ def stats_worker(stats_work_queue, expected_blocks):
                 return
             shape, dtype, existing_shm = payload
             retry_delay = 0.1
-            # while True:
-            #     try:
-            #         existing_shm = multiprocessing.shared_memory.SharedMemory(
-            #             name=shm_name)
-            #     except FileNotFoundError:
-            #         LOGGER.warning(
-            #             f'shared memory object not found while trying to '
-            #             f'load {shm_name}, waiting {retry_delay}')
-            #         if retry_delay > 100:
-            #             raise
-            #         time.sleep(retry_delay)
-            #         retry_delay *= 2
-
             block = numpy.ndarray(shape, dtype=dtype, buffer=existing_shm.buf)
             if block.size == 0:
                 continue
@@ -608,6 +595,7 @@ def stats_worker(stats_work_queue, expected_blocks):
             raise
         finally:
             if existing_shm is not None:
+                block = None
                 existing_shm.close()
                 existing_shm.unlink()
 

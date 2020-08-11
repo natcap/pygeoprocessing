@@ -63,7 +63,7 @@ def _build_raster_calc_error_handler(pool):
 def _raster_calculator_worker(
         block_offset_queue, base_canonical_arg_list, local_op,
         stats_worker_queue, nodata_target, target_raster_path, write_lock,
-        success_handler, processing_state, wait_time_queue):
+        processing_state):
     """Process a single block of an array for raster_calculation.
 
     Args:
@@ -76,21 +76,17 @@ def _raster_calculator_worker(
         nodata_target (numeric or None): desired target raster nodata
         target_raster_path (str): path to target raster.
         write_lock (str): Lock object used to coordinate writes to raster_path.
-        wait_time_queue (queue): put wait times down this queue to determine
-            if more/less workers are needed
 
     Returns:
         None.
 
     """
     # read input blocks
-    last_time = time.time()
     while True:
         block_offset = block_offset_queue.get()
         if block_offset is None:
             # indicates this worker should terminate
             return
-        wait_time_queue.put(time.time() - last_time)
 
         offset_list = (block_offset['yoff'], block_offset['xoff'])
         blocksize = (block_offset['win_ysize'], block_offset['win_xsize'])
@@ -155,23 +151,22 @@ def _raster_calculator_worker(
             target_block = target_block[target_block != nodata_target]
         target_block = target_block.astype(numpy.float64).flatten()
 
-        shm = multiprocessing.shared_memory.SharedMemory(
+        shared_memory = multiprocessing.shared_memory.SharedMemory(
             create=True, size=target_block.nbytes)
-        shm_array = numpy.ndarray(
-            target_block.shape, dtype=target_block.dtype, buffer=shm.buf)
-        shm_array[:] = target_block[:]
-        shm_name = shm.name
+        shared_memory_array = numpy.ndarray(
+            target_block.shape, dtype=target_block.dtype,
+            buffer=shared_memory.buf)
+        shared_memory_array[:] = target_block[:]
 
-        # verify that shared memory object exists
-        existing_shm = multiprocessing.shared_memory.SharedMemory(
-            create=False, name=shm.name)
-        if not existing_shm:
-            raise Exception(f'shared memory object does not exist {shm_name}')
+        stats_worker_queue.put((
+            shared_memory_array.shape, shared_memory_array.dtype,
+            shared_memory))
 
-        stats_worker_queue.put((shm_array.shape, shm_array.dtype, shm))
+        del shared_memory_array
+        shared_memory.close()
+
         with write_lock:
-            success_handler(processing_state)
-        last_time = time.time()
+            _block_success_handler(processing_state)
 
 
 def _calculate_target_raster_size(
@@ -361,7 +356,7 @@ def _validate_raster_input(
 
 def raster_calculator(
         base_raster_path_band_const_list, local_op, target_raster_path,
-        datatype_target, nodata_target, max_workers=multiprocessing.cpu_count(),
+        datatype_target, nodata_target, n_workers=multiprocessing.cpu_count(),
         calc_raster_stats=True, largest_block=_LARGEST_ITERBLOCK,
         raster_driver_creation_tuple=DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS):
     """Apply local a raster operation on a stack of rasters.
@@ -408,7 +403,7 @@ def raster_calculator(
             the target raster.
         nodata_target (numerical value): the desired nodata value of the
             target raster.
-        max_workers (int): number of Processes to launch for parallel processing,
+        n_workers (int): number of Processes to launch for parallel processing,
             defaults to ``multiprocessing.cpu_count()``.
         calc_raster_stats (boolean): If True, calculates and sets raster
             statistics (min, max, mean, and stdev) for target raster.
@@ -502,19 +497,8 @@ def raster_calculator(
 
     target_write_lock = manager.Lock()
     stats_future = None
-    # pool = multiprocessing.Pool(processes=max_workers)
-    # raster_calc_error_handler = _build_raster_calc_error_handler(pool)
-    worker_list = []
     if calc_raster_stats:
         LOGGER.debug('start stats')
-        # To avoid doing two passes on the raster to calculate standard
-        # deviation, we implement a continuous statistics calculation
-        # as the raster is computed. This computational effort is high
-        # and benefits from running in parallel. This queue and worker
-        # takes a valid block of a raster and incrementally calculates
-        # the raster's statistics. When ``None`` is pushed to the queue
-        # the worker will finish and return a (min, max, mean, std)
-        # tuple.
         stats_worker = multiprocessing.Process(
             target=geoprocessing_core.stats_worker,
             args=(stats_worker_queue, len(block_offset_list)))
@@ -527,72 +511,26 @@ def raster_calculator(
     processing_state['total_blocks'] = len(block_offset_list)
     processing_state['last_time'] = time.time()
 
-    block_offset_queue = multiprocessing.Queue(max_workers)
+    process_list = []
+    block_offset_queue = multiprocessing.Queue(n_workers)
 
-    process_set = set()
-    wait_time_queue = multiprocessing.Queue()
+    for _ in range(n_workers):
+        worker = multiprocessing.Process(
+            target=_raster_calculator_worker,
+            args=(
+                block_offset_queue, base_canonical_arg_list, local_op,
+                stats_worker_queue, nodata_target, target_raster_path,
+                target_write_lock, processing_state))
+        worker.start()
+        process_list.append(worker)
 
-    # this loop monitors the state of the workers and controls them as needed
-    n_workers = 0
-    max_wait_time = 0.0
-    while True:
-        # check to see if it's time to terminate
-        if (processing_state['blocks_complete'] ==
-                processing_state['total_blocks']):
-            # all done, shut down the workers
-            LOGGER.info('all blocks processed -- shutting down workers')
-            for _ in range(n_workers):
-                block_offset_queue.put(None)
-            break
-
-        # test for longest wait time
-        wait_time_list = [0.0]
-        while True:
-            try:
-                wait_time_list.append(
-                    wait_time_queue.get(True, max_wait_time))
-            except queue.Empty:
-                break
-        max_wait_time = max(wait_time_list)
-
-        # add or remove workers as necessary given the max wait time
-        if max_wait_time >= 0.02 and n_workers > 1:
-            n_workers -= 1
-            LOGGER.debug(
-                f'removing a worker from {n_workers} because max_wait_time is '
-                f'{max_wait_time}')
-            block_offset_queue.put(None)
-        elif max_wait_time <= 0.01 and n_workers < max_workers:
-            n_workers += 1
-            LOGGER.debug(
-                f'adding a worker to {n_workers} because max_wait_time is '
-                f'{max_wait_time}')
-            worker = multiprocessing.Process(
-                target=_raster_calculator_worker,
-                args=(
-                    block_offset_queue, base_canonical_arg_list, local_op,
-                    stats_worker_queue, nodata_target, target_raster_path,
-                    target_write_lock, _block_success_handler,
-                    processing_state, wait_time_queue))
-            worker.start()
-            process_set.add(worker)
-
-        # Try to put more work in the queue
-        for _ in range(n_workers*2):
-            try:
-                if not block_offset_list:
-                    # no more work left
-                    break
-                block_offset = block_offset_list.pop()
-                block_offset_queue.put(block_offset)
-            except queue.Full:
-                # put it back, the queue is full
-                block_offset_list.append(block_offset)
-                break
+    # Try to put more work in the queue
+    for block_offset in block_offset_list:
+        block_offset_queue.put(block_offset)
 
     # wait for the workers to join
     LOGGER.info('all work sent, waiting for workers to finish')
-    for worker in process_set:
+    for worker in process_list:
         worker.join()
 
     # Terminate the stats worker:
