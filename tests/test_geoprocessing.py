@@ -1671,7 +1671,6 @@ class PyGeoprocessing10(unittest.TestCase):
                 pygeoprocessing.raster_to_numpy_array(base_path),
                 pygeoprocessing.raster_to_numpy_array(target_path)).all())
 
-
     def test_raster_calculator_mutiprocessing(self):
         """PGP.geoprocessing: raster_calculator identity test."""
         pixel_matrix = numpy.ones((1024, 1024), numpy.int16)
