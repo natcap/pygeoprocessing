@@ -564,7 +564,7 @@ def stats_worker(stats_work_queue, expected_blocks):
             if payload is None:
                 return
             shape, dtype, shm_name = payload
-            initial_wait = 0.1
+            retry_delay = 0.1
             while True:
                 try:
                     existing_shm = multiprocessing.shared_memory.SharedMemory(
@@ -573,10 +573,10 @@ def stats_worker(stats_work_queue, expected_blocks):
                     LOGGER.warning(
                         f'shared memory object not found while trying to '
                         f'load {shm_name}')
-                    if initial_wait > 10:
+                    if retry_delay > 100:
                         raise
-                    time.sleep(initial_wait)
-                    initial_wait *= 2
+                    time.sleep(retry_delay)
+                    retry_delay *= 2
 
             block = numpy.ndarray(shape, dtype=dtype, buffer=existing_shm.buf)
             if block.size == 0:

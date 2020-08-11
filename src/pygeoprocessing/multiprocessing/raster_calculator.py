@@ -1,17 +1,13 @@
 """Multiprocessing implementation of raster_calculator."""
-import concurrent.futures
 import os
 import pprint
-import pickle
 import multiprocessing
+import queue
 import time
-import zlib
 
-from ..geoprocessing import _invoke_timed_callback
 from ..geoprocessing import _is_raster_path_band_formatted
 from ..geoprocessing import _LARGEST_ITERBLOCK
 from ..geoprocessing import _LOGGING_PERIOD
-from ..geoprocessing import _MAX_TIMEOUT
 from ..geoprocessing import _VALID_GDAL_TYPES
 from ..geoprocessing import geoprocessing_core
 from ..geoprocessing import get_raster_info
@@ -22,14 +18,30 @@ from osgeo import gdal
 import numpy
 
 
-def success_handler(callback_state):
-    callback_state['steps_so_far'] += 1
-    if time.time() - callback_state['last_time'] > 5.0:
+def _block_success_handler(callback_state):
+    """Used to update callback state after a successful block is complete.
+
+    Updates the blocks complete and last time, if last_time has been >
+    _LOGGING_PERIOD then dump a log.
+
+    Args:
+        callback_state (dict): contains the following keys
+            'blocks_complete' -- number of raster calculator blocks processed
+            'total_blocks' -- total number to process
+            'last_time' -- last time.time() when a log was printed
+
+    Returns:
+        None
+    """
+    callback_state['callback_event'].set()
+    callback_state['blocks_complete'] += 1
+    if time.time() - callback_state['last_time'] > _LOGGING_PERIOD:
         LOGGER.info(
-            'raster_calculator '
-            f"{callback_state['steps_so_far']/callback_state['total_steps']*100:.2f}% "
-            'complete')
+            f"""raster_calculator {
+                callback_state['blocks_complete']/
+                callback_state['total_blocks']*100:.2f}% complete""")
         callback_state['last_time'] = time.time()
+    callback_state['callback_event'].set()
 
 
 class RasterPathBand():
@@ -53,7 +65,7 @@ def _build_raster_calc_error_handler(pool):
 def _raster_calculator_worker(
         block_offset_queue, base_canonical_arg_list, local_op,
         stats_worker_queue, nodata_target, target_raster_path, write_lock,
-        wait_time_dict, callback_handler, callback_state):
+        success_handler, processing_state):
     """Process a single block of an array for raster_calculation.
 
     Args:
@@ -72,15 +84,23 @@ def _raster_calculator_worker(
 
     """
     # read input blocks
+    pid = os.getpid()
     while True:
         block_offset = block_offset_queue.get()
         if block_offset is None:
+            # indicates this worker should terminate
+            if pid in processing_state['by_pid']:
+                del processing_state['by_pid'][pid]
             return
-        if os.getpid() in wait_time_dict:
-            delta = time.time() - wait_time_dict[os.getpid()]
-            if delta > 0.002:
-                LOGGER.warning(
-                    f''''waittime for {os.getpid():5d}: {delta:.4f}''')
+        if pid in processing_state['by_pid']:
+            # record how long it took to get a new job
+            processing_state['by_pid'][pid]['wait_time'] = (
+                time.time() - processing_state[pid]['last_time'])
+        else:
+            processing_state['by_pid'][pid] = {
+                'last_time': time.time(),
+                'wait_time': 0.0
+            }
 
         offset_list = (block_offset['yoff'], block_offset['xoff'])
         blocksize = (block_offset['win_ysize'], block_offset['win_xsize'])
@@ -155,9 +175,9 @@ def _raster_calculator_worker(
         stats_worker_queue.put((shm_array.shape, shm_array.dtype, shm.name))
 
         with write_lock:
-            callback_handler(callback_state)
+            success_handler(processing_state)
 
-        wait_time_dict[os.getpid()] = time.time()
+        processing_state['by_pid'][pid]['last_time'] = time.time()
 
 
 def _calculate_target_raster_size(
@@ -347,7 +367,7 @@ def _validate_raster_input(
 
 def raster_calculator(
         base_raster_path_band_const_list, local_op, target_raster_path,
-        datatype_target, nodata_target, n_workers=multiprocessing.cpu_count(),
+        datatype_target, nodata_target, max_workers=multiprocessing.cpu_count(),
         calc_raster_stats=True, largest_block=_LARGEST_ITERBLOCK,
         raster_driver_creation_tuple=DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS):
     """Apply local a raster operation on a stack of rasters.
@@ -394,7 +414,7 @@ def raster_calculator(
             the target raster.
         nodata_target (numerical value): the desired nodata value of the
             target raster.
-        n_workers (int): number of Processes to launch for parallel processing,
+        max_workers (int): number of Processes to launch for parallel processing,
             defaults to ``multiprocessing.cpu_count()``.
         calc_raster_stats (boolean): If True, calculates and sets raster
             statistics (min, max, mean, and stdev) for target raster.
@@ -475,8 +495,6 @@ def raster_calculator(
     target_raster = None
 
     manager = multiprocessing.Manager()
-    wait_time_dict = manager.dict()
-
     stats_worker_queue = None
     if calc_raster_stats:
         # if this queue is used to send computed valid blocks of
@@ -488,11 +506,10 @@ def raster_calculator(
         (target_raster_path, 1), offset_only=True,
         largest_block=largest_block))
 
-    callback_state = manager.dict()
-    callback_state
+    processing_state = manager.dict()
     target_write_lock = manager.Lock()
     stats_future = None
-    # pool = multiprocessing.Pool(processes=n_workers)
+    # pool = multiprocessing.Pool(processes=max_workers)
     # raster_calc_error_handler = _build_raster_calc_error_handler(pool)
     worker_list = []
     if calc_raster_stats:
@@ -511,39 +528,79 @@ def raster_calculator(
         stats_worker.start()
 
     LOGGER.debug('start workers')
-    worker_list = []
 
-    callback_state['steps_so_far'] = 0
-    callback_state['total_steps'] = len(block_offset_list)
-    callback_state['last_time'] = time.time()
+    processing_state = {
+        'blocks_complete': 0,
+        'total_blocks': len(block_offset_list),
+        'last_time': time.time(),
+        'by_pid': {},
+        'callback_event': multiprocessing.Event(),
+    }
+    processing_state['callback_event'].set()
 
-    block_offset_queue = multiprocessing.Queue(n_workers * 2)
-    for _ in range(n_workers):
-        worker = multiprocessing.Process(
-            target=_raster_calculator_worker,
-            args=(block_offset_queue, base_canonical_arg_list, local_op,
-                  stats_worker_queue, nodata_target, target_raster_path,
-                  target_write_lock, wait_time_dict, success_handler,
-                  callback_state))
-        worker.start()
-        worker_list.append(worker)
+    block_offset_queue = multiprocessing.Queue(max_workers)
 
+    process_set = set()
 
-    for block_offset in block_offset_list:
-        block_offset_queue.put(block_offset)
+    # this loop monitors the state of the workers and controls them as needed
+    n_workers = 0
+    while True:
+        processing_state['callback_event'].wait(_LOGGING_PERIOD)
+        processing_state['callback_event'].clear()
+        if (processing_state['blocks_complete'] ==
+                processing_state['total_blocks']):
+            # all done, shut down the workers
+            LOGGER.info('all blocks processed -- shutting down workers')
+            for _ in range(len(processing_state['by_pid'])):
+                block_offset_queue.put(None)
+            break
+        wait_time_list = [0.0]
+        for pid in processing_state['by_pid']:
+            wait_time_list.append(pid['wait_time'])
+            del processing_state['by_pid']['pid']['wait_time']
+        max_wait_time = max(wait_time_list)
+        if max_wait_time > 0.01 and n_workers > 1:
+            n_workers -= 1
+            LOGGER.debug(
+                f'removing a worker because max_wait_time is '
+                f'{max_wait_time}')
+            block_offset_queue.put(None)
+        elif max_wait_time < 0.01 and n_workers < max_workers:
+            n_workers -= 1
+            LOGGER.debug(
+                f'adding a worker because max_wait_time is '
+                f'{max_wait_time}')
+            worker = multiprocessing.Process(
+                target=_raster_calculator_worker,
+                args=(
+                    block_offset_queue, base_canonical_arg_list, local_op,
+                    stats_worker_queue, nodata_target, target_raster_path,
+                    target_write_lock, _block_success_handler,
+                    processing_state))
+            worker.start()
+            process_set.add(worker)
 
-    for _ in range(n_workers):
-        block_offset_queue.put(None)
+        for _ in range(max_workers):
+            # Try to put more work in the queue
+            try:
+                if not block_offset_list:
+                    # no more work left
+                    break
+                block_offset = block_offset_list.pop()
+                block_offset_queue.put(block_offset)
+            except queue.Full:
+                # put it back, the queue is full
+                block_offset_list.append(block_offset)
+                break
 
-    LOGGER.info('wait for execution to complete')
-    for worker_result in worker_list:
-        # try to raise an exception if there is one
-        try:
-            worker_result.join()
-        except Exception:
-            LOGGER.exception('error in raster_calculator worker')
-            raise
+    # wait for the workers to join
+    for worker in process_set:
+        worker.join()
 
+    # Terminate the stats worker:
+    stats_worker_queue.put(None)
+
+    LOGGER.info('wait for stats worker to complete')
     stats_worker.join()
 
     if calc_raster_stats:
