@@ -1,8 +1,9 @@
+# coding=UTF-8
 """Multiprocessing implementation of raster_calculator."""
+import multiprocessing
 import os
 import pprint
-import multiprocessing
-import queue
+import signal
 import time
 
 from ..geoprocessing import _is_raster_path_band_formatted
@@ -135,17 +136,20 @@ def _raster_calculator_worker(
                 "shape %s but got this instead: %s" % (
                     blocksize, target_block))
 
-        #with write_lock:
-        target_raster = gdal.OpenEx(
-            target_raster_path, gdal.OF_RASTER | gdal.GA_Update)
-        target_band = target_raster.GetRasterBand(1)
-        target_band.WriteArray(
-            target_block, yoff=block_offset['yoff'],
-            xoff=block_offset['xoff'])
+        with write_lock:
+            target_raster = gdal.OpenEx(
+                target_raster_path, gdal.OF_RASTER | gdal.GA_Update)
+            target_band = target_raster.GetRasterBand(1)
+            target_band.WriteArray(
+                target_block, yoff=block_offset['yoff'],
+                xoff=block_offset['xoff'])
+            _block_success_handler(processing_state)
+            target_band = None
+            target_raster = None
 
         # send result to stats calculator
         if not stats_worker_queue:
-            return
+            continue
 
         # Construct shared memory object to pass to stats worker
         if nodata_target is not None:
@@ -160,9 +164,6 @@ def _raster_calculator_worker(
         stats_worker_queue.put((
             shared_memory_array.shape, shared_memory_array.dtype,
             shared_memory))
-
-        with write_lock:
-            _block_success_handler(processing_state)
 
 
 def _calculate_target_raster_size(
@@ -492,7 +493,6 @@ def raster_calculator(
         largest_block=largest_block))
 
     target_write_lock = manager.Lock()
-    stats_future = None
     if calc_raster_stats:
         LOGGER.debug('start stats')
         stats_worker = multiprocessing.Process(
@@ -533,16 +533,24 @@ def raster_calculator(
     for _ in range(n_workers):
         block_offset_queue.put(None)
 
-
     # wait for the workers to join
     LOGGER.info('all work sent, waiting for workers to finish')
     for worker, shared_memory in process_list:
-        worker.join()
+        worker.join(_MAX_TIMEOUT)
+        if not worker.is_alive():
+            LOGGER.error(
+                f'worker {worker.pid} didn\'t terminate, sending kill signal.')
+            os.kill(worker.pid, signal.SIGKILL)
         shared_memory.close()
         shared_memory.unlink()
 
     LOGGER.info('wait for stats worker to complete')
-    stats_worker.join()
+    stats_worker.join(_MAX_TIMEOUT)
+    if not stats_worker.is_alive():
+        LOGGER.error(
+            f'stats worker {stats_worker.pid} '
+            'didn\'t terminate, sending kill signal.')
+        os.kill(stats_worker.pid, signal.SIGKILL)
 
     if calc_raster_stats:
         payload = stats_worker_queue.get(True, _MAX_TIMEOUT)

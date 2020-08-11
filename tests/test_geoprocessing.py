@@ -1168,7 +1168,8 @@ class PyGeoprocessing10(unittest.TestCase):
         self.assertTrue(
             numpy.isclose(
                 pygeoprocessing.raster_to_numpy_array(base_a_path),
-                pygeoprocessing.raster_to_numpy_array(target_raster_path)).all())
+                pygeoprocessing.raster_to_numpy_array(
+                    target_raster_path)).all())
 
     def test_warp_raster_unusual_pixel_size(self):
         """PGP.geoprocessing: warp on unusual pixel types and sizes."""
@@ -1199,7 +1200,8 @@ class PyGeoprocessing10(unittest.TestCase):
         self.assertTrue(
             numpy.isclose(
                 pygeoprocessing.raster_to_numpy_array(base_a_path),
-                pygeoprocessing.raster_to_numpy_array(expected_raster_path)).all())
+                pygeoprocessing.raster_to_numpy_array(
+                    expected_raster_path)).all())
 
     def test_warp_raster_0x0_size(self):
         """PGP.geoprocessing: test warp where so small it would be 0x0."""
@@ -1230,7 +1232,8 @@ class PyGeoprocessing10(unittest.TestCase):
         self.assertTrue(
             numpy.isclose(
                 pygeoprocessing.raster_to_numpy_array(base_a_path),
-                pygeoprocessing.raster_to_numpy_array(expected_raster_path)).all())
+                pygeoprocessing.raster_to_numpy_array(
+                    expected_raster_path)).all())
 
     def test_align_and_resize_raster_stack_bad_values(self):
         """PGP.geoprocessing: align/resize raster bad base values."""
