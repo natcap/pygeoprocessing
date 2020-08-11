@@ -3,10 +3,10 @@ Release History
 
 Unreleased Changes
 ------------------
-* Added a custom exception class ``ReclassificationMissingValuesError`` to 
+* Added a custom exception class ``ReclassificationMissingValuesError`` to
   ``pygeoprocessing``. ``pygeoprocessing.reclassify_raster`` raises this
   exception instead of ``ValueError`` when a raster pixel value is not
-  represented in ``value_map``. This custom exception provides a list of 
+  represented in ``value_map``. This custom exception provides a list of
   missing raster pixel values in a ``missing_values`` attribute that allows
   the caller access to the pixel values that are missing through a Python type
   rather than indirectly through an error message.
@@ -19,6 +19,9 @@ Unreleased Changes
   This parameter defaults to ``False``.  This is a change from prior behavior,
   when the diagnostic vectors were always created, which could occupy a lot of
   computational time under large outflow geometries.
+* Added a ``pygeoprocessing.multiprocessing.raster_calculator`` function which
+  matches the API and results of ``pygeoprocessing.raster_calculator`` but uses
+  multiple processing cores to compute raster calculation blocks.
 
 2.0.0 (05-19-2020)
 ------------------
