@@ -8,6 +8,7 @@ import time
 from ..geoprocessing import _is_raster_path_band_formatted
 from ..geoprocessing import _LARGEST_ITERBLOCK
 from ..geoprocessing import _LOGGING_PERIOD
+from ..geoprocessing import _MAX_TIMEOUT
 from ..geoprocessing import _VALID_GDAL_TYPES
 from ..geoprocessing import geoprocessing_core
 from ..geoprocessing import get_raster_info
@@ -529,6 +530,10 @@ def raster_calculator(
     for block_offset in block_offset_list:
         block_offset_queue.put(block_offset)
 
+    for _ in range(n_workers):
+        block_offset_queue.put(None)
+
+
     # wait for the workers to join
     LOGGER.info('all work sent, waiting for workers to finish')
     for worker, shared_memory in process_list:
@@ -536,20 +541,19 @@ def raster_calculator(
         shared_memory.close()
         shared_memory.unlink()
 
-    # Terminate the stats worker:
-    stats_worker_queue.put(None)
-
     LOGGER.info('wait for stats worker to complete')
     stats_worker.join()
 
     if calc_raster_stats:
-        (target_min, target_max, target_mean, target_stddev) = \
-            stats_future.result()
-        target_raster = gdal.OpenEx(target_raster_path)
-        target_band = target_raster.GetRasterBand(1)
-        target_band.SetStatistics(
-            float(target_min), float(target_max), float(target_mean),
-            float(target_stddev))
-        target_band = None
-        target_raster = None
+        payload = stats_worker_queue.get(True, _MAX_TIMEOUT)
+        if payload is not None:
+            target_min, target_max, target_mean, target_stddev = payload
+            target_raster = gdal.OpenEx(
+                target_raster_path, gdal.OF_RASTER | gdal.GA_Update)
+            target_band = target_raster.GetRasterBand(1)
+            target_band.SetStatistics(
+                float(target_min), float(target_max), float(target_mean),
+                float(target_stddev))
+            target_band = None
+            target_raster = None
     LOGGER.info('raster_calculator 100.0%% complete')

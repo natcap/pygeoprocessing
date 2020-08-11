@@ -562,7 +562,7 @@ def stats_worker(stats_work_queue, expected_blocks):
             existing_shm = None
             payload = stats_work_queue.get()
             if payload is None:
-                return
+                break
             shape, dtype, existing_shm = payload
             retry_delay = 0.1
             block = numpy.ndarray(shape, dtype=dtype, buffer=existing_shm.buf)
