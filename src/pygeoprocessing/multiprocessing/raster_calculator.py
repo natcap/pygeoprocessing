@@ -563,7 +563,7 @@ def raster_calculator(
             except Exception:
                 LOGGER.exception(f'unable to kill {worker.pid}')
         if shared_memory is not None:
-            shared_memory.close()
+            LOGGER.debug(f'unlink {shared_memory.name}')
             shared_memory.unlink()
 
     if calc_raster_stats:
