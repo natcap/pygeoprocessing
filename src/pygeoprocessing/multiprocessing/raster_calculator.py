@@ -540,6 +540,17 @@ def raster_calculator(
     for _ in range(n_workers):
         block_offset_queue.put(None)
 
+    LOGGER.info('wait for stats worker to complete')
+    stats_worker.join(_MAX_TIMEOUT)
+    if stats_worker.is_alive():
+        LOGGER.error(
+            f'stats worker {stats_worker.pid} '
+            'didn\'t terminate, sending kill signal.')
+        try:
+            os.kill(stats_worker.pid, signal.SIGTERM)
+        except Exception:
+            LOGGER.exception(f'unable to kill {stats_worker.pid}')
+
     # wait for the workers to join
     LOGGER.info('all work sent, waiting for workers to finish')
     for worker, shared_memory in process_list:
@@ -554,17 +565,6 @@ def raster_calculator(
         if shared_memory is not None:
             shared_memory.close()
             shared_memory.unlink()
-
-    LOGGER.info('wait for stats worker to complete')
-    stats_worker.join(_MAX_TIMEOUT)
-    if stats_worker.is_alive():
-        LOGGER.error(
-            f'stats worker {stats_worker.pid} '
-            'didn\'t terminate, sending kill signal.')
-        try:
-            os.kill(stats_worker.pid, signal.SIGTERM)
-        except Exception:
-            LOGGER.exception(f'unable to kill {stats_worker.pid}')
 
     if calc_raster_stats:
         payload = stats_worker_queue.get(True, _MAX_TIMEOUT)
