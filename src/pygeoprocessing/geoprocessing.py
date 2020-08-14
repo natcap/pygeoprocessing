@@ -4,11 +4,11 @@ import collections
 import functools
 import logging
 import math
-import multiprocessing.shared_memory
 import os
 import pprint
 import queue
 import shutil
+import sys
 import tempfile
 import threading
 import time
@@ -29,6 +29,10 @@ import scipy.sparse
 import shapely.ops
 import shapely.prepared
 import shapely.wkb
+
+# This is used to efficiently pass data to the raster stats worker if available
+if sys.version_info >= (3, 8):
+    import multiprocessing.shared_memory
 
 
 class ReclassificationMissingValuesError(Exception):
@@ -140,13 +144,10 @@ def raster_calculator(
             name string as the first element and a GDAL creation options
             tuple/list as the second. Defaults to
             geoprocessing.DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS.
-
     Returns:
         None
-
     Raises:
         ValueError: invalid input provided
-
     """
     if not base_raster_path_band_const_list:
         raise ValueError(
@@ -358,13 +359,14 @@ def raster_calculator(
             stats_worker_queue = queue.Queue()
             exception_queue = queue.Queue()
 
-            block_size_bytes = (
-                numpy.dtype(numpy.float64).itemsize *
-                block_offset_list[0]['win_xsize'] *
-                block_offset_list[0]['win_ysize'])
+            if sys.version_info >= (3, 8):
+                block_size_bytes = (
+                    numpy.dtype(numpy.float64).itemsize *
+                    block_offset_list[0]['win_xsize'] *
+                    block_offset_list[0]['win_ysize'])
 
-            shared_memory = multiprocessing.shared_memory.SharedMemory(
-                create=True, size=block_size_bytes)
+                shared_memory = multiprocessing.shared_memory.SharedMemory(
+                    create=True, size=block_size_bytes)
 
         else:
             stats_worker_queue = None
@@ -445,14 +447,17 @@ def raster_calculator(
                     target_block = target_block[target_block != nodata_target]
                 target_block = target_block.astype(numpy.float64).flatten()
 
-                shared_memory_array = numpy.ndarray(
-                    target_block.shape, dtype=target_block.dtype,
-                    buffer=shared_memory.buf)
-                shared_memory_array[:] = target_block[:]
+                if sys.version_info >= (3, 8):
+                    shared_memory_array = numpy.ndarray(
+                        target_block.shape, dtype=target_block.dtype,
+                        buffer=shared_memory.buf)
+                    shared_memory_array[:] = target_block[:]
 
-                stats_worker_queue.put((
-                    shared_memory_array.shape, shared_memory_array.dtype,
-                    shared_memory))
+                    stats_worker_queue.put((
+                        shared_memory_array.shape, shared_memory_array.dtype,
+                        shared_memory))
+                else:
+                    stats_worker_queue.put(target_block)
 
             pixels_processed += blocksize[0] * blocksize[1]
             last_time = _invoke_timed_callback(
@@ -2430,7 +2435,6 @@ def convolve_2d(
             name string as the first element and a GDAL creation options
             tuple/list as the second. Defaults to a GTiff driver tuple
             defined at geoprocessing.DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS.
-
     Returns:
         None
     """
@@ -3661,6 +3665,7 @@ def numpy_array_to_raster(
         None
     """
     numpy_to_gdal_type = {
+        numpy.dtype(numpy.bool): gdal.GDT_Byte,
         numpy.dtype(numpy.int8): gdal.GDT_Byte,
         numpy.dtype(numpy.uint8): gdal.GDT_Byte,
         numpy.dtype(numpy.int16): gdal.GDT_Int16,

@@ -4,6 +4,7 @@ import multiprocessing
 import os
 import pprint
 import signal
+import sys
 import time
 
 from ..geoprocessing import _is_raster_path_band_formatted
@@ -19,6 +20,8 @@ from ..geoprocessing_core import DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS
 from osgeo import gdal
 import numpy
 
+if sys.version_info >= (3, 8):
+    import multiprocessing.shared_memory
 
 def _block_success_handler(callback_state):
     """Used to update callback state after a successful block is complete.
@@ -81,7 +84,8 @@ def _raster_calculator_worker(
             writes to raster_path.
         processing_state (multiprocessing.Manager.dict): a global object to
             pass to ``__block_success_handler`` for this execution context.
-        result_array_shared_memory (multiprocessing.shared_memory): Shared
+        result_array_shared_memory (multiprocessing.shared_memory): If
+            Python version >= 3.8, this is a shared
             memory object used to pass data to the stats worker process if
             required. Should be pre-allocated with enough data to hold the
             largest result from ``local_op`` given any ``block_offset`` from
@@ -164,14 +168,17 @@ def _raster_calculator_worker(
             target_block = target_block[target_block != nodata_target]
         target_block = target_block.astype(numpy.float64).flatten()
 
-        shared_memory_array = numpy.ndarray(
-            target_block.shape, dtype=target_block.dtype,
-            buffer=result_array_shared_memory.buf)
-        shared_memory_array[:] = target_block[:]
+        if result_array_shared_memory:
+            shared_memory_array = numpy.ndarray(
+                target_block.shape, dtype=target_block.dtype,
+                buffer=result_array_shared_memory.buf)
+            shared_memory_array[:] = target_block[:]
 
-        stats_worker_queue.put((
-            shared_memory_array.shape, shared_memory_array.dtype,
-            result_array_shared_memory))
+            stats_worker_queue.put((
+                shared_memory_array.shape, shared_memory_array.dtype,
+                result_array_shared_memory))
+        else:
+            stats_worker_queue.put(target_block)
 
 
 def _calculate_target_raster_size(
@@ -522,8 +529,9 @@ def raster_calculator(
     for _ in range(n_workers):
         shared_memory = None
         if calc_raster_stats:
-            shared_memory = multiprocessing.shared_memory.SharedMemory(
-                create=True, size=block_size_bytes)
+            if sys.version_info >= (3, 8):
+                shared_memory = multiprocessing.shared_memory.SharedMemory(
+                    create=True, size=block_size_bytes)
         worker = multiprocessing.Process(
             target=_raster_calculator_worker,
             args=(

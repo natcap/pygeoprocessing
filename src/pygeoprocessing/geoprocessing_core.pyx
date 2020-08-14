@@ -563,9 +563,12 @@ def stats_worker(stats_work_queue, expected_blocks):
             payload = stats_work_queue.get()
             if payload is None:
                 break
-            shape, dtype, existing_shm = payload
-            retry_delay = 0.1
-            block = numpy.ndarray(shape, dtype=dtype, buffer=existing_shm.buf)
+            if sys.version_info >= (3, 8):
+                shape, dtype, existing_shm = payload
+                block = numpy.ndarray(
+                    shape, dtype=dtype, buffer=existing_shm.buf)
+            else:
+                block = payload
             if block.size == 0:
                 continue
             n_elements = block.size
