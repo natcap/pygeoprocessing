@@ -500,8 +500,9 @@ def raster_calculator(
                 stats_worker_thread.join(_MAX_TIMEOUT)
                 if stats_worker_thread.is_alive():
                     raise RuntimeError("stats_worker_thread.join() timed out")
-                shared_memory.close()
-                shared_memory.unlink()
+                if sys.version_info >= (3, 8):
+                    shared_memory.close()
+                    shared_memory.unlink()
 
             # check for an exception in the workers, otherwise get result
             # and pass to writer
