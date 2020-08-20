@@ -360,8 +360,10 @@ def raster_calculator(
             exception_queue = queue.Queue()
 
             if sys.version_info >= (3, 8):
+                # assume largest GDAL float size just in
                 block_size_bytes = (
-                    numpy.dtype(numpy.float64).itemsize *
+                    numpy.dtype(_GDAL_TYPE_TO_NUMPY_LOOKUP(
+                        datatype_target)).itemsize *
                     block_offset_list[0]['win_xsize'] *
                     block_offset_list[0]['win_ysize'])
 
