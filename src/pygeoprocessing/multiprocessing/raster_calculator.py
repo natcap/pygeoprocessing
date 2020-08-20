@@ -1,6 +1,7 @@
 # coding=UTF-8
 """Multiprocessing implementation of raster_calculator."""
 import collections
+import errno
 import multiprocessing
 import os
 import pprint
@@ -482,8 +483,12 @@ def raster_calculator(
     raster_driver = gdal.GetDriverByName(raster_driver_creation_tuple[0])
     try:
         os.makedirs(os.path.dirname(target_raster_path))
-    except OSError:
-        pass
+    except OSError as exception:
+        # it's fine if the directory already exists, otherwise there's a big
+        # error!
+        if exception.errno != errno.EEXIST:
+            raise
+
     target_raster = raster_driver.Create(
         target_raster_path, n_cols, n_rows, 1, datatype_target,
         options=raster_driver_creation_tuple[1])
