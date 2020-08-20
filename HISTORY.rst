@@ -3,6 +3,7 @@ Release History
 
 Unreleased Changes
 ------------------
+* Modified ``pygeoprocessing.numpy_array_to_raster`` to take boolean arrays.
 * Modified ``pygeoprocessing.convolve_2d`` to guard against nonsensical queries
   to both ``ignore_nodata_and_edges=True`` but also ``mask_nodata=False``.
   A query of this combination now raises a ``ValueError`` to guard against
