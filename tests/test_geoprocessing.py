@@ -4134,8 +4134,8 @@ class PyGeoprocessing10(unittest.TestCase):
         array = pygeoprocessing.raster_to_numpy_array(target_raster_path)
         numpy.testing.assert_array_equal(pixel_a_matrix, array)
 
-    def test_convolve_2d_bad_path_bands(self):
-        """PGP.geoprocessing: test convolve 2d bad raster path bands."""
+    def test_convolve_2d_bad_input_data(self):
+        """PGP.geoprocessing: test convolve 2d for programmer error."""
         signal_path = os.path.join(self.workspace_dir, 'signal.tif')
         kernel_path = os.path.join(self.workspace_dir, 'kernel.tif')
         target_path = os.path.join(self.workspace_dir, 'target.tif')
@@ -4147,6 +4147,14 @@ class PyGeoprocessing10(unittest.TestCase):
         # we expect an error about both signal and kernel
         self.assertTrue('signal' in actual_message)
         self.assertTrue('kernel' in actual_message)
+
+        with self.assertRaises(ValueError) as cm:
+            pygeoprocessing.convolve_2d(
+                (signal_path, 1), (kernel_path, 1), target_path,
+                ignore_nodata_and_edges=True, mask_nodata=False)
+        actual_message = str(cm.exception)
+        # we expect an error about ignoring nodata in message
+        self.assertTrue('ignore_nodata_and_edges' in actual_message)
 
     def test_convolve_2d_nodata(self):
         """PGP.geoprocessing: test convolve 2d (single thread)."""
