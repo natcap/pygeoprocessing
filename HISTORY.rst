@@ -3,10 +3,14 @@ Release History
 
 Unreleased Changes
 ------------------
-* Added a custom exception class ``ReclassificationMissingValuesError`` to 
+* Modified ``pygeoprocessing.convolve_2d`` to guard against nonsensical queries
+  to both ``ignore_nodata_and_edges=True`` but also ``mask_nodata=False``.
+  A query of this combination now raises a ``ValueError`` to guard against
+  programmer error.
+* Added a custom exception class ``ReclassificationMissingValuesError`` to
   ``pygeoprocessing``. ``pygeoprocessing.reclassify_raster`` raises this
   exception instead of ``ValueError`` when a raster pixel value is not
-  represented in ``value_map``. This custom exception provides a list of 
+  represented in ``value_map``. This custom exception provides a list of
   missing raster pixel values in a ``missing_values`` attribute that allows
   the caller access to the pixel values that are missing through a Python type
   rather than indirectly through an error message.
@@ -17,8 +21,8 @@ Unreleased Changes
   parameter ``write_diagnostic_vector``.  When ``True``, this parameter will
   cause a new vector per outflow feature to be created in the ``working_dir``.
   This parameter defaults to ``False``.  This is a change from prior behavior,
-  when the diagnostic vectors were always created, which could occupy a lot of
-  computational time under large outflow geometries.
+  when the diagnostic vectors were always created, which could occupy
+  significant computational time under large outflow geometries.
 
 2.0.0 (05-19-2020)
 ------------------

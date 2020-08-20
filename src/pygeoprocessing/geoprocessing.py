@@ -2384,7 +2384,11 @@ def convolve_2d(
         normalize_kernel (boolean): If true, the result is divided by the
             sum of the kernel.
         mask_nodata (boolean): If true, ``target_path`` raster's output is
-            nodata where ``signal_path_band``'s pixels were nodata.
+            nodata where ``signal_path_band``'s pixels were nodata. Note that
+            setting ``ignore_nodata_and_edges`` to ``True`` while setting
+            ``mask_nodata`` to False would be a nonsensical result and would
+            result in exposing the numerical noise where the nodata values were
+            ignored. An exception is thrown in this case.
         target_datatype (GDAL type): a GDAL raster type to set the output
             raster type to, as well as the type to calculate the convolution
             in.  Defaults to GDT_Float64.  Note signed byte is not
@@ -2414,12 +2418,22 @@ def convolve_2d(
 
     Returns:
         None
+
+    Raises:
+        ValueError if ``ignore_nodata_and_edges`` is ``True`` and
+            ``mask_nodata`` is ``False``
+
     """
     if target_datatype is not gdal.GDT_Float64 and target_nodata is None:
         raise ValueError(
             "`target_datatype` is set, but `target_nodata` is None. "
             "`target_nodata` must be set if `target_datatype` is not "
             "`gdal.GDT_Float64`.  `target_nodata` is set to None.")
+
+    if ignore_nodata_and_edges and not mask_nodata:
+        raise ValueError(
+            f'ignore_nodata_and_edges is True while mask_nodata is False -- '
+            f'this would yield a nonsensical result.')
 
     bad_raster_path_list = []
     for raster_id, raster_path_band in [
