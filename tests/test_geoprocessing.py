@@ -2504,7 +2504,7 @@ class PyGeoprocessing10(unittest.TestCase):
         target_path = os.path.join(self.workspace_dir, 'target.tif')
         pygeoprocessing.convolve_2d(
             (signal_path, 1), (kernel_path, 1), target_path,
-            mask_nodata=False, ignore_nodata_and_edges=True,
+            mask_nodata=True, ignore_nodata_and_edges=True,
             normalize_kernel=True)
         target_array = pygeoprocessing.raster_to_numpy_array(target_path)
         expected_result = test_value * n_pixels ** 2
@@ -4162,8 +4162,8 @@ class PyGeoprocessing10(unittest.TestCase):
         array = pygeoprocessing.raster_to_numpy_array(target_raster_path)
         numpy.testing.assert_array_equal(pixel_a_matrix, array)
 
-    def test_convolve_2d_bad_path_bands(self):
-        """PGP.geoprocessing: test convolve 2d bad raster path bands."""
+    def test_convolve_2d_bad_input_data(self):
+        """PGP.geoprocessing: test convolve 2d for programmer error."""
         signal_path = os.path.join(self.workspace_dir, 'signal.tif')
         kernel_path = os.path.join(self.workspace_dir, 'kernel.tif')
         target_path = os.path.join(self.workspace_dir, 'target.tif')
@@ -4176,14 +4176,22 @@ class PyGeoprocessing10(unittest.TestCase):
         self.assertTrue('signal' in actual_message)
         self.assertTrue('kernel' in actual_message)
 
+        with self.assertRaises(ValueError) as cm:
+            pygeoprocessing.convolve_2d(
+                (signal_path, 1), (kernel_path, 1), target_path,
+                ignore_nodata_and_edges=True, mask_nodata=False)
+        actual_message = str(cm.exception)
+        # we expect an error about ignoring nodata in message
+        self.assertTrue('ignore_nodata_and_edges' in actual_message)
+
     def test_convolve_2d_nodata(self):
         """PGP.geoprocessing: test convolve 2d (single thread)."""
         n_pixels = 100
         signal_array = numpy.empty((n_pixels//10, n_pixels//10), numpy.float32)
         base_nodata = -1
         signal_array[:] = base_nodata
-        signal_array[n_pixels//20, n_pixels//20] = 0
         signal_array[0, 0] = 1
+        signal_array[-1, -1] = 0
         signal_path = os.path.join(self.workspace_dir, 'signal.tif')
         _array_to_raster(signal_array, base_nodata, signal_path)
         kernel_path = os.path.join(self.workspace_dir, 'kernel.tif')
@@ -4192,9 +4200,13 @@ class PyGeoprocessing10(unittest.TestCase):
         target_path = os.path.join(self.workspace_dir, 'target.tif')
         pygeoprocessing.convolve_2d(
             (signal_path, 1), (kernel_path, 1), target_path,
-            n_threads=1, ignore_nodata_and_edges=True, mask_nodata=False)
+            n_threads=1, ignore_nodata_and_edges=False, mask_nodata=True)
         target_array = pygeoprocessing.raster_to_numpy_array(target_path)
+        target_nodata = pygeoprocessing.get_raster_info(
+            target_path)['nodata'][0]
 
         expected_output = numpy.empty(signal_array.shape, numpy.float32)
-        expected_output[:] = n_pixels**2 // 2
+        expected_output[:] = target_nodata
+        expected_output[0, 0] = 1
+        expected_output[-1, -1] = 1
         numpy.testing.assert_allclose(target_array, expected_output)
