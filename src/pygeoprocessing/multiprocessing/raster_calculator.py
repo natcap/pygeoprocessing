@@ -74,7 +74,11 @@ def _raster_calculator_worker(
             and can be used to pass directly to Band.ReadAsArray.
         base_canonical_arg_list (list): list of RasterPathBand, numpy arrays,
             or 'raw' objects to pass to the ``local_op``.
-        stats_worker_queue (queue): pass a shared memory object `local_op`
+        local_op (function): callable that a function that must take in as
+            many parameters as there are elements in
+            ``base_canonical_arg_list``. Full description can be found in the
+            public facing ``raster_calculator`` operation.
+        stats_worker_queue (queue): pass a shared memory object ``local_op``
             result to queue if stats are being calculated. None otherwise.
         nodata_target (numeric or None): desired target raster nodata
         target_raster_path (str): path to target raster.
