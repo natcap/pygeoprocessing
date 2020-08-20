@@ -2476,7 +2476,7 @@ class PyGeoprocessing10(unittest.TestCase):
         target_path = os.path.join(self.workspace_dir, 'target.tif')
         pygeoprocessing.convolve_2d(
             (signal_path, 1), (kernel_path, 1), target_path,
-            mask_nodata=False, ignore_nodata_and_edges=True,
+            mask_nodata=True, ignore_nodata_and_edges=True,
             normalize_kernel=True)
         target_array = pygeoprocessing.raster_to_numpy_array(target_path)
         expected_result = test_value * n_pixels ** 2
@@ -4154,8 +4154,8 @@ class PyGeoprocessing10(unittest.TestCase):
         signal_array = numpy.empty((n_pixels//10, n_pixels//10), numpy.float32)
         base_nodata = -1
         signal_array[:] = base_nodata
-        signal_array[n_pixels//20, n_pixels//20] = 0
         signal_array[0, 0] = 1
+        signal_array[-1, -1] = 0
         signal_path = os.path.join(self.workspace_dir, 'signal.tif')
         _array_to_raster(signal_array, base_nodata, signal_path)
         kernel_path = os.path.join(self.workspace_dir, 'kernel.tif')
@@ -4164,9 +4164,13 @@ class PyGeoprocessing10(unittest.TestCase):
         target_path = os.path.join(self.workspace_dir, 'target.tif')
         pygeoprocessing.convolve_2d(
             (signal_path, 1), (kernel_path, 1), target_path,
-            n_threads=1, ignore_nodata_and_edges=True, mask_nodata=False)
+            n_threads=1, ignore_nodata_and_edges=False, mask_nodata=True)
         target_array = pygeoprocessing.raster_to_numpy_array(target_path)
+        target_nodata = pygeoprocessing.get_raster_info(
+            target_path)['nodata'][0]
 
         expected_output = numpy.empty(signal_array.shape, numpy.float32)
-        expected_output[:] = n_pixels**2 // 2
+        expected_output[:] = target_nodata
+        expected_output[0, 0] = 1
+        expected_output[-1, -1] = 1
         numpy.testing.assert_allclose(target_array, expected_output)
