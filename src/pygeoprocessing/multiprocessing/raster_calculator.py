@@ -1,5 +1,6 @@
 # coding=UTF-8
 """Multiprocessing implementation of raster_calculator."""
+import collections
 import multiprocessing
 import os
 import pprint
@@ -22,6 +23,7 @@ import numpy
 
 if sys.version_info >= (3, 8):
     import multiprocessing.shared_memory
+
 
 def _block_success_handler(callback_state):
     """Used to update callback state after a successful block is complete.
@@ -47,12 +49,8 @@ def _block_success_handler(callback_state):
         callback_state['last_time'] = time.time()
 
 
-class RasterPathBand():
-    """Abstraction for the (str, int) tuple that represents a raster/band."""
-    def __init__(self, path, band_id):
-        """Copy path and band_id directly."""
-        self.path = path
-        self.band_id = band_id
+RasterPathBand = collections.namedtuple(
+    'RasterPathBand', ['path', 'band_id'])
 
 
 def _build_raster_calc_error_handler(pool):
