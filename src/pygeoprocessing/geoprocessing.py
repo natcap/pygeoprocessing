@@ -360,9 +360,11 @@ def raster_calculator(
             exception_queue = queue.Queue()
 
             if sys.version_info >= (3, 8):
+                # The stats worker keeps running variables as a float64, so
+                # all input rasters are dtype float64 -- make the shared memory
+                # size equivalent.
                 block_size_bytes = (
-                    numpy.dtype(_GDAL_TYPE_TO_NUMPY_LOOKUP[
-                        datatype_target]).itemsize *
+                    numpy.dtype(numpy.float64).itemsize *
                     block_offset_list[0]['win_xsize'] *
                     block_offset_list[0]['win_ysize'])
 
