@@ -23,9 +23,9 @@ Unreleased Changes
   This parameter defaults to ``False``.  This is a change from prior behavior,
   when the diagnostic vectors were always created, which could occupy
   significant computational time under large outflow geometries.
-* Minor performance improvmenet to ``pygeoprocessing.convolve_2d`` by
-  preventing a pre-processing step that fliled temporary rasters with zero
-  values as well as added asyncronous work distribution for kernel/signal
+* Minor performance improvement to ``pygeoprocessing.convolve_2d`` by
+  preventing a pre-processing step that initialized temporary rasters with zero
+  values as well as added asynchronous work distribution for kernel/signal
   block processing.
 
 2.0.0 (05-19-2020)
