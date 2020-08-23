@@ -23,6 +23,9 @@ Unreleased Changes
   This parameter defaults to ``False``.  This is a change from prior behavior,
   when the diagnostic vectors were always created, which could occupy
   significant computational time under large outflow geometries.
+* Modified logging message for ``pygeoprocessing.new_raster_from_base`` when
+  filling a raster such that an informative error message is printed with
+  context as to the function, file, status, and value being filled.
 
 2.0.0 (05-19-2020)
 ------------------
