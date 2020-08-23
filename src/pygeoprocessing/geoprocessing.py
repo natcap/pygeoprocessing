@@ -2494,26 +2494,35 @@ def convolve_2d(
         kernel_sum += numpy.sum(kernel_block)
 
     work_queue = multiprocessing.Queue()
-    LOGGER.info(f'fill the work queue')
-    n_blocks = 0
-    for signal_offset in iterblocks(s_path_band, offset_only=True):
-        for kernel_offset in iterblocks(k_path_band, offset_only=True):
-            work_queue.put((signal_offset, kernel_offset))
-            n_blocks += 1
-    for _ in range(max(1, n_threads-1)):
-        # signal end to worker
-        work_queue.put(None)
+    signal_offset_list = list(iterblocks(s_path_band, offset_only=True))
+    kernel_offset_list = list(iterblocks(k_path_band, offset_only=True))
+    n_blocks = len(signal_offset_list) * len(kernel_offset_list)
+
+    def _fill_work_queue():
+        LOGGER.debug('fill work queue')
+        for signal_offset in signal_offset_list:
+            for kernel_offset in kernel_offset_list:
+                work_queue.put((signal_offset, kernel_offset))
+        for _ in range(max(1, n_threads-1)):
+            # signal end to worker
+            work_queue.put(None)
+        LOGGER.debug('work queue full')
+
+    fill_work_queue_worker = threading.Thread(
+        target=_fill_work_queue)
+    fill_work_queue_worker.daemon = True
+    fill_work_queue_worker.start()
 
     # limit the size of the write queue so we don't accidentally load a whole
     # array into memory, work queue is okay because it's only passing block
     # indexes
     write_queue = multiprocessing.Queue(n_threads * 2)
-    LOGGER.info(f'start {n_threads} worker threads')
+    LOGGER.debug(f'start {n_threads} worker threads')
     worker_list = []
     # workers is n_threads - 1 because we count the current thread
     for worker_id in range(max(1, n_threads-1)):
-        worker = threading.Thread(
-        # worker = multiprocessing.Process(
+        #worker = threading.Thread(
+        worker = multiprocessing.Process(
             target=_convolve_2d_worker,
             args=(
                 signal_path_band, kernel_path_band,
