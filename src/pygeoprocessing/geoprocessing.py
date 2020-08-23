@@ -11,7 +11,6 @@ import shutil
 import tempfile
 import threading
 import time
-import multiprocessing
 
 from . import geoprocessing_core
 from .geoprocessing_core import DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS
@@ -2353,8 +2352,7 @@ def convolve_2d(
         signal_path_band, kernel_path_band, target_path,
         ignore_nodata_and_edges=False, mask_nodata=True,
         normalize_kernel=False, target_datatype=gdal.GDT_Float64,
-        target_nodata=None, n_threads=1, working_dir=None,
-        set_tol_to_zero=1e-8,
+        target_nodata=None, working_dir=None, set_tol_to_zero=1e-8,
         raster_driver_creation_tuple=DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS):
     """Convolve 2D kernel over 2D signal.
 
@@ -2400,12 +2398,7 @@ def convolve_2d(
         raster_creation_options (sequence): an argument list that will be
             passed to the GTiff driver for creating ``target_path``.  Useful
             for blocksizes, compression, and more.
-        n_threads (int): number of computational threads to devote to
-            convolution. A value of 1 will have a single thread calculate the
-            FFTs and read from/write to disk. Any value > 1 will spawn
-            processes to calculate separable FFTs in parallel while one thread
-            manages the reads and writes.
-         working_dir (string): If not None, indicates where temporary files
+        working_dir (string): If not None, indicates where temporary files
             should be created during this run.
         set_tol_to_zero (float): any value within +- this from 0.0 will get
             set to 0.0. This is to handle numerical roundoff errors that
@@ -2493,19 +2486,20 @@ def convolve_2d(
             kernel_block[numpy.isclose(kernel_block, kernel_nodata)] = 0.0
         kernel_sum += numpy.sum(kernel_block)
 
-    work_queue = multiprocessing.Queue()
+    work_queue = queue.Queue()
     signal_offset_list = list(iterblocks(s_path_band, offset_only=True))
     kernel_offset_list = list(iterblocks(k_path_band, offset_only=True))
     n_blocks = len(signal_offset_list) * len(kernel_offset_list)
 
+    LOGGER.debug(f'start fill work queue thread')
+
     def _fill_work_queue():
+        """Asynchronously fill the work queue."""
         LOGGER.debug('fill work queue')
         for signal_offset in signal_offset_list:
             for kernel_offset in kernel_offset_list:
                 work_queue.put((signal_offset, kernel_offset))
-        for _ in range(max(1, n_threads-1)):
-            # signal end to worker
-            work_queue.put(None)
+        work_queue.put(None)
         LOGGER.debug('work queue full')
 
     fill_work_queue_worker = threading.Thread(
@@ -2516,24 +2510,19 @@ def convolve_2d(
     # limit the size of the write queue so we don't accidentally load a whole
     # array into memory, work queue is okay because it's only passing block
     # indexes
-    write_queue = multiprocessing.Queue(n_threads * 2)
-    LOGGER.debug(f'start {n_threads} worker threads')
+    LOGGER.debug(f'start worker thread')
+    write_queue = queue.Queue(10)
     worker_list = []
-    # workers is n_threads - 1 because we count the current thread
-    for worker_id in range(max(1, n_threads-1)):
-        #worker = threading.Thread(
-        worker = multiprocessing.Process(
-            target=_convolve_2d_worker,
-            args=(
-                signal_path_band, kernel_path_band,
-                ignore_nodata_and_edges, normalize_kernel,
-                set_tol_to_zero, work_queue, write_queue))
-        worker.daemon = True
-        worker.start()
-        worker_list.append(worker)
+    worker = threading.Thread(
+        target=_convolve_2d_worker,
+        args=(
+            signal_path_band, kernel_path_band,
+            ignore_nodata_and_edges, normalize_kernel,
+            set_tol_to_zero, work_queue, write_queue))
+    worker.daemon = True
+    worker.start()
 
     # used to count how many workers are still running
-    n_active_workers = max(1, n_threads-1)
     n_blocks_processed = 0
 
     # this set is indexed by (x,y) tuple from iterblock offsets to check if the
@@ -2549,10 +2538,8 @@ def convolve_2d(
              left_index_result, right_index_result,
              top_index_result, bottom_index_result) = write_payload
         else:
-            n_active_workers -= 1
-            if n_active_workers == 0:
-                break
-            continue
+            worker.join(_MAX_TIMEOUT)
+            break
 
         output_array = numpy.empty(
             (index_dict['win_ysize'], index_dict['win_xsize']),
@@ -2617,16 +2604,15 @@ def convolve_2d(
             _LOGGING_PERIOD)
 
     LOGGER.info(
-        "convolution worker 100.0%% complete on %s",
-        os.path.basename(target_path))
+        f"convolution worker 100.0%% complete on "
+        f"{os.path.basename(target_path)}")
+
     target_band.FlushCache()
-    target_raster.FlushCache()
     if ignore_nodata_and_edges:
         LOGGER.info(
             "need to normalize result so nodata values are not included")
         mask_pixels_processed = 0
         mask_band.FlushCache()
-        mask_raster.FlushCache()
         for target_offset_data in target_offset_list:
             target_block = target_band.ReadAsArray(
                 **target_offset_data).astype(
@@ -2657,17 +2643,13 @@ def convolve_2d(
                     os.path.basename(target_path)),
                 _LOGGING_PERIOD)
         # delete the mask raster
-        gdal.Dataset.__swig_destroy__(mask_raster)
+        mask_raster = None
+        mask_band = None
         os.remove(mask_raster_path)
         LOGGER.info(
             "convolution nodata normalize 100.0%% complete on %s",
             os.path.basename(target_path))
 
-    for worker in worker_list:
-        worker.join(_MAX_TIMEOUT)
-    target_band.FlushCache()
-    target_raster.FlushCache()
-    gdal.Dataset.__swig_destroy__(target_raster)
     target_band = None
     target_raster = None
     if s_nodata is not None and ignore_nodata_and_edges:
