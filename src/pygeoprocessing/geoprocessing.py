@@ -881,8 +881,9 @@ def new_raster_from_base(
 
                 last_time = _invoke_timed_callback(
                     last_time, lambda: LOGGER.info(
-                        '%.1f%% complete',
-                        float(pixels_processed) / n_pixels * 100.0),
+                        f'filling new raster {target_path} with {fill_value} '
+                        f'-- {float(pixels_processed)/n_pixels*100.0:.2f}% '
+                        f'complete'),
                     _LOGGING_PERIOD)
             target_band = None
     target_band = None

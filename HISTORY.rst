@@ -27,6 +27,9 @@ Unreleased Changes
   preventing a pre-processing step that initialized temporary rasters with zero
   values as well as added asynchronous work distribution for kernel/signal
   block processing.
+* Modified logging message for ``pygeoprocessing.new_raster_from_base`` when
+  filling a raster such that an informative error message is printed with
+  context as to the function, file, status, and value being filled.
 
 2.0.0 (05-19-2020)
 ------------------
