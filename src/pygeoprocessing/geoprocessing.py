@@ -2522,7 +2522,6 @@ def convolve_2d(
     worker.daemon = True
     worker.start()
 
-    # used to count how many workers are still running
     n_blocks_processed = 0
 
     # this set is indexed by (x,y) tuple from iterblock offsets to check if the
