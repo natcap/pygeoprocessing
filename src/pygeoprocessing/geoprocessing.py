@@ -2492,7 +2492,7 @@ def convolve_2d(
     kernel_offset_list = list(iterblocks(k_path_band, offset_only=True))
     n_blocks = len(signal_offset_list) * len(kernel_offset_list)
 
-    LOGGER.debug(f'start fill work queue thread')
+    LOGGER.debug('start fill work queue thread')
 
     def _fill_work_queue():
         """Asynchronously fill the work queue."""
@@ -2511,7 +2511,7 @@ def convolve_2d(
     # limit the size of the write queue so we don't accidentally load a whole
     # array into memory, work queue is okay because it's only passing block
     # indexes
-    LOGGER.debug(f'start worker thread')
+    LOGGER.debug('start worker thread')
     write_queue = queue.Queue(10)
     worker_list = []
     worker = threading.Thread(
