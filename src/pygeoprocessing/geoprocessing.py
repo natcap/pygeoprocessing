@@ -442,7 +442,7 @@ def raster_calculator(
                     float(pixels_processed) / n_pixels * 100.0),
                 _LOGGING_PERIOD)
 
-        LOGGER.info('100.0%% complete')
+        LOGGER.info('100.0% complete')
 
         if calc_raster_stats:
             LOGGER.info("signaling stats worker to terminate")
@@ -2604,7 +2604,7 @@ def convolve_2d(
             _LOGGING_PERIOD)
 
     LOGGER.info(
-        f"convolution worker 100.0%% complete on "
+        f"convolution worker 100.0% complete on "
         f"{os.path.basename(target_path)}")
 
     target_band.FlushCache()
@@ -2647,8 +2647,8 @@ def convolve_2d(
         mask_band = None
         os.remove(mask_raster_path)
         LOGGER.info(
-            "convolution nodata normalize 100.0%% complete on %s",
-            os.path.basename(target_path))
+            f"convolution nodata normalize 100.0% complete on "
+            f"{os.path.basename(target_path)}")
 
     target_band = None
     target_raster = None
