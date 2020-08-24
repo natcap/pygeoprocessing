@@ -2642,7 +2642,7 @@ def convolve_2d(
                         n_cols_signal * n_rows_signal),
                     os.path.basename(target_path)),
                 _LOGGING_PERIOD)
-        # delete the mask raster
+
         mask_raster = None
         mask_band = None
         os.remove(mask_raster_path)
