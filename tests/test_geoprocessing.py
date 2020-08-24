@@ -2428,31 +2428,7 @@ class PyGeoprocessing10(unittest.TestCase):
         target_path = os.path.join(self.workspace_dir, 'target.tif')
         pygeoprocessing.convolve_2d(
             (signal_path, 1), (kernel_path, 1), target_path,
-            n_threads=1, ignore_nodata_and_edges=False)
-        target_array = pygeoprocessing.raster_to_numpy_array(target_path)
-
-        # calculate expected result by adding up all squares, subtracting off
-        # the sides and realizing diagonals got subtracted twice
-        expected_result = test_value * (
-            n_pixels ** 2 * 9 - n_pixels * 4 * 3 + 4)
-        numpy.testing.assert_allclose(numpy.sum(target_array), expected_result)
-
-    def test_convolve_2d_multiprocess(self):
-        """PGP.geoprocessing: test convolve 2d (multiprocess)."""
-        n_pixels = 100
-        signal_array = numpy.ones((n_pixels, n_pixels), numpy.float32)
-        test_value = 0.5
-        signal_array[:] = test_value
-        target_nodata = -1
-        signal_path = os.path.join(self.workspace_dir, 'signal.tif')
-        _array_to_raster(signal_array, target_nodata, signal_path)
-        kernel_path = os.path.join(self.workspace_dir, 'kernel.tif')
-        kernel_array = numpy.ones((3, 3), numpy.float32)
-        _array_to_raster(kernel_array, target_nodata, kernel_path)
-        target_path = os.path.join(self.workspace_dir, 'target.tif')
-        pygeoprocessing.convolve_2d(
-            (signal_path, 1), (kernel_path, 1), target_path,
-            n_threads=3)
+            ignore_nodata_and_edges=False)
         target_array = pygeoprocessing.raster_to_numpy_array(target_path)
 
         # calculate expected result by adding up all squares, subtracting off
@@ -4172,7 +4148,7 @@ class PyGeoprocessing10(unittest.TestCase):
         target_path = os.path.join(self.workspace_dir, 'target.tif')
         pygeoprocessing.convolve_2d(
             (signal_path, 1), (kernel_path, 1), target_path,
-            n_threads=1, ignore_nodata_and_edges=False, mask_nodata=True)
+            ignore_nodata_and_edges=False, mask_nodata=True)
         target_array = pygeoprocessing.raster_to_numpy_array(target_path)
         target_nodata = pygeoprocessing.get_raster_info(
             target_path)['nodata'][0]
