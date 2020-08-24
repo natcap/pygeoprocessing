@@ -2,12 +2,15 @@
 # distutils: language=c++
 # cython: language_level=3
 import logging
+import multiprocessing
 import os
+import pickle
 import shutil
 import sys
 import tempfile
 import time
 import traceback
+import zlib
 
 cimport cython
 cimport libcpp.algorithm
@@ -529,18 +532,21 @@ def calculate_slope(
 
 @cython.boundscheck(False)
 @cython.cdivision(True)
-def stats_worker(stats_work_queue, exception_queue):
+def stats_worker(stats_work_queue, expected_blocks):
     """Worker to calculate continuous min, max, mean and standard deviation.
 
     Parameters:
         stats_work_queue (Queue): a queue of 1D numpy arrays or None. If
             None, function puts a (min, max, mean, stddev) tuple to the
             queue and quits.
+        expected_blocks (int): number of expected payloads through
+            ``stats_work_queue``. Will terminate after this many.
 
     Returns:
         None
 
     """
+    LOGGER.debug(f'stats worker PID: {os.getpid()}')
     cdef numpy.ndarray[numpy.float64_t, ndim=1] block
     cdef double M_local = 0.0
     cdef double S_local = 0.0
@@ -551,13 +557,20 @@ def stats_worker(stats_work_queue, exception_queue):
     cdef long long n = 0L
     payload = None
 
-    try:
-        while True:
+    for index in range(expected_blocks):
+        try:
+            existing_shm = None
             payload = stats_work_queue.get()
             if payload is None:
-                LOGGER.debug('payload is None, terminating')
                 break
-            block = payload.astype(numpy.float64)
+            if sys.version_info >= (3, 8):
+                shape, dtype, existing_shm = payload
+                block = numpy.ndarray(
+                    shape, dtype=dtype, buffer=existing_shm.buf)
+            else:
+                block = payload
+            if block.size == 0:
+                continue
             n_elements = block.size
             with nogil:
                 for i in range(n_elements):
@@ -579,21 +592,20 @@ def stats_worker(stats_work_queue, exception_queue):
                             min_value = x
                         elif x > max_value:
                             max_value = x
+        except Exception as e:
+            LOGGER.exception(
+                "exception %s %s %s %s %s", x, M_local, S_local, n, payload)
+            raise
 
-        if n > 0:
-            stats_work_queue.put(
-                (min_value, max_value, M_local, (S_local / <double>n) ** 0.5))
-        else:
-            LOGGER.warning(
-                "No valid pixels were received, sending None.")
-            stats_work_queue.put(None)
-    except Exception as e:
-        LOGGER.exception(
-            "exception %s %s %s %s %s", x, M_local, S_local, n, payload)
-        exception_queue.put(e)
-        while not stats_work_queue.empty():
-            stats_work_queue.get()
-        raise
+    if n > 0:
+        stats_work_queue.put(
+            (min_value, max_value, M_local,
+                (S_local / <double>n) ** 0.5))
+    else:
+        LOGGER.warning(
+            "No valid pixels were received, sending None.")
+        stats_work_queue.put(None)
+
 
 ctypedef long long int64t
 ctypedef FastFileIterator[long long]* FastFileIteratorLongLongIntPtr

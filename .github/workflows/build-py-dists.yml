@@ -13,7 +13,6 @@ jobs:
                 include:
                     - python-version: 3.7
                       numpy: "numpy~=1.15"
-
                     - python-version: 3.8
                       numpy: "numpy~=1.17"
 

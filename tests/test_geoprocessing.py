@@ -16,6 +16,7 @@ import shapely.geometry
 import shapely.wkt
 
 import pygeoprocessing
+import pygeoprocessing.multiprocessing
 import pygeoprocessing.symbolic
 from pygeoprocessing.geoprocessing_core import \
     DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS
@@ -28,6 +29,12 @@ _DEFAULT_EPSG = 3116
 def passthrough(x):
     """Use in testing simple raster calculator calls."""
     return x
+
+
+def arithmetic_wrangle(x):
+    """Do some non trivial arithmetic."""
+    result = -x**2/x**0.2
+    return result
 
 
 def _geometry_to_vector(
@@ -1161,7 +1168,8 @@ class PyGeoprocessing10(unittest.TestCase):
         self.assertTrue(
             numpy.isclose(
                 pygeoprocessing.raster_to_numpy_array(base_a_path),
-                pygeoprocessing.raster_to_numpy_array(target_raster_path)).all())
+                pygeoprocessing.raster_to_numpy_array(
+                    target_raster_path)).all())
 
     def test_warp_raster_unusual_pixel_size(self):
         """PGP.geoprocessing: warp on unusual pixel types and sizes."""
@@ -1192,7 +1200,8 @@ class PyGeoprocessing10(unittest.TestCase):
         self.assertTrue(
             numpy.isclose(
                 pygeoprocessing.raster_to_numpy_array(base_a_path),
-                pygeoprocessing.raster_to_numpy_array(expected_raster_path)).all())
+                pygeoprocessing.raster_to_numpy_array(
+                    expected_raster_path)).all())
 
     def test_warp_raster_0x0_size(self):
         """PGP.geoprocessing: test warp where so small it would be 0x0."""
@@ -1223,7 +1232,8 @@ class PyGeoprocessing10(unittest.TestCase):
         self.assertTrue(
             numpy.isclose(
                 pygeoprocessing.raster_to_numpy_array(base_a_path),
-                pygeoprocessing.raster_to_numpy_array(expected_raster_path)).all())
+                pygeoprocessing.raster_to_numpy_array(
+                    expected_raster_path)).all())
 
     def test_align_and_resize_raster_stack_bad_values(self):
         """PGP.geoprocessing: align/resize raster bad base values."""
@@ -1662,6 +1672,24 @@ class PyGeoprocessing10(unittest.TestCase):
         self.assertTrue(
             numpy.isclose(
                 pygeoprocessing.raster_to_numpy_array(base_path),
+                pygeoprocessing.raster_to_numpy_array(target_path)).all())
+
+    def test_raster_calculator_mutiprocessing(self):
+        """PGP.geoprocessing: raster_calculator identity test."""
+        pixel_matrix = numpy.ones((1024, 1024), numpy.int16)
+        target_nodata = -1
+        base_path = os.path.join(self.workspace_dir, 'base.tif')
+        _array_to_raster(pixel_matrix, target_nodata, base_path)
+
+        target_path = os.path.join(self.workspace_dir, 'subdir', 'target.tif')
+
+        pygeoprocessing.multiprocessing.raster_calculator(
+            [(base_path, 1)], arithmetic_wrangle, target_path,
+            gdal.GDT_Int32, target_nodata, calc_raster_stats=True)
+
+        self.assertTrue(
+            numpy.isclose(
+                arithmetic_wrangle(pixel_matrix),
                 pygeoprocessing.raster_to_numpy_array(target_path)).all())
 
     def test_raster_calculator_bad_target_type(self):

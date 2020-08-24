@@ -3,6 +3,7 @@ Release History
 
 Unreleased Changes
 ------------------
+* Modified ``pygeoprocessing.numpy_array_to_raster`` to take boolean arrays.
 * Modified ``pygeoprocessing.convolve_2d`` to guard against nonsensical queries
   to both ``ignore_nodata_and_edges=True`` but also ``mask_nodata=False``.
   A query of this combination now raises a ``ValueError`` to guard against
@@ -21,6 +22,11 @@ Unreleased Changes
   parameter ``write_diagnostic_vector``.  When ``True``, this parameter will
   cause a new vector per outflow feature to be created in the ``working_dir``.
   This parameter defaults to ``False``.  This is a change from prior behavior,
+  when the diagnostic vectors were always created, which could occupy a lot of
+  computational time under large outflow geometries.
+* Added a ``pygeoprocessing.multiprocessing.raster_calculator`` function which
+  matches the API and results of ``pygeoprocessing.raster_calculator`` but uses
+  multiple processing cores to compute raster calculation blocks.
   when the diagnostic vectors were always created, which could occupy
   significant computational time under large outflow geometries.
 * Minor performance improvement to ``pygeoprocessing.convolve_2d`` by
