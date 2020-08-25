@@ -1,7 +1,7 @@
 Release History
 ===============
 
-Unreleased Changes
+2.1.0 (2020-08-25)
 ------------------
 * Modified ``pygeoprocessing.numpy_array_to_raster`` to take boolean arrays.
 * Modified ``pygeoprocessing.convolve_2d`` to guard against nonsensical queries
