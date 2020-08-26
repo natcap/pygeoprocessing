@@ -4188,9 +4188,10 @@ class PyGeoprocessing10(unittest.TestCase):
         numpy.testing.assert_allclose(target_array, expected_output)
 
     def test_convolve_2d_gaussian(self):
-        """PGP.geoprocessing: test convolve 2d (single thread)."""
+        """PGP.geoprocessing: test convolve 2d with large gaussian kernel."""
+        # choosing twice the max memory block
         n_pixels = 256*2
-        # this is a fun seed
+        # this is a fun seed random seed
         numpy.random.seed(n_pixels)
         signal_array = numpy.random.random((n_pixels, n_pixels))
 
