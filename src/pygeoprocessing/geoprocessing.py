@@ -2551,9 +2551,6 @@ def convolve_2d(
     worker.start()
 
     n_blocks_processed = 0
-
-    # this set is indexed by (x,y) tuple from iterblock offsets to check if the
-    # target block is on its first pass and set to zero if so.
     LOGGER.info(f'{n_blocks} sent to workers, wait for worker results')
     while True:
         write_payload = write_queue.get()
