@@ -4215,7 +4215,5 @@ class PyGeoprocessing10(unittest.TestCase):
         expected_output = scipy.ndimage.gaussian_filter(
             signal_array, 1.0, mode='constant')
 
-        _array_to_raster(
-            expected_output, None, os.path.join(workspace_dir, 'extected.tif'))
         numpy.testing.assert_allclose(
             target_array, expected_output, rtol=1e-6, atol=1e-6)
