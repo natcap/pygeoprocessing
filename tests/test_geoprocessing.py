@@ -10,6 +10,9 @@ import unittest.mock
 from osgeo import gdal
 from osgeo import ogr
 from osgeo import osr
+from numpy.random import MT19937
+from numpy.random import RandomState
+from numpy.random import SeedSequence
 import numpy
 import scipy.ndimage
 import shapely.geometry
@@ -4192,8 +4195,8 @@ class PyGeoprocessing10(unittest.TestCase):
         # choosing twice the max memory block
         n_pixels = 256*2
         # this is a fun seed random seed
-        numpy.random.seed(n_pixels)
-        signal_array = numpy.random.random((n_pixels, n_pixels))
+        random_state = RandomState(MT19937(SeedSequence(123456789)))
+        signal_array = random_state.random((n_pixels, n_pixels))
 
         base_nodata = -1
         signal_path = os.path.join(self.workspace_dir, 'signal.tif')
