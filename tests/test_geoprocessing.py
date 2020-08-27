@@ -4195,21 +4195,17 @@ class PyGeoprocessing10(unittest.TestCase):
         numpy.random.seed(n_pixels)
         signal_array = numpy.random.random((n_pixels, n_pixels))
 
-        workspace_dir = 'local'
-        if not os.path.exists(workspace_dir):
-            os.makedirs(workspace_dir)
-
         base_nodata = -1
-        signal_path = os.path.join(workspace_dir, 'signal.tif')
+        signal_path = os.path.join(self.workspace_dir, 'signal.tif')
         _array_to_raster(signal_array, base_nodata, signal_path)
 
         kernel_seed = numpy.zeros((n_pixels, n_pixels))
         kernel_seed[n_pixels//2, n_pixels//2] = 1
         kernel_array = scipy.ndimage.gaussian_filter(kernel_seed, 1.0)
-        kernel_path = os.path.join(workspace_dir, 'kernel.tif')
+        kernel_path = os.path.join(self.workspace_dir, 'kernel.tif')
         _array_to_raster(kernel_array, base_nodata, kernel_path)
 
-        target_path = os.path.join(workspace_dir, 'target.tif')
+        target_path = os.path.join(self.workspace_dir, 'target.tif')
         pygeoprocessing.convolve_2d(
             (signal_path, 1), (kernel_path, 1), target_path,
             ignore_nodata_and_edges=False, mask_nodata=True)
