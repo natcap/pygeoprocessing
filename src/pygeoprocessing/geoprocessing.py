@@ -2467,10 +2467,11 @@ def convolve_2d(
             "Expected raster path band sequences for the following arguments "
             f"but instead got: {bad_raster_path_list}")
 
-    if target_nodata is None:
-        target_nodata = numpy.finfo(numpy.float32).min
+    # The nodata value is reset to a different value at the end of this
+    # function. Here 0 is chosen as a default value since data are
+    # incrementally added to the raster
     new_raster_from_base(
-        signal_path_band[0], target_path, target_datatype, [target_nodata],
+        signal_path_band[0], target_path, target_datatype, [0],
         raster_driver_creation_tuple=raster_driver_creation_tuple)
 
     signal_raster_info = get_raster_info(signal_path_band[0])
@@ -2497,8 +2498,8 @@ def convolve_2d(
         mask_dir = tempfile.mkdtemp(dir=working_dir)
         mask_raster_path = os.path.join(mask_dir, 'convolved_mask.tif')
         new_raster_from_base(
-            signal_path_band[0], mask_raster_path, gdal.GDT_Float32,
-            [-1.0], raster_driver_creation_tuple=raster_driver_creation_tuple)
+            signal_path_band[0], mask_raster_path, gdal.GDT_Float64,
+            [0.0], raster_driver_creation_tuple=raster_driver_creation_tuple)
         mask_raster = gdal.OpenEx(
             mask_raster_path, gdal.GA_Update | gdal.OF_RASTER)
         mask_band = mask_raster.GetRasterBand(1)
@@ -2540,7 +2541,6 @@ def convolve_2d(
     # indexes
     LOGGER.debug('start worker thread')
     write_queue = queue.Queue(10)
-    worker_list = []
     worker = threading.Thread(
         target=_convolve_2d_worker,
         args=(
@@ -2551,10 +2551,6 @@ def convolve_2d(
     worker.start()
 
     n_blocks_processed = 0
-
-    # this set is indexed by (x,y) tuple from iterblock offsets to check if the
-    # target block is on its first pass and set to zero if so.
-    target_block_initalized = set()
     LOGGER.info(f'{n_blocks} sent to workers, wait for worker results')
     while True:
         write_payload = write_queue.get()
@@ -2572,20 +2568,14 @@ def convolve_2d(
             (index_dict['win_ysize'], index_dict['win_xsize']),
             dtype=numpy.float32)
 
-        # read the current so we can add to it
-        pre_initalized = True
-        if (index_dict['xoff'], index_dict['yoff']) in target_block_initalized:
-            current_output = target_band.ReadAsArray(**index_dict)
-        else:
-            pre_initalized = False
-            target_block_initalized.add(
-                (index_dict['xoff'], index_dict['yoff']))
-            current_output = numpy.zeros(
-                output_array.shape, dtype=numpy.float32)
+        # the inital data value in target_band is 0 because that is the
+        # temporary nodata selected so that manual resetting of initial
+        # data values weren't necessary. at the end of this function the
+        # target nodata value is set to `target_nodata`.
+        current_output = target_band.ReadAsArray(**index_dict)
 
         # read the signal block so we know where the nodata are
-        potential_nodata_signal_array = signal_band.ReadAsArray(
-            **index_dict)
+        potential_nodata_signal_array = signal_band.ReadAsArray(**index_dict)
 
         valid_mask = numpy.ones(
             potential_nodata_signal_array.shape, dtype=bool)
@@ -2593,7 +2583,7 @@ def convolve_2d(
         # guard against a None nodata value
         if s_nodata is not None and mask_nodata:
             valid_mask[:] = (
-                potential_nodata_signal_array != s_nodata)
+                ~numpy.isclose(potential_nodata_signal_array, s_nodata))
         output_array[:] = target_nodata
         output_array[valid_mask] = (
             (result[top_index_result:bottom_index_result,
@@ -2606,12 +2596,7 @@ def convolve_2d(
         if ignore_nodata_and_edges:
             # we'll need to save off the mask convolution so we can divide
             # it in total later
-            if pre_initalized:
-                current_mask = mask_band.ReadAsArray(**index_dict)
-            else:
-                # current_output was "zeros" before and not modified, so we
-                # can use it again
-                current_mask = current_output
+            current_mask = mask_band.ReadAsArray(**index_dict)
 
             output_array[valid_mask] = (
                 (mask_result[
@@ -2636,21 +2621,25 @@ def convolve_2d(
 
     target_band.FlushCache()
     if ignore_nodata_and_edges:
+        signal_nodata = get_raster_info(signal_path_band[0])['nodata'][
+            signal_path_band[1]-1]
         LOGGER.info(
             "need to normalize result so nodata values are not included")
         mask_pixels_processed = 0
         mask_band.FlushCache()
         for target_offset_data in target_offset_list:
             target_block = target_band.ReadAsArray(
-                **target_offset_data).astype(
-                    _GDAL_TYPE_TO_NUMPY_LOOKUP[target_datatype])
+                **target_offset_data).astype(numpy.float64)
+            signal_block = signal_band.ReadAsArray(**target_offset_data)
             mask_block = mask_band.ReadAsArray(**target_offset_data)
-            if mask_nodata:
-                valid_mask = ~numpy.isclose(target_block, target_nodata)
+            if mask_nodata and signal_nodata is not None:
+                valid_mask = ~numpy.isclose(signal_block, signal_nodata)
             else:
                 valid_mask = numpy.ones(target_block.shape, dtype=numpy.bool)
+            valid_mask &= (mask_block > 0)
             # divide the target_band by the mask_band
-            target_block[valid_mask] /= mask_block[valid_mask]
+            target_block[valid_mask] /= mask_block[valid_mask].astype(
+                numpy.float64)
 
             # scale by kernel sum if necessary since mask division will
             # automatically normalize kernel
@@ -2676,6 +2665,12 @@ def convolve_2d(
         LOGGER.info(
             f"convolution nodata normalize 100.0% complete on "
             f"{os.path.basename(target_path)}")
+
+    # set the nodata value from 0 to a reasonable value for the result
+    if target_nodata is None:
+        target_band.DeleteNoDataValue()
+    else:
+        target_band.SetNoDataValue(target_nodata)
 
     target_band = None
     target_raster = None

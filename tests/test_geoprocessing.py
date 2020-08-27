@@ -10,6 +10,9 @@ import unittest.mock
 from osgeo import gdal
 from osgeo import ogr
 from osgeo import osr
+from numpy.random import MT19937
+from numpy.random import RandomState
+from numpy.random import SeedSequence
 import numpy
 import scipy.ndimage
 import shapely.geometry
@@ -4186,3 +4189,34 @@ class PyGeoprocessing10(unittest.TestCase):
         expected_output[0, 0] = 1
         expected_output[-1, -1] = 1
         numpy.testing.assert_allclose(target_array, expected_output)
+
+    def test_convolve_2d_gaussian(self):
+        """PGP.geoprocessing: test convolve 2d with large gaussian kernel."""
+        # choosing twice the max memory block
+        n_pixels = 256*2
+        # this is a fun seed random seed
+        random_state = RandomState(MT19937(SeedSequence(123456789)))
+        signal_array = random_state.random((n_pixels, n_pixels))
+
+        base_nodata = -1
+        signal_path = os.path.join(self.workspace_dir, 'signal.tif')
+        _array_to_raster(signal_array, base_nodata, signal_path)
+
+        kernel_seed = numpy.zeros((n_pixels, n_pixels))
+        kernel_seed[n_pixels//2, n_pixels//2] = 1
+        kernel_array = scipy.ndimage.gaussian_filter(kernel_seed, 1.0)
+        kernel_path = os.path.join(self.workspace_dir, 'kernel.tif')
+        _array_to_raster(kernel_array, base_nodata, kernel_path)
+
+        target_path = os.path.join(self.workspace_dir, 'target.tif')
+        pygeoprocessing.convolve_2d(
+            (signal_path, 1), (kernel_path, 1), target_path,
+            ignore_nodata_and_edges=False, mask_nodata=True)
+        target_array = pygeoprocessing.raster_to_numpy_array(target_path)
+
+        # gaussian filter with constant is the same as bleeding off the edges
+        expected_output = scipy.ndimage.gaussian_filter(
+            signal_array, 1.0, mode='constant')
+
+        numpy.testing.assert_allclose(
+            target_array, expected_output, rtol=1e-6, atol=1e-6)

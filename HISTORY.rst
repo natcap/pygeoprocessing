@@ -1,6 +1,11 @@
 Release History
 ===============
 
+Unreleased Changes
+------------------
+* Fixed a critical bug introduced in 2.1.0 that generated invalid results in
+  `convolve_2d` for any raster larger than 256x256.
+
 2.1.0 (2020-08-25)
 ------------------
 * Modified ``pygeoprocessing.numpy_array_to_raster`` to take boolean arrays.
