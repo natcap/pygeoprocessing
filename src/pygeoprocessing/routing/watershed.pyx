@@ -624,7 +624,8 @@ def _split_geometry_into_seeds(
 def delineate_watersheds_d8(
         d8_flow_dir_raster_path_band, outflow_vector_path,
         target_watersheds_vector_path, working_dir=None,
-        write_diagnostic_vector=False, remove_temp_files=True):
+        write_diagnostic_vector=False, remove_temp_files=True,
+        target_layer_name='watersheds'):
     """Delineate watersheds for a vector of geometries using D8 flow dir.
 
     Parameters:
@@ -651,6 +652,9 @@ def delineate_watersheds_d8(
             outflow geometries cover many pixels.
         remove_temp_files=True (bool): Whether to remove the created temp
             directory at the end of the watershed delineation run.
+        target_layer_name='watersheds' (string): The string name to use for
+            the watersheds layer.  This layer name may be named anything
+            except for "polygonized_watersheds".
 
     Returns
         ``None``
@@ -708,7 +712,7 @@ def delineate_watersheds_d8(
     # technically not supported by the GPKG standard although GDAL
     # allows it for the time being.
     watersheds_layer = watersheds_vector.CreateLayer(
-        'watersheds', watersheds_srs, ogr.wkbUnknown)
+        target_layer_name, watersheds_srs, ogr.wkbUnknown)
     index_field = ogr.FieldDefn('ws_id', ogr.OFTInteger)
     index_field.SetWidth(24)
     polygonized_watersheds_layer.CreateField(index_field)
