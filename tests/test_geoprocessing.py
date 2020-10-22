@@ -1174,6 +1174,24 @@ class PyGeoprocessing10(unittest.TestCase):
                 pygeoprocessing.raster_to_numpy_array(
                     target_raster_path)).all())
 
+    def test_warp_raster_invalid_resample_alg(self):
+        """PGP.geoprocessing: error on invalid resample algorithm."""
+        pixel_a_matrix = numpy.ones((5, 5), numpy.int16)
+        target_nodata = -1
+        base_a_path = os.path.join(self.workspace_dir, 'base_a.tif')
+        _array_to_raster(
+            pixel_a_matrix, target_nodata, base_a_path)
+
+        target_raster_path = os.path.join(self.workspace_dir, 'target_a.tif')
+        base_a_raster_info = pygeoprocessing.get_raster_info(base_a_path)
+
+        with self.assertRaises(ValueError) as context:
+            pygeoprocessing.warp_raster(
+                base_a_path, base_a_raster_info['pixel_size'], target_raster_path,
+                'not_an_algorithm', n_threads=1)
+
+        self.assertIn('Invalid resample method', str(context.exception))
+
     def test_warp_raster_unusual_pixel_size(self):
         """PGP.geoprocessing: warp on unusual pixel types and sizes."""
         pixel_a_matrix = numpy.ones((1, 1), numpy.byte)
