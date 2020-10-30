@@ -5,6 +5,8 @@ Unreleased Changes
 ------------------
 * ``pygeoprocessing.warp_raster`` now raises a ``ValueError`` when an invalid
   resampling method is provided.
+* Fixed ``convolve_2d`` memory leak when kernel or signal rasters were very
+  large.
 
 2.1.1 (2020-09-16)
 ------------------
