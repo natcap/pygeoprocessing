@@ -1971,6 +1971,12 @@ def warp_raster(
             'PIXELTYPE' not in ' '.join(raster_creation_options)):
         raster_creation_options.append('PIXELTYPE=SIGNEDBYTE')
 
+    # WarpOptions.this is None when an invalid option is passed, and it's a
+    # truthy SWIG proxy object when it's given a valid resample arg.
+    if not gdal.WarpOptions(resampleAlg=resample_method)[0].this:
+        raise ValueError(
+            f'Invalid resample method: "{resample_method}"')
+
     gdal.Warp(
         warped_raster_path, base_raster,
         format=raster_driver_creation_tuple[0],

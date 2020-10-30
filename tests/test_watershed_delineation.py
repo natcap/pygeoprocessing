@@ -157,10 +157,11 @@ class WatershedDelineationTests(unittest.TestCase):
             self.workspace_dir, 'watersheds.gpkg')
 
         pygeoprocessing.routing.delineate_watersheds_d8(
-            (flow_dir_path, 1), outflow_vector_path, target_watersheds_path)
+            (flow_dir_path, 1), outflow_vector_path, target_watersheds_path,
+            target_layer_name='watersheds_something')
 
         watersheds_vector = gdal.OpenEx(target_watersheds_path, gdal.OF_VECTOR)
-        watersheds_layer = watersheds_vector.GetLayer('watersheds')
+        watersheds_layer = watersheds_vector.GetLayer('watersheds_something')
         self.assertEqual(watersheds_layer.GetFeatureCount(), 4)
 
         # All features should have the same watersheds, both in area and

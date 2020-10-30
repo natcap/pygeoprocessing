@@ -3,8 +3,16 @@ Release History
 
 Unreleased Changes
 ------------------
+* ``pygeoprocessing.warp_raster`` now raises a ``ValueError`` when an invalid
+  resampling method is provided.
+
+2.1.1 (2020-09-16)
+------------------
 * Fixed a critical bug introduced in 2.1.0 that generated invalid results in
   `convolve_2d` for any raster larger than 256x256.
+* Added an optional parameter, ``target_layer_name`` to
+  ``pygeoprocessing.routing.delineate_watersheds_d8`` for cases where a
+  caller would like to define the output layer name.
 
 2.1.0 (2020-08-25)
 ------------------
