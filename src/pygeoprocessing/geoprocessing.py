@@ -2521,7 +2521,9 @@ def convolve_2d(
             kernel_block[numpy.isclose(kernel_block, kernel_nodata)] = 0.0
         kernel_sum += numpy.sum(kernel_block)
 
-    work_queue = queue.Queue()
+    # limit the size of the work queue since a large kernel / signal with small
+    # block size can have a large memory impact when queuing offset lists.
+    work_queue = queue.Queue(10)
     signal_offset_list = list(iterblocks(s_path_band, offset_only=True))
     kernel_offset_list = list(iterblocks(k_path_band, offset_only=True))
     n_blocks = len(signal_offset_list) * len(kernel_offset_list)
@@ -2543,8 +2545,7 @@ def convolve_2d(
     fill_work_queue_worker.start()
 
     # limit the size of the write queue so we don't accidentally load a whole
-    # array into memory, work queue is okay because it's only passing block
-    # indexes
+    # array into memory
     LOGGER.debug('start worker thread')
     write_queue = queue.Queue(10)
     worker = threading.Thread(
