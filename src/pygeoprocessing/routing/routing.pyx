@@ -2956,3 +2956,32 @@ def _is_raster_path_band_formatted(raster_path_band):
         return False
     else:
         return True
+
+
+def extract_strahler_streams_d8(
+        flow_dir_raster_path_band, flow_accum_raster_path,
+        flow_accumulation_threshold, target_stream_vector_path):
+    """Extract Strahler order stream geometry from flow accumulation.
+
+    Creates a Strahler ordered stream vector containing line segments
+    representing each separate stream fragment. The final vector contains
+    the fields:
+        * "order" (int): an integer representing the stream order
+        * "parent" (int): the FID of the downstream connected parent.
+
+    Args:
+        flow_dir_raster_path_band (tuple): a path/band representing the D8
+            flow direction raster.
+        flow_accum_raster_path (tuple): a path/band representing the D8 flow
+            accumulation raster represented by `flow_dir_raster_path_band`.
+        flow_accumulation_threshold (int): minimum number of upstream pixels
+            required to create a stream.
+        target_stream_vector_path (tuple): a single layer line vector created
+            by this function representing the stream segmenents extracted from
+            the above arguments. Contains the fields "order" and "parent" as
+            described above.
+
+    Returns:
+        None.
+    """
+    pass
