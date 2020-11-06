@@ -1,6 +1,12 @@
 Release History
 ===============
 
+Unreleased Changes
+------------------
+* Guarding against ``FileNotFoundError`` being raised due to a Python race
+  condition bug in ``shutil.rmtree`` described here:
+  https://bugs.python.org/issue29699
+
 2.1.1 (2020-09-16)
 ------------------
 * Fixed a critical bug introduced in 2.1.0 that generated invalid results in

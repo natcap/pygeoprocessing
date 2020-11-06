@@ -7,7 +7,6 @@ import math
 import os
 import pprint
 import queue
-import shutil
 import sys
 import tempfile
 import threading
@@ -15,6 +14,7 @@ import time
 
 from . import geoprocessing_core
 from .geoprocessing_core import DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS
+from .geoprocessing_core import _safe_rmtree
 from osgeo import gdal
 from osgeo import ogr
 from osgeo import osr
@@ -1998,7 +1998,7 @@ def warp_raster(
             target_mask_value=None, working_dir=temp_working_dir,
             all_touched=False,
             raster_driver_creation_tuple=raster_driver_creation_tuple)
-        shutil.rmtree(temp_working_dir)
+        _safe_rmtree(temp_working_dir)
 
 
 def rasterize(
@@ -2677,7 +2677,7 @@ def convolve_2d(
     if s_nodata is not None and ignore_nodata_and_edges:
         # there's a working directory only if we need to remember the nodata
         # pixels
-        shutil.rmtree(mask_dir)
+        _safe_rmtree(mask_dir)
 
 
 def iterblocks(

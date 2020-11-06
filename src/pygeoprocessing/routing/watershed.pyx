@@ -2,7 +2,6 @@
 # cython: language_level=3
 import logging
 import os
-import shutil
 import tempfile
 import time
 
@@ -26,6 +25,7 @@ import shapely.geometry
 import shapely.prepared
 import shapely.wkb
 
+from ..geoprocessing_core import _safe_rmtree
 import pygeoprocessing
 
 LOGGER = logging.getLogger(__name__)
@@ -1001,5 +1001,5 @@ def delineate_watersheds_d8(
     source_vector = None
 
     if remove_temp_files:
-        shutil.rmtree(working_dir_path)
+        _safe_rmtree(working_dir_path)
     LOGGER.info('Watershed delineation complete')

@@ -25,6 +25,7 @@ from libc.stdio cimport fwrite
 from libcpp.vector cimport vector
 from osgeo import gdal
 import numpy
+
 import pygeoprocessing
 
 DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS = ('GTIFF', (
@@ -800,7 +801,7 @@ def _raster_band_percentile_int(
             # you never know if this might fail!
             LOGGER.warning('unable to remove %s', file_path)
     if rm_dir_when_done:
-        shutil.rmtree(working_sort_directory)
+        _safe_rmtree(working_sort_directory)
     return result_list
 
 
@@ -941,6 +942,38 @@ def _raster_band_percentile_double(
             # you never know if this might fail!
             LOGGER.warning('unable to remove %s', file_path)
     if rm_dir_when_done:
-        shutil.rmtree(working_sort_directory)
+        _safe_rmtree(working_sort_directory)
     LOGGER.debug('here is percentile_list: %s', str(result_list))
     return result_list
+
+
+def _safe_rmtree(path):
+    """Attempts to remove a file path and logs a warning if it fails.
+
+    There is a possible bug in shutil.rmtree that can raise a FileNotFound
+    error even if the removal of a directory is possible and it removed it
+    see: https://bugs.python.org/issue29699. This function is effectively a
+    guard against that bug and logs a warning if the file path could not
+    be removed.
+
+    Args:
+        path (str): represents a file path to remove
+
+    Returns:
+        None
+    """
+    try:
+        # check if the path exists first before removing so we know if we
+        # get a FileNotFoundError we can be confident it is related to
+        # Python issue29699.
+        if os.path.exists(path):
+            shutil.rmtree(path)
+    except FileNotFoundError:
+        # check if the dir path is not there to verify if there was an
+        # incorrect exception raised due to Python issue29699. If the path
+        # does not exist assume the directory was removed correctly.
+        if os.path.exists(path):
+            LOGGER.warn(f'unable to remove {path}')
+    except OSError:
+        LOGGER.exception(
+            f'Ignoring unexpected OSError when removing {path}.')

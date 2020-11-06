@@ -18,7 +18,6 @@ is encoded as:
 """
 import logging
 import os
-import shutil
 import tempfile
 import time
 
@@ -37,6 +36,8 @@ from libcpp.set cimport set as cset
 from libcpp.stack cimport stack
 from osgeo import gdal
 import numpy
+
+from ..geoprocessing_core import _safe_rmtree
 import pygeoprocessing
 
 LOGGER = logging.getLogger(__name__)
@@ -947,7 +948,7 @@ def fill_pits(
 
     pit_mask_managed_raster.close()
     flat_region_mask_managed_raster.close()
-    shutil.rmtree(working_dir_path)
+    _safe_rmtree(working_dir_path)
     LOGGER.info('%.1f%% complete', 100.0)
 
 
@@ -1310,7 +1311,7 @@ def flow_dir_d8(
     flat_region_mask_managed_raster.close()
     dem_managed_raster.close()
     plateau_distance_managed_raster.close()
-    shutil.rmtree(working_dir_path)
+    _safe_rmtree(working_dir_path)
     LOGGER.info('%.1f%% complete', 100.0)
 
 
@@ -2024,7 +2025,7 @@ def flow_dir_mfd(
     flat_region_mask_managed_raster.close()
     dem_managed_raster.close()
     plateau_distance_managed_raster.close()
-    shutil.rmtree(working_dir_path)
+    _safe_rmtree(working_dir_path)
     LOGGER.info('%.1f%% complete', 100.0)
 
 
@@ -2303,10 +2304,7 @@ def flow_accumulation_mfd(
     if weight_raster is not None:
         weight_raster.close()
     visited_managed_raster.close()
-    try:
-        shutil.rmtree(tmp_dir)
-    except OSError:
-        LOGGER.exception("couldn't remove temp dir")
+    _safe_rmtree(tmp_dir)
     LOGGER.info('%.1f%% complete', 100.0)
 
 
