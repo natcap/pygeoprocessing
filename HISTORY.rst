@@ -3,9 +3,13 @@ Release History
 
 Unreleased Changes
 ------------------
+* ``pygeoprocessing.warp_raster`` now raises a ``ValueError`` when an invalid
+  resampling method is provided.
+* Fixed issue in ``convolve_2d`` that would cause excessive memory use
+  leading to out of memory errors.
 * Guarding against ``FileNotFoundError`` being raised due to a Python race
   condition bug in ``shutil.rmtree`` described here:
-  https://bugs.python.org/issue29699
+  https://bugs.python.org/issue29699.
 
 2.1.1 (2020-09-16)
 ------------------
