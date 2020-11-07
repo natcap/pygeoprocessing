@@ -3070,7 +3070,6 @@ def extract_strahler_streams_d8(
                     drain_point.SetField('order', 1)
                     point_geom = ogr.Geometry(ogr.wkbPoint)
                     coord = CoordinateType(i+xoff, j+yoff)
-                    LOGGER.debug(f'{coord.xi} {coord.yi}')
                     drain_point_stack.push(coord)
                     x, y = gdal.ApplyGeoTransform(
                         flow_dir_info['geotransform'],
@@ -3085,15 +3084,15 @@ def extract_strahler_streams_d8(
     # 123
 
     cdef int x_n, y_n  # the _n is for "neighbor"
-    cdef int **d8_backflow = [
-        [0, 0, 0, 0, 1, 0, 0, 0],
-        [0, 0, 0, 0, 0, 1, 0, 0],
-        [0, 0, 0, 0, 0, 0, 1, 0],
-        [0, 0, 0, 0, 0, 0, 0, 1],
-        [1, 0, 0, 0, 0, 0, 0, 0],
-        [0, 1, 0, 0, 0, 0, 0, 0],
-        [0, 0, 1, 0, 0, 0, 0, 0],
-        [0, 0, 0, 1, 0, 0, 0, 0]]
+    cdef int *d8_backflow = [
+        0, 0, 0, 0, 1, 0, 0, 0,
+        0, 0, 0, 0, 0, 1, 0, 0,
+        0, 0, 0, 0, 0, 0, 1, 0,
+        0, 0, 0, 0, 0, 0, 0, 1,
+        1, 0, 0, 0, 0, 0, 0, 0,
+        0, 1, 0, 0, 0, 0, 0, 0,
+        0, 0, 1, 0, 0, 0, 0, 0,
+        0, 0, 0, 1, 0, 0, 0, 0]
     cdef int upstream_count
     cdef int u_x=0, u_y=0
     LOGGER.info('starting upstream walk')
@@ -3102,10 +3101,7 @@ def extract_strahler_streams_d8(
             LOGGER.info(
                 f'drain seeding: {n_processed/n_pixels*100:.2f}% complete')
             last_log_time = ctime(NULL)
-        LOGGER.info('about to get top')
         coord = drain_point_stack.top()
-        LOGGER.info('got the top')
-        LOGGER.debug(coord)
         drain_point_stack.pop()
         upstream_count = 0
         for d in range(8):
@@ -3114,8 +3110,8 @@ def extract_strahler_streams_d8(
             d_n = <int>flow_dir_managed_raster.get(x_n, y_n)
             if d_n == flow_nodata:
                 continue
-            LOGGER.debug(d_n)
-            if d8_backflow[d][d_n]:
+            if d8_backflow[d*8+d_n] and <int>flow_accum_managed_raster.get(
+                    x_n, y_n) > flow_accumulation_threshold:
                 upstream_count += 1
                 u_x = x_n
                 u_y = y_n
@@ -3126,7 +3122,7 @@ def extract_strahler_streams_d8(
             drain_point.SetField('order', 2)
             point_geom = ogr.Geometry(ogr.wkbPoint)
             x, y = gdal.ApplyGeoTransform(
-                flow_dir_info['geotransform'], coord.xi, coord.yi)
+                flow_dir_info['geotransform'], coord.xi+0.5, coord.yi+0.5)
             point_geom.AddPoint(x, y)
             drain_point.SetGeometry(point_geom)
             stream_layer.CreateFeature(drain_point)
