@@ -39,6 +39,8 @@ from osgeo import gdal
 from osgeo import ogr
 from osgeo import osr
 import numpy
+
+from ..geoprocessing_core import DEFAULT_OSR_AXIS_MAPPING_STRATEGY
 import pygeoprocessing
 
 LOGGER = logging.getLogger(__name__)
@@ -2962,7 +2964,8 @@ def _is_raster_path_band_formatted(raster_path_band):
 
 def extract_strahler_streams_d8(
         flow_dir_d8_raster_path_band, flow_accum_raster_path_band,
-        flow_accumulation_threshold, target_stream_vector_path):
+        flow_accumulation_threshold, target_stream_vector_path,
+        osr_axis_mapping_strategy=DEFAULT_OSR_AXIS_MAPPING_STRATEGY):
     """Extract Strahler order stream geometry from flow accumulation.
 
     Creates a Strahler ordered stream vector containing line segments
@@ -2982,6 +2985,10 @@ def extract_strahler_streams_d8(
             by this function representing the stream segmenents extracted from
             the above arguments. Contains the fields "order" and "parent" as
             described above.
+        osr_axis_mapping_strategy (int): OSR axis mapping strategy for
+            ``SpatialReference`` objects. Defaults to
+            ``geoprocessing.DEFAULT_OSR_AXIS_MAPPING_STRATEGY``. This parameter
+            should not be changed unless you know what you are doing.
 
     Returns:
         None.
@@ -2990,6 +2997,7 @@ def extract_strahler_streams_d8(
         flow_dir_d8_raster_path_band[0])
     flow_dir_srs = osr.SpatialReference()
     flow_dir_srs.ImportFromWkt(flow_dir_info['projection_wkt'])
+    flow_dir_srs.SetAxisMappingStrategy(osr_axis_mapping_strategy)
     gpkg_driver = gdal.GetDriverByName('GPKG')
 
     stream_vector = gpkg_driver.Create(
@@ -3007,13 +3015,123 @@ def extract_strahler_streams_d8(
         flow_accum_raster_path_band[0],
         flow_accum_raster_path_band[1], 0)
 
-    cdef int xoff, yoff, i, j, d
-    for offset_dict in pygeprocessing.iterblocks(
-            flow_dir_raster_path_band, offset_only=True):
+    cdef int flow_nodata = pygeoprocessing.get_raster_info(
+        flow_dir_d8_raster_path_band[0])['nodata'][
+            flow_dir_d8_raster_path_band[1]-1]
+
+    # D8 flow directions encoded as
+    # 321
+    # 4x0
+    # 567
+    cdef int *d8_xoffset = [1, 1, 0, -1, -1, -1, 0, 1]
+    cdef int *d8_yoffset = [0, -1, -1, -1, 0, +1, +1, +1]
+    cdef int xoff, yoff, i, j, d, i_n, j_n, d_n, n_cols, n_rows
+    cdef int win_xsize, win_ysize
+    cdef int is_drain
+
+    n_cols, n_rows = flow_dir_info['raster_size']
+
+    stream_layer.StartTransaction()
+    LOGGER.info('seed the drains')
+    cdef long n_pixels = n_cols * n_rows
+    cdef long n_processed = 0
+    cdef time_t last_log_time
+    last_log_time = ctime(NULL)
+    cdef stack[CoordinateType] drain_point_stack
+    cdef CoordinateType coord
+    for offset_dict in pygeoprocessing.iterblocks(
+            flow_dir_d8_raster_path_band, offset_only=True):
+        if ctime(NULL)-last_log_time > 5.0:
+            LOGGER.info(
+                f'drain seeding: {n_processed/n_pixels*100:.2f}% complete')
+            last_log_time = ctime(NULL)
         xoff = offset_dict['xoff']
         yoff = offset_dict['yoff']
         win_xsize = offset_dict['win_xsize']
         win_ysize = offset_dict['win_ysize']
+        n_processed += win_xsize * win_ysize
         for i in range(win_xsize):
             for j in range(win_ysize):
-                for d in range(8):
+                is_drain = False
+                d = <int>flow_dir_managed_raster.get(i+xoff, j+yoff)
+                if d == flow_nodata:
+                    continue
+                i_n = xoff + i + d8_xoffset[d]
+                j_n = yoff + j + d8_yoffset[d]
+                if i_n < 0 or j_n < 0 or i_n >= n_cols or j_n >= n_rows:
+                    is_drain = True
+                else:
+                    d_n = <int>flow_dir_managed_raster.get(i_n, j_n)
+                    if d_n == flow_nodata:
+                        is_drain = True
+                if is_drain:
+                    drain_point = ogr.Feature(stream_layer.GetLayerDefn())
+                    drain_point.SetField('parent', -1)
+                    drain_point.SetField('order', 1)
+                    point_geom = ogr.Geometry(ogr.wkbPoint)
+                    coord = CoordinateType(i+xoff, j+yoff)
+                    LOGGER.debug(f'{coord.xi} {coord.yi}')
+                    drain_point_stack.push(coord)
+                    x, y = gdal.ApplyGeoTransform(
+                        flow_dir_info['geotransform'],
+                        coord.xi+0.5, coord.yi+0.5)
+                    point_geom.AddPoint(x, y)
+                    drain_point.SetGeometry(point_geom)
+                    stream_layer.CreateFeature(drain_point)
+
+    # D8 backflow directions encoded as
+    # 765
+    # 0x4
+    # 123
+
+    cdef int x_n, y_n  # the _n is for "neighbor"
+    cdef int **d8_backflow = [
+        [0, 0, 0, 0, 1, 0, 0, 0],
+        [0, 0, 0, 0, 0, 1, 0, 0],
+        [0, 0, 0, 0, 0, 0, 1, 0],
+        [0, 0, 0, 0, 0, 0, 0, 1],
+        [1, 0, 0, 0, 0, 0, 0, 0],
+        [0, 1, 0, 0, 0, 0, 0, 0],
+        [0, 0, 1, 0, 0, 0, 0, 0],
+        [0, 0, 0, 1, 0, 0, 0, 0]]
+    cdef int upstream_count
+    cdef int u_x=0, u_y=0
+    LOGGER.info('starting upstream walk')
+    while not drain_point_stack.empty():
+        if ctime(NULL)-last_log_time > 5.0:
+            LOGGER.info(
+                f'drain seeding: {n_processed/n_pixels*100:.2f}% complete')
+            last_log_time = ctime(NULL)
+        LOGGER.info('about to get top')
+        coord = drain_point_stack.top()
+        LOGGER.info('got the top')
+        LOGGER.debug(coord)
+        drain_point_stack.pop()
+        upstream_count = 0
+        for d in range(8):
+            x_n = coord.xi + d8_xoffset[d]
+            y_n = coord.yi + d8_yoffset[d]
+            d_n = <int>flow_dir_managed_raster.get(x_n, y_n)
+            if d_n == flow_nodata:
+                continue
+            LOGGER.debug(d_n)
+            if d8_backflow[d][d_n]:
+                upstream_count += 1
+                u_x = x_n
+                u_y = y_n
+        if upstream_count > 1:
+            # hit a branch!
+            drain_point = ogr.Feature(stream_layer.GetLayerDefn())
+            drain_point.SetField('parent', -1)
+            drain_point.SetField('order', 2)
+            point_geom = ogr.Geometry(ogr.wkbPoint)
+            x, y = gdal.ApplyGeoTransform(
+                flow_dir_info['geotransform'], coord.xi, coord.yi)
+            point_geom.AddPoint(x, y)
+            drain_point.SetGeometry(point_geom)
+            stream_layer.CreateFeature(drain_point)
+        elif upstream_count == 1:
+            # take another step upstream
+            drain_point_stack.push(CoordinateType(u_x, u_y))
+    stream_layer.CommitTransaction()
+    LOGGER.info('all done')
