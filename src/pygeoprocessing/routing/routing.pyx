@@ -36,6 +36,8 @@ from libcpp.queue cimport queue
 from libcpp.set cimport set as cset
 from libcpp.stack cimport stack
 from osgeo import gdal
+from osgeo import ogr
+from osgeo import osr
 import numpy
 import pygeoprocessing
 
@@ -2959,7 +2961,7 @@ def _is_raster_path_band_formatted(raster_path_band):
 
 
 def extract_strahler_streams_d8(
-        flow_dir_raster_path_band, flow_accum_raster_path,
+        flow_dir_d8_raster_path_band, flow_accum_raster_path_band,
         flow_accumulation_threshold, target_stream_vector_path):
     """Extract Strahler order stream geometry from flow accumulation.
 
@@ -2970,10 +2972,10 @@ def extract_strahler_streams_d8(
         * "parent" (int): the FID of the downstream connected parent.
 
     Args:
-        flow_dir_raster_path_band (tuple): a path/band representing the D8
+        flow_dir_d8_raster_path_band (tuple): a path/band representing the D8
             flow direction raster.
-        flow_accum_raster_path (tuple): a path/band representing the D8 flow
-            accumulation raster represented by `flow_dir_raster_path_band`.
+        flow_accum_raster_path_band (tuple): a path/band representing the D8 flow
+            accumulation raster represented by `flow_dir_d8_raster_path_band`.
         flow_accumulation_threshold (int): minimum number of upstream pixels
             required to create a stream.
         target_stream_vector_path (tuple): a single layer line vector created
@@ -2984,4 +2986,34 @@ def extract_strahler_streams_d8(
     Returns:
         None.
     """
-    pass
+    flow_dir_info = pygeoprocessing.get_raster_info(
+        flow_dir_d8_raster_path_band[0])
+    flow_dir_srs = osr.SpatialReference()
+    flow_dir_srs.ImportFromWkt(flow_dir_info['projection_wkt'])
+    gpkg_driver = gdal.GetDriverByName('GPKG')
+
+    stream_vector = gpkg_driver.Create(
+        target_stream_vector_path, 0, 0, 0, gdal.GDT_Unknown)
+    stream_layer = stream_vector.CreateLayer(
+        'stream', flow_dir_srs, ogr.wkbPoint)
+    stream_layer.CreateField(ogr.FieldDefn("parent", ogr.OFTInteger))
+    stream_layer.CreateField(ogr.FieldDefn("order", ogr.OFTInteger))
+
+    flow_dir_managed_raster = _ManagedRaster(
+        flow_dir_d8_raster_path_band[0],
+        flow_dir_d8_raster_path_band[1], 0)
+
+    flow_accum_managed_raster = _ManagedRaster(
+        flow_accum_raster_path_band[0],
+        flow_accum_raster_path_band[1], 0)
+
+    cdef int xoff, yoff, i, j, d
+    for offset_dict in pygeprocessing.iterblocks(
+            flow_dir_raster_path_band, offset_only=True):
+        xoff = offset_dict['xoff']
+        yoff = offset_dict['yoff']
+        win_xsize = offset_dict['win_xsize']
+        win_ysize = offset_dict['win_ysize']
+        for i in range(win_xsize):
+            for j in range(win_ysize):
+                for d in range(8):
