@@ -947,33 +947,33 @@ def _raster_band_percentile_double(
     return result_list
 
 
-def _safe_rmtree(path):
-    """Attempts to remove a file path and logs a warning if it fails.
+def _safe_rmtree(dir_path):
+    """Attempt remove directory via shutil.rmtree and log warning on failure.
 
     There is a possible bug in shutil.rmtree that can raise a FileNotFound
     error even if the removal of a directory is possible and it removed it
     see: https://bugs.python.org/issue29699. This function is effectively a
-    guard against that bug and logs a warning if the file path could not
+    guard against that bug and logs a warning if dir_path could not
     be removed.
 
     Args:
-        path (str): represents a file path to remove
+        dir_path (str): path to directory to remove
 
     Returns:
         None
     """
     try:
-        # check if the path exists first before removing so we know if we
+        # check if the dir_path exists before removing so we know if we
         # get a FileNotFoundError we can be confident it is related to
         # Python issue29699.
-        if os.path.exists(path):
-            shutil.rmtree(path)
+        if os.path.isdir(dir_path):
+            shutil.rmtree(dir_path)
     except FileNotFoundError:
-        # check if the dir path is not there to verify if there was an
+        # check if the dir_path is not there to verify if there was an
         # incorrect exception raised due to Python issue29699. If the path
         # does not exist assume the directory was removed correctly.
-        if os.path.exists(path):
-            LOGGER.warn(f'unable to remove {path}')
+        if os.path.isdir(dir_path):
+            LOGGER.warning(f'unable to remove {dir_path}')
     except OSError:
         LOGGER.exception(
-            f'Ignoring unexpected OSError when removing {path}.')
+            f'Ignoring unexpected OSError when removing {dir_path}.')
