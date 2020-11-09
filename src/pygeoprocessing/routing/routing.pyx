@@ -3004,9 +3004,8 @@ def extract_strahler_streams_d8(
     stream_vector = gpkg_driver.Create(
         target_stream_vector_path, 0, 0, 0, gdal.GDT_Unknown)
     stream_layer = stream_vector.CreateLayer(
-        'stream', flow_dir_srs, ogr.wkbPoint)
-    stream_layer.CreateField(ogr.FieldDefn("upstream_flow_dir", ogr.OFTInteger))
-    stream_layer.CreateField(ogr.FieldDefn("flow_accum", ogr.OFTInteger))
+        'stream', flow_dir_srs, ogr.wkbLineString)
+    stream_layer.CreateField(ogr.FieldDefn("order", ogr.OFTInteger))
 
     flow_dir_managed_raster = _ManagedRaster(
         flow_dir_d8_raster_path_band[0],
@@ -3026,20 +3025,18 @@ def extract_strahler_streams_d8(
     # 567
     cdef int *d8_xoffset = [1, 1, 0, -1, -1, -1, 0, 1]
     cdef int *d8_yoffset = [0, -1, -1, -1, 0, +1, +1, +1]
-    cdef int xoff, yoff, i, j, d, i_n, j_n, d_n, n_cols, n_rows
+    cdef int xoff, yoff, i, j, d, d_n, n_cols, n_rows
     cdef int win_xsize, win_ysize
-    cdef int is_drain
 
     n_cols, n_rows = flow_dir_info['raster_size']
 
-    stream_layer.StartTransaction()
     LOGGER.info('seed the drains')
     cdef long n_pixels = n_cols * n_rows
     cdef long n_processed = 0
     cdef time_t last_log_time
     last_log_time = ctime(NULL)
-    cdef stack[CoordinateType] drain_point_stack
-    cdef CoordinateType coord
+    cdef stack[FlowPixelType] source_point_stack
+    cdef FlowPixelType flow_dir_coord
 
     cdef int x_l, y_l  # the _l is for "local" aka "current" pixel
 
@@ -3071,7 +3068,6 @@ def extract_strahler_streams_d8(
     #   record a seed point for that bifurcation for later processing.
     for offset_dict in pygeoprocessing.iterblocks(
             flow_dir_d8_raster_path_band, offset_only=True):
-        LOGGER.info(offset_dict)
         if ctime(NULL)-last_log_time > 5.0:
             LOGGER.info(
                 f'drain seeding: {n_processed/n_pixels*100:.2f}% complete')
@@ -3112,54 +3108,64 @@ def extract_strahler_streams_d8(
                     continue
                 for upstream_index in range(upstream_count):
                     # hit a branch!
-                    branch_point = ogr.Feature(stream_layer.GetLayerDefn())
-                    x_p, y_p = gdal.ApplyGeoTransform(
-                        flow_dir_info['geotransform'], x_l+0.5, y_l+0.5)
+                    source_point_stack.push(FlowPixelType(
+                        x_l, y_l, upstream_dirs[upstream_index], 0.0))
 
-                    branch_point.SetField(
-                        'upstream_flow_dir', upstream_dirs[upstream_index])
-                    branch_point.SetField('flow_accum', local_flow_accum)
-                    point_geom = ogr.Geometry(ogr.wkbPoint)
-                    point_geom.AddPoint(x_p, y_p)
-                    branch_point.SetGeometry(point_geom)
-                    stream_layer.CreateFeature(branch_point)
-    stream_layer.CommitTransaction()
-    LOGGER.info('all done')
-    return
-    cdef int u_x=0, u_y=0
     LOGGER.info('starting upstream walk')
-    while not drain_point_stack.empty():
+    stream_layer.StartTransaction()
+    while not source_point_stack.empty():
         if ctime(NULL)-last_log_time > 5.0:
             LOGGER.info(
                 f'drain seeding: {n_processed/n_pixels*100:.2f}% complete')
             last_log_time = ctime(NULL)
-        coord = drain_point_stack.top()
-        drain_point_stack.pop()
-        upstream_count = 0
-        for d in range(8):
-            x_n = coord.xi + d8_xoffset[d]
-            y_n = coord.yi + d8_yoffset[d]
-            d_n = <int>flow_dir_managed_raster.get(x_n, y_n)
-            if d_n == flow_nodata:
-                continue
-            if d8_backflow[d*8+d_n] and <int>flow_accum_managed_raster.get(
-                    x_n, y_n) > flow_accumulation_threshold:
-                upstream_count += 1
-                u_x = x_n
-                u_y = y_n
-        if upstream_count > 1:
-            # hit a branch!
-            drain_point = ogr.Feature(stream_layer.GetLayerDefn())
-            drain_point.SetField('parent', -1)
-            drain_point.SetField('order', 2)
-            point_geom = ogr.Geometry(ogr.wkbPoint)
-            x, y = gdal.ApplyGeoTransform(
-                flow_dir_info['geotransform'], coord.xi+0.5, coord.yi+0.5)
-            point_geom.AddPoint(x, y)
-            drain_point.SetGeometry(point_geom)
-            stream_layer.CreateFeature(drain_point)
-        elif upstream_count == 1:
-            # take another step upstream
-            drain_point_stack.push(CoordinateType(u_x, u_y))
+        flow_dir_coord = source_point_stack.top()
+        source_point_stack.pop()
+
+        x_l = flow_dir_coord.xi
+        y_l = flow_dir_coord.yi
+
+        # start a new line at the source
+        stream_line = ogr.Geometry(ogr.wkbLineString)
+        x_p, y_p = gdal.ApplyGeoTransform(
+            flow_dir_info['geotransform'], x_l+0.5, y_l+0.5)
+        stream_line.AddPoint(x_p, y_p)
+        next_dir = flow_dir_coord.last_flow_dir
+        last_dir = next_dir
+        while True:
+            # walk upstream
+            x_l += d8_xoffset[next_dir]
+            y_l += d8_yoffset[next_dir]
+
+            # check upstream neighbors to see next step or if it branches
+            upstream_count = 0
+            for d in range(8):
+                x_n = x_l + d8_xoffset[d]
+                y_n = y_l + d8_yoffset[d]
+                if x_n < 0 or y_n < 0 or x_n >= n_cols or y_n >= n_rows:
+                    continue
+                d_n = <int>flow_dir_managed_raster.get(x_n, y_n)
+                if d_n == flow_nodata:
+                    continue
+                if d8_backflow[d*8+d_n] and <int>flow_accum_managed_raster.get(
+                        x_n, y_n) > flow_accumulation_threshold:
+                    upstream_count += 1
+                    if upstream_count > 1:
+                        # it's a branch so we can stop
+                        break
+                    next_dir = d
+
+            # drop a point on the line if direction changed or last point
+            if last_dir != next_dir or upstream_count != 1:
+                x_p, y_p = gdal.ApplyGeoTransform(
+                    flow_dir_info['geotransform'], x_l+0.5, y_l+0.5)
+                stream_line.AddPoint(x_p, y_p)
+                last_dir = next_dir
+
+            if upstream_count != 1:
+                # either hit a branch or flow accum tapered
+                break
+        stream_line_feature = ogr.Feature(stream_layer.GetLayerDefn())
+        stream_line_feature.SetGeometry(stream_line)
+        stream_layer.CreateFeature(stream_line_feature)
     stream_layer.CommitTransaction()
     LOGGER.info('all done')
