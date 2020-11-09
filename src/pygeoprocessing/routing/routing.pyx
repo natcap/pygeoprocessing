@@ -16,6 +16,7 @@ is encoded as:
      4x0
      567
 """
+import collections
 import logging
 import os
 import shutil
@@ -124,6 +125,16 @@ cdef struct FlowPixelType:
     int yi
     int last_flow_dir
     double value
+
+# used when constructing geometric streams, the x/y coordinates represent
+# a seed point to walk upstream from, the upstream_flow_dir indicates the
+# d8 flow direction to walk and the source_id indicates the source stream it
+# spawned from
+cdef struct StreamConnectivityPoint:
+    int xi
+    int yi
+    int upstream_d8_dir
+    int source_id
 
 # used to record x/y locations as needed
 cdef struct CoordinateType:
@@ -3035,8 +3046,8 @@ def extract_strahler_streams_d8(
     cdef long n_processed = 0
     cdef time_t last_log_time
     last_log_time = ctime(NULL)
-    cdef stack[FlowPixelType] source_point_stack
-    cdef FlowPixelType flow_dir_coord
+    cdef stack[StreamConnectivityPoint] source_point_stack
+    cdef StreamConnectivityPoint source_stream_point
 
     cdef int x_l, y_l  # the _l is for "local" aka "current" pixel
 
@@ -3059,12 +3070,21 @@ def extract_strahler_streams_d8(
     # indexed by `upstream_count`
     cdef int *upstream_dirs = [0, 0, 0, 0, 0, 0, 0, 0]
     cdef long local_flow_accum
+    # used to track which streams go where
+    cdef long next_stream_id = 0
+    # used to determine if source is a drain and should be tracked
+    cdef int is_drain
+
+    # map x/y tuple to list of streams originating from that point
+    # 2 tuple -> list of int
+    coord_to_stream_ids = collections.defaultdict(list)
 
     # First pass - search for bifurcating stream points
     #   look at all pixels in the raster. If a pixel has:
-    #       * flow accumulation > threshold
+    #       * flow accumulation > threshold and
     #       * more than two upstream neighbors with
-    #         flow accumulation > threshold
+    #         flow accumulation > threshold or
+    #       * drains to edge or nodata pixel
     #   record a seed point for that bifurcation for later processing.
     for offset_dict in pygeoprocessing.iterblocks(
             flow_dir_d8_raster_path_band, offset_only=True):
@@ -3080,11 +3100,25 @@ def extract_strahler_streams_d8(
 
         for i in range(win_xsize):
             for j in range(win_ysize):
+                is_drain = 0
                 x_l = xoff + i
                 y_l = yoff + j
                 local_flow_accum = <long>flow_accum_managed_raster.get(
                     x_l, y_l)
-                if (local_flow_accum < 2*flow_accumulation_threshold):
+                if local_flow_accum < flow_accumulation_threshold:
+                    continue
+                # check to see if it's a drain
+                d_n = <int>flow_dir_managed_raster.get(x_l, y_l)
+                x_n = x_l + d8_xoffset[d_n]
+                y_n = y_l + d8_yoffset[d_n]
+
+                if (x_n < 0 or y_n < 0 or x_n >= n_cols or y_n >= n_cols or
+                        <int>flow_dir_managed_raster.get(
+                            x_n, y_n) == flow_nodata):
+                    is_drain = 1
+
+                if not is_drain and (
+                        local_flow_accum < 2*flow_accumulation_threshold):
                     # if current pixel is < 2*flow threshold then it can't
                     # bifurcate into two pixels == flow threshold
                     continue
@@ -3104,18 +3138,34 @@ def extract_strahler_streams_d8(
                                 x_n, y_n) >= flow_accumulation_threshold):
                         upstream_dirs[upstream_count] = d
                         upstream_count += 1
-                if upstream_count <= 1:
+                if upstream_count <= 1 and not is_drain:
                     continue
                 for upstream_index in range(upstream_count):
                     # hit a branch!
-                    source_point_stack.push(FlowPixelType(
-                        x_l, y_l, upstream_dirs[upstream_index], 0.0))
+                    source_point_stack.push(StreamConnectivityPoint(
+                        x_l, y_l, upstream_dirs[upstream_index],
+                        next_stream_id))
+                    coord_to_stream_ids[(x_l, y_l)].append(next_stream_id)
+                next_stream_id += 1
 
     LOGGER.info('starting upstream walk')
     stream_layer.StartTransaction()
     n_points = source_point_stack.size()
+    cdef int step_upstream = 0
+
+    # map downstream ids to list of upstream connected streams
+    # id -> list of ids
+    downstream_to_upstream_ids = {}
+
+    # map upstream id to downstream connected stream id -> id
+    upstream_to_downstream_id = {}
+
+    # map arbitrary ID to FID geometry and vice versa
+    stream_id_to_fid = {}
+    stream_fid_to_id = {}
+
     while not source_point_stack.empty():
-        if ctime(NULL)-last_log_time > 5.0:
+        if ctime(NULL)-last_log_time > 2.0:
             LOGGER.info(
                 'stream segment creation: '
                 f'{(1-source_point_stack.size()/n_points)*100:.2f}% '
@@ -3123,11 +3173,12 @@ def extract_strahler_streams_d8(
             last_log_time = ctime(NULL)
 
         # This coordinate is the downstream end of the stream
-        flow_dir_coord = source_point_stack.top()
+        source_stream_point = source_point_stack.top()
         source_point_stack.pop()
 
-        x_l = flow_dir_coord.xi
-        y_l = flow_dir_coord.yi
+        x_l = source_stream_point.xi
+        y_l = source_stream_point.yi
+        upstream_id_list = []
 
         # anchor the line at the downstream end
         stream_line = ogr.Geometry(ogr.wkbLineString)
@@ -3137,15 +3188,22 @@ def extract_strahler_streams_d8(
 
         # initialize next_dir and last_dir so we only drop new points when
         # the line changes direction
-        next_dir = flow_dir_coord.last_flow_dir
+        next_dir = source_stream_point.upstream_d8_dir
         last_dir = next_dir
         while True:
             # walk upstream
             x_l += d8_xoffset[next_dir]
             y_l += d8_yoffset[next_dir]
 
-            # check upstream neighbors to see next step or if it branches
-            upstream_count = 0
+            step_upstream = 0
+
+            # check if we reached an upstream junction
+            if (x_l, y_l) in coord_to_stream_ids:
+                upstream_id_list = coord_to_stream_ids[(x_l, y_l)]
+                del coord_to_stream_ids[(x_l, y_l)]
+                break
+
+            # check to see if we can take a step upstream
             for d in range(8):
                 x_n = x_l + d8_xoffset[d]
                 y_n = y_l + d8_yoffset[d]
@@ -3163,33 +3221,98 @@ def extract_strahler_streams_d8(
                 # greater than the threshold
                 if d8_backflow[d*8+d_n] and <int>flow_accum_managed_raster.get(
                         x_n, y_n) > flow_accumulation_threshold:
-                    upstream_count += 1
-                    if upstream_count > 1:
-                        # it's a branch so we can stop
-                        break
-                    # we can set next_dir here since it will only be set once
-                    # if this turns out to be a bifurcation the anchor point
-                    # is created anyway
+                    step_upstream = 1
                     next_dir = d
+                    break
+                    # if upstream_count > 1:
+                    #     # it's a branch so we can stop
+                    #     break
+                    # # we can set next_dir here since it will only be set once
+                    # # if this turns out to be a bifurcation the anchor point
+                    # # is created anyway
 
             # drop a point on the line if direction changed or last point
-            if last_dir != next_dir or upstream_count != 1:
+            if last_dir != next_dir or not step_upstream:
                 x_p, y_p = gdal.ApplyGeoTransform(
                     flow_dir_info['geotransform'], x_l+0.5, y_l+0.5)
                 stream_line.AddPoint(x_p, y_p)
                 last_dir = next_dir
 
-            if upstream_count != 1:
-                # either hit a branch or flow accum tapered
+            if not step_upstream:
+                # flow accum tapered
                 break
+
+        # record the downstream connected component for all the upstream
+        # connected components
+        for upstream_id in upstream_id_list:
+            upstream_to_downstream_id[upstream_id] = (
+                source_stream_point.source_id)
+
+        # record the upstream connected components for the downstream component
+        downstream_to_upstream_ids[source_stream_point.source_id] = (
+            upstream_id_list)
 
         stream_line_feature = ogr.Feature(stream_layer.GetLayerDefn())
         # if no upstream it means it is an order 1 source stream
-        if upstream_count == 0:
+        if not step_upstream:
             stream_line_feature.SetField('order', 1)
         stream_line_feature.SetGeometry(stream_line)
         stream_layer.CreateFeature(stream_line_feature)
+        stream_id_to_fid[source_stream_point.source_id] = (
+            stream_line_feature.GetFID())
+        stream_fid_to_id[stream_line_feature.GetFID()] = (
+            source_stream_point.source_id)
 
-    LOGGER.info('done with processing, committing geometry')
+    LOGGER.info('determining stream order')
+    stream_layer.CommitTransaction()
+
+    # seed the list with all order 1 streams
+    stream_layer.SetAttributeFilter('"order"=1')
+    streams_to_process = [stream_feature for stream_feature in stream_layer]
+    while streams_to_process:
+        # fetch the downstream and connected upstream ids
+        stream_feature = streams_to_process.pop(0)
+        stream_fid = stream_feature.GetFID()
+        stream_id = stream_fid_to_id[stream_fid]
+        if stream_id not in upstream_to_downstream_id:
+            # if it's an outlet it won't have a downstream to process
+            continue
+        downstream_id = upstream_to_downstream_id[stream_id]
+        connected_upstream_ids = downstream_to_upstream_ids[downstream_id]
+        LOGGER.info(connected_upstream_ids)
+        # check that all upstream IDs are defined and construct stream order
+        # list
+        stream_order_list = []
+        all_defined = True
+        for upstream_id in connected_upstream_ids:
+            upstream_fid = stream_id_to_fid[upstream_id]
+            upstream_feature = stream_layer.GetFeature(upstream_fid)
+            upstream_order = upstream_feature.GetField('order')
+            if upstream_order is not None:
+                stream_order_list.append(upstream_order)
+            else:
+                # found an upstream not defined, that means it'll be processed
+                # later
+                all_defined = False
+                break
+        if not all_defined:
+            # we'll revisit this stream later when the other connected
+            # components are processed
+            continue
+        sorted_stream_order_list = sorted(stream_order_list)
+        downstream_order = sorted_stream_order_list[-1]
+        if sorted_stream_order_list[-1] == sorted_stream_order_list[-2]:
+            # if there are at least two equal order streams feeding in,
+            # we go up one order
+            downstream_order += 1
+        downstream_feature = stream_layer.GetFeature(
+            stream_id_to_fid[downstream_id])
+        downstream_feature.SetField('order', downstream_order)
+        stream_layer.SetFeature(downstream_feature)
+        streams_to_process.append(downstream_feature)
+
+    LOGGER.info('done stream order, commit transaction')
+    stream_layer = None
+    stream_vector = None
     stream_layer.CommitTransaction()
     LOGGER.info('all done')
