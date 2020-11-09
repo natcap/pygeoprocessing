@@ -2501,8 +2501,10 @@ def convolve_2d(
     # if we're ignoring nodata, we need to make a parallel convolved signal
     # of the nodata mask
     if ignore_nodata_and_edges:
-        mask_dir = tempfile.mkdtemp(dir=working_dir)
-        mask_raster_path = os.path.join(mask_dir, 'convolved_mask.tif')
+        raster_file, mask_raster_path = tempfile.mkstemp(
+            suffix='.tif', prefix='convolved_mask',
+            dir=os.path.dirname(target_path))
+        os.close(raster_file)
         new_raster_from_base(
             signal_path_band[0], mask_raster_path, gdal.GDT_Float64,
             [0.0], raster_driver_creation_tuple=raster_driver_creation_tuple)
@@ -2681,10 +2683,6 @@ def convolve_2d(
 
     target_band = None
     target_raster = None
-    if s_nodata is not None and ignore_nodata_and_edges:
-        # there's a working directory only if we need to remember the nodata
-        # pixels
-        shutil.rmtree(mask_dir)
 
 
 def iterblocks(
