@@ -3054,7 +3054,7 @@ def extract_strahler_streams_d8(
         0, 1, 0, 0, 0, 0, 0, 0,
         0, 0, 1, 0, 0, 0, 0, 0,
         0, 0, 0, 1, 0, 0, 0, 0]
-    cdef int upstream_count, upstream_index
+    cdef int upstream_count=0, upstream_index
     # this array is filled out as upstream directions are calculated and
     # indexed by `upstream_count`
     cdef int *upstream_dirs = [0, 0, 0, 0, 0, 0, 0, 0]
@@ -3113,22 +3113,30 @@ def extract_strahler_streams_d8(
 
     LOGGER.info('starting upstream walk')
     stream_layer.StartTransaction()
+    n_points = source_point_stack.size()
     while not source_point_stack.empty():
         if ctime(NULL)-last_log_time > 5.0:
             LOGGER.info(
-                f'drain seeding: {n_processed/n_pixels*100:.2f}% complete')
+                'stream segment creation: '
+                f'{(1-source_point_stack.size()/n_points)*100:.2f}% '
+                'complete')
             last_log_time = ctime(NULL)
+
+        # This coordinate is the downstream end of the stream
         flow_dir_coord = source_point_stack.top()
         source_point_stack.pop()
 
         x_l = flow_dir_coord.xi
         y_l = flow_dir_coord.yi
 
-        # start a new line at the source
+        # anchor the line at the downstream end
         stream_line = ogr.Geometry(ogr.wkbLineString)
         x_p, y_p = gdal.ApplyGeoTransform(
             flow_dir_info['geotransform'], x_l+0.5, y_l+0.5)
         stream_line.AddPoint(x_p, y_p)
+
+        # initialize next_dir and last_dir so we only drop new points when
+        # the line changes direction
         next_dir = flow_dir_coord.last_flow_dir
         last_dir = next_dir
         while True:
@@ -3141,17 +3149,27 @@ def extract_strahler_streams_d8(
             for d in range(8):
                 x_n = x_l + d8_xoffset[d]
                 y_n = y_l + d8_yoffset[d]
+
+                # check out of bounds
                 if x_n < 0 or y_n < 0 or x_n >= n_cols or y_n >= n_rows:
                     continue
+
+                # check for nodata
                 d_n = <int>flow_dir_managed_raster.get(x_n, y_n)
                 if d_n == flow_nodata:
                     continue
+
+                # check if there's an upstream inflow pixel with flow accum
+                # greater than the threshold
                 if d8_backflow[d*8+d_n] and <int>flow_accum_managed_raster.get(
                         x_n, y_n) > flow_accumulation_threshold:
                     upstream_count += 1
                     if upstream_count > 1:
                         # it's a branch so we can stop
                         break
+                    # we can set next_dir here since it will only be set once
+                    # if this turns out to be a bifurcation the anchor point
+                    # is created anyway
                     next_dir = d
 
             # drop a point on the line if direction changed or last point
@@ -3164,8 +3182,14 @@ def extract_strahler_streams_d8(
             if upstream_count != 1:
                 # either hit a branch or flow accum tapered
                 break
+
         stream_line_feature = ogr.Feature(stream_layer.GetLayerDefn())
+        # if no upstream it means it is an order 1 source stream
+        if upstream_count == 0:
+            stream_line_feature.SetField('order', 1)
         stream_line_feature.SetGeometry(stream_line)
         stream_layer.CreateFeature(stream_line_feature)
+
+    LOGGER.info('done with processing, committing geometry')
     stream_layer.CommitTransaction()
     LOGGER.info('all done')
