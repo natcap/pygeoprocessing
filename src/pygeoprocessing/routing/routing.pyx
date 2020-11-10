@@ -3151,7 +3151,7 @@ def extract_strahler_streams_d8(
 
     LOGGER.info('starting upstream walk')
     n_points = source_point_stack.size()
-    cdef int step_upstream = 0
+    cdef int step_upstream = 0, reached_junction = 0
 
     # map downstream ids to list of upstream connected streams
     # id -> list of ids
@@ -3250,30 +3250,35 @@ def extract_strahler_streams_d8(
         stream_line_feature.SetGeometry(stream_line)
         stream_layer.SetFeature(stream_line_feature)
 
-    stream_layer.CommitTransaction()
     LOGGER.info('determining stream order')
-    return
-
     # seed the list with all order 1 streams
     stream_layer.SetAttributeFilter('"order"=1')
     streams_to_process = [stream_feature for stream_feature in stream_layer]
+    base_feature_count = len(streams_to_process)
     while streams_to_process:
+        if ctime(NULL)-last_log_time > 2.0:
+            LOGGER.info(
+                'stream order processing: '
+                f'{(1-len(streams_to_process)/base_feature_count)*100:.2f}% '
+                f'complete, {len(streams_to_process)} in the queue')
+            last_log_time = ctime(NULL)
         # fetch the downstream and connected upstream ids
         stream_feature = streams_to_process.pop(0)
         stream_fid = stream_feature.GetFID()
-        stream_id = stream_fid_to_id[stream_fid]
-        if stream_id not in upstream_to_downstream_id:
+        if stream_fid not in upstream_to_downstream_id:
             # if it's an outlet it won't have a downstream to process
             continue
-        downstream_id = upstream_to_downstream_id[stream_id]
-        connected_upstream_ids = downstream_to_upstream_ids[downstream_id]
-        LOGGER.info(connected_upstream_ids)
+        downstream_fid = upstream_to_downstream_id[stream_fid]
+        downstream_feature = stream_layer.GetFeature(downstream_fid)
+        if downstream_feature.GetField('order') is not None:
+            # downstream component already processed
+            continue
+        connected_upstream_fids = downstream_to_upstream_ids[downstream_fid]
         # check that all upstream IDs are defined and construct stream order
         # list
         stream_order_list = []
         all_defined = True
-        for upstream_id in connected_upstream_ids:
-            upstream_fid = stream_id_to_fid[upstream_id]
+        for upstream_fid in connected_upstream_fids:
             upstream_feature = stream_layer.GetFeature(upstream_fid)
             upstream_order = upstream_feature.GetField('order')
             if upstream_order is not None:
@@ -3293,14 +3298,12 @@ def extract_strahler_streams_d8(
             # if there are at least two equal order streams feeding in,
             # we go up one order
             downstream_order += 1
-        downstream_feature = stream_layer.GetFeature(
-            stream_id_to_fid[downstream_id])
         downstream_feature.SetField('order', downstream_order)
         stream_layer.SetFeature(downstream_feature)
         streams_to_process.append(downstream_feature)
 
     LOGGER.info('done stream order, commit transaction')
+    stream_layer.CommitTransaction()
     stream_layer = None
     stream_vector = None
-    stream_layer.CommitTransaction()
     LOGGER.info('all done')
