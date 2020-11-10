@@ -3070,8 +3070,6 @@ def extract_strahler_streams_d8(
     # indexed by `upstream_count`
     cdef int *upstream_dirs = [0, 0, 0, 0, 0, 0, 0, 0]
     cdef long local_flow_accum
-    # used to track which streams go where
-    cdef long next_stream_id = 0
     # used to determine if source is a drain and should be tracked
     cdef int is_drain
 
@@ -3086,6 +3084,7 @@ def extract_strahler_streams_d8(
     #         flow accumulation > threshold or
     #       * drains to edge or nodata pixel
     #   record a seed point for that bifurcation for later processing.
+    stream_layer.StartTransaction()
     for offset_dict in pygeoprocessing.iterblocks(
             flow_dir_d8_raster_path_band, offset_only=True):
         if ctime(NULL)-last_log_time > 5.0:
@@ -3142,14 +3141,15 @@ def extract_strahler_streams_d8(
                     continue
                 for upstream_index in range(upstream_count):
                     # hit a branch!
+                    stream_line_feature = ogr.Feature(
+                        stream_layer.GetLayerDefn())
+                    stream_layer.CreateFeature(stream_line_feature)
+                    stream_fid = stream_line_feature.GetFID()
                     source_point_stack.push(StreamConnectivityPoint(
-                        x_l, y_l, upstream_dirs[upstream_index],
-                        next_stream_id))
-                    coord_to_stream_ids[(x_l, y_l)].append(next_stream_id)
-                next_stream_id += 1
+                        x_l, y_l, upstream_dirs[upstream_index], stream_fid))
+                    coord_to_stream_ids[(x_l, y_l)].append(stream_fid)
 
     LOGGER.info('starting upstream walk')
-    stream_layer.StartTransaction()
     n_points = source_point_stack.size()
     cdef int step_upstream = 0
 
@@ -3159,10 +3159,6 @@ def extract_strahler_streams_d8(
 
     # map upstream id to downstream connected stream id -> id
     upstream_to_downstream_id = {}
-
-    # map arbitrary ID to FID geometry and vice versa
-    stream_id_to_fid = {}
-    stream_fid_to_id = {}
 
     while not source_point_stack.empty():
         if ctime(NULL)-last_log_time > 2.0:
@@ -3198,47 +3194,41 @@ def extract_strahler_streams_d8(
             step_upstream = 0
 
             # check if we reached an upstream junction
-            if (x_l, y_l) in coord_to_stream_ids:
+            reached_junction = (x_l, y_l) in coord_to_stream_ids
+            if reached_junction:
                 upstream_id_list = coord_to_stream_ids[(x_l, y_l)]
                 del coord_to_stream_ids[(x_l, y_l)]
-                break
+            else:
+                # check to see if we can take a step upstream
+                for d in range(8):
+                    x_n = x_l + d8_xoffset[d]
+                    y_n = y_l + d8_yoffset[d]
 
-            # check to see if we can take a step upstream
-            for d in range(8):
-                x_n = x_l + d8_xoffset[d]
-                y_n = y_l + d8_yoffset[d]
+                    # check out of bounds
+                    if x_n < 0 or y_n < 0 or x_n >= n_cols or y_n >= n_rows:
+                        continue
 
-                # check out of bounds
-                if x_n < 0 or y_n < 0 or x_n >= n_cols or y_n >= n_rows:
-                    continue
+                    # check for nodata
+                    d_n = <int>flow_dir_managed_raster.get(x_n, y_n)
+                    if d_n == flow_nodata:
+                        continue
 
-                # check for nodata
-                d_n = <int>flow_dir_managed_raster.get(x_n, y_n)
-                if d_n == flow_nodata:
-                    continue
-
-                # check if there's an upstream inflow pixel with flow accum
-                # greater than the threshold
-                if d8_backflow[d*8+d_n] and <int>flow_accum_managed_raster.get(
-                        x_n, y_n) > flow_accumulation_threshold:
-                    step_upstream = 1
-                    next_dir = d
-                    break
-                    # if upstream_count > 1:
-                    #     # it's a branch so we can stop
-                    #     break
-                    # # we can set next_dir here since it will only be set once
-                    # # if this turns out to be a bifurcation the anchor point
-                    # # is created anyway
+                    # check if there's an upstream inflow pixel with flow accum
+                    # greater than the threshold
+                    if d8_backflow[d*8+d_n] and <int>flow_accum_managed_raster.get(
+                            x_n, y_n) > flow_accumulation_threshold:
+                        step_upstream = 1
+                        next_dir = d
+                        break
 
             # drop a point on the line if direction changed or last point
-            if last_dir != next_dir or not step_upstream:
+            if last_dir != next_dir or not step_upstream or reached_junction:
                 x_p, y_p = gdal.ApplyGeoTransform(
                     flow_dir_info['geotransform'], x_l+0.5, y_l+0.5)
                 stream_line.AddPoint(x_p, y_p)
                 last_dir = next_dir
 
-            if not step_upstream:
+            if not step_upstream or reached_junction:
                 # flow accum tapered
                 break
 
@@ -3252,19 +3242,17 @@ def extract_strahler_streams_d8(
         downstream_to_upstream_ids[source_stream_point.source_id] = (
             upstream_id_list)
 
-        stream_line_feature = ogr.Feature(stream_layer.GetLayerDefn())
+        stream_line_feature = stream_layer.GetFeature(
+            source_stream_point.source_id)
         # if no upstream it means it is an order 1 source stream
-        if not step_upstream:
+        if not reached_junction:
             stream_line_feature.SetField('order', 1)
         stream_line_feature.SetGeometry(stream_line)
-        stream_layer.CreateFeature(stream_line_feature)
-        stream_id_to_fid[source_stream_point.source_id] = (
-            stream_line_feature.GetFID())
-        stream_fid_to_id[stream_line_feature.GetFID()] = (
-            source_stream_point.source_id)
+        stream_layer.SetFeature(stream_line_feature)
 
-    LOGGER.info('determining stream order')
     stream_layer.CommitTransaction()
+    LOGGER.info('determining stream order')
+    return
 
     # seed the list with all order 1 streams
     stream_layer.SetAttributeFilter('"order"=1')
