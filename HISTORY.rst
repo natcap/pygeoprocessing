@@ -7,6 +7,9 @@ Unreleased Changes
   resampling method is provided.
 * Fixed issue in ``convolve_2d`` that would cause excessive memory use
   leading to out of memory errors.
+* Fixed issue in ``convolve_2d`` that could lead to a file removal race
+  condition and raise a ``FileNotFoundException`` when ignoring nodata
+  regions.
 
 2.1.1 (2020-09-16)
 ------------------
