@@ -40,6 +40,7 @@ from osgeo import gdal
 from osgeo import ogr
 from osgeo import osr
 import numpy
+import scipy.stats
 
 from ..geoprocessing_core import DEFAULT_OSR_AXIS_MAPPING_STRATEGY
 import pygeoprocessing
@@ -3328,19 +3329,36 @@ def extract_strahler_streams_d8(
     LOGGER.info('done stream order, create stream IDs')
 
     working_stream_id = 0
+    drop_distance_collection = collections.defaultdict(
+        lambda: collections.defaultdict(list))
+    largest_stream_id = -1
+    largest_stream_size = 0
     for outlet_fid in outlet_fid_list:
         # walk upstream starting from this outlet
         upstream_stack = [outlet_fid]
+        stream_size = 0
         while upstream_stack:
             feature_id = upstream_stack.pop()
             stream_feature = stream_layer.GetFeature(feature_id)
+            stream_order = stream_feature.GetField('order')
+            drop_distance_collection[working_stream_id][stream_order].append(
+                stream_feature.GetField('drop_distance'))
+
             stream_feature.SetField('stream_id', working_stream_id)
             stream_layer.SetFeature(stream_feature)
             stream_feature = None
             upstream_stack.extend(
                 downstream_to_upstream_ids[feature_id])
+            stream_size += 1
+        if stream_size > largest_stream_size:
+            largest_stream_size = stream_size
+            largest_stream_id = working_stream_id
         working_stream_id += 1
 
+    t_stat, p_val = scipy.stats.ttest_ind(
+        drop_distance_collection[largest_stream_id][1],
+        drop_distance_collection[largest_stream_id][2])
+    LOGGER.info(f'stream_id: {largest_stream_id} t_stat={t_stat} p_val={p_val}')
     LOGGER.info('done stream ids, commit transaction')
     stream_layer.CommitTransaction()
     stream_layer = None
