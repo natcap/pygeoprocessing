@@ -3022,6 +3022,7 @@ def extract_strahler_streams_d8(
     stream_layer.CreateField(ogr.FieldDefn('order', ogr.OFTInteger))
     stream_layer.CreateField(ogr.FieldDefn('drop_distance', ogr.OFTReal))
     stream_layer.CreateField(ogr.FieldDefn('outlet', ogr.OFTInteger))
+    stream_layer.CreateField(ogr.FieldDefn('stream_id', ogr.OFTInteger))
 
     flow_dir_managed_raster = _ManagedRaster(
         flow_dir_d8_raster_path_band[0], flow_dir_d8_raster_path_band[1], 0)
@@ -3270,6 +3271,7 @@ def extract_strahler_streams_d8(
     stream_layer.SetAttributeFilter('"order"=1')
     streams_to_process = [stream_feature for stream_feature in stream_layer]
     base_feature_count = len(streams_to_process)
+    outlet_fid_list = []
     while streams_to_process:
         if ctime(NULL)-last_log_time > 2.0:
             LOGGER.info(
@@ -3284,11 +3286,14 @@ def extract_strahler_streams_d8(
             # it's an outlet so no downstream to process
             stream_feature.SetField('outlet', 1)
             stream_layer.SetFeature(stream_feature)
+            outlet_fid_list.append(stream_feature.GetFID())
+            stream_feature = None
             continue
         downstream_fid = upstream_to_downstream_id[stream_fid]
         downstream_feature = stream_layer.GetFeature(downstream_fid)
         if downstream_feature.GetField('order') is not None:
             # downstream component already processed
+            downstream_feature = None
             continue
         connected_upstream_fids = downstream_to_upstream_ids[downstream_fid]
         # check that all upstream IDs are defined and construct stream order
@@ -3318,8 +3323,25 @@ def extract_strahler_streams_d8(
         downstream_feature.SetField('order', downstream_order)
         stream_layer.SetFeature(downstream_feature)
         streams_to_process.append(downstream_feature)
+        downstream_feature = None
 
-    LOGGER.info('done stream order, commit transaction')
+    LOGGER.info('done stream order, create stream IDs')
+
+    working_stream_id = 0
+    for outlet_fid in outlet_fid_list:
+        # walk upstream starting from this outlet
+        upstream_stack = [outlet_fid]
+        while upstream_stack:
+            feature_id = upstream_stack.pop()
+            stream_feature = stream_layer.GetFeature(feature_id)
+            stream_feature.SetField('stream_id', working_stream_id)
+            stream_layer.SetFeature(stream_feature)
+            stream_feature = None
+            upstream_stack.extend(
+                downstream_to_upstream_ids[feature_id])
+        working_stream_id += 1
+
+    LOGGER.info('done stream ids, commit transaction')
     stream_layer.CommitTransaction()
     stream_layer = None
     stream_vector = None
