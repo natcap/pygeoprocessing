@@ -2975,7 +2975,8 @@ def _is_raster_path_band_formatted(raster_path_band):
 
 def extract_strahler_streams_d8(
         flow_dir_d8_raster_path_band, flow_accum_raster_path_band,
-        long flow_accumulation_threshold, target_stream_vector_path,
+        dem_raster_path_band, long flow_accumulation_threshold,
+        target_stream_vector_path,
         osr_axis_mapping_strategy=DEFAULT_OSR_AXIS_MAPPING_STRATEGY):
     """Extract Strahler order stream geometry from flow accumulation.
 
@@ -2991,6 +2992,8 @@ def extract_strahler_streams_d8(
         flow_accum_raster_path_band (tuple): a path/band representing the D8
             flow accumulation raster represented by
             `flow_dir_d8_raster_path_band`.
+        dem_raster_path_band (tuple): a path/band representing the DEM used to
+            derive flow dir.
         flow_accumulation_threshold (int): minimum number of upstream pixels
             required to create a stream.
         target_stream_vector_path (tuple): a single layer line vector created
@@ -3016,15 +3019,18 @@ def extract_strahler_streams_d8(
         target_stream_vector_path, 0, 0, 0, gdal.GDT_Unknown)
     stream_layer = stream_vector.CreateLayer(
         'stream', flow_dir_srs, ogr.wkbLineString)
-    stream_layer.CreateField(ogr.FieldDefn("order", ogr.OFTInteger))
+    stream_layer.CreateField(ogr.FieldDefn('order', ogr.OFTInteger))
+    stream_layer.CreateField(ogr.FieldDefn('drop_distance', ogr.OFTReal))
+    stream_layer.CreateField(ogr.FieldDefn('outlet', ogr.OFTInteger))
 
     flow_dir_managed_raster = _ManagedRaster(
-        flow_dir_d8_raster_path_band[0],
-        flow_dir_d8_raster_path_band[1], 0)
+        flow_dir_d8_raster_path_band[0], flow_dir_d8_raster_path_band[1], 0)
 
     flow_accum_managed_raster = _ManagedRaster(
-        flow_accum_raster_path_band[0],
-        flow_accum_raster_path_band[1], 0)
+        flow_accum_raster_path_band[0], flow_accum_raster_path_band[1], 0)
+
+    dem_managed_raster = _ManagedRaster(
+        dem_raster_path_band[0], dem_raster_path_band[1], 0)
 
     cdef int flow_nodata = pygeoprocessing.get_raster_info(
         flow_dir_d8_raster_path_band[0])['nodata'][
@@ -3143,6 +3149,7 @@ def extract_strahler_streams_d8(
                     # hit a branch!
                     stream_line_feature = ogr.Feature(
                         stream_layer.GetLayerDefn())
+                    stream_line_feature.SetField('outlet', 0)
                     stream_layer.CreateFeature(stream_line_feature)
                     stream_fid = stream_line_feature.GetFID()
                     source_point_stack.push(StreamConnectivityPoint(
@@ -3175,6 +3182,8 @@ def extract_strahler_streams_d8(
         x_l = source_stream_point.xi
         y_l = source_stream_point.yi
         upstream_id_list = []
+
+        downstream_dem = dem_managed_raster.get(x_l, y_l)
 
         # anchor the line at the downstream end
         stream_line = ogr.Geometry(ogr.wkbLineString)
@@ -3244,10 +3253,16 @@ def extract_strahler_streams_d8(
 
         stream_line_feature = stream_layer.GetFeature(
             source_stream_point.source_id)
+
         # if no upstream it means it is an order 1 source stream
         if not reached_junction:
             stream_line_feature.SetField('order', 1)
         stream_line_feature.SetGeometry(stream_line)
+
+        # calculate the drop distance
+        upstream_dem = dem_managed_raster.get(x_l, y_l)
+        drop_distance = upstream_dem - downstream_dem
+        stream_line_feature.SetField('drop_distance', drop_distance)
         stream_layer.SetFeature(stream_line_feature)
 
     LOGGER.info('determining stream order')
@@ -3266,7 +3281,9 @@ def extract_strahler_streams_d8(
         stream_feature = streams_to_process.pop(0)
         stream_fid = stream_feature.GetFID()
         if stream_fid not in upstream_to_downstream_id:
-            # if it's an outlet it won't have a downstream to process
+            # it's an outlet so no downstream to process
+            stream_feature.SetField('outlet', 1)
+            stream_layer.SetFeature(stream_feature)
             continue
         downstream_fid = upstream_to_downstream_id[stream_fid]
         downstream_feature = stream_layer.GetFeature(downstream_fid)
