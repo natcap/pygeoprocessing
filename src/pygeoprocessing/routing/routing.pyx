@@ -2978,6 +2978,7 @@ def extract_strahler_streams_d8(
         flow_dir_d8_raster_path_band, flow_accum_raster_path_band,
         dem_raster_path_band, long flow_accumulation_threshold,
         target_stream_vector_path,
+        int river_order=5,
         osr_axis_mapping_strategy=DEFAULT_OSR_AXIS_MAPPING_STRATEGY):
     """Extract Strahler order stream geometry from flow accumulation.
 
@@ -3001,6 +3002,9 @@ def extract_strahler_streams_d8(
             by this function representing the stream segmenents extracted from
             the above arguments. Contains the fields "order" and "parent" as
             described above.
+        river_order (int): what stream order to define as a river in terms of
+            automatically determining flow accumulation threshold for that
+            stream collection.
         osr_axis_mapping_strategy (int): OSR axis mapping strategy for
             ``SpatialReference`` objects. Defaults to
             ``geoprocessing.DEFAULT_OSR_AXIS_MAPPING_STRATEGY``. This parameter
@@ -3023,8 +3027,11 @@ def extract_strahler_streams_d8(
     stream_layer.CreateField(ogr.FieldDefn('order', ogr.OFTInteger))
     stream_layer.CreateField(ogr.FieldDefn('drop_distance', ogr.OFTReal))
     stream_layer.CreateField(ogr.FieldDefn('outlet', ogr.OFTInteger))
-    stream_layer.CreateField(ogr.FieldDefn('stream_id', ogr.OFTInteger))
-
+    stream_layer.CreateField(ogr.FieldDefn('river_id', ogr.OFTInteger))
+    stream_layer.CreateField(ogr.FieldDefn('us_fa', ogr.OFTInteger64))
+    stream_layer.CreateField(ogr.FieldDefn('ds_fa', ogr.OFTInteger64))
+    stream_layer.CreateField(ogr.FieldDefn('source_xy', ogr.OFTIntegerList))
+    source_xy_field_id = stream_layer.FindFieldIndex('source_xy', 1)
     flow_dir_managed_raster = _ManagedRaster(
         flow_dir_d8_raster_path_band[0], flow_dir_d8_raster_path_band[1], 0)
 
@@ -3186,6 +3193,12 @@ def extract_strahler_streams_d8(
         upstream_id_list = []
 
         downstream_dem = dem_managed_raster.get(x_l, y_l)
+        stream_line_feature = stream_layer.GetFeature(
+            source_stream_point.source_id)
+        stream_line_feature.SetField(
+            'ds_fa', flow_accum_managed_raster.get(x_l, y_l))
+        stream_line_feature.SetFieldIntegerList(
+            source_xy_field_id, [x_l, y_l])
 
         # anchor the line at the downstream end
         stream_line = ogr.Geometry(ogr.wkbLineString)
@@ -3253,9 +3266,6 @@ def extract_strahler_streams_d8(
         downstream_to_upstream_ids[source_stream_point.source_id] = (
             upstream_id_list)
 
-        stream_line_feature = stream_layer.GetFeature(
-            source_stream_point.source_id)
-
         # if no upstream it means it is an order 1 source stream
         if not reached_junction:
             stream_line_feature.SetField('order', 1)
@@ -3265,6 +3275,9 @@ def extract_strahler_streams_d8(
         upstream_dem = dem_managed_raster.get(x_l, y_l)
         drop_distance = upstream_dem - downstream_dem
         stream_line_feature.SetField('drop_distance', drop_distance)
+        stream_line_feature.SetField(
+            'us_fa', flow_accum_managed_raster.get(x_l, y_l))
+
         stream_layer.SetFeature(stream_line_feature)
 
     LOGGER.info('determining stream order')
@@ -3326,40 +3339,45 @@ def extract_strahler_streams_d8(
         streams_to_process.append(downstream_feature)
         downstream_feature = None
 
-    LOGGER.info('done stream order, create stream IDs')
+    LOGGER.info('done stream order, determine rivers')
 
-    working_stream_id = 0
-    drop_distance_collection = collections.defaultdict(
-        lambda: collections.defaultdict(list))
-    largest_stream_id = -1
-    largest_stream_size = 0
+    working_river_id = 0
+
+    # river_order
     for outlet_fid in outlet_fid_list:
-        # walk upstream starting from this outlet
-        upstream_stack = [outlet_fid]
-        stream_size = 0
-        while upstream_stack:
-            feature_id = upstream_stack.pop()
+        # walk upstream starting from this outlet to search for rivers
+        # defined as stream segments whose order is <= river_order. Note it
+        # can be < river_order because we may have some streams that have
+        # outlets for shorter rivers that can't get to river_order.
+        search_stack = [outlet_fid]
+        while search_stack:
+            feature_id = search_stack.pop()
             stream_feature = stream_layer.GetFeature(feature_id)
             stream_order = stream_feature.GetField('order')
-            drop_distance_collection[working_stream_id][stream_order].append(
-                stream_feature.GetField('drop_distance'))
+            if (stream_order <= river_order and
+                    stream_feature.GetField('river_id') is None):
+                # walk up the stream setting every upstream segment's river_id
+                # to working_river_id
+                stream_layer.SetFeature(stream_feature)
+                upstream_stack = [feature_id]
 
-            stream_feature.SetField('stream_id', working_stream_id)
-            stream_layer.SetFeature(stream_feature)
-            stream_feature = None
-            upstream_stack.extend(
-                downstream_to_upstream_ids[feature_id])
-            stream_size += 1
-        if stream_size > largest_stream_size:
-            largest_stream_size = stream_size
-            largest_stream_id = working_stream_id
-        working_stream_id += 1
+                streams_by_order = collections.defaultdict(list)
+                while upstream_stack:
+                    feature_id = upstream_stack.pop()
+                    stream_feature = stream_layer.GetFeature(feature_id)
+                    stream_feature.SetField('river_id', working_river_id)
+                    stream_layer.SetFeature(stream_feature)
+                    streams_by_order[stream_feature.GetField('order')] = (
+                        stream_feature)
+                    stream_feature = None
+                    upstream_stack.extend(
+                        downstream_to_upstream_ids[feature_id])
+                working_river_id += 1
+            else:
+                # keep walking upstream until there's an order <= river_order
+                search_stack.extend(
+                    downstream_to_upstream_ids[feature_id])
 
-    t_stat, p_val = scipy.stats.ttest_ind(
-        drop_distance_collection[largest_stream_id][1],
-        drop_distance_collection[largest_stream_id][2])
-    LOGGER.info(f'stream_id: {largest_stream_id} t_stat={t_stat} p_val={p_val}')
-    LOGGER.info('done stream ids, commit transaction')
     stream_layer.CommitTransaction()
     stream_layer = None
     stream_vector = None
