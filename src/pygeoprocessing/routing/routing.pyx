@@ -3362,16 +3362,62 @@ def extract_strahler_streams_d8(
                 upstream_stack = [feature_id]
 
                 streams_by_order = collections.defaultdict(list)
+                drop_distance_collection = collections.defaultdict(list)
                 while upstream_stack:
                     feature_id = upstream_stack.pop()
                     stream_feature = stream_layer.GetFeature(feature_id)
                     stream_feature.SetField('river_id', working_river_id)
                     stream_layer.SetFeature(stream_feature)
-                    streams_by_order[stream_feature.GetField('order')] = (
-                        stream_feature)
+                    order = stream_feature.GetField('order')
+                    streams_by_order[order].append(stream_feature)
+                    drop_distance_collection[order].append(
+                        stream_feature.GetField('drop_distance'))
                     stream_feature = None
                     upstream_stack.extend(
                         downstream_to_upstream_ids[feature_id])
+
+                test_order = 1
+                working_flow_accum_threshold = flow_accumulation_threshold
+                while True:
+                    # decide how much bigger to make the flow_accum
+                    # find a test_order that tests p_val > 0.5 then retest
+                    # with (working_flow_accum+max(ul_thresh))/2
+                    while test_order+1 <= max(drop_distance_collection):
+                        _, p_val = scipy.stats.ttest_ind(
+                            drop_distance_collection[test_order],
+                            drop_distance_collection[test_order+1],
+                            equal_var=True)
+                        if p_val > 0.05:
+                            # not too big
+                            break
+                    if test_order == 1:
+                        # order 1/2 streams are not statistically different
+                        break
+                    working_flow_accum_threshold = (
+                        working_flow_accum_threshold +
+                        max(upstream_flow_accum[test_order]))/2
+                    # TODO: reclassify streams of <= test_order
+                    for order in range(1, test_order+1):
+                        streams_to_refactor = []
+                        while streams_by_order[order]:
+                            stream_feature = streams_by_order[order].pop()
+                            if (stream_feature.GetField('ds_fa') <
+                                    working_flow_accum_threshold):
+                                # this flow accumulation is too small, it's
+                                # not relevant anymore
+                                stream_layer.DeleteFeature(stream_feature)
+                                continue
+                            if (stream_feature.GetField('us_fa') >=
+                                    working_flow_accum_threshold):
+                                # this whole stream still fits in the threshold
+                                # so keep it
+                                streams_to_refactor.append(stream_feature)
+                                continue
+                            # TODO: recalculate stream geometry
+                            source_point = stream_feature.GetField('source_xy')
+
+
+
                 working_river_id += 1
             else:
                 # keep walking upstream until there's an order <= river_order
