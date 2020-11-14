@@ -2976,7 +2976,7 @@ def _is_raster_path_band_formatted(raster_path_band):
 
 def extract_strahler_streams_d8(
         flow_dir_d8_raster_path_band, flow_accum_raster_path_band,
-        dem_raster_path_band, long flow_accumulation_threshold,
+        dem_raster_path_band, long flow_accum_threshold,
         target_stream_vector_path,
         int river_order=5,
         osr_axis_mapping_strategy=DEFAULT_OSR_AXIS_MAPPING_STRATEGY):
@@ -2996,7 +2996,7 @@ def extract_strahler_streams_d8(
             `flow_dir_d8_raster_path_band`.
         dem_raster_path_band (tuple): a path/band representing the DEM used to
             derive flow dir.
-        flow_accumulation_threshold (int): minimum number of upstream pixels
+        flow_accum_threshold (int): minimum number of upstream pixels
             required to create a stream.
         target_stream_vector_path (tuple): a single layer line vector created
             by this function representing the stream segmenents extracted from
@@ -3064,7 +3064,7 @@ def extract_strahler_streams_d8(
     cdef stack[StreamConnectivityPoint] source_point_stack
     cdef StreamConnectivityPoint source_stream_point
 
-    cdef int x_l, y_l  # the _l is for "local" aka "current" pixel
+    cdef int x_l=-1, y_l=-1  # the _l is for "local" aka "current" pixel
 
     # D8 backflow directions encoded as
     # 765
@@ -3119,7 +3119,7 @@ def extract_strahler_streams_d8(
                 y_l = yoff + j
                 local_flow_accum = <long>flow_accum_managed_raster.get(
                     x_l, y_l)
-                if local_flow_accum < flow_accumulation_threshold:
+                if local_flow_accum < flow_accum_threshold:
                     continue
                 # check to see if it's a drain
                 d_n = <int>flow_dir_managed_raster.get(x_l, y_l)
@@ -3132,7 +3132,7 @@ def extract_strahler_streams_d8(
                     is_drain = 1
 
                 if not is_drain and (
-                        local_flow_accum < 2*flow_accumulation_threshold):
+                        local_flow_accum < 2*flow_accum_threshold):
                     # if current pixel is < 2*flow threshold then it can't
                     # bifurcate into two pixels == flow threshold
                     continue
@@ -3149,7 +3149,7 @@ def extract_strahler_streams_d8(
                         continue
                     if (d8_backflow[d*8+d_n] and
                             <long>flow_accum_managed_raster.get(
-                                x_n, y_n) >= flow_accumulation_threshold):
+                                x_n, y_n) >= flow_accum_threshold):
                         upstream_dirs[upstream_count] = d
                         upstream_count += 1
                 if upstream_count <= 1 and not is_drain:
@@ -3167,7 +3167,7 @@ def extract_strahler_streams_d8(
 
     LOGGER.info('starting upstream walk')
     n_points = source_point_stack.size()
-    cdef int step_upstream = 0, reached_junction = 0
+    cdef int reached_junction = 0
 
     # map downstream ids to list of upstream connected streams
     # id -> list of ids
@@ -3188,73 +3188,32 @@ def extract_strahler_streams_d8(
         source_stream_point = source_point_stack.top()
         source_point_stack.pop()
 
-        x_l = source_stream_point.xi
-        y_l = source_stream_point.yi
-        upstream_id_list = []
+        # _calculate_stream_geometry(
+        #     x_l, y_l, upstream_d8_dir, geotransform, n_cols, n_rows,
+        #     flow_accum_managed_raster, flow_dir_managed_raster, flow_dir_nodata,
+        #     flow_accum_threshold, coord_to_stream_ids)
 
-        downstream_dem = dem_managed_raster.get(x_l, y_l)
+        payload = _calculate_stream_geometry(
+            source_stream_point.xi, source_stream_point.yi,
+            source_stream_point.upstream_d8_dir,
+            flow_dir_info['geotransform'], n_cols, n_rows,
+            flow_accum_managed_raster, flow_dir_managed_raster, flow_nodata,
+            flow_accum_threshold, coord_to_stream_ids)
+        if payload is None:
+            continue
+        x_u, y_u, upstream_id_list, stream_line = payload
+
+        downstream_dem = dem_managed_raster.get(
+            source_stream_point.xi, source_stream_point.yi)
+
         stream_line_feature = stream_layer.GetFeature(
             source_stream_point.source_id)
         stream_line_feature.SetField(
-            'ds_fa', flow_accum_managed_raster.get(x_l, y_l))
+            'ds_fa', flow_accum_managed_raster.get(
+                source_stream_point.xi, source_stream_point.yi))
         stream_line_feature.SetFieldIntegerList(
-            source_xy_field_id, [x_l, y_l])
-
-        # anchor the line at the downstream end
-        stream_line = ogr.Geometry(ogr.wkbLineString)
-        x_p, y_p = gdal.ApplyGeoTransform(
-            flow_dir_info['geotransform'], x_l+0.5, y_l+0.5)
-        stream_line.AddPoint(x_p, y_p)
-
-        # initialize next_dir and last_dir so we only drop new points when
-        # the line changes direction
-        next_dir = source_stream_point.upstream_d8_dir
-        last_dir = next_dir
-        while True:
-            # walk upstream
-            x_l += d8_xoffset[next_dir]
-            y_l += d8_yoffset[next_dir]
-
-            step_upstream = 0
-
-            # check if we reached an upstream junction
-            reached_junction = (x_l, y_l) in coord_to_stream_ids
-            if reached_junction:
-                upstream_id_list = coord_to_stream_ids[(x_l, y_l)]
-                del coord_to_stream_ids[(x_l, y_l)]
-            else:
-                # check to see if we can take a step upstream
-                for d in range(8):
-                    x_n = x_l + d8_xoffset[d]
-                    y_n = y_l + d8_yoffset[d]
-
-                    # check out of bounds
-                    if x_n < 0 or y_n < 0 or x_n >= n_cols or y_n >= n_rows:
-                        continue
-
-                    # check for nodata
-                    d_n = <int>flow_dir_managed_raster.get(x_n, y_n)
-                    if d_n == flow_nodata:
-                        continue
-
-                    # check if there's an upstream inflow pixel with flow accum
-                    # greater than the threshold
-                    if d8_backflow[d*8+d_n] and <int>flow_accum_managed_raster.get(
-                            x_n, y_n) > flow_accumulation_threshold:
-                        step_upstream = 1
-                        next_dir = d
-                        break
-
-            # drop a point on the line if direction changed or last point
-            if last_dir != next_dir or not step_upstream or reached_junction:
-                x_p, y_p = gdal.ApplyGeoTransform(
-                    flow_dir_info['geotransform'], x_l+0.5, y_l+0.5)
-                stream_line.AddPoint(x_p, y_p)
-                last_dir = next_dir
-
-            if not step_upstream or reached_junction:
-                # flow accum tapered
-                break
+            source_xy_field_id,
+            [source_stream_point.xi, source_stream_point.yi])
 
         # record the downstream connected component for all the upstream
         # connected components
@@ -3272,12 +3231,11 @@ def extract_strahler_streams_d8(
         stream_line_feature.SetGeometry(stream_line)
 
         # calculate the drop distance
-        upstream_dem = dem_managed_raster.get(x_l, y_l)
+        upstream_dem = dem_managed_raster.get(x_u, y_u)
         drop_distance = upstream_dem - downstream_dem
         stream_line_feature.SetField('drop_distance', drop_distance)
         stream_line_feature.SetField(
-            'us_fa', flow_accum_managed_raster.get(x_l, y_l))
-
+            'us_fa', flow_accum_managed_raster.get(x_u, y_u))
         stream_layer.SetFeature(stream_line_feature)
 
     LOGGER.info('determining stream order')
@@ -3341,90 +3299,196 @@ def extract_strahler_streams_d8(
 
     LOGGER.info('done stream order, determine rivers')
 
-    working_river_id = 0
+    # working_river_id = 0
 
-    # river_order
-    for outlet_fid in outlet_fid_list:
-        # walk upstream starting from this outlet to search for rivers
-        # defined as stream segments whose order is <= river_order. Note it
-        # can be < river_order because we may have some streams that have
-        # outlets for shorter rivers that can't get to river_order.
-        search_stack = [outlet_fid]
-        while search_stack:
-            feature_id = search_stack.pop()
-            stream_feature = stream_layer.GetFeature(feature_id)
-            stream_order = stream_feature.GetField('order')
-            if (stream_order <= river_order and
-                    stream_feature.GetField('river_id') is None):
-                # walk up the stream setting every upstream segment's river_id
-                # to working_river_id
-                stream_layer.SetFeature(stream_feature)
-                upstream_stack = [feature_id]
+    # # river_order
+    # for outlet_fid in outlet_fid_list:
+    #     # walk upstream starting from this outlet to search for rivers
+    #     # defined as stream segments whose order is <= river_order. Note it
+    #     # can be < river_order because we may have some streams that have
+    #     # outlets for shorter rivers that can't get to river_order.
+    #     search_stack = [outlet_fid]
+    #     while search_stack:
+    #         feature_id = search_stack.pop()
+    #         stream_feature = stream_layer.GetFeature(feature_id)
+    #         stream_order = stream_feature.GetField('order')
+    #         if (stream_order <= river_order and
+    #                 stream_feature.GetField('river_id') is None):
+    #             # walk up the stream setting every upstream segment's river_id
+    #             # to working_river_id
+    #             stream_layer.SetFeature(stream_feature)
+    #             upstream_stack = [feature_id]
 
-                streams_by_order = collections.defaultdict(list)
-                drop_distance_collection = collections.defaultdict(list)
-                while upstream_stack:
-                    feature_id = upstream_stack.pop()
-                    stream_feature = stream_layer.GetFeature(feature_id)
-                    stream_feature.SetField('river_id', working_river_id)
-                    stream_layer.SetFeature(stream_feature)
-                    order = stream_feature.GetField('order')
-                    streams_by_order[order].append(stream_feature)
-                    drop_distance_collection[order].append(
-                        stream_feature.GetField('drop_distance'))
-                    stream_feature = None
-                    upstream_stack.extend(
-                        downstream_to_upstream_ids[feature_id])
+    #             streams_by_order = collections.defaultdict(list)
+    #             drop_distance_collection = collections.defaultdict(list)
+    #             while upstream_stack:
+    #                 feature_id = upstream_stack.pop()
+    #                 stream_feature = stream_layer.GetFeature(feature_id)
+    #                 stream_feature.SetField('river_id', working_river_id)
+    #                 stream_layer.SetFeature(stream_feature)
+    #                 order = stream_feature.GetField('order')
+    #                 streams_by_order[order].append(stream_feature)
+    #                 drop_distance_collection[order].append(
+    #                     stream_feature.GetField('drop_distance'))
+    #                 stream_feature = None
+    #                 upstream_stack.extend(
+    #                     downstream_to_upstream_ids[feature_id])
 
-                test_order = 1
-                working_flow_accum_threshold = flow_accumulation_threshold
-                while True:
-                    # decide how much bigger to make the flow_accum
-                    # find a test_order that tests p_val > 0.5 then retest
-                    # with (working_flow_accum+max(ul_thresh))/2
-                    while test_order+1 <= max(drop_distance_collection):
-                        _, p_val = scipy.stats.ttest_ind(
-                            drop_distance_collection[test_order],
-                            drop_distance_collection[test_order+1],
-                            equal_var=True)
-                        if p_val > 0.05:
-                            # not too big
-                            break
-                    if test_order == 1:
-                        # order 1/2 streams are not statistically different
-                        break
-                    working_flow_accum_threshold = (
-                        working_flow_accum_threshold +
-                        max(upstream_flow_accum[test_order]))/2
-                    # TODO: reclassify streams of <= test_order
-                    for order in range(1, test_order+1):
-                        streams_to_refactor = []
-                        while streams_by_order[order]:
-                            stream_feature = streams_by_order[order].pop()
-                            if (stream_feature.GetField('ds_fa') <
-                                    working_flow_accum_threshold):
-                                # this flow accumulation is too small, it's
-                                # not relevant anymore
-                                stream_layer.DeleteFeature(stream_feature)
-                                continue
-                            if (stream_feature.GetField('us_fa') >=
-                                    working_flow_accum_threshold):
-                                # this whole stream still fits in the threshold
-                                # so keep it
-                                streams_to_refactor.append(stream_feature)
-                                continue
-                            # TODO: recalculate stream geometry
-                            source_point = stream_feature.GetField('source_xy')
+    #             test_order = 1
+    #             working_flow_accum_threshold = flow_accum_threshold
+    #             while True:
+    #                 # decide how much bigger to make the flow_accum
+    #                 # find a test_order that tests p_val > 0.5 then retest
+    #                 # with (working_flow_accum+max(ul_thresh))/2
+    #                 while test_order+1 <= max(drop_distance_collection):
+    #                     _, p_val = scipy.stats.ttest_ind(
+    #                         drop_distance_collection[test_order],
+    #                         drop_distance_collection[test_order+1],
+    #                         equal_var=True)
+    #                     if p_val > 0.05:
+    #                         # not too big
+    #                         break
+    #                 if test_order == 1:
+    #                     # order 1/2 streams are not statistically different
+    #                     break
+    #                 working_flow_accum_threshold = (
+    #                     working_flow_accum_threshold +
+    #                     max(upstream_flow_accum[test_order]))/2
+    #                 # TODO: reclassify streams of <= test_order
+    #                 for order in range(1, test_order+1):
+    #                     streams_to_refactor = []
+    #                     while streams_by_order[order]:
+    #                         stream_feature = streams_by_order[order].pop()
+    #                         if (stream_feature.GetField('ds_fa') <
+    #                                 working_flow_accum_threshold):
+    #                             # this flow accumulation is too small, it's
+    #                             # not relevant anymore
+    #                             stream_layer.DeleteFeature(stream_feature)
+    #                             continue
+    #                         if (stream_feature.GetField('us_fa') >=
+    #                                 working_flow_accum_threshold):
+    #                             # this whole stream still fits in the threshold
+    #                             # so keep it
+    #                             streams_to_refactor.append(stream_feature)
+    #                             continue
+    #                         # TODO: recalculate stream geometry
+    #                         source_point = stream_feature.GetField('source_xy')
 
-
-
-                working_river_id += 1
-            else:
-                # keep walking upstream until there's an order <= river_order
-                search_stack.extend(
-                    downstream_to_upstream_ids[feature_id])
+    #             working_river_id += 1
+    #         else:
+    #             # keep walking upstream until there's an order <= river_order
+    #             search_stack.extend(
+    #                 downstream_to_upstream_ids[feature_id])
 
     stream_layer.CommitTransaction()
     stream_layer = None
     stream_vector = None
     LOGGER.info('all done')
+
+
+def _calculate_stream_geometry(
+        int x_l, int y_l, int upstream_d8_dir, geotransform, int n_cols, int n_rows,
+        _ManagedRaster flow_accum_managed_raster,
+        _ManagedRaster flow_dir_managed_raster, int flow_dir_nodata,
+        int flow_accum_threshold, coord_to_stream_ids):
+    """Calculate the upstream geometry from the given point.
+
+    Creates a new georeferenced linestring geometry that maps the source x/y
+    to an upstream line such that the upper point stops when flow accum <
+    the provided threshold.
+
+    Args:
+        x_l/y_l (int): integer x/y downstream coordinates to seed the search.
+        upstream_d8_dir (int): upstream D8 direction to search
+        geotransform (list): 6 element list representing the geotransform
+            used to convert to georeferenced coordinates.
+        n_cols/n_rows (int): number of columns and rows in raster.
+        flow_accum_managed_raster (ManagedRaster): flow accumulation raster
+        flow_dir_managed_raster (ManagedRaster): d8 flow direction raster
+        flow_dir_nodata (int): nodata for flow direction
+        flow_accum_threshold (int): minimum flow accumulation value to define
+            string.
+        coord_to_stream_ids (dict): map raster space coordinate tuple to
+            a list of stream ids
+
+    Returns:
+        Georeferenced linestring connecting x/y to upper point where upper
+            point's threshold is the last point where its flow accum value
+            is >= `flow_accum_threshold`. Returns None if x/y is below
+            flow accum threshold.
+
+    """
+    cdef int *d8_xoffset = [1, 1, 0, -1, -1, -1, 0, 1]
+    cdef int *d8_yoffset = [0, -1, -1, -1, 0, +1, +1, +1]
+    cdef int *d8_backflow = [
+        0, 0, 0, 0, 1, 0, 0, 0,
+        0, 0, 0, 0, 0, 1, 0, 0,
+        0, 0, 0, 0, 0, 0, 1, 0,
+        0, 0, 0, 0, 0, 0, 0, 1,
+        1, 0, 0, 0, 0, 0, 0, 0,
+        0, 1, 0, 0, 0, 0, 0, 0,
+        0, 0, 1, 0, 0, 0, 0, 0,
+        0, 0, 0, 1, 0, 0, 0, 0]
+    cdef int x_n, y_n, d, d_n, reached_junction
+
+    if flow_accum_managed_raster.get(x_l, y_l) < flow_accum_threshold:
+        return None
+    upstream_id_list = []
+    # TODO: I'm in the middle of making this function as a standalone "walk up the stream"
+
+    # anchor the line at the downstream end
+    stream_line = ogr.Geometry(ogr.wkbLineString)
+    x_p, y_p = gdal.ApplyGeoTransform(geotransform, x_l+0.5, y_l+0.5)
+    stream_line.AddPoint(x_p, y_p)
+
+    # initialize next_dir and last_dir so we only drop new points when
+    # the line changes direction
+    cdef int next_dir = upstream_d8_dir
+    cdef int last_dir = next_dir
+    while True:
+        # walk upstream
+        x_l += d8_xoffset[next_dir]
+        y_l += d8_yoffset[next_dir]
+
+        step_upstream = 0
+
+        # check if we reached an upstream junction
+        reached_junction = (x_l, y_l) in coord_to_stream_ids
+        if reached_junction:
+            upstream_id_list = coord_to_stream_ids[(x_l, y_l)]
+            del coord_to_stream_ids[(x_l, y_l)]
+        else:
+            # check to see if we can take a step upstream
+            for d in range(8):
+                x_n = x_l + d8_xoffset[d]
+                y_n = y_l + d8_yoffset[d]
+
+                # check out of bounds
+                if x_n < 0 or y_n < 0 or x_n >= n_cols or y_n >= n_rows:
+                    continue
+
+                # check for nodata
+                d_n = <int>flow_dir_managed_raster.get(x_n, y_n)
+                if d_n == flow_dir_nodata:
+                    continue
+
+                # check if there's an upstream inflow pixel with flow accum
+                # greater than the threshold
+                if d8_backflow[d*8+d_n] and <int>flow_accum_managed_raster.get(
+                        x_n, y_n) > flow_accum_threshold:
+                    step_upstream = 1
+                    next_dir = d
+                    break
+
+        # drop a point on the line if direction changed or last point
+        if last_dir != next_dir or not step_upstream or reached_junction:
+            x_p, y_p = gdal.ApplyGeoTransform(
+                geotransform, x_l+0.5, y_l+0.5)
+            stream_line.AddPoint(x_p, y_p)
+            last_dir = next_dir
+
+        if not step_upstream or reached_junction:
+            # flow accum tapered
+            break
+    return x_p, y_p, upstream_id_list, stream_line
+
