@@ -3188,11 +3188,6 @@ def extract_strahler_streams_d8(
         source_stream_point = source_point_stack.top()
         source_point_stack.pop()
 
-        # _calculate_stream_geometry(
-        #     x_l, y_l, upstream_d8_dir, geotransform, n_cols, n_rows,
-        #     flow_accum_managed_raster, flow_dir_managed_raster, flow_dir_nodata,
-        #     flow_accum_threshold, coord_to_stream_ids)
-
         payload = _calculate_stream_geometry(
             source_stream_point.xi, source_stream_point.yi,
             source_stream_point.upstream_d8_dir,
@@ -3445,6 +3440,7 @@ def _calculate_stream_geometry(
     # the line changes direction
     cdef int next_dir = upstream_d8_dir
     cdef int last_dir = next_dir
+
     while True:
         # walk upstream
         x_l += d8_xoffset[next_dir]
@@ -3490,5 +3486,5 @@ def _calculate_stream_geometry(
         if not step_upstream or reached_junction:
             # flow accum tapered
             break
-    return x_p, y_p, upstream_id_list, stream_line
 
+    return x_l, y_l, upstream_id_list, stream_line
