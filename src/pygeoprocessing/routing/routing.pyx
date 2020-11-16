@@ -3167,7 +3167,6 @@ def extract_strahler_streams_d8(
 
     LOGGER.info('starting upstream walk')
     n_points = source_point_stack.size()
-    cdef int reached_junction = 0
 
     # map downstream ids to list of upstream connected streams
     # id -> list of ids
@@ -3221,7 +3220,7 @@ def extract_strahler_streams_d8(
             upstream_id_list)
 
         # if no upstream it means it is an order 1 source stream
-        if not reached_junction:
+        if not upstream_id_list:
             stream_line_feature.SetField('order', 1)
         stream_line_feature.SetGeometry(stream_line)
 
@@ -3424,7 +3423,7 @@ def _calculate_stream_geometry(
         0, 1, 0, 0, 0, 0, 0, 0,
         0, 0, 1, 0, 0, 0, 0, 0,
         0, 0, 0, 1, 0, 0, 0, 0]
-    cdef int x_n, y_n, d, d_n, reached_junction
+    cdef int x_n, y_n, d, d_n, stream_end=0
 
     if flow_accum_managed_raster.get(x_l, y_l) < flow_accum_threshold:
         return None
@@ -3441,16 +3440,15 @@ def _calculate_stream_geometry(
     cdef int next_dir = upstream_d8_dir
     cdef int last_dir = next_dir
 
-    while True:
+    stream_end = 0
+    while not stream_end:
         # walk upstream
         x_l += d8_xoffset[next_dir]
         y_l += d8_yoffset[next_dir]
 
-        step_upstream = 0
-
+        stream_end = 1
         # check if we reached an upstream junction
-        reached_junction = (x_l, y_l) in coord_to_stream_ids
-        if reached_junction:
+        if (x_l, y_l) in coord_to_stream_ids:
             upstream_id_list = coord_to_stream_ids[(x_l, y_l)]
             del coord_to_stream_ids[(x_l, y_l)]
         else:
@@ -3472,19 +3470,15 @@ def _calculate_stream_geometry(
                 # greater than the threshold
                 if d8_backflow[d*8+d_n] and <int>flow_accum_managed_raster.get(
                         x_n, y_n) > flow_accum_threshold:
-                    step_upstream = 1
+                    stream_end = 0
                     next_dir = d
                     break
 
         # drop a point on the line if direction changed or last point
-        if last_dir != next_dir or not step_upstream or reached_junction:
+        if last_dir != next_dir or stream_end:
             x_p, y_p = gdal.ApplyGeoTransform(
                 geotransform, x_l+0.5, y_l+0.5)
             stream_line.AddPoint(x_p, y_p)
             last_dir = next_dir
-
-        if not step_upstream or reached_junction:
-            # flow accum tapered
-            break
 
     return x_l, y_l, upstream_id_list, stream_line
