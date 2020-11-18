@@ -1,0 +1,11 @@
+# ReadTheDocs configuration file.
+#
+# See https://docs.readthedocs.io/en/stable/config-file/v2.html?#conda for
+# details.
+version: 2
+
+sphinx:
+    configuration: docs/conf.py
+
+conda:
+    environment: docs/environment-rtd.yml
