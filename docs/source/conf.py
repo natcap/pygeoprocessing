@@ -31,6 +31,7 @@ extensions = [
     'sphinx.ext.autodoc',
     'sphinx.ext.viewcode',
     'sphinx.ext.napoleon',  # support google style docstrings
+    'sphinx.ext.autosummary',
 ]
 
 # Add any paths that contain templates here, relative to this directory.
@@ -56,3 +57,10 @@ html_static_path = ['_static']
 
 
 # -- Extension configuration -------------------------------------------------
+
+autosummary_generate = True
+autosummary_generate_overwrite = True
+
+autodoc_default_options = {
+    'members': True,
+}
