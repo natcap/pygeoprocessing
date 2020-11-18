@@ -686,8 +686,16 @@ def delineate_watersheds_d8(
     cdef int flow_dir_n_cols = flow_dir_info['raster_size'][0]
     cdef int flow_dir_n_rows = flow_dir_info['raster_size'][1]
     cdef int ws_id
+    bbox_minx, bbox_miny, bbox_maxx, bbox_maxy = flow_dir_info['bounding_box']
+    LOGGER.debug('Creating flow dir bbox')
     flow_dir_bbox = shapely.prepared.prep(
-        shapely.geometry.box(*flow_dir_info['bounding_box']))
+        shapely.geometry.Polygon([
+            (bbox_minx, bbox_maxy),
+            (bbox_minx, bbox_miny),
+            (bbox_maxx, bbox_miny),
+            (bbox_maxx, bbox_maxy),
+            (bbox_minx, bbox_maxy)]))
+    LOGGER.debug('Creating flow dir managed raster')
     flow_dir_managed_raster = _ManagedRaster(d8_flow_dir_raster_path_band[0],
                                              d8_flow_dir_raster_path_band[1], 0)
 
@@ -733,9 +741,6 @@ def delineate_watersheds_d8(
     cdef int n_cells_visited = 0
 
     LOGGER.info('Delineating watersheds')
-    flow_dir_bbox = shapely.prepared.prep(
-        shapely.geometry.box(*flow_dir_info['bounding_box']))
-
     outflow_layer = outflow_vector.GetLayer()
     outflow_feature_count = outflow_layer.GetFeatureCount()
     flow_dir_srs = osr.SpatialReference()
@@ -758,6 +763,7 @@ def delineate_watersheds_d8(
         geom_wkb = geom.ExportToWkb()
         shapely_geom = shapely.wkb.loads(geom_wkb)
 
+        LOGGER.debug('Testing geometry bbox')
         if not flow_dir_bbox.intersects(shapely.geometry.box(*shapely_geom.bounds)):
             LOGGER.debug(
                 'Outflow feature %s does not overlap with the flow '
