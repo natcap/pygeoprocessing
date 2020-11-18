@@ -28,10 +28,23 @@ Specifically the functionally provided by PyGeoprocessing includes:
 PyGeoprocessing is developed by the `Natural Capital Project <https://naturalcapitalproject.stanford.edu>`_.
 
 
+Contents
+========
+
 .. toctree::
    :maxdepth: 2
    :caption: Contents:
 
+
+Modules
+=======
+
+.. autosummary::
+   :toctree: modules
+   :caption: Modules
+   :recursive:
+
+   pygeoprocessing
 
 
 Indices and tables
@@ -41,6 +54,3 @@ Indices and tables
 * :ref:`modindex`
 * :ref:`search`
 
-.. automodule:: pygeoprocessing.geoprocessing
-        :members:
-        :undoc-members:
