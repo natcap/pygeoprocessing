@@ -628,7 +628,7 @@ def delineate_watersheds_d8(
         target_layer_name='watersheds'):
     """Delineate watersheds for a vector of geometries using D8 flow dir.
 
-    Parameters:
+    Args:
         d8_flow_dir_raster_path_band (tuple): A (path, band_id) tuple
             to a D8 flow direction raster.  This raster must be a tiled raster
             with block sizes being a power of 2.
@@ -656,7 +656,7 @@ def delineate_watersheds_d8(
             the watersheds layer.  This layer name may be named anything
             except for "polygonized_watersheds".
 
-    Returns
+    Returns:
         ``None``
 
     """
