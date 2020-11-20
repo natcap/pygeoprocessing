@@ -586,14 +586,14 @@ def fill_pits(
     Parameters:
         dem_raster_path_band (tuple): a path, band number tuple indicating the
             DEM calculate flow direction.
-        target_filled_dem_raster_path (string): path the pit filled dem,
+        target_filled_dem_raster_path (str): path the pit filled dem,
             that's created by a call to this function. It is functionally a
             single band copy of ``dem_raster_path_band`` with the pit pixels
             raised to the pour point. For runtime efficiency, this raster is
             tiled and its blocksize is set to (1<<BLOCK_BITS, 1<<BLOCK_BITS)
             even if `dem_raster_path_band[0]` was not tiled or a different
             block size.
-        working_dir (string): If not None, indicates where temporary files
+        working_dir (str): If not None, indicates where temporary files
             should be created during this run. If this directory doesn't exist
             it is created by this call. If None, a temporary directory is
             created by tempdir.mkdtemp which is removed after the function
@@ -961,7 +961,7 @@ def flow_dir_d8(
         dem_raster_path_band (tuple): a path, band number tuple indicating the
             DEM calculate flow direction. This DEM must not have hydrological
             pits or else the target flow direction is undefined.
-        target_flow_dir_path (string): path to a byte raster created by this
+        target_flow_dir_path (str): path to a byte raster created by this
             call of same dimensions as `dem_raster_path_band` that has a value
             indicating the direction of downhill flow. Values are defined as
             pointing to one of the eight neighbors with the following
@@ -971,7 +971,7 @@ def flow_dir_d8(
                 4x0
                 567
 
-        working_dir (string): If not None, indicates where temporary files
+        working_dir (str): If not None, indicates where temporary files
             should be created during this run. If this directory doesn't exist
             it is created by this call.
         raster_driver_creation_tuple (tuple): a tuple containing a GDAL driver
@@ -1328,7 +1328,7 @@ def flow_accumulation_d8(
                 321
                 4x0
                 567
-        target_flow_accum_raster_path (string): path to flow
+        target_flow_accum_raster_path (str): path to flow
             accumulation raster created by this call. After this call, the
             value of each pixel will be 1 plus the number of upstream pixels
             that drain to that pixel. Note the target type of this raster
@@ -1545,7 +1545,7 @@ def flow_dir_mfd(
         dem_raster_path_band (tuple): a path, band number tuple indicating the
             DEM calculate flow direction. This DEM must not have hydrological
             pits or else the target flow direction will be undefined.
-        target_flow_dir_path (string): path to a raster created by this call
+        target_flow_dir_path (str): path to a raster created by this call
             of a 32 bit int raster of the same dimensions and projections as
             `dem_raster_path_band[0]`. The value of the pixel indicates the
             proportion of flow from that pixel to its neighbors given these
@@ -1561,7 +1561,7 @@ def flow_dir_mfd(
             shift and mask as follows 0xF & (x >> (4*dir)), where `dir` is
             one of the 8 directions indicated above.
 
-        working_dir (string): If not None, indicates where temporary files
+        working_dir (str): If not None, indicates where temporary files
             should be created during this run. If this directory doesn't exist
             it is created by this call.
         raster_driver_creation_tuple (tuple): a tuple containing a GDAL driver
@@ -2039,7 +2039,7 @@ def flow_accumulation_mfd(
             for a multiple flow direction raster generated from a call to
             `flow_dir_mfd`. The format of this raster is described in the
             docstring of that function.
-        target_flow_accum_raster_path (string): a path to a raster created by
+        target_flow_accum_raster_path (str): a path to a raster created by
             a call to this function that is the same dimensions and projection
             as `flow_dir_mfd_raster_path_band[0]`. The value in each pixel is
             1 plus the proportional contribution of all upstream pixels that
@@ -2330,7 +2330,7 @@ def distance_to_channel_d8(
             that indicates where the channels in the problem space lie. A
             channel is indicated if the value of the pixel is 1. Other values
             are ignored.
-        target_distance_to_channel_raster_path (string): path to a raster
+        target_distance_to_channel_raster_path (str): path to a raster
             created by this call that has per-pixel distances from a given
             pixel to the nearest downhill channel.
         weight_raster_path_band (tuple): optional path and band number to a
@@ -2516,7 +2516,7 @@ def distance_to_channel_mfd(
             that indicates where the channels in the problem space lie. A
             channel is indicated if the value of the pixel is 1. Other values
             are ignored.
-        target_distance_to_channel_raster_path (string): path to a raster
+        target_distance_to_channel_raster_path (str): path to a raster
             created by this call that has per-pixel distances from a given
             pixel to the nearest downhill channel.
         weight_raster_path_band (tuple): optional path and band number to a
