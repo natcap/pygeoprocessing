@@ -406,7 +406,7 @@ cdef cset[CoordinatePair] _c_split_geometry_into_seeds(
     """Split a geometry into 'seeds' of (x, y) coordinate pairs.
 
     Parameters:
-        source_geom_wkb (string): A string of bytes in WKB representing
+        source_geom_wkb (str): A string of bytes in WKB representing
             a geometry. Must be in the same projected coordinate system
             as the flow direction raster from which
             ``flow_dir_geotransform`` and ``flow_dir_srs`` are derived.
@@ -418,7 +418,7 @@ cdef cset[CoordinatePair] _c_split_geometry_into_seeds(
             direction raster.
         flow_dir_n_rows (int): the number of rows in the flow
             direction raster.
-        target_raster_path (string): The path to a raster onto which
+        target_raster_path (str): The path to a raster onto which
             the geometry might be rasterized.  If the geometry is small
             enough to be completely contained within a single pixel, no
             raster will be written to this location.
@@ -578,7 +578,7 @@ def _split_geometry_into_seeds(
     that is useful for testing.
 
     Parameters:
-        source_geom_wkb (string): A string of bytes in WKB representing
+        source_geom_wkb (str): A string of bytes in WKB representing
             a geometry. Must be in the same projected coordinate system
             as the flow direction raster from which
             ``flow_dir_geotransform`` and ``flow_dir_srs`` are derived.
@@ -590,7 +590,7 @@ def _split_geometry_into_seeds(
             direction raster.
         flow_dir_n_rows (int): the number of rows in the flow
             direction raster.
-        target_raster_path (string): The path to a raster onto which
+        target_raster_path (str): The path to a raster onto which
             the geometry might be rasterized.  If the geometry is small
             enough to be completely contained within a single pixel, no
             raster will be written to this location.
@@ -632,15 +632,15 @@ def delineate_watersheds_d8(
         d8_flow_dir_raster_path_band (tuple): A (path, band_id) tuple
             to a D8 flow direction raster.  This raster must be a tiled raster
             with block sizes being a power of 2.
-        outflow_vector_path (string): The path to a vector on disk containing
+        outflow_vector_path (str): The path to a vector on disk containing
             features with valid geometries from which watersheds will be
             delineated.  Only those parts of the geometry that overlap valid
             flow direction pixels will be included in the output watersheds
             vector.
-        target_watersheds_vector_path (string): The path to a vector on disk
+        target_watersheds_vector_path (str): The path to a vector on disk
             where the target watersheds will be stored.  Must have the
             extension ``.gpkg``.
-        working_dir=None (string or None): The path to a directory on disk
+        working_dir=None (str or None): The path to a directory on disk
             within which various intermediate files will be stored.  If None,
             a folder will be created within the system's temp directory.
         write_diagnostic_vector=False (bool): If ``True``, a set of vectors will
@@ -652,7 +652,7 @@ def delineate_watersheds_d8(
             outflow geometries cover many pixels.
         remove_temp_files=True (bool): Whether to remove the created temp
             directory at the end of the watershed delineation run.
-        target_layer_name='watersheds' (string): The string name to use for
+        target_layer_name='watersheds' (str): The string name to use for
             the watersheds layer.  This layer name may be named anything
             except for "polygonized_watersheds".
 
