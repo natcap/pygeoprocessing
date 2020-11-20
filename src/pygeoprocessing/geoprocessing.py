@@ -95,18 +95,21 @@ def raster_calculator(
     be spatially aligned and have the same cell sizes.
 
     Args:
-        base_raster_path_band_const_list (sequence): a sequence containing
-            either (str, int) tuples, ``numpy.ndarray``s of up to two
-            dimensions, or an (object, 'raw') tuple.  A ``(str, int)``
-            tuple refers to a raster path band index pair to use as an input.
-            The ``numpy.ndarray``s must be broadcastable to each other AND the
-            size of the raster inputs. Values passed by  ``(object, 'raw')``
-            tuples pass ``object`` directly into the ``local_op``. All rasters
-            must have the same raster size. If only arrays are input, numpy
-            arrays must be broadcastable to each other and the final raster
-            size will be the final broadcast array shape. A value error is
-            raised if only "raw" inputs are passed.
-        local_op (function) a function that must take in as many parameters as
+        base_raster_path_band_const_list (sequence): a sequence containing:
+
+            * ``(str, int)`` tuples, referring to a raster path/band index pair
+              to use as an input.
+            * ``numpy.ndarray`` s of up to two dimensions.  These inputs must
+              all be broadcastable to each other AND the size of the raster
+              inputs.
+            * ``(object, 'raw')`` tuples, where ``object`` will be passed
+              directly into the ``local_op``.
+
+            All rasters must have the same raster size. If only arrays are
+            input, numpy arrays must be broadcastable to each other and the
+            final raster size will be the final broadcast array shape. A value
+            error is raised if only "raw" inputs are passed.
+        local_op (function): a function that must take in as many parameters as
             there are elements in ``base_raster_path_band_const_list``. The
             parameters in ``local_op`` will map 1-to-1 in order with the values
             in ``base_raster_path_band_const_list``. ``raster_calculator`` will
@@ -581,16 +584,16 @@ def align_and_resize_raster_stack(
             vector's geometry. Keys to this dictionary are:
 
             * ``'mask_vector_path'`` (str): path to the mask vector file.
-                This vector will be automatically projected to the target
-                projection if its base coordinate system does not match the
-                target.
+              This vector will be automatically projected to the target
+              projection if its base coordinate system does not match the
+              target.
             * ``'mask_layer_name'`` (str): the layer name to use for masking.
-                If this key is not in the dictionary the default is to use
-                the layer at index 0.
+              If this key is not in the dictionary the default is to use
+              the layer at index 0.
             * ``'mask_vector_where_filter'`` (str): an SQL WHERE string.
-                This will be used to filter the geometry in the mask. Ex: ``'id
-                > 10'`` would use all features whose field value of 'id' is >
-                10.
+              This will be used to filter the geometry in the mask. Ex: ``'id
+              > 10'`` would use all features whose field value of 'id' is >
+              10.
 
         gdal_warp_options (sequence): if present, the contents of this list
             are passed to the ``warpOptions`` parameter of ``gdal.Warp``. See
@@ -947,7 +950,10 @@ def create_raster_from_vector_extents(
             box; if not coordinates will be rounded up to contain the original
             extent.
         target_pixel_size (list/tuple): the x/y pixel size as a sequence
-            ex: [30.0, -30.0]
+            Example::
+
+                [30.0, -30.0]
+
         target_pixel_type (int): gdal GDT pixel type of target raster
         target_nodata (numeric): target nodata value. Can be None if no nodata
             value is needed.
@@ -1115,11 +1121,13 @@ def zonal_statistics(
     in two passes, where first polygons aggregate over pixels in the raster
     whose centers intersect with the polygon. In the second pass, any polygons
     that are not aggregated use their bounding box to intersect with the
-    raster for overlap statistics. Note there may be some degenerate
-    cases where the bounding box vs. actual geometry intersection would be
-    incorrect, but these are so unlikely as to be manually constructed. If
-    you encounter one of these please email the description and dataset
-    to richsharp@stanford.edu.
+    raster for overlap statistics.
+
+    Note:
+        There may be some degenerate cases where the bounding box vs. actual
+        geometry intersection would be incorrect, but these are so unlikely as
+        to be manually constructed. If you encounter one of these please email
+        the description and dataset to richsharp@stanford.edu.
 
     Args:
         base_raster_path_band (tuple): a str/int tuple indicating the path to
@@ -1148,12 +1156,21 @@ def zonal_statistics(
 
     Returns:
         nested dictionary indexed by aggregating feature id, and then by one
-        of 'min' 'max' 'sum' 'count' and 'nodata_count'.  Example:
-        {0: {'min': 0, 'max': 1, 'sum': 1.7, count': 3, 'nodata_count': 1}}
+        of 'min' 'max' 'sum' 'count' and 'nodata_count'.  Example::
+
+            {0: {'min': 0,
+                 'max': 1,
+                 'sum': 1.7,
+                 'count': 3,
+                 'nodata_count': 1
+                 }
+            }
 
     Raises:
-        ValueError if ``base_raster_path_band`` is incorrectly formatted.
-        RuntimeError(s) if the aggregate vector or layer cannot open.
+        ValueError
+            if ``base_raster_path_band`` is incorrectly formatted.
+        RuntimeError
+            if the aggregate vector or layer cannot open.
 
     """
     if not _is_raster_path_band_formatted(base_raster_path_band):
@@ -1480,14 +1497,16 @@ def get_vector_info(vector_path, layer_id=0):
         opened as a gdal.OF_VECTOR.
 
     Returns:
-        raster_properties (dictionary): a dictionary with the following
-            properties stored under relevant keys.
+        raster_properties (dictionary):
+            a dictionary with the following key-value pairs:
 
-            'projection_wkt' (string): projection of the vector in Well Known
-                Text.
-            'bounding_box' (sequence): sequence of floats representing the
-                bounding box in projected coordinates in the order
-                [minx, miny, maxx, maxy].
+            * ``'projection_wkt'`` (string): projection of the vector in Well
+              Known Text.
+            * ``'bounding_box'`` (sequence): sequence of floats representing
+              the bounding box in projected coordinates in the order
+              [minx, miny, maxx, maxy].
+            * ``'file_list'`` (sequence): sequence of string paths to the files
+              that make up this vector.
 
     """
     vector = gdal.OpenEx(vector_path, gdal.OF_VECTOR)
@@ -1519,34 +1538,35 @@ def get_raster_info(raster_path):
        raster_path (String): a path to a GDAL raster.
 
     Raises:
-        ValueError if ``raster_path`` is not a file or cannot be opened as a
-        gdal.OF_RASTER.
+        ValueError
+            if ``raster_path`` is not a file or cannot be opened as a
+            ``gdal.OF_RASTER``.
 
     Returns:
-        raster_properties (dictionary): a dictionary with the properties
-            stored under relevant keys.
+        raster_properties (dictionary):
+            a dictionary with the properties stored under relevant keys.
 
-            'pixel_size' (tuple): (pixel x-size, pixel y-size) from
-                geotransform.
-            'raster_size' (tuple):  number of raster pixels in (x, y)
-                direction.
-            'nodata' (sequence): a sequence of the nodata values in the bands
-                of the raster in the same order as increasing band index.
-            'n_bands' (int): number of bands in the raster.
-            'geotransform' (tuple): a 6-tuple representing the geotransform of
-                (x orign, x-increase, xy-increase,
-                 y origin, yx-increase, y-increase).
-            'datatype' (int): An instance of an enumerated gdal.GDT_* int
-                that represents the datatype of the raster.
-            'projection_wkt' (string): projection of the raster in Well Known
-                Text.
-            'bounding_box' (sequence): sequence of floats representing the
-                bounding box in projected coordinates in the order
-                [minx, miny, maxx, maxy]
-            'block_size' (tuple): underlying x/y raster block size for
-                efficient reading.
-            'numpy_type' (numpy type): this is the equivalent numpy datatype
-                for the raster bands including signed bytes.
+        * ``'pixel_size'`` (tuple): (pixel x-size, pixel y-size)
+          from geotransform.
+        * ``'raster_size'`` (tuple):  number of raster pixels in (x, y)
+          direction.
+        * ``'nodata'`` (sequence): a sequence of the nodata values in the bands
+          of the raster in the same order as increasing band index.
+        * ``'n_bands'`` (int): number of bands in the raster.
+        * ``'geotransform'`` (tuple): a 6-tuple representing the geotransform
+          of (x orign, x-increase, xy-increase, y origin, yx-increase,
+          y-increase).
+        * ``'datatype'`` (int): An instance of an enumerated gdal.GDT_* int
+          that represents the datatype of the raster.
+        * ``'projection_wkt'`` (string): projection of the raster in Well Known
+          Text.
+        * ``'bounding_box'`` (sequence): sequence of floats representing the
+          bounding box in projected coordinates in the order
+          [minx, miny, maxx, maxy]
+        * ``'block_size'`` (tuple): underlying x/y raster block size for
+          efficient reading.
+        * ``'numpy_type'`` (numpy type): this is the equivalent numpy datatype
+          for the raster bands including signed bytes.
 
     """
     raster = gdal.OpenEx(raster_path, gdal.OF_RASTER)
@@ -1773,9 +1793,10 @@ def reclassify_raster(
         None
 
     Raises:
-        ReclassificationMissingValuesError if ``values_required`` is ``True``
-        and a pixel value from ``base_raster_path_band`` is not a key in
-        ``value_map``.
+        ReclassificationMissingValuesError
+            if ``values_required`` is ``True``
+            and a pixel value from ``base_raster_path_band`` is not a key in
+            ``value_map``.
 
     """
     if len(value_map) == 0:
@@ -1831,8 +1852,7 @@ def warp_raster(
         target_raster_path (string): the location of the resized and
             resampled raster.
         resample_method (string): the resampling technique, one of
-            "near|bilinear|cubic|cubicspline|lanczos|average|mode|max"
-            "min|med|q1|q3"
+            ``near|bilinear|cubic|cubicspline|lanczos|average|mode|max|min|med|q1|q3``
         target_bb (sequence): if None, target bounding box is the same as the
             source bounding box.  Otherwise it's a sequence of float
             describing target bounding box in target coordinate system as
@@ -1847,17 +1867,19 @@ def warp_raster(
             dictionary of options to use an existing vector's geometry to
             mask out pixels in the target raster that do not overlap the
             vector's geometry. Keys to this dictionary are:
-                'mask_vector_path': (str) path to the mask vector file. This
-                    vector will be automatically projected to the target
-                    projection if its base coordinate system does not match
-                    the target.
-                'mask_layer_id': (int/str) the layer index or name to use for
-                    masking, if this key is not in the dictionary the default
-                    is to use the layer at index 0.
-                'mask_vector_where_filter': (str) an SQL WHERE string that can
-                    be used to filter the geometry in the mask. Ex:
-                    'id > 10' would use all features whose field value of
-                    'id' is > 10.
+
+            * ``'mask_vector_path'``: (str) path to the mask vector file. This
+              vector will be automatically projected to the target
+              projection if its base coordinate system does not match
+              the target.
+            * ``'mask_layer_id'``: (int/str) the layer index or name to use for
+              masking, if this key is not in the dictionary the default
+              is to use the layer at index 0.
+            * ``'mask_vector_where_filter'``: (str) an SQL WHERE string that can
+              be used to filter the geometry in the mask. Ex:
+              'id > 10' would use all features whose field value of
+              'id' is > 10.
+
         gdal_warp_options (sequence): if present, the contents of this list
             are passed to the ``warpOptions`` parameter of ``gdal.Warp``. See
             the GDAL Warp documentation for valid options.
@@ -1877,8 +1899,10 @@ def warp_raster(
         None
 
     Raises:
-        ValueError if ``pixel_size`` is not a 2 element sequence of numbers.
-        ValueError if ``vector_mask_options`` is not None but the
+        ValueError
+            if ``pixel_size`` is not a 2 element sequence of numbers.
+        ValueError
+            if ``vector_mask_options`` is not None but the
             ``mask_vector_path`` is undefined or doesn't point to a valid
             file.
 
@@ -2038,33 +2062,38 @@ def rasterize(
         option_list (list/tuple): optional a sequence of burn options, if None
             then a valid value for ``burn_values`` must exist. Otherwise, each
             element is a string of the form:
-                "ATTRIBUTE=?": Identifies an attribute field on the features
-                    to be used for a burn in value. The value will be burned
-                    into all output bands. If specified, ``burn_values``
-                    will not be used and can be None.
-                "CHUNKYSIZE=?": The height in lines of the chunk to operate
-                    on. The larger the chunk size the less times we need to
-                    make a pass through all the shapes. If it is not set or
-                    set to zero the default chunk size will be used. Default
-                    size will be estimated based on the GDAL cache buffer size
-                    using formula: cache_size_bytes/scanline_size_bytes, so
-                    the chunk will not exceed the cache.
-                 "ALL_TOUCHED=TRUE/FALSE": May be set to TRUE to set all pixels
-                     touched by the line or polygons, not just those whose
-                     center is within the polygon or that are selected by
-                     Brezenhams line algorithm. Defaults to FALSE.
-                "BURN_VALUE_FROM": May be set to "Z" to use the Z values of
-                    the geometries. The value from burn_values or the
-                    attribute field value is added to this before burning. In
-                    default case dfBurnValue is burned as it is (richpsharp:
-                    note, I'm not sure what this means, but copied from formal
-                    docs). This is implemented properly only for points and
-                    lines for now. Polygons will be burned using the Z value
-                    from the first point.
-                "MERGE_ALG=REPLACE/ADD": REPLACE results in overwriting of
-                    value, while ADD adds the new value to the existing
-                    raster, suitable for heatmaps for instance.
-            Example: ["ATTRIBUTE=npv", "ALL_TOUCHED=TRUE"]
+
+            * ``"ATTRIBUTE=?"``: Identifies an attribute field on the features
+              to be used for a burn in value. The value will be burned into all
+              output bands. If specified, ``burn_values`` will not be used and
+              can be None.
+            * ``"CHUNKYSIZE=?"``: The height in lines of the chunk to operate
+              on. The larger the chunk size the less times we need to make a
+              pass through all the shapes. If it is not set or set to zero the
+              default chunk size will be used. Default size will be estimated
+              based on the GDAL cache buffer size using formula:
+              ``cache_size_bytes/scanline_size_bytes``, so the chunk will not
+              exceed the cache.
+            * ``"ALL_TOUCHED=TRUE/FALSE"``: May be set to ``TRUE`` to set all
+              pixels touched by the line or polygons, not just those whose
+              center is within the polygon or that are selected by Brezenhams
+              line algorithm. Defaults to ``FALSE``.
+            * ``"BURN_VALUE_FROM"``: May be set to "Z" to use the Z values of
+              the geometries. The value from burn_values or the
+              attribute field value is added to this before burning. In
+              default case dfBurnValue is burned as it is (richpsharp:
+              note, I'm not sure what this means, but copied from formal
+              docs). This is implemented properly only for points and
+              lines for now. Polygons will be burned using the Z value
+              from the first point.
+            * ``"MERGE_ALG=REPLACE/ADD"``: REPLACE results in overwriting of
+              value, while ADD adds the new value to the existing
+              raster, suitable for heatmaps for instance.
+
+            Example::
+
+                ["ATTRIBUTE=npv", "ALL_TOUCHED=TRUE"]
+
         layer_id (str/int): name or index of the layer to rasterize. Defaults
             to 0.
         where_clause (str): If not None, is an SQL query-like string to filter
@@ -2274,14 +2303,14 @@ def distance_transform_edt(
         target_distance_raster_path (string): path to the target raster that
             is the exact euclidean distance transform from any pixel in the
             base raster that is not nodata and not 0. The units are in
-            (pixel distance * ``sampling_distance``).
+            ``(pixel distance * sampling_distance)``.
         sampling_distance (tuple/list): an optional parameter used to scale
             the pixel distances when calculating the distance transform.
             Defaults to (1.0, 1.0). First element indicates the distance
             traveled in the x direction when changing a column index, and the
             second element in y when changing a row index. Both values must
             be > 0.
-         working_dir (string): If not None, indicates where temporary files
+        working_dir (string): If not None, indicates where temporary files
             should be created during this run.
         raster_driver_creation_tuple (tuple): a tuple containing a GDAL driver
             name string as the first element and a GDAL creation options
@@ -2458,11 +2487,12 @@ def convolve_2d(
             defined at geoprocessing.DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS.
 
     Returns:
-        None
+        ``None``
 
     Raises:
-        ValueError if ``ignore_nodata_and_edges`` is ``True`` and
-            ``mask_nodata`` is ``False``
+        ValueError
+            if ``ignore_nodata_and_edges`` is ``True`` and ``mask_nodata``
+            is ``False``
 
     """
     if target_datatype is not gdal.GDT_Float64 and target_nodata is None:
@@ -2733,15 +2763,15 @@ def iterblocks(
         dict of block data and a 2-dimensional numpy array are
         yielded. The dict of block data has these attributes:
 
-            data['xoff'] - The X offset of the upper-left-hand corner of the
-                block.
-            data['yoff'] - The Y offset of the upper-left-hand corner of the
-                block.
-            data['win_xsize'] - The width of the block.
-            data['win_ysize'] - The height of the block.
+        * ``data['xoff']`` - The X offset of the upper-left-hand corner of the
+          block.
+        * ``data['yoff']`` - The Y offset of the upper-left-hand corner of the
+          block.
+        * ``data['win_xsize']`` - The width of the block.
+        * ``data['win_ysize']`` - The height of the block.
 
         If ``offset_only`` is True, the function returns only the block offset
-            data and does not attempt to read binary data from the raster.
+        data and does not attempt to read binary data from the raster.
 
     """
     if not _is_raster_path_band_formatted(raster_path_band):
@@ -3254,16 +3284,17 @@ def merge_bounding_box_list(bounding_box_list, bounding_box_mode):
 
     Args:
         bounding_box_list (sequence): a sequence of bounding box coordinates
-            in the order [minx,miny,maxx,maxy].
-        mode (string): either 'union' or 'intersection' for the corresponding
-            reduction mode.
+            in the order [minx, miny, maxx, maxy].
+        mode (string): either ``'union'`` or ``'intersection'`` for the
+            corresponding reduction mode.
 
     Returns:
         A four tuple bounding box that is the union or intersection of the
-            input bounding boxes.
+        input bounding boxes.
 
     Raises:
-        ValueError if the bounding boxes in ``bounding_box_list`` do not
+        ValueError
+            if the bounding boxes in ``bounding_box_list`` do not
             intersect if the ``bounding_box_mode`` is 'intersection'.
 
     """
@@ -3308,15 +3339,16 @@ def merge_bounding_box_list(bounding_box_list, bounding_box_mode):
 
 
 def get_gis_type(path):
-    """Calculate the GIS type of the file located at `path`.
+    """Calculate the GIS type of the file located at ``path``.
 
     Args:
         path (str): path to a file on disk.
 
 
     Returns:
-        a bitwise OR of all GIS types that PyGeoprocessing models, currently
-        this is UNKNOWN_TYPE, RASTER_TYPE, or VECTOR_TYPE.
+        A bitwise OR of all GIS types that PyGeoprocessing models, currently
+        this is ``pygeoprocessing.UNKNOWN_TYPE``,
+        ``pygeoprocessing.RASTER_TYPE``, or ``pygeoprocessing.VECTOR_TYPE``.
 
     """
     if not os.path.exists(path):
