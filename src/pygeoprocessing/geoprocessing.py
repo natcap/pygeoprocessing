@@ -144,8 +144,10 @@ def raster_calculator(
             name string as the first element and a GDAL creation options
             tuple/list as the second. Defaults to
             geoprocessing.DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS.
+
     Returns:
         None
+
     Raises:
         ValueError: invalid input provided
     """
@@ -577,20 +579,24 @@ def align_and_resize_raster_stack(
             dictionary of options to use an existing vector's geometry to
             mask out pixels in the target raster that do not overlap the
             vector's geometry. Keys to this dictionary are:
-                'mask_vector_path': (str) path to the mask vector file. This
-                    vector will be automatically projected to the target
-                    projection if its base coordinate system does not match
-                    the target.
-                'mask_layer_name': (str) the layer name to use for masking,
-                    if this key is not in the dictionary the default is to use
-                    the layer at index 0.
-                'mask_vector_where_filter': (str) an SQL WHERE string that can
-                    be used to filter the geometry in the mask. Ex:
-                    'id > 10' would use all features whose field value of
-                    'id' is > 10.
+
+            * ``'mask_vector_path'`` (str): path to the mask vector file.
+                This vector will be automatically projected to the target
+                projection if its base coordinate system does not match the
+                target.
+            * ``'mask_layer_name'`` (str): the layer name to use for masking.
+                If this key is not in the dictionary the default is to use
+                the layer at index 0.
+            * ``'mask_vector_where_filter'`` (str): an SQL WHERE string.
+                This will be used to filter the geometry in the mask. Ex: ``'id
+                > 10'`` would use all features whose field value of 'id' is >
+                10.
+
         gdal_warp_options (sequence): if present, the contents of this list
             are passed to the ``warpOptions`` parameter of ``gdal.Warp``. See
-            the GDAL Warp documentation for valid options.
+            the `GDAL Warp documentation
+            <https://gdal.org/api/gdalwarp_cpp.html#_CPPv415GDALWarpOptions>`_
+            for valid options.
         raster_driver_creation_tuple (tuple): a tuple containing a GDAL driver
             name string as the first element and a GDAL creation options
             tuple/list as the second. Defaults to a GTiff driver tuple
@@ -604,20 +610,26 @@ def align_and_resize_raster_stack(
         None
 
     Raises:
-        ValueError if any combination of the raw bounding boxes, raster
+        ValueError
+            If any combination of the raw bounding boxes, raster
             bounding boxes, vector bounding boxes, and/or vector_mask
             bounding box does not overlap to produce a valid target.
-        ValueError if any of the input or target lists are of different
+        ValueError
+            If any of the input or target lists are of different
             lengths.
-        ValueError if there are duplicate paths on the target list which would
+        ValueError
+            If there are duplicate paths on the target list which would
             risk corrupted output.
-        ValueError if some combination of base, target, and embedded source
+        ValueError
+            If some combination of base, target, and embedded source
             reference systems results in an ambiguous target coordinate
             system.
-        ValueError if ``vector_mask_options`` is not None but the
+        ValueError
+            If ``vector_mask_options`` is not None but the
             ``mask_vector_path`` is undefined or doesn't point to a valid
             file.
-        ValueError if ``pixel_size`` is not a 2 element sequence of numbers.
+        ValueError
+            If ``pixel_size`` is not a 2 element sequence of numbers.
 
     """
     # make sure that the input lists are of the same length
@@ -2444,6 +2456,7 @@ def convolve_2d(
             name string as the first element and a GDAL creation options
             tuple/list as the second. Defaults to a GTiff driver tuple
             defined at geoprocessing.DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS.
+
     Returns:
         None
 
@@ -2460,8 +2473,8 @@ def convolve_2d(
 
     if ignore_nodata_and_edges and not mask_nodata:
         raise ValueError(
-            f'ignore_nodata_and_edges is True while mask_nodata is False -- '
-            f'this would yield a nonsensical result.')
+            'ignore_nodata_and_edges is True while mask_nodata is False -- '
+            'this would yield a nonsensical result.')
 
     bad_raster_path_list = []
     for raster_id, raster_path_band in [
