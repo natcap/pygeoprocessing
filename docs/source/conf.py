@@ -58,7 +58,10 @@ html_static_path = ['_static']
 
 # -- Extension configuration -------------------------------------------------
 
-nitpicky = True
+# Nitpicky=True will make sphinx complain about the types matching python types
+# _exactly_.  So "string" will be wrong, but "str" right.  I don't think we
+# need to be so picky.
+nitpicky = False
 
 
 autosummary_generate = True
