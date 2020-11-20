@@ -58,6 +58,9 @@ html_static_path = ['_static']
 
 # -- Extension configuration -------------------------------------------------
 
+nitpicky = True
+
+
 autosummary_generate = True
 autosummary_generate_overwrite = True
 
