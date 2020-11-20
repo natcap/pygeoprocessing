@@ -27,7 +27,8 @@ def evaluate_raster_calculator_expression(
       these are not defined an NaN or inf result will cause a ValueError
       exception to be raised.
     * the following arithmetic operators are available:
-      +, -, *, /, <, <=, >, >=, !=, &, and |.
+      ``+``, ``-``, ``*``, ``/``, ``<``, ``<=``, ``>``, ``>=``, ``!=``, ``&``,
+      and ``|``.
 
     Args:
         expression (str): a valid arithmetic expression whose variables
