@@ -15,6 +15,7 @@
 import datetime
 import os
 import sphinx.ext.apidoc
+from pkg_resources import get_distribution
 
 # -- Project information -----------------------------------------------------
 
@@ -72,3 +73,6 @@ sphinx.ext.apidoc.main([
     '-o', os.path.join(DOCS_SOURCE_DIR, 'api'),
     os.path.join(DOCS_SOURCE_DIR, '..', '..', 'src', 'pygeoprocessing'),
 ])
+
+release = get_distribution('pygeoprocessing').version
+version = '.'.join(release.split('.')[:2])
