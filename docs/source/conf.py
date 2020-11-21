@@ -10,10 +10,11 @@
 # add these directories to sys.path here. If the directory is relative to the
 # documentation root, use os.path.abspath to make it absolute, like shown here.
 #
-# import os
 # import sys
 # sys.path.insert(0, os.path.abspath('.'))
 import datetime
+import os
+import sphinx.ext.apidoc
 
 # -- Project information -----------------------------------------------------
 
@@ -63,10 +64,11 @@ html_static_path = ['_static']
 # need to be so picky.
 nitpicky = False
 
-
-autosummary_generate = True
-autosummary_generate_overwrite = True
-
-autodoc_default_options = {
-    'members': True,
-}
+DOCS_SOURCE_DIR = os.path.dirname(__file__)
+sphinx.ext.apidoc.main([
+    '--force',
+    '-d', '1',  # max depth for TOC
+    '--separate',  # Put docs for each module on their own pages
+    '-o', os.path.join(DOCS_SOURCE_DIR, 'api'),
+    os.path.join(DOCS_SOURCE_DIR, '..', '..', 'src', 'pygeoprocessing'),
+])
