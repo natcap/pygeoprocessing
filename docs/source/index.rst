@@ -38,11 +38,9 @@ Getting Started
     assumptions
 
 
-Full API Reference
-------------------
-
 .. toctree::
    :maxdepth: 1
+   :caption: API Reference
    :glob:
 
    api/*
