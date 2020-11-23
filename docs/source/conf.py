@@ -34,6 +34,7 @@ extensions = [
     'sphinx.ext.viewcode',
     'sphinx.ext.napoleon',  # support google style docstrings
     'sphinx.ext.autosummary',
+    'sphinx.ext.intersphinx',
 ]
 
 # Add any paths that contain templates here, relative to this directory.
@@ -76,3 +77,8 @@ sphinx.ext.apidoc.main([
 
 release = get_distribution('pygeoprocessing').version
 version = '.'.join(release.split('.')[:2])
+
+intersphinx_mapping = {
+    'python': ('https://docs.python.org/3', (None, 'python-inv.txt')),
+    'gdal': ('https://gdal.org/', (None,)),
+}
