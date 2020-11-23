@@ -35,6 +35,7 @@ Getting Started
     :maxdepth: 1
 
     installing
+    assumptions
 
 
 Full API Reference
