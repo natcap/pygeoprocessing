@@ -28,9 +28,17 @@ Specifically the functionally provided by PyGeoprocessing includes:
 PyGeoprocessing is developed by the `Natural Capital Project <https://naturalcapitalproject.stanford.edu>`_.
 
 
+Getting Started
+---------------
+
+.. toctree::
+    :maxdepth: 1
+
+    installing
+
 
 Full API Reference
-==================
+------------------
 
 .. toctree::
    :maxdepth: 1
@@ -40,7 +48,7 @@ Full API Reference
 
 
 Indices and tables
-==================
+------------------
 
 * :ref:`genindex`
 * :ref:`modindex`
