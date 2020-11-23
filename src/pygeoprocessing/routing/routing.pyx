@@ -2976,9 +2976,11 @@ def _is_raster_path_band_formatted(raster_path_band):
 
 def extract_strahler_streams_d8(
         flow_dir_d8_raster_path_band, flow_accum_raster_path_band,
-        dem_raster_path_band, long flow_accum_threshold,
+        dem_raster_path_band,
         target_stream_vector_path,
+        long min_flow_accum_threshold=100,
         int river_order=5,
+        float min_p_val=0.05,
         osr_axis_mapping_strategy=DEFAULT_OSR_AXIS_MAPPING_STRATEGY):
     """Extract Strahler order stream geometry from flow accumulation.
 
@@ -2996,15 +2998,17 @@ def extract_strahler_streams_d8(
             `flow_dir_d8_raster_path_band`.
         dem_raster_path_band (tuple): a path/band representing the DEM used to
             derive flow dir.
-        flow_accum_threshold (int): minimum number of upstream pixels
-            required to create a stream.
         target_stream_vector_path (tuple): a single layer line vector created
-            by this function representing the stream segmenents extracted from
+            by this function representing the stream segments extracted from
             the above arguments. Contains the fields "order" and "parent" as
             described above.
+        min_flow_accum_threshold (int): minimum number of upstream pixels
+            required to create a stream, the final value may be adjusted based
+            on significant differences in 1st and 2nd order streams.
         river_order (int): what stream order to define as a river in terms of
             automatically determining flow accumulation threshold for that
             stream collection.
+        min_p_val (float): minimum p_value test for significance
         osr_axis_mapping_strategy (int): OSR axis mapping strategy for
             ``SpatialReference`` objects. Defaults to
             ``geoprocessing.DEFAULT_OSR_AXIS_MAPPING_STRATEGY``. This parameter
@@ -3030,12 +3034,11 @@ def extract_strahler_streams_d8(
     stream_layer.CreateField(ogr.FieldDefn('river_id', ogr.OFTInteger))
     stream_layer.CreateField(ogr.FieldDefn('us_fa', ogr.OFTInteger64))
     stream_layer.CreateField(ogr.FieldDefn('ds_fa', ogr.OFTInteger64))
+    stream_layer.CreateField(ogr.FieldDefn('thresh_fa', ogr.OFTInteger64))
     stream_layer.CreateField(ogr.FieldDefn('upstream_d8_dir', ogr.OFTInteger))
     stream_layer.CreateField(ogr.FieldDefn('source_x', ogr.OFTInteger))
     stream_layer.CreateField(ogr.FieldDefn('source_y', ogr.OFTInteger))
-    stream_layer.CreateField(ogr.FieldDefn('new_max_fa', ogr.OFTInteger64))
-    stream_layer.CreateField(ogr.FieldDefn('deleted', ogr.OFTInteger))
-    stream_layer.CreateField(ogr.FieldDefn('visited', ogr.OFTInteger))
+    stream_layer.CreateField(ogr.FieldDefn('base_fid', ogr.OFTInteger))
     flow_dir_managed_raster = _ManagedRaster(
         flow_dir_d8_raster_path_band[0], flow_dir_d8_raster_path_band[1], 0)
 
@@ -3123,7 +3126,7 @@ def extract_strahler_streams_d8(
                 y_l = yoff + j
                 local_flow_accum = <long>flow_accum_managed_raster.get(
                     x_l, y_l)
-                if local_flow_accum < flow_accum_threshold:
+                if local_flow_accum < min_flow_accum_threshold:
                     continue
                 # check to see if it's a drain
                 d_n = <int>flow_dir_managed_raster.get(x_l, y_l)
@@ -3136,7 +3139,7 @@ def extract_strahler_streams_d8(
                     is_drain = 1
 
                 if not is_drain and (
-                        local_flow_accum < 2*flow_accum_threshold):
+                        local_flow_accum < 2*min_flow_accum_threshold):
                     # if current pixel is < 2*flow threshold then it can't
                     # bifurcate into two pixels == flow threshold
                     continue
@@ -3153,7 +3156,7 @@ def extract_strahler_streams_d8(
                         continue
                     if (d8_backflow[d*8+d_n] and
                             <long>flow_accum_managed_raster.get(
-                                x_n, y_n) >= flow_accum_threshold):
+                                x_n, y_n) >= min_flow_accum_threshold):
                         upstream_dirs[upstream_count] = d
                         upstream_count += 1
                 if upstream_count <= 1 and not is_drain:
@@ -3169,6 +3172,14 @@ def extract_strahler_streams_d8(
                         x_l, y_l, upstream_dirs[upstream_index], stream_fid))
                     coord_to_stream_ids[(x_l, y_l)].append(stream_fid)
 
+    stream_layer.ResetReading()
+    stream_layer.CommitTransaction()
+    stream_layer.StartTransaction()
+    for stream_feature in stream_layer:
+        stream_feature.SetField('base_fid', stream_feature.GetFID())
+        stream_layer.SetFeature(stream_feature)
+    stream_layer.CommitTransaction()
+    stream_layer.StartTransaction()
     LOGGER.info('starting upstream walk')
     n_points = source_point_stack.size()
 
@@ -3196,7 +3207,7 @@ def extract_strahler_streams_d8(
             source_stream_point.upstream_d8_dir,
             flow_dir_info['geotransform'], n_cols, n_rows,
             flow_accum_managed_raster, flow_dir_managed_raster, flow_nodata,
-            flow_accum_threshold, coord_to_stream_ids)
+            min_flow_accum_threshold, coord_to_stream_ids)
         if payload is None:
             continue
         x_u, y_u, upstream_id_list, stream_line = payload
@@ -3235,7 +3246,7 @@ def extract_strahler_streams_d8(
         stream_feature.SetField('drop_distance', drop_distance)
         stream_feature.SetField(
             'us_fa', flow_accum_managed_raster.get(x_u, y_u))
-        stream_feature.SetField('visited', 0)
+        stream_feature.SetField('thresh_fa', min_flow_accum_threshold)
         stream_layer.SetFeature(stream_feature)
 
     LOGGER.info('determining stream order')
@@ -3297,13 +3308,8 @@ def extract_strahler_streams_d8(
         streams_to_process.append(downstream_feature)
         downstream_feature = None
 
-    #stream_layer.CommitTransaction()
-
     LOGGER.info('done stream order, determine rivers')
-    #stream_layer.StartTransaction()
     working_river_id = 0
-
-    # # river_order
     LOGGER.info(f'outlet fid list: {outlet_fid_list}')
     for outlet_index, outlet_fid in enumerate(outlet_fid_list):
         # walk upstream starting from this outlet to search for rivers
@@ -3323,9 +3329,13 @@ def extract_strahler_streams_d8(
             feature_id = search_stack.pop()
             stream_feature = stream_layer.GetFeature(feature_id)
             stream_order = stream_feature.GetField('order')
-            #LOGGER.info(f'stream order: {stream_order}')
-            if (stream_order <= river_order and
-                    stream_feature.GetField('river_id') is None):
+
+            if (stream_order > river_order or
+                    stream_feature.GetField('river_id') is not None):
+                # keep walking upstream until there's an order <= river_order
+                search_stack.extend(
+                    downstream_to_upstream_ids[feature_id])
+            else:
                 # walk up the stream setting every upstream segment's river_id
                 # to working_river_id
                 stream_layer.SetFeature(stream_feature)
@@ -3350,7 +3360,7 @@ def extract_strahler_streams_d8(
                     upstream_stack.extend(
                         downstream_to_upstream_ids[feature_id])
 
-                working_flow_accum_threshold = flow_accum_threshold
+                working_flow_accum_threshold = min_flow_accum_threshold
                 while drop_distance_collection:
                     stream_layer.CommitTransaction()
                     stream_layer.StartTransaction()
@@ -3358,16 +3368,16 @@ def extract_strahler_streams_d8(
                     # find a test_order that tests p_val > 0.5 then retest
                     test_order = min(drop_distance_collection)
                     while test_order+1 <= max(drop_distance_collection):
-                        if (len(drop_distance_collection[test_order]) < 2 or
+                        if (len(drop_distance_collection[test_order]) < 3 or
                                 len(drop_distance_collection[
-                                    test_order+1]) < 2):
-                            # too small to test so it's significant
+                                    test_order+1]) < 3):
+                            # too small to test so it's not significant
                             break
                         _, p_val = scipy.stats.ttest_ind(
                             drop_distance_collection[test_order],
                             drop_distance_collection[test_order+1],
                             equal_var=True)
-                        if p_val > 0.5 or numpy.isnan(p_val):
+                        if p_val > min_p_val or numpy.isnan(p_val):
                             # not too big or just too few elements
                             break
                         test_order += 1
@@ -3376,8 +3386,6 @@ def extract_strahler_streams_d8(
                         break
                     # try to make a reasonable estimate for flow accum
                     working_flow_accum_threshold *= 1.25
-                    if working_river_id == 287:
-                        LOGGER.info(f'working_flow_accum_threshold: {working_flow_accum_threshold}')
                     # reconstruct stream segments of <= test_order
                     for order in range(1, test_order+1):
                         # This will build up a list of kept or reconstructed
@@ -3389,52 +3397,32 @@ def extract_strahler_streams_d8(
                             del max_upstream_flow_accum[order]
                         if order in drop_distance_collection:
                             del drop_distance_collection[order]
-                        if working_river_id == 287:
-                            LOGGER.info(f'{len(streams_by_order[order])} streams of order {order}')
                         while streams_by_order[order]:
                             stream_feature = streams_by_order[order].pop()
-                            if working_river_id == 287:
-                                LOGGER.info(f'stream feature: {stream_feature.GetFID()}')
                             if (stream_feature.GetField('ds_fa') <
                                     working_flow_accum_threshold):
-                                if working_river_id == 287:
-                                    LOGGER.info('ds_fa < threshold deleting')
                                 # this flow accumulation is too small, it's
                                 # not relevant anymore
                                 # remove from connectivity and delete
-                                stream_fid = stream_feature.GetFID()
-                                if stream_fid in upstream_to_downstream_id:
-                                    downstream_id = upstream_to_downstream_id[
-                                        stream_fid]
-                                    del upstream_to_downstream_id[stream_fid]
-                                    downstream_to_upstream_ids[
-                                        downstream_id].remove(stream_fid)
-                                stream_feature.SetField('deleted', 1)
-                                stream_layer.SetFeature(stream_feature)
-                                stream_layer.DeleteFeature(stream_fid)
+                                _delete_feature(
+                                    stream_feature, stream_layer,
+                                    upstream_to_downstream_id,
+                                    downstream_to_upstream_ids)
                                 continue
                             if (stream_feature.GetField('us_fa') >=
                                     working_flow_accum_threshold):
                                 # this whole stream still fits in the threshold
                                 # so keep it
                                 # add drop distance to working set
-                                if working_river_id == 287:
-                                    LOGGER.info('us_fa > threshold putting back')
                                 drop_distance_collection[order].append(
                                     stream_feature.GetField('drop_distance'))
                                 max_upstream_flow_accum[order] = max(
                                     max_upstream_flow_accum[order],
                                     stream_feature.GetField('us_fa'))
-                                stream_feature.SetField(
-                                    'new_max_fa', working_flow_accum_threshold*-1)
-                                stream_feature.SetField(
-                                    'visited', stream_feature.GetField('visited')+1)
                                 stream_layer.SetFeature(stream_feature)
                                 streams_to_retest.append(stream_feature)
                                 continue
                             # recalculate stream geometry
-                            if working_river_id == 287:
-                                LOGGER.info('recalculating geometry')
                             source_point_x = stream_feature.GetField(
                                 'source_x')
                             source_point_y = stream_feature.GetField(
@@ -3450,12 +3438,13 @@ def extract_strahler_streams_d8(
                                 working_flow_accum_threshold,
                                 coord_to_stream_ids)
                             if payload is None:
+                                _delete_feature(
+                                    stream_feature, stream_layer,
+                                    upstream_to_downstream_id,
+                                    downstream_to_upstream_ids)
                                 continue
                             x_u, y_u, upstream_id_list, stream_line = payload
                             # recalculate the drop distance set
-                            original_length = stream_feature.GetGeometryRef().Length()
-                            if working_river_id == 287:
-                                LOGGER.info(f'adjusting geometry {original_length} {stream_line.Length()}')
                             stream_feature.SetGeometry(stream_line)
                             upstream_dem = dem_managed_raster.get(x_u, y_u)
                             downstream_dem = dem_managed_raster.get(
@@ -3469,21 +3458,120 @@ def extract_strahler_streams_d8(
                                 'us_fa', flow_accum_managed_raster.get(
                                     x_u, y_u))
                             stream_feature.SetField(
-                                'new_max_fa', working_flow_accum_threshold)
+                                'thresh_fa', working_flow_accum_threshold)
 
                             streams_to_retest.append(stream_feature)
                             stream_layer.SetFeature(stream_feature)
 
                         streams_by_order[order] = streams_to_retest
-                if working_river_id == 287:
-                    LOGGER.info(f'final working_flow_accum_threshold: {working_flow_accum_threshold} {working_river_id}')
                 working_river_id += 1
-            else:
-                # keep walking upstream until there's an order <= river_order
-                search_stack.extend(
-                    downstream_to_upstream_ids[feature_id])
 
-    LOGGER.info('committing last transaction')
+    stream_layer.CommitTransaction()
+    stream_layer.StartTransaction()
+    LOGGER.info('final pass on stream order and geometry')
+
+    # seed the stack with all the upstream orders
+    working_stack = [
+        fid for fid in downstream_to_upstream_ids if
+        not downstream_to_upstream_ids[fid]]
+    fid_to_order = {}
+    processed_segments = 0
+    deleted_set = set()
+    while working_stack:
+        if ctime(NULL)-last_log_time > 2.0:
+            LOGGER.info(
+                'final pass on stream order done: '
+                f'{processed_segments/len(downstream_to_upstream_ids))*100:.2f}% '
+                'complete')
+            last_log_time = ctime(NULL)
+        processed_segments += 1
+
+        working_fid = working_stack.pop()
+        LOGGER.debug(f'{working_fid}: {working_fid in deleted_set} {working_fid in downstream_to_upstream_ids}')
+        # invariant: working_fid and all upstream are processed, order not set
+
+        upstream_fid_list = downstream_to_upstream_ids[working_fid]
+        if upstream_fid_list:
+            order_count = collections.defaultdict(int)
+            for upstream_fid in upstream_fid_list:
+                order_count[fid_to_order[upstream_fid]] += 1
+            working_order = max(order_count)
+            if order_count[working_order] > 1:
+                working_order += 1
+            fid_to_order[working_fid] = working_order
+        else:
+            fid_to_order[working_fid] = 1
+
+        working_feature = stream_layer.GetFeature(working_fid)
+        working_feature.SetField('order', fid_to_order[working_fid])
+        stream_layer.SetFeature(working_feature)
+        working_feature = None
+
+        if working_fid not in upstream_to_downstream_id:
+            # nothing downstream so it's done
+            continue
+
+        downstream_fid = upstream_to_downstream_id[working_fid]
+        connected_fids = downstream_to_upstream_ids[downstream_fid]
+        LOGGER.info(f'connected_fids to downstream {downstream_fid}: {connected_fids} order: {fid_to_order[working_fid]}')
+        if len(connected_fids) == 1:
+            # There's only one downstream, join it.
+            # Downstream order is the same as upstream
+            fid_to_order[downstream_fid] = fid_to_order[working_fid]
+            del fid_to_order[working_fid]
+
+            # set downstream order to working order
+            downstream_to_upstream_ids[downstream_fid] = (
+                downstream_to_upstream_ids[working_fid])
+            # since we're deleting the upstream segment we need upstream
+            # connecting segments to connect to the new downstream
+            for upstream_fid in downstream_to_upstream_ids[downstream_fid]:
+                upstream_to_downstream_id[upstream_fid] = downstream_fid
+            del downstream_to_upstream_ids[working_fid]
+            del upstream_to_downstream_id[working_fid]
+
+            # join working line with downstream line
+            working_feature = stream_layer.GetFeature(working_fid)
+            downstream_feature = stream_layer.GetFeature(downstream_fid)
+            downstream_geom = downstream_feature.GetGeometryRef()
+            working_geom = working_feature.GetGeometryRef()
+            joined_line = working_geom.Union(downstream_geom)
+            downstream_feature.SetGeometry(joined_line)
+            stream_layer.SetFeature(downstream_feature)
+            working_feature = None
+            downstream_feature = None
+            joined_line = None
+
+            # delete working line
+            stream_layer.DeleteFeature(working_fid)
+            deleted_set.add(working_fid)
+
+            # push downstream line for processing
+            working_stack.append(downstream_fid)
+            continue
+
+        # otherwise check if connected streams are all defined and if so
+        # set a new downstream order
+        upstream_all_defined = True
+        for connected_fid in connected_fids:
+            if connected_fid == working_fid:
+                # skip current
+                continue
+            if connected_fid not in fid_to_order:
+                # upstream not defined so skip it and it will be processed
+                # on another iteration
+                upstream_all_defined = False
+                break
+
+        if not upstream_all_defined:
+            # wait for other upstream components to be defined
+            continue
+
+        # all upstream components of this fid are calculated so it can be
+        # calculated now too
+        working_stack.append(downstream_fid)
+
+    LOGGER.info('commit transaction due to stream joining')
     stream_layer.CommitTransaction()
     stream_layer = None
     stream_vector = None
@@ -3538,8 +3626,6 @@ def _calculate_stream_geometry(
     if flow_accum_managed_raster.get(x_l, y_l) < flow_accum_threshold:
         return None
     upstream_id_list = []
-    # TODO: I'm in the middle of making this function as a standalone "walk up the stream"
-
     # anchor the line at the downstream end
     stream_line = ogr.Geometry(ogr.wkbLineString)
     x_p, y_p = gdal.ApplyGeoTransform(geotransform, x_l+0.5, y_l+0.5)
@@ -3551,17 +3637,21 @@ def _calculate_stream_geometry(
     cdef int last_dir = next_dir
 
     stream_end = 0
+    pixel_length = 0
     while not stream_end:
         # walk upstream
         x_l += d8_xoffset[next_dir]
         y_l += d8_yoffset[next_dir]
 
         stream_end = 1
+
         # check if we reached an upstream junction
         if (x_l, y_l) in coord_to_stream_ids:
             upstream_id_list = coord_to_stream_ids[(x_l, y_l)]
             del coord_to_stream_ids[(x_l, y_l)]
-        else:
+        elif <int>flow_accum_managed_raster.get(x_l, y_l) >= \
+                flow_accum_threshold:
+            pixel_length += 1
             # check to see if we can take a step upstream
             for d in range(8):
                 x_n = x_l + d8_xoffset[d]
@@ -3591,4 +3681,37 @@ def _calculate_stream_geometry(
             stream_line.AddPoint(x_p, y_p)
             last_dir = next_dir
 
+    if pixel_length == 0:
+        return None
     return x_l, y_l, upstream_id_list, stream_line
+
+
+def _delete_feature(
+        stream_feature, stream_layer, upstream_to_downstream_id,
+        downstream_to_upstream_ids):
+    """Helper for mahler extraction to delete all references to a stream.
+
+    Args:
+        stream_feature (ogr.Feature): feature to delete
+        stream_layer (ogr.Layer): layer to delete the feature
+        upstream_to_downstream_id (dict): can be referenced by FID and should
+            remove all instances of stream from this dict
+        downstream_to_upstream_ids (dict): stream feature contained in
+            the values of this dict and should remove all instances of stream
+            from this dict
+
+    Returns:
+        None.
+    """
+    stream_fid = stream_feature.GetFID()
+    if stream_fid in upstream_to_downstream_id:
+        downstream_fid = upstream_to_downstream_id[
+            stream_fid]
+        del upstream_to_downstream_id[stream_fid]
+        if downstream_fid in downstream_to_upstream_ids:
+            downstream_to_upstream_ids[
+                downstream_fid].remove(stream_fid)
+    if stream_fid in downstream_to_upstream_ids:
+        del downstream_to_upstream_ids[
+            stream_fid]
+    stream_layer.DeleteFeature(stream_fid)
