@@ -3644,6 +3644,7 @@ def _calculate_stream_geometry(
         y_l += d8_yoffset[next_dir]
 
         stream_end = 1
+        pixel_length += 1
 
         # check if we reached an upstream junction
         if (x_l, y_l) in coord_to_stream_ids:
@@ -3651,7 +3652,6 @@ def _calculate_stream_geometry(
             del coord_to_stream_ids[(x_l, y_l)]
         elif <int>flow_accum_managed_raster.get(x_l, y_l) >= \
                 flow_accum_threshold:
-            pixel_length += 1
             # check to see if we can take a step upstream
             for d in range(8):
                 x_n = x_l + d8_xoffset[d]
@@ -3673,6 +3673,10 @@ def _calculate_stream_geometry(
                     stream_end = 0
                     next_dir = d
                     break
+        else:
+            # terminated because of flow accumulation too small, so back up
+            # one pixel
+            pixel_length -= 1
 
         # drop a point on the line if direction changed or last point
         if last_dir != next_dir or stream_end:
