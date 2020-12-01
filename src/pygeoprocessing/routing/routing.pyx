@@ -11,10 +11,11 @@ does not support int64 rasters so no precision loss is possible with a
 float64.
 
 D8 float direction conventions follow TauDEM where each flow direction
-is encoded as:
-     321
-     4x0
-     567
+is encoded as::
+
+     3 2 1
+     4 x 0
+     5 6 7
 """
 import logging
 import os
@@ -579,21 +580,22 @@ def fill_pits(
         raster_driver_creation_tuple=DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS):
     """Fill the pits in a DEM.
 
-        This function defines pits as hydrologically connected regions that do
-        not drain to the edge of the raster or a nodata pixel. After the call
-        pits are filled to the height of the lowest pour point.
+    This function defines pits as hydrologically connected regions that do
+    not drain to the edge of the raster or a nodata pixel. After the call
+    pits are filled to the height of the lowest pour point.
 
     Parameters:
         dem_raster_path_band (tuple): a path, band number tuple indicating the
             DEM calculate flow direction.
-        target_filled_dem_raster_path (string): path the pit filled dem,
+        target_filled_dem_raster_path (str): path the pit filled dem,
             that's created by a call to this function. It is functionally a
             single band copy of ``dem_raster_path_band`` with the pit pixels
             raised to the pour point. For runtime efficiency, this raster is
-            tiled and its blocksize is set to (1<<BLOCK_BITS, 1<<BLOCK_BITS)
-            even if `dem_raster_path_band[0]` was not tiled or a different
+            tiled and its blocksize is set to (``1<<BLOCK_BITS``,
+            ``1<<BLOCK_BITS``)
+            even if ``dem_raster_path_band[0]`` was not tiled or a different
             block size.
-        working_dir (string): If not None, indicates where temporary files
+        working_dir (str): If not None, indicates where temporary files
             should be created during this run. If this directory doesn't exist
             it is created by this call. If None, a temporary directory is
             created by tempdir.mkdtemp which is removed after the function
@@ -961,17 +963,17 @@ def flow_dir_d8(
         dem_raster_path_band (tuple): a path, band number tuple indicating the
             DEM calculate flow direction. This DEM must not have hydrological
             pits or else the target flow direction is undefined.
-        target_flow_dir_path (string): path to a byte raster created by this
-            call of same dimensions as `dem_raster_path_band` that has a value
+        target_flow_dir_path (str): path to a byte raster created by this
+            call of same dimensions as ``dem_raster_path_band`` that has a value
             indicating the direction of downhill flow. Values are defined as
             pointing to one of the eight neighbors with the following
-            convention:
+            convention::
 
-                321
-                4x0
-                567
+                3 2 1
+                4 x 0
+                5 6 7
 
-        working_dir (string): If not None, indicates where temporary files
+        working_dir (str): If not None, indicates where temporary files
             should be created during this run. If this directory doesn't exist
             it is created by this call.
         raster_driver_creation_tuple (tuple): a tuple containing a GDAL driver
@@ -1324,22 +1326,24 @@ def flow_accumulation_d8(
         flow_dir_raster_path_band (tuple): a path, band number tuple
             for a flow accumulation raster whose pixels indicate the flow
             out of a pixel in one of 8 directions in the following
-            configuration:
-                321
-                4x0
-                567
-        target_flow_accum_raster_path (string): path to flow
+            configuration::
+
+                3 2 1
+                4 x 0
+                5 6 7
+
+        target_flow_accum_raster_path (str): path to flow
             accumulation raster created by this call. After this call, the
             value of each pixel will be 1 plus the number of upstream pixels
             that drain to that pixel. Note the target type of this raster
             is a 64 bit float so there is minimal risk of overflow and the
             possibility of handling a float dtype in
-            `weight_raster_path_band`.
+            ``weight_raster_path_band``.
         weight_raster_path_band (tuple): optional path and band number to a
             raster that will be used as the per-pixel flow accumulation
-            weight. If `None`, 1 is the default flow accumulation weight.
+            weight. If ``None``, 1 is the default flow accumulation weight.
             This raster must be the same dimensions as
-            `flow_dir_mfd_raster_path_band`.
+            ``flow_dir_mfd_raster_path_band``.
         raster_driver_creation_tuple (tuple): a tuple containing a GDAL driver
             name string as the first element and a GDAL creation options
             tuple/list as the second. Defaults to a GTiff driver tuple
@@ -1545,23 +1549,22 @@ def flow_dir_mfd(
         dem_raster_path_band (tuple): a path, band number tuple indicating the
             DEM calculate flow direction. This DEM must not have hydrological
             pits or else the target flow direction will be undefined.
-        target_flow_dir_path (string): path to a raster created by this call
+        target_flow_dir_path (str): path to a raster created by this call
             of a 32 bit int raster of the same dimensions and projections as
-            `dem_raster_path_band[0]`. The value of the pixel indicates the
+            ``dem_raster_path_band[0]``. The value of the pixel indicates the
             proportion of flow from that pixel to its neighbors given these
-            indexes:
+            indexes::
 
-                321
-                4x0
-                567
+                3 2 1
+                4 x 0
+                5 6 7
 
             The pixel value is formatted as 8 separate 4 bit integers
             compressed into a 32 bit int. To extract the proportion of flow
             from a particular direction given the pixel value 'x' one can
-            shift and mask as follows 0xF & (x >> (4*dir)), where `dir` is
-            one of the 8 directions indicated above.
-
-        working_dir (string): If not None, indicates where temporary files
+            shift and mask as follows ``0xF & (x >> (4*dir))``, where ``dir``
+            is one of the 8 directions indicated above.
+        working_dir (str): If not None, indicates where temporary files
             should be created during this run. If this directory doesn't exist
             it is created by this call.
         raster_driver_creation_tuple (tuple): a tuple containing a GDAL driver
@@ -2037,11 +2040,11 @@ def flow_accumulation_mfd(
     Parameters:
         flow_dir_mfd_raster_path_band (tuple): a path, band number tuple
             for a multiple flow direction raster generated from a call to
-            `flow_dir_mfd`. The format of this raster is described in the
+            ``flow_dir_mfd``. The format of this raster is described in the
             docstring of that function.
-        target_flow_accum_raster_path (string): a path to a raster created by
+        target_flow_accum_raster_path (str): a path to a raster created by
             a call to this function that is the same dimensions and projection
-            as `flow_dir_mfd_raster_path_band[0]`. The value in each pixel is
+            as ``flow_dir_mfd_raster_path_band[0]``. The value in each pixel is
             1 plus the proportional contribution of all upstream pixels that
             flow into it. The proportion is determined as the value of the
             upstream flow dir pixel in the downslope direction pointing to
@@ -2049,12 +2052,12 @@ def flow_accumulation_mfd(
             exiting that pixel. Note the target type of this raster
             is a 64 bit float so there is minimal risk of overflow and the
             possibility of handling a float dtype in
-            `weight_raster_path_band`.
+            ``weight_raster_path_band``.
         weight_raster_path_band (tuple): optional path and band number to a
             raster that will be used as the per-pixel flow accumulation
-            weight. If `None`, 1 is the default flow accumulation weight.
+            weight. If ``None``, 1 is the default flow accumulation weight.
             This raster must be the same dimensions as
-            `flow_dir_mfd_raster_path_band`. If a weight nodata pixel is
+            ``flow_dir_mfd_raster_path_band``. If a weight nodata pixel is
             encountered it will be treated as a weight value of 0.
         raster_driver_creation_tuple (tuple): a tuple containing a GDAL driver
             name string as the first element and a GDAL creation options
@@ -2321,23 +2324,25 @@ def distance_to_channel_d8(
         flow_dir_d8_raster_path_band (tuple): a path/band index tuple
             indicating the raster that defines the D8 flow direction
             raster for this call. The pixel values are integers that
-            correspond to outflow in the following configuration:
-                321
-                4x0
-                567
+            correspond to outflow in the following configuration::
+
+                3 2 1
+                4 x 0
+                5 6 7
+
         channel_raster_path_band (tuple): a path/band tuple of the same
-            dimensions and projection as `flow_dir_d8_raster_path_band[0]`
+            dimensions and projection as ``flow_dir_d8_raster_path_band[0]``
             that indicates where the channels in the problem space lie. A
             channel is indicated if the value of the pixel is 1. Other values
             are ignored.
-        target_distance_to_channel_raster_path (string): path to a raster
+        target_distance_to_channel_raster_path (str): path to a raster
             created by this call that has per-pixel distances from a given
             pixel to the nearest downhill channel.
         weight_raster_path_band (tuple): optional path and band number to a
             raster that will be used as the per-pixel flow distance
-            weight. If `None`, 1 is the default distance between neighboring
+            weight. If ``None``, 1 is the default distance between neighboring
             pixels. This raster must be the same dimensions as
-            `flow_dir_mfd_raster_path_band`.
+            ``flow_dir_mfd_raster_path_band``.
         raster_driver_creation_tuple (tuple): a tuple containing a GDAL driver
             name string as the first element and a GDAL creation options
             tuple/list as the second. Defaults to a GTiff driver tuple
@@ -2509,25 +2514,24 @@ def distance_to_channel_mfd(
         flow_dir_mfd_raster_path_band (tuple): a path/band index tuple
             indicating the raster that defines the mfd flow accumulation
             raster for this call. This raster should be generated by a call
-            to `pygeoprocessing.routing.flow_dir_mfd.
-
+            to ``pygeoprocessing.routing.flow_dir_mfd``.
         channel_raster_path_band (tuple): a path/band tuple of the same
-            dimensions and projection as `flow_dir_mfd_raster_path_band[0]`
+            dimensions and projection as ``flow_dir_mfd_raster_path_band[0]``
             that indicates where the channels in the problem space lie. A
             channel is indicated if the value of the pixel is 1. Other values
             are ignored.
-        target_distance_to_channel_raster_path (string): path to a raster
+        target_distance_to_channel_raster_path (str): path to a raster
             created by this call that has per-pixel distances from a given
             pixel to the nearest downhill channel.
         weight_raster_path_band (tuple): optional path and band number to a
             raster that will be used as the per-pixel flow distance
-            weight. If `None`, 1 is the default distance between neighboring
+            weight. If ``None``, 1 is the default distance between neighboring
             pixels. This raster must be the same dimensions as
-            `flow_dir_mfd_raster_path_band`.
+            ``flow_dir_mfd_raster_path_band``.
         raster_driver_creation_tuple (tuple): a tuple containing a GDAL driver
             name string as the first element and a GDAL creation options
             tuple/list as the second. Defaults to a GTiff driver tuple
-            defined at geoprocessing.DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS.
+            defined at ``geoprocessing.DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS``.
 
     Returns:
         None.
@@ -2752,29 +2756,29 @@ def extract_streams_mfd(
     """Classify a stream raster from MFD flow accumulation.
 
     This function classifies pixels as streams that have a flow accumulation
-    value >= `flow_threshold` and can trace further upstream with a fuzzy
-    propotion if `trace_threshold_proportion` is set < 1.0
+    value >= ``flow_threshold`` and can trace further upstream with a fuzzy
+    propotion if ``trace_threshold_proportion`` is set < 1.0
 
     Parameters:
         flow_accum_raster_path_band (tuple): a string/integer tuple indicating
             the flow accumulation raster to use as a basis for thresholding
             a stream. Values in this raster that are >= flow_threshold will
             be classified as streams. This raster should be derived from
-            `dem_raster_path_band` using
-            `pygeoprocessing.routing.flow_accumulation_mfd`.
+            ``dem_raster_path_band`` using
+            ``pygeoprocessing.routing.flow_accumulation_mfd``.
         flow_dir_mfd_path_band (str): path to multiple flow direction
             raster, required to join divergent streams.
-        flow_threshold (float): the value in `flow_accum_raster_path_band` to
+        flow_threshold (float): the value in ``flow_accum_raster_path_band`` to
             indicate where a stream exists.
         target_stream_raster_path (str): path to the target stream raster.
             This raster will be the same dimensions and projection as
-            `dem_raster_path_band` and will contain 1s where a stream is
+            ``dem_raster_path_band`` and will contain 1s where a stream is
             defined, 0 where the flow accumulation layer is defined but no
             stream exists, and nodata otherwise.
         trace_threshold_proportion (float): this value indicates what
             proportion of the flow_threshold is enough to classify a pixel
             as a stream after the stream has been traced from a
-            `flow_threshold` drain. Setting this value < 1.0 is useful for
+            ``flow_threshold`` drain. Setting this value < 1.0 is useful for
             classifying streams in regions that have highly divergent flow
             directions.
         raster_driver_creation_tuple (tuple): a tuple containing a GDAL driver
