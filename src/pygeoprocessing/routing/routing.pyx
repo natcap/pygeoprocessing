@@ -36,6 +36,7 @@ from libcpp.pair cimport pair
 from libcpp.queue cimport queue
 from libcpp.set cimport set as cset
 from libcpp.stack cimport stack
+from libcpp.vector cimport vector
 from osgeo import gdal
 from osgeo import ogr
 from osgeo import osr
@@ -141,6 +142,12 @@ cdef struct StreamConnectivityPoint:
 cdef struct CoordinateType:
     int xi
     int yi
+
+
+cdef struct FinishType:
+    int xi
+    int yi
+    int n_pushed
 
 # this ctype is used to store the block ID and the block buffer as one object
 # inside Managed Raster
@@ -3576,6 +3583,302 @@ def extract_strahler_streams_d8(
     stream_layer = None
     stream_vector = None
     LOGGER.info('all done')
+
+
+def build_discovery_finish_rasters(
+        flow_dir_d8_raster_path_band, target_discovery_raster_path,
+        target_finish_raster_path):
+    """Generates a discovery and finish time raster for a given d8 flow path.
+
+    Args:
+        flow_dir_d8_raster_path_band (tuple): a D8 flow raster path band tuple
+        target_discovery_raster_path (str): path to a generated raster that
+            creates discovery time (i.e. what count the pixel is visited in)
+        target_finish_raster_path (str): path to generated raster that creates
+            maximum upstream finish time.
+
+    Returns:
+        None
+    """
+    cdef int *d8_backflow = [
+        0, 0, 0, 0, 1, 0, 0, 0,
+        0, 0, 0, 0, 0, 1, 0, 0,
+        0, 0, 0, 0, 0, 0, 1, 0,
+        0, 0, 0, 0, 0, 0, 0, 1,
+        1, 0, 0, 0, 0, 0, 0, 0,
+        0, 1, 0, 0, 0, 0, 0, 0,
+        0, 0, 1, 0, 0, 0, 0, 0,
+        0, 0, 0, 1, 0, 0, 0, 0]
+    cdef int *d8_xoffset = [1, 1, 0, -1, -1, -1, 0, 1]
+    cdef int *d8_yoffset = [0, -1, -1, -1, 0, +1, +1, +1]
+
+    flow_dir_info = pygeoprocessing.get_raster_info(
+        flow_dir_d8_raster_path_band[0])
+    cdef int n_cols, n_rows
+    n_cols, n_rows = flow_dir_info['raster_size']
+    cdef int flow_dir_nodata = (
+        flow_dir_info['nodata'][flow_dir_d8_raster_path_band[1]-1])
+
+    flow_dir_managed_raster = _ManagedRaster(
+        flow_dir_d8_raster_path_band[0], flow_dir_d8_raster_path_band[1], 0)
+    pygeoprocessing.new_raster_from_base(
+        flow_dir_d8_raster_path_band[0], target_discovery_raster_path,
+        gdal.GDT_Float64, [-1])
+    discovery_managed_raster = _ManagedRaster(
+        target_discovery_raster_path, 1, 1)
+    pygeoprocessing.new_raster_from_base(
+        flow_dir_d8_raster_path_band[0], target_finish_raster_path,
+        gdal.GDT_Float64, [-1])
+    finish_managed_raster = _ManagedRaster(target_finish_raster_path, 1, 1)
+
+    cdef stack[CoordinateType] discovery_stack
+    cdef stack[FinishType] finish_stack
+    cdef CoordinateType raster_coord
+    cdef FinishType finish_coordinate
+
+    cdef long discovery_count = 0
+    cdef xoff, yoff, win_xsize, win_ysize, n_processed, n_pixels
+    n_pixels = n_rows * n_cols
+    n_processed = 0
+    cdef time_t last_log_time = ctime(NULL)
+    cdef int n_pushed
+
+    for offset_dict in pygeoprocessing.iterblocks(
+            flow_dir_d8_raster_path_band, offset_only=True):
+        if ctime(NULL)-last_log_time > 5.0:
+            LOGGER.info(
+                f'discovery time processing: {n_processed/n_pixels*100:.2f}% complete')
+            last_log_time = ctime(NULL)
+        xoff = offset_dict['xoff']
+        yoff = offset_dict['yoff']
+        win_xsize = offset_dict['win_xsize']
+        win_ysize = offset_dict['win_ysize']
+        n_processed += win_xsize * win_ysize
+
+        for i in range(win_xsize):
+            for j in range(win_ysize):
+                x_l = xoff + i
+                y_l = yoff + j
+                # check to see if it's a drain
+                d_n = <int>flow_dir_managed_raster.get(x_l, y_l)
+                if d_n == flow_dir_nodata:
+                    continue
+
+                x_n = x_l + d8_xoffset[d_n]
+                y_n = y_l + d8_yoffset[d_n]
+
+                if (x_n < 0 or y_n < 0 or x_n >= n_cols or y_n >= n_cols or
+                        <int>flow_dir_managed_raster.get(
+                            x_n, y_n) == flow_dir_nodata):
+                    discovery_stack.push(CoordinateType(x_l, y_l))
+                    finish_stack.push(FinishType(x_l, y_l, 1))
+
+                while not discovery_stack.empty():
+                    # This coordinate is the downstream end of the stream
+                    raster_coord = discovery_stack.top()
+                    discovery_stack.pop()
+
+                    discovery_managed_raster.set(
+                        raster_coord.xi, raster_coord.yi, discovery_count)
+                    discovery_count += 1
+
+                    n_pushed = 0
+                    for test_dir in range(8):
+                        x_n = raster_coord.xi + d8_xoffset[test_dir % 8]
+                        y_n = raster_coord.yi + d8_yoffset[test_dir % 8]
+                        if x_n < 0 or y_n < 0 or \
+                                x_n >= n_cols or y_n >= n_rows:
+                            continue
+                        n_dir = <int>flow_dir_managed_raster.get(x_n, y_n)
+                        if n_dir == flow_dir_nodata:
+                            continue
+                        if d8_backflow[test_dir*8 + n_dir]:
+                            discovery_stack.push(CoordinateType(x_n, y_n))
+                            n_pushed += 1
+                    # this reference is for the previous top and represents
+                    # how many elements must be processed before finish
+                    # time can be defined
+                    finish_stack.push(
+                        FinishType(raster_coord.xi, raster_coord.yi, n_pushed))
+
+                    # pop the finish stack until n_pushed > 1
+                    if n_pushed == 0:
+                        while (not finish_stack.empty() and
+                               finish_stack.top().n_pushed <= 1):
+                            finish_coordinate = finish_stack.top()
+                            finish_stack.pop()
+                            finish_managed_raster.set(
+                                finish_coordinate.xi, finish_coordinate.yi,
+                                discovery_count)
+                        if not finish_stack.empty():
+                            # then take one more because one branch is done
+                            finish_coordinate = finish_stack.top()
+                            finish_stack.pop()
+                            finish_coordinate.n_pushed -= 1
+                            finish_stack.push(finish_coordinate)
+
+
+def build_subwatersheds_from_segments(
+        strahler_stream_vector_path,
+        flow_dir_d8_raster_path_band,
+        dem_raster_path_band,
+        target_subwatershed_vector_path,
+        osr_axis_mapping_strategy=DEFAULT_OSR_AXIS_MAPPING_STRATEGY):
+    """Extract subwatersheds from the stream segments.
+
+    Args:
+        strahler_stream_vector_path (str): vector created by
+            extract_strahler_streams_d8. Must contain 'source_x', 'source_y',
+            and 'order' fields.
+        flow_dir_d8_raster_path_band (str): path to flow direction raster
+            used to build the given stream vector.
+        dem_raster_path_band (tuple): raster/band for the dem used to create
+            the D8 flow direction.
+        target_subwatershed_vector_path (str): vector result created by this
+            function.
+
+    Returns:
+        None.
+    """
+    # Iterate from order 1 to largest order.
+    # Pick a point and start turning upstream left, stop when reaching spill
+    # Repeat with turning upstream right, stop when reaching spill
+    # Join lines/turn into polygon.
+    cdef int *d8_xoffset = [1, 1, 0, -1, -1, -1, 0, 1]
+    cdef int *d8_yoffset = [0, -1, -1, -1, 0, +1, +1, +1]
+
+    cdef int x_l=-1, y_l=-1  # the _l is for "local" aka "current" pixel
+
+    # D8 backflow directions encoded as
+    # 765
+    # 0x4
+    # 123
+    cdef int x_n, y_n  # the _n is for "neighbor"
+
+    # true if the turn is to the left of the out dir
+    cdef int *left_turn_in = [
+        0, 1, 1, 1, 1, 0, 0, 0,
+        0, 0, 1, 1, 1, 1, 0, 0,
+        0, 0, 0, 1, 1, 1, 1, 0,
+        0, 0, 0, 0, 1, 1, 1, 1,
+        1, 0, 0, 0, 0, 1, 1, 1,
+        1, 1, 0, 0, 0, 0, 1, 1,
+        1, 1, 1, 0, 0, 0, 0, 1,
+        1, 1, 1, 1, 0, 0, 0, 0]
+
+    # true if the turn is to the right of the out dir
+    cdef int *right_turn_in = [
+        1, 0, 0, 0, 0, 1, 1, 1,
+        1, 1, 0, 0, 0, 0, 1, 1,
+        1, 1, 1, 0, 0, 0, 0, 1,
+        1, 1, 1, 1, 0, 0, 0, 0,
+        0, 1, 1, 1, 1, 0, 0, 0,
+        0, 0, 1, 1, 1, 1, 0, 0,
+        0, 0, 0, 1, 1, 1, 1, 0,
+        0, 0, 0, 0, 1, 1, 1, 1]
+
+    cdef int *d8_reverse = [4, 5, 6, 7, 0, 1, 2, 3]
+
+    flow_dir_info = pygeoprocessing.get_raster_info(
+        flow_dir_d8_raster_path_band[0])
+    flow_dir_srs = osr.SpatialReference()
+    flow_dir_srs.ImportFromWkt(flow_dir_info['projection_wkt'])
+    flow_dir_srs.SetAxisMappingStrategy(osr_axis_mapping_strategy)
+    gpkg_driver = gdal.GetDriverByName('GPKG')
+
+    subwatershed_vector = gpkg_driver.Create(
+        target_subwatershed_vector_path, 0, 0, 0, gdal.GDT_Unknown)
+    subwatershed_layer = subwatershed_vector.CreateLayer(
+        'subwatershed_vector', flow_dir_srs, ogr.wkbLineString)
+    subwatershed_layer.CreateField(ogr.FieldDefn('order', ogr.OFTInteger))
+    subwatershed_layer.CreateField(ogr.FieldDefn('river_id', ogr.OFTInteger))
+    flow_dir_managed_raster = _ManagedRaster(
+        flow_dir_d8_raster_path_band[0], flow_dir_d8_raster_path_band[1], 0)
+    dem_managed_raster = _ManagedRaster(
+        dem_raster_path_band[0], dem_raster_path_band[1], 0)
+
+    n_cols, n_rows = flow_dir_info['raster_size']
+    flow_dir_nodata = flow_dir_info['nodata'][
+        flow_dir_d8_raster_path_band[1]-1]
+
+    stream_vector = gdal.OpenEx(strahler_stream_vector_path, gdal.OF_VECTOR)
+    stream_layer = stream_vector.GetLayer()
+    current_order = 0
+    subwatershed_layer.StartTransaction()
+
+    cdef int test_dir, outlet_dir
+    cdef int source_x, source_y, step_upstream, n_dir
+    cdef double dem_l, dem_n
+    while True:
+        current_order += 1
+        stream_layer.ResetReading()
+        stream_layer.SetAttributeFilter(f'"order"={current_order}')
+        if stream_layer.GetFeatureCount() == 0:
+            break
+        for stream_feature in stream_layer:
+            source_x = stream_feature.GetField('source_x')
+            source_y = stream_feature.GetField('source_y')
+            # start at the pixel that is downhill
+            # iterate clockwise until a pixel drains in, that is the
+            #   "right hand turn" pixel
+            # iterate counterclockwise until a pixel drains in, that is the
+            #   "left hand turn" pixel
+            outlet_dir = <int>flow_dir_managed_raster.get(source_x, source_y)
+            stream_line = ogr.Geometry(ogr.wkbLineString)
+            count = 0
+            for rotate_dir in [1, -1]:
+                test_dir = outlet_dir
+                x_l = source_x
+                y_l = source_y
+                step_upstream = 1
+                while step_upstream:
+                    count += 1
+                    if count == 25:
+                        break
+                    if step_upstream:
+                        x_p, y_p = gdal.ApplyGeoTransform(
+                            flow_dir_info['geotransform'], x_l+0.5, y_l+0.5)
+                        stream_line.AddPoint(x_p, y_p)
+                    step_upstream = 0
+                    n_dir = flow_dir_nodata
+                    dem_l = dem_managed_raster.get(x_l, y_l)
+                    for _ in range(8):
+                        test_dir += rotate_dir
+                        x_n = x_l + d8_xoffset[test_dir % 8]
+                        y_n = y_l + d8_yoffset[test_dir % 8]
+                        if x_n < 0 or y_n < 0 or \
+                                x_n >= n_cols or y_n >= n_rows:
+                            continue
+                        n_dir = <int>flow_dir_managed_raster.get(x_n, y_n)
+                        if n_dir == flow_dir_nodata:
+                            continue
+                        dem_n = dem_managed_raster.get(x_n, y_n)
+                        # the candidate pixel needs to be at the same or
+                        # greater height
+                        LOGGER.debug(
+                            f'dem_l: {dem_l}, dem_n: {dem_n}\n'
+                            f'rotate_dir: {rotate_dir}\n'
+                            f'test_dir: {test_dir} %8 {test_dir % 8}\n'
+                            f'n_dir: {n_dir}\n')
+                        if (rotate_dir == 1 and
+                            left_turn_in[(test_dir%8)*8+n_dir]) or (
+                                rotate_dir == -1 and
+                                right_turn_in[(test_dir%8)*8+n_dir]):
+                            # this is the next step, record and step up
+                            x_l = x_n
+                            y_l = y_n
+                            test_dir = d8_reverse[test_dir % 8]
+                            step_upstream = 1
+                            LOGGER.debug('*******step upstream')
+                            break
+                subwatershed_feature = ogr.Feature(
+                    subwatershed_layer.GetLayerDefn())
+                subwatershed_feature.SetGeometry(stream_line)
+                subwatershed_layer.CreateFeature(subwatershed_feature)
+                break
+            break
+        break
+    subwatershed_layer.CommitTransaction()
 
 
 def _calculate_stream_geometry(
