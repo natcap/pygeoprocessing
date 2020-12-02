@@ -3881,6 +3881,118 @@ def build_subwatersheds_from_segments(
     subwatershed_layer.CommitTransaction()
 
 
+def calculate_watershed_boundary(
+        discovery_time_raster_path, finish_time_raster_path,
+        d8_flow_dir_raster_path_band,
+        stream_vector_path, target_watershed_boundary_vector_path):
+    """Calculate a stringline boundary around watershed.
+
+    Args:
+        discovery_time_raster_path (str): path to raster containing numbers
+            of discovery time for pixels, used to determine watershed
+            containment.
+        finish_time_raster_path (str): path to finish time for depth first
+            search walk, used to determine watershed containment.
+        d8_flow_dir_raster_path_band (tuple): raster/path band for d8 flow dir
+            raster
+        stream_vector_path (str): path to stream segment vector
+        target_watershed_boundary_vector_path (str): path to created vector
+            of stringline for watershed boundaries.
+
+    Returns:
+        linestring of projected points indicating watershed boundary.
+    """
+    cdef int *d8_xoffset = [1, 1, 0, -1, -1, -1, 0, 1]
+    cdef int *d8_yoffset = [0, -1, -1, -1, 0, +1, +1, +1]
+
+    discovery_managed_raster = _ManagedRaster(discovery_time_raster_path, 1, 0)
+    finish_managed_raster = _ManagedRaster(finish_time_raster_path, 1, 0)
+    d8_flow_dir_managed_raster = _ManagedRaster(
+        d8_flow_dir_raster_path_band[0], d8_flow_dir_raster_path_band[1], 0)
+
+    discovery_info = pygeoprocessing.get_raster_info(discovery_time_raster_path)
+    geotransform = discovery_info['geotransform']
+    discovery_srs = osr.SpatialReference()
+    discovery_srs.ImportFromWkt(discovery_info['projection_wkt'])
+    gpkg_driver = gdal.GetDriverByName('GPKG')
+
+    watershed_vector = gpkg_driver.Create(
+        target_watershed_boundary_vector_path, 0, 0, 0, gdal.GDT_Unknown)
+    watershed_layer = watershed_vector.CreateLayer(
+        'watershed_vector', discovery_srs, ogr.wkbLineString)
+    cdef int n_cols, n_rows
+    n_cols, n_rows = discovery_info['raster_size']
+
+    cdef int x_l, y_l, outflow_dir
+    cdef float x_f, y_f
+
+
+
+    x_l, y_l = 3845, 2684
+
+    cdef long discovery, finish
+    discovery = <long>discovery_managed_raster.get(x_l, y_l)
+    finish = <long>finish_managed_raster.get(x_l, y_l)
+
+    watershed_boundary = ogr.Geometry(ogr.wkbLineString)
+    outflow_dir = <int>d8_flow_dir_managed_raster.get(x_l, y_l)
+
+    # this is the center point of the pixel that will be offset to make the
+    # edge
+    x_f = x_l+0.5
+    y_f = y_l+0.5
+
+    x_f += d8_xoffset[outflow_dir]*0.5
+    y_f += d8_yoffset[outflow_dir]*0.5
+    if outflow_dir % 2 == 0:
+        # need to back up the point a bit
+        x_f -= d8_yoffset[outflow_dir]*0.5
+        y_f -= d8_xoffset[outflow_dir]*0.5
+
+    x_p, y_p = gdal.ApplyGeoTransform(geotransform, x_f, y_f)
+    watershed_boundary.AddPoint(x_p, y_p)
+
+    cdef int edge_side, edge_dir, cell_to_test, cell_in_watershed
+    # determine the first edge
+    if outflow_dir % 2 == 0:
+        edge_side = outflow_dir
+        edge_dir = (2+edge_side) % 8
+    else:
+        cell_to_test = (outflow_dir+1) % 8
+        edge_side = cell_to_test
+        edge_dir = (cell_to_test+2) % 8
+        if _in_watershed(
+                x_l, y_l, cell_to_test, discovery, finish,
+                n_cols, n_rows,
+                discovery_managed_raster):
+            edge_side = (edge_side-2) % 8
+            edge_dir = (edge_dir-2) % 8
+
+    # drop the first edge
+    x_f += d8_xoffset[edge_dir]*0.5
+    y_f += d8_yoffset[edge_dir]*0.5
+    x_p, y_p = gdal.ApplyGeoTransform(geotransform, x_l, y_l)
+    watershed_boundary.AddPoint(x_p, y_p)
+
+    watershed_feature = ogr.Feature(watershed_layer.GetLayerDefn())
+    watershed_feature.SetGeometry(watershed_boundary)
+    watershed_layer.CreateFeature(watershed_feature)
+
+
+cdef int _in_watershed(
+        int x_l, int y_l, int cell_to_test, int discovery, int finish,
+        int n_cols, int n_rows,
+        _ManagedRaster discovery_managed_raster):
+    cdef int *d8_xoffset = [1, 1, 0, -1, -1, -1, 0, 1]
+    cdef int *d8_yoffset = [0, -1, -1, -1, 0, +1, +1, +1]
+    x_l += d8_xoffset[cell_to_test]
+    y_l += d8_yoffset[cell_to_test]
+    if x_l < 0 or y_l < 0 or x_l >= n_cols or y_l >= n_rows:
+        return 0
+    cdef long point_discovery = <long>discovery_managed_raster.get(x_l, y_l)
+    return point_discovery >= discovery and point_discovery <= finish
+
+
 def _calculate_stream_geometry(
         int x_l, int y_l, int upstream_d8_dir, geotransform, int n_cols, int n_rows,
         _ManagedRaster flow_accum_managed_raster,
