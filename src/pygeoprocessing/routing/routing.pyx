@@ -3317,7 +3317,6 @@ def extract_strahler_streams_d8(
 
     LOGGER.info('done stream order, determine rivers')
     working_river_id = 0
-    LOGGER.info(f'outlet fid list: {outlet_fid_list}')
     for outlet_index, outlet_fid in enumerate(outlet_fid_list):
         # walk upstream starting from this outlet to search for rivers
         # defined as stream segments whose order is <= river_order. Note it
@@ -3520,7 +3519,6 @@ def extract_strahler_streams_d8(
 
         downstream_fid = upstream_to_downstream_id[working_fid]
         connected_fids = downstream_to_upstream_ids[downstream_fid]
-        LOGGER.info(f'connected_fids to downstream {downstream_fid}: {connected_fids} order: {fid_to_order[working_fid]}')
         if len(connected_fids) == 1:
             # There's only one downstream, join it.
             # Downstream order is the same as upstream
@@ -3709,7 +3707,7 @@ def build_discovery_finish_rasters(
                             finish_stack.pop()
                             finish_managed_raster.set(
                                 finish_coordinate.xi, finish_coordinate.yi,
-                                discovery_count)
+                                discovery_count-1)
                         if not finish_stack.empty():
                             # then take one more because one branch is done
                             finish_coordinate = finish_stack.top()
@@ -3925,8 +3923,7 @@ def calculate_watershed_boundary(
 
     cdef int x_l, y_l, outflow_dir
     cdef float x_f, y_f
-
-
+    cdef float x_first, y_first, x_p, y_p
 
     x_l, y_l = 3845, 2684
 
@@ -3951,6 +3948,7 @@ def calculate_watershed_boundary(
 
     x_p, y_p = gdal.ApplyGeoTransform(geotransform, x_f, y_f)
     watershed_boundary.AddPoint(x_p, y_p)
+    x_first, y_first = x_p, y_p
 
     cdef int edge_side, edge_dir, cell_to_test, cell_in_watershed
     # determine the first edge
@@ -3969,10 +3967,15 @@ def calculate_watershed_boundary(
             edge_dir = (edge_dir-2) % 8
 
     # drop the first edge
-    x_f += d8_xoffset[edge_dir]*0.5
-    y_f += d8_yoffset[edge_dir]*0.5
-    x_p, y_p = gdal.ApplyGeoTransform(geotransform, x_l, y_l)
+    x_f += d8_xoffset[edge_dir]
+    y_f += d8_yoffset[edge_dir]
+    x_p, y_p = gdal.ApplyGeoTransform(geotransform, x_f, y_f)
     watershed_boundary.AddPoint(x_p, y_p)
+
+    while True:
+        if is_close(x_p, x_first) and is_close(y_p, y_first):
+            break
+        break
 
     watershed_feature = ogr.Feature(watershed_layer.GetLayerDefn())
     watershed_feature.SetGeometry(watershed_boundary)
