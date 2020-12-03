@@ -2030,6 +2030,10 @@ def warp_raster(
         callback_data=[target_raster_path])
 
     if vector_mask_options:
+        # Make sure the raster creation options passed to ``mask_raster`` 
+        # reflect any metadata updates
+        updated_raster_driver_creation_tuple = (
+            raster_driver_creation_tuple[0], tuple(raster_creation_options))
         # there was a cutline vector, so mask it out now, otherwise target
         # is already the result.
         mask_raster(
@@ -2039,7 +2043,7 @@ def warp_raster(
             where_clause=mask_vector_where_filter,
             target_mask_value=None, working_dir=temp_working_dir,
             all_touched=False,
-            raster_driver_creation_tuple=raster_driver_creation_tuple)
+            raster_driver_creation_tuple=updated_raster_driver_creation_tuple)
         shutil.rmtree(temp_working_dir)
 
 
