@@ -35,7 +35,6 @@ Getting Started
     :maxdepth: 1
 
     installing
-    assumptions
 
 
 .. toctree::
