@@ -5,6 +5,8 @@ Unreleased Changes
 ------------------
 * ``pygeoprocessing.warp_raster`` now raises a ``ValueError`` when an invalid
   resampling method is provided.
+* Fixed bug in ``pygeoprocessing.warp_raster`` that would not properly handle
+  GDAL Byte type signing when masking warped raster with a vector.
 * Fixed issue in ``convolve_2d`` that would cause excessive memory use
   leading to out of memory errors.
 * Fixed issue in ``convolve_2d`` that could lead to a file removal race
