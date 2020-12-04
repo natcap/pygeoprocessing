@@ -1,7 +1,7 @@
 Release History
 ===============
 
-Unreleased Changes
+2.1.2 (2020-12-03)
 ------------------
 * ``pygeoprocessing.warp_raster`` now raises a ``ValueError`` when an invalid
   resampling method is provided.
