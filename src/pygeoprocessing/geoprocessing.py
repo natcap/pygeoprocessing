@@ -2475,11 +2475,9 @@ def convolve_2d(
             setting ``ignore_nodata_and_edges`` to ``True`` while setting
             ``mask_nodata`` to ``False`` can allow for a technique involving
             distance weighted averaging to define areas that would otherwise
-            be nodata, however be careful in cases where the kernel does not
+            be nodata. Be careful in cases where the kernel does not
             extend over any valid non-nodata area since the result can be
-            numerical infinity or NaNs. would be a nonsensical result and
-            would result in exposing the numerical noise where the nodata
-            values were ignored. An exception is thrown in this case.
+            numerical infinity or NaNs.
         target_datatype (GDAL type): a GDAL raster type to set the output
             raster type to, as well as the type to calculate the convolution
             in.  Defaults to GDT_Float64.  Note signed byte is not
