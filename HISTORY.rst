@@ -1,6 +1,15 @@
 Release History
 ===============
 
+Unreleased Changes
+------------------
+* Changed parameters in ``convolve_2d`` to allow API to set
+  ``ignore_nodata_and_edges=True`` while ``mask_nodata=False`` and updated
+  docstring to indicate this is useful in cases such as filling nodata holes
+  in missing datasets. Additionally added a logger ``debug`` message to note
+  this "unusual" setting of these parameters in case of accidental usage
+  which could be noted during development.
+
 2.1.2 (2020-12-03)
 ------------------
 * ``pygeoprocessing.warp_raster`` now raises a ``ValueError`` when an invalid

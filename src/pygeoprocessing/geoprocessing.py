@@ -2030,7 +2030,7 @@ def warp_raster(
         callback_data=[target_raster_path])
 
     if vector_mask_options:
-        # Make sure the raster creation options passed to ``mask_raster`` 
+        # Make sure the raster creation options passed to ``mask_raster``
         # reflect any metadata updates
         updated_raster_driver_creation_tuple = (
             raster_driver_creation_tuple[0], tuple(raster_creation_options))
@@ -2455,19 +2455,31 @@ def convolve_2d(
             to ``signal_path_band``'s nodata value or signal pixels where the
             kernel extends beyond the edge of the raster are not included when
             averaging the convolution filter. This has the effect of
-            "spreading" the result as though nodata and edges beyond the bounds
-            of the raster are 0s. If set to false this tends to "pull" the
-            signal away from nodata holes or raster edges. Set this value
+            "spreading" the result as though nodata and edges beyond the
+            bounds of the raster are 0s. If set to false this tends to "pull"
+            the signal away from nodata holes or raster edges. Set this value
             to ``True`` to avoid distortions signal values near edges for
             large integrating kernels.
+                It can be useful to set this value to ``True`` to fill
+            nodata holes through distance weighted averaging. In this case
+            ``mask_nodata`` must be set to ``False`` so the result does not
+            mask out these areas which are filled in. When using this
+            technique be careful of cases where the kernel does not extend
+            over any areas except nodata holes, in this case the resulting
+            values in these areas will be nonsensical numbers, perhaps
+            numerical infinity or NaNs.
         normalize_kernel (boolean): If true, the result is divided by the
             sum of the kernel.
         mask_nodata (boolean): If true, ``target_path`` raster's output is
             nodata where ``signal_path_band``'s pixels were nodata. Note that
             setting ``ignore_nodata_and_edges`` to ``True`` while setting
-            ``mask_nodata`` to False would be a nonsensical result and would
-            result in exposing the numerical noise where the nodata values were
-            ignored. An exception is thrown in this case.
+            ``mask_nodata`` to ``False`` can allow for a technique involving
+            distance weighted averaging to define areas that would otherwise
+            be nodata, however be careful in cases where the kernel does not
+            extend over any valid non-nodata area since the result can be
+            numerical infinity or NaNs. would be a nonsensical result and
+            would result in exposing the numerical noise where the nodata
+            values were ignored. An exception is thrown in this case.
         target_datatype (GDAL type): a GDAL raster type to set the output
             raster type to, as well as the type to calculate the convolution
             in.  Defaults to GDT_Float64.  Note signed byte is not
@@ -2506,9 +2518,10 @@ def convolve_2d(
             "`gdal.GDT_Float64`.  `target_nodata` is set to None.")
 
     if ignore_nodata_and_edges and not mask_nodata:
-        raise ValueError(
+        LOGGER.debug(
             'ignore_nodata_and_edges is True while mask_nodata is False -- '
-            'this would yield a nonsensical result.')
+            'this can yield a nonsensical result in areas where the kernel '
+            'touches only nodata values.')
 
     bad_raster_path_list = []
     for raster_id, raster_path_band in [
