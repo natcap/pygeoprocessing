@@ -3882,7 +3882,7 @@ def build_subwatersheds_from_segments(
 def calculate_watershed_boundary(
         discovery_time_raster_path, finish_time_raster_path,
         d8_flow_dir_raster_path_band,
-        stream_vector_path, target_watershed_boundary_vector_path, max_steps):
+        strahler_stream_vector_path, target_watershed_boundary_vector_path, max_steps):
     """Calculate a stringline boundary around watershed.
 
     Args:
@@ -3893,7 +3893,7 @@ def calculate_watershed_boundary(
             search walk, used to determine watershed containment.
         d8_flow_dir_raster_path_band (tuple): raster/path band for d8 flow dir
             raster
-        stream_vector_path (str): path to stream segment vector
+        strahler_stream_vector_path (str): path to stream segment vector
         target_watershed_boundary_vector_path (str): path to created vector
             of stringline for watershed boundaries.
 
@@ -3909,6 +3909,7 @@ def calculate_watershed_boundary(
         d8_flow_dir_raster_path_band[0], d8_flow_dir_raster_path_band[1], 0)
 
     discovery_info = pygeoprocessing.get_raster_info(discovery_time_raster_path)
+    cdef long discovery_nodata = discovery_info['nodata'][0]
     geotransform = discovery_info['geotransform']
     discovery_srs = osr.SpatialReference()
     discovery_srs.ImportFromWkt(discovery_info['projection_wkt'])
@@ -3934,123 +3935,136 @@ def calculate_watershed_boundary(
     cdef float x_f, y_f
     cdef float x_first, y_first, x_p, y_p
 
-    x_l, y_l = 3845, 2684
-
     cdef long discovery, finish
-    discovery = <long>discovery_managed_raster.get(x_l, y_l)
-    finish = <long>finish_managed_raster.get(x_l, y_l)
 
-    watershed_boundary = ogr.Geometry(ogr.wkbLineString)
-    outflow_dir = <int>d8_flow_dir_managed_raster.get(x_l, y_l)
+    stream_vector = gdal.OpenEx(strahler_stream_vector_path, gdal.OF_VECTOR)
+    stream_layer = stream_vector.GetLayer()
+    current_order = 0
 
-    # this is the center point of the pixel that will be offset to make the
-    # edge
-    x_f = x_l+0.5
-    y_f = y_l+0.5
-
-    x_f += d8_xoffset[outflow_dir]*0.5
-    y_f += d8_yoffset[outflow_dir]*0.5
-    if outflow_dir % 2 == 0:
-        # need to back up the point a bit
-        x_f -= d8_yoffset[outflow_dir]*0.5
-        y_f -= d8_xoffset[outflow_dir]*0.5
-
-    x_p, y_p = gdal.ApplyGeoTransform(geotransform, x_f, y_f)
-    watershed_boundary.AddPoint(x_p, y_p)
-    x_first, y_first = x_p, y_p
-
-    cdef int edge_side, edge_dir, cell_to_test, cell_in_watershed
-    # determine the first edge
-    if outflow_dir % 2 == 0:
-        edge_side = outflow_dir
-        edge_dir = (2+edge_side) % 8
-    else:
-        cell_to_test = (outflow_dir+1) % 8
-        edge_side = cell_to_test
-        edge_dir = (cell_to_test+2) % 8
-        if _in_watershed(
-                x_l, y_l, cell_to_test, discovery, finish,
-                n_cols, n_rows,
-                discovery_managed_raster):
-            edge_side = (edge_side-2) % 8
-            edge_dir = (edge_dir-2) % 8
-
-    # drop the first edge
-    x_f += d8_xoffset[edge_dir]
-    y_f += d8_yoffset[edge_dir]
-    count = 0
+    cdef int edge_side, edge_dir, cell_to_test
+    n_steps = 0
     while True:
-        if count == max_steps:
+        current_order += 1
+        stream_layer.ResetReading()
+        stream_layer.SetAttributeFilter(f'"order"={current_order}')
+        if stream_layer.GetFeatureCount() == 0:
             break
-        count += 1
-        LOGGER.debug(f'{count}: edge_side {edge_side} edge_dir {edge_dir} x_f, y_f {x_f}, {y_f}')
-        x_p, y_p = gdal.ApplyGeoTransform(geotransform, x_f, y_f)
-        watershed_boundary.AddPoint(x_p, y_p)
-        if is_close(x_p, x_first) and is_close(y_p, y_first):
-            LOGGER.info('finished watershed')
-            break
-        if edge_side - ((edge_dir-2) % 8) == 0:
-            # counterclockwise configuration
-            left = edge_dir
-            right = (left-1) % 8
-            out_dir_base = edge_side
-            out_dir_increase = 2
-        else:
-            # clockwise configuration (swapping "left" and "right")
-            right = edge_dir
-            left = (edge_side+1)
-            out_dir_base = edge_side
-            out_dir_increase = -2
-        pixel_move = 1
-        if _in_watershed(
-                x_l, y_l, right, discovery, finish, n_cols, n_rows,
-                discovery_managed_raster):
-            # right_in
-            out_dir = edge_side
-            LOGGER.debug(f'right_in out_dir {out_dir}')
-            # update the cell to be the right cell
-            x_l += d8_xoffset[right]
-            y_l += d8_yoffset[right]
-            edge_side = (edge_side-out_dir_increase) % 8
-            edge_dir = out_dir
-        elif _in_watershed(
-                x_l, y_l, left, discovery, finish, n_cols, n_rows,
-                discovery_managed_raster):
-            # left_in
-            # out_dir doesn't change
-            LOGGER.debug(f'left_in out_dir {out_dir}')
-            x_l += d8_xoffset[out_dir]
-            y_l += d8_yoffset[out_dir]
-            # no change in side or direction
-        else:
-            # neither left or right in
-            out_dir = (out_dir + out_dir_increase) % 8
-            # edge wraps around pixel
-            LOGGER.debug(f'neither in out_dir {out_dir}')
-            pixel_move = 0
-            edge_side = edge_dir
-            edge_dir = out_dir
+        for index, stream_feature in enumerate(stream_layer):
+            if index == 10:
+                break
+            LOGGER.info(f'stream {index} of {stream_layer.GetFeatureCount()}')
+            x_l = stream_feature.GetField('source_x')
+            y_l = stream_feature.GetField('source_y')
+            discovery = <long>discovery_managed_raster.get(x_l, y_l)
+            finish = <long>finish_managed_raster.get(x_l, y_l)
 
-        # step the edge and the center pixel
-        x_f += d8_xoffset[out_dir]
-        y_f += d8_yoffset[out_dir]
-        if pixel_move:
-            x_p, y_p = gdal.ApplyGeoTransform(geotransform, x_l+0.5, y_l+0.5)
-            point_feature = ogr.Feature(point_layer.GetLayerDefn())
-            point_geom = ogr.Geometry(ogr.wkbPoint)
-            point_geom.AddPoint(x_p, y_p)
-            point_feature.SetGeometry(point_geom)
-            point_layer.CreateFeature(point_feature)
+            watershed_boundary = ogr.Geometry(ogr.wkbLineString)
+            outflow_dir = <int>d8_flow_dir_managed_raster.get(x_l, y_l)
 
-    watershed_feature = ogr.Feature(watershed_layer.GetLayerDefn())
-    watershed_feature.SetGeometry(watershed_boundary)
-    watershed_layer.CreateFeature(watershed_feature)
+            # this is the center point of the pixel that will be offset to make the
+            # edge
+            x_f = x_l+0.5
+            y_f = y_l+0.5
+
+            x_f += d8_xoffset[outflow_dir]*0.5
+            y_f += d8_yoffset[outflow_dir]*0.5
+            if outflow_dir % 2 == 0:
+                # need to back up the point a bit
+                x_f -= d8_yoffset[outflow_dir]*0.5
+                y_f -= d8_xoffset[outflow_dir]*0.5
+
+            x_p, y_p = gdal.ApplyGeoTransform(geotransform, x_f, y_f)
+            watershed_boundary.AddPoint(x_p, y_p)
+            x_first, y_first = x_p, y_p
+
+            # determine the first edge
+            if outflow_dir % 2 == 0:
+                edge_side = outflow_dir
+                edge_dir = (2+edge_side) % 8
+            else:
+                cell_to_test = (outflow_dir+1) % 8
+                edge_side = cell_to_test
+                edge_dir = (cell_to_test+2) % 8
+                if _in_watershed(
+                        x_l, y_l, cell_to_test, discovery, finish,
+                        n_cols, n_rows,
+                        discovery_managed_raster, discovery_nodata):
+                    edge_side = (edge_side-2) % 8
+                    edge_dir = (edge_dir-2) % 8
+
+            # drop the first edge
+            x_f += d8_xoffset[edge_dir]
+            y_f += d8_yoffset[edge_dir]
+            while True:
+                if n_steps == max_steps:
+                    break
+                n_steps += 1
+                x_p, y_p = gdal.ApplyGeoTransform(geotransform, x_f, y_f)
+                watershed_boundary.AddPoint(x_p, y_p)
+                if is_close(x_p, x_first) and is_close(y_p, y_first):
+                    LOGGER.info('finished watershed')
+                    break
+                if x_l < 0 or y_l < 0 or x_l >= n_cols or y_l >= n_rows:
+                    LOGGER.error('out of bounds')
+                    break
+                if edge_side - ((edge_dir-2) % 8) == 0:
+                    # counterclockwise configuration
+                    left = edge_dir
+                    right = (left-1) % 8
+                    out_dir_increase = 2
+                else:
+                    # clockwise configuration (swapping "left" and "right")
+                    right = edge_dir
+                    left = (edge_side+1)
+                    out_dir_increase = -2
+                pixel_move = 1
+                if _in_watershed(
+                        x_l, y_l, right, discovery, finish, n_cols, n_rows,
+                        discovery_managed_raster, discovery_nodata):
+                    # right_in
+                    out_dir = edge_side
+                    # update the cell to be the right cell
+                    x_l += d8_xoffset[right]
+                    y_l += d8_yoffset[right]
+                    edge_side = (edge_side-out_dir_increase) % 8
+                    edge_dir = out_dir
+                elif _in_watershed(
+                        x_l, y_l, left, discovery, finish, n_cols, n_rows,
+                        discovery_managed_raster, discovery_nodata):
+                    # left_in
+                    # out_dir doesn't change
+                    x_l += d8_xoffset[edge_dir]
+                    y_l += d8_yoffset[edge_dir]
+                    # no change in side or direction
+                else:
+                    # neither left or right in
+                    edge_side = edge_dir
+                    edge_dir = (edge_side + out_dir_increase) % 8
+                    # edge wraps around pixel
+                    pixel_move = 0
+
+                # step the edge and the center pixel
+                x_f += d8_xoffset[edge_dir]
+                y_f += d8_yoffset[edge_dir]
+                if pixel_move:
+                    x_p, y_p = gdal.ApplyGeoTransform(
+                        geotransform, x_l+0.5, y_l+0.5)
+                    point_feature = ogr.Feature(point_layer.GetLayerDefn())
+                    point_geom = ogr.Geometry(ogr.wkbPoint)
+                    point_geom.AddPoint(x_p, y_p)
+                    point_feature.SetGeometry(point_geom)
+                    point_layer.CreateFeature(point_feature)
+
+            watershed_feature = ogr.Feature(watershed_layer.GetLayerDefn())
+            watershed_feature.SetGeometry(watershed_boundary)
+            watershed_layer.CreateFeature(watershed_feature)
+        break
 
 
 cdef int _in_watershed(
         int x_l, int y_l, int cell_to_test, int discovery, int finish,
         int n_cols, int n_rows,
-        _ManagedRaster discovery_managed_raster):
+        _ManagedRaster discovery_managed_raster, nodata):
     cdef int *d8_xoffset = [1, 1, 0, -1, -1, -1, 0, 1]
     cdef int *d8_yoffset = [0, -1, -1, -1, 0, +1, +1, +1]
     x_l += d8_xoffset[cell_to_test]
@@ -4058,7 +4072,9 @@ cdef int _in_watershed(
     if x_l < 0 or y_l < 0 or x_l >= n_cols or y_l >= n_rows:
         return 0
     cdef long point_discovery = <long>discovery_managed_raster.get(x_l, y_l)
-    return point_discovery >= discovery and point_discovery <= finish
+    return (point_discovery != nodata and
+            point_discovery >= discovery and
+            point_discovery <= finish)
 
 
 def _calculate_stream_geometry(
