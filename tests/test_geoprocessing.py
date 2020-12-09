@@ -4173,13 +4173,37 @@ class PyGeoprocessing10(unittest.TestCase):
         self.assertTrue('signal' in actual_message)
         self.assertTrue('kernel' in actual_message)
 
-        with self.assertRaises(ValueError) as cm:
-            pygeoprocessing.convolve_2d(
-                (signal_path, 1), (kernel_path, 1), target_path,
-                ignore_nodata_and_edges=True, mask_nodata=False)
-        actual_message = str(cm.exception)
-        # we expect an error about ignoring nodata in message
-        self.assertTrue('ignore_nodata_and_edges' in actual_message)
+    def test_convolve_2d_interpolate_nodata(self):
+        """PGP.geoprocessing: test ability to fill nodata holes."""
+        signal_path = os.path.join(self.workspace_dir, 'signal.tif')
+        kernel_path = os.path.join(self.workspace_dir, 'kernel.tif')
+        target_path = os.path.join(self.workspace_dir, 'target.tif')
+
+        n = 10
+        # make all 1s but one nodata hole
+        signal_nodata = -1
+        signal_array = numpy.ones((n, n))
+        signal_array[n//2, n//2] = signal_nodata
+        pygeoprocessing.numpy_array_to_raster(
+            signal_array, signal_nodata, (1, -1),
+            (0, 0), None, signal_path)
+
+        kernel_array = numpy.ones((n//4, n//4))
+        pygeoprocessing.numpy_array_to_raster(
+            kernel_array, None, (1, -1),
+            (0, 0), None, kernel_path)
+
+        pygeoprocessing.convolve_2d(
+            (signal_path, 1), (kernel_path, 1),
+            target_path, ignore_nodata_and_edges=True,
+            mask_nodata=False, normalize_kernel=True)
+        result = pygeoprocessing.raster_to_numpy_array(
+            target_path)
+        # the nodata hole is now filled with valid data
+        self.assertAlmostEqual(
+            pygeoprocessing.raster_to_numpy_array(
+                signal_path)[n//2, n//2], signal_nodata)
+        self.assertAlmostEqual(result[n//2, n//2], 1.0)
 
     def test_convolve_2d_nodata(self):
         """PGP.geoprocessing: test convolve 2d (single thread)."""
