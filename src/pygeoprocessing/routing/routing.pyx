@@ -3929,6 +3929,9 @@ def calculate_watershed_boundary(
         point_vector_path, 0, 0, 0, gdal.GDT_Unknown)
     point_layer = point_vector.CreateLayer(
         'point_vector', discovery_srs, ogr.wkbPoint)
+    point_layer.CreateField(ogr.FieldDefn('n_points', ogr.OFTInteger))
+    point_layer.CreateField(ogr.FieldDefn('x', ogr.OFTInteger))
+    point_layer.CreateField(ogr.FieldDefn('y', ogr.OFTInteger))
     cdef int n_cols, n_rows
     n_cols, n_rows = discovery_info['raster_size']
 
@@ -3951,11 +3954,6 @@ def calculate_watershed_boundary(
         if stream_layer.GetFeatureCount() == 0:
             break
         for index, stream_feature in enumerate(stream_layer):
-            if index == 10:
-                break
-            if index != 6:
-                continue
-            LOGGER.info(f'stream {index} of {stream_layer.GetFeatureCount()}')
             x_l = stream_feature.GetField('source_x')
             y_l = stream_feature.GetField('source_y')
             discovery = <long>discovery_managed_raster.get(x_l, y_l)
@@ -3964,30 +3962,17 @@ def calculate_watershed_boundary(
             watershed_boundary = ogr.Geometry(ogr.wkbLineString)
             outflow_dir = <int>d8_flow_dir_managed_raster.get(x_l, y_l)
 
-            # this is the center point of the pixel that will be offset to make the
-            # edge
+            # this is the center point of the pixel that will be offset to
+            # make the edge
             x_f = x_l+0.5
             y_f = y_l+0.5
 
-            # LOGGER.info(f'center point {x_f} {y_f} {str(gdal.ApplyGeoTransform(geotransform, x_f, y_f))}')
-
             x_f += d8_xoffset[outflow_dir]*0.5
             y_f += d8_yoffset[outflow_dir]*0.5
-            #LOGGER.info(f'edge point {x_f} {y_f}')
             if outflow_dir % 2 == 0:
                 # need to back up the point a bit
                 x_f -= d8_yoffset[outflow_dir]*0.5
                 y_f += d8_xoffset[outflow_dir]*0.5
-            #LOGGER.info(f'edge point adjusted {x_f} {y_f}')
-
-            # x_p, y_p = gdal.ApplyGeoTransform(geotransform, x_f, y_f)
-            # point_feature = ogr.Feature(point_layer.GetLayerDefn())
-            # point_geom = ogr.Geometry(ogr.wkbPoint)
-            # point_geom.AddPoint(x_p, y_p)
-            # point_feature.SetGeometry(point_geom)
-            # point_layer.CreateFeature(point_feature)
-
-            # LOGGER.info(f'discovery finish {discovery} {finish}')
 
             x_p, y_p = gdal.ApplyGeoTransform(geotransform, x_f, y_f)
             watershed_boundary.AddPoint(x_p, y_p)
@@ -4007,19 +3992,19 @@ def calculate_watershed_boundary(
                         discovery_managed_raster, discovery_nodata):
                     edge_side = (edge_side-2) % 8
                     edge_dir = (edge_dir-2) % 8
+                    x_l += d8_xoffset[edge_dir]
+                    y_l += d8_yoffset[edge_dir]
 
             # drop the first edge
-            LOGGER.debug(f'x_first y_first {x_first} {y_first}')
-            LOGGER.debug(f'edge_dir: {edge_dir} {x_f} {y_f} {gdal.ApplyGeoTransform(geotransform, x_f, y_f)}')
             x_f += d8_xoffset[edge_dir]
             y_f += d8_yoffset[edge_dir]
-            LOGGER.debug(f'after step: {x_f} {y_f} {gdal.ApplyGeoTransform(geotransform, x_f, y_f)}')
+            n_points = 0
             while True:
                 if n_steps == max_steps:
                     break
                 n_steps += 1
-                LOGGER.debug(f'step: {n_steps}')
                 x_p, y_p = gdal.ApplyGeoTransform(geotransform, x_f, y_f)
+
                 watershed_boundary.AddPoint(x_p, y_p)
                 if is_close(x_p, x_first) and is_close(y_p, y_first):
                     LOGGER.info('finished watershed')
@@ -4038,8 +4023,6 @@ def calculate_watershed_boundary(
                     left = (edge_side+1)
                     out_dir_increase = -2
                 pixel_move = 1
-                if <long>discovery_managed_raster.get(x_l, y_l) == 2050743:
-                    LOGGER.debug('discovery == 2050743')
                 if _in_watershed(
                         x_l, y_l, right, discovery, finish, n_cols, n_rows,
                         discovery_managed_raster, discovery_nodata):
@@ -4075,6 +4058,10 @@ def calculate_watershed_boundary(
                     point_geom = ogr.Geometry(ogr.wkbPoint)
                     point_geom.AddPoint(x_p, y_p)
                     point_feature.SetGeometry(point_geom)
+                    point_feature.SetField('n_points', n_points)
+                    point_feature.SetField('x', int(x_p))
+                    point_feature.SetField('y', int(y_p))
+                    n_points += 1
                     point_layer.CreateFeature(point_feature)
 
             watershed_feature = ogr.Feature(watershed_layer.GetLayerDefn())
