@@ -3045,6 +3045,8 @@ def extract_strahler_streams_d8(
     stream_layer.CreateField(ogr.FieldDefn('upstream_d8_dir', ogr.OFTInteger))
     stream_layer.CreateField(ogr.FieldDefn('source_x', ogr.OFTInteger))
     stream_layer.CreateField(ogr.FieldDefn('source_y', ogr.OFTInteger))
+    stream_layer.CreateField(ogr.FieldDefn('us_x', ogr.OFTInteger))
+    stream_layer.CreateField(ogr.FieldDefn('us_y', ogr.OFTInteger))
     stream_layer.CreateField(ogr.FieldDefn('base_fid', ogr.OFTInteger))
     flow_dir_managed_raster = _ManagedRaster(
         flow_dir_d8_raster_path_band[0], flow_dir_d8_raster_path_band[1], 0)
@@ -3229,6 +3231,8 @@ def extract_strahler_streams_d8(
                 source_stream_point.xi, source_stream_point.yi))
         stream_feature.SetField('source_x', source_stream_point.xi)
         stream_feature.SetField('source_y', source_stream_point.yi)
+        stream_feature.SetField('us_x', x_u)
+        stream_feature.SetField('us_y', y_u)
         stream_feature.SetField(
             'upstream_d8_dir', source_stream_point.upstream_d8_dir)
 
@@ -3465,6 +3469,12 @@ def extract_strahler_streams_d8(
                                     x_u, y_u))
                             stream_feature.SetField(
                                 'thresh_fa', working_flow_accum_threshold)
+                            stream_feature.SetField(
+                                'source_x', source_point_x)
+                            stream_feature.SetField(
+                                'source_y', source_point_y)
+                            stream_feature.SetField('us_x', x_u)
+                            stream_feature.SetField('us_y', y_u)
 
                             streams_to_retest.append(stream_feature)
                             stream_layer.SetFeature(stream_feature)
@@ -3493,7 +3503,6 @@ def extract_strahler_streams_d8(
         processed_segments += 1
 
         working_fid = working_stack.pop()
-        LOGGER.debug(f'{working_fid}: {working_fid in deleted_set} {working_fid in downstream_to_upstream_ids}')
         # invariant: working_fid and all upstream are processed, order not set
 
         upstream_fid_list = downstream_to_upstream_ids[working_fid]
@@ -3542,6 +3551,10 @@ def extract_strahler_streams_d8(
             working_geom = working_feature.GetGeometryRef()
             joined_line = working_geom.Union(downstream_geom)
             downstream_feature.SetGeometry(joined_line)
+            downstream_feature.SetField(
+                'us_x', working_feature.GetField('us_x'))
+            downstream_feature.SetField(
+                'us_y', working_feature.GetField('us_y'))
             stream_layer.SetFeature(downstream_feature)
             working_feature = None
             downstream_feature = None
@@ -3882,7 +3895,8 @@ def build_subwatersheds_from_segments(
 def calculate_watershed_boundary(
         discovery_time_raster_path, finish_time_raster_path,
         d8_flow_dir_raster_path_band,
-        strahler_stream_vector_path, target_watershed_boundary_vector_path, max_steps):
+        strahler_stream_vector_path, target_watershed_boundary_vector_path,
+        max_steps):
     """Calculate a stringline boundary around watershed.
 
     Args:
@@ -3903,12 +3917,14 @@ def calculate_watershed_boundary(
     cdef int *d8_xoffset = [1, 1, 0, -1, -1, -1, 0, 1]
     cdef int *d8_yoffset = [0, -1, -1, -1, 0, +1, +1, +1]
 
-    discovery_managed_raster = _ManagedRaster(discovery_time_raster_path, 1, 0)
+    discovery_managed_raster = _ManagedRaster(
+        discovery_time_raster_path, 1, 1)
     finish_managed_raster = _ManagedRaster(finish_time_raster_path, 1, 0)
     d8_flow_dir_managed_raster = _ManagedRaster(
         d8_flow_dir_raster_path_band[0], d8_flow_dir_raster_path_band[1], 0)
 
-    discovery_info = pygeoprocessing.get_raster_info(discovery_time_raster_path)
+    discovery_info = pygeoprocessing.get_raster_info(
+        discovery_time_raster_path)
     cdef long discovery_nodata = discovery_info['nodata'][0]
     geotransform = discovery_info['geotransform']
     discovery_srs = osr.SpatialReference()
@@ -3920,7 +3936,7 @@ def calculate_watershed_boundary(
     watershed_vector = gpkg_driver.Create(
         target_watershed_boundary_vector_path, 0, 0, 0, gdal.GDT_Unknown)
     watershed_layer = watershed_vector.CreateLayer(
-        'watershed_vector', discovery_srs, ogr.wkbLineString)
+        'watershed_vector', discovery_srs, ogr.wkbPolygon)
     watershed_layer.CreateField(ogr.FieldDefn('index', ogr.OFTInteger))
     point_vector_path = 'ws_point.gpkg'
     if os.path.exists(point_vector_path):
@@ -3930,6 +3946,7 @@ def calculate_watershed_boundary(
     point_layer = point_vector.CreateLayer(
         'point_vector', discovery_srs, ogr.wkbPoint)
     point_layer.CreateField(ogr.FieldDefn('n_points', ogr.OFTInteger))
+    point_layer.CreateField(ogr.FieldDefn('index', ogr.OFTInteger))
     point_layer.CreateField(ogr.FieldDefn('x', ogr.OFTInteger))
     point_layer.CreateField(ogr.FieldDefn('y', ogr.OFTInteger))
     cdef int n_cols, n_rows
@@ -3943,10 +3960,31 @@ def calculate_watershed_boundary(
 
     stream_vector = gdal.OpenEx(strahler_stream_vector_path, gdal.OF_VECTOR)
     stream_layer = stream_vector.GetLayer()
-    current_order = 0
+
+    # construct linkage data structure for upstream streams
+    upstream_fid_map = {}
+    for stream_feature in stream_layer:
+        source_x = int(stream_feature.GetField('source_x'))
+        source_y = int(stream_feature.GetField('source_y'))
+        upstream_fid[(source_x, source_y)] = stream_feature.GetFID()
+
+    # construct visit order
+    stream_layer.ResetReading()
+    stream_layer.SetAttributeFilter(f'"outlet"=1')
+    visit_order_stack = []
+    for outlet_stream_feature in stream_layer:
+        us_x = outlet_stream_feature.GetField('us_x')
+        us_y = outlet_stream_feature.GetField('us_y')
+        working_stack = [outlet_stream_feature.GetFID()]
+        while working_stack:
+            pass
+
+    current_order = 1  # start at "2" (1+1) since 1 has no junction
 
     cdef int edge_side, edge_dir, cell_to_test
     n_steps = 0
+    # used to ensure that the same seed point isn't used twice
+    seed_set = set()
     while True:
         current_order += 1
         stream_layer.ResetReading()
@@ -3954,12 +3992,22 @@ def calculate_watershed_boundary(
         if stream_layer.GetFeatureCount() == 0:
             break
         for index, stream_feature in enumerate(stream_layer):
-            x_l = stream_feature.GetField('source_x')
-            y_l = stream_feature.GetField('source_y')
+            # if index == 3:
+            #     break
+            x_l = stream_feature.GetField('us_x')
+            y_l = stream_feature.GetField('us_y')
+            LOGGER.debug(
+                f'**** seed point is {x_l} {y_l} from feature '
+                f'{stream_feature.GetField("base_fid")}')
+            if (x_l, y_l) in seed_set:
+                continue
+            seed_set.add((x_l, y_l))
             discovery = <long>discovery_managed_raster.get(x_l, y_l)
+            if discovery == -1:
+                continue
             finish = <long>finish_managed_raster.get(x_l, y_l)
 
-            watershed_boundary = ogr.Geometry(ogr.wkbLineString)
+            watershed_boundary = ogr.Geometry(ogr.wkbLinearRing)
             outflow_dir = <int>d8_flow_dir_managed_raster.get(x_l, y_l)
 
             # this is the center point of the pixel that will be offset to
@@ -3999,10 +4047,12 @@ def calculate_watershed_boundary(
             x_f += d8_xoffset[edge_dir]
             y_f += d8_yoffset[edge_dir]
             n_points = 0
+            boundary_list = []
             while True:
                 if n_steps == max_steps:
                     break
                 n_steps += 1
+                LOGGER.debug(f'{x_l} {y_l}')
                 x_p, y_p = gdal.ApplyGeoTransform(geotransform, x_f, y_f)
 
                 watershed_boundary.AddPoint(x_p, y_p)
@@ -4061,13 +4111,21 @@ def calculate_watershed_boundary(
                     point_feature.SetField('n_points', n_points)
                     point_feature.SetField('x', int(x_p))
                     point_feature.SetField('y', int(y_p))
+                    point_feature.SetField('index', index)
+                    boundary_list.append((int(x_l), int(y_l)))
                     n_points += 1
                     point_layer.CreateFeature(point_feature)
+                    point_layer.SyncToDisk()
 
             watershed_feature = ogr.Feature(watershed_layer.GetLayerDefn())
-            watershed_feature.SetGeometry(watershed_boundary)
+            watershed_polygon = ogr.Geometry(ogr.wkbPolygon)
+            watershed_polygon.AddGeometry(watershed_boundary)
+            watershed_feature.SetGeometry(watershed_polygon)
             watershed_feature.SetField('index', index)
             watershed_layer.CreateFeature(watershed_feature)
+
+            for boundary_x, boundary_y in boundary_list:
+                discovery_managed_raster.set(boundary_x, boundary_y, -1)
         break
 
 
