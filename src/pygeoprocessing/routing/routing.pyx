@@ -3962,171 +3962,195 @@ def calculate_watershed_boundary(
     stream_layer = stream_vector.GetLayer()
 
     # construct linkage data structure for upstream streams
-    upstream_fid_map = {}
+    upstream_fid_map = collections.defaultdict(list)
     for stream_feature in stream_layer:
         source_x = int(stream_feature.GetField('source_x'))
         source_y = int(stream_feature.GetField('source_y'))
-        upstream_fid[(source_x, source_y)] = stream_feature.GetFID()
+        upstream_fid_map[(source_x, source_y)].append(
+            stream_feature.GetFID())
 
     # construct visit order
     stream_layer.ResetReading()
     stream_layer.SetAttributeFilter(f'"outlet"=1')
     visit_order_stack = []
     for outlet_stream_feature in stream_layer:
-        us_x = outlet_stream_feature.GetField('us_x')
-        us_y = outlet_stream_feature.GetField('us_y')
         working_stack = [outlet_stream_feature.GetFID()]
+        processed_nodes = set()
         while working_stack:
-            pass
-
-    current_order = 1  # start at "2" (1+1) since 1 has no junction
+            LOGGER.debug(working_stack)
+            working_fid = working_stack[-1]
+            processed_nodes.add(working_fid)
+            working_feature = stream_layer.GetFeature(working_fid)
+            us_x = int(working_feature.GetField('us_x'))
+            us_y = int(working_feature.GetField('us_y'))
+            upstream_coord = (us_x, us_y)
+            upstream_fids = [
+                fid for fid in upstream_fid_map[upstream_coord]
+                if fid not in processed_nodes]
+            if upstream_fids:
+                working_stack.extend(upstream_fids)
+            else:
+                working_stack.pop()
+                if working_feature.GetField('order') > 1 or (
+                        working_feature.GetField('outlet') == 1):
+                    visit_order_stack.append(working_fid)
 
     cdef int edge_side, edge_dir, cell_to_test
     n_steps = 0
     # used to ensure that the same seed point isn't used twice
     seed_set = set()
-    while True:
-        current_order += 1
-        stream_layer.ResetReading()
-        stream_layer.SetAttributeFilter(f'"order"={current_order}')
-        if stream_layer.GetFeatureCount() == 0:
-            break
-        for index, stream_feature in enumerate(stream_layer):
-            # if index == 3:
-            #     break
-            x_l = stream_feature.GetField('us_x')
-            y_l = stream_feature.GetField('us_y')
-            LOGGER.debug(
-                f'**** seed point is {x_l} {y_l} from feature '
-                f'{stream_feature.GetField("base_fid")}')
-            if (x_l, y_l) in seed_set:
-                continue
-            seed_set.add((x_l, y_l))
-            discovery = <long>discovery_managed_raster.get(x_l, y_l)
-            if discovery == -1:
-                continue
-            finish = <long>finish_managed_raster.get(x_l, y_l)
+    for index, stream_fid in enumerate(visit_order_stack):
+        # if index == 3:
+        #     break
+        stream_feature = stream_layer.GetFeature(stream_fid)
+        x_l = stream_feature.GetField('us_x')
+        y_l = stream_feature.GetField('us_y')
+        LOGGER.debug(
+            f'**** seed point is {x_l} {y_l} from feature '
+            f'{stream_feature.GetField("base_fid")}')
+        if (x_l, y_l) in seed_set:
+            continue
+        seed_set.add((x_l, y_l))
+        discovery = <long>discovery_managed_raster.get(x_l, y_l)
+        if discovery == -1:
+            continue
+        finish = <long>finish_managed_raster.get(x_l, y_l)
 
-            watershed_boundary = ogr.Geometry(ogr.wkbLinearRing)
-            outflow_dir = <int>d8_flow_dir_managed_raster.get(x_l, y_l)
+        watershed_boundary = ogr.Geometry(ogr.wkbLinearRing)
+        outflow_dir = <int>d8_flow_dir_managed_raster.get(x_l, y_l)
 
-            # this is the center point of the pixel that will be offset to
-            # make the edge
-            x_f = x_l+0.5
-            y_f = y_l+0.5
+        # this is the center point of the pixel that will be offset to
+        # make the edge
+        x_f = x_l+0.5
+        y_f = y_l+0.5
 
-            x_f += d8_xoffset[outflow_dir]*0.5
-            y_f += d8_yoffset[outflow_dir]*0.5
-            if outflow_dir % 2 == 0:
-                # need to back up the point a bit
-                x_f -= d8_yoffset[outflow_dir]*0.5
-                y_f += d8_xoffset[outflow_dir]*0.5
+        x_f += d8_xoffset[outflow_dir]*0.5
+        y_f += d8_yoffset[outflow_dir]*0.5
+        if outflow_dir % 2 == 0:
+            # need to back up the point a bit
+            x_f -= d8_yoffset[outflow_dir]*0.5
+            y_f += d8_xoffset[outflow_dir]*0.5
 
+        x_p, y_p = gdal.ApplyGeoTransform(geotransform, x_f, y_f)
+        watershed_boundary.AddPoint(x_p, y_p)
+        x_first, y_first = x_p, y_p
+
+        # determine the first edge
+        if outflow_dir % 2 == 0:
+            edge_side = outflow_dir
+            edge_dir = (2+edge_side) % 8
+        else:
+            cell_to_test = (outflow_dir+1) % 8
+            edge_side = cell_to_test
+            edge_dir = (cell_to_test+2) % 8
+            if _in_watershed(
+                    x_l, y_l, cell_to_test, discovery, finish,
+                    n_cols, n_rows,
+                    discovery_managed_raster, discovery_nodata):
+                edge_side = (edge_side-2) % 8
+                edge_dir = (edge_dir-2) % 8
+                x_l += d8_xoffset[edge_dir]
+                y_l += d8_yoffset[edge_dir]
+
+        # drop the first edge
+        x_f += d8_xoffset[edge_dir]
+        y_f += d8_yoffset[edge_dir]
+        n_points = 0
+        boundary_list = []
+        while True:
+            if n_steps == max_steps:
+                break
+            n_steps += 1
+            LOGGER.debug(f'{x_l} {y_l}')
             x_p, y_p = gdal.ApplyGeoTransform(geotransform, x_f, y_f)
+
             watershed_boundary.AddPoint(x_p, y_p)
-            x_first, y_first = x_p, y_p
-
-            # determine the first edge
-            if outflow_dir % 2 == 0:
-                edge_side = outflow_dir
-                edge_dir = (2+edge_side) % 8
+            if is_close(x_p, x_first) and is_close(y_p, y_first):
+                LOGGER.info('finished watershed')
+                break
+            if x_l < 0 or y_l < 0 or x_l >= n_cols or y_l >= n_rows:
+                LOGGER.error('out of bounds')
+                break
+            if edge_side - ((edge_dir-2) % 8) == 0:
+                # counterclockwise configuration
+                left = edge_dir
+                right = (left-1) % 8
+                out_dir_increase = 2
             else:
-                cell_to_test = (outflow_dir+1) % 8
-                edge_side = cell_to_test
-                edge_dir = (cell_to_test+2) % 8
-                if _in_watershed(
-                        x_l, y_l, cell_to_test, discovery, finish,
-                        n_cols, n_rows,
-                        discovery_managed_raster, discovery_nodata):
-                    edge_side = (edge_side-2) % 8
-                    edge_dir = (edge_dir-2) % 8
-                    x_l += d8_xoffset[edge_dir]
-                    y_l += d8_yoffset[edge_dir]
+                # clockwise configuration (swapping "left" and "right")
+                right = edge_dir
+                left = (edge_side+1)
+                out_dir_increase = -2
+            pixel_move = 1
+            x_l_prev = x_l
+            y_l_prev = y_l
+            if _in_watershed(
+                    x_l, y_l, right, discovery, finish, n_cols, n_rows,
+                    discovery_managed_raster, discovery_nodata):
+                # right_in
+                out_dir = edge_side
+                # update the cell to be the right cell
+                x_l += d8_xoffset[right]
+                y_l += d8_yoffset[right]
+                edge_side = (edge_side-out_dir_increase) % 8
+                edge_dir = out_dir
+            elif _in_watershed(
+                    x_l, y_l, left, discovery, finish, n_cols, n_rows,
+                    discovery_managed_raster, discovery_nodata):
+                # left_in
+                # out_dir doesn't change
+                x_l += d8_xoffset[edge_dir]
+                y_l += d8_yoffset[edge_dir]
+                # no change in side or direction
+            else:
+                # neither left or right in
+                edge_side = edge_dir
+                edge_dir = (edge_side + out_dir_increase) % 8
+                # edge wraps around pixel
+                pixel_move = 0
 
-            # drop the first edge
+            # step the edge and the center pixel
             x_f += d8_xoffset[edge_dir]
             y_f += d8_yoffset[edge_dir]
-            n_points = 0
-            boundary_list = []
-            while True:
-                if n_steps == max_steps:
-                    break
-                n_steps += 1
-                LOGGER.debug(f'{x_l} {y_l}')
-                x_p, y_p = gdal.ApplyGeoTransform(geotransform, x_f, y_f)
+            if pixel_move:
+                # x_t y_t are "_test", check all directions that could cross
+                test_list = [(x_l, y_l)]
+                if x_l_prev != x_l:
+                    test_list.append((x_l_prev, y_l))
+                if y_l_prev != y_l:
+                    test_list.append((x_l, y_l_prev))
+                for x_t, y_t in test_list:
+                    point_discovery = <long>discovery_managed_raster.get(
+                        x_t, y_t)
+                    if (point_discovery != discovery_nodata and
+                            point_discovery >= discovery and
+                            point_discovery <= finish):
+                        x_p, y_p = gdal.ApplyGeoTransform(
+                            geotransform, x_t+0.5, y_t+0.5)
+                        point_feature = ogr.Feature(
+                            point_layer.GetLayerDefn())
+                        point_geom = ogr.Geometry(ogr.wkbPoint)
+                        point_geom.AddPoint(x_p, y_p)
+                        point_feature.SetGeometry(point_geom)
+                        point_feature.SetField('n_points', n_points)
+                        point_feature.SetField('x', int(x_p))
+                        point_feature.SetField('y', int(y_p))
+                        point_feature.SetField('index', index)
+                        boundary_list.append((int(x_t), int(y_t)))
+                        n_points += 1
+                        point_layer.CreateFeature(point_feature)
+                        point_layer.SyncToDisk()
 
-                watershed_boundary.AddPoint(x_p, y_p)
-                if is_close(x_p, x_first) and is_close(y_p, y_first):
-                    LOGGER.info('finished watershed')
-                    break
-                if x_l < 0 or y_l < 0 or x_l >= n_cols or y_l >= n_rows:
-                    LOGGER.error('out of bounds')
-                    break
-                if edge_side - ((edge_dir-2) % 8) == 0:
-                    # counterclockwise configuration
-                    left = edge_dir
-                    right = (left-1) % 8
-                    out_dir_increase = 2
-                else:
-                    # clockwise configuration (swapping "left" and "right")
-                    right = edge_dir
-                    left = (edge_side+1)
-                    out_dir_increase = -2
-                pixel_move = 1
-                if _in_watershed(
-                        x_l, y_l, right, discovery, finish, n_cols, n_rows,
-                        discovery_managed_raster, discovery_nodata):
-                    # right_in
-                    out_dir = edge_side
-                    # update the cell to be the right cell
-                    x_l += d8_xoffset[right]
-                    y_l += d8_yoffset[right]
-                    edge_side = (edge_side-out_dir_increase) % 8
-                    edge_dir = out_dir
-                elif _in_watershed(
-                        x_l, y_l, left, discovery, finish, n_cols, n_rows,
-                        discovery_managed_raster, discovery_nodata):
-                    # left_in
-                    # out_dir doesn't change
-                    x_l += d8_xoffset[edge_dir]
-                    y_l += d8_yoffset[edge_dir]
-                    # no change in side or direction
-                else:
-                    # neither left or right in
-                    edge_side = edge_dir
-                    edge_dir = (edge_side + out_dir_increase) % 8
-                    # edge wraps around pixel
-                    pixel_move = 0
+        watershed_feature = ogr.Feature(watershed_layer.GetLayerDefn())
+        watershed_polygon = ogr.Geometry(ogr.wkbPolygon)
+        watershed_polygon.AddGeometry(watershed_boundary)
+        watershed_feature.SetGeometry(watershed_polygon)
+        watershed_feature.SetField('index', index)
+        watershed_layer.CreateFeature(watershed_feature)
 
-                # step the edge and the center pixel
-                x_f += d8_xoffset[edge_dir]
-                y_f += d8_yoffset[edge_dir]
-                if pixel_move:
-                    x_p, y_p = gdal.ApplyGeoTransform(
-                        geotransform, x_l+0.5, y_l+0.5)
-                    point_feature = ogr.Feature(point_layer.GetLayerDefn())
-                    point_geom = ogr.Geometry(ogr.wkbPoint)
-                    point_geom.AddPoint(x_p, y_p)
-                    point_feature.SetGeometry(point_geom)
-                    point_feature.SetField('n_points', n_points)
-                    point_feature.SetField('x', int(x_p))
-                    point_feature.SetField('y', int(y_p))
-                    point_feature.SetField('index', index)
-                    boundary_list.append((int(x_l), int(y_l)))
-                    n_points += 1
-                    point_layer.CreateFeature(point_feature)
-                    point_layer.SyncToDisk()
-
-            watershed_feature = ogr.Feature(watershed_layer.GetLayerDefn())
-            watershed_polygon = ogr.Geometry(ogr.wkbPolygon)
-            watershed_polygon.AddGeometry(watershed_boundary)
-            watershed_feature.SetGeometry(watershed_polygon)
-            watershed_feature.SetField('index', index)
-            watershed_layer.CreateFeature(watershed_feature)
-
-            for boundary_x, boundary_y in boundary_list:
-                discovery_managed_raster.set(boundary_x, boundary_y, -1)
-        break
+        for boundary_x, boundary_y in boundary_list:
+            discovery_managed_raster.set(boundary_x, boundary_y, -1)
+        discovery_managed_raster.flush()
 
 
 cdef int _in_watershed(
