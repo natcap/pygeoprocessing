@@ -4009,9 +4009,8 @@ def calculate_watershed_boundary(
     cdef long n_steps = 0, _max_steps_long = max_steps
 
     for index, (stream_fid, upstream) in enumerate(visit_order_stack):
-        break
-        if index != 1384:
-            continue
+        # if index != 1384:
+        #     continue
         if ctime(NULL) - last_log_time > 5.0:
             LOGGER.info(
                 f'watershed building '
@@ -4101,7 +4100,15 @@ def calculate_watershed_boundary(
                 left = (edge_side+1)
                 out_dir_increase = -2
             pixel_move = 1
-            if _in_watershed(
+            if not _in_watershed(
+                    x_l, y_l, left, discovery, finish, n_cols, n_rows,
+                    discovery_managed_raster, discovery_nodata):
+                # neither left or right in
+                edge_side = edge_dir
+                edge_dir = (edge_side + out_dir_increase) % 8
+                # edge wraps around pixel
+                pixel_move = 0
+            elif _in_watershed(
                     x_l, y_l, right, discovery, finish, n_cols, n_rows,
                     discovery_managed_raster, discovery_nodata):
                 # right_in
@@ -4111,20 +4118,36 @@ def calculate_watershed_boundary(
                 y_l += d8_yoffset[right]
                 edge_side = (edge_side-out_dir_increase) % 8
                 edge_dir = out_dir
-            elif _in_watershed(
-                    x_l, y_l, left, discovery, finish, n_cols, n_rows,
-                    discovery_managed_raster, discovery_nodata):
+            else:
                 # left_in
                 # out_dir doesn't change
                 x_l += d8_xoffset[edge_dir]
                 y_l += d8_yoffset[edge_dir]
                 # no change in side or direction
-            else:
-                # neither left or right in
-                edge_side = edge_dir
-                edge_dir = (edge_side + out_dir_increase) % 8
-                # edge wraps around pixel
-                pixel_move = 0
+            # if _in_watershed(
+            #         x_l, y_l, right, discovery, finish, n_cols, n_rows,
+            #         discovery_managed_raster, discovery_nodata):
+            #     # right_in
+            #     out_dir = edge_side
+            #     # update the cell to be the right cell
+            #     x_l += d8_xoffset[right]
+            #     y_l += d8_yoffset[right]
+            #     edge_side = (edge_side-out_dir_increase) % 8
+            #     edge_dir = out_dir
+            # elif _in_watershed(
+            #         x_l, y_l, left, discovery, finish, n_cols, n_rows,
+            #         discovery_managed_raster, discovery_nodata):
+            #     # left_in
+            #     # out_dir doesn't change
+            #     x_l += d8_xoffset[edge_dir]
+            #     y_l += d8_yoffset[edge_dir]
+            #     # no change in side or direction
+            # else:
+            #     # neither left or right in
+            #     edge_side = edge_dir
+            #     edge_dir = (edge_side + out_dir_increase) % 8
+            #     # edge wraps around pixel
+            #     pixel_move = 0
 
             if pixel_move:
                 # x_t y_t are "_test", check all directions that could cross
