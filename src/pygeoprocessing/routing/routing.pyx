@@ -3991,20 +3991,25 @@ def calculate_watershed_boundary(
                 working_stack.extend(upstream_fids)
             else:
                 working_stack.pop()
-                if working_feature.GetField('order') > 1 or (
-                        working_feature.GetField('outlet') == 1):
-                    visit_order_stack.append(working_fid)
+                if working_feature.GetField('order') > 1:
+                    visit_order_stack.append((working_fid, 1))
+                elif working_feature.GetField('outlet') == 1:
+                    visit_order_stack.append((working_fid, 0))
 
     cdef int edge_side, edge_dir, cell_to_test
     n_steps = 0
     # used to ensure that the same seed point isn't used twice
     seed_set = set()
-    for index, stream_fid in enumerate(visit_order_stack):
+    for index, (stream_fid, upstream) in enumerate(visit_order_stack):
         # if index == 3:
         #     break
         stream_feature = stream_layer.GetFeature(stream_fid)
-        x_l = stream_feature.GetField('us_x')
-        y_l = stream_feature.GetField('us_y')
+        if upstream:
+            x_l = stream_feature.GetField('us_x')
+            y_l = stream_feature.GetField('us_y')
+        else:
+            x_l = stream_feature.GetField('source_x')
+            y_l = stream_feature.GetField('source_y')
         LOGGER.debug(
             f'**** seed point is {x_l} {y_l} from feature '
             f'{stream_feature.GetField("base_fid")}')
