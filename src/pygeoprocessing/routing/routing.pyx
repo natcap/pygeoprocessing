@@ -431,9 +431,21 @@ cdef class _ManagedRaster:
             <int>block_index, <double*>double_buffer, removed_value_list)
 
         if self.write_mode:
-            raster = gdal.OpenEx(
-                self.raster_path, gdal.GA_Update | gdal.OF_RASTER)
-            raster_band = raster.GetRasterBand(self.band_id)
+            n_attempts = 5
+            while True:
+                raster = gdal.OpenEx(
+                    self.raster_path, gdal.GA_Update | gdal.OF_RASTER)
+                if raster is None:
+                    if n_attempts == 0:
+                        raise RuntimeError(
+                            f'could not open {self.raster_path} for writing')
+                    LOGGER.warning(
+                        f'opening {self.raster_path} resulted in null, '
+                        f'trying {n_attempts} more times.')
+                    n_attempts -= 1
+                    time.sleep(0.5)
+                raster_band = raster.GetRasterBand(self.band_id)
+                break
 
         block_array = numpy.empty(
             (self.block_ysize, self.block_xsize), dtype=numpy.double)
@@ -3958,6 +3970,8 @@ def calculate_watershed_boundary(
 
     cdef long discovery, finish
 
+    cdef time_t last_log_time = ctime(NULL)
+
     stream_vector = gdal.OpenEx(strahler_stream_vector_path, gdal.OF_VECTOR)
     stream_layer = stream_vector.GetLayer()
 
@@ -3977,7 +3991,6 @@ def calculate_watershed_boundary(
         working_stack = [outlet_stream_feature.GetFID()]
         processed_nodes = set()
         while working_stack:
-            LOGGER.debug(working_stack)
             working_fid = working_stack[-1]
             processed_nodes.add(working_fid)
             working_feature = stream_layer.GetFeature(working_fid)
@@ -3991,18 +4004,21 @@ def calculate_watershed_boundary(
                 working_stack.extend(upstream_fids)
             else:
                 working_stack.pop()
-                if working_feature.GetField('order') > 1:
-                    visit_order_stack.append((working_fid, 1))
-                elif working_feature.GetField('outlet') == 1:
+                if working_feature.GetField('outlet') == 1:
                     visit_order_stack.append((working_fid, 0))
+                elif working_feature.GetField('order') > 1:
+                    visit_order_stack.append((working_fid, 1))
 
-    cdef int edge_side, edge_dir, cell_to_test
+    cdef int edge_side, edge_dir, cell_to_test, out_dir_increase=-1
     n_steps = 0
     # used to ensure that the same seed point isn't used twice
     seed_set = set()
     for index, (stream_fid, upstream) in enumerate(visit_order_stack):
-        # if index == 3:
-        #     break
+        if ctime(NULL) - last_log_time > 5.0:
+            LOGGER.info(
+                f'watershed building '
+                f'{(index/len(visit_order_stack))*100:.2f}% complete')
+            last_log_time = ctime(NULL)
         stream_feature = stream_layer.GetFeature(stream_fid)
         if upstream:
             x_l = stream_feature.GetField('us_x')
@@ -4010,13 +4026,11 @@ def calculate_watershed_boundary(
         else:
             x_l = stream_feature.GetField('source_x')
             y_l = stream_feature.GetField('source_y')
-        LOGGER.debug(
-            f'**** seed point is {x_l} {y_l} from feature '
-            f'{stream_feature.GetField("base_fid")}')
         if (x_l, y_l) in seed_set:
             continue
         seed_set.add((x_l, y_l))
         discovery = <long>discovery_managed_raster.get(x_l, y_l)
+        boundary_list = [(x_l, y_l)]
         if discovery == -1:
             continue
         finish = <long>finish_managed_raster.get(x_l, y_l)
@@ -4041,6 +4055,7 @@ def calculate_watershed_boundary(
         x_first, y_first = x_p, y_p
 
         # determine the first edge
+        pixel_move = 0
         if outflow_dir % 2 == 0:
             edge_side = outflow_dir
             edge_dir = (2+edge_side) % 8
@@ -4054,24 +4069,33 @@ def calculate_watershed_boundary(
                     discovery_managed_raster, discovery_nodata):
                 edge_side = (edge_side-2) % 8
                 edge_dir = (edge_dir-2) % 8
+                pixel_move = 1
                 x_l += d8_xoffset[edge_dir]
                 y_l += d8_yoffset[edge_dir]
+
+        if pixel_move:
+            # x_t y_t are "_test", check all directions that could cross
+            test_set = {(x_l, y_l)}
+            test_set.add((x_l - d8_xoffset[edge_dir], y_l))
+            test_set.add((x_l, y_l - d8_yoffset[edge_dir]))
+            for x_t, y_t in test_set:
+                point_discovery = <long>discovery_managed_raster.get(
+                    x_t, y_t)
+                if (point_discovery != discovery_nodata and
+                        point_discovery >= discovery and
+                        point_discovery <= finish):
+                    boundary_list.append((int(x_t), int(y_t)))
 
         # drop the first edge
         x_f += d8_xoffset[edge_dir]
         y_f += d8_yoffset[edge_dir]
-        n_points = 0
-        boundary_list = []
         while True:
             if n_steps == max_steps:
                 break
             n_steps += 1
-            LOGGER.debug(f'{x_l} {y_l}')
             x_p, y_p = gdal.ApplyGeoTransform(geotransform, x_f, y_f)
-
             watershed_boundary.AddPoint(x_p, y_p)
             if is_close(x_p, x_first) and is_close(y_p, y_first):
-                LOGGER.info('finished watershed')
                 break
             if x_l < 0 or y_l < 0 or x_l >= n_cols or y_l >= n_rows:
                 LOGGER.error('out of bounds')
@@ -4087,8 +4111,6 @@ def calculate_watershed_boundary(
                 left = (edge_side+1)
                 out_dir_increase = -2
             pixel_move = 1
-            x_l_prev = x_l
-            y_l_prev = y_l
             if _in_watershed(
                     x_l, y_l, right, discovery, finish, n_cols, n_rows,
                     discovery_managed_raster, discovery_nodata):
@@ -4119,32 +4141,16 @@ def calculate_watershed_boundary(
             y_f += d8_yoffset[edge_dir]
             if pixel_move:
                 # x_t y_t are "_test", check all directions that could cross
-                test_list = [(x_l, y_l)]
-                if x_l_prev != x_l:
-                    test_list.append((x_l_prev, y_l))
-                if y_l_prev != y_l:
-                    test_list.append((x_l, y_l_prev))
-                for x_t, y_t in test_list:
+                test_set = {(x_l, y_l)}
+                test_set.add((x_l - d8_xoffset[edge_dir], y_l))
+                test_set.add((x_l, y_l - d8_yoffset[edge_dir]))
+                for x_t, y_t in test_set:
                     point_discovery = <long>discovery_managed_raster.get(
                         x_t, y_t)
                     if (point_discovery != discovery_nodata and
                             point_discovery >= discovery and
                             point_discovery <= finish):
-                        x_p, y_p = gdal.ApplyGeoTransform(
-                            geotransform, x_t+0.5, y_t+0.5)
-                        point_feature = ogr.Feature(
-                            point_layer.GetLayerDefn())
-                        point_geom = ogr.Geometry(ogr.wkbPoint)
-                        point_geom.AddPoint(x_p, y_p)
-                        point_feature.SetGeometry(point_geom)
-                        point_feature.SetField('n_points', n_points)
-                        point_feature.SetField('x', int(x_p))
-                        point_feature.SetField('y', int(y_p))
-                        point_feature.SetField('index', index)
                         boundary_list.append((int(x_t), int(y_t)))
-                        n_points += 1
-                        point_layer.CreateFeature(point_feature)
-                        point_layer.SyncToDisk()
 
         watershed_feature = ogr.Feature(watershed_layer.GetLayerDefn())
         watershed_polygon = ogr.Geometry(ogr.wkbPolygon)
@@ -4161,7 +4167,8 @@ def calculate_watershed_boundary(
 cdef int _in_watershed(
         int x_l, int y_l, int cell_to_test, int discovery, int finish,
         int n_cols, int n_rows,
-        _ManagedRaster discovery_managed_raster, nodata):
+        _ManagedRaster discovery_managed_raster,
+        long nodata):
     cdef int *d8_xoffset = [1, 1, 0, -1, -1, -1, 0, 1]
     cdef int *d8_yoffset = [0, -1, -1, -1, 0, +1, +1, +1]
     x_l += d8_xoffset[cell_to_test]
