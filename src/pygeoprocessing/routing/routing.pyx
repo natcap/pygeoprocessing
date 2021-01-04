@@ -41,12 +41,16 @@ from osgeo import gdal
 from osgeo import ogr
 from osgeo import osr
 import numpy
+import shapely.wkb
+import shapely.ops
 import scipy.stats
 
 from ..geoprocessing_core import DEFAULT_OSR_AXIS_MAPPING_STRATEGY
 import pygeoprocessing
 
 LOGGER = logging.getLogger(__name__)
+
+cdef float _LOGGING_PERIOD = 10.0
 
 # This module creates rasters with a memory xy block size of 2**BLOCK_BITS
 cdef int BLOCK_BITS = 8
@@ -782,11 +786,13 @@ def fill_pits(
         xoff = offset_dict['xoff']
         yoff = offset_dict['yoff']
 
-        if ctime(NULL) - last_log_time > 5.0:
+        if ctime(NULL) - last_log_time > _LOGGING_PERIOD:
             last_log_time = ctime(NULL)
             current_pixel = xoff + yoff * raster_x_size
-            LOGGER.info('%.1f%% complete', 100.0 * current_pixel / <float>(
-                raster_x_size * raster_y_size))
+            LOGGER.info(
+                '(fill pits): '
+                f'{current_pixel} of {raster_x_size * raster_y_size} '
+                'pixels complete')
 
         # make a buffer big enough to capture block and boundaries around it
         dem_buffer_array = numpy.empty(
@@ -986,7 +992,7 @@ def fill_pits(
     pit_mask_managed_raster.close()
     flat_region_mask_managed_raster.close()
     shutil.rmtree(working_dir_path)
-    LOGGER.info('%.1f%% complete', 100.0)
+    LOGGER.info('(fill pits): complete')
 
 
 def flow_dir_d8(
@@ -1163,11 +1169,13 @@ def flow_dir_d8(
         xoff = offset_dict['xoff']
         yoff = offset_dict['yoff']
 
-        if ctime(NULL) - last_log_time > 5.0:
+        if ctime(NULL) - last_log_time > _LOGGING_PERIOD:
             last_log_time = ctime(NULL)
             current_pixel = xoff + yoff * raster_x_size
-            LOGGER.info('%.1f%% complete', 100.0 * current_pixel / <float>(
-                raster_x_size * raster_y_size))
+            LOGGER.info(
+                '(flow dir d8): '
+                f'{current_pixel} of {raster_x_size*raster_y_size} '
+                f'pixels complete')
 
         # make a buffer big enough to capture block and boundaries around it
         dem_buffer_array = numpy.empty(
@@ -1349,7 +1357,7 @@ def flow_dir_d8(
     dem_managed_raster.close()
     plateau_distance_managed_raster.close()
     shutil.rmtree(working_dir_path)
-    LOGGER.info('%.1f%% complete', 100.0)
+    LOGGER.info('(flow dir d8): complete')
 
 
 def flow_accumulation_d8(
@@ -1480,7 +1488,7 @@ def flow_accumulation_d8(
         xoff = offset_dict['xoff']
         yoff = offset_dict['yoff']
 
-        if ctime(NULL) - last_log_time > 5.0:
+        if ctime(NULL) - last_log_time > _LOGGING_PERIOD:
             last_log_time = ctime(NULL)
             current_pixel = xoff + yoff * raster_x_size
             LOGGER.info('%.1f%% complete', 100.0 * current_pixel / <float>(
@@ -1783,7 +1791,7 @@ def flow_dir_mfd(
         xoff = offset_dict['xoff']
         yoff = offset_dict['yoff']
 
-        if ctime(NULL) - last_log_time > 5.0:
+        if ctime(NULL) - last_log_time > _LOGGING_PERIOD:
             last_log_time = ctime(NULL)
             current_pixel = xoff + yoff * raster_x_size
             LOGGER.info('%.1f%% complete', 100.0 * current_pixel / <float>(
@@ -2219,7 +2227,7 @@ def flow_accumulation_mfd(
         xoff = offset_dict['xoff']
         yoff = offset_dict['yoff']
 
-        if ctime(NULL) - last_log_time > 5.0:
+        if ctime(NULL) - last_log_time > _LOGGING_PERIOD:
             last_log_time = ctime(NULL)
             current_pixel = xoff + yoff * raster_x_size
             LOGGER.info('%.1f%% complete', 100.0 * current_pixel / <float>(
@@ -2280,7 +2288,7 @@ def flow_accumulation_mfd(
                     flow_pixel = search_stack.top()
                     search_stack.pop()
 
-                    if ctime(NULL) - last_log_time > 5.0:
+                    if ctime(NULL) - last_log_time > _LOGGING_PERIOD:
                         last_log_time = ctime(NULL)
                         LOGGER.info(
                             'mfd flow accum %.1f%% complete',
@@ -2457,7 +2465,7 @@ def distance_to_channel_d8(
         xoff = offset_dict['xoff']
         yoff = offset_dict['yoff']
 
-        if ctime(NULL) - last_log_time > 5.0:
+        if ctime(NULL) - last_log_time > _LOGGING_PERIOD:
             last_log_time = ctime(NULL)
             current_pixel = xoff + yoff * raster_x_size
             LOGGER.info('%.1f%% complete', 100.0 * current_pixel / <float>(
@@ -2655,7 +2663,7 @@ def distance_to_channel_mfd(
         xoff = offset_dict['xoff']
         yoff = offset_dict['yoff']
 
-        if ctime(NULL) - last_log_time > 5.0:
+        if ctime(NULL) - last_log_time > _LOGGING_PERIOD:
             last_log_time = ctime(NULL)
             current_pixel = xoff + yoff * raster_x_size
             LOGGER.info('%.1f%% complete', 100.0 * current_pixel / <float>(
@@ -2876,7 +2884,7 @@ def extract_streams_mfd(
         win_ysize = block_offsets['win_ysize']
         for yi in range(win_ysize):
             yi_root = yi+yoff
-            if ctime(NULL) - last_log_time > 5.0:
+            if ctime(NULL) - last_log_time > _LOGGING_PERIOD:
                 last_log_time = ctime(NULL)
                 current_pixel = xoff + yoff * raster_x_size
                 LOGGER.info('%.1f%% complete', 100.0 * current_pixel / <float>(
@@ -3058,11 +3066,10 @@ def extract_strahler_streams_d8(
     stream_layer.CreateField(ogr.FieldDefn('ds_fa', ogr.OFTInteger64))
     stream_layer.CreateField(ogr.FieldDefn('thresh_fa', ogr.OFTInteger64))
     stream_layer.CreateField(ogr.FieldDefn('upstream_d8_dir', ogr.OFTInteger))
-    stream_layer.CreateField(ogr.FieldDefn('source_x', ogr.OFTInteger))
-    stream_layer.CreateField(ogr.FieldDefn('source_y', ogr.OFTInteger))
+    stream_layer.CreateField(ogr.FieldDefn('ds_x', ogr.OFTInteger))
+    stream_layer.CreateField(ogr.FieldDefn('ds_y', ogr.OFTInteger))
     stream_layer.CreateField(ogr.FieldDefn('us_x', ogr.OFTInteger))
     stream_layer.CreateField(ogr.FieldDefn('us_y', ogr.OFTInteger))
-    stream_layer.CreateField(ogr.FieldDefn('base_fid', ogr.OFTInteger))
     flow_dir_managed_raster = _ManagedRaster(
         flow_dir_d8_raster_path_band[0], flow_dir_d8_raster_path_band[1], 0)
 
@@ -3085,7 +3092,7 @@ def extract_strahler_streams_d8(
 
     n_cols, n_rows = flow_dir_info['raster_size']
 
-    LOGGER.info('seed the drains')
+    LOGGER.info('(extract_strahler_streams_d8): seed the drains')
     cdef long n_pixels = n_cols * n_rows
     cdef long n_processed = 0
     cdef time_t last_log_time
@@ -3131,9 +3138,10 @@ def extract_strahler_streams_d8(
     stream_layer.StartTransaction()
     for offset_dict in pygeoprocessing.iterblocks(
             flow_dir_d8_raster_path_band, offset_only=True):
-        if ctime(NULL)-last_log_time > 5.0:
+        if ctime(NULL)-last_log_time > _LOGGING_PERIOD:
             LOGGER.info(
-                f'drain seeding: {n_processed/n_pixels*100:.2f}% complete')
+                '(extract_strahler_streams_d8): drain seeding '
+                f'{n_processed} of {n_pixels} pixels complete')
             last_log_time = ctime(NULL)
         xoff = offset_dict['xoff']
         yoff = offset_dict['yoff']
@@ -3193,16 +3201,10 @@ def extract_strahler_streams_d8(
                     source_point_stack.push(StreamConnectivityPoint(
                         x_l, y_l, upstream_dirs[upstream_index], stream_fid))
                     coord_to_stream_ids[(x_l, y_l)].append(stream_fid)
-
-    stream_layer.ResetReading()
-    stream_layer.CommitTransaction()
-    stream_layer.StartTransaction()
-    for stream_feature in stream_layer:
-        stream_feature.SetField('base_fid', stream_feature.GetFID())
-        stream_layer.SetFeature(stream_feature)
-    stream_layer.CommitTransaction()
-    stream_layer.StartTransaction()
-    LOGGER.info('starting upstream walk')
+    LOGGER.info(
+        '(extract_strahler_streams_d8): '
+        f'drain seeding complete')
+    LOGGER.info('(extract_strahler_streams_d8): starting upstream walk')
     n_points = source_point_stack.size()
 
     # map downstream ids to list of upstream connected streams
@@ -3213,11 +3215,12 @@ def extract_strahler_streams_d8(
     upstream_to_downstream_id = {}
 
     while not source_point_stack.empty():
-        if ctime(NULL)-last_log_time > 2.0:
+        if ctime(NULL)-last_log_time > _LOGGING_PERIOD:
             LOGGER.info(
-                'stream segment creation: '
-                f'{(1-source_point_stack.size()/n_points)*100:.2f}% '
-                'complete')
+                '(extract_strahler_streams_d8): '
+                'stream segment creation '
+                f'{n_points-source_point_stack.size()} of {n_points} '
+                'source points complete')
             last_log_time = ctime(NULL)
 
         # This coordinate is the downstream end of the stream
@@ -3242,8 +3245,8 @@ def extract_strahler_streams_d8(
         stream_feature.SetField(
             'ds_fa', flow_accum_managed_raster.get(
                 source_stream_point.xi, source_stream_point.yi))
-        stream_feature.SetField('source_x', source_stream_point.xi)
-        stream_feature.SetField('source_y', source_stream_point.yi)
+        stream_feature.SetField('ds_x', source_stream_point.xi)
+        stream_feature.SetField('ds_y', source_stream_point.yi)
         stream_feature.SetField('us_x', x_u)
         stream_feature.SetField('us_y', y_u)
         stream_feature.SetField(
@@ -3273,7 +3276,10 @@ def extract_strahler_streams_d8(
         stream_feature.SetField('thresh_fa', min_flow_accum_threshold)
         stream_layer.SetFeature(stream_feature)
 
-    LOGGER.info('determining stream order')
+    LOGGER.info(
+        '(extract_strahler_streams_d8): stream segment creation complete')
+
+    LOGGER.info('(extract_strahler_streams_d8): determining stream order')
     # seed the list with all order 1 streams
     stream_layer.SetAttributeFilter('"order"=1')
     streams_to_process = [stream_feature for stream_feature in stream_layer]
@@ -3282,9 +3288,10 @@ def extract_strahler_streams_d8(
     while streams_to_process:
         if ctime(NULL)-last_log_time > 2.0:
             LOGGER.info(
+                '(extract_strahler_streams_d8): '
                 'stream order processing: '
-                f'{(1-len(streams_to_process)/base_feature_count)*100:.2f}% '
-                f'complete, {len(streams_to_process)} in the queue')
+                f'{base_feature_count-len(streams_to_process)} of '
+                f'{base_feature_count} stream fragments complete')
             last_log_time = ctime(NULL)
         # fetch the downstream and connected upstream ids
         stream_feature = streams_to_process.pop(0)
@@ -3331,19 +3338,23 @@ def extract_strahler_streams_d8(
         stream_layer.SetFeature(downstream_feature)
         streams_to_process.append(downstream_feature)
         downstream_feature = None
+    LOGGER.info(
+        '(extract_strahler_streams_d8): stream order processing complete')
 
-    LOGGER.info('done stream order, determine rivers')
+    LOGGER.info(
+        '(extract_strahler_streams_d8): determine rivers')
     working_river_id = 0
     for outlet_index, outlet_fid in enumerate(outlet_fid_list):
         # walk upstream starting from this outlet to search for rivers
         # defined as stream segments whose order is <= river_order. Note it
         # can be < river_order because we may have some streams that have
         # outlets for shorter rivers that can't get to river_order.
-        if ctime(NULL)-last_log_time > 2.0:
+        if ctime(NULL)-last_log_time > _LOGGING_PERIOD:
             LOGGER.info(
-                'flow accumulation adjustment done: '
-                f'{(1-(outlet_index+1)/len(outlet_fid_list))*100:.2f}% '
-                'complete')
+                '(extract_strahler_streams_d8): '
+                'flow accumulation adjustment '
+                f'{outlet_index+1} of {len(outlet_fid_list)} '
+                'outlets complete')
             last_log_time = ctime(NULL)
         search_stack = [outlet_fid]
         while search_stack:
@@ -3359,8 +3370,8 @@ def extract_strahler_streams_d8(
                 search_stack.extend(
                     downstream_to_upstream_ids[feature_id])
             else:
-                # walk up the stream setting every upstream segment's river_id
-                # to working_river_id
+                # walk up the stream setting every upstream segment's
+                # river_id to working_river_id
                 stream_layer.SetFeature(stream_feature)
                 upstream_stack = [feature_id]
 
@@ -3434,8 +3445,8 @@ def extract_strahler_streams_d8(
                                 continue
                             if (stream_feature.GetField('us_fa') >=
                                     working_flow_accum_threshold):
-                                # this whole stream still fits in the threshold
-                                # so keep it
+                                # this whole stream still fits in the
+                                # threshold so keep it
                                 # add drop distance to working set
                                 drop_distance_collection[order].append(
                                     stream_feature.GetField('drop_distance'))
@@ -3446,15 +3457,12 @@ def extract_strahler_streams_d8(
                                 streams_to_retest.append(stream_feature)
                                 continue
                             # recalculate stream geometry
-                            source_point_x = stream_feature.GetField(
-                                'source_x')
-                            source_point_y = stream_feature.GetField(
-                                'source_y')
+                            ds_x = stream_feature.GetField('ds_x')
+                            ds_y = stream_feature.GetField('ds_y')
                             upstream_d8_dir = stream_feature.GetField(
                                 'upstream_d8_dir')
                             payload = _calculate_stream_geometry(
-                                source_point_x, source_point_y,
-                                upstream_d8_dir,
+                                ds_x, ds_y, upstream_d8_dir,
                                 flow_dir_info['geotransform'], n_cols, n_rows,
                                 flow_accum_managed_raster,
                                 flow_dir_managed_raster, flow_nodata,
@@ -3471,7 +3479,7 @@ def extract_strahler_streams_d8(
                             stream_feature.SetGeometry(stream_line)
                             upstream_dem = dem_managed_raster.get(x_u, y_u)
                             downstream_dem = dem_managed_raster.get(
-                                source_point_x, source_point_y)
+                                ds_x, ds_y)
                             drop_distance = upstream_dem - downstream_dem
                             drop_distance_collection[order].append(
                                 drop_distance)
@@ -3483,9 +3491,9 @@ def extract_strahler_streams_d8(
                             stream_feature.SetField(
                                 'thresh_fa', working_flow_accum_threshold)
                             stream_feature.SetField(
-                                'source_x', source_point_x)
+                                'ds_x', ds_x)
                             stream_feature.SetField(
-                                'source_y', source_point_y)
+                                'ds_y', ds_y)
                             stream_feature.SetField('us_x', x_u)
                             stream_feature.SetField('us_y', y_u)
 
@@ -3495,9 +3503,15 @@ def extract_strahler_streams_d8(
                         streams_by_order[order] = streams_to_retest
                 working_river_id += 1
 
+    LOGGER.info(
+        '(extract_strahler_streams_d8): '
+        'flow accumulation adjustment complete')
+
     stream_layer.CommitTransaction()
     stream_layer.StartTransaction()
-    LOGGER.info('final pass on stream order and geometry')
+    LOGGER.info(
+        '(extract_strahler_streams_d8): '
+        'final pass on stream order and geometry')
 
     # seed the stack with all the upstream orders
     working_stack = [
@@ -3505,13 +3519,15 @@ def extract_strahler_streams_d8(
         not downstream_to_upstream_ids[fid]]
     fid_to_order = {}
     processed_segments = 0
+    segments_to_process = len(downstream_to_upstream_ids)
     deleted_set = set()
     while working_stack:
-        if ctime(NULL)-last_log_time > 2.0:
+        if ctime(NULL)-last_log_time > _LOGGING_PERIOD:
             LOGGER.info(
-                'final pass on stream order done: '
-                f'{processed_segments/len(downstream_to_upstream_ids))*100:.2f}% '
-                'complete')
+                '(extract_strahler_streams_d8): '
+                'final pass on stream order '
+                f'{processed_segments} of {segments_to_process} '
+                'segments complete')
             last_log_time = ctime(NULL)
         processed_segments += 1
 
@@ -3562,7 +3578,15 @@ def extract_strahler_streams_d8(
             downstream_feature = stream_layer.GetFeature(downstream_fid)
             downstream_geom = downstream_feature.GetGeometryRef()
             working_geom = working_feature.GetGeometryRef()
-            joined_line = working_geom.Union(downstream_geom)
+
+            # Union creates a multiline string by default but we know it's
+            # connected only at one point, so the next step ensures it's a
+            # regular linestring
+            multi_line = working_geom.Union(downstream_geom)
+            joined_line = ogr.CreateGeometryFromWkb(
+                shapely.ops.linemerge(shapely.wkb.loads(
+                    multi_line.ExportToWkb())).wkb)
+
             downstream_feature.SetGeometry(joined_line)
             downstream_feature.SetField(
                 'us_x', working_feature.GetField('us_x'))
@@ -3571,6 +3595,7 @@ def extract_strahler_streams_d8(
             stream_layer.SetFeature(downstream_feature)
             working_feature = None
             downstream_feature = None
+            multi_line = None
             joined_line = None
 
             # delete working line
@@ -3602,11 +3627,16 @@ def extract_strahler_streams_d8(
         # calculated now too
         working_stack.append(downstream_fid)
 
-    LOGGER.info('commit transaction due to stream joining')
+    LOGGER.info(
+        '(extract_strahler_streams_d8): '
+        'final pass on stream order complete')
+    LOGGER.info(
+        '(extract_strahler_streams_d8): '
+        'commit transaction due to stream joining')
     stream_layer.CommitTransaction()
     stream_layer = None
     stream_vector = None
-    LOGGER.info('all done')
+    LOGGER.info('(extract_strahler_streams_d8): all done')
 
 
 def _build_discovery_finish_rasters(
@@ -3670,10 +3700,10 @@ def _build_discovery_finish_rasters(
 
     for offset_dict in pygeoprocessing.iterblocks(
             flow_dir_d8_raster_path_band, offset_only=True):
-        if ctime(NULL)-last_log_time > 5.0:
+        if ctime(NULL)-last_log_time > _LOGGING_PERIOD:
             LOGGER.info(
-                f'discovery time processing: '
-                f'{n_processed/n_pixels*100:.2f}% complete')
+                f'(discovery time processing): '
+                f'{n_processed/n_pixels*100:.1f}% complete')
             last_log_time = ctime(NULL)
         xoff = offset_dict['xoff']
         yoff = offset_dict['yoff']
@@ -3804,7 +3834,7 @@ def calculate_watershed_boundary(
 
     if os.path.exists(target_watershed_boundary_vector_path):
         LOGGER.warning(
-            f'{target_watershed_boundary_vector_path} exists so removing '
+            f'{target_watershed_boundary_vector_path} exists, removing '
             'before creating a new one.')
         os.remove(target_watershed_boundary_vector_path)
     watershed_vector = gpkg_driver.Create(
@@ -3812,7 +3842,6 @@ def calculate_watershed_boundary(
     watershed_layer = watershed_vector.CreateLayer(
         'watershed_vector', discovery_srs, ogr.wkbPolygon)
     watershed_layer.CreateField(ogr.FieldDefn('stream_fid', ogr.OFTInteger))
-    watershed_layer.CreateField(ogr.FieldDefn('index', ogr.OFTInteger))
     watershed_layer.StartTransaction()
 
     cdef int x_l, y_l, outflow_dir
@@ -3828,9 +3857,9 @@ def calculate_watershed_boundary(
     # construct linkage data structure for upstream streams
     upstream_fid_map = collections.defaultdict(list)
     for stream_feature in stream_layer:
-        source_x = int(stream_feature.GetField('source_x'))
-        source_y = int(stream_feature.GetField('source_y'))
-        upstream_fid_map[(source_x, source_y)].append(
+        ds_x = int(stream_feature.GetField('ds_x'))
+        ds_y = int(stream_feature.GetField('ds_y'))
+        upstream_fid_map[(ds_x, ds_y)].append(
             stream_feature.GetFID())
 
     stream_layer.ResetReading()
@@ -3842,7 +3871,6 @@ def calculate_watershed_boundary(
     # first
     stream_layer.SetAttributeFilter(f'"outlet"=1')
     # these are done last
-    outlet_stack = []
     for _, outlet_fid in sorted([
             (x.GetField('order'), x.GetFID()) for x in stream_layer],
             reverse=True):
@@ -3850,42 +3878,35 @@ def calculate_watershed_boundary(
         processed_nodes = set()
         while working_stack:
             working_fid = working_stack[-1]
-            report = False
-            if working_fid in [84356, 84357, 84375]:
-                LOGGER.debug(f'found stream: {working_fid}')
-                report = True
             processed_nodes.add(working_fid)
             working_feature = stream_layer.GetFeature(working_fid)
             us_x = int(working_feature.GetField('us_x'))
             us_y = int(working_feature.GetField('us_y'))
             upstream_coord = (us_x, us_y)
-            if report:
-                LOGGER.debug(f'upstream_coord {upstream_coord}')
             upstream_fids = [
                 fid for fid in upstream_fid_map[upstream_coord]
                 if fid not in processed_nodes]
-            if report:
-                LOGGER.debug(f'upstream_fids {upstream_fids}')
             if upstream_fids:
                 working_stack.extend(upstream_fids)
             else:
                 working_stack.pop()
-                if working_feature.GetField('outlet') == 1:
-                    source_x = int(working_feature.GetField('source_x'))
-                    source_y = int(working_feature.GetField('source_y'))
-                    outlet_stack.append((working_fid, source_x, source_y))
                 if working_feature.GetField('order') > 1:
                     visit_order_stack.append((working_fid, us_x, us_y))
+                if working_feature.GetField('outlet') == 1:
+                    # an outlet is a special case where the outlet itself
+                    # should be a subwatershed done last.
+                    ds_x = int(working_feature.GetField('ds_x'))
+                    ds_y = int(working_feature.GetField('ds_y'))
+                    visit_order_stack.append((working_fid, ds_x, ds_y))
 
     cdef int edge_side, edge_dir, cell_to_test, out_dir_increase=-1
     cdef int left, right
 
-    for index, (stream_fid, x_l, y_l) in enumerate(
-            visit_order_stack+outlet_stack):
-        if ctime(NULL) - last_log_time > 5.0:
+    for index, (stream_fid, x_l, y_l) in enumerate(visit_order_stack):
+        if ctime(NULL) - last_log_time > _LOGGING_PERIOD:
             LOGGER.info(
-                f'watershed building '
-                f'{(index/len(visit_order_stack))*100:.2f}% complete')
+                f'(calculate_watershed_boundary): watershed building '
+                f'{(index/len(visit_order_stack))*100:.1f}% complete')
             last_log_time = ctime(NULL)
         discovery = <long>discovery_managed_raster.get(x_l, y_l)
         if discovery == -1:
@@ -3943,8 +3964,9 @@ def calculate_watershed_boundary(
             y_p = g3 + g4*x_f + g5*y_f
             watershed_boundary.AddPoint(x_p, y_p)
             if x_l < 0 or y_l < 0 or x_l >= n_cols or y_l >= n_rows:
-                LOGGER.error('out of bounds')
-                break
+                raise RuntimeError(
+                    f'{x_l}, {y_l} out of bounds for '
+                    f'{n_cols}x{n_rows} raster.')
             if edge_side - ((edge_dir-2) % 8) == 0:
                 # counterclockwise configuration
                 left = edge_dir
@@ -3995,7 +4017,6 @@ def calculate_watershed_boundary(
         watershed_polygon.AddGeometry(watershed_boundary)
         watershed_feature.SetGeometry(watershed_polygon)
         watershed_feature.SetField('stream_fid', stream_fid)
-        watershed_feature.SetField('index', index)
         watershed_layer.CreateFeature(watershed_feature)
 
         # this loop fills in the raster at the boundary, done at end so it
@@ -4008,7 +4029,9 @@ def calculate_watershed_boundary(
     watershed_vector = None
     discovery_managed_raster.close()
     finish_managed_raster.close()
-    #shutil.rmtree(workspace_dir)
+    shutil.rmtree(workspace_dir)
+    LOGGER.info(
+        '(calculate_watershed_boundary): watershed building 100% complete')
 
 
 cdef void _diagonal_fill_step(
@@ -4107,8 +4130,8 @@ cdef int _in_watershed(
 
 
 def _calculate_stream_geometry(
-        int x_l, int y_l, int upstream_d8_dir, geotransform, int n_cols, int n_rows,
-        _ManagedRaster flow_accum_managed_raster,
+        int x_l, int y_l, int upstream_d8_dir, geotransform, int n_cols,
+        int n_rows, _ManagedRaster flow_accum_managed_raster,
         _ManagedRaster flow_dir_managed_raster, int flow_dir_nodata,
         int flow_accum_threshold, coord_to_stream_ids):
     """Calculate the upstream geometry from the given point.
