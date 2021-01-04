@@ -83,6 +83,9 @@ cdef int* NEIGHBOR_OFFSET_ARRAY = [
     1, 1  # 7
     ]
 
+cdef int *D8_XOFFSET = [1, 1, 0, -1, -1, -1, 0, 1]
+cdef int *D8_YOFFSET = [0, -1, -1, -1, 0, +1, +1, +1]
+
 # this is used to calculate the opposite D8 direction interpreting the index
 # as a D8 direction
 cdef int* D8_REVERSE_DIRECTION = [4, 5, 6, 7, 0, 1, 2, 3]
@@ -3077,8 +3080,6 @@ def extract_strahler_streams_d8(
     # 321
     # 4x0
     # 567
-    cdef int *d8_xoffset = [1, 1, 0, -1, -1, -1, 0, 1]
-    cdef int *d8_yoffset = [0, -1, -1, -1, 0, +1, +1, +1]
     cdef int xoff, yoff, i, j, d, d_n, n_cols, n_rows
     cdef int win_xsize, win_ysize
 
@@ -3151,8 +3152,8 @@ def extract_strahler_streams_d8(
                     continue
                 # check to see if it's a drain
                 d_n = <int>flow_dir_managed_raster.get(x_l, y_l)
-                x_n = x_l + d8_xoffset[d_n]
-                y_n = y_l + d8_yoffset[d_n]
+                x_n = x_l + D8_XOFFSET[d_n]
+                y_n = y_l + D8_YOFFSET[d_n]
 
                 if (x_n < 0 or y_n < 0 or x_n >= n_cols or y_n >= n_cols or
                         <int>flow_dir_managed_raster.get(
@@ -3167,8 +3168,8 @@ def extract_strahler_streams_d8(
 
                 upstream_count = 0
                 for d in range(8):
-                    x_n = x_l + d8_xoffset[d]
-                    y_n = y_l + d8_yoffset[d]
+                    x_n = x_l + D8_XOFFSET[d]
+                    y_n = y_l + D8_YOFFSET[d]
                     # check if on border
                     if x_n < 0 or y_n < 0 or x_n >= n_cols or y_n >= n_rows:
                         continue
@@ -3632,8 +3633,6 @@ def _build_discovery_finish_rasters(
         0, 1, 0, 0, 0, 0, 0, 0,
         0, 0, 1, 0, 0, 0, 0, 0,
         0, 0, 0, 1, 0, 0, 0, 0]
-    cdef int *d8_xoffset = [1, 1, 0, -1, -1, -1, 0, 1]
-    cdef int *d8_yoffset = [0, -1, -1, -1, 0, +1, +1, +1]
 
     flow_dir_info = pygeoprocessing.get_raster_info(
         flow_dir_d8_raster_path_band[0])
@@ -3691,8 +3690,8 @@ def _build_discovery_finish_rasters(
                 if d_n == flow_dir_nodata:
                     continue
 
-                x_n = x_l + d8_xoffset[d_n]
-                y_n = y_l + d8_yoffset[d_n]
+                x_n = x_l + D8_XOFFSET[d_n]
+                y_n = y_l + D8_YOFFSET[d_n]
 
                 if (x_n < 0 or y_n < 0 or x_n >= n_cols or y_n >= n_cols or
                         <int>flow_dir_managed_raster.get(
@@ -3711,8 +3710,8 @@ def _build_discovery_finish_rasters(
 
                     n_pushed = 0
                     for test_dir in range(8):
-                        x_n = raster_coord.xi + d8_xoffset[test_dir % 8]
-                        y_n = raster_coord.yi + d8_yoffset[test_dir % 8]
+                        x_n = raster_coord.xi + D8_XOFFSET[test_dir % 8]
+                        y_n = raster_coord.yi + D8_YOFFSET[test_dir % 8]
                         if x_n < 0 or y_n < 0 or \
                                 x_n >= n_cols or y_n >= n_rows:
                             continue
@@ -3747,8 +3746,7 @@ def _build_discovery_finish_rasters(
 
 def calculate_watershed_boundary(
         d8_flow_dir_raster_path_band,
-        strahler_stream_vector_path, target_watershed_boundary_vector_path,
-        max_steps):
+        strahler_stream_vector_path, target_watershed_boundary_vector_path):
     """Calculate a stringline boundary around watershed.
 
     Args:
@@ -3771,13 +3769,18 @@ def calculate_watershed_boundary(
             os.path.dirname(target_watershed_boundary_vector_path)))
     discovery_time_raster_path = os.path.join(workspace_dir, 'discovery.tif')
     finish_time_raster_path = os.path.join(workspace_dir, 'finish.tif')
+
+    # construct the discovery/finish time rasters for fast individual cell
+    # watershed detection
     _build_discovery_finish_rasters(
         d8_flow_dir_raster_path_band, discovery_time_raster_path,
         finish_time_raster_path)
 
-    cdef int *d8_xoffset = [1, 1, 0, -1, -1, -1, 0, 1]
-    cdef int *d8_yoffset = [0, -1, -1, -1, 0, +1, +1, +1]
+    shutil.copyfile(
+        discovery_time_raster_path, f'{discovery_time_raster_path}_bak.tif')
 
+    # the discovery raster is filled with nodata around the edges of
+    # discovered watersheds, so it is opened for writing
     discovery_managed_raster = _ManagedRaster(
         discovery_time_raster_path, 1, 1)
     finish_managed_raster = _ManagedRaster(finish_time_raster_path, 1, 0)
@@ -3787,27 +3790,34 @@ def calculate_watershed_boundary(
     discovery_info = pygeoprocessing.get_raster_info(
         discovery_time_raster_path)
     cdef long discovery_nodata = discovery_info['nodata'][0]
+
+    cdef int n_cols, n_rows
+    n_cols, n_rows = discovery_info['raster_size']
+
     geotransform = discovery_info['geotransform']
+    cdef float g0, g1, g2, g3, g4, g5
+    g0, g1, g2, g3, g4, g5 = geotransform
+
     discovery_srs = osr.SpatialReference()
     discovery_srs.ImportFromWkt(discovery_info['projection_wkt'])
     gpkg_driver = gdal.GetDriverByName('GPKG')
 
     if os.path.exists(target_watershed_boundary_vector_path):
+        LOGGER.warning(
+            f'{target_watershed_boundary_vector_path} exists so removing '
+            'before creating a new one.')
         os.remove(target_watershed_boundary_vector_path)
     watershed_vector = gpkg_driver.Create(
         target_watershed_boundary_vector_path, 0, 0, 0, gdal.GDT_Unknown)
     watershed_layer = watershed_vector.CreateLayer(
         'watershed_vector', discovery_srs, ogr.wkbPolygon)
+    watershed_layer.CreateField(ogr.FieldDefn('stream_fid', ogr.OFTInteger))
     watershed_layer.CreateField(ogr.FieldDefn('index', ogr.OFTInteger))
     watershed_layer.StartTransaction()
-    cdef int n_cols, n_rows
-    n_cols, n_rows = discovery_info['raster_size']
 
     cdef int x_l, y_l, outflow_dir
     cdef float x_f, y_f
     cdef float x_first, y_first, x_p, y_p
-    cdef float g0, g1, g2, g3, g4, g5
-    g0, g1, g2, g3, g4, g5 = geotransform
     cdef long discovery, finish
 
     cdef time_t last_log_time = ctime(NULL)
@@ -3823,59 +3833,64 @@ def calculate_watershed_boundary(
         upstream_fid_map[(source_x, source_y)].append(
             stream_feature.GetFID())
 
-    # construct visit order
     stream_layer.ResetReading()
-    stream_layer.SetAttributeFilter(f'"outlet"=1')
+    # construct visit order, this list will have a tuple of (fid, 0/1)
+    # this stack will be used to build watersheds from upstream to downstream
     visit_order_stack = []
     # visit the highest order to lowest order in case there's a branching
     # junction of a order 1 and order 5 stream... visit order 5 upstream
     # first
-    for _, outlet_stream_feature in sorted([
-            (x.GetField('order'), x) for x in stream_layer]):
-        working_stack = [outlet_stream_feature.GetFID()]
+    stream_layer.SetAttributeFilter(f'"outlet"=1')
+    # these are done last
+    outlet_stack = []
+    for _, outlet_fid in sorted([
+            (x.GetField('order'), x.GetFID()) for x in stream_layer],
+            reverse=True):
+        working_stack = [outlet_fid]
         processed_nodes = set()
         while working_stack:
             working_fid = working_stack[-1]
+            report = False
+            if working_fid in [84356, 84357, 84375]:
+                LOGGER.debug(f'found stream: {working_fid}')
+                report = True
             processed_nodes.add(working_fid)
             working_feature = stream_layer.GetFeature(working_fid)
             us_x = int(working_feature.GetField('us_x'))
             us_y = int(working_feature.GetField('us_y'))
             upstream_coord = (us_x, us_y)
+            if report:
+                LOGGER.debug(f'upstream_coord {upstream_coord}')
             upstream_fids = [
                 fid for fid in upstream_fid_map[upstream_coord]
                 if fid not in processed_nodes]
+            if report:
+                LOGGER.debug(f'upstream_fids {upstream_fids}')
             if upstream_fids:
                 working_stack.extend(upstream_fids)
             else:
                 working_stack.pop()
                 if working_feature.GetField('outlet') == 1:
-                    visit_order_stack.append((working_fid, 0))
-                elif working_feature.GetField('order') > 1:
-                    visit_order_stack.append((working_fid, 1))
+                    source_x = int(working_feature.GetField('source_x'))
+                    source_y = int(working_feature.GetField('source_y'))
+                    outlet_stack.append((working_fid, source_x, source_y))
+                if working_feature.GetField('order') > 1:
+                    visit_order_stack.append((working_fid, us_x, us_y))
 
     cdef int edge_side, edge_dir, cell_to_test, out_dir_increase=-1
     cdef int left, right
-    cdef long n_steps = 0, _max_steps_long = max_steps
 
-    for index, (stream_fid, upstream) in enumerate(visit_order_stack):
-        # if index != 1384:
-        #     continue
+    for index, (stream_fid, x_l, y_l) in enumerate(
+            visit_order_stack+outlet_stack):
         if ctime(NULL) - last_log_time > 5.0:
             LOGGER.info(
                 f'watershed building '
                 f'{(index/len(visit_order_stack))*100:.2f}% complete')
             last_log_time = ctime(NULL)
-        stream_feature = stream_layer.GetFeature(stream_fid)
-        if upstream:
-            x_l = stream_feature.GetField('us_x')
-            y_l = stream_feature.GetField('us_y')
-        else:
-            x_l = stream_feature.GetField('source_x')
-            y_l = stream_feature.GetField('source_y')
         discovery = <long>discovery_managed_raster.get(x_l, y_l)
-        boundary_list = [(x_l, y_l)]
         if discovery == -1:
             continue
+        boundary_list = [(x_l, y_l)]
         finish = <long>finish_managed_raster.get(x_l, y_l)
 
         watershed_boundary = ogr.Geometry(ogr.wkbLinearRing)
@@ -3886,23 +3901,25 @@ def calculate_watershed_boundary(
         x_f = x_l+0.5
         y_f = y_l+0.5
 
-        x_f += d8_xoffset[outflow_dir]*0.5
-        y_f += d8_yoffset[outflow_dir]*0.5
+        x_f += D8_XOFFSET[outflow_dir]*0.5
+        y_f += D8_YOFFSET[outflow_dir]*0.5
         if outflow_dir % 2 == 0:
             # need to back up the point a bit
-            x_f -= d8_yoffset[outflow_dir]*0.5
-            y_f += d8_xoffset[outflow_dir]*0.5
+            x_f -= D8_YOFFSET[outflow_dir]*0.5
+            y_f += D8_XOFFSET[outflow_dir]*0.5
 
         x_p, y_p = gdal.ApplyGeoTransform(geotransform, x_f, y_f)
         watershed_boundary.AddPoint(x_p, y_p)
         x_first, y_first = x_p, y_p
 
         # determine the first edge
-        pixel_move = 0
         if outflow_dir % 2 == 0:
+            # outflow through a straight side, so trivial edge detection
             edge_side = outflow_dir
             edge_dir = (2+edge_side) % 8
         else:
+            # diagonal outflow requires testing neighboring cells to
+            # determine first edge
             cell_to_test = (outflow_dir+1) % 8
             edge_side = cell_to_test
             edge_dir = (cell_to_test+2) % 8
@@ -3912,25 +3929,15 @@ def calculate_watershed_boundary(
                     discovery_managed_raster, discovery_nodata):
                 edge_side = (edge_side-2) % 8
                 edge_dir = (edge_dir-2) % 8
-                pixel_move = 1
-                x_l += d8_xoffset[edge_dir]
-                y_l += d8_yoffset[edge_dir]
-
-        if pixel_move:
-            # x_t y_t are "_test", check all directions that could cross
-            _fill_neighbors(
-                x_l, y_l, d8_xoffset, d8_yoffset, edge_dir,
-                discovery, finish, discovery_managed_raster,
-                discovery_nodata,
-                boundary_list)
+                x_l += D8_XOFFSET[edge_dir]
+                y_l += D8_YOFFSET[edge_dir]
+                # note the pixel moved
+                boundary_list.append((x_l, y_l))
 
         while True:
-            if n_steps == _max_steps_long:
-                break
-            n_steps += 1
             # step the edge then determine the projected coordinates
-            x_f += d8_xoffset[edge_dir]
-            y_f += d8_yoffset[edge_dir]
+            x_f += D8_XOFFSET[edge_dir]
+            y_f += D8_YOFFSET[edge_dir]
             # equivalent to gdal.ApplyGeoTransform(geotransform, x_f, y_f):
             x_p = g0 + g1*x_f + g2*y_f
             y_p = g3 + g4*x_f + g5*y_f
@@ -3949,76 +3956,51 @@ def calculate_watershed_boundary(
                 left = (edge_side+1)
                 out_dir_increase = -2
             pixel_move = 1
-            if not _in_watershed(
-                    x_l, y_l, left, discovery, finish, n_cols, n_rows,
-                    discovery_managed_raster, discovery_nodata):
-                # neither left or right in
-                edge_side = edge_dir
-                edge_dir = (edge_side + out_dir_increase) % 8
-                # edge wraps around pixel
-                pixel_move = 0
-            elif _in_watershed(
-                    x_l, y_l, right, discovery, finish, n_cols, n_rows,
-                    discovery_managed_raster, discovery_nodata):
-                # right_in
+            left_in = _in_watershed(
+                x_l, y_l, left, discovery, finish, n_cols, n_rows,
+                discovery_managed_raster, discovery_nodata)
+            right_in = _in_watershed(
+                x_l, y_l, right, discovery, finish, n_cols, n_rows,
+                discovery_managed_raster, discovery_nodata)
+            if right_in:
+                # turn right
                 out_dir = edge_side
-                # update the cell to be the right cell
-                x_l += d8_xoffset[right]
-                y_l += d8_yoffset[right]
                 edge_side = (edge_side-out_dir_increase) % 8
                 edge_dir = out_dir
-            else:
-                # left_in
-                # out_dir doesn't change
-                x_l += d8_xoffset[edge_dir]
-                y_l += d8_yoffset[edge_dir]
-                # no change in side or direction
-            # if _in_watershed(
-            #         x_l, y_l, right, discovery, finish, n_cols, n_rows,
-            #         discovery_managed_raster, discovery_nodata):
-            #     # right_in
-            #     out_dir = edge_side
-            #     # update the cell to be the right cell
-            #     x_l += d8_xoffset[right]
-            #     y_l += d8_yoffset[right]
-            #     edge_side = (edge_side-out_dir_increase) % 8
-            #     edge_dir = out_dir
-            # elif _in_watershed(
-            #         x_l, y_l, left, discovery, finish, n_cols, n_rows,
-            #         discovery_managed_raster, discovery_nodata):
-            #     # left_in
-            #     # out_dir doesn't change
-            #     x_l += d8_xoffset[edge_dir]
-            #     y_l += d8_yoffset[edge_dir]
-            #     # no change in side or direction
-            # else:
-            #     # neither left or right in
-            #     edge_side = edge_dir
-            #     edge_dir = (edge_side + out_dir_increase) % 8
-            #     # edge wraps around pixel
-            #     pixel_move = 0
-
-            if pixel_move:
-                # x_t y_t are "_test", check all directions that could cross
-                # fill any neighbors in the discovery raster that would
-                # otherwise be diagonal
-                _fill_neighbors(
-                    x_l, y_l, d8_xoffset, d8_yoffset, edge_dir,
+                # pixel moves to be the right cell
+                x_l += D8_XOFFSET[right]
+                y_l += D8_YOFFSET[right]
+                _diagonal_fill_step(
+                    x_l, y_l, right,
                     discovery, finish, discovery_managed_raster,
                     discovery_nodata,
                     boundary_list)
+            elif left_in:
+                # step forward
+                x_l += D8_XOFFSET[edge_dir]
+                y_l += D8_YOFFSET[edge_dir]
+                # the pixel moves forward
+                boundary_list.append((x_l, y_l))
+            else:
+                # turn left
+                edge_side = edge_dir
+                edge_dir = (edge_side + out_dir_increase) % 8
 
             if is_close(x_p, x_first) and is_close(y_p, y_first):
-                # met the start point so we exit
+                # met the start point so we completed the watershed loop
                 break
 
         watershed_feature = ogr.Feature(watershed_layer.GetLayerDefn())
         watershed_polygon = ogr.Geometry(ogr.wkbPolygon)
         watershed_polygon.AddGeometry(watershed_boundary)
         watershed_feature.SetGeometry(watershed_polygon)
+        watershed_feature.SetField('stream_fid', stream_fid)
         watershed_feature.SetField('index', index)
         watershed_layer.CreateFeature(watershed_feature)
 
+        # this loop fills in the raster at the boundary, done at end so it
+        # doesn't interfere with the loop return to think the cells are no
+        # longer in the watershed
         for boundary_x, boundary_y in boundary_list:
             discovery_managed_raster.set(boundary_x, boundary_y, -1)
     watershed_layer.CommitTransaction()
@@ -4026,38 +4008,100 @@ def calculate_watershed_boundary(
     watershed_vector = None
     discovery_managed_raster.close()
     finish_managed_raster.close()
-    shutil.rmtree(workspace_dir)
+    #shutil.rmtree(workspace_dir)
 
 
-cdef void _fill_neighbors(
-        int x_l, int y_l, int* d8_xoffset, int* d8_yoffset, int edge_dir,
+cdef void _diagonal_fill_step(
+        int x_l, int y_l, int edge_dir,
         long discovery, long finish,
         _ManagedRaster discovery_managed_raster,
         long discovery_nodata, boundary_list):
-    test_set = {(x_l, y_l)}
-    test_set.add((x_l - d8_xoffset[edge_dir], y_l))
-    test_set.add((x_l, y_l - d8_yoffset[edge_dir]))
-    for x_t, y_t in test_set:
+    """Fill diagonal that are in the watershed behind the new edge.
+
+    Used as a helper function to mark pixels as part of the watershed
+    boundary in one step if they are diagonal and also contained within the
+    watershed. Prevents a case like this:
+
+    iii
+    ii1
+    i1o
+
+    Instead would fill the diagonal i like this:
+
+    iii
+    i11
+    i1o
+
+    Args:
+        x_l/y_l (int): leading coordinate of the watershed boundary
+            edge.
+        edge_dir (int): D8 direction that points which direction the edge
+            came from
+        discovery/finish (long): the discovery and finish time that defines
+            whether a pixel discovery time is inside a watershed or not.
+        discovery_managed_raster (_ManagedRaster): discovery time raster
+            x/y gives the discovery time for that pixel.
+        discovery_nodata (long): nodata value for discovery raster
+        boundary_list (list): this list is appended to for new pixels that
+            should be neighbors in the fill.
+
+    Return:
+        None.
+    """
+    # always add the current pixel
+    boundary_list.append((x_l, y_l))
+
+    # this section determines which back diagonal was in the watershed and
+    # fills it. if none are we pick one so there's no degenerate case
+    cdef int xdelta = D8_XOFFSET[edge_dir]
+    cdef int ydelta = D8_YOFFSET[edge_dir]
+    test_list = [
+        (x_l - xdelta, y_l),
+        (x_l, y_l - ydelta)]
+    for x_t, y_t in test_list:
         point_discovery = <long>discovery_managed_raster.get(
             x_t, y_t)
         if (point_discovery != discovery_nodata and
                 point_discovery >= discovery and
                 point_discovery <= finish):
             boundary_list.append((int(x_t), int(y_t)))
+            # there's only one diagonal to fill in so it's done here
+            return
+
+    # if there's a degenerate case then just add the xdelta,
+    # it doesn't matter
+    boundary_list.append(test_list[0])
+
 
 cdef int _in_watershed(
-        int x_l, int y_l, int cell_to_test, int discovery, int finish,
+        int x_l, int y_l, int direction_to_test, int discovery, int finish,
         int n_cols, int n_rows,
         _ManagedRaster discovery_managed_raster,
-        long nodata):
-    cdef int *d8_xoffset = [1, 1, 0, -1, -1, -1, 0, 1]
-    cdef int *d8_yoffset = [0, -1, -1, -1, 0, +1, +1, +1]
-    x_l += d8_xoffset[cell_to_test]
-    y_l += d8_yoffset[cell_to_test]
-    if x_l < 0 or y_l < 0 or x_l >= n_cols or y_l >= n_rows:
+        long discovery_nodata):
+    """Test if pixel in direction is in the watershed.
+
+    Args:
+        x_l/y_l (int): leading coordinate of the watershed boundary
+            edge.
+        direction_to_test (int): D8 direction that points which direction the edge
+            came from
+        discovery/finish (long): the discovery and finish time that defines
+            whether a pixel discovery time is inside a watershed or not.
+        n_cols/n_rows (int): number of columns/rows in the discovery raster,
+            used to ensure step does not go out of bounds.
+        discovery_managed_raster (_ManagedRaster): discovery time raster
+            x/y gives the discovery time for that pixel.
+        discovery_nodata (long): nodata value for discovery raster
+
+    Return:
+        1 if in, 0 if out.
+    """
+    cdef int x_n = x_l + D8_XOFFSET[direction_to_test]
+    cdef int y_n = y_l + D8_YOFFSET[direction_to_test]
+    if x_n < 0 or y_n < 0 or x_n >= n_cols or y_n >= n_rows:
         return 0
-    cdef long point_discovery = <long>discovery_managed_raster.get(x_l, y_l)
-    return (point_discovery != nodata and
+    cdef long point_discovery = <long>discovery_managed_raster.get(x_n, y_n)
+    return (point_discovery != discovery_nodata and
             point_discovery >= discovery and
             point_discovery <= finish)
 
@@ -4094,8 +4138,6 @@ def _calculate_stream_geometry(
             flow accum threshold.
 
     """
-    cdef int *d8_xoffset = [1, 1, 0, -1, -1, -1, 0, 1]
-    cdef int *d8_yoffset = [0, -1, -1, -1, 0, +1, +1, +1]
     cdef int *d8_backflow = [
         0, 0, 0, 0, 1, 0, 0, 0,
         0, 0, 0, 0, 0, 1, 0, 0,
@@ -4124,8 +4166,8 @@ def _calculate_stream_geometry(
     pixel_length = 0
     while not stream_end:
         # walk upstream
-        x_l += d8_xoffset[next_dir]
-        y_l += d8_yoffset[next_dir]
+        x_l += D8_XOFFSET[next_dir]
+        y_l += D8_YOFFSET[next_dir]
 
         stream_end = 1
         pixel_length += 1
@@ -4138,8 +4180,8 @@ def _calculate_stream_geometry(
                 flow_accum_threshold:
             # check to see if we can take a step upstream
             for d in range(8):
-                x_n = x_l + d8_xoffset[d]
-                y_n = y_l + d8_yoffset[d]
+                x_n = x_l + D8_XOFFSET[d]
+                y_n = y_l + D8_YOFFSET[d]
 
                 # check out of bounds
                 if x_n < 0 or y_n < 0 or x_n >= n_cols or y_n >= n_rows:
