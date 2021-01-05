@@ -12,7 +12,7 @@ Unreleased Changes
 * Fixed issue in zonal statistics that could cause the aggregate vector to be
   locked due to a dereferencing race condition. This was present in some
   cases with a flaky unit test but could have been seen in practice if the
-  vector was deleted immediately after the call ton ``zonal_statistics``.
+  vector was deleted immediately after the call to ``zonal_statistics``.
 
 2.1.2 (2020-12-03)
 ------------------
