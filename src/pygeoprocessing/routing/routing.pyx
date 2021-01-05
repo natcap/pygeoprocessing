@@ -3736,7 +3736,6 @@ def _build_discovery_finish_rasters(
                             x_n, y_n) == flow_dir_nodata):
                     discovery_stack.push(CoordinateType(x_l, y_l))
                     finish_stack.push(FinishType(x_l, y_l, 1))
-                    LOGGER.info(f'starting discovery at {x_l} {y_l}')
 
                 while not discovery_stack.empty():
                     # This coordinate is the downstream end of the stream
@@ -3786,10 +3785,14 @@ def _build_discovery_finish_rasters(
                             finish_stack.push(finish_coordinate)
 
 
-def calculate_watershed_boundary(
+def calculate_subwatershed_boundary(
         d8_flow_dir_raster_path_band,
         strahler_stream_vector_path, target_watershed_boundary_vector_path):
-    """Calculate a stringline boundary around watershed.
+    """Calculate a stringline boundary around all subwatersheds.
+
+    Subwatersheds start where the ``strahler_stream_vector`` has a junction
+    starting at this highest upstream to lowest and ending at the outlet of
+    a river.
 
     Args:
         discovery_time_raster_path (str): path to raster containing numbers
@@ -3920,7 +3923,7 @@ def calculate_watershed_boundary(
     for index, (stream_fid, x_l, y_l) in enumerate(visit_order_stack):
         if ctime(NULL) - last_log_time > _LOGGING_PERIOD:
             LOGGER.info(
-                f'(calculate_watershed_boundary): watershed building '
+                f'(calculate_subwatershed_boundary): watershed building '
                 f'{(index/len(visit_order_stack))*100:.1f}% complete')
             last_log_time = ctime(NULL)
         discovery = <long>discovery_managed_raster.get(x_l, y_l)
@@ -4046,7 +4049,7 @@ def calculate_watershed_boundary(
     finish_managed_raster.close()
     #shutil.rmtree(workspace_dir)
     LOGGER.info(
-        '(calculate_watershed_boundary): watershed building 100% complete')
+        '(calculate_subwatershed_boundary): watershed building 100% complete')
 
 
 cdef void _diagonal_fill_step(

@@ -836,8 +836,8 @@ class TestRouting(unittest.TestCase):
             flow_dir_array[1:-1, 1: -1], flow_dir_nodata).any(),
             'all flow directions should be defined')
 
-    def test_extract_strahler_streams_d8(self):
-        """PGP.routing: test Strahler stream extraction."""
+    def test_extract_straher_streams_watersheds_d8(self):
+        """PGP.routing: test Strahler stream and subwatershed creation."""
         # make a long canyon herringbone style DEM that will have a main
         # central river and single pixel tributaries every other pixel to
         # the west and east as one steps south the canyon
@@ -886,7 +886,7 @@ class TestRouting(unittest.TestCase):
 
         watershed_vector_path = os.path.join(
             self.workspace_dir, 'watershed.gpkg')
-        pygeoprocessing.routing.calculate_watershed_boundary(
+        pygeoprocessing.routing.calculate_subwatershed_boundary(
             (flow_dir_d8_path, 1), stream_vector_path,
             watershed_vector_path)
 
