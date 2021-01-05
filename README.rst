@@ -49,3 +49,8 @@ Note the pip-installable requirements in `requirements.txt` are for best
 results, but older package versions may also work. If necessary,
 PyGeoprocessing can be installed without dependencies with `pip install
 --no-deps`.
+
+API Documentation
+=================
+
+API documentation is available at https://pygeoprocessing.readthedocs.io/en/latest/

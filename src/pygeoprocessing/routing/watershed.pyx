@@ -406,7 +406,7 @@ cdef cset[CoordinatePair] _c_split_geometry_into_seeds(
     """Split a geometry into 'seeds' of (x, y) coordinate pairs.
 
     Parameters:
-        source_geom_wkb (string): A string of bytes in WKB representing
+        source_geom_wkb (str): A string of bytes in WKB representing
             a geometry. Must be in the same projected coordinate system
             as the flow direction raster from which
             ``flow_dir_geotransform`` and ``flow_dir_srs`` are derived.
@@ -418,7 +418,7 @@ cdef cset[CoordinatePair] _c_split_geometry_into_seeds(
             direction raster.
         flow_dir_n_rows (int): the number of rows in the flow
             direction raster.
-        target_raster_path (string): The path to a raster onto which
+        target_raster_path (str): The path to a raster onto which
             the geometry might be rasterized.  If the geometry is small
             enough to be completely contained within a single pixel, no
             raster will be written to this location.
@@ -578,7 +578,7 @@ def _split_geometry_into_seeds(
     that is useful for testing.
 
     Parameters:
-        source_geom_wkb (string): A string of bytes in WKB representing
+        source_geom_wkb (str): A string of bytes in WKB representing
             a geometry. Must be in the same projected coordinate system
             as the flow direction raster from which
             ``flow_dir_geotransform`` and ``flow_dir_srs`` are derived.
@@ -590,7 +590,7 @@ def _split_geometry_into_seeds(
             direction raster.
         flow_dir_n_rows (int): the number of rows in the flow
             direction raster.
-        target_raster_path (string): The path to a raster onto which
+        target_raster_path (str): The path to a raster onto which
             the geometry might be rasterized.  If the geometry is small
             enough to be completely contained within a single pixel, no
             raster will be written to this location.
@@ -628,19 +628,19 @@ def delineate_watersheds_d8(
         target_layer_name='watersheds'):
     """Delineate watersheds for a vector of geometries using D8 flow dir.
 
-    Parameters:
+    Args:
         d8_flow_dir_raster_path_band (tuple): A (path, band_id) tuple
             to a D8 flow direction raster.  This raster must be a tiled raster
             with block sizes being a power of 2.
-        outflow_vector_path (string): The path to a vector on disk containing
+        outflow_vector_path (str): The path to a vector on disk containing
             features with valid geometries from which watersheds will be
             delineated.  Only those parts of the geometry that overlap valid
             flow direction pixels will be included in the output watersheds
             vector.
-        target_watersheds_vector_path (string): The path to a vector on disk
+        target_watersheds_vector_path (str): The path to a vector on disk
             where the target watersheds will be stored.  Must have the
             extension ``.gpkg``.
-        working_dir=None (string or None): The path to a directory on disk
+        working_dir=None (str or None): The path to a directory on disk
             within which various intermediate files will be stored.  If None,
             a folder will be created within the system's temp directory.
         write_diagnostic_vector=False (bool): If ``True``, a set of vectors will
@@ -652,11 +652,11 @@ def delineate_watersheds_d8(
             outflow geometries cover many pixels.
         remove_temp_files=True (bool): Whether to remove the created temp
             directory at the end of the watershed delineation run.
-        target_layer_name='watersheds' (string): The string name to use for
+        target_layer_name='watersheds' (str): The string name to use for
             the watersheds layer.  This layer name may be named anything
             except for "polygonized_watersheds".
 
-    Returns
+    Returns:
         ``None``
 
     """
@@ -686,8 +686,16 @@ def delineate_watersheds_d8(
     cdef int flow_dir_n_cols = flow_dir_info['raster_size'][0]
     cdef int flow_dir_n_rows = flow_dir_info['raster_size'][1]
     cdef int ws_id
+    bbox_minx, bbox_miny, bbox_maxx, bbox_maxy = flow_dir_info['bounding_box']
+    LOGGER.debug('Creating flow dir bbox')
     flow_dir_bbox = shapely.prepared.prep(
-        shapely.geometry.box(*flow_dir_info['bounding_box']))
+        shapely.geometry.Polygon([
+            (bbox_minx, bbox_maxy),
+            (bbox_minx, bbox_miny),
+            (bbox_maxx, bbox_miny),
+            (bbox_maxx, bbox_maxy),
+            (bbox_minx, bbox_maxy)]))
+    LOGGER.debug('Creating flow dir managed raster')
     flow_dir_managed_raster = _ManagedRaster(d8_flow_dir_raster_path_band[0],
                                              d8_flow_dir_raster_path_band[1], 0)
 
@@ -733,9 +741,6 @@ def delineate_watersheds_d8(
     cdef int n_cells_visited = 0
 
     LOGGER.info('Delineating watersheds')
-    flow_dir_bbox = shapely.prepared.prep(
-        shapely.geometry.box(*flow_dir_info['bounding_box']))
-
     outflow_layer = outflow_vector.GetLayer()
     outflow_feature_count = outflow_layer.GetFeatureCount()
     flow_dir_srs = osr.SpatialReference()
@@ -758,6 +763,7 @@ def delineate_watersheds_d8(
         geom_wkb = geom.ExportToWkb()
         shapely_geom = shapely.wkb.loads(geom_wkb)
 
+        LOGGER.debug('Testing geometry bbox')
         if not flow_dir_bbox.intersects(shapely.geometry.box(*shapely_geom.bounds)):
             LOGGER.debug(
                 'Outflow feature %s does not overlap with the flow '

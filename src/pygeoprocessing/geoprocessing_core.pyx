@@ -96,8 +96,8 @@ def _distance_transform_edt(
         sample_d_x (float):
         sample_d_y (float):
             These parameters scale the pixel distances when calculating the
-            distance transform. `d_x` is the x direction when changing a
-            column index, and `d_y` when changing a row index. Both values
+            distance transform. ``d_x`` is the x direction when changing a
+            column index, and ``d_y`` when changing a row index. Both values
             must be > 0.
         target_distance_raster_path (string): path to the target raster
             created by this call that is the exact euclidean distance
@@ -294,23 +294,23 @@ def calculate_slope(
     diagonal pixels by classic finite difference analysis.
 
     For the following notation, we define each pixel's DEM value by a letter
-    with this spatial scheme:
+    with this spatial scheme::
 
-        abc
-        def
-        ghi
+        a b c
+        d e f
+        g h i
 
-    Then the slope at e is defined at ([dz/dx]^2 + [dz/dy]^2)^0.5
+    Then the slope at ``e`` is defined at ``([dz/dx]^2 + [dz/dy]^2)^0.5``
 
-    Where
+    Where::
 
-    [dz/dx] = ((c+2f+i)-(a+2d+g)/(8*x_cell_size)
-    [dz/dy] = ((g+2h+i)-(a+2b+c))/(8*y_cell_size)
+        [dz/dx] = ((c+2f+i)-(a+2d+g)/(8*x_cell_size)
+        [dz/dy] = ((g+2h+i)-(a+2b+c))/(8*y_cell_size)
 
     In cases where a cell is nodata, we attempt to use the middle cell inline
     with the direction of differentiation (either in x or y direction).  If
-    no inline pixel is defined, we use `e` and multiply the difference by
-    2^0.5 to account for the diagonal projection.
+    no inline pixel is defined, we use ``e`` and multiply the difference by
+    ``2^0.5`` to account for the diagonal projection.
 
     Parameters:
         base_elevation_raster_path_band (string): a path/band tuple to a
@@ -324,7 +324,7 @@ def calculate_slope(
             geoprocessing.DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS.
 
     Returns:
-        None
+        ``None``
     """
     cdef numpy.npy_float64 a, b, c, d, e, f, g, h, i, dem_nodata
     cdef numpy.npy_float64 x_cell_size, y_cell_size,

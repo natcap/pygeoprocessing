@@ -20,15 +20,15 @@ def evaluate_raster_calculator_expression(
     Evaluate the symbolic arithmetic expression in ``expression`` where the
     symbols represent equally sized GIS rasters. With the following rules:
 
-        * any nodata pixels in a raster will cause the entire pixel stack
-          to be ``target_nodata``. If ``target_nodata`` is None, this will
-          be 0.
-        * any calculations the result in NaN or inf values will be replaced
-          by the corresponding values in ``default_nan`` and ``default_inf``.
-          If either of these are not defined an NaN or inf result will cause
-          a ValueError exception to be raised.
-        * the following arithmetic operators are available:
-          +, -, *, /, <, <=, >, >=, !=, &, and |.
+    * any nodata pixels in a raster will cause the entire pixel stack to be
+      ``target_nodata``. If ``target_nodata`` is None, this will be 0.
+    * any calculations the result in NaN or inf values will be replaced by the
+      corresponding values in ``default_nan`` and ``default_inf``.  If either of
+      these are not defined an NaN or inf result will cause a ValueError
+      exception to be raised.
+    * the following arithmetic operators are available:
+      ``+``, ``-``, ``*``, ``/``, ``<``, ``<=``, ``>``, ``>=``, ``!=``, ``&``,
+      and ``|``.
 
     Args:
         expression (str): a valid arithmetic expression whose variables
@@ -36,22 +36,24 @@ def evaluate_raster_calculator_expression(
         symbol_to_path_band_map (dict): a dict of symbol/(path, band) pairs to
             indicate which symbol maps to which raster and corresponding
             band. All symbol names correspond to
-            symbols in ``expression``. Ex:
+            symbols in ``expression``. Example::
+
                 expression = '2*x+b'
                 symbol_to_path_band_map = {
                     'x': (path_to_x_raster, 1),
                     'b': (path_to_b_raster, 1)
                 }
+
             All rasters represented in this structure must have the same
             raster size.
-        target_nodata (numeric): desired nodata value for
+        target_nodata (float): desired nodata value for
             ``target_raster_path``.
         target_raster_path (str): path to the raster that is created by
             ``expression``.
-        default_nan (numeric): if a calculation results in an NaN that
+        default_nan (float): if a calculation results in an NaN that
             value is replaces with this value. A ValueError exception is
             raised if this case occurs and ``default_nan`` is None.
-        default_inf (numeric): if a calculation results in an +/- inf
+        default_inf (float): if a calculation results in an +/- inf
             that value is replaced with this value. A ValueError exception is
             raised if this case occurs and ``default_nan`` is None.
 
