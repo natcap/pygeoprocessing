@@ -4049,7 +4049,7 @@ cdef void _diagonal_fill_step(
     ii1
     i1o
 
-    Instead would fill the diagonal i like this:
+    Instead would fill the diagonal like this:
 
     iii
     i11
