@@ -1181,7 +1181,6 @@ def zonal_statistics(
     if aggregate_vector is None:
         raise RuntimeError(
             "Could not open aggregate vector at %s" % aggregate_vector_path)
-    LOGGER.debug(aggregate_vector)
     if aggregate_layer_name is not None:
         aggregate_layer = aggregate_vector.GetLayerByName(
             aggregate_layer_name)
@@ -1205,10 +1204,10 @@ def zonal_statistics(
     raster_info = get_raster_info(base_raster_path_band[0])
     # -1 here because bands are 1 indexed
     raster_nodata = raster_info['nodata'][base_raster_path_band[1]-1]
-    with tempfile.NamedTemporaryFile(
-            prefix='clipped_raster', suffix='.tif', delete=False,
-            dir=working_dir) as clipped_raster_file:
-        clipped_raster_path = clipped_raster_file.name
+    temp_working_dir = tempfile.mkdtemp(dir=working_dir)
+    clipped_raster_path = os.path.join(
+        temp_working_dir, 'clipped_raster.tif')
+
     try:
         align_and_resize_raster_stack(
             [base_raster_path_band[0]], [clipped_raster_path], ['near'],
@@ -1245,7 +1244,7 @@ def zonal_statistics(
 
     aggregate_layer_fid_set = set(
         [agg_feat.GetFID() for agg_feat in aggregate_layer])
-
+    agg_feat = None
     # Loop over each polygon and aggregate
     if polygons_might_overlap:
         LOGGER.info("creating disjoint polygon set")
@@ -1254,10 +1253,8 @@ def zonal_statistics(
     else:
         disjoint_fid_sets = [aggregate_layer_fid_set]
 
-    with tempfile.NamedTemporaryFile(
-            prefix='aggregate_fid_raster', suffix='.tif',
-            delete=False, dir=working_dir) as agg_fid_raster_file:
-        agg_fid_raster_path = agg_fid_raster_file.name
+    agg_fid_raster_path = os.path.join(
+        temp_working_dir, 'agg_fid.tif')
 
     agg_fid_nodata = -1
     new_raster_from_base(
@@ -1298,9 +1295,11 @@ def zonal_statistics(
             agg_geom_ref = agg_feat.GetGeometryRef()
             disjoint_feat = ogr.Feature(disjoint_layer_defn)
             disjoint_feat.SetGeometry(agg_geom_ref.Clone())
+            agg_geom_ref = None
             disjoint_feat.SetField(
                 local_aggregate_field_name, feature_fid)
             disjoint_layer.CreateFeature(disjoint_feat)
+        agg_feat = None
         disjoint_layer.CommitTransaction()
 
         LOGGER.info(
@@ -1387,6 +1386,8 @@ def zonal_statistics(
                 f'no geometry in {aggregate_vector_path} FID: {unset_fid}')
             continue
         unset_geom_envelope = list(unset_geom_ref.GetEnvelope())
+        unset_geom_ref = None
+        unset_feat = None
         if clipped_gt[1] < 0:
             unset_geom_envelope[0], unset_geom_envelope[1] = (
                 unset_geom_envelope[1], unset_geom_envelope[0])
@@ -1468,9 +1469,7 @@ def zonal_statistics(
             aggregate_vector_path))
 
     # clean up temporary files
-    gdal.Dataset.__swig_destroy__(agg_fid_raster)
-    gdal.Dataset.__swig_destroy__(aggregate_vector)
-    gdal.Dataset.__swig_destroy__(clipped_raster)
+    spat_ref = None
     clipped_band = None
     clipped_raster = None
     agg_fid_raster = None
@@ -1478,9 +1477,8 @@ def zonal_statistics(
     disjoint_vector = None
     aggregate_layer = None
     aggregate_vector = None
-    for filename in [agg_fid_raster_path, clipped_raster_path]:
-        os.remove(filename)
 
+    shutil.rmtree(temp_working_dir)
     return dict(aggregate_stats)
 
 
@@ -2200,6 +2198,7 @@ def calculate_disjoint_polygon_set(
         shapely_polygon_lookup[poly_feat.GetFID()] = (
             shapely.wkb.loads(poly_geom_ref.ExportToWkb()))
         poly_geom_ref = None
+    poly_feat = None
 
     LOGGER.info("build shapely rtree index")
     r_tree_index_stream = [
