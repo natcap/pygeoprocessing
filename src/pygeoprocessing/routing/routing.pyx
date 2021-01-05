@@ -3016,9 +3016,10 @@ def extract_strahler_streams_d8(
 
     Creates a Strahler ordered stream vector containing line segments
     representing each separate stream fragment. The final vector contains
-    the fields:
+    at least the fields:
         * "order" (int): an integer representing the stream order
-        * "parent" (int): the FID of the downstream connected parent.
+        * "river_id" (int): unique ID used by all stream segements that
+            connect to the same outlet.
 
     Args:
         flow_dir_d8_raster_path_band (tuple): a path/band representing the D8
@@ -3049,9 +3050,12 @@ def extract_strahler_streams_d8(
     """
     flow_dir_info = pygeoprocessing.get_raster_info(
         flow_dir_d8_raster_path_band[0])
-    flow_dir_srs = osr.SpatialReference()
-    flow_dir_srs.ImportFromWkt(flow_dir_info['projection_wkt'])
-    flow_dir_srs.SetAxisMappingStrategy(osr_axis_mapping_strategy)
+    if flow_dir_info['projection_wkt']:
+        flow_dir_srs = osr.SpatialReference()
+        flow_dir_srs.ImportFromWkt(flow_dir_info['projection_wkt'])
+        flow_dir_srs.SetAxisMappingStrategy(osr_axis_mapping_strategy)
+    else:
+        flow_dir_srs = None
     gpkg_driver = gdal.GetDriverByName('GPKG')
 
     stream_vector = gpkg_driver.Create(
@@ -3330,7 +3334,9 @@ def extract_strahler_streams_d8(
             continue
         sorted_stream_order_list = sorted(stream_order_list)
         downstream_order = sorted_stream_order_list[-1]
-        if sorted_stream_order_list[-1] == sorted_stream_order_list[-2]:
+        if len(sorted_stream_order_list) > 1 and (
+                sorted_stream_order_list[-1] ==
+                sorted_stream_order_list[-2]):
             # if there are at least two equal order streams feeding in,
             # we go up one order
             downstream_order += 1
@@ -4242,7 +4248,7 @@ def _calculate_stream_geometry(
 def _delete_feature(
         stream_feature, stream_layer, upstream_to_downstream_id,
         downstream_to_upstream_ids):
-    """Helper for mahler extraction to delete all references to a stream.
+    """Helper for Mahler extraction to delete all references to a stream.
 
     Args:
         stream_feature (ogr.Feature): feature to delete
