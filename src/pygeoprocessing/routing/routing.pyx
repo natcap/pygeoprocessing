@@ -3706,6 +3706,7 @@ def _build_discovery_finish_rasters(
 
     for offset_dict in pygeoprocessing.iterblocks(
             flow_dir_d8_raster_path_band, offset_only=True):
+        # search raster block by raster block
         if ctime(NULL)-last_log_time > _LOGGING_PERIOD:
             LOGGER.info(
                 f'(discovery time processing): '
@@ -3721,19 +3722,21 @@ def _build_discovery_finish_rasters(
             for j in range(win_ysize):
                 x_l = xoff + i
                 y_l = yoff + j
-                # check to see if it's a drain
+                # check to see if this pixel is a drain
                 d_n = <int>flow_dir_managed_raster.get(x_l, y_l)
                 if d_n == flow_dir_nodata:
                     continue
 
+                # check if downstream neighbor runs off raster or is nodata
                 x_n = x_l + D8_XOFFSET[d_n]
                 y_n = y_l + D8_YOFFSET[d_n]
 
-                if (x_n < 0 or y_n < 0 or x_n >= n_cols or y_n >= n_cols or
+                if (x_n < 0 or y_n < 0 or x_n >= n_cols or y_n >= n_rows or
                         <int>flow_dir_managed_raster.get(
                             x_n, y_n) == flow_dir_nodata):
                     discovery_stack.push(CoordinateType(x_l, y_l))
                     finish_stack.push(FinishType(x_l, y_l, 1))
+                    LOGGER.info(f'starting discovery at {x_l} {y_l}')
 
                 while not discovery_stack.empty():
                     # This coordinate is the downstream end of the stream
@@ -3745,6 +3748,8 @@ def _build_discovery_finish_rasters(
                     discovery_count += 1
 
                     n_pushed = 0
+                    # check each neighbor to see if it drains to this cell
+                    # if so, it's on the traversal path
                     for test_dir in range(8):
                         x_n = raster_coord.xi + D8_XOFFSET[test_dir % 8]
                         y_n = raster_coord.yi + D8_YOFFSET[test_dir % 8]
@@ -3761,7 +3766,8 @@ def _build_discovery_finish_rasters(
                     # how many elements must be processed before finish
                     # time can be defined
                     finish_stack.push(
-                        FinishType(raster_coord.xi, raster_coord.yi, n_pushed))
+                        FinishType(
+                            raster_coord.xi, raster_coord.yi, n_pushed))
 
                     # pop the finish stack until n_pushed > 1
                     if n_pushed == 0:
@@ -3834,8 +3840,11 @@ def calculate_watershed_boundary(
     cdef float g0, g1, g2, g3, g4, g5
     g0, g1, g2, g3, g4, g5 = geotransform
 
-    discovery_srs = osr.SpatialReference()
-    discovery_srs.ImportFromWkt(discovery_info['projection_wkt'])
+    if discovery_info['projection_wkt']:
+        discovery_srs = osr.SpatialReference()
+        discovery_srs.ImportFromWkt(discovery_info['projection_wkt'])
+    else:
+        discovery_srs = None
     gpkg_driver = gdal.GetDriverByName('GPKG')
 
     if os.path.exists(target_watershed_boundary_vector_path):
@@ -4035,7 +4044,7 @@ def calculate_watershed_boundary(
     watershed_vector = None
     discovery_managed_raster.close()
     finish_managed_raster.close()
-    shutil.rmtree(workspace_dir)
+    #shutil.rmtree(workspace_dir)
     LOGGER.info(
         '(calculate_watershed_boundary): watershed building 100% complete')
 

@@ -838,32 +838,32 @@ class TestRouting(unittest.TestCase):
 
     def test_extract_strahler_streams_d8(self):
         """PGP.routing: test Strahler stream extraction."""
-        local_workspace = self.workspace_dir
-        # make a herringbone style DEM that will have a main central
-        # river and little tributaries every other pixel to the west
-        n = 50
+        # make a long canyon herringbone style DEM that will have a main
+        # central river and single pixel tributaries every other pixel to
+        # the west and east as one steps south the canyon
+        n = 53
         dem_array = numpy.zeros((n, 3))
         dem_array[0, 1] = -0.5
         # make notches every other row for both columns
         dem_array[1::2, 0::2] = 1
-        dem_path = os.path.join(local_workspace, 'dem.tif')
+        dem_path = os.path.join(self.workspace_dir, 'dem.tif')
         pygeoprocessing.numpy_array_to_raster(
             dem_array, -1, (1, -1), (0, 0), None, dem_path)
 
-        filled_pits_path = os.path.join(local_workspace, 'filled_pits.tif')
+        filled_pits_path = os.path.join(self.workspace_dir, 'filled_pits.tif')
         pygeoprocessing.routing.fill_pits(
             (dem_path, 1), filled_pits_path)
 
-        flow_dir_d8_path = os.path.join(local_workspace, 'd8.tif')
+        flow_dir_d8_path = os.path.join(self.workspace_dir, 'd8.tif')
         pygeoprocessing.routing.flow_dir_d8(
             (filled_pits_path, 1), flow_dir_d8_path,
-            working_dir=local_workspace)
+            working_dir=self.workspace_dir)
 
-        flow_accum_d8_path = os.path.join(local_workspace, 'flow_accum.tif')
+        flow_accum_d8_path = os.path.join(self.workspace_dir, 'flow_accum.tif')
         pygeoprocessing.routing.flow_accumulation_d8(
             (flow_dir_d8_path, 1), flow_accum_d8_path)
 
-        stream_vector_path = os.path.join(local_workspace, 'stream.gpkg')
+        stream_vector_path = os.path.join(self.workspace_dir, 'stream.gpkg')
         pygeoprocessing.routing.extract_strahler_streams_d8(
             (flow_dir_d8_path, 1),
             (flow_accum_d8_path, 1),
@@ -875,6 +875,28 @@ class TestRouting(unittest.TestCase):
         stream_vector = gdal.OpenEx(stream_vector_path, gdal.OF_VECTOR)
         stream_layer = stream_vector.GetLayer()
         self.assertEqual(stream_layer.GetFeatureCount(), (n//2)*2-1)
+
+        # this gets just the single outlet feature
         stream_layer.SetAttributeFilter(f'"outlet"=1')
         outlet_feature = next(iter(stream_layer))
+
+        # known to be order 2 because none of the streams can branch more
+        # than once
         self.assertEqual(outlet_feature.GetField('order'), 2)
+
+        watershed_vector_path = os.path.join(
+            self.workspace_dir, 'watershed.gpkg')
+        pygeoprocessing.routing.calculate_watershed_boundary(
+            (flow_dir_d8_path, 1), stream_vector_path,
+            watershed_vector_path)
+
+        watershed_vector = gdal.OpenEx(watershed_vector_path, gdal.OF_VECTOR)
+        watershed_layer = watershed_vector.GetLayer()
+        # there should be exactly an integer half number of watersheds as
+        # the length of the canyon
+        self.assertEqual(watershed_layer.GetFeatureCount(), n//2)
+
+        watershed_vector = None
+        watershed_layer = None
+        stream_vector = None
+        stream_layer = None
