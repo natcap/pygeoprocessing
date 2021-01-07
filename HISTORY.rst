@@ -13,6 +13,12 @@ Unreleased Changes
   locked due to a dereferencing race condition. This was present in some
   cases with a flaky unit test but could have been seen in practice if the
   vector was deleted immediately after the call to ``zonal_statistics``.
+* Fixed issue in ``routing.fill_pits`` that used a numerical "is close" test
+  when determining if two pixels were at equal height. In the case of
+  hydrological pitfilling, pixels must be exactly equal height to be
+  considered a plateau otherwise a drain into or out of the pixel is
+  resolved. Testing is close allowed a hydrological pit to remain since it
+  was "close" to the same height as a draining pixel.
 
 2.1.2 (2020-12-03)
 ------------------
