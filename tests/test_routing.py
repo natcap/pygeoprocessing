@@ -40,6 +40,33 @@ class TestRouting(unittest.TestCase):
         dem_array[3:8, 3:8] = 0.0
         numpy.testing.assert_almost_equal(result_array, dem_array)
 
+    def test_pit_filling_small_delta(self):
+        """PGP.routing: test pitfilling on small delta."""
+        local_workspace_dir = 'small_delta'
+        try:
+            os.makedirs(local_workspace_dir)
+        except:
+            pass
+        base_path = os.path.join(local_workspace_dir, 'base.tif')
+        dem_array = numpy.empty((4, 4), dtype=numpy.float32)
+        # these values came from a real world dem that failed
+        lower_val = 272.53228759765625
+        higher_val = 272.5325012207031
+        dem_array[:] = higher_val
+        dem_array[2, 2] = lower_val
+
+        expected_result = numpy.empty((4, 4), numpy.float32)
+        expected_result[:] = higher_val
+        _array_to_raster(dem_array, None, base_path)
+        fill_path = os.path.join(local_workspace_dir, 'filled.tif')
+        pygeoprocessing.routing.fill_pits(
+            (base_path, 1), fill_path, working_dir=self.workspace_dir)
+        result_array = pygeoprocessing.raster_to_numpy_array(fill_path)
+        numpy.set_printoptions(suppress=True)
+        self.assertTrue(
+            (result_array == expected_result).all(),
+            print(result_array==expected_result))
+
     def test_pit_filling_path_band_checking(self):
         """PGP.routing: test pitfilling catches path-band formatting errors."""
         with self.assertRaises(ValueError):
