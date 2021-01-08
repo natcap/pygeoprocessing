@@ -153,7 +153,7 @@ cdef cppclass GreaterPixel nogil:
                 return 1
         return 0
 
-cdef int is_close(double x, double y):
+cdef int _is_close(double x, double y):
     return abs(x-y) <= (1e-8+1e-05*abs(y))
 
 # a class to allow fast random per-pixel access to a raster for both setting
@@ -773,7 +773,7 @@ def fill_pits(
         for yi in range(1, win_ysize+1):
             for xi in range(1, win_xsize+1):
                 center_val = dem_buffer_array[yi, xi]
-                if is_close(center_val, dem_nodata):
+                if _is_close(center_val, dem_nodata):
                     continue
 
                 # this value is set in case it turns out to be the root of a
@@ -800,7 +800,7 @@ def fill_pits(
                         nodata_neighbor = 1
                         break
                     n_height = filled_dem_managed_raster.get(xi_n, yi_n)
-                    if is_close(n_height, dem_nodata):
+                    if _is_close(n_height, dem_nodata):
                         # it'll drain to nodata
                         nodata_neighbor = 1
                         break
@@ -840,13 +840,13 @@ def fill_pits(
                             continue
                         n_height = filled_dem_managed_raster.get(
                             xi_n, yi_n)
-                        if is_close(n_height, dem_nodata):
+                        if _is_close(n_height, dem_nodata):
                             nodata_drain = 1
                             continue
                         if n_height < center_val:
                             downhill_drain = 1
                             continue
-                        if is_close(n_height, center_val) and (
+                        if n_height == center_val and (
                                 flat_region_mask_managed_raster.get(
                                     xi_n, yi_n) == mask_nodata):
                             # only grow if it's at the same level and not
@@ -899,7 +899,7 @@ def fill_pits(
                             xi_n, yi_n, feature_id)
 
                         n_height = filled_dem_managed_raster.get(xi_n, yi_n)
-                        if is_close(n_height, dem_nodata) or (
+                        if _is_close(n_height, dem_nodata) or (
                                 n_height < fill_height):
                             # we encounter a neighbor not processed that is
                             # lower than the current pixel or nodata
@@ -1153,7 +1153,7 @@ def flow_dir_d8(
         for yi in range(1, win_ysize+1):
             for xi in range(1, win_xsize+1):
                 root_height = dem_buffer_array[yi, xi]
-                if is_close(root_height, dem_nodata):
+                if _is_close(root_height, dem_nodata):
                     continue
 
                 # this value is set in case it turns out to be the root of a
@@ -1177,7 +1177,7 @@ def flow_dir_d8(
                     xi_n = xi+NEIGHBOR_OFFSET_ARRAY[2*i_n]
                     yi_n = yi+NEIGHBOR_OFFSET_ARRAY[2*i_n+1]
                     n_height = dem_buffer_array[yi_n, xi_n]
-                    if is_close(n_height, dem_nodata):
+                    if _is_close(n_height, dem_nodata):
                         continue
                     n_slope = root_height - n_height
                     if i_n & 1:
@@ -1219,7 +1219,7 @@ def flow_dir_d8(
                             n_height = dem_nodata
                         else:
                             n_height = dem_managed_raster.get(xi_n, yi_n)
-                        if is_close(n_height, dem_nodata):
+                        if _is_close(n_height, dem_nodata):
                             if diagonal_nodata and largest_slope == 0.0:
                                 largest_slope_dir = i_n
                                 diagonal_nodata = i_n & 1
@@ -1485,7 +1485,7 @@ def flow_accumulation_d8(
                     if weight_raster is not None:
                         weight_val = <double>weight_raster.get(
                             xi_root, yi_root)
-                        if is_close(weight_val, weight_nodata):
+                        if _is_close(weight_val, weight_nodata):
                             weight_val = 0.0
                     else:
                         weight_val = 1.0
@@ -1513,14 +1513,14 @@ def flow_accumulation_d8(
                             continue
                         upstream_flow_accum = <double>(
                             flow_accum_managed_raster.get(xi_n, yi_n))
-                        if is_close(upstream_flow_accum, flow_accum_nodata):
+                        if _is_close(upstream_flow_accum, flow_accum_nodata):
                             # process upstream before this one
                             flow_pixel.last_flow_dir = i_n
                             search_stack.push(flow_pixel)
                             if weight_raster is not None:
                                 weight_val = <double>weight_raster.get(
                                     xi_n, yi_n)
-                                if is_close(weight_val, weight_nodata):
+                                if _is_close(weight_val, weight_nodata):
                                     weight_val = 0.0
                             else:
                                 weight_val = 1.0
@@ -1775,7 +1775,7 @@ def flow_dir_mfd(
         for yi in range(1, win_ysize+1):
             for xi in range(1, win_xsize+1):
                 root_height = dem_buffer_array[yi, xi]
-                if is_close(root_height, dem_nodata):
+                if _is_close(root_height, dem_nodata):
                     continue
 
                 # this value is set in case it turns out to be the root of a
@@ -1800,7 +1800,7 @@ def flow_dir_mfd(
                     xi_n = xi+NEIGHBOR_OFFSET_ARRAY[2*i_n]
                     yi_n = yi+NEIGHBOR_OFFSET_ARRAY[2*i_n+1]
                     n_height = dem_buffer_array[yi_n, xi_n]
-                    if is_close(n_height, dem_nodata):
+                    if _is_close(n_height, dem_nodata):
                         continue
                     n_slope = root_height - n_height
                     if n_slope > 0.0:
@@ -1852,7 +1852,7 @@ def flow_dir_mfd(
                             n_height = dem_nodata
                         else:
                             n_height = dem_managed_raster.get(xi_n, yi_n)
-                        if is_close(n_height, dem_nodata):
+                        if _is_close(n_height, dem_nodata):
                             n_slope = SQRT2_INV if i_n & 1 else 1.0
                             sum_of_nodata_slope_weights += n_slope
                             nodata_downhill_slope_array[i_n] = n_slope
@@ -2231,7 +2231,7 @@ def flow_accumulation_mfd(
                         if weight_raster is not None:
                             weight_val = <double>weight_raster.get(
                                 xi_root, yi_root)
-                            if is_close(weight_val, weight_nodata):
+                            if _is_close(weight_val, weight_nodata):
                                 weight_val = 0.0
                         else:
                             weight_val = 1.0
@@ -2269,7 +2269,7 @@ def flow_accumulation_mfd(
                             continue
                         upstream_flow_accum = (
                             flow_accum_managed_raster.get(xi_n, yi_n))
-                        if (is_close(upstream_flow_accum, flow_accum_nodata)
+                        if (_is_close(upstream_flow_accum, flow_accum_nodata)
                                 and not visited_managed_raster.get(
                                     xi_n, yi_n)):
                             # process upstream before this one
@@ -2278,7 +2278,7 @@ def flow_accumulation_mfd(
                             if weight_raster is not None:
                                 weight_val = <double>weight_raster.get(
                                     xi_n, yi_n)
-                                if is_close(weight_val, weight_nodata):
+                                if _is_close(weight_val, weight_nodata):
                                     weight_val = 0.0
                             else:
                                 weight_val = 1.0
@@ -2488,7 +2488,7 @@ def distance_to_channel_d8(
                             # account for diagonal distance.
                             if weight_raster is not None:
                                 weight_val = weight_raster.get(xi_n, yi_n)
-                                if is_close(weight_val, weight_nodata):
+                                if _is_close(weight_val, weight_nodata):
                                     weight_val = 0.0
                             else:
                                 weight_val = (SQRT2 if i_n % 2 else 1)
@@ -2666,7 +2666,7 @@ def distance_to_channel_mfd(
                     # nodata flow, so we skip
                     continue
 
-                if is_close(distance_to_channel_managed_raster.get(
+                if _is_close(distance_to_channel_managed_raster.get(
                         xi_root, yi_root), distance_nodata):
                     distance_to_channel_stack.push(
                         FlowPixelType(xi_root, yi_root, 0, 0.0))
@@ -2702,7 +2702,7 @@ def distance_to_channel_mfd(
                         n_distance = distance_to_channel_managed_raster.get(
                             xi_n, yi_n)
 
-                        if is_close(n_distance, distance_nodata):
+                        if _is_close(n_distance, distance_nodata):
                             preempted = 1
                             pixel.last_flow_dir = i_n
                             distance_to_channel_stack.push(pixel)
@@ -2717,7 +2717,7 @@ def distance_to_channel_mfd(
                         # for diagonal distance.
                         if weight_raster is not None:
                             weight_val = weight_raster.get(xi_n, yi_n)
-                            if is_close(weight_val, weight_nodata):
+                            if _is_close(weight_val, weight_nodata):
                                 weight_val = 0.0
                         else:
                             weight_val = (SQRT2 if i_n % 2 else 1)
@@ -2850,7 +2850,7 @@ def extract_streams_mfd(
             for xi in range(win_xsize):
                 xi_root = xi+xoff
                 flow_accum = flow_accum_mr.get(xi_root, yi_root)
-                if is_close(flow_accum, flow_accum_nodata):
+                if _is_close(flow_accum, flow_accum_nodata):
                     continue
                 if stream_mr.get(xi_root, yi_root) != stream_nodata:
                     continue
