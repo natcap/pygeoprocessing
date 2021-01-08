@@ -57,7 +57,6 @@ class TestRouting(unittest.TestCase):
         pygeoprocessing.routing.fill_pits(
             (base_path, 1), fill_path, working_dir=self.workspace_dir)
         result_array = pygeoprocessing.raster_to_numpy_array(fill_path)
-        numpy.set_printoptions(suppress=True)
         self.assertTrue(
             (result_array == expected_result).all(),
             result_array == expected_result)
