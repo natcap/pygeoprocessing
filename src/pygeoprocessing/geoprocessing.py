@@ -86,7 +86,8 @@ DEFAULT_OSR_AXIS_MAPPING_STRATEGY = osr.OAMS_TRADITIONAL_GIS_ORDER
 def raster_calculator(
         base_raster_path_band_const_list, local_op, target_raster_path,
         datatype_target, nodata_target,
-        calc_raster_stats=True, largest_block=_LARGEST_ITERBLOCK,
+        calc_raster_stats=True, use_shared_memory=False,
+        largest_block=_LARGEST_ITERBLOCK, max_timeout=_MAX_TIMEOUT,
         raster_driver_creation_tuple=DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS):
     """Apply local a raster operation on a stack of rasters.
 
@@ -137,12 +138,16 @@ def raster_calculator(
             target raster.
         calc_raster_stats (boolean): If True, calculates and sets raster
             statistics (min, max, mean, and stdev) for target raster.
+        use_shared_memory (boolean): If True, uses Python Multiprocessing
+            shared memory to calculate raster stats for faster performance.
         largest_block (int): Attempts to internally iterate over raster blocks
             with this many elements.  Useful in cases where the blocksize is
             relatively small, memory is available, and the function call
             overhead dominates the iteration.  Defaults to 2**20.  A value of
             anything less than the original blocksize of the raster will
             result in blocksizes equal to the original size.
+        max_timeout (float): amount of time in seconds to wait for stats
+            worker thread to join. Default is _MAX_TIMEOUT.
         raster_driver_creation_tuple (tuple): a tuple containing a GDAL driver
             name string as the first element and a GDAL creation options
             tuple/list as the second. Defaults to
@@ -455,7 +460,7 @@ def raster_calculator(
                     target_block = target_block[target_block != nodata_target]
                 target_block = target_block.astype(numpy.float64).flatten()
 
-                if sys.version_info >= (3, 8):
+                if sys.version_info >= (3, 8) and use_shared_memory:
                     shared_memory_array = numpy.ndarray(
                         target_block.shape, dtype=target_block.dtype,
                         buffer=shared_memory.buf)
@@ -478,39 +483,46 @@ def raster_calculator(
 
         if calc_raster_stats:
             LOGGER.info("Waiting for raster stats worker result.")
-            stats_worker_thread.join(_MAX_TIMEOUT)
+            stats_worker_thread.join(max_timeout)
             if stats_worker_thread.is_alive():
+                LOGGER.error("stats_worker_thread.join() timed out")
                 raise RuntimeError("stats_worker_thread.join() timed out")
-            payload = stats_worker_queue.get(True, _MAX_TIMEOUT)
+            payload = stats_worker_queue.get(True, max_timeout)
             if payload is not None:
                 target_min, target_max, target_mean, target_stddev = payload
                 target_band.SetStatistics(
                     float(target_min), float(target_max), float(target_mean),
                     float(target_stddev))
                 target_band.FlushCache()
+    except Exception:
+        LOGGER.exception('exception encountered in raster_calculator')
+        raise
     finally:
         # This block ensures that rasters are destroyed even if there's an
         # exception raised.
         base_band_list[:] = []
-        for raster in base_raster_list:
-            gdal.Dataset.__swig_destroy__(raster)
         base_raster_list[:] = []
         target_band.FlushCache()
         target_band = None
         target_raster.FlushCache()
-        gdal.Dataset.__swig_destroy__(target_raster)
         target_raster = None
 
         if calc_raster_stats and stats_worker_thread:
             if stats_worker_thread.is_alive():
-                stats_worker_queue.put(None, True, _MAX_TIMEOUT)
+                stats_worker_queue.put(None, True, max_timeout)
                 LOGGER.info("Waiting for raster stats worker result.")
-                stats_worker_thread.join(_MAX_TIMEOUT)
+                stats_worker_thread.join(max_timeout)
                 if stats_worker_thread.is_alive():
-                    raise RuntimeError("stats_worker_thread.join() timed out")
-                if sys.version_info >= (3, 8):
+                    LOGGER.error("stats_worker_thread.join() timed out")
+                    raise RuntimeError(
+                        "stats_worker_thread.join() timed out")
+                if sys.version_info >= (3, 8) and use_shared_memory:
+                    LOGGER.debug(
+                        f'unlink shared memory for process {os.getpid()}')
                     shared_memory.close()
                     shared_memory.unlink()
+                    LOGGER.debug(
+                        f'unlinked shared memory for process {os.getpid()}')
 
             # check for an exception in the workers, otherwise get result
             # and pass to writer
@@ -2432,6 +2444,7 @@ def convolve_2d(
         ignore_nodata_and_edges=False, mask_nodata=True,
         normalize_kernel=False, target_datatype=gdal.GDT_Float64,
         target_nodata=None, working_dir=None, set_tol_to_zero=1e-8,
+        max_timeout=_MAX_TIMEOUT,
         raster_driver_creation_tuple=DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS):
     """Convolve 2D kernel over 2D signal.
 
@@ -2494,6 +2507,8 @@ def convolve_2d(
             sometimes result in "numerical zero", such as -1.782e-18 that
             cannot be tolerated by users of this function. If `None` no
             adjustment will be done to output values.
+        max_timeout (float): maximum amount of time to wait for worker thread
+            to terminate.
         raster_driver_creation_tuple (tuple): a tuple containing a GDAL driver
             name string as the first element and a GDAL creation options
             tuple/list as the second. Defaults to a GTiff driver tuple
@@ -2627,7 +2642,7 @@ def convolve_2d(
              left_index_result, right_index_result,
              top_index_result, bottom_index_result) = write_payload
         else:
-            worker.join(_MAX_TIMEOUT)
+            worker.join(max_timeout)
             break
 
         output_array = numpy.empty(

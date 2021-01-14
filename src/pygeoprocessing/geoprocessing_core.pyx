@@ -563,7 +563,8 @@ def stats_worker(stats_work_queue, expected_blocks):
             payload = stats_work_queue.get()
             if payload is None:
                 break
-            if sys.version_info >= (3, 8):
+            if len(payload) == 3:
+                # Payload is a shared memory pointer
                 shape, dtype, existing_shm = payload
                 block = numpy.ndarray(
                     shape, dtype=dtype, buffer=existing_shm.buf)
