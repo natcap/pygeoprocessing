@@ -23,8 +23,10 @@ Unreleased Changes
   memory corruption.
 * Exposing a ``use_shared_memory`` flag on ``raster_calculator`` to allow
   a user to use shared memory objects when calculating statistics. This
-  feature creates a significant runtime improvement but has been unstable
-  in multiprocessing configurations. It is defaulted to ``False``.
+  feature is only available for Python >= 3.8. If available, this
+  feature creates a significant runtime improvement but can be unstable
+  in multiprocessing configurations. For this reason it is set to
+  ``False`` as the default value.
 * Added a ``max_timeout`` parameter to ``convolve_2d`` and
   ``raster_calculator`` to allow the user to specify the maximum amount of
   time to wait for worker threads to terminate. In normal operation these

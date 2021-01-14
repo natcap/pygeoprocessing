@@ -140,6 +140,8 @@ def raster_calculator(
             statistics (min, max, mean, and stdev) for target raster.
         use_shared_memory (boolean): If True, uses Python Multiprocessing
             shared memory to calculate raster stats for faster performance.
+            This feature is available for Python >= 3.8 and will otherwise
+            be ignored for earlier versions of Python.
         largest_block (int): Attempts to internally iterate over raster blocks
             with this many elements.  Useful in cases where the blocksize is
             relatively small, memory is available, and the function call
