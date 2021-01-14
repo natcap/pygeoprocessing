@@ -562,9 +562,10 @@ def stats_worker(stats_work_queue, expected_blocks):
             if payload is None:
                 break
             if isinstance(payload, numpy.ndarray):
+                # if the payload is a normal array take it as the array block
                 block = payload
             else:
-                # Payload is a shared memory pointer
+                # if not an ndarray, it is a shared memory pointer tuple
                 shape, dtype, existing_shm = payload
                 block = numpy.ndarray(
                     shape, dtype=dtype, buffer=existing_shm.buf)
