@@ -3922,7 +3922,7 @@ def calculate_subwatershed_boundary(
                     visit_order_stack.append((working_fid, ds_x, ds_y))
 
     cdef int edge_side, edge_dir, cell_to_test, out_dir_increase=-1
-    cdef int left, right
+    cdef int left, right, n_left_turns
 
     for index, (stream_fid, x_l, y_l) in enumerate(visit_order_stack):
         if ctime(NULL) - last_log_time > _LOGGING_PERIOD:
@@ -3977,6 +3977,9 @@ def calculate_subwatershed_boundary(
                 # note the pixel moved
                 boundary_list.append((x_l, y_l))
 
+        # use to keep track of how many turns around a pixel, used if
+        # a degerate
+        n_left_turns = 0
         while True:
             # step the edge then determine the projected coordinates
             x_f += D8_XOFFSET[edge_dir]
@@ -3985,6 +3988,11 @@ def calculate_subwatershed_boundary(
             x_p = g0 + g1*x_f + g2*y_f
             y_p = g3 + g4*x_f + g5*y_f
             watershed_boundary.AddPoint(x_p, y_p)
+
+            if n_left_turns == 4:
+                LOGGER.info(
+                    '4 left turns around the same pixel so terminating')
+                break
             if x_l < 0 or y_l < 0 or x_l >= n_cols or y_l >= n_rows:
                 raise RuntimeError(
                     f'{x_l}, {y_l} out of bounds for '
@@ -4019,18 +4027,21 @@ def calculate_subwatershed_boundary(
                     discovery, finish, discovery_managed_raster,
                     discovery_nodata,
                     boundary_list)
+                n_left_turns = 0
             elif left_in:
                 # step forward
                 x_l += D8_XOFFSET[edge_dir]
                 y_l += D8_YOFFSET[edge_dir]
                 # the pixel moves forward
                 boundary_list.append((x_l, y_l))
+                n_left_turns = 0
             else:
                 # turn left
                 edge_side = edge_dir
                 edge_dir = (edge_side + out_dir_increase) % 8
+                n_left_turns += 1
 
-            if is_close(x_p, x_first) and is_close(y_p, y_first):
+            if _is_close(x_p, x_first) and _is_close(y_p, y_first):
                 # met the start point so we completed the watershed loop
                 break
 
