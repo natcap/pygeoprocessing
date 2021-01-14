@@ -294,7 +294,7 @@ def raster_calculator(
         # tuple, 1d ndarray, 2d ndarray, or (value, 'raw') tuple.
         if _is_raster_path_band_formatted(value):
             # it's a raster/path band, keep track of open raster and band
-            # for later so we can __swig_destroy__ them.
+            # for later so we can `None` them.
             base_raster_list.append(gdal.OpenEx(value[0], gdal.OF_RASTER))
             base_band_list.append(
                 base_raster_list[-1].GetRasterBand(value[1]))
@@ -2154,7 +2154,7 @@ def rasterize(
         raster, [1], layer, burn_values=burn_values,
         options=option_list, callback=rasterize_callback)
     raster.FlushCache()
-    gdal.Dataset.__swig_destroy__(raster)
+    raster = None
 
     if result != 0:
         raise RuntimeError('Rasterize returned a nonzero exit code.')
@@ -2860,7 +2860,6 @@ def iterblocks(
                 yield (offset_dict, band.ReadAsArray(**offset_dict))
 
     band = None
-    gdal.Dataset.__swig_destroy__(raster)
     raster = None
 
 

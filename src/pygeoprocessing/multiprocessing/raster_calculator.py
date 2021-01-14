@@ -460,7 +460,7 @@ def raster_calculator(
         # tuple, 1d ndarray, 2d ndarray, or (value, 'raw') tuple.
         if _is_raster_path_band_formatted(value):
             # it's a raster/path band, keep track of open raster and band
-            # for later so we can __swig_destroy__ them.
+            # for later so we can `None` them.
             base_canonical_arg_list.append(
                 RasterPathBand(value[0], value[1]))
         elif isinstance(value, numpy.ndarray):

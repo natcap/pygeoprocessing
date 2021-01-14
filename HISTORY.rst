@@ -19,6 +19,12 @@ Unreleased Changes
   considered a plateau otherwise a drain into or out of the pixel is
   resolved. Testing is close allowed a hydrological pit to remain since it
   was "close" to the same height as a draining pixel.
+* Removing all instances of ``__swig_destroy__`` to prevent multiprocessing
+  memory corruption.
+* Exposing a ``use_shared_memory`` flag on ``raster_calculator`` to allow
+  a user to use shared memory objects when calculating statistics. This
+  feature creates a significant runtime improvement but has been unstable
+  in multiprocessing configurations. It is defaulted to ``False``.
 
 2.1.2 (2020-12-03)
 ------------------

@@ -524,8 +524,6 @@ def calculate_slope(
 
     dem_band = None
     target_slope_band = None
-    gdal.Dataset.__swig_destroy__(dem_raster)
-    gdal.Dataset.__swig_destroy__(target_slope_raster)
     dem_raster = None
     target_slope_raster = None
 
