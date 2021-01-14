@@ -25,6 +25,13 @@ Unreleased Changes
   a user to use shared memory objects when calculating statistics. This
   feature creates a significant runtime improvement but has been unstable
   in multiprocessing configurations. It is defaulted to ``False``.
+* Added a ``max_timeout`` parameter to ``convolve_2d`` and
+  ``raster_calculator`` to allow the user to specify the maximum amount of
+  time to wait for worker threads to terminate. In normal operation these
+  threads should terminate in a short amount of time but are generously
+  timed with the ``pygeoprocessing._MAX_TIMEOUT`` parameter. This parameter
+  allows a user to tune in cases that may involve significant latency such
+  as in a heavy multiprocess environment.
 
 2.1.2 (2020-12-03)
 ------------------
