@@ -183,8 +183,8 @@ cdef cppclass GreaterPixel nogil:
                 return 1
         return 0
 
-cdef int _is_close(double x, double y):
-    return abs(x-y) <= (1e-8+1e-05*abs(y))
+cdef int _is_close(double x, double y, double abs_delta, double rel_delta):
+    return abs(x-y) <= (abs_delta+rel_delta*abs(y))
 
 # a class to allow fast random per-pixel access to a raster for both setting
 # and reading pixels.
@@ -817,7 +817,7 @@ def fill_pits(
         for yi in range(1, win_ysize+1):
             for xi in range(1, win_xsize+1):
                 center_val = dem_buffer_array[yi, xi]
-                if _is_close(center_val, dem_nodata):
+                if _is_close(center_val, dem_nodata, 1e-8, 1e-5):
                     continue
 
                 # this value is set in case it turns out to be the root of a
@@ -844,7 +844,7 @@ def fill_pits(
                         nodata_neighbor = 1
                         break
                     n_height = filled_dem_managed_raster.get(xi_n, yi_n)
-                    if _is_close(n_height, dem_nodata):
+                    if _is_close(n_height, dem_nodata, 1e-8, 1e-5):
                         # it'll drain to nodata
                         nodata_neighbor = 1
                         break
@@ -884,7 +884,7 @@ def fill_pits(
                             continue
                         n_height = filled_dem_managed_raster.get(
                             xi_n, yi_n)
-                        if _is_close(n_height, dem_nodata):
+                        if _is_close(n_height, dem_nodata, 1e-8, 1e-5):
                             nodata_drain = 1
                             continue
                         if n_height < center_val:
@@ -943,7 +943,7 @@ def fill_pits(
                             xi_n, yi_n, feature_id)
 
                         n_height = filled_dem_managed_raster.get(xi_n, yi_n)
-                        if _is_close(n_height, dem_nodata) or (
+                        if _is_close(n_height, dem_nodata, 1e-8, 1e-5) or (
                                 n_height < fill_height):
                             # we encounter a neighbor not processed that is
                             # lower than the current pixel or nodata
@@ -1199,7 +1199,7 @@ def flow_dir_d8(
         for yi in range(1, win_ysize+1):
             for xi in range(1, win_xsize+1):
                 root_height = dem_buffer_array[yi, xi]
-                if _is_close(root_height, dem_nodata):
+                if _is_close(root_height, dem_nodata, 1e-8, 1e-5):
                     continue
 
                 # this value is set in case it turns out to be the root of a
@@ -1223,7 +1223,7 @@ def flow_dir_d8(
                     xi_n = xi+NEIGHBOR_OFFSET_ARRAY[2*i_n]
                     yi_n = yi+NEIGHBOR_OFFSET_ARRAY[2*i_n+1]
                     n_height = dem_buffer_array[yi_n, xi_n]
-                    if _is_close(n_height, dem_nodata):
+                    if _is_close(n_height, dem_nodata, 1e-8, 1e-5):
                         continue
                     n_slope = root_height - n_height
                     if i_n & 1:
@@ -1265,7 +1265,7 @@ def flow_dir_d8(
                             n_height = dem_nodata
                         else:
                             n_height = dem_managed_raster.get(xi_n, yi_n)
-                        if _is_close(n_height, dem_nodata):
+                        if _is_close(n_height, dem_nodata, 1e-8, 1e-5):
                             if diagonal_nodata and largest_slope == 0.0:
                                 largest_slope_dir = i_n
                                 diagonal_nodata = i_n & 1
@@ -1531,7 +1531,7 @@ def flow_accumulation_d8(
                     if weight_raster is not None:
                         weight_val = <double>weight_raster.get(
                             xi_root, yi_root)
-                        if _is_close(weight_val, weight_nodata):
+                        if _is_close(weight_val, weight_nodata, 1e-8, 1e-5):
                             weight_val = 0.0
                     else:
                         weight_val = 1.0
@@ -1559,14 +1559,14 @@ def flow_accumulation_d8(
                             continue
                         upstream_flow_accum = <double>(
                             flow_accum_managed_raster.get(xi_n, yi_n))
-                        if _is_close(upstream_flow_accum, flow_accum_nodata):
+                        if _is_close(upstream_flow_accum, flow_accum_nodata, 1e-8, 1e-5):
                             # process upstream before this one
                             flow_pixel.last_flow_dir = i_n
                             search_stack.push(flow_pixel)
                             if weight_raster is not None:
                                 weight_val = <double>weight_raster.get(
                                     xi_n, yi_n)
-                                if _is_close(weight_val, weight_nodata):
+                                if _is_close(weight_val, weight_nodata, 1e-8, 1e-5):
                                     weight_val = 0.0
                             else:
                                 weight_val = 1.0
@@ -1821,7 +1821,7 @@ def flow_dir_mfd(
         for yi in range(1, win_ysize+1):
             for xi in range(1, win_xsize+1):
                 root_height = dem_buffer_array[yi, xi]
-                if _is_close(root_height, dem_nodata):
+                if _is_close(root_height, dem_nodata, 1e-8, 1e-5):
                     continue
 
                 # this value is set in case it turns out to be the root of a
@@ -1846,7 +1846,7 @@ def flow_dir_mfd(
                     xi_n = xi+NEIGHBOR_OFFSET_ARRAY[2*i_n]
                     yi_n = yi+NEIGHBOR_OFFSET_ARRAY[2*i_n+1]
                     n_height = dem_buffer_array[yi_n, xi_n]
-                    if _is_close(n_height, dem_nodata):
+                    if _is_close(n_height, dem_nodata, 1e-8, 1e-5):
                         continue
                     n_slope = root_height - n_height
                     if n_slope > 0.0:
@@ -1898,7 +1898,7 @@ def flow_dir_mfd(
                             n_height = dem_nodata
                         else:
                             n_height = dem_managed_raster.get(xi_n, yi_n)
-                        if _is_close(n_height, dem_nodata):
+                        if _is_close(n_height, dem_nodata, 1e-8, 1e-5):
                             n_slope = SQRT2_INV if i_n & 1 else 1.0
                             sum_of_nodata_slope_weights += n_slope
                             nodata_downhill_slope_array[i_n] = n_slope
@@ -2277,7 +2277,7 @@ def flow_accumulation_mfd(
                         if weight_raster is not None:
                             weight_val = <double>weight_raster.get(
                                 xi_root, yi_root)
-                            if _is_close(weight_val, weight_nodata):
+                            if _is_close(weight_val, weight_nodata, 1e-8, 1e-5):
                                 weight_val = 0.0
                         else:
                             weight_val = 1.0
@@ -2315,7 +2315,7 @@ def flow_accumulation_mfd(
                             continue
                         upstream_flow_accum = (
                             flow_accum_managed_raster.get(xi_n, yi_n))
-                        if (_is_close(upstream_flow_accum, flow_accum_nodata)
+                        if (_is_close(upstream_flow_accum, flow_accum_nodata, 1e-8, 1e-5)
                                 and not visited_managed_raster.get(
                                     xi_n, yi_n)):
                             # process upstream before this one
@@ -2324,7 +2324,7 @@ def flow_accumulation_mfd(
                             if weight_raster is not None:
                                 weight_val = <double>weight_raster.get(
                                     xi_n, yi_n)
-                                if _is_close(weight_val, weight_nodata):
+                                if _is_close(weight_val, weight_nodata, 1e-8, 1e-5):
                                     weight_val = 0.0
                             else:
                                 weight_val = 1.0
@@ -2534,7 +2534,7 @@ def distance_to_channel_d8(
                             # account for diagonal distance.
                             if weight_raster is not None:
                                 weight_val = weight_raster.get(xi_n, yi_n)
-                                if _is_close(weight_val, weight_nodata):
+                                if _is_close(weight_val, weight_nodata, 1e-8, 1e-5):
                                     weight_val = 0.0
                             else:
                                 weight_val = (SQRT2 if i_n % 2 else 1)
@@ -2713,7 +2713,7 @@ def distance_to_channel_mfd(
                     continue
 
                 if _is_close(distance_to_channel_managed_raster.get(
-                        xi_root, yi_root), distance_nodata):
+                        xi_root, yi_root), distance_nodata, 1e-8, 1e-5):
                     distance_to_channel_stack.push(
                         FlowPixelType(xi_root, yi_root, 0, 0.0))
 
@@ -2748,7 +2748,7 @@ def distance_to_channel_mfd(
                         n_distance = distance_to_channel_managed_raster.get(
                             xi_n, yi_n)
 
-                        if _is_close(n_distance, distance_nodata):
+                        if _is_close(n_distance, distance_nodata, 1e-8, 1e-5):
                             preempted = 1
                             pixel.last_flow_dir = i_n
                             distance_to_channel_stack.push(pixel)
@@ -2763,7 +2763,7 @@ def distance_to_channel_mfd(
                         # for diagonal distance.
                         if weight_raster is not None:
                             weight_val = weight_raster.get(xi_n, yi_n)
-                            if _is_close(weight_val, weight_nodata):
+                            if _is_close(weight_val, weight_nodata, 1e-8, 1e-5):
                                 weight_val = 0.0
                         else:
                             weight_val = (SQRT2 if i_n % 2 else 1)
@@ -2896,7 +2896,7 @@ def extract_streams_mfd(
             for xi in range(win_xsize):
                 xi_root = xi+xoff
                 flow_accum = flow_accum_mr.get(xi_root, yi_root)
-                if _is_close(flow_accum, flow_accum_nodata):
+                if _is_close(flow_accum, flow_accum_nodata, 1e-8, 1e-5):
                     continue
                 if stream_mr.get(xi_root, yi_root) != stream_nodata:
                     continue
@@ -3791,7 +3791,8 @@ def _build_discovery_finish_rasters(
 
 def calculate_subwatershed_boundary(
         d8_flow_dir_raster_path_band,
-        strahler_stream_vector_path, target_watershed_boundary_vector_path):
+        strahler_stream_vector_path, target_watershed_boundary_vector_path,
+        max_steps_per_watershed=1000000):
     """Calculate a stringline boundary around all subwatersheds.
 
     Subwatersheds start where the ``strahler_stream_vector`` has a junction
@@ -3809,9 +3810,13 @@ def calculate_subwatershed_boundary(
         strahler_stream_vector_path (str): path to stream segment vector
         target_watershed_boundary_vector_path (str): path to created vector
             of stringline for watershed boundaries.
+        max_steps_per_watershed (int): maximum number of steps to take when
+            defining a watershed boundary. Useful if the DEM is large and
+            degenerate or some other user known condition to limit long large
+            polygons. Defaults to 1000000.
 
     Returns:
-        linestring of projected points indicating watershed boundary.
+        None.
     """
     workspace_dir = tempfile.mkdtemp(
         dir=os.path.join(
@@ -3864,6 +3869,8 @@ def calculate_subwatershed_boundary(
     watershed_layer = watershed_vector.CreateLayer(
         'watershed_vector', discovery_srs, ogr.wkbPolygon)
     watershed_layer.CreateField(ogr.FieldDefn('stream_fid', ogr.OFTInteger))
+    watershed_layer.CreateField(
+        ogr.FieldDefn('terminated_early', ogr.OFTInteger))
     watershed_layer.StartTransaction()
 
     cdef int x_l, y_l, outflow_dir
@@ -3922,7 +3929,9 @@ def calculate_subwatershed_boundary(
                     visit_order_stack.append((working_fid, ds_x, ds_y))
 
     cdef int edge_side, edge_dir, cell_to_test, out_dir_increase=-1
-    cdef int left, right, n_left_turns
+    cdef int left, right, n_left_turns, n_steps, terminated_early
+    cdef double abs_delta_x, abs_delta_y
+    cdef int _int_max_steps_per_watershed = max_steps_per_watershed
 
     for index, (stream_fid, x_l, y_l) in enumerate(visit_order_stack):
         if ctime(NULL) - last_log_time > _LOGGING_PERIOD:
@@ -3953,6 +3962,7 @@ def calculate_subwatershed_boundary(
 
         x_p, y_p = gdal.ApplyGeoTransform(geotransform, x_f, y_f)
         watershed_boundary.AddPoint(x_p, y_p)
+
         x_first, y_first = x_p, y_p
 
         # determine the first edge
@@ -3980,6 +3990,11 @@ def calculate_subwatershed_boundary(
         # use to keep track of how many turns around a pixel, used if
         # a degerate
         n_left_turns = 0
+        n_steps = 0
+        terminated_early = 0
+        # deltas should be within 0.01 % of a pixel width
+        abs_delta_x = (abs(g1)+abs(g2)) * 0.01
+        abs_delta_y = (abs(g4)+abs(g5)) * 0.01
         while True:
             # step the edge then determine the projected coordinates
             x_f += D8_XOFFSET[edge_dir]
@@ -3988,12 +4003,18 @@ def calculate_subwatershed_boundary(
             x_p = g0 + g1*x_f + g2*y_f
             y_p = g3 + g4*x_f + g5*y_f
             watershed_boundary.AddPoint(x_p, y_p)
-
+            n_steps += 1
+            if n_steps > _int_max_steps_per_watershed:
+                LOGGER.warning('quitting, too many steps')
+                terminated_early = 1
+                break
             if n_left_turns == 4:
                 LOGGER.info(
                     '4 left turns around the same pixel so terminating')
                 break
             if x_l < 0 or y_l < 0 or x_l >= n_cols or y_l >= n_rows:
+                # This is unexpected but worth checking since missing this
+                # error would be very difficult to debug.
                 raise RuntimeError(
                     f'{x_l}, {y_l} out of bounds for '
                     f'{n_cols}x{n_rows} raster.')
@@ -4007,7 +4028,6 @@ def calculate_subwatershed_boundary(
                 right = edge_dir
                 left = (edge_side+1)
                 out_dir_increase = -2
-            pixel_move = 1
             left_in = _in_watershed(
                 x_l, y_l, left, discovery, finish, n_cols, n_rows,
                 discovery_managed_raster, discovery_nodata)
@@ -4041,7 +4061,8 @@ def calculate_subwatershed_boundary(
                 edge_dir = (edge_side + out_dir_increase) % 8
                 n_left_turns += 1
 
-            if _is_close(x_p, x_first) and _is_close(y_p, y_first):
+            if _is_close(x_p, x_first, abs_delta_x, 0.0) and \
+                    _is_close(y_p, y_first, abs_delta_y, 0.0):
                 # met the start point so we completed the watershed loop
                 break
 
@@ -4050,6 +4071,7 @@ def calculate_subwatershed_boundary(
         watershed_polygon.AddGeometry(watershed_boundary)
         watershed_feature.SetGeometry(watershed_polygon)
         watershed_feature.SetField('stream_fid', stream_fid)
+        watershed_feature.SetField('terminated_early', terminated_early)
         watershed_layer.CreateFeature(watershed_feature)
 
         # this loop fills in the raster at the boundary, done at end so it
@@ -4062,7 +4084,7 @@ def calculate_subwatershed_boundary(
     watershed_vector = None
     discovery_managed_raster.close()
     finish_managed_raster.close()
-    #shutil.rmtree(workspace_dir)
+    shutil.rmtree(workspace_dir)
     LOGGER.info(
         '(calculate_subwatershed_boundary): watershed building 100% complete')
 
@@ -4301,3 +4323,4 @@ def _delete_feature(
         del downstream_to_upstream_ids[
             stream_fid]
     stream_layer.DeleteFeature(stream_fid)
+
