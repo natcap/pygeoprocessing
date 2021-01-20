@@ -3012,8 +3012,31 @@ def extract_strahler_streams_d8(
     at least the fields:
 
         * "order" (int): an integer representing the stream order
-        * "river_id" (int): unique ID used by all stream segements that
+        * "river_id" (int): unique ID used by all stream segments that
             connect to the same outlet.
+        * "drop_distance" (float): this is the drop distance in DEM units
+            from the upstream to downstream component of this stream
+            segment.
+        * "outlet" (int): 1 if this segment is an outlet, 0 if not.
+        * "river_id": unique ID among all stream segments which are
+            hydrologically connected.
+        * "us_fa" (int): flow accumulation value at the upstream end of
+            the stream segment.
+        * "ds_fa" (int): flow accumulation value at the downstream end of
+            the stream segment
+        * "thresh_fa" (int): the final threshold flow accumulation value
+            used to determine the river segments.
+        * "upstream_d8_dir" (int): a bookkeeping parameter from stream
+            calculations that is left in due to the overhead
+            of deleting a field.
+        * "ds_x" (int): the downstream x coordinate in raster space for the
+            stream segment outlet.
+        * "ds_y" (int): the downstream y coordinate in raster space for the
+            stream segment outlet.
+        * "us_x" (int): the upstream x coordinate in raster space for the
+            stream segment outlet.
+        * "us_y" (int): the upstream y coordinate in raster space for the
+            stream segment outlet.
 
     Args:
         flow_dir_d8_raster_path_band (tuple): a path/band representing the D8
@@ -3507,6 +3530,7 @@ def extract_strahler_streams_d8(
         '(extract_strahler_streams_d8): '
         'flow accumulation adjustment complete')
 
+    stream_layer.DeleteField(stream_layer.FindFieldIndex('upstream_d8_dir'))
     stream_layer.CommitTransaction()
     stream_layer.StartTransaction()
     LOGGER.info(
