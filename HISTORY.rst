@@ -34,6 +34,10 @@ Unreleased Changes
   timed with the ``pygeoprocessing._MAX_TIMEOUT`` parameter. This parameter
   allows a user to tune in cases that may involve significant latency such
   as in a heavy multiprocess environment.
+* Added a ``routing.detect_outlets`` function that creates a vector points
+  on the center of the pixels in projected coordinate space that are outlets.
+  The vector has additional metadata about the (i, j) locations in the raster
+  those pixels can be found.
 
 2.1.2 (2020-12-03)
 ------------------
