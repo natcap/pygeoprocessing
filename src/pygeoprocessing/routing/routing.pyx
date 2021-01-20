@@ -4011,7 +4011,8 @@ def calculate_subwatershed_boundary(
             # step the edge then determine the projected coordinates
             x_f += D8_XOFFSET[edge_dir]
             y_f += D8_YOFFSET[edge_dir]
-            # equivalent to gdal.ApplyGeoTransform(geotransform, x_f, y_f):
+            # equivalent to gdal.ApplyGeoTransform(geotransform, x_f, y_f)
+            # to eliminate python function call overhead
             x_p = g0 + g1*x_f + g2*y_f
             y_p = g3 + g4*x_f + g5*y_f
             watershed_boundary.AddPoint(x_p, y_p)
