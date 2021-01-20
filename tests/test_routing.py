@@ -130,12 +130,16 @@ class TestRouting(unittest.TestCase):
             [4, -1, 2, 2],
             [2, 2, 6, 2]])
         flow_dir_d8_path = os.path.join('test_dir', 'd8.tif')
+        try:
+            os.makedirs('test_dir')
+        except:
+            pass
         _array_to_raster(flow_dir_d8, -1, flow_dir_d8_path)
 
         target_outlet_vector_path = os.path.join(
             'test_dir', 'outlets.gpkg')
         pygeoprocessing.routing.detect_outlets(
-            (flow_dir_d8, 1), target_outlet_vector_path)
+            (flow_dir_d8_path, 1), target_outlet_vector_path)
 
     def test_flow_accum_d8(self):
         """PGP.routing: test D8 flow accum."""

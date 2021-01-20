@@ -3014,7 +3014,7 @@ def detect_outlets(d8_flow_dir_raster_path_band, target_outlet_vector_path):
     cdef int xoff, yoff, win_xsize, win_ysize, xi, yi, i_n, xi_n, yi_n
     cdef int xi_root, yi_root, raster_x_size, raster_y_size
 
-    raster_info = pygeoprocessing.pygeoprocessing.get_raster_info(
+    raster_info = pygeoprocessing.get_raster_info(
         d8_flow_dir_raster_path_band[0])
 
     cdef int flow_dir_nodata = raster_info['nodata'][
@@ -3050,7 +3050,7 @@ def detect_outlets(d8_flow_dir_raster_path_band, target_outlet_vector_path):
         d8_flow_dir_raster_path_band[1], 0)
 
     for block_offsets in pygeoprocessing.iterblocks(
-            (d8_flow_dir_raster_path_band, 1), offset_only=True):
+            d8_flow_dir_raster_path_band, offset_only=True):
         xoff = block_offsets['xoff']
         yoff = block_offsets['yoff']
         win_xsize = block_offsets['win_xsize']
@@ -3071,17 +3071,14 @@ def detect_outlets(d8_flow_dir_raster_path_band, target_outlet_vector_path):
                     continue
 
                 is_outlet = 0
-                for i_n in range(8):
-                    xi_n = xi_root+NEIGHBOR_OFFSET_ARRAY[2*i_n]
-                    yi_n = yi_root+NEIGHBOR_OFFSET_ARRAY[2*i_n+1]
-                    if (xi_n < 0 or xi_n >= raster_x_size or
-                            yi_n < 0 or yi_n >= raster_y_size):
-                        # it'll drain off the edge of the raster
-                        is_outlet = 1
-                        break
-                    if <int>d8_flow_dir_mr.get(xi_n, yi_n) == flow_dir_nodata:
-                        is_outlet = 1
-                        break
+                xi_n = xi_root+NEIGHBOR_OFFSET_ARRAY[2*flow_dir]
+                yi_n = yi_root+NEIGHBOR_OFFSET_ARRAY[2*flow_dir+1]
+                if (xi_n < 0 or xi_n >= raster_x_size or
+                        yi_n < 0 or yi_n >= raster_y_size):
+                    # it'll drain off the edge of the raster
+                    is_outlet = 1
+                elif <int>d8_flow_dir_mr.get(xi_n, yi_n) == flow_dir_nodata:
+                    is_outlet = 1
                 if is_outlet:
                     outlet_point = ogr.Geometry(ogr.wkbPoint)
                     proj_x, proj_y = gdal.ApplyGeoTransform(
