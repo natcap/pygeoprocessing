@@ -3930,6 +3930,7 @@ def calculate_subwatershed_boundary(
         None.
     """
     workspace_dir = tempfile.mkdtemp(
+        prefix='calculate_subwatershed_boundary_workspace_',
         dir=os.path.join(
             os.path.dirname(target_watershed_boundary_vector_path)))
     discovery_time_raster_path = os.path.join(workspace_dir, 'discovery.tif')
