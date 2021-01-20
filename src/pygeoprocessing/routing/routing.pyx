@@ -4293,7 +4293,7 @@ cdef int _in_watershed(
             point_discovery <= finish)
 
 
-def _calculate_stream_geometry(
+cdef _calculate_stream_geometry(
         int x_l, int y_l, int upstream_d8_dir, geotransform, int n_cols,
         int n_rows, _ManagedRaster flow_accum_managed_raster,
         _ManagedRaster flow_dir_managed_raster, int flow_dir_nodata,
