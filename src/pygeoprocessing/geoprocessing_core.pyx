@@ -24,12 +24,23 @@ from libc.stdio cimport fread
 from libc.stdio cimport fwrite
 from libcpp.vector cimport vector
 from osgeo import gdal
+from osgeo import osr
 import numpy
 import pygeoprocessing
 
 DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS = ('GTIFF', (
     'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
     'BLOCKXSIZE=256', 'BLOCKYSIZE=256'))
+
+# In GDAL 3.0 spatial references no longer ignore Geographic CRS Axis Order
+# and conform to Lat first, Lon Second. Transforms expect (lat, lon) order
+# as opposed to the GIS friendly (lon, lat). See
+# https://trac.osgeo.org/gdal/wiki/rfc73_proj6_wkt2_srsbarn Axis order
+# issues. SetAxisMappingStrategy(osr.OAMS_TRADITIONAL_GIS_ORDER) swaps the
+# axis order, which will use Lon,Lat order for Geographic CRS, but otherwise
+# leaves Projected CRS alone
+DEFAULT_OSR_AXIS_MAPPING_STRATEGY = osr.OAMS_TRADITIONAL_GIS_ORDER
+
 LOGGER = logging.getLogger('pygeoprocessing.geoprocessing_core')
 
 cdef float _NODATA = -1.0
