@@ -80,6 +80,16 @@ cdef double SQRT2_INV = 1.0 / 1.4142135623730951
 cdef int *D8_XOFFSET = [1, 1, 0, -1, -1, -1, 0, 1]
 cdef int *D8_YOFFSET = [0, -1, -1, -1, 0, +1, +1, +1]
 
+cdef int *D8_BACKFLOW = [
+        0, 0, 0, 0, 1, 0, 0, 0,
+        0, 0, 0, 0, 0, 1, 0, 0,
+        0, 0, 0, 0, 0, 0, 1, 0,
+        0, 0, 0, 0, 0, 0, 0, 1,
+        1, 0, 0, 0, 0, 0, 0, 0,
+        0, 1, 0, 0, 0, 0, 0, 0,
+        0, 0, 1, 0, 0, 0, 0, 0,
+        0, 0, 0, 1, 0, 0, 0, 0]
+
 # this is used to calculate the opposite D8 direction interpreting the index
 # as a D8 direction
 cdef int* D8_REVERSE_DIRECTION = [4, 5, 6, 7, 0, 1, 2, 3]
@@ -3000,7 +3010,7 @@ def detect_outlets(d8_flow_dir_raster_path_band, target_outlet_vector_path):
         None.
     """
     cdef int is_outlet, flow_dir
-    cdef int xoff, yoff, win_xsize, win_ysize, xi, yi, i_n, xi_n, yi_n
+    cdef int xoff, yoff, win_xsize, win_ysize, xi, yi, xi_n, yi_n
     cdef int xi_root, yi_root, raster_x_size, raster_y_size
 
     raster_info = pygeoprocessing.get_raster_info(
@@ -3062,8 +3072,8 @@ def detect_outlets(d8_flow_dir_raster_path_band, target_outlet_vector_path):
                     continue
 
                 is_outlet = 0
-                xi_n = xi_root+NEIGHBOR_OFFSET_ARRAY[2*flow_dir]
-                yi_n = yi_root+NEIGHBOR_OFFSET_ARRAY[2*flow_dir+1]
+                xi_n = xi_root+D8_XOFFSET[flow_dir]
+                yi_n = yi_root+D8_YOFFSET[flow_dir]
                 if (xi_n < 0 or xi_n >= raster_x_size or
                         yi_n < 0 or yi_n >= raster_y_size):
                     # it'll drain off the edge of the raster
@@ -3238,15 +3248,6 @@ def extract_strahler_streams_d8(
     # 0x4
     # 123
     cdef int x_n, y_n  # the _n is for "neighbor"
-    cdef int *d8_backflow = [
-        0, 0, 0, 0, 1, 0, 0, 0,
-        0, 0, 0, 0, 0, 1, 0, 0,
-        0, 0, 0, 0, 0, 0, 1, 0,
-        0, 0, 0, 0, 0, 0, 0, 1,
-        1, 0, 0, 0, 0, 0, 0, 0,
-        0, 1, 0, 0, 0, 0, 0, 0,
-        0, 0, 1, 0, 0, 0, 0, 0,
-        0, 0, 0, 1, 0, 0, 0, 0]
     cdef int upstream_count=0, upstream_index
     # this array is filled out as upstream directions are calculated and
     # indexed by `upstream_count`
@@ -3315,7 +3316,7 @@ def extract_strahler_streams_d8(
                     d_n = <int>flow_dir_managed_raster.get(x_n, y_n)
                     if d_n == flow_nodata:
                         continue
-                    if (d8_backflow[d*8+d_n] and
+                    if (D8_BACKFLOW[d*8+d_n] and
                             <long>flow_accum_managed_raster.get(
                                 x_n, y_n) >= min_flow_accum_threshold):
                         upstream_dirs[upstream_count] = d
@@ -3789,16 +3790,6 @@ def _build_discovery_finish_rasters(
     Returns:
         None
     """
-    cdef int *d8_backflow = [
-        0, 0, 0, 0, 1, 0, 0, 0,
-        0, 0, 0, 0, 0, 1, 0, 0,
-        0, 0, 0, 0, 0, 0, 1, 0,
-        0, 0, 0, 0, 0, 0, 0, 1,
-        1, 0, 0, 0, 0, 0, 0, 0,
-        0, 1, 0, 0, 0, 0, 0, 0,
-        0, 0, 1, 0, 0, 0, 0, 0,
-        0, 0, 0, 1, 0, 0, 0, 0]
-
     flow_dir_info = pygeoprocessing.get_raster_info(
         flow_dir_d8_raster_path_band[0])
     cdef int n_cols, n_rows
@@ -3887,7 +3878,7 @@ def _build_discovery_finish_rasters(
                         n_dir = <int>flow_dir_managed_raster.get(x_n, y_n)
                         if n_dir == flow_dir_nodata:
                             continue
-                        if d8_backflow[test_dir*8 + n_dir]:
+                        if D8_BACKFLOW[test_dir*8 + n_dir]:
                             discovery_stack.push(CoordinateType(x_n, y_n))
                             n_pushed += 1
                     # this reference is for the previous top and represents
@@ -4334,15 +4325,6 @@ def _calculate_stream_geometry(
             flow accum threshold.
 
     """
-    cdef int *d8_backflow = [
-        0, 0, 0, 0, 1, 0, 0, 0,
-        0, 0, 0, 0, 0, 1, 0, 0,
-        0, 0, 0, 0, 0, 0, 1, 0,
-        0, 0, 0, 0, 0, 0, 0, 1,
-        1, 0, 0, 0, 0, 0, 0, 0,
-        0, 1, 0, 0, 0, 0, 0, 0,
-        0, 0, 1, 0, 0, 0, 0, 0,
-        0, 0, 0, 1, 0, 0, 0, 0]
     cdef int x_n, y_n, d, d_n, stream_end=0
 
     if flow_accum_managed_raster.get(x_l, y_l) < flow_accum_threshold:
@@ -4390,7 +4372,7 @@ def _calculate_stream_geometry(
 
                 # check if there's an upstream inflow pixel with flow accum
                 # greater than the threshold
-                if d8_backflow[d*8+d_n] and <int>flow_accum_managed_raster.get(
+                if D8_BACKFLOW[d*8+d_n] and <int>flow_accum_managed_raster.get(
                         x_n, y_n) > flow_accum_threshold:
                     stream_end = 0
                     next_dir = d
