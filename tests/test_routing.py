@@ -122,6 +122,21 @@ class TestRouting(unittest.TestCase):
             [4, 6, 6, 6, 6, 6, 6, 6, 6, 6, 0]])
         numpy.testing.assert_almost_equal(flow_array, expected_result)
 
+    def test_detect_outlets(self):
+        """PGP.routing: test detect outlets."""
+        flow_dir_d8 = numpy.array([
+            [2, 2, 2, 2],
+            [2, 2, 2, 0],
+            [4, -1, 2, 2],
+            [2, 2, 6, 2]])
+        flow_dir_d8_path = os.path.join('test_dir', 'd8.tif')
+        _array_to_raster(flow_dir_d8, -1, flow_dir_d8_path)
+
+        target_outlet_vector_path = os.path.join(
+            'test_dir', 'outlets.gpkg')
+        pygeoprocessing.routing.detect_outlets(
+            (flow_dir_d8, 1), target_outlet_vector_path)
+
     def test_flow_accum_d8(self):
         """PGP.routing: test D8 flow accum."""
         # this was generated from a pre-calculated plateau drain dem

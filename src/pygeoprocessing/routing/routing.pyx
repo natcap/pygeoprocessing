@@ -3010,7 +3010,7 @@ def detect_outlets(d8_flow_dir_raster_path_band, target_outlet_vector_path):
     Return:
         None.
     """
-    cdef int is_outlet, flow_dir, flow_dir_n
+    cdef int is_outlet, flow_dir
     cdef int xoff, yoff, win_xsize, win_ysize, xi, yi, i_n, xi_n, yi_n
     cdef int xi_root, yi_root, raster_x_size, raster_y_size
 
@@ -3019,6 +3019,8 @@ def detect_outlets(d8_flow_dir_raster_path_band, target_outlet_vector_path):
 
     cdef int flow_dir_nodata = raster_info['nodata'][
         d8_flow_dir_raster_path_band[1]-1]
+
+    raster_x_size, raster_y_size = raster_info['raster_size']
 
     if raster_info['projection_wkt']:
         raster_srs = osr.SpatialReference()
@@ -3036,7 +3038,7 @@ def detect_outlets(d8_flow_dir_raster_path_band, target_outlet_vector_path):
     outlet_vector = gpkg_driver.Create(
         target_outlet_vector_path, 0, 0, 0, gdal.GDT_Unknown)
     outlet_layer = outlet_vector.CreateLayer(
-        'outlet_vector', discovery_srs, ogr.wkbPoint)
+        'outlet_vector', raster_srs, ogr.wkbPoint)
     outlet_layer.CreateField(ogr.FieldDefn('i', ogr.OFTInteger))
     outlet_layer.CreateField(ogr.FieldDefn('j', ogr.OFTInteger))
     outlet_layer.StartTransaction()
@@ -3068,6 +3070,7 @@ def detect_outlets(d8_flow_dir_raster_path_band, target_outlet_vector_path):
                 if flow_dir == flow_dir_nodata:
                     continue
 
+                is_outlet = 0
                 for i_n in range(8):
                     xi_n = xi_root+NEIGHBOR_OFFSET_ARRAY[2*i_n]
                     yi_n = yi_root+NEIGHBOR_OFFSET_ARRAY[2*i_n+1]
