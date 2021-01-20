@@ -80,16 +80,6 @@ cdef double SQRT2_INV = 1.0 / 1.4142135623730951
 cdef int *D8_XOFFSET = [1, 1, 0, -1, -1, -1, 0, 1]
 cdef int *D8_YOFFSET = [0, -1, -1, -1, 0, +1, +1, +1]
 
-cdef int *D8_BACKFLOW = [
-        0, 0, 0, 0, 1, 0, 0, 0,
-        0, 0, 0, 0, 0, 1, 0, 0,
-        0, 0, 0, 0, 0, 0, 1, 0,
-        0, 0, 0, 0, 0, 0, 0, 1,
-        1, 0, 0, 0, 0, 0, 0, 0,
-        0, 1, 0, 0, 0, 0, 0, 0,
-        0, 0, 1, 0, 0, 0, 0, 0,
-        0, 0, 0, 1, 0, 0, 0, 0]
-
 # this is used to calculate the opposite D8 direction interpreting the index
 # as a D8 direction
 cdef int* D8_REVERSE_DIRECTION = [4, 5, 6, 7, 0, 1, 2, 3]
@@ -3316,7 +3306,7 @@ def extract_strahler_streams_d8(
                     d_n = <int>flow_dir_managed_raster.get(x_n, y_n)
                     if d_n == flow_nodata:
                         continue
-                    if (D8_BACKFLOW[d*8+d_n] and
+                    if (D8_REVERSE_DIRECTION[d] == d_n and
                             <long>flow_accum_managed_raster.get(
                                 x_n, y_n) >= min_flow_accum_threshold):
                         upstream_dirs[upstream_count] = d
@@ -3878,7 +3868,7 @@ def _build_discovery_finish_rasters(
                         n_dir = <int>flow_dir_managed_raster.get(x_n, y_n)
                         if n_dir == flow_dir_nodata:
                             continue
-                        if D8_BACKFLOW[test_dir*8 + n_dir]:
+                        if D8_REVERSE_DIRECTION[test_dir] == n_dir:
                             discovery_stack.push(CoordinateType(x_n, y_n))
                             n_pushed += 1
                     # this reference is for the previous top and represents
@@ -4375,8 +4365,9 @@ cdef _calculate_stream_geometry(
 
                 # check if there's an upstream inflow pixel with flow accum
                 # greater than the threshold
-                if D8_BACKFLOW[d*8+d_n] and <int>flow_accum_managed_raster.get(
-                        x_n, y_n) > flow_accum_threshold:
+                if D8_REVERSE_DIRECTION[d] == d_n and (
+                        <int>flow_accum_managed_raster.get(
+                         x_n, y_n) > flow_accum_threshold):
                     stream_end = 0
                     next_dir = d
                     break
