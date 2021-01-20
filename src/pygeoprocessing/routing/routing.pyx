@@ -4166,7 +4166,8 @@ def detect_outlets(d8_flow_dir_raster_path_band, target_outlet_vector_path):
                 if is_outlet:
                     outlet_point = ogr.Geometry(ogr.wkbPoint)
                     proj_x, proj_y = gdal.ApplyGeoTransform(
-                        raster_info['geotransform'], xi+0.5, yi+0.5)
+                        raster_info['geotransform'],
+                        xi_root+0.5, yi_root+0.5)
                     outlet_point.AddPoint(proj_x, proj_y)
 
                     outlet_feature = ogr.Feature(outlet_layer.GetLayerDefn())
