@@ -3010,6 +3010,7 @@ def extract_strahler_streams_d8(
     Creates a Strahler ordered stream vector containing line segments
     representing each separate stream fragment. The final vector contains
     at least the fields:
+
         * "order" (int): an integer representing the stream order
         * "river_id" (int): unique ID used by all stream segements that
             connect to the same outlet.
