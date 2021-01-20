@@ -4319,10 +4319,17 @@ cdef _calculate_stream_geometry(
             a list of stream ids
 
     Returns:
-        Georeferenced linestring connecting x/y to upper point where upper
-            point's threshold is the last point where its flow accum value
-            is >= `flow_accum_threshold`. Returns None if x/y is below
-            flow accum threshold.
+        A tuple of (x, y, l, line) where:
+
+            * x, y raster coordinates of the upstream source of the stream
+                segment
+            * l is the list of upstream stream IDs at the upstream point
+            * and `stream_line` is a georeferenced linestring connecting x/y
+                to upper point where upper point's threshold is the last
+                point where its flow accum value is >=
+                ``flow_accum_threshold``.
+
+        Or ``None` if the point at (x_l, y_l) is below flow accum threshold.
 
     """
     cdef int x_n, y_n, d, d_n, stream_end=0
