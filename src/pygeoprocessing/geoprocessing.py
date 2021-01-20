@@ -2143,14 +2143,29 @@ def rasterize(
     layer = vector.GetLayer(layer_id)
     if where_clause:
         layer.SetAttributeFilter(where_clause)
-    result = gdal.RasterizeLayer(
-        raster, [1], layer, burn_values=burn_values,
-        options=option_list, callback=rasterize_callback)
-    raster.FlushCache()
-    raster = None
+
+    try:
+        result = gdal.RasterizeLayer(
+            raster, [1], layer, burn_values=burn_values,
+            options=option_list, callback=rasterize_callback)
+    except Exception:
+        # something bad happened, but still clean up
+        # this case came out of a flaky test condition where the raster
+        # would still be in use by the rasterize layer function
+        LOGGER.exception('bad error on rasterizelayer')
+        result = -1
+
+    layer = None
+    vector = None
 
     if result != 0:
+        # need this __swig_destroy__ because we sometimes encounter a flaky
+        # test where the path to the raster cannot be cleaned up because
+        # it is still in use somewhere, likely a bug in gdal.RasterizeLayer
+        # note it is only invoked if there is a serious error
+        gdal.Dataset.__swig_destroy__(raster)
         raise RuntimeError('Rasterize returned a nonzero exit code.')
+    raster = None
 
 
 def calculate_disjoint_polygon_set(
@@ -3752,7 +3767,6 @@ def numpy_array_to_raster(
     if target_nodata is not None:
         new_band.SetNoDataValue(target_nodata)
     new_band.WriteArray(base_array)
-    new_raster.FlushCache()
     new_band = None
     new_raster = None
 
