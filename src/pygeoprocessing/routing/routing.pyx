@@ -3944,7 +3944,7 @@ def calculate_subwatershed_boundary(
                     visit_order_stack.append((working_fid, ds_x, ds_y))
 
     cdef int edge_side, edge_dir, cell_to_test, out_dir_increase=-1
-    cdef int left, right, n_left_turns, n_steps, terminated_early
+    cdef int left, right, n_steps, terminated_early
     cdef double abs_delta_x, abs_delta_y
     cdef int _int_max_steps_per_watershed = max_steps_per_watershed
 
@@ -4002,9 +4002,6 @@ def calculate_subwatershed_boundary(
                 # note the pixel moved
                 boundary_list.append((x_l, y_l))
 
-        # use to keep track of how many turns around a pixel, used if
-        # a degerate
-        n_left_turns = 0
         n_steps = 0
         terminated_early = 0
         # deltas should be within 0.01 % of a pixel width
@@ -4022,10 +4019,6 @@ def calculate_subwatershed_boundary(
             if n_steps > _int_max_steps_per_watershed:
                 LOGGER.warning('quitting, too many steps')
                 terminated_early = 1
-                break
-            if n_left_turns == 4:
-                LOGGER.info(
-                    '4 left turns around the same pixel so terminating')
                 break
             if x_l < 0 or y_l < 0 or x_l >= n_cols or y_l >= n_rows:
                 # This is unexpected but worth checking since missing this
@@ -4062,19 +4055,16 @@ def calculate_subwatershed_boundary(
                     discovery, finish, discovery_managed_raster,
                     discovery_nodata,
                     boundary_list)
-                n_left_turns = 0
             elif left_in:
                 # step forward
                 x_l += D8_XOFFSET[edge_dir]
                 y_l += D8_YOFFSET[edge_dir]
                 # the pixel moves forward
                 boundary_list.append((x_l, y_l))
-                n_left_turns = 0
             else:
                 # turn left
                 edge_side = edge_dir
                 edge_dir = (edge_side + out_dir_increase) % 8
-                n_left_turns += 1
 
             if _is_close(x_p, x_first, abs_delta_x, 0.0) and \
                     _is_close(y_p, y_first, abs_delta_y, 0.0):
