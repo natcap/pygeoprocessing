@@ -3000,7 +3000,7 @@ def detect_outlets(d8_flow_dir_raster_path_band, target_outlet_vector_path):
         None.
     """
     cdef int is_outlet, flow_dir
-    cdef int xoff, yoff, win_xsize, win_ysize, xi, yi, i_n, xi_n, yi_n
+    cdef int xoff, yoff, win_xsize, win_ysize, xi, yi, xi_n, yi_n
     cdef int xi_root, yi_root, raster_x_size, raster_y_size
 
     raster_info = pygeoprocessing.get_raster_info(
@@ -3026,8 +3026,10 @@ def detect_outlets(d8_flow_dir_raster_path_band, target_outlet_vector_path):
         os.remove(target_outlet_vector_path)
     outlet_vector = gpkg_driver.Create(
         target_outlet_vector_path, 0, 0, 0, gdal.GDT_Unknown)
+    outet_basename = os.path.basename(
+        os.path.splitext(target_outlet_vector_path)[0])
     outlet_layer = outlet_vector.CreateLayer(
-        'outlet_vector', raster_srs, ogr.wkbPoint)
+        outet_basename, raster_srs, ogr.wkbPoint)
     outlet_layer.CreateField(ogr.FieldDefn('i', ogr.OFTInteger))
     outlet_layer.CreateField(ogr.FieldDefn('j', ogr.OFTInteger))
     outlet_layer.StartTransaction()
@@ -3060,8 +3062,8 @@ def detect_outlets(d8_flow_dir_raster_path_band, target_outlet_vector_path):
                     continue
 
                 is_outlet = 0
-                xi_n = xi_root+NEIGHBOR_OFFSET_ARRAY[2*flow_dir]
-                yi_n = yi_root+NEIGHBOR_OFFSET_ARRAY[2*flow_dir+1]
+                xi_n = xi_root+D8_XOFFSET[flow_dir]
+                yi_n = yi_root+D8_YOFFSET[flow_dir]
                 if (xi_n < 0 or xi_n >= raster_x_size or
                         yi_n < 0 or yi_n >= raster_y_size):
                     # it'll drain off the edge of the raster
@@ -3183,8 +3185,10 @@ def extract_strahler_streams_d8(
 
     stream_vector = gpkg_driver.Create(
         target_stream_vector_path, 0, 0, 0, gdal.GDT_Unknown)
+    stream_basename = os.path.basename(
+        os.path.splitext(target_stream_vector_path)[0])
     stream_layer = stream_vector.CreateLayer(
-        'stream', flow_dir_srs, ogr.wkbLineString)
+        stream_basename, flow_dir_srs, ogr.wkbLineString)
     stream_layer.CreateField(ogr.FieldDefn('order', ogr.OFTInteger))
     stream_layer.CreateField(ogr.FieldDefn('drop_distance', ogr.OFTReal))
     stream_layer.CreateField(ogr.FieldDefn('outlet', ogr.OFTInteger))
@@ -3234,15 +3238,6 @@ def extract_strahler_streams_d8(
     # 0x4
     # 123
     cdef int x_n, y_n  # the _n is for "neighbor"
-    cdef int *d8_backflow = [
-        0, 0, 0, 0, 1, 0, 0, 0,
-        0, 0, 0, 0, 0, 1, 0, 0,
-        0, 0, 0, 0, 0, 0, 1, 0,
-        0, 0, 0, 0, 0, 0, 0, 1,
-        1, 0, 0, 0, 0, 0, 0, 0,
-        0, 1, 0, 0, 0, 0, 0, 0,
-        0, 0, 1, 0, 0, 0, 0, 0,
-        0, 0, 0, 1, 0, 0, 0, 0]
     cdef int upstream_count=0, upstream_index
     # this array is filled out as upstream directions are calculated and
     # indexed by `upstream_count`
@@ -3311,7 +3306,7 @@ def extract_strahler_streams_d8(
                     d_n = <int>flow_dir_managed_raster.get(x_n, y_n)
                     if d_n == flow_nodata:
                         continue
-                    if (d8_backflow[d*8+d_n] and
+                    if (D8_REVERSE_DIRECTION[d] == d_n and
                             <long>flow_accum_managed_raster.get(
                                 x_n, y_n) >= min_flow_accum_threshold):
                         upstream_dirs[upstream_count] = d
@@ -3785,16 +3780,6 @@ def _build_discovery_finish_rasters(
     Returns:
         None
     """
-    cdef int *d8_backflow = [
-        0, 0, 0, 0, 1, 0, 0, 0,
-        0, 0, 0, 0, 0, 1, 0, 0,
-        0, 0, 0, 0, 0, 0, 1, 0,
-        0, 0, 0, 0, 0, 0, 0, 1,
-        1, 0, 0, 0, 0, 0, 0, 0,
-        0, 1, 0, 0, 0, 0, 0, 0,
-        0, 0, 1, 0, 0, 0, 0, 0,
-        0, 0, 0, 1, 0, 0, 0, 0]
-
     flow_dir_info = pygeoprocessing.get_raster_info(
         flow_dir_d8_raster_path_band[0])
     cdef int n_cols, n_rows
@@ -3883,7 +3868,7 @@ def _build_discovery_finish_rasters(
                         n_dir = <int>flow_dir_managed_raster.get(x_n, y_n)
                         if n_dir == flow_dir_nodata:
                             continue
-                        if d8_backflow[test_dir*8 + n_dir]:
+                        if D8_REVERSE_DIRECTION[test_dir] == n_dir:
                             discovery_stack.push(CoordinateType(x_n, y_n))
                             n_pushed += 1
                     # this reference is for the previous top and represents
@@ -3921,11 +3906,6 @@ def calculate_subwatershed_boundary(
     a river.
 
     Args:
-        discovery_time_raster_path (str): path to raster containing numbers
-            of discovery time for pixels, used to determine watershed
-            containment.
-        finish_time_raster_path (str): path to finish time for depth first
-            search walk, used to determine watershed containment.
         d8_flow_dir_raster_path_band (tuple): raster/path band for d8 flow dir
             raster
         strahler_stream_vector_path (str): path to stream segment vector
@@ -3940,6 +3920,7 @@ def calculate_subwatershed_boundary(
         None.
     """
     workspace_dir = tempfile.mkdtemp(
+        prefix='calculate_subwatershed_boundary_workspace_',
         dir=os.path.join(
             os.path.dirname(target_watershed_boundary_vector_path)))
     discovery_time_raster_path = os.path.join(workspace_dir, 'discovery.tif')
@@ -3987,8 +3968,10 @@ def calculate_subwatershed_boundary(
         os.remove(target_watershed_boundary_vector_path)
     watershed_vector = gpkg_driver.Create(
         target_watershed_boundary_vector_path, 0, 0, 0, gdal.GDT_Unknown)
+    watershed_basename = os.path.basename(os.path.splitext(
+        target_watershed_boundary_vector_path)[0])
     watershed_layer = watershed_vector.CreateLayer(
-        'watershed_vector', discovery_srs, ogr.wkbPolygon)
+        watershed_basename, discovery_srs, ogr.wkbPolygon)
     watershed_layer.CreateField(ogr.FieldDefn('stream_fid', ogr.OFTInteger))
     watershed_layer.CreateField(
         ogr.FieldDefn('terminated_early', ogr.OFTInteger))
@@ -4296,7 +4279,7 @@ cdef int _in_watershed(
             point_discovery <= finish)
 
 
-def _calculate_stream_geometry(
+cdef _calculate_stream_geometry(
         int x_l, int y_l, int upstream_d8_dir, geotransform, int n_cols,
         int n_rows, _ManagedRaster flow_accum_managed_raster,
         _ManagedRaster flow_dir_managed_raster, int flow_dir_nodata,
@@ -4322,21 +4305,19 @@ def _calculate_stream_geometry(
             a list of stream ids
 
     Returns:
-        Georeferenced linestring connecting x/y to upper point where upper
-            point's threshold is the last point where its flow accum value
-            is >= `flow_accum_threshold`. Returns None if x/y is below
-            flow accum threshold.
+        A tuple of (x, y, l, line) where:
+
+            * x, y raster coordinates of the upstream source of the stream
+                segment
+            * l is the list of upstream stream IDs at the upstream point
+            * and `stream_line` is a georeferenced linestring connecting x/y
+                to upper point where upper point's threshold is the last
+                point where its flow accum value is >=
+                ``flow_accum_threshold``.
+
+        Or ``None` if the point at (x_l, y_l) is below flow accum threshold.
 
     """
-    cdef int *d8_backflow = [
-        0, 0, 0, 0, 1, 0, 0, 0,
-        0, 0, 0, 0, 0, 1, 0, 0,
-        0, 0, 0, 0, 0, 0, 1, 0,
-        0, 0, 0, 0, 0, 0, 0, 1,
-        1, 0, 0, 0, 0, 0, 0, 0,
-        0, 1, 0, 0, 0, 0, 0, 0,
-        0, 0, 1, 0, 0, 0, 0, 0,
-        0, 0, 0, 1, 0, 0, 0, 0]
     cdef int x_n, y_n, d, d_n, stream_end=0
 
     if flow_accum_managed_raster.get(x_l, y_l) < flow_accum_threshold:
@@ -4384,8 +4365,9 @@ def _calculate_stream_geometry(
 
                 # check if there's an upstream inflow pixel with flow accum
                 # greater than the threshold
-                if d8_backflow[d*8+d_n] and <int>flow_accum_managed_raster.get(
-                        x_n, y_n) > flow_accum_threshold:
+                if D8_REVERSE_DIRECTION[d] == d_n and (
+                        <int>flow_accum_managed_raster.get(
+                         x_n, y_n) > flow_accum_threshold):
                     stream_end = 0
                     next_dir = d
                     break

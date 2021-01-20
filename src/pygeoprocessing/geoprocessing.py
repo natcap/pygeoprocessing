@@ -2109,56 +2109,65 @@ def rasterize(
     Returns:
         None
     """
-    raster = None
+    gdal.PushErrorHandler('CPLQuietErrorHandler')
+    raster = gdal.OpenEx(
+        target_raster_path, gdal.GA_Update | gdal.OF_RASTER)
+    gdal.PopErrorHandler()
+    if raster is None:
+        raise ValueError(
+            "%s doesn't exist, but needed to rasterize." %
+            target_raster_path)
+
+    rasterize_callback = _make_logger_callback(
+        "RasterizeLayer %.1f%% complete %s")
+
+    if burn_values is None:
+        burn_values = []
+    if option_list is None:
+        option_list = []
+
+    if not burn_values and not option_list:
+        raise ValueError(
+            "Neither `burn_values` nor `option_list` is set. At least "
+            "one must have a value.")
+
+    if not isinstance(option_list, (list, tuple)):
+        raise ValueError(
+            "`option_list` is not a list/tuple, the value passed is '%s'",
+            repr(option_list))
+
+    if not isinstance(burn_values, (list, tuple)):
+        raise ValueError(
+            "`burn_values` is not a list/tuple, the value passed is '%s'",
+            repr(burn_values))
+
+    vector = gdal.OpenEx(vector_path, gdal.OF_VECTOR)
+    layer = vector.GetLayer(layer_id)
+    if where_clause:
+        layer.SetAttributeFilter(where_clause)
+
     try:
-        gdal.PushErrorHandler('CPLQuietErrorHandler')
-        raster = gdal.OpenEx(
-            target_raster_path, gdal.GA_Update | gdal.OF_RASTER)
-        gdal.PopErrorHandler()
-        if raster is None:
-            raise ValueError(
-                "%s doesn't exist, but needed to rasterize." %
-                target_raster_path)
-        vector = gdal.OpenEx(vector_path, gdal.OF_VECTOR)
-
-        rasterize_callback = _make_logger_callback(
-            "RasterizeLayer %.1f%% complete %s")
-
-        if burn_values is None:
-            burn_values = []
-        if option_list is None:
-            option_list = []
-
-        if not burn_values and not option_list:
-            raise ValueError(
-                "Neither `burn_values` nor `option_list` is set. At least "
-                "one must have a value.")
-
-        if not isinstance(burn_values, (list, tuple)):
-            raise ValueError(
-                "`burn_values` is not a list/tuple, the value passed is '%s'",
-                repr(burn_values))
-
-        if not isinstance(option_list, (list, tuple)):
-            raise ValueError(
-                "`option_list` is not a list/tuple, the value passed is '%s'",
-                repr(option_list))
-
-        layer = vector.GetLayer(layer_id)
-        if where_clause:
-            layer.SetAttributeFilter(where_clause)
         result = gdal.RasterizeLayer(
             raster, [1], layer, burn_values=burn_values,
             options=option_list, callback=rasterize_callback)
-        raster.FlushCache()
-        raster = None
+    except Exception:
+        # something bad happened, but still clean up
+        # this case came out of a flaky test condition where the raster
+        # would still be in use by the rasterize layer function
+        LOGGER.exception('bad error on rasterizelayer')
+        result = -1
 
-        if result != 0:
-            raise RuntimeError('Rasterize returned a nonzero exit code.')
-    finally:
-        if raster:
-            raster.FlushCache()
-        raster = None
+    layer = None
+    vector = None
+
+    if result != 0:
+        # need this __swig_destroy__ because we sometimes encounter a flaky
+        # test where the path to the raster cannot be cleaned up because
+        # it is still in use somewhere, likely a bug in gdal.RasterizeLayer
+        # note it is only invoked if there is a serious error
+        gdal.Dataset.__swig_destroy__(raster)
+        raise RuntimeError('Rasterize returned a nonzero exit code.')
+    raster = None
 
 
 def calculate_disjoint_polygon_set(
@@ -3760,7 +3769,6 @@ def numpy_array_to_raster(
     if target_nodata is not None:
         new_band.SetNoDataValue(target_nodata)
     new_band.WriteArray(base_array)
-    new_raster.FlushCache()
     new_band = None
     new_raster = None
 
