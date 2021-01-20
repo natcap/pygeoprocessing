@@ -3019,7 +3019,7 @@ def extract_strahler_streams_d8(
             flow direction raster.
         flow_accum_raster_path_band (tuple): a path/band representing the D8
             flow accumulation raster represented by
-            `flow_dir_d8_raster_path_band`.
+            ``flow_dir_d8_raster_path_band``.
         dem_raster_path_band (tuple): a path/band representing the DEM used to
             derive flow dir.
         target_stream_vector_path (tuple): a single layer line vector created
