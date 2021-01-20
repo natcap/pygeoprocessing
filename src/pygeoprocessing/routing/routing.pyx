@@ -4171,8 +4171,8 @@ def detect_outlets(d8_flow_dir_raster_path_band, target_outlet_vector_path):
 
                     outlet_feature = ogr.Feature(outlet_layer.GetLayerDefn())
                     outlet_feature.SetGeometry(outlet_point)
-                    outlet_feature.SetField('i', xi)
-                    outlet_feature.SetField('j', yi)
+                    outlet_feature.SetField('i', xi_root)
+                    outlet_feature.SetField('j', yi_root)
                     outlet_layer.CreateFeature(outlet_feature)
                     outlet_feature = None
                     outlet_point = None
