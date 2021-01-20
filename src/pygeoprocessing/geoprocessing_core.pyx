@@ -535,8 +535,6 @@ def calculate_slope(
 
     dem_band = None
     target_slope_band = None
-    gdal.Dataset.__swig_destroy__(dem_raster)
-    gdal.Dataset.__swig_destroy__(target_slope_raster)
     dem_raster = None
     target_slope_raster = None
 
@@ -574,12 +572,14 @@ def stats_worker(stats_work_queue, expected_blocks):
             payload = stats_work_queue.get()
             if payload is None:
                 break
-            if sys.version_info >= (3, 8):
+            if isinstance(payload, numpy.ndarray):
+                # if the payload is a normal array take it as the array block
+                block = payload
+            else:
+                # if not an ndarray, it is a shared memory pointer tuple
                 shape, dtype, existing_shm = payload
                 block = numpy.ndarray(
                     shape, dtype=dtype, buffer=existing_shm.buf)
-            else:
-                block = payload
             if block.size == 0:
                 continue
             n_elements = block.size

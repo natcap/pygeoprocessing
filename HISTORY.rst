@@ -26,6 +26,21 @@ Unreleased Changes
   ``pygeoprocessing.calculate_subwatershed_boundary``. Creates subwatersheds
   that are segmented at the junctions of the streams created by
   ``pygeoprocessing.extract_strahler_streams_d8``.
+* Removing all instances of ``__swig_destroy__`` to prevent multiprocessing
+  memory corruption.
+* Exposing a ``use_shared_memory`` flag on ``raster_calculator`` to allow
+  a user to use shared memory objects when calculating statistics. This
+  feature is only available for Python >= 3.8. If available, this
+  feature creates a significant runtime improvement but can be unstable
+  in multiprocessing configurations. For this reason it is set to
+  ``False`` as the default value.
+* Added a ``max_timeout`` parameter to ``convolve_2d`` and
+  ``raster_calculator`` to allow the user to specify the maximum amount of
+  time to wait for worker threads to terminate. In normal operation these
+  threads should terminate in a short amount of time but are generously
+  timed with the ``pygeoprocessing._MAX_TIMEOUT`` parameter. This parameter
+  allows a user to tune in cases that may involve significant latency such
+  as in a heavy multiprocess environment.
 
 2.1.2 (2020-12-03)
 ------------------
