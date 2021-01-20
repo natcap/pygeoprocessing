@@ -2948,6 +2948,112 @@ def extract_streams_mfd(
     LOGGER.info('100.0% complete')
 
 
+def detect_outlets(d8_flow_dir_raster_path_band, target_outlet_vector_path):
+    """Create point vector indicating D8 outlets.
+
+    Args:
+        d8_flow_dir_raster_path_band (tuple): raster path/band tuple
+            indicating D8 flow direction.
+        target_outlet_vector_path (str): path to a vector that is created
+            by this call that will be in the same projection units as the
+            raster and have a point feature in the center of each pixel that
+            is a raster outlet. The points will have additional "i"/"j"
+            fields indicating the column/row in the raster the pixel
+            is located in.
+
+    Return:
+        None.
+    """
+    cdef int is_outlet, flow_dir, flow_dir_n
+    cdef int xoff, yoff, win_xsize, win_ysize, xi, yi, i_n, xi_n, yi_n
+    cdef int xi_root, yi_root, raster_x_size, raster_y_size
+
+    raster_info = pygeoprocessing.pygeoprocessing.get_raster_info(
+        d8_flow_dir_raster_path_band[0])
+
+    cdef int flow_dir_nodata = raster_info['nodata'][
+        d8_flow_dir_raster_path_band[1]-1]
+
+    if raster_info['projection_wkt']:
+        raster_srs = osr.SpatialReference()
+        raster_srs.ImportFromWkt(raster_info['projection_wkt'])
+    else:
+        raster_srs = None
+
+    gpkg_driver = gdal.GetDriverByName('GPKG')
+
+    if os.path.exists(target_outlet_vector_path):
+        LOGGER.warning(
+            f'outlet detection: {target_outlet_vector_path} exists, '
+            'removing before creating a new one.')
+        os.remove(target_outlet_vector_path)
+    outlet_vector = gpkg_driver.Create(
+        target_outlet_vector_path, 0, 0, 0, gdal.GDT_Unknown)
+    outlet_layer = outlet_vector.CreateLayer(
+        'outlet_vector', discovery_srs, ogr.wkbPoint)
+    outlet_layer.CreateField(ogr.FieldDefn('i', ogr.OFTInteger))
+    outlet_layer.CreateField(ogr.FieldDefn('j', ogr.OFTInteger))
+    outlet_layer.StartTransaction()
+
+    cdef time_t last_log_time = ctime(NULL)
+
+    cdef _ManagedRaster d8_flow_dir_mr = _ManagedRaster(
+        d8_flow_dir_raster_path_band[0],
+        d8_flow_dir_raster_path_band[1], 0)
+
+    for block_offsets in pygeoprocessing.iterblocks(
+            (d8_flow_dir_raster_path_band, 1), offset_only=True):
+        xoff = block_offsets['xoff']
+        yoff = block_offsets['yoff']
+        win_xsize = block_offsets['win_xsize']
+        win_ysize = block_offsets['win_ysize']
+        for yi in range(win_ysize):
+            yi_root = yi+yoff
+            if ctime(NULL) - last_log_time > 5.0:
+                last_log_time = ctime(NULL)
+                current_pixel = xoff + yoff * raster_x_size
+                LOGGER.info(
+                    f'''outlet detection: {
+                        100.0 * current_pixel / <float>(
+                            raster_x_size * raster_y_size):.1f} complete''')
+            for xi in range(win_xsize):
+                xi_root = xi+xoff
+                flow_dir = <int>d8_flow_dir_mr.get(xi_root, yi_root)
+                if flow_dir == flow_dir_nodata:
+                    continue
+
+                for i_n in range(8):
+                    xi_n = xi_root+NEIGHBOR_OFFSET_ARRAY[2*i_n]
+                    yi_n = yi_root+NEIGHBOR_OFFSET_ARRAY[2*i_n+1]
+                    if (xi_n < 0 or xi_n >= raster_x_size or
+                            yi_n < 0 or yi_n >= raster_y_size):
+                        # it'll drain off the edge of the raster
+                        is_outlet = 1
+                        break
+                    if <int>d8_flow_dir_mr.get(xi_n, yi_n) == flow_dir_nodata:
+                        is_outlet = 1
+                        break
+                if is_outlet:
+                    outlet_point = ogr.Geometry(ogr.wkbPoint)
+                    proj_x, proj_y = gdal.ApplyGeoTransform(
+                        raster_info['geotransform'], xi+0.5, yi+0.5)
+                    outlet_point.AddPoint(proj_x, proj_y)
+
+                    outlet_feature = ogr.Feature(outlet_layer.GetLayerDefn())
+                    outlet_feature.SetGeometry(outlet_point)
+                    outlet_feature.SetField('i', xi)
+                    outlet_feature.SetField('j', yi)
+                    outlet_layer.CreateFeature(outlet_feature)
+                    outlet_feature = None
+                    outlet_point = None
+
+    LOGGER.info('outlet detection: committing transaction')
+    outlet_layer.CommitTransaction()
+    outlet_layer = None
+    outlet_vector = None
+    LOGGER.info('outlet detection: done')
+
+
 def _is_raster_path_band_formatted(raster_path_band):
     """Return true if raster path band is a (str, int) tuple/list."""
     if not isinstance(raster_path_band, (list, tuple)):
