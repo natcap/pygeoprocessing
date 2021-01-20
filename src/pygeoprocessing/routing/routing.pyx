@@ -3916,11 +3916,6 @@ def calculate_subwatershed_boundary(
     a river.
 
     Args:
-        discovery_time_raster_path (str): path to raster containing numbers
-            of discovery time for pixels, used to determine watershed
-            containment.
-        finish_time_raster_path (str): path to finish time for depth first
-            search walk, used to determine watershed containment.
         d8_flow_dir_raster_path_band (tuple): raster/path band for d8 flow dir
             raster
         strahler_stream_vector_path (str): path to stream segment vector
