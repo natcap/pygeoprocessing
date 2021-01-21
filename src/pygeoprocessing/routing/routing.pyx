@@ -4092,7 +4092,7 @@ def detect_outlets(d8_flow_dir_raster_path_band, target_outlet_vector_path):
     Return:
         None.
     """
-    cdef int is_outlet, flow_dir
+    cdef int flow_dir
     cdef int xoff, yoff, win_xsize, win_ysize, xi, yi, xi_n, yi_n
     cdef int xi_root, yi_root, raster_x_size, raster_y_size
 
@@ -4154,16 +4154,12 @@ def detect_outlets(d8_flow_dir_raster_path_band, target_outlet_vector_path):
                 if flow_dir == flow_dir_nodata:
                     continue
 
-                is_outlet = 0
                 xi_n = xi_root+D8_XOFFSET[flow_dir]
                 yi_n = yi_root+D8_YOFFSET[flow_dir]
                 if (xi_n < 0 or xi_n >= raster_x_size or
-                        yi_n < 0 or yi_n >= raster_y_size):
-                    # it'll drain off the edge of the raster
-                    is_outlet = 1
-                elif <int>d8_flow_dir_mr.get(xi_n, yi_n) == flow_dir_nodata:
-                    is_outlet = 1
-                if is_outlet:
+                        yi_n < 0 or yi_n >= raster_y_size) or (
+                        <int>d8_flow_dir_mr.get(xi_n, yi_n) ==
+                        flow_dir_nodata):
                     outlet_point = ogr.Geometry(ogr.wkbPoint)
                     proj_x, proj_y = gdal.ApplyGeoTransform(
                         raster_info['geotransform'],

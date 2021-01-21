@@ -2110,13 +2110,11 @@ def rasterize(
         None
     """
     gdal.PushErrorHandler('CPLQuietErrorHandler')
-    raster = gdal.OpenEx(
-        target_raster_path, gdal.GA_Update | gdal.OF_RASTER)
+    raster = gdal.OpenEx(target_raster_path, gdal.GA_Update | gdal.OF_RASTER)
     gdal.PopErrorHandler()
     if raster is None:
         raise ValueError(
-            "%s doesn't exist, but needed to rasterize." %
-            target_raster_path)
+            "%s doesn't exist, but needed to rasterize." % target_raster_path)
 
     rasterize_callback = _make_logger_callback(
         "RasterizeLayer %.1f%% complete %s")
@@ -2131,15 +2129,15 @@ def rasterize(
             "Neither `burn_values` nor `option_list` is set. At least "
             "one must have a value.")
 
-    if not isinstance(option_list, (list, tuple)):
-        raise ValueError(
-            "`option_list` is not a list/tuple, the value passed is '%s'",
-            repr(option_list))
-
     if not isinstance(burn_values, (list, tuple)):
         raise ValueError(
             "`burn_values` is not a list/tuple, the value passed is '%s'",
             repr(burn_values))
+
+    if not isinstance(option_list, (list, tuple)):
+        raise ValueError(
+            "`option_list` is not a list/tuple, the value passed is '%s'",
+            repr(option_list))
 
     vector = gdal.OpenEx(vector_path, gdal.OF_VECTOR)
     layer = vector.GetLayer(layer_id)

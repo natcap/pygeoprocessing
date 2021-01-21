@@ -14,7 +14,6 @@ from numpy.random import MT19937
 from numpy.random import RandomState
 from numpy.random import SeedSequence
 import numpy
-import retrying
 import scipy.ndimage
 import shapely.geometry
 import shapely.wkt
@@ -77,9 +76,6 @@ class PyGeoprocessing10(unittest.TestCase):
         """Create a temporary workspace that's deleted later."""
         self.workspace_dir = tempfile.mkdtemp()
 
-    @retrying.retry(
-        wait_exponential_multiplier=100, wait_exponential_max=3000,
-        stop_max_attempt_number=5)
     def tearDown(self):
         """Clean up remaining files."""
         shutil.rmtree(self.workspace_dir)
