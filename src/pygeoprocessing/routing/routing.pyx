@@ -17,6 +17,7 @@ is encoded as::
      4 x 0
      5 6 7
 """
+import collections
 import logging
 import os
 import shutil
@@ -36,11 +37,21 @@ from libcpp.pair cimport pair
 from libcpp.queue cimport queue
 from libcpp.set cimport set as cset
 from libcpp.stack cimport stack
+from libcpp.vector cimport vector
 from osgeo import gdal
+from osgeo import ogr
+from osgeo import osr
 import numpy
+import shapely.wkb
+import shapely.ops
+import scipy.stats
+
+from ..geoprocessing_core import DEFAULT_OSR_AXIS_MAPPING_STRATEGY
 import pygeoprocessing
 
 LOGGER = logging.getLogger(__name__)
+
+cdef float _LOGGING_PERIOD = 10.0
 
 # This module creates rasters with a memory xy block size of 2**BLOCK_BITS
 cdef int BLOCK_BITS = 8
@@ -66,16 +77,8 @@ cdef double SQRT2_INV = 1.0 / 1.4142135623730951
 #  321
 #  4x0
 #  567
-cdef int* NEIGHBOR_OFFSET_ARRAY = [
-    1, 0,  # 0
-    1, -1,  # 1
-    0, -1,  # 2
-    -1, -1,  # 3
-    -1, 0,  # 4
-    -1, 1,  # 5
-    0, 1,  # 6
-    1, 1  # 7
-    ]
+cdef int *D8_XOFFSET = [1, 1, 0, -1, -1, -1, 0, 1]
+cdef int *D8_YOFFSET = [0, -1, -1, -1, 0, +1, +1, +1]
 
 # this is used to calculate the opposite D8 direction interpreting the index
 # as a D8 direction
@@ -122,10 +125,26 @@ cdef struct FlowPixelType:
     int last_flow_dir
     double value
 
+# used when constructing geometric streams, the x/y coordinates represent
+# a seed point to walk upstream from, the upstream_flow_dir indicates the
+# d8 flow direction to walk and the source_id indicates the source stream it
+# spawned from
+cdef struct StreamConnectivityPoint:
+    int xi
+    int yi
+    int upstream_d8_dir
+    int source_id
+
 # used to record x/y locations as needed
 cdef struct CoordinateType:
     int xi
     int yi
+
+
+cdef struct FinishType:
+    int xi
+    int yi
+    int n_pushed
 
 # this ctype is used to store the block ID and the block buffer as one object
 # inside Managed Raster
@@ -153,8 +172,8 @@ cdef cppclass GreaterPixel nogil:
                 return 1
         return 0
 
-cdef int _is_close(double x, double y):
-    return abs(x-y) <= (1e-8+1e-05*abs(y))
+cdef int _is_close(double x, double y, double abs_delta, double rel_delta):
+    return abs(x-y) <= (abs_delta+rel_delta*abs(y))
 
 # a class to allow fast random per-pixel access to a raster for both setting
 # and reading pixels.
@@ -409,9 +428,21 @@ cdef class _ManagedRaster:
             <int>block_index, <double*>double_buffer, removed_value_list)
 
         if self.write_mode:
-            raster = gdal.OpenEx(
-                self.raster_path, gdal.GA_Update | gdal.OF_RASTER)
-            raster_band = raster.GetRasterBand(self.band_id)
+            n_attempts = 5
+            while True:
+                raster = gdal.OpenEx(
+                    self.raster_path, gdal.GA_Update | gdal.OF_RASTER)
+                if raster is None:
+                    if n_attempts == 0:
+                        raise RuntimeError(
+                            f'could not open {self.raster_path} for writing')
+                    LOGGER.warning(
+                        f'opening {self.raster_path} resulted in null, '
+                        f'trying {n_attempts} more times.')
+                    n_attempts -= 1
+                    time.sleep(0.5)
+                raster_band = raster.GetRasterBand(self.band_id)
+                break
 
         block_array = numpy.empty(
             (self.block_ysize, self.block_xsize), dtype=numpy.double)
@@ -746,11 +777,13 @@ def fill_pits(
         xoff = offset_dict['xoff']
         yoff = offset_dict['yoff']
 
-        if ctime(NULL) - last_log_time > 5.0:
+        if ctime(NULL) - last_log_time > _LOGGING_PERIOD:
             last_log_time = ctime(NULL)
             current_pixel = xoff + yoff * raster_x_size
-            LOGGER.info('%.1f%% complete', 100.0 * current_pixel / <float>(
-                raster_x_size * raster_y_size))
+            LOGGER.info(
+                '(fill pits): '
+                f'{current_pixel} of {raster_x_size * raster_y_size} '
+                'pixels complete')
 
         # make a buffer big enough to capture block and boundaries around it
         dem_buffer_array = numpy.empty(
@@ -773,7 +806,7 @@ def fill_pits(
         for yi in range(1, win_ysize+1):
             for xi in range(1, win_xsize+1):
                 center_val = dem_buffer_array[yi, xi]
-                if _is_close(center_val, dem_nodata):
+                if _is_close(center_val, dem_nodata, 1e-8, 1e-5):
                     continue
 
                 # this value is set in case it turns out to be the root of a
@@ -792,15 +825,15 @@ def fill_pits(
                 nodata_neighbor = 0
 
                 for i_n in range(8):
-                    xi_n = xi_root+NEIGHBOR_OFFSET_ARRAY[2*i_n]
-                    yi_n = yi_root+NEIGHBOR_OFFSET_ARRAY[2*i_n+1]
+                    xi_n = xi_root+D8_XOFFSET[i_n]
+                    yi_n = yi_root+D8_YOFFSET[i_n]
                     if (xi_n < 0 or xi_n >= raster_x_size or
                             yi_n < 0 or yi_n >= raster_y_size):
                         # it'll drain off the edge of the raster
                         nodata_neighbor = 1
                         break
                     n_height = filled_dem_managed_raster.get(xi_n, yi_n)
-                    if _is_close(n_height, dem_nodata):
+                    if _is_close(n_height, dem_nodata, 1e-8, 1e-5):
                         # it'll drain to nodata
                         nodata_neighbor = 1
                         break
@@ -832,15 +865,15 @@ def fill_pits(
                     search_queue.pop()
 
                     for i_n in range(8):
-                        xi_n = xi_q+NEIGHBOR_OFFSET_ARRAY[2*i_n]
-                        yi_n = yi_q+NEIGHBOR_OFFSET_ARRAY[2*i_n+1]
+                        xi_n = xi_q+D8_XOFFSET[i_n]
+                        yi_n = yi_q+D8_YOFFSET[i_n]
                         if (xi_n < 0 or xi_n >= raster_x_size or
                                 yi_n < 0 or yi_n >= raster_y_size):
                             nodata_drain = 1
                             continue
                         n_height = filled_dem_managed_raster.get(
                             xi_n, yi_n)
-                        if _is_close(n_height, dem_nodata):
+                        if _is_close(n_height, dem_nodata, 1e-8, 1e-5):
                             nodata_drain = 1
                             continue
                         if n_height < center_val:
@@ -881,8 +914,8 @@ def fill_pits(
                     fill_height = pixel.value
 
                     for i_n in range(8):
-                        xi_n = xi_q+NEIGHBOR_OFFSET_ARRAY[2*i_n]
-                        yi_n = yi_q+NEIGHBOR_OFFSET_ARRAY[2*i_n+1]
+                        xi_n = xi_q+D8_XOFFSET[i_n]
+                        yi_n = yi_q+D8_YOFFSET[i_n]
                         if (xi_n < 0 or xi_n >= raster_x_size or
                                 yi_n < 0 or yi_n >= raster_y_size):
                             # drain off the edge of the raster
@@ -899,7 +932,7 @@ def fill_pits(
                             xi_n, yi_n, feature_id)
 
                         n_height = filled_dem_managed_raster.get(xi_n, yi_n)
-                        if _is_close(n_height, dem_nodata) or (
+                        if _is_close(n_height, dem_nodata, 1e-8, 1e-5) or (
                                 n_height < fill_height):
                             # we encounter a neighbor not processed that is
                             # lower than the current pixel or nodata
@@ -935,8 +968,8 @@ def fill_pits(
                     fill_queue.pop()
 
                     for i_n in range(8):
-                        xi_n = xi_q+NEIGHBOR_OFFSET_ARRAY[2*i_n]
-                        yi_n = yi_q+NEIGHBOR_OFFSET_ARRAY[2*i_n+1]
+                        xi_n = xi_q+D8_XOFFSET[i_n]
+                        yi_n = yi_q+D8_YOFFSET[i_n]
                         if (xi_n < 0 or xi_n >= raster_x_size or
                                 yi_n < 0 or yi_n >= raster_y_size):
                             continue
@@ -950,7 +983,7 @@ def fill_pits(
     pit_mask_managed_raster.close()
     flat_region_mask_managed_raster.close()
     shutil.rmtree(working_dir_path)
-    LOGGER.info('%.1f%% complete', 100.0)
+    LOGGER.info('(fill pits): complete')
 
 
 def flow_dir_d8(
@@ -1127,11 +1160,13 @@ def flow_dir_d8(
         xoff = offset_dict['xoff']
         yoff = offset_dict['yoff']
 
-        if ctime(NULL) - last_log_time > 5.0:
+        if ctime(NULL) - last_log_time > _LOGGING_PERIOD:
             last_log_time = ctime(NULL)
             current_pixel = xoff + yoff * raster_x_size
-            LOGGER.info('%.1f%% complete', 100.0 * current_pixel / <float>(
-                raster_x_size * raster_y_size))
+            LOGGER.info(
+                '(flow dir d8): '
+                f'{current_pixel} of {raster_x_size*raster_y_size} '
+                f'pixels complete')
 
         # make a buffer big enough to capture block and boundaries around it
         dem_buffer_array = numpy.empty(
@@ -1153,7 +1188,7 @@ def flow_dir_d8(
         for yi in range(1, win_ysize+1):
             for xi in range(1, win_xsize+1):
                 root_height = dem_buffer_array[yi, xi]
-                if _is_close(root_height, dem_nodata):
+                if _is_close(root_height, dem_nodata, 1e-8, 1e-5):
                     continue
 
                 # this value is set in case it turns out to be the root of a
@@ -1174,10 +1209,10 @@ def flow_dir_d8(
                 largest_slope = 0.0
 
                 for i_n in range(8):
-                    xi_n = xi+NEIGHBOR_OFFSET_ARRAY[2*i_n]
-                    yi_n = yi+NEIGHBOR_OFFSET_ARRAY[2*i_n+1]
+                    xi_n = xi+D8_XOFFSET[i_n]
+                    yi_n = yi+D8_YOFFSET[i_n]
                     n_height = dem_buffer_array[yi_n, xi_n]
-                    if _is_close(n_height, dem_nodata):
+                    if _is_close(n_height, dem_nodata, 1e-8, 1e-5):
                         continue
                     n_slope = root_height - n_height
                     if i_n & 1:
@@ -1211,15 +1246,15 @@ def flow_dir_d8(
                     largest_slope = 0.0
                     diagonal_nodata = 1
                     for i_n in range(8):
-                        xi_n = xi_q+NEIGHBOR_OFFSET_ARRAY[2*i_n]
-                        yi_n = yi_q+NEIGHBOR_OFFSET_ARRAY[2*i_n+1]
+                        xi_n = xi_q+D8_XOFFSET[i_n]
+                        yi_n = yi_q+D8_YOFFSET[i_n]
 
                         if (xi_n < 0 or xi_n >= raster_x_size or
                                 yi_n < 0 or yi_n >= raster_y_size):
                             n_height = dem_nodata
                         else:
                             n_height = dem_managed_raster.get(xi_n, yi_n)
-                        if _is_close(n_height, dem_nodata):
+                        if _is_close(n_height, dem_nodata, 1e-8, 1e-5):
                             if diagonal_nodata and largest_slope == 0.0:
                                 largest_slope_dir = i_n
                                 diagonal_nodata = i_n & 1
@@ -1286,8 +1321,8 @@ def flow_dir_d8(
                         xi_q, yi_q)
 
                     for i_n in range(8):
-                        xi_n = xi_q+NEIGHBOR_OFFSET_ARRAY[2*i_n]
-                        yi_n = yi_q+NEIGHBOR_OFFSET_ARRAY[2*i_n+1]
+                        xi_n = xi_q+D8_XOFFSET[i_n]
+                        yi_n = yi_q+D8_YOFFSET[i_n]
                         if (xi_n < 0 or xi_n >= raster_x_size or
                                 yi_n < 0 or yi_n >= raster_y_size):
                             continue
@@ -1313,7 +1348,7 @@ def flow_dir_d8(
     dem_managed_raster.close()
     plateau_distance_managed_raster.close()
     shutil.rmtree(working_dir_path)
-    LOGGER.info('%.1f%% complete', 100.0)
+    LOGGER.info('(flow dir d8): complete')
 
 
 def flow_accumulation_d8(
@@ -1446,7 +1481,7 @@ def flow_accumulation_d8(
         xoff = offset_dict['xoff']
         yoff = offset_dict['yoff']
 
-        if ctime(NULL) - last_log_time > 5.0:
+        if ctime(NULL) - last_log_time > _LOGGING_PERIOD:
             last_log_time = ctime(NULL)
             current_pixel = xoff + yoff * raster_x_size
             LOGGER.info('%.1f%% complete', 100.0 * current_pixel / <float>(
@@ -1475,8 +1510,8 @@ def flow_accumulation_d8(
                 if flow_dir == flow_dir_nodata:
                     continue
 
-                xi_n = xi+NEIGHBOR_OFFSET_ARRAY[2*flow_dir]
-                yi_n = yi+NEIGHBOR_OFFSET_ARRAY[2*flow_dir+1]
+                xi_n = xi+D8_XOFFSET[flow_dir]
+                yi_n = yi+D8_YOFFSET[flow_dir]
 
                 if flow_dir_buffer_array[yi_n, xi_n] == flow_dir_nodata:
                     xi_root = xi-1+xoff
@@ -1485,7 +1520,7 @@ def flow_accumulation_d8(
                     if weight_raster is not None:
                         weight_val = <double>weight_raster.get(
                             xi_root, yi_root)
-                        if _is_close(weight_val, weight_nodata):
+                        if _is_close(weight_val, weight_nodata, 1e-8, 1e-5):
                             weight_val = 0.0
                     else:
                         weight_val = 1.0
@@ -1498,8 +1533,8 @@ def flow_accumulation_d8(
 
                     preempted = 0
                     for i_n in range(flow_pixel.last_flow_dir, 8):
-                        xi_n = flow_pixel.xi+NEIGHBOR_OFFSET_ARRAY[2*i_n]
-                        yi_n = flow_pixel.yi+NEIGHBOR_OFFSET_ARRAY[2*i_n+1]
+                        xi_n = flow_pixel.xi+D8_XOFFSET[i_n]
+                        yi_n = flow_pixel.yi+D8_YOFFSET[i_n]
                         if (xi_n < 0 or xi_n >= raster_x_size or
                                 yi_n < 0 or yi_n >= raster_y_size):
                             # no upstream here
@@ -1513,14 +1548,14 @@ def flow_accumulation_d8(
                             continue
                         upstream_flow_accum = <double>(
                             flow_accum_managed_raster.get(xi_n, yi_n))
-                        if _is_close(upstream_flow_accum, flow_accum_nodata):
+                        if _is_close(upstream_flow_accum, flow_accum_nodata, 1e-8, 1e-5):
                             # process upstream before this one
                             flow_pixel.last_flow_dir = i_n
                             search_stack.push(flow_pixel)
                             if weight_raster is not None:
                                 weight_val = <double>weight_raster.get(
                                     xi_n, yi_n)
-                                if _is_close(weight_val, weight_nodata):
+                                if _is_close(weight_val, weight_nodata, 1e-8, 1e-5):
                                     weight_val = 0.0
                             else:
                                 weight_val = 1.0
@@ -1748,7 +1783,7 @@ def flow_dir_mfd(
         xoff = offset_dict['xoff']
         yoff = offset_dict['yoff']
 
-        if ctime(NULL) - last_log_time > 5.0:
+        if ctime(NULL) - last_log_time > _LOGGING_PERIOD:
             last_log_time = ctime(NULL)
             current_pixel = xoff + yoff * raster_x_size
             LOGGER.info('%.1f%% complete', 100.0 * current_pixel / <float>(
@@ -1775,7 +1810,7 @@ def flow_dir_mfd(
         for yi in range(1, win_ysize+1):
             for xi in range(1, win_xsize+1):
                 root_height = dem_buffer_array[yi, xi]
-                if _is_close(root_height, dem_nodata):
+                if _is_close(root_height, dem_nodata, 1e-8, 1e-5):
                     continue
 
                 # this value is set in case it turns out to be the root of a
@@ -1797,10 +1832,10 @@ def flow_dir_mfd(
                 for i_n in range(8):
                     # initialize downhill slopes to 0.0
                     downhill_slope_array[i_n] = 0.0
-                    xi_n = xi+NEIGHBOR_OFFSET_ARRAY[2*i_n]
-                    yi_n = yi+NEIGHBOR_OFFSET_ARRAY[2*i_n+1]
+                    xi_n = xi+D8_XOFFSET[i_n]
+                    yi_n = yi+D8_YOFFSET[i_n]
                     n_height = dem_buffer_array[yi_n, xi_n]
-                    if _is_close(n_height, dem_nodata):
+                    if _is_close(n_height, dem_nodata, 1e-8, 1e-5):
                         continue
                     n_slope = root_height - n_height
                     if n_slope > 0.0:
@@ -1844,15 +1879,15 @@ def flow_dir_mfd(
                         # initialize downhill slopes to 0.0
                         downhill_slope_array[i_n] = 0.0
                         nodata_downhill_slope_array[i_n] = 0.0
-                        xi_n = xi_q+NEIGHBOR_OFFSET_ARRAY[2*i_n]
-                        yi_n = yi_q+NEIGHBOR_OFFSET_ARRAY[2*i_n+1]
+                        xi_n = xi_q+D8_XOFFSET[i_n]
+                        yi_n = yi_q+D8_YOFFSET[i_n]
 
                         if (xi_n < 0 or xi_n >= raster_x_size or
                                 yi_n < 0 or yi_n >= raster_y_size):
                             n_height = dem_nodata
                         else:
                             n_height = dem_managed_raster.get(xi_n, yi_n)
-                        if _is_close(n_height, dem_nodata):
+                        if _is_close(n_height, dem_nodata, 1e-8, 1e-5):
                             n_slope = SQRT2_INV if i_n & 1 else 1.0
                             sum_of_nodata_slope_weights += n_slope
                             nodata_downhill_slope_array[i_n] = n_slope
@@ -1952,8 +1987,8 @@ def flow_dir_mfd(
                         xi_q, yi_q)
 
                     for i_n in range(8):
-                        xi_n = xi_q+NEIGHBOR_OFFSET_ARRAY[2*i_n]
-                        yi_n = yi_q+NEIGHBOR_OFFSET_ARRAY[2*i_n+1]
+                        xi_n = xi_q+D8_XOFFSET[i_n]
+                        yi_n = yi_q+D8_YOFFSET[i_n]
                         if (xi_n < 0 or xi_n >= raster_x_size or
                                 yi_n < 0 or yi_n >= raster_y_size):
                             continue
@@ -1984,8 +2019,8 @@ def flow_dir_mfd(
 
                     sum_of_slope_weights = 0.0
                     for i_n in range(8):
-                        xi_n = xi_q+NEIGHBOR_OFFSET_ARRAY[2*i_n]
-                        yi_n = yi_q+NEIGHBOR_OFFSET_ARRAY[2*i_n+1]
+                        xi_n = xi_q+D8_XOFFSET[i_n]
+                        yi_n = yi_q+D8_YOFFSET[i_n]
                         downhill_slope_array[i_n] = 0.0
 
                         if (xi_n < 0 or xi_n >= raster_x_size or
@@ -2184,7 +2219,7 @@ def flow_accumulation_mfd(
         xoff = offset_dict['xoff']
         yoff = offset_dict['yoff']
 
-        if ctime(NULL) - last_log_time > 5.0:
+        if ctime(NULL) - last_log_time > _LOGGING_PERIOD:
             last_log_time = ctime(NULL)
             current_pixel = xoff + yoff * raster_x_size
             LOGGER.info('%.1f%% complete', 100.0 * current_pixel / <float>(
@@ -2219,8 +2254,8 @@ def flow_accumulation_mfd(
                     if ((flow_dir_mfd >> (i_n * 4)) & 0xF) == 0:
                         # no flow in that direction
                         continue
-                    xi_n = xi+NEIGHBOR_OFFSET_ARRAY[2*i_n]
-                    yi_n = yi+NEIGHBOR_OFFSET_ARRAY[2*i_n+1]
+                    xi_n = xi+D8_XOFFSET[i_n]
+                    yi_n = yi+D8_YOFFSET[i_n]
 
                     if flow_dir_mfd_buffer_array[yi_n, xi_n] == 0:
                         # if the entire value is zero, it flows nowhere
@@ -2231,7 +2266,7 @@ def flow_accumulation_mfd(
                         if weight_raster is not None:
                             weight_val = <double>weight_raster.get(
                                 xi_root, yi_root)
-                            if _is_close(weight_val, weight_nodata):
+                            if _is_close(weight_val, weight_nodata, 1e-8, 1e-5):
                                 weight_val = 0.0
                         else:
                             weight_val = 1.0
@@ -2245,7 +2280,7 @@ def flow_accumulation_mfd(
                     flow_pixel = search_stack.top()
                     search_stack.pop()
 
-                    if ctime(NULL) - last_log_time > 5.0:
+                    if ctime(NULL) - last_log_time > _LOGGING_PERIOD:
                         last_log_time = ctime(NULL)
                         LOGGER.info(
                             'mfd flow accum %.1f%% complete',
@@ -2253,8 +2288,8 @@ def flow_accumulation_mfd(
 
                     preempted = 0
                     for i_n in range(flow_pixel.last_flow_dir, 8):
-                        xi_n = flow_pixel.xi+NEIGHBOR_OFFSET_ARRAY[2*i_n]
-                        yi_n = flow_pixel.yi+NEIGHBOR_OFFSET_ARRAY[2*i_n+1]
+                        xi_n = flow_pixel.xi+D8_XOFFSET[i_n]
+                        yi_n = flow_pixel.yi+D8_YOFFSET[i_n]
                         if (xi_n < 0 or xi_n >= raster_x_size or
                                 yi_n < 0 or yi_n >= raster_y_size):
                             # no upstream here
@@ -2269,7 +2304,7 @@ def flow_accumulation_mfd(
                             continue
                         upstream_flow_accum = (
                             flow_accum_managed_raster.get(xi_n, yi_n))
-                        if (_is_close(upstream_flow_accum, flow_accum_nodata)
+                        if (_is_close(upstream_flow_accum, flow_accum_nodata, 1e-8, 1e-5)
                                 and not visited_managed_raster.get(
                                     xi_n, yi_n)):
                             # process upstream before this one
@@ -2278,7 +2313,7 @@ def flow_accumulation_mfd(
                             if weight_raster is not None:
                                 weight_val = <double>weight_raster.get(
                                     xi_n, yi_n)
-                                if _is_close(weight_val, weight_nodata):
+                                if _is_close(weight_val, weight_nodata, 1e-8, 1e-5):
                                     weight_val = 0.0
                             else:
                                 weight_val = 1.0
@@ -2424,7 +2459,7 @@ def distance_to_channel_d8(
         xoff = offset_dict['xoff']
         yoff = offset_dict['yoff']
 
-        if ctime(NULL) - last_log_time > 5.0:
+        if ctime(NULL) - last_log_time > _LOGGING_PERIOD:
             last_log_time = ctime(NULL)
             current_pixel = xoff + yoff * raster_x_size
             LOGGER.info('%.1f%% complete', 100.0 * current_pixel / <float>(
@@ -2467,8 +2502,8 @@ def distance_to_channel_d8(
                         xi_q, yi_q, pixel_val)
 
                     for i_n in range(8):
-                        xi_n = xi_q+NEIGHBOR_OFFSET_ARRAY[2*i_n]
-                        yi_n = yi_q+NEIGHBOR_OFFSET_ARRAY[2*i_n+1]
+                        xi_n = xi_q+D8_XOFFSET[i_n]
+                        yi_n = yi_q+D8_YOFFSET[i_n]
 
                         if (xi_n < 0 or xi_n >= raster_x_size or
                                 yi_n < 0 or yi_n >= raster_y_size):
@@ -2488,7 +2523,7 @@ def distance_to_channel_d8(
                             # account for diagonal distance.
                             if weight_raster is not None:
                                 weight_val = weight_raster.get(xi_n, yi_n)
-                                if _is_close(weight_val, weight_nodata):
+                                if _is_close(weight_val, weight_nodata, 1e-8, 1e-5):
                                     weight_val = 0.0
                             else:
                                 weight_val = (SQRT2 if i_n % 2 else 1)
@@ -2621,7 +2656,7 @@ def distance_to_channel_mfd(
         xoff = offset_dict['xoff']
         yoff = offset_dict['yoff']
 
-        if ctime(NULL) - last_log_time > 5.0:
+        if ctime(NULL) - last_log_time > _LOGGING_PERIOD:
             last_log_time = ctime(NULL)
             current_pixel = xoff + yoff * raster_x_size
             LOGGER.info('%.1f%% complete', 100.0 * current_pixel / <float>(
@@ -2667,7 +2702,7 @@ def distance_to_channel_mfd(
                     continue
 
                 if _is_close(distance_to_channel_managed_raster.get(
-                        xi_root, yi_root), distance_nodata):
+                        xi_root, yi_root), distance_nodata, 1e-8, 1e-5):
                     distance_to_channel_stack.push(
                         FlowPixelType(xi_root, yi_root, 0, 0.0))
 
@@ -2692,8 +2727,8 @@ def distance_to_channel_mfd(
                         if flow_dir_weight == 0:
                             continue
 
-                        xi_n = pixel.xi+NEIGHBOR_OFFSET_ARRAY[2*i_n]
-                        yi_n = pixel.yi+NEIGHBOR_OFFSET_ARRAY[2*i_n+1]
+                        xi_n = pixel.xi+D8_XOFFSET[i_n]
+                        yi_n = pixel.yi+D8_YOFFSET[i_n]
 
                         if (xi_n < 0 or xi_n >= raster_x_size or
                                 yi_n < 0 or yi_n >= raster_y_size):
@@ -2702,7 +2737,7 @@ def distance_to_channel_mfd(
                         n_distance = distance_to_channel_managed_raster.get(
                             xi_n, yi_n)
 
-                        if _is_close(n_distance, distance_nodata):
+                        if _is_close(n_distance, distance_nodata, 1e-8, 1e-5):
                             preempted = 1
                             pixel.last_flow_dir = i_n
                             distance_to_channel_stack.push(pixel)
@@ -2717,7 +2752,7 @@ def distance_to_channel_mfd(
                         # for diagonal distance.
                         if weight_raster is not None:
                             weight_val = weight_raster.get(xi_n, yi_n)
-                            if _is_close(weight_val, weight_nodata):
+                            if _is_close(weight_val, weight_nodata, 1e-8, 1e-5):
                                 weight_val = 0.0
                         else:
                             weight_val = (SQRT2 if i_n % 2 else 1)
@@ -2842,7 +2877,7 @@ def extract_streams_mfd(
         win_ysize = block_offsets['win_ysize']
         for yi in range(win_ysize):
             yi_root = yi+yoff
-            if ctime(NULL) - last_log_time > 5.0:
+            if ctime(NULL) - last_log_time > _LOGGING_PERIOD:
                 last_log_time = ctime(NULL)
                 current_pixel = xoff + yoff * raster_x_size
                 LOGGER.info('%.1f%% complete', 100.0 * current_pixel / <float>(
@@ -2850,7 +2885,7 @@ def extract_streams_mfd(
             for xi in range(win_xsize):
                 xi_root = xi+xoff
                 flow_accum = flow_accum_mr.get(xi_root, yi_root)
-                if _is_close(flow_accum, flow_accum_nodata):
+                if _is_close(flow_accum, flow_accum_nodata, 1e-8, 1e-5):
                     continue
                 if stream_mr.get(xi_root, yi_root) != stream_nodata:
                     continue
@@ -2864,8 +2899,8 @@ def extract_streams_mfd(
                     if ((flow_dir_mfd >> (i_n * 4)) & 0xF) == 0:
                         # no flow in that direction
                         continue
-                    xi_n = xi_root+NEIGHBOR_OFFSET_ARRAY[2*i_n]
-                    yi_n = yi_root+NEIGHBOR_OFFSET_ARRAY[2*i_n+1]
+                    xi_n = xi_root+D8_XOFFSET[i_n]
+                    yi_n = yi_root+D8_YOFFSET[i_n]
                     if (xi_n < 0 or xi_n >= raster_x_size or
                             yi_n < 0 or yi_n >= raster_y_size):
                         # it'll drain off the edge of the raster
@@ -2885,8 +2920,8 @@ def extract_streams_mfd(
                     open_set.pop()
                     n_iterations += 1
                     for i_sn in range(8):
-                        xi_sn = xi_n+NEIGHBOR_OFFSET_ARRAY[2*i_sn]
-                        yi_sn = yi_n+NEIGHBOR_OFFSET_ARRAY[2*i_sn+1]
+                        xi_sn = xi_n+D8_XOFFSET[i_sn]
+                        yi_sn = yi_n+D8_YOFFSET[i_sn]
                         if (xi_sn < 0 or xi_sn >= raster_x_size or
                                 yi_sn < 0 or yi_sn >= raster_y_size):
                             continue
@@ -2916,8 +2951,8 @@ def extract_streams_mfd(
                                             flow_dir_mfd_mr.get(xi_bn, yi_bn))
                                         for i_sn in range(8):
                                             if (flow_dir_mfd >> (i_sn*4)) & 0xF > 0:
-                                                xi_sn = xi_bn+NEIGHBOR_OFFSET_ARRAY[2*i_sn]
-                                                yi_sn = yi_bn+NEIGHBOR_OFFSET_ARRAY[2*i_sn+1]
+                                                xi_sn = xi_bn+D8_XOFFSET[i_sn]
+                                                yi_sn = yi_bn+D8_YOFFSET[i_sn]
                                                 if (xi_sn < 0 or xi_sn >= raster_x_size or
                                                         yi_sn < 0 or yi_sn >= raster_y_size):
                                                     continue
@@ -2960,3 +2995,1318 @@ def _is_raster_path_band_formatted(raster_path_band):
         return False
     else:
         return True
+
+
+def extract_strahler_streams_d8(
+        flow_dir_d8_raster_path_band, flow_accum_raster_path_band,
+        dem_raster_path_band,
+        target_stream_vector_path,
+        long min_flow_accum_threshold=100,
+        int river_order=5,
+        float min_p_val=0.05,
+        osr_axis_mapping_strategy=DEFAULT_OSR_AXIS_MAPPING_STRATEGY):
+    """Extract Strahler order stream geometry from flow accumulation.
+
+    Creates a Strahler ordered stream vector containing line segments
+    representing each separate stream fragment. The final vector contains
+    at least the fields:
+
+        * "order" (int): an integer representing the stream order
+        * "river_id" (int): unique ID used by all stream segments that
+            connect to the same outlet.
+        * "drop_distance" (float): this is the drop distance in DEM units
+            from the upstream to downstream component of this stream
+            segment.
+        * "outlet" (int): 1 if this segment is an outlet, 0 if not.
+        * "river_id": unique ID among all stream segments which are
+            hydrologically connected.
+        * "us_fa" (int): flow accumulation value at the upstream end of
+            the stream segment.
+        * "ds_fa" (int): flow accumulation value at the downstream end of
+            the stream segment
+        * "thresh_fa" (int): the final threshold flow accumulation value
+            used to determine the river segments.
+        * "upstream_d8_dir" (int): a bookkeeping parameter from stream
+            calculations that is left in due to the overhead
+            of deleting a field.
+        * "ds_x" (int): the downstream x coordinate in raster space for the
+            stream segment outlet.
+        * "ds_y" (int): the downstream y coordinate in raster space for the
+            stream segment outlet.
+        * "us_x" (int): the upstream x coordinate in raster space for the
+            stream segment outlet.
+        * "us_y" (int): the upstream y coordinate in raster space for the
+            stream segment outlet.
+
+    Args:
+        flow_dir_d8_raster_path_band (tuple): a path/band representing the D8
+            flow direction raster.
+        flow_accum_raster_path_band (tuple): a path/band representing the D8
+            flow accumulation raster represented by
+            ``flow_dir_d8_raster_path_band``.
+        dem_raster_path_band (tuple): a path/band representing the DEM used to
+            derive flow dir.
+        target_stream_vector_path (tuple): a single layer line vector created
+            by this function representing the stream segments extracted from
+            the above arguments. Contains the fields "order" and "parent" as
+            described above.
+        min_flow_accum_threshold (int): minimum number of upstream pixels
+            required to create a stream, the final value may be adjusted based
+            on significant differences in 1st and 2nd order streams.
+        river_order (int): what stream order to define as a river in terms of
+            automatically determining flow accumulation threshold for that
+            stream collection.
+        min_p_val (float): minimum p_value test for significance
+        osr_axis_mapping_strategy (int): OSR axis mapping strategy for
+            ``SpatialReference`` objects. Defaults to
+            ``geoprocessing.DEFAULT_OSR_AXIS_MAPPING_STRATEGY``. This parameter
+            should not be changed unless you know what you are doing.
+
+    Returns:
+        None.
+    """
+    flow_dir_info = pygeoprocessing.get_raster_info(
+        flow_dir_d8_raster_path_band[0])
+    if flow_dir_info['projection_wkt']:
+        flow_dir_srs = osr.SpatialReference()
+        flow_dir_srs.ImportFromWkt(flow_dir_info['projection_wkt'])
+        flow_dir_srs.SetAxisMappingStrategy(osr_axis_mapping_strategy)
+    else:
+        flow_dir_srs = None
+    gpkg_driver = gdal.GetDriverByName('GPKG')
+
+    stream_vector = gpkg_driver.Create(
+        target_stream_vector_path, 0, 0, 0, gdal.GDT_Unknown)
+    stream_basename = os.path.basename(
+        os.path.splitext(target_stream_vector_path)[0])
+    stream_layer = stream_vector.CreateLayer(
+        stream_basename, flow_dir_srs, ogr.wkbLineString)
+    stream_layer.CreateField(ogr.FieldDefn('order', ogr.OFTInteger))
+    stream_layer.CreateField(ogr.FieldDefn('drop_distance', ogr.OFTReal))
+    stream_layer.CreateField(ogr.FieldDefn('outlet', ogr.OFTInteger))
+    stream_layer.CreateField(ogr.FieldDefn('river_id', ogr.OFTInteger))
+    stream_layer.CreateField(ogr.FieldDefn('us_fa', ogr.OFTInteger64))
+    stream_layer.CreateField(ogr.FieldDefn('ds_fa', ogr.OFTInteger64))
+    stream_layer.CreateField(ogr.FieldDefn('thresh_fa', ogr.OFTInteger64))
+    stream_layer.CreateField(ogr.FieldDefn('upstream_d8_dir', ogr.OFTInteger))
+    stream_layer.CreateField(ogr.FieldDefn('ds_x', ogr.OFTInteger))
+    stream_layer.CreateField(ogr.FieldDefn('ds_y', ogr.OFTInteger))
+    stream_layer.CreateField(ogr.FieldDefn('us_x', ogr.OFTInteger))
+    stream_layer.CreateField(ogr.FieldDefn('us_y', ogr.OFTInteger))
+    flow_dir_managed_raster = _ManagedRaster(
+        flow_dir_d8_raster_path_band[0], flow_dir_d8_raster_path_band[1], 0)
+
+    flow_accum_managed_raster = _ManagedRaster(
+        flow_accum_raster_path_band[0], flow_accum_raster_path_band[1], 0)
+
+    dem_managed_raster = _ManagedRaster(
+        dem_raster_path_band[0], dem_raster_path_band[1], 0)
+
+    cdef int flow_nodata = pygeoprocessing.get_raster_info(
+        flow_dir_d8_raster_path_band[0])['nodata'][
+            flow_dir_d8_raster_path_band[1]-1]
+
+    # D8 flow directions encoded as
+    # 321
+    # 4x0
+    # 567
+    cdef int xoff, yoff, i, j, d, d_n, n_cols, n_rows
+    cdef int win_xsize, win_ysize
+
+    n_cols, n_rows = flow_dir_info['raster_size']
+
+    LOGGER.info('(extract_strahler_streams_d8): seed the drains')
+    cdef long n_pixels = n_cols * n_rows
+    cdef long n_processed = 0
+    cdef time_t last_log_time
+    last_log_time = ctime(NULL)
+    cdef stack[StreamConnectivityPoint] source_point_stack
+    cdef StreamConnectivityPoint source_stream_point
+
+    cdef int x_l=-1, y_l=-1  # the _l is for "local" aka "current" pixel
+
+    # D8 backflow directions encoded as
+    # 765
+    # 0x4
+    # 123
+    cdef int x_n, y_n  # the _n is for "neighbor"
+    cdef int upstream_count=0, upstream_index
+    # this array is filled out as upstream directions are calculated and
+    # indexed by `upstream_count`
+    cdef int *upstream_dirs = [0, 0, 0, 0, 0, 0, 0, 0]
+    cdef long local_flow_accum
+    # used to determine if source is a drain and should be tracked
+    cdef int is_drain
+
+    # map x/y tuple to list of streams originating from that point
+    # 2 tuple -> list of int
+    coord_to_stream_ids = collections.defaultdict(list)
+
+    # First pass - search for bifurcating stream points
+    #   look at all pixels in the raster. If a pixel has:
+    #       * flow accumulation > threshold and
+    #       * more than two upstream neighbors with
+    #         flow accumulation > threshold or
+    #       * drains to edge or nodata pixel
+    #   record a seed point for that bifurcation for later processing.
+    stream_layer.StartTransaction()
+    for offset_dict in pygeoprocessing.iterblocks(
+            flow_dir_d8_raster_path_band, offset_only=True):
+        if ctime(NULL)-last_log_time > _LOGGING_PERIOD:
+            LOGGER.info(
+                '(extract_strahler_streams_d8): drain seeding '
+                f'{n_processed} of {n_pixels} pixels complete')
+            last_log_time = ctime(NULL)
+        xoff = offset_dict['xoff']
+        yoff = offset_dict['yoff']
+        win_xsize = offset_dict['win_xsize']
+        win_ysize = offset_dict['win_ysize']
+        n_processed += win_xsize * win_ysize
+
+        for i in range(win_xsize):
+            for j in range(win_ysize):
+                is_drain = 0
+                x_l = xoff + i
+                y_l = yoff + j
+                local_flow_accum = <long>flow_accum_managed_raster.get(
+                    x_l, y_l)
+                if local_flow_accum < min_flow_accum_threshold:
+                    continue
+                # check to see if it's a drain
+                d_n = <int>flow_dir_managed_raster.get(x_l, y_l)
+                x_n = x_l + D8_XOFFSET[d_n]
+                y_n = y_l + D8_YOFFSET[d_n]
+
+                if (x_n < 0 or y_n < 0 or x_n >= n_cols or y_n >= n_cols or
+                        <int>flow_dir_managed_raster.get(
+                            x_n, y_n) == flow_nodata):
+                    is_drain = 1
+
+                if not is_drain and (
+                        local_flow_accum < 2*min_flow_accum_threshold):
+                    # if current pixel is < 2*flow threshold then it can't
+                    # bifurcate into two pixels == flow threshold
+                    continue
+
+                upstream_count = 0
+                for d in range(8):
+                    x_n = x_l + D8_XOFFSET[d]
+                    y_n = y_l + D8_YOFFSET[d]
+                    # check if on border
+                    if x_n < 0 or y_n < 0 or x_n >= n_cols or y_n >= n_rows:
+                        continue
+                    d_n = <int>flow_dir_managed_raster.get(x_n, y_n)
+                    if d_n == flow_nodata:
+                        continue
+                    if (D8_REVERSE_DIRECTION[d] == d_n and
+                            <long>flow_accum_managed_raster.get(
+                                x_n, y_n) >= min_flow_accum_threshold):
+                        upstream_dirs[upstream_count] = d
+                        upstream_count += 1
+                if upstream_count <= 1 and not is_drain:
+                    continue
+                for upstream_index in range(upstream_count):
+                    # hit a branch!
+                    stream_feature = ogr.Feature(
+                        stream_layer.GetLayerDefn())
+                    stream_feature.SetField('outlet', 0)
+                    stream_layer.CreateFeature(stream_feature)
+                    stream_fid = stream_feature.GetFID()
+                    source_point_stack.push(StreamConnectivityPoint(
+                        x_l, y_l, upstream_dirs[upstream_index], stream_fid))
+                    coord_to_stream_ids[(x_l, y_l)].append(stream_fid)
+    LOGGER.info(
+        '(extract_strahler_streams_d8): '
+        f'drain seeding complete')
+    LOGGER.info('(extract_strahler_streams_d8): starting upstream walk')
+    n_points = source_point_stack.size()
+
+    # map downstream ids to list of upstream connected streams
+    # id -> list of ids
+    downstream_to_upstream_ids = {}
+
+    # map upstream id to downstream connected stream id -> id
+    upstream_to_downstream_id = {}
+
+    while not source_point_stack.empty():
+        if ctime(NULL)-last_log_time > _LOGGING_PERIOD:
+            LOGGER.info(
+                '(extract_strahler_streams_d8): '
+                'stream segment creation '
+                f'{n_points-source_point_stack.size()} of {n_points} '
+                'source points complete')
+            last_log_time = ctime(NULL)
+
+        # This coordinate is the downstream end of the stream
+        source_stream_point = source_point_stack.top()
+        source_point_stack.pop()
+
+        payload = _calculate_stream_geometry(
+            source_stream_point.xi, source_stream_point.yi,
+            source_stream_point.upstream_d8_dir,
+            flow_dir_info['geotransform'], n_cols, n_rows,
+            flow_accum_managed_raster, flow_dir_managed_raster, flow_nodata,
+            min_flow_accum_threshold, coord_to_stream_ids)
+        if payload is None:
+            continue
+        x_u, y_u, upstream_id_list, stream_line = payload
+
+        downstream_dem = dem_managed_raster.get(
+            source_stream_point.xi, source_stream_point.yi)
+
+        stream_feature = stream_layer.GetFeature(
+            source_stream_point.source_id)
+        stream_feature.SetField(
+            'ds_fa', flow_accum_managed_raster.get(
+                source_stream_point.xi, source_stream_point.yi))
+        stream_feature.SetField('ds_x', source_stream_point.xi)
+        stream_feature.SetField('ds_y', source_stream_point.yi)
+        stream_feature.SetField('us_x', x_u)
+        stream_feature.SetField('us_y', y_u)
+        stream_feature.SetField(
+            'upstream_d8_dir', source_stream_point.upstream_d8_dir)
+
+        # record the downstream connected component for all the upstream
+        # connected components
+        for upstream_id in upstream_id_list:
+            upstream_to_downstream_id[upstream_id] = (
+                source_stream_point.source_id)
+
+        # record the upstream connected components for the downstream component
+        downstream_to_upstream_ids[source_stream_point.source_id] = (
+            upstream_id_list)
+
+        # if no upstream it means it is an order 1 source stream
+        if not upstream_id_list:
+            stream_feature.SetField('order', 1)
+        stream_feature.SetGeometry(stream_line)
+
+        # calculate the drop distance
+        upstream_dem = dem_managed_raster.get(x_u, y_u)
+        drop_distance = upstream_dem - downstream_dem
+        stream_feature.SetField('drop_distance', drop_distance)
+        stream_feature.SetField(
+            'us_fa', flow_accum_managed_raster.get(x_u, y_u))
+        stream_feature.SetField('thresh_fa', min_flow_accum_threshold)
+        stream_layer.SetFeature(stream_feature)
+
+    LOGGER.info(
+        '(extract_strahler_streams_d8): stream segment creation complete')
+
+    LOGGER.info('(extract_strahler_streams_d8): determining stream order')
+    # seed the list with all order 1 streams
+    stream_layer.SetAttributeFilter('"order"=1')
+    streams_to_process = [stream_feature for stream_feature in stream_layer]
+    base_feature_count = len(streams_to_process)
+    outlet_fid_list = []
+    while streams_to_process:
+        if ctime(NULL)-last_log_time > 2.0:
+            LOGGER.info(
+                '(extract_strahler_streams_d8): '
+                'stream order processing: '
+                f'{base_feature_count-len(streams_to_process)} of '
+                f'{base_feature_count} stream fragments complete')
+            last_log_time = ctime(NULL)
+        # fetch the downstream and connected upstream ids
+        stream_feature = streams_to_process.pop(0)
+        stream_fid = stream_feature.GetFID()
+        if stream_fid not in upstream_to_downstream_id:
+            # it's an outlet so no downstream to process
+            stream_feature.SetField('outlet', 1)
+            stream_layer.SetFeature(stream_feature)
+            outlet_fid_list.append(stream_feature.GetFID())
+            stream_feature = None
+            continue
+        downstream_fid = upstream_to_downstream_id[stream_fid]
+        downstream_feature = stream_layer.GetFeature(downstream_fid)
+        if downstream_feature.GetField('order') is not None:
+            # downstream component already processed
+            downstream_feature = None
+            continue
+        connected_upstream_fids = downstream_to_upstream_ids[downstream_fid]
+        # check that all upstream IDs are defined and construct stream order
+        # list
+        stream_order_list = []
+        all_defined = True
+        for upstream_fid in connected_upstream_fids:
+            upstream_feature = stream_layer.GetFeature(upstream_fid)
+            upstream_order = upstream_feature.GetField('order')
+            if upstream_order is not None:
+                stream_order_list.append(upstream_order)
+            else:
+                # found an upstream not defined, that means it'll be processed
+                # later
+                all_defined = False
+                break
+        if not all_defined:
+            # we'll revisit this stream later when the other connected
+            # components are processed
+            continue
+        sorted_stream_order_list = sorted(stream_order_list)
+        downstream_order = sorted_stream_order_list[-1]
+        if len(sorted_stream_order_list) > 1 and (
+                sorted_stream_order_list[-1] ==
+                sorted_stream_order_list[-2]):
+            # if there are at least two equal order streams feeding in,
+            # we go up one order
+            downstream_order += 1
+        downstream_feature.SetField('order', downstream_order)
+        stream_layer.SetFeature(downstream_feature)
+        streams_to_process.append(downstream_feature)
+        downstream_feature = None
+    LOGGER.info(
+        '(extract_strahler_streams_d8): stream order processing complete')
+
+    LOGGER.info(
+        '(extract_strahler_streams_d8): determine rivers')
+    working_river_id = 0
+    for outlet_index, outlet_fid in enumerate(outlet_fid_list):
+        # walk upstream starting from this outlet to search for rivers
+        # defined as stream segments whose order is <= river_order. Note it
+        # can be < river_order because we may have some streams that have
+        # outlets for shorter rivers that can't get to river_order.
+        if ctime(NULL)-last_log_time > _LOGGING_PERIOD:
+            LOGGER.info(
+                '(extract_strahler_streams_d8): '
+                'flow accumulation adjustment '
+                f'{outlet_index+1} of {len(outlet_fid_list)} '
+                'outlets complete')
+            last_log_time = ctime(NULL)
+        search_stack = [outlet_fid]
+        while search_stack:
+            stream_layer.CommitTransaction()
+            stream_layer.StartTransaction()
+            feature_id = search_stack.pop()
+            stream_feature = stream_layer.GetFeature(feature_id)
+            stream_order = stream_feature.GetField('order')
+
+            if (stream_order > river_order or
+                    stream_feature.GetField('river_id') is not None):
+                # keep walking upstream until there's an order <= river_order
+                search_stack.extend(
+                    downstream_to_upstream_ids[feature_id])
+            else:
+                # walk up the stream setting every upstream segment's
+                # river_id to working_river_id
+                stream_layer.SetFeature(stream_feature)
+                upstream_stack = [feature_id]
+
+                streams_by_order = collections.defaultdict(list)
+                drop_distance_collection = collections.defaultdict(list)
+                max_upstream_flow_accum = collections.defaultdict(int)
+                while upstream_stack:
+                    feature_id = upstream_stack.pop()
+                    stream_feature = stream_layer.GetFeature(feature_id)
+                    stream_feature.SetField('river_id', working_river_id)
+                    stream_layer.SetFeature(stream_feature)
+                    order = stream_feature.GetField('order')
+                    streams_by_order[order].append(stream_feature)
+                    drop_distance_collection[order].append(
+                        stream_feature.GetField('drop_distance'))
+                    max_upstream_flow_accum[order] = max(
+                        max_upstream_flow_accum[order],
+                        stream_feature.GetField('us_fa'))
+                    stream_feature = None
+                    upstream_stack.extend(
+                        downstream_to_upstream_ids[feature_id])
+
+                working_flow_accum_threshold = min_flow_accum_threshold
+                while drop_distance_collection:
+                    stream_layer.CommitTransaction()
+                    stream_layer.StartTransaction()
+                    # decide how much bigger to make the flow_accum
+                    # find a test_order that tests p_val > 0.5 then retest
+                    test_order = min(drop_distance_collection)
+                    while test_order+1 <= max(drop_distance_collection):
+                        if (len(drop_distance_collection[test_order]) < 3 or
+                                len(drop_distance_collection[
+                                    test_order+1]) < 3):
+                            # too small to test so it's not significant
+                            break
+                        _, p_val = scipy.stats.ttest_ind(
+                            drop_distance_collection[test_order],
+                            drop_distance_collection[test_order+1],
+                            equal_var=True)
+                        if p_val > min_p_val or numpy.isnan(p_val):
+                            # not too big or just too few elements
+                            break
+                        test_order += 1
+                    if test_order == min(drop_distance_collection):
+                        # order 1/2 streams are not statistically different
+                        break
+                    # try to make a reasonable estimate for flow accum
+                    working_flow_accum_threshold *= 1.25
+                    # reconstruct stream segments of <= test_order
+                    for order in range(1, test_order+1):
+                        # This will build up a list of kept or reconstructed
+                        # streams. Other streams will be deleted.
+                        streams_to_retest = []
+                        # The drop distance set will be recalculated
+                        # dynamically for the next loop
+                        if order in max_upstream_flow_accum:
+                            del max_upstream_flow_accum[order]
+                        if order in drop_distance_collection:
+                            del drop_distance_collection[order]
+                        while streams_by_order[order]:
+                            stream_feature = streams_by_order[order].pop()
+                            if (stream_feature.GetField('ds_fa') <
+                                    working_flow_accum_threshold):
+                                # this flow accumulation is too small, it's
+                                # not relevant anymore
+                                # remove from connectivity and delete
+                                _delete_feature(
+                                    stream_feature, stream_layer,
+                                    upstream_to_downstream_id,
+                                    downstream_to_upstream_ids)
+                                continue
+                            if (stream_feature.GetField('us_fa') >=
+                                    working_flow_accum_threshold):
+                                # this whole stream still fits in the
+                                # threshold so keep it
+                                # add drop distance to working set
+                                drop_distance_collection[order].append(
+                                    stream_feature.GetField('drop_distance'))
+                                max_upstream_flow_accum[order] = max(
+                                    max_upstream_flow_accum[order],
+                                    stream_feature.GetField('us_fa'))
+                                stream_layer.SetFeature(stream_feature)
+                                streams_to_retest.append(stream_feature)
+                                continue
+                            # recalculate stream geometry
+                            ds_x = stream_feature.GetField('ds_x')
+                            ds_y = stream_feature.GetField('ds_y')
+                            upstream_d8_dir = stream_feature.GetField(
+                                'upstream_d8_dir')
+                            payload = _calculate_stream_geometry(
+                                ds_x, ds_y, upstream_d8_dir,
+                                flow_dir_info['geotransform'], n_cols, n_rows,
+                                flow_accum_managed_raster,
+                                flow_dir_managed_raster, flow_nodata,
+                                working_flow_accum_threshold,
+                                coord_to_stream_ids)
+                            if payload is None:
+                                _delete_feature(
+                                    stream_feature, stream_layer,
+                                    upstream_to_downstream_id,
+                                    downstream_to_upstream_ids)
+                                continue
+                            x_u, y_u, upstream_id_list, stream_line = payload
+                            # recalculate the drop distance set
+                            stream_feature.SetGeometry(stream_line)
+                            upstream_dem = dem_managed_raster.get(x_u, y_u)
+                            downstream_dem = dem_managed_raster.get(
+                                ds_x, ds_y)
+                            drop_distance = upstream_dem - downstream_dem
+                            drop_distance_collection[order].append(
+                                drop_distance)
+                            stream_feature.SetField(
+                                'drop_distance', drop_distance)
+                            stream_feature.SetField(
+                                'us_fa', flow_accum_managed_raster.get(
+                                    x_u, y_u))
+                            stream_feature.SetField(
+                                'thresh_fa', working_flow_accum_threshold)
+                            stream_feature.SetField(
+                                'ds_x', ds_x)
+                            stream_feature.SetField(
+                                'ds_y', ds_y)
+                            stream_feature.SetField('us_x', x_u)
+                            stream_feature.SetField('us_y', y_u)
+
+                            streams_to_retest.append(stream_feature)
+                            stream_layer.SetFeature(stream_feature)
+
+                        streams_by_order[order] = streams_to_retest
+                working_river_id += 1
+
+    LOGGER.info(
+        '(extract_strahler_streams_d8): '
+        'flow accumulation adjustment complete')
+
+    stream_layer.DeleteField(
+        stream_layer.FindFieldIndex('upstream_d8_dir', 1))
+    stream_layer.CommitTransaction()
+    stream_layer.StartTransaction()
+    LOGGER.info(
+        '(extract_strahler_streams_d8): '
+        'final pass on stream order and geometry')
+
+    # seed the stack with all the upstream orders
+    working_stack = [
+        fid for fid in downstream_to_upstream_ids if
+        not downstream_to_upstream_ids[fid]]
+    fid_to_order = {}
+    processed_segments = 0
+    segments_to_process = len(downstream_to_upstream_ids)
+    deleted_set = set()
+    while working_stack:
+        if ctime(NULL)-last_log_time > _LOGGING_PERIOD:
+            LOGGER.info(
+                '(extract_strahler_streams_d8): '
+                'final pass on stream order '
+                f'{processed_segments} of {segments_to_process} '
+                'segments complete')
+            last_log_time = ctime(NULL)
+        processed_segments += 1
+
+        working_fid = working_stack.pop()
+        # invariant: working_fid and all upstream are processed, order not set
+
+        upstream_fid_list = downstream_to_upstream_ids[working_fid]
+        if upstream_fid_list:
+            order_count = collections.defaultdict(int)
+            for upstream_fid in upstream_fid_list:
+                order_count[fid_to_order[upstream_fid]] += 1
+            working_order = max(order_count)
+            if order_count[working_order] > 1:
+                working_order += 1
+            fid_to_order[working_fid] = working_order
+        else:
+            fid_to_order[working_fid] = 1
+
+        working_feature = stream_layer.GetFeature(working_fid)
+        working_feature.SetField('order', fid_to_order[working_fid])
+        stream_layer.SetFeature(working_feature)
+        working_feature = None
+
+        if working_fid not in upstream_to_downstream_id:
+            # nothing downstream so it's done
+            continue
+
+        downstream_fid = upstream_to_downstream_id[working_fid]
+        connected_fids = downstream_to_upstream_ids[downstream_fid]
+        if len(connected_fids) == 1:
+            # There's only one downstream, join it.
+            # Downstream order is the same as upstream
+            fid_to_order[downstream_fid] = fid_to_order[working_fid]
+            del fid_to_order[working_fid]
+
+            # set downstream order to working order
+            downstream_to_upstream_ids[downstream_fid] = (
+                downstream_to_upstream_ids[working_fid])
+            # since we're deleting the upstream segment we need upstream
+            # connecting segments to connect to the new downstream
+            for upstream_fid in downstream_to_upstream_ids[downstream_fid]:
+                upstream_to_downstream_id[upstream_fid] = downstream_fid
+            del downstream_to_upstream_ids[working_fid]
+            del upstream_to_downstream_id[working_fid]
+
+            # join working line with downstream line
+            working_feature = stream_layer.GetFeature(working_fid)
+            downstream_feature = stream_layer.GetFeature(downstream_fid)
+            downstream_geom = downstream_feature.GetGeometryRef()
+            working_geom = working_feature.GetGeometryRef()
+
+            # Union creates a multiline string by default but we know it's
+            # connected only at one point, so the next step ensures it's a
+            # regular linestring
+            multi_line = working_geom.Union(downstream_geom)
+            joined_line = ogr.CreateGeometryFromWkb(
+                shapely.ops.linemerge(shapely.wkb.loads(
+                    multi_line.ExportToWkb())).wkb)
+
+            downstream_feature.SetGeometry(joined_line)
+            downstream_feature.SetField(
+                'us_x', working_feature.GetField('us_x'))
+            downstream_feature.SetField(
+                'us_y', working_feature.GetField('us_y'))
+            stream_layer.SetFeature(downstream_feature)
+            working_feature = None
+            downstream_feature = None
+            multi_line = None
+            joined_line = None
+
+            # delete working line
+            stream_layer.DeleteFeature(working_fid)
+            deleted_set.add(working_fid)
+
+            # push downstream line for processing
+            working_stack.append(downstream_fid)
+            continue
+
+        # otherwise check if connected streams are all defined and if so
+        # set a new downstream order
+        upstream_all_defined = True
+        for connected_fid in connected_fids:
+            if connected_fid == working_fid:
+                # skip current
+                continue
+            if connected_fid not in fid_to_order:
+                # upstream not defined so skip it and it will be processed
+                # on another iteration
+                upstream_all_defined = False
+                break
+
+        if not upstream_all_defined:
+            # wait for other upstream components to be defined
+            continue
+
+        # all upstream components of this fid are calculated so it can be
+        # calculated now too
+        working_stack.append(downstream_fid)
+
+    LOGGER.info(
+        '(extract_strahler_streams_d8): '
+        'final pass on stream order complete')
+    LOGGER.info(
+        '(extract_strahler_streams_d8): '
+        'commit transaction due to stream joining')
+    stream_layer.CommitTransaction()
+    stream_layer = None
+    stream_vector = None
+    LOGGER.info('(extract_strahler_streams_d8): all done')
+
+
+def _build_discovery_finish_rasters(
+        flow_dir_d8_raster_path_band, target_discovery_raster_path,
+        target_finish_raster_path):
+    """Generates a discovery and finish time raster for a given d8 flow path.
+
+    Args:
+        flow_dir_d8_raster_path_band (tuple): a D8 flow raster path band tuple
+        target_discovery_raster_path (str): path to a generated raster that
+            creates discovery time (i.e. what count the pixel is visited in)
+        target_finish_raster_path (str): path to generated raster that creates
+            maximum upstream finish time.
+
+    Returns:
+        None
+    """
+    flow_dir_info = pygeoprocessing.get_raster_info(
+        flow_dir_d8_raster_path_band[0])
+    cdef int n_cols, n_rows
+    n_cols, n_rows = flow_dir_info['raster_size']
+    cdef int flow_dir_nodata = (
+        flow_dir_info['nodata'][flow_dir_d8_raster_path_band[1]-1])
+
+    flow_dir_managed_raster = _ManagedRaster(
+        flow_dir_d8_raster_path_band[0], flow_dir_d8_raster_path_band[1], 0)
+    pygeoprocessing.new_raster_from_base(
+        flow_dir_d8_raster_path_band[0], target_discovery_raster_path,
+        gdal.GDT_Float64, [-1])
+    discovery_managed_raster = _ManagedRaster(
+        target_discovery_raster_path, 1, 1)
+    pygeoprocessing.new_raster_from_base(
+        flow_dir_d8_raster_path_band[0], target_finish_raster_path,
+        gdal.GDT_Float64, [-1])
+    finish_managed_raster = _ManagedRaster(target_finish_raster_path, 1, 1)
+
+    cdef stack[CoordinateType] discovery_stack
+    cdef stack[FinishType] finish_stack
+    cdef CoordinateType raster_coord
+    cdef FinishType finish_coordinate
+
+    cdef long discovery_count = 0
+    cdef int n_processed, n_pixels
+    n_pixels = n_rows * n_cols
+    n_processed = 0
+    cdef time_t last_log_time = ctime(NULL)
+    cdef int n_pushed
+
+    cdef int i, j, xoff, yoff, win_xsize, win_ysize, x_l, y_l, x_n, y_n
+    cdef int n_dir, test_dir
+
+    for offset_dict in pygeoprocessing.iterblocks(
+            flow_dir_d8_raster_path_band, offset_only=True):
+        # search raster block by raster block
+        if ctime(NULL)-last_log_time > _LOGGING_PERIOD:
+            LOGGER.info(
+                f'(discovery time processing): '
+                f'{n_processed/n_pixels*100:.1f}% complete')
+            last_log_time = ctime(NULL)
+        xoff = offset_dict['xoff']
+        yoff = offset_dict['yoff']
+        win_xsize = offset_dict['win_xsize']
+        win_ysize = offset_dict['win_ysize']
+        n_processed += win_xsize * win_ysize
+
+        for i in range(win_xsize):
+            for j in range(win_ysize):
+                x_l = xoff + i
+                y_l = yoff + j
+                # check to see if this pixel is a drain
+                d_n = <int>flow_dir_managed_raster.get(x_l, y_l)
+                if d_n == flow_dir_nodata:
+                    continue
+
+                # check if downstream neighbor runs off raster or is nodata
+                x_n = x_l + D8_XOFFSET[d_n]
+                y_n = y_l + D8_YOFFSET[d_n]
+
+                if (x_n < 0 or y_n < 0 or x_n >= n_cols or y_n >= n_rows or
+                        <int>flow_dir_managed_raster.get(
+                            x_n, y_n) == flow_dir_nodata):
+                    discovery_stack.push(CoordinateType(x_l, y_l))
+                    finish_stack.push(FinishType(x_l, y_l, 1))
+
+                while not discovery_stack.empty():
+                    # This coordinate is the downstream end of the stream
+                    raster_coord = discovery_stack.top()
+                    discovery_stack.pop()
+
+                    discovery_managed_raster.set(
+                        raster_coord.xi, raster_coord.yi, discovery_count)
+                    discovery_count += 1
+
+                    n_pushed = 0
+                    # check each neighbor to see if it drains to this cell
+                    # if so, it's on the traversal path
+                    for test_dir in range(8):
+                        x_n = raster_coord.xi + D8_XOFFSET[test_dir % 8]
+                        y_n = raster_coord.yi + D8_YOFFSET[test_dir % 8]
+                        if x_n < 0 or y_n < 0 or \
+                                x_n >= n_cols or y_n >= n_rows:
+                            continue
+                        n_dir = <int>flow_dir_managed_raster.get(x_n, y_n)
+                        if n_dir == flow_dir_nodata:
+                            continue
+                        if D8_REVERSE_DIRECTION[test_dir] == n_dir:
+                            discovery_stack.push(CoordinateType(x_n, y_n))
+                            n_pushed += 1
+                    # this reference is for the previous top and represents
+                    # how many elements must be processed before finish
+                    # time can be defined
+                    finish_stack.push(
+                        FinishType(
+                            raster_coord.xi, raster_coord.yi, n_pushed))
+
+                    # pop the finish stack until n_pushed > 1
+                    if n_pushed == 0:
+                        while (not finish_stack.empty() and
+                               finish_stack.top().n_pushed <= 1):
+                            finish_coordinate = finish_stack.top()
+                            finish_stack.pop()
+                            finish_managed_raster.set(
+                                finish_coordinate.xi, finish_coordinate.yi,
+                                discovery_count-1)
+                        if not finish_stack.empty():
+                            # then take one more because one branch is done
+                            finish_coordinate = finish_stack.top()
+                            finish_stack.pop()
+                            finish_coordinate.n_pushed -= 1
+                            finish_stack.push(finish_coordinate)
+
+
+def calculate_subwatershed_boundary(
+        d8_flow_dir_raster_path_band,
+        strahler_stream_vector_path, target_watershed_boundary_vector_path,
+        max_steps_per_watershed=1000000):
+    """Calculate a stringline boundary around all subwatersheds.
+
+    Subwatersheds start where the ``strahler_stream_vector`` has a junction
+    starting at this highest upstream to lowest and ending at the outlet of
+    a river.
+
+    Args:
+        d8_flow_dir_raster_path_band (tuple): raster/path band for d8 flow dir
+            raster
+        strahler_stream_vector_path (str): path to stream segment vector
+        target_watershed_boundary_vector_path (str): path to created vector
+            of stringline for watershed boundaries.
+        max_steps_per_watershed (int): maximum number of steps to take when
+            defining a watershed boundary. Useful if the DEM is large and
+            degenerate or some other user known condition to limit long large
+            polygons. Defaults to 1000000.
+
+    Returns:
+        None.
+    """
+    workspace_dir = tempfile.mkdtemp(
+        prefix='calculate_subwatershed_boundary_workspace_',
+        dir=os.path.join(
+            os.path.dirname(target_watershed_boundary_vector_path)))
+    discovery_time_raster_path = os.path.join(workspace_dir, 'discovery.tif')
+    finish_time_raster_path = os.path.join(workspace_dir, 'finish.tif')
+
+    # construct the discovery/finish time rasters for fast individual cell
+    # watershed detection
+    _build_discovery_finish_rasters(
+        d8_flow_dir_raster_path_band, discovery_time_raster_path,
+        finish_time_raster_path)
+
+    shutil.copyfile(
+        discovery_time_raster_path, f'{discovery_time_raster_path}_bak.tif')
+
+    # the discovery raster is filled with nodata around the edges of
+    # discovered watersheds, so it is opened for writing
+    discovery_managed_raster = _ManagedRaster(
+        discovery_time_raster_path, 1, 1)
+    finish_managed_raster = _ManagedRaster(finish_time_raster_path, 1, 0)
+    d8_flow_dir_managed_raster = _ManagedRaster(
+        d8_flow_dir_raster_path_band[0], d8_flow_dir_raster_path_band[1], 0)
+
+    discovery_info = pygeoprocessing.get_raster_info(
+        discovery_time_raster_path)
+    cdef long discovery_nodata = discovery_info['nodata'][0]
+
+    cdef int n_cols, n_rows
+    n_cols, n_rows = discovery_info['raster_size']
+
+    geotransform = discovery_info['geotransform']
+    cdef float g0, g1, g2, g3, g4, g5
+    g0, g1, g2, g3, g4, g5 = geotransform
+
+    if discovery_info['projection_wkt']:
+        discovery_srs = osr.SpatialReference()
+        discovery_srs.ImportFromWkt(discovery_info['projection_wkt'])
+    else:
+        discovery_srs = None
+    gpkg_driver = gdal.GetDriverByName('GPKG')
+
+    if os.path.exists(target_watershed_boundary_vector_path):
+        LOGGER.warning(
+            f'{target_watershed_boundary_vector_path} exists, removing '
+            'before creating a new one.')
+        os.remove(target_watershed_boundary_vector_path)
+    watershed_vector = gpkg_driver.Create(
+        target_watershed_boundary_vector_path, 0, 0, 0, gdal.GDT_Unknown)
+    watershed_basename = os.path.basename(os.path.splitext(
+        target_watershed_boundary_vector_path)[0])
+    watershed_layer = watershed_vector.CreateLayer(
+        watershed_basename, discovery_srs, ogr.wkbPolygon)
+    watershed_layer.CreateField(ogr.FieldDefn('stream_fid', ogr.OFTInteger))
+    watershed_layer.CreateField(
+        ogr.FieldDefn('terminated_early', ogr.OFTInteger))
+    watershed_layer.StartTransaction()
+
+    cdef int x_l, y_l, outflow_dir
+    cdef float x_f, y_f
+    cdef float x_first, y_first, x_p, y_p
+    cdef long discovery, finish
+
+    cdef time_t last_log_time = ctime(NULL)
+
+    stream_vector = gdal.OpenEx(strahler_stream_vector_path, gdal.OF_VECTOR)
+    stream_layer = stream_vector.GetLayer()
+
+    # construct linkage data structure for upstream streams
+    upstream_fid_map = collections.defaultdict(list)
+    for stream_feature in stream_layer:
+        ds_x = int(stream_feature.GetField('ds_x'))
+        ds_y = int(stream_feature.GetField('ds_y'))
+        upstream_fid_map[(ds_x, ds_y)].append(
+            stream_feature.GetFID())
+
+    stream_layer.ResetReading()
+    # construct visit order, this list will have a tuple of (fid, 0/1)
+    # this stack will be used to build watersheds from upstream to downstream
+    visit_order_stack = []
+    # visit the highest order to lowest order in case there's a branching
+    # junction of a order 1 and order 5 stream... visit order 5 upstream
+    # first
+    stream_layer.SetAttributeFilter(f'"outlet"=1')
+    # these are done last
+    for _, outlet_fid in sorted([
+            (x.GetField('order'), x.GetFID()) for x in stream_layer],
+            reverse=True):
+        working_stack = [outlet_fid]
+        processed_nodes = set()
+        while working_stack:
+            working_fid = working_stack[-1]
+            processed_nodes.add(working_fid)
+            working_feature = stream_layer.GetFeature(working_fid)
+            us_x = int(working_feature.GetField('us_x'))
+            us_y = int(working_feature.GetField('us_y'))
+            upstream_coord = (us_x, us_y)
+            upstream_fids = [
+                fid for fid in upstream_fid_map[upstream_coord]
+                if fid not in processed_nodes]
+            if upstream_fids:
+                working_stack.extend(upstream_fids)
+            else:
+                working_stack.pop()
+                if working_feature.GetField('order') > 1:
+                    visit_order_stack.append((working_fid, us_x, us_y))
+                if working_feature.GetField('outlet') == 1:
+                    # an outlet is a special case where the outlet itself
+                    # should be a subwatershed done last.
+                    ds_x = int(working_feature.GetField('ds_x'))
+                    ds_y = int(working_feature.GetField('ds_y'))
+                    visit_order_stack.append((working_fid, ds_x, ds_y))
+
+    cdef int edge_side, edge_dir, cell_to_test, out_dir_increase=-1
+    cdef int left, right, n_steps, terminated_early
+    cdef double abs_delta_x, abs_delta_y
+    cdef int _int_max_steps_per_watershed = max_steps_per_watershed
+
+    for index, (stream_fid, x_l, y_l) in enumerate(visit_order_stack):
+        if ctime(NULL) - last_log_time > _LOGGING_PERIOD:
+            LOGGER.info(
+                f'(calculate_subwatershed_boundary): watershed building '
+                f'{(index/len(visit_order_stack))*100:.1f}% complete')
+            last_log_time = ctime(NULL)
+        discovery = <long>discovery_managed_raster.get(x_l, y_l)
+        if discovery == -1:
+            continue
+        boundary_list = [(x_l, y_l)]
+        finish = <long>finish_managed_raster.get(x_l, y_l)
+
+        watershed_boundary = ogr.Geometry(ogr.wkbLinearRing)
+        outflow_dir = <int>d8_flow_dir_managed_raster.get(x_l, y_l)
+
+        # this is the center point of the pixel that will be offset to
+        # make the edge
+        x_f = x_l+0.5
+        y_f = y_l+0.5
+
+        x_f += D8_XOFFSET[outflow_dir]*0.5
+        y_f += D8_YOFFSET[outflow_dir]*0.5
+        if outflow_dir % 2 == 0:
+            # need to back up the point a bit
+            x_f -= D8_YOFFSET[outflow_dir]*0.5
+            y_f += D8_XOFFSET[outflow_dir]*0.5
+
+        x_p, y_p = gdal.ApplyGeoTransform(geotransform, x_f, y_f)
+        watershed_boundary.AddPoint(x_p, y_p)
+
+        x_first, y_first = x_p, y_p
+
+        # determine the first edge
+        if outflow_dir % 2 == 0:
+            # outflow through a straight side, so trivial edge detection
+            edge_side = outflow_dir
+            edge_dir = (2+edge_side) % 8
+        else:
+            # diagonal outflow requires testing neighboring cells to
+            # determine first edge
+            cell_to_test = (outflow_dir+1) % 8
+            edge_side = cell_to_test
+            edge_dir = (cell_to_test+2) % 8
+            if _in_watershed(
+                    x_l, y_l, cell_to_test, discovery, finish,
+                    n_cols, n_rows,
+                    discovery_managed_raster, discovery_nodata):
+                edge_side = (edge_side-2) % 8
+                edge_dir = (edge_dir-2) % 8
+                x_l += D8_XOFFSET[edge_dir]
+                y_l += D8_YOFFSET[edge_dir]
+                # note the pixel moved
+                boundary_list.append((x_l, y_l))
+
+        n_steps = 0
+        terminated_early = 0
+        # deltas should be within 0.01 % of a pixel width
+        abs_delta_x = (abs(g1)+abs(g2)) * 0.01
+        abs_delta_y = (abs(g4)+abs(g5)) * 0.01
+        while True:
+            # step the edge then determine the projected coordinates
+            x_f += D8_XOFFSET[edge_dir]
+            y_f += D8_YOFFSET[edge_dir]
+            # equivalent to gdal.ApplyGeoTransform(geotransform, x_f, y_f)
+            # to eliminate python function call overhead
+            x_p = g0 + g1*x_f + g2*y_f
+            y_p = g3 + g4*x_f + g5*y_f
+            watershed_boundary.AddPoint(x_p, y_p)
+            n_steps += 1
+            if n_steps > _int_max_steps_per_watershed:
+                LOGGER.warning('quitting, too many steps')
+                terminated_early = 1
+                break
+            if x_l < 0 or y_l < 0 or x_l >= n_cols or y_l >= n_rows:
+                # This is unexpected but worth checking since missing this
+                # error would be very difficult to debug.
+                raise RuntimeError(
+                    f'{x_l}, {y_l} out of bounds for '
+                    f'{n_cols}x{n_rows} raster.')
+            if edge_side - ((edge_dir-2) % 8) == 0:
+                # counterclockwise configuration
+                left = edge_dir
+                right = (left-1) % 8
+                out_dir_increase = 2
+            else:
+                # clockwise configuration (swapping "left" and "right")
+                right = edge_dir
+                left = (edge_side+1)
+                out_dir_increase = -2
+            left_in = _in_watershed(
+                x_l, y_l, left, discovery, finish, n_cols, n_rows,
+                discovery_managed_raster, discovery_nodata)
+            right_in = _in_watershed(
+                x_l, y_l, right, discovery, finish, n_cols, n_rows,
+                discovery_managed_raster, discovery_nodata)
+            if right_in:
+                # turn right
+                out_dir = edge_side
+                edge_side = (edge_side-out_dir_increase) % 8
+                edge_dir = out_dir
+                # pixel moves to be the right cell
+                x_l += D8_XOFFSET[right]
+                y_l += D8_YOFFSET[right]
+                _diagonal_fill_step(
+                    x_l, y_l, right,
+                    discovery, finish, discovery_managed_raster,
+                    discovery_nodata,
+                    boundary_list)
+            elif left_in:
+                # step forward
+                x_l += D8_XOFFSET[edge_dir]
+                y_l += D8_YOFFSET[edge_dir]
+                # the pixel moves forward
+                boundary_list.append((x_l, y_l))
+            else:
+                # turn left
+                edge_side = edge_dir
+                edge_dir = (edge_side + out_dir_increase) % 8
+
+            if _is_close(x_p, x_first, abs_delta_x, 0.0) and \
+                    _is_close(y_p, y_first, abs_delta_y, 0.0):
+                # met the start point so we completed the watershed loop
+                break
+
+        watershed_feature = ogr.Feature(watershed_layer.GetLayerDefn())
+        watershed_polygon = ogr.Geometry(ogr.wkbPolygon)
+        watershed_polygon.AddGeometry(watershed_boundary)
+        watershed_feature.SetGeometry(watershed_polygon)
+        watershed_feature.SetField('stream_fid', stream_fid)
+        watershed_feature.SetField('terminated_early', terminated_early)
+        watershed_layer.CreateFeature(watershed_feature)
+
+        # this loop fills in the raster at the boundary, done at end so it
+        # doesn't interfere with the loop return to think the cells are no
+        # longer in the watershed
+        for boundary_x, boundary_y in boundary_list:
+            discovery_managed_raster.set(boundary_x, boundary_y, -1)
+    watershed_layer.CommitTransaction()
+    watershed_layer = None
+    watershed_vector = None
+    discovery_managed_raster.close()
+    finish_managed_raster.close()
+    shutil.rmtree(workspace_dir)
+    LOGGER.info(
+        '(calculate_subwatershed_boundary): watershed building 100% complete')
+
+
+cdef void _diagonal_fill_step(
+        int x_l, int y_l, int edge_dir,
+        long discovery, long finish,
+        _ManagedRaster discovery_managed_raster,
+        long discovery_nodata, boundary_list):
+    """Fill diagonal that are in the watershed behind the new edge.
+
+    Used as a helper function to mark pixels as part of the watershed
+    boundary in one step if they are diagonal and also contained within the
+    watershed. Prevents a case like this:
+
+    iii
+    ii1
+    i1o
+
+    Instead would fill the diagonal like this:
+
+    iii
+    i11
+    i1o
+
+    Args:
+        x_l/y_l (int): leading coordinate of the watershed boundary
+            edge.
+        edge_dir (int): D8 direction that points which direction the edge
+            came from
+        discovery/finish (long): the discovery and finish time that defines
+            whether a pixel discovery time is inside a watershed or not.
+        discovery_managed_raster (_ManagedRaster): discovery time raster
+            x/y gives the discovery time for that pixel.
+        discovery_nodata (long): nodata value for discovery raster
+        boundary_list (list): this list is appended to for new pixels that
+            should be neighbors in the fill.
+
+    Return:
+        None.
+    """
+    # always add the current pixel
+    boundary_list.append((x_l, y_l))
+
+    # this section determines which back diagonal was in the watershed and
+    # fills it. if none are we pick one so there's no degenerate case
+    cdef int xdelta = D8_XOFFSET[edge_dir]
+    cdef int ydelta = D8_YOFFSET[edge_dir]
+    test_list = [
+        (x_l - xdelta, y_l),
+        (x_l, y_l - ydelta)]
+    for x_t, y_t in test_list:
+        point_discovery = <long>discovery_managed_raster.get(
+            x_t, y_t)
+        if (point_discovery != discovery_nodata and
+                point_discovery >= discovery and
+                point_discovery <= finish):
+            boundary_list.append((int(x_t), int(y_t)))
+            # there's only one diagonal to fill in so it's done here
+            return
+
+    # if there's a degenerate case then just add the xdelta,
+    # it doesn't matter
+    boundary_list.append(test_list[0])
+
+
+cdef int _in_watershed(
+        int x_l, int y_l, int direction_to_test, int discovery, int finish,
+        int n_cols, int n_rows,
+        _ManagedRaster discovery_managed_raster,
+        long discovery_nodata):
+    """Test if pixel in direction is in the watershed.
+
+    Args:
+        x_l/y_l (int): leading coordinate of the watershed boundary
+            edge.
+        direction_to_test (int): D8 direction that points which direction the edge
+            came from
+        discovery/finish (long): the discovery and finish time that defines
+            whether a pixel discovery time is inside a watershed or not.
+        n_cols/n_rows (int): number of columns/rows in the discovery raster,
+            used to ensure step does not go out of bounds.
+        discovery_managed_raster (_ManagedRaster): discovery time raster
+            x/y gives the discovery time for that pixel.
+        discovery_nodata (long): nodata value for discovery raster
+
+    Return:
+        1 if in, 0 if out.
+    """
+    cdef int x_n = x_l + D8_XOFFSET[direction_to_test]
+    cdef int y_n = y_l + D8_YOFFSET[direction_to_test]
+    if x_n < 0 or y_n < 0 or x_n >= n_cols or y_n >= n_rows:
+        return 0
+    cdef long point_discovery = <long>discovery_managed_raster.get(x_n, y_n)
+    return (point_discovery != discovery_nodata and
+            point_discovery >= discovery and
+            point_discovery <= finish)
+
+
+cdef _calculate_stream_geometry(
+        int x_l, int y_l, int upstream_d8_dir, geotransform, int n_cols,
+        int n_rows, _ManagedRaster flow_accum_managed_raster,
+        _ManagedRaster flow_dir_managed_raster, int flow_dir_nodata,
+        int flow_accum_threshold, coord_to_stream_ids):
+    """Calculate the upstream geometry from the given point.
+
+    Creates a new georeferenced linestring geometry that maps the source x/y
+    to an upstream line such that the upper point stops when flow accum <
+    the provided threshold.
+
+    Args:
+        x_l/y_l (int): integer x/y downstream coordinates to seed the search.
+        upstream_d8_dir (int): upstream D8 direction to search
+        geotransform (list): 6 element list representing the geotransform
+            used to convert to georeferenced coordinates.
+        n_cols/n_rows (int): number of columns and rows in raster.
+        flow_accum_managed_raster (ManagedRaster): flow accumulation raster
+        flow_dir_managed_raster (ManagedRaster): d8 flow direction raster
+        flow_dir_nodata (int): nodata for flow direction
+        flow_accum_threshold (int): minimum flow accumulation value to define
+            string.
+        coord_to_stream_ids (dict): map raster space coordinate tuple to
+            a list of stream ids
+
+    Returns:
+        A tuple of (x, y, l, line) where:
+
+            * x, y raster coordinates of the upstream source of the stream
+                segment
+            * l is the list of upstream stream IDs at the upstream point
+            * and `stream_line` is a georeferenced linestring connecting x/y
+                to upper point where upper point's threshold is the last
+                point where its flow accum value is >=
+                ``flow_accum_threshold``.
+
+        Or ``None` if the point at (x_l, y_l) is below flow accum threshold.
+
+    """
+    cdef int x_n, y_n, d, d_n, stream_end=0
+
+    if flow_accum_managed_raster.get(x_l, y_l) < flow_accum_threshold:
+        return None
+    upstream_id_list = []
+    # anchor the line at the downstream end
+    stream_line = ogr.Geometry(ogr.wkbLineString)
+    x_p, y_p = gdal.ApplyGeoTransform(geotransform, x_l+0.5, y_l+0.5)
+    stream_line.AddPoint(x_p, y_p)
+
+    # initialize next_dir and last_dir so we only drop new points when
+    # the line changes direction
+    cdef int next_dir = upstream_d8_dir
+    cdef int last_dir = next_dir
+
+    stream_end = 0
+    pixel_length = 0
+    while not stream_end:
+        # walk upstream
+        x_l += D8_XOFFSET[next_dir]
+        y_l += D8_YOFFSET[next_dir]
+
+        stream_end = 1
+        pixel_length += 1
+
+        # check if we reached an upstream junction
+        if (x_l, y_l) in coord_to_stream_ids:
+            upstream_id_list = coord_to_stream_ids[(x_l, y_l)]
+            del coord_to_stream_ids[(x_l, y_l)]
+        elif <int>flow_accum_managed_raster.get(x_l, y_l) >= \
+                flow_accum_threshold:
+            # check to see if we can take a step upstream
+            for d in range(8):
+                x_n = x_l + D8_XOFFSET[d]
+                y_n = y_l + D8_YOFFSET[d]
+
+                # check out of bounds
+                if x_n < 0 or y_n < 0 or x_n >= n_cols or y_n >= n_rows:
+                    continue
+
+                # check for nodata
+                d_n = <int>flow_dir_managed_raster.get(x_n, y_n)
+                if d_n == flow_dir_nodata:
+                    continue
+
+                # check if there's an upstream inflow pixel with flow accum
+                # greater than the threshold
+                if D8_REVERSE_DIRECTION[d] == d_n and (
+                        <int>flow_accum_managed_raster.get(
+                         x_n, y_n) > flow_accum_threshold):
+                    stream_end = 0
+                    next_dir = d
+                    break
+        else:
+            # terminated because of flow accumulation too small, so back up
+            # one pixel
+            pixel_length -= 1
+
+        # drop a point on the line if direction changed or last point
+        if last_dir != next_dir or stream_end:
+            x_p, y_p = gdal.ApplyGeoTransform(
+                geotransform, x_l+0.5, y_l+0.5)
+            stream_line.AddPoint(x_p, y_p)
+            last_dir = next_dir
+
+    if pixel_length == 0:
+        return None
+    return x_l, y_l, upstream_id_list, stream_line
+
+
+def _delete_feature(
+        stream_feature, stream_layer, upstream_to_downstream_id,
+        downstream_to_upstream_ids):
+    """Helper for Mahler extraction to delete all references to a stream.
+
+    Args:
+        stream_feature (ogr.Feature): feature to delete
+        stream_layer (ogr.Layer): layer to delete the feature
+        upstream_to_downstream_id (dict): can be referenced by FID and should
+            remove all instances of stream from this dict
+        downstream_to_upstream_ids (dict): stream feature contained in
+            the values of this dict and should remove all instances of stream
+            from this dict
+
+    Returns:
+        None.
+    """
+    stream_fid = stream_feature.GetFID()
+    if stream_fid in upstream_to_downstream_id:
+        downstream_fid = upstream_to_downstream_id[
+            stream_fid]
+        del upstream_to_downstream_id[stream_fid]
+        if downstream_fid in downstream_to_upstream_ids:
+            downstream_to_upstream_ids[
+                downstream_fid].remove(stream_fid)
+    if stream_fid in downstream_to_upstream_ids:
+        del downstream_to_upstream_ids[
+            stream_fid]
+    stream_layer.DeleteFeature(stream_fid)
+

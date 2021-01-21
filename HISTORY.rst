@@ -19,6 +19,13 @@ Unreleased Changes
   considered a plateau otherwise a drain into or out of the pixel is
   resolved. Testing is close allowed a hydrological pit to remain since it
   was "close" to the same height as a draining pixel.
+* Added a D8 Strahler order stream extraction function at
+  ``pygeoprocessing.extract_strahler_streams_d8``. Creates segmented
+  geometric lines which correspond to streams on the landscape.
+* Added a D8 subwatershed calculation function at
+  ``pygeoprocessing.calculate_subwatershed_boundary``. Creates subwatersheds
+  that are segmented at the junctions of the streams created by
+  ``pygeoprocessing.extract_strahler_streams_d8``.
 * Removing all instances of ``__swig_destroy__`` to prevent multiprocessing
   memory corruption.
 * Exposing a ``use_shared_memory`` flag on ``raster_calculator`` to allow
