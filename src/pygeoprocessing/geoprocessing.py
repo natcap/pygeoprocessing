@@ -3783,3 +3783,10 @@ def raster_to_numpy_array(raster_path, band_id=1):
     band = None
     raster = None
     return array
+
+
+def stitch_rasters(
+        base_raster_path_band_list,
+        target_stitch_raster_path,
+        ):
+    pass
