@@ -4085,9 +4085,11 @@ def detect_outlets(d8_flow_dir_raster_path_band, target_outlet_vector_path):
         target_outlet_vector_path (str): path to a vector that is created
             by this call that will be in the same projection units as the
             raster and have a point feature in the center of each pixel that
-            is a raster outlet. The points will have additional "i"/"j"
-            fields indicating the column/row in the raster the pixel
-            is located in.
+            is a raster outlet. Additional fields include:
+
+                * "i" - the column raster coordinate where the outlet exists
+                * "j" - the row raster coordinate where the outlet exists
+                * "ID" - unique identification for the outlet.
 
     Return:
         None.
