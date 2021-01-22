@@ -4183,6 +4183,7 @@ def detect_outlets(d8_flow_dir_raster_path_band, target_outlet_vector_path):
                     outlet_feature.SetField('i', xi_root)
                     outlet_feature.SetField('j', yi_root)
                     outlet_feature.SetField('ID', next_id)
+                    next_id += 1
                     outlet_layer.CreateFeature(outlet_feature)
                     outlet_feature = None
                     outlet_point = None

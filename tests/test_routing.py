@@ -152,7 +152,8 @@ class TestRouting(unittest.TestCase):
             (0, 2),
             (1, 3), (2, 3)}
         self.assertEqual(outlet_ij_set, expected_outlet_ij_set)
-        self.assertEqual(sorted(id_list), range(len(expected_outlet_ij_set)))
+        self.assertEqual(
+            sorted(id_list), list(range(len(expected_outlet_ij_set))))
 
     def test_flow_accum_d8(self):
         """PGP.routing: test D8 flow accum."""
