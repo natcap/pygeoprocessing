@@ -8,6 +8,7 @@ from pygeoprocessing.routing.routing import (
     distance_to_channel_d8,
     distance_to_channel_mfd,
     extract_streams_mfd,
+    detect_outlets,
     extract_strahler_streams_d8,
     calculate_subwatershed_boundary,
     )
@@ -25,6 +26,7 @@ __all__ = (
     'distance_to_channel_mfd',
     'extract_streams_mfd',
     'delineate_watersheds_d8',
+    'detect_outlets',
     'extract_strahler_streams_d8',
     'calculate_subwatershed_boundary',
 )

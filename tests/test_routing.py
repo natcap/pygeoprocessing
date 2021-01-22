@@ -122,6 +122,39 @@ class TestRouting(unittest.TestCase):
             [4, 6, 6, 6, 6, 6, 6, 6, 6, 6, 0]])
         numpy.testing.assert_almost_equal(flow_array, expected_result)
 
+    def test_detect_outlets(self):
+        """PGP.routing: test detect outlets."""
+        flow_dir_d8 = numpy.array([
+            [2, 2, 2, 2],
+            [2, 2, 2, 0],
+            [4, -1, 2, 2],
+            [2, 2, 6, 2]])
+        flow_dir_d8_path = os.path.join(self.workspace_dir, 'd8.tif')
+        _array_to_raster(flow_dir_d8, -1, flow_dir_d8_path)
+        outlet_vector_path = os.path.join(
+            self.workspace_dir, 'outlets.gpkg')
+        pygeoprocessing.routing.detect_outlets(
+            (flow_dir_d8_path, 1), outlet_vector_path)
+        outlet_vector = gdal.OpenEx(
+            outlet_vector_path, gdal.OF_VECTOR)
+        outlet_layer = outlet_vector.GetLayer()
+        outlet_ij_set = set()
+        id_list = []
+        for outlet_feature in outlet_layer:
+            outlet_ij_set.add(
+                (outlet_feature.GetField('i'),
+                 outlet_feature.GetField('j')))
+            id_list.append(outlet_feature.GetField('ID'))
+        # We know the expected outlets because we constructed them above
+        expected_outlet_ij_set = {
+            (0, 0), (1, 0), (2, 0), (3, 0),
+            (3, 1),
+            (0, 2),
+            (1, 3), (2, 3)}
+        self.assertEqual(outlet_ij_set, expected_outlet_ij_set)
+        self.assertEqual(
+            sorted(id_list), list(range(len(expected_outlet_ij_set))))
+
     def test_flow_accum_d8(self):
         """PGP.routing: test D8 flow accum."""
         # this was generated from a pre-calculated plateau drain dem

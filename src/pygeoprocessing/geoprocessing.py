@@ -2115,7 +2115,6 @@ def rasterize(
     if raster is None:
         raise ValueError(
             "%s doesn't exist, but needed to rasterize." % target_raster_path)
-    vector = gdal.OpenEx(vector_path, gdal.OF_VECTOR)
 
     rasterize_callback = _make_logger_callback(
         "RasterizeLayer %.1f%% complete %s")
@@ -2140,6 +2139,7 @@ def rasterize(
             "`option_list` is not a list/tuple, the value passed is '%s'",
             repr(option_list))
 
+    vector = gdal.OpenEx(vector_path, gdal.OF_VECTOR)
     layer = vector.GetLayer(layer_id)
     if where_clause:
         layer.SetAttributeFilter(where_clause)
