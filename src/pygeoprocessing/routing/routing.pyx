@@ -4095,6 +4095,7 @@ def detect_outlets(d8_flow_dir_raster_path_band, target_outlet_vector_path):
     cdef int flow_dir
     cdef int xoff, yoff, win_xsize, win_ysize, xi, yi, xi_n, yi_n
     cdef int xi_root, yi_root, raster_x_size, raster_y_size
+    cdef int next_id=0
 
     raster_info = pygeoprocessing.get_raster_info(
         d8_flow_dir_raster_path_band[0])
@@ -4103,6 +4104,10 @@ def detect_outlets(d8_flow_dir_raster_path_band, target_outlet_vector_path):
         d8_flow_dir_raster_path_band[1]-1]
 
     raster_x_size, raster_y_size = raster_info['raster_size']
+
+    cdef _ManagedRaster d8_flow_dir_mr = _ManagedRaster(
+        d8_flow_dir_raster_path_band[0],
+        d8_flow_dir_raster_path_band[1], 0)
 
     if raster_info['projection_wkt']:
         raster_srs = osr.SpatialReference()
@@ -4123,16 +4128,16 @@ def detect_outlets(d8_flow_dir_raster_path_band, target_outlet_vector_path):
         os.path.splitext(target_outlet_vector_path)[0])
     outlet_layer = outlet_vector.CreateLayer(
         outet_basename, raster_srs, ogr.wkbPoint)
+    # i and j indicate the coordinates of the point in raster space wereas
+    # the geometry is in projected space
     outlet_layer.CreateField(ogr.FieldDefn('i', ogr.OFTInteger))
     outlet_layer.CreateField(ogr.FieldDefn('j', ogr.OFTInteger))
+    outlet_layer.CreateField(ogr.FieldDefn('ID', ogr.OFTInteger))
     outlet_layer.StartTransaction()
 
     cdef time_t last_log_time = ctime(NULL)
-
-    cdef _ManagedRaster d8_flow_dir_mr = _ManagedRaster(
-        d8_flow_dir_raster_path_band[0],
-        d8_flow_dir_raster_path_band[1], 0)
-
+    # iterate by iterblocks so ManagedRaster can efficiently cache reads
+    # and writes
     for block_offsets in pygeoprocessing.iterblocks(
             d8_flow_dir_raster_path_band, offset_only=True):
         xoff = block_offsets['xoff']
@@ -4154,22 +4159,30 @@ def detect_outlets(d8_flow_dir_raster_path_band, target_outlet_vector_path):
                 if flow_dir == flow_dir_nodata:
                     continue
 
+                # examine the outflow pixel neighbor
                 xi_n = xi_root+D8_XOFFSET[flow_dir]
                 yi_n = yi_root+D8_YOFFSET[flow_dir]
+
+                # if the outflow pixel is outside the raster boundaries or
+                # is a nodata pixel it must mean xi,yi is an outlet
                 if (xi_n < 0 or xi_n >= raster_x_size or
                         yi_n < 0 or yi_n >= raster_y_size) or (
                         <int>d8_flow_dir_mr.get(xi_n, yi_n) ==
                         flow_dir_nodata):
+
                     outlet_point = ogr.Geometry(ogr.wkbPoint)
+                    # created a projected point in the center of the pixel
+                    # thus the + 0.5 to x and y
                     proj_x, proj_y = gdal.ApplyGeoTransform(
                         raster_info['geotransform'],
                         xi_root+0.5, yi_root+0.5)
                     outlet_point.AddPoint(proj_x, proj_y)
-
                     outlet_feature = ogr.Feature(outlet_layer.GetLayerDefn())
                     outlet_feature.SetGeometry(outlet_point)
+                    # save the raster coordinates of the outlet pixel as i,j
                     outlet_feature.SetField('i', xi_root)
                     outlet_feature.SetField('j', yi_root)
+                    outlet_feature.SetField('ID', next_id)
                     outlet_layer.CreateFeature(outlet_feature)
                     outlet_feature = None
                     outlet_point = None
