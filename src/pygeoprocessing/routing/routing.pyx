@@ -4153,33 +4153,41 @@ def detect_outlets(d8_flow_dir_raster_path_band, target_outlet_vector_path):
         win_xsize = block_offsets['win_xsize']
         win_ysize = block_offsets['win_ysize']
 
+        # Make an array with a 1 pixel border around the iterblocks window
+        # That border will be filled in with nodata or data from the raster
+        # if the window does not align with a top/bottom/left/right edge
         flow_dir_block = numpy.empty(
             (win_ysize+2, win_xsize+2), dtype=numpy.uint8)
 
+        # Test for left border and if so stripe nodata on the left margin
         x_off_border = 0
         if xoff > 0:
             x_off_border = 1
         else:
             flow_dir_block[:, 0] = flow_dir_nodata
 
+        # Test for top border and if so stripe nodata on the top margin
         y_off_border = 0
         if yoff > 0:
             y_off_border = 1
         else:
             flow_dir_block[0, :] = flow_dir_nodata
 
+        # Test for right border and if so stripe nodata on the right margin
         win_xsize_border = 0
         if xoff+win_xsize < raster_x_size-1:
             win_xsize_border += 1
         else:
             flow_dir_block[:, -1] = flow_dir_nodata
 
+        # Test for bottom border and if so stripe nodata on the bottom margin
         win_ysize_border = 0
         if yoff+win_ysize < raster_y_size-1:
             win_ysize_border += 1
         else:
             flow_dir_block[-1, :] = flow_dir_nodata
 
+        # Read iterblock plus a possible margin on top/bottom/left/right side
         d8_flow_dir_band.ReadAsArray(
                 xoff=xoff-x_off_border,
                 yoff=yoff-y_off_border,
@@ -4212,10 +4220,12 @@ def detect_outlets(d8_flow_dir_raster_path_band, target_outlet_vector_path):
                 if flow_dir_n == flow_dir_nodata:
 
                     outlet_point = ogr.Geometry(ogr.wkbPoint)
-                    # created a projected point in the center of the pixel
-                    # thus the + 0.5 to x and y
+                    # calculate global x/y raster coordinate, the -1 is for
+                    # the left/top border of the test array window
                     xi_root = xi+xoff-1
                     yi_root = yi+yoff-1
+                    # created a projected point in the center of the pixel
+                    # thus the + 0.5 to x and y
                     proj_x, proj_y = gdal.ApplyGeoTransform(
                         raster_info['geotransform'],
                         xi_root+0.5, yi_root+0.5)
