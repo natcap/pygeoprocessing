@@ -124,13 +124,15 @@ class TestRouting(unittest.TestCase):
 
     def test_detect_outlets(self):
         """PGP.routing: test detect outlets."""
-        flow_dir_d8 = numpy.array([
+        flow_dir_d8 = numpy.full((512, 512), 128, dtype=numpy.uint8)
+        flow_dir_d8[0:4, 0:4] = [
             [2, 2, 2, 2],
             [2, 2, 2, 0],
-            [4, -1, 2, 2],
-            [2, 2, 6, 2]])
+            [4, 128, 2, 2],
+            [2, 2, 6, 2]]
+        flow_dir_d8[-1, -1] = 0
         flow_dir_d8_path = os.path.join(self.workspace_dir, 'd8.tif')
-        _array_to_raster(flow_dir_d8, -1, flow_dir_d8_path)
+        _array_to_raster(flow_dir_d8, 128, flow_dir_d8_path)
         outlet_vector_path = os.path.join(
             self.workspace_dir, 'outlets.gpkg')
         pygeoprocessing.routing.detect_outlets(
@@ -150,7 +152,8 @@ class TestRouting(unittest.TestCase):
             (0, 0), (1, 0), (2, 0), (3, 0),
             (3, 1),
             (0, 2),
-            (1, 3), (2, 3)}
+            (1, 3), (2, 3),
+            (511, 511)}
         self.assertEqual(outlet_ij_set, expected_outlet_ij_set)
         self.assertEqual(
             sorted(id_list), list(range(len(expected_outlet_ij_set))))
