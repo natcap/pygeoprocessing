@@ -124,13 +124,15 @@ class TestRouting(unittest.TestCase):
 
     def test_detect_outlets(self):
         """PGP.routing: test detect outlets."""
-        flow_dir_d8 = numpy.array([
+        flow_dir_d8 = numpy.full((512, 512), 128, dtype=numpy.uint8)
+        flow_dir_d8[0:4, 0:4] = [
             [2, 2, 2, 2],
             [2, 2, 2, 0],
-            [4, -1, 2, 2],
-            [2, 2, 6, 2]])
+            [4, 128, 2, 2],
+            [2, 2, 6, 2]]
+        flow_dir_d8[-1, -1] = 0
         flow_dir_d8_path = os.path.join(self.workspace_dir, 'd8.tif')
-        _array_to_raster(flow_dir_d8, -1, flow_dir_d8_path)
+        _array_to_raster(flow_dir_d8, 128, flow_dir_d8_path)
         outlet_vector_path = os.path.join(
             self.workspace_dir, 'outlets.gpkg')
         pygeoprocessing.routing.detect_outlets(
@@ -150,10 +152,59 @@ class TestRouting(unittest.TestCase):
             (0, 0), (1, 0), (2, 0), (3, 0),
             (3, 1),
             (0, 2),
-            (1, 3), (2, 3)}
+            (1, 3), (2, 3),
+            (511, 511)}
         self.assertEqual(outlet_ij_set, expected_outlet_ij_set)
         self.assertEqual(
             sorted(id_list), list(range(len(expected_outlet_ij_set))))
+
+    def test_detect_outlets_by_block(self):
+        """PGP: test detect_outlets by memory block for border cases."""
+        nodata = 128  # nodata value
+        flow_dir_array = numpy.array([
+            [0, 0, 0, 0, 7, 7, 7, 1, 6, 6],
+            [2, 3, 4, 5, 6, 7, 0, 1, 1, 2],
+            [2, 2, 2, 2, 0, nodata, nodata, 3, 3, nodata],
+            [2, 1, 1, 1, 2, 6, 4, 1, nodata, nodata],
+            [1, 1, 0, 0, 0, 0, nodata, nodata, nodata, nodata]
+        ], dtype=numpy.uint8)
+        expected_outlet_ij_set = {(7, 0), (5, 1), (4, 2), (5, 4)}
+
+        d8_flow_dir_raster_path = os.path.join(self.workspace_dir, 'd8.tif')
+        pygeoprocessing.numpy_array_to_raster(
+            flow_dir_array, nodata, (1, 1), (0, 0), None,
+            d8_flow_dir_raster_path)
+        outlet_vector_path = os.path.join(self.workspace_dir, 'outlets.gpkg')
+
+        # Mock iterblocks so that we can test with an array smaller than
+        # gets pour points on block edges e.g. flow_dir_array[2, 4]
+        def mock_iterblocks(*args, **kwargs):
+            xoffs = [0, 4, 8]
+            win_xsizes = [4, 4, 2]
+            for xoff, win_xsize in zip(xoffs, win_xsizes):
+                yield {
+                    'xoff': xoff,
+                    'yoff': 0,
+                    'win_xsize': win_xsize,
+                    'win_ysize': 5}
+
+        with unittest.mock.patch(
+                'pygeoprocessing.iterblocks',
+                mock_iterblocks):
+            pygeoprocessing.routing.detect_outlets(
+                (d8_flow_dir_raster_path, 1), outlet_vector_path)
+
+        outlet_vector = gdal.OpenEx(outlet_vector_path, gdal.OF_VECTOR)
+        outlet_layer = outlet_vector.GetLayer()
+        outlet_ij_set = set()
+        id_list = []
+        for outlet_feature in outlet_layer:
+            outlet_ij_set.add(
+                (outlet_feature.GetField('i'),
+                 outlet_feature.GetField('j')))
+            id_list.append(outlet_feature.GetField('ID'))
+        # We know the expected outlets because we constructed them above
+        self.assertEqual(outlet_ij_set, expected_outlet_ij_set)
 
     def test_flow_accum_d8(self):
         """PGP.routing: test D8 flow accum."""

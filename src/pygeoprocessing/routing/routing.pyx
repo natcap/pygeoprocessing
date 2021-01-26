@@ -4081,7 +4081,8 @@ def detect_outlets(d8_flow_dir_raster_path_band, target_outlet_vector_path):
 
     Args:
         d8_flow_dir_raster_path_band (tuple): raster path/band tuple
-            indicating D8 flow direction.
+            of type uint8  indicating D8 flow direction created by
+            `routing.flow_dir_d8`.
         target_outlet_vector_path (str): path to a vector that is created
             by this call that will be in the same projection units as the
             raster and have a point feature in the center of each pixel that
@@ -4094,10 +4095,13 @@ def detect_outlets(d8_flow_dir_raster_path_band, target_outlet_vector_path):
     Return:
         None.
     """
-    cdef int flow_dir
-    cdef int xoff, yoff, win_xsize, win_ysize, xi, yi, xi_n, yi_n
+    cdef int xoff, yoff, win_xsize, win_ysize, xi, yi
     cdef int xi_root, yi_root, raster_x_size, raster_y_size
+    cdef int flow_dir, flow_dir_n
     cdef int next_id=0
+    cdef char x_off_border, y_off_border, win_xsize_border, win_ysize_border
+
+    cdef numpy.ndarray[numpy.npy_uint8, ndim=2] flow_dir_block
 
     raster_info = pygeoprocessing.get_raster_info(
         d8_flow_dir_raster_path_band[0])
@@ -4107,9 +4111,10 @@ def detect_outlets(d8_flow_dir_raster_path_band, target_outlet_vector_path):
 
     raster_x_size, raster_y_size = raster_info['raster_size']
 
-    cdef _ManagedRaster d8_flow_dir_mr = _ManagedRaster(
-        d8_flow_dir_raster_path_band[0],
-        d8_flow_dir_raster_path_band[1], 0)
+    d8_flow_dir_raster = gdal.OpenEx(
+        d8_flow_dir_raster_path_band[0], gdal.OF_RASTER)
+    d8_flow_dir_band = d8_flow_dir_raster.GetRasterBand(
+        d8_flow_dir_raster_path_band[1])
 
     if raster_info['projection_wkt']:
         raster_srs = osr.SpatialReference()
@@ -4130,7 +4135,7 @@ def detect_outlets(d8_flow_dir_raster_path_band, target_outlet_vector_path):
         os.path.splitext(target_outlet_vector_path)[0])
     outlet_layer = outlet_vector.CreateLayer(
         outet_basename, raster_srs, ogr.wkbPoint)
-    # i and j indicate the coordinates of the point in raster space wereas
+    # i and j indicate the coordinates of the point in raster space whereas
     # the geometry is in projected space
     outlet_layer.CreateField(ogr.FieldDefn('i', ogr.OFTInteger))
     outlet_layer.CreateField(ogr.FieldDefn('j', ogr.OFTInteger))
@@ -4138,16 +4143,61 @@ def detect_outlets(d8_flow_dir_raster_path_band, target_outlet_vector_path):
     outlet_layer.StartTransaction()
 
     cdef time_t last_log_time = ctime(NULL)
-    # iterate by iterblocks so ManagedRaster can efficiently cache reads
+    # iterate by iterblocks so ReadAsArray can efficiently cache reads
     # and writes
+    LOGGER.info('outlet detection: 0% complete')
     for block_offsets in pygeoprocessing.iterblocks(
             d8_flow_dir_raster_path_band, offset_only=True):
         xoff = block_offsets['xoff']
         yoff = block_offsets['yoff']
         win_xsize = block_offsets['win_xsize']
         win_ysize = block_offsets['win_ysize']
-        for yi in range(win_ysize):
-            yi_root = yi+yoff
+
+        # Make an array with a 1 pixel border around the iterblocks window
+        # That border will be filled in with nodata or data from the raster
+        # if the window does not align with a top/bottom/left/right edge
+        flow_dir_block = numpy.empty(
+            (win_ysize+2, win_xsize+2), dtype=numpy.uint8)
+
+        # Test for left border and if so stripe nodata on the left margin
+        x_off_border = 0
+        if xoff > 0:
+            x_off_border = 1
+        else:
+            flow_dir_block[:, 0] = flow_dir_nodata
+
+        # Test for top border and if so stripe nodata on the top margin
+        y_off_border = 0
+        if yoff > 0:
+            y_off_border = 1
+        else:
+            flow_dir_block[0, :] = flow_dir_nodata
+
+        # Test for right border and if so stripe nodata on the right margin
+        win_xsize_border = 0
+        if xoff+win_xsize < raster_x_size-1:
+            win_xsize_border += 1
+        else:
+            flow_dir_block[:, -1] = flow_dir_nodata
+
+        # Test for bottom border and if so stripe nodata on the bottom margin
+        win_ysize_border = 0
+        if yoff+win_ysize < raster_y_size-1:
+            win_ysize_border += 1
+        else:
+            flow_dir_block[-1, :] = flow_dir_nodata
+
+        # Read iterblock plus a possible margin on top/bottom/left/right side
+        d8_flow_dir_band.ReadAsArray(
+                xoff=xoff-x_off_border,
+                yoff=yoff-y_off_border,
+                win_xsize=win_xsize+win_xsize_border+x_off_border,
+                win_ysize=win_ysize+win_ysize_border+y_off_border,
+                buf_obj=flow_dir_block[
+                    1-y_off_border:win_ysize+1+win_ysize_border,
+                    1-x_off_border:win_xsize+1+win_xsize_border])
+
+        for yi in range(1, win_ysize+1):
             if ctime(NULL) - last_log_time > 5.0:
                 last_log_time = ctime(NULL)
                 current_pixel = xoff + yoff * raster_x_size
@@ -4155,24 +4205,25 @@ def detect_outlets(d8_flow_dir_raster_path_band, target_outlet_vector_path):
                     f'''outlet detection: {
                         100.0 * current_pixel / <float>(
                             raster_x_size * raster_y_size):.1f} complete''')
-            for xi in range(win_xsize):
-                xi_root = xi+xoff
-                flow_dir = <int>d8_flow_dir_mr.get(xi_root, yi_root)
+            for xi in range(1, win_xsize+1):
+                flow_dir = flow_dir_block[yi, xi]
                 if flow_dir == flow_dir_nodata:
                     continue
 
-                # examine the outflow pixel neighbor
-                xi_n = xi_root+D8_XOFFSET[flow_dir]
-                yi_n = yi_root+D8_YOFFSET[flow_dir]
+                # inspect the outflow pixel neighbor
+                flow_dir_n = flow_dir_block[
+                    yi+D8_YOFFSET[flow_dir],
+                    xi+D8_XOFFSET[flow_dir]]
 
                 # if the outflow pixel is outside the raster boundaries or
                 # is a nodata pixel it must mean xi,yi is an outlet
-                if (xi_n < 0 or xi_n >= raster_x_size or
-                        yi_n < 0 or yi_n >= raster_y_size) or (
-                        <int>d8_flow_dir_mr.get(xi_n, yi_n) ==
-                        flow_dir_nodata):
+                if flow_dir_n == flow_dir_nodata:
 
                     outlet_point = ogr.Geometry(ogr.wkbPoint)
+                    # calculate global x/y raster coordinate, the -1 is for
+                    # the left/top border of the test array window
+                    xi_root = xi+xoff-1
+                    yi_root = yi+yoff-1
                     # created a projected point in the center of the pixel
                     # thus the + 0.5 to x and y
                     proj_x, proj_y = gdal.ApplyGeoTransform(
@@ -4190,7 +4241,9 @@ def detect_outlets(d8_flow_dir_raster_path_band, target_outlet_vector_path):
                     outlet_feature = None
                     outlet_point = None
 
-    LOGGER.info('outlet detection: committing transaction')
+    d8_flow_dir_raster = None
+    d8_flow_dir_band = None
+    LOGGER.info('outlet detection: 100% complete -- committing transaction')
     outlet_layer.CommitTransaction()
     outlet_layer = None
     outlet_vector = None
