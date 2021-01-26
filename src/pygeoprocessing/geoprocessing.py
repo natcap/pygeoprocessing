@@ -15,6 +15,7 @@ import time
 
 from . import geoprocessing_core
 from .geoprocessing_core import DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS
+from .geoprocessing_core import DEFAULT_OSR_AXIS_MAPPING_STRATEGY
 from osgeo import gdal
 from osgeo import ogr
 from osgeo import osr
@@ -74,16 +75,6 @@ _GDAL_TYPE_TO_NUMPY_LOOKUP = {
     gdal.GDT_CFloat32: numpy.csingle,
     gdal.GDT_CFloat64: numpy.complex64,
 }
-
-# In GDAL 3.0 spatial references no longer ignore Geographic CRS Axis Order
-# and conform to Lat first, Lon Second. Transforms expect (lat, lon) order
-# as opposed to the GIS friendly (lon, lat). See
-# https://trac.osgeo.org/gdal/wiki/rfc73_proj6_wkt2_srsbarn Axis order
-# issues. SetAxisMappingStrategy(osr.OAMS_TRADITIONAL_GIS_ORDER) swaps the
-# axis order, which will use Lon,Lat order for Geographic CRS, but otherwise
-# leaves Projected CRS alone
-DEFAULT_OSR_AXIS_MAPPING_STRATEGY = osr.OAMS_TRADITIONAL_GIS_ORDER
-
 
 def raster_calculator(
         base_raster_path_band_const_list, local_op, target_raster_path,
@@ -2127,7 +2118,6 @@ def rasterize(
     if raster is None:
         raise ValueError(
             "%s doesn't exist, but needed to rasterize." % target_raster_path)
-    vector = gdal.OpenEx(vector_path, gdal.OF_VECTOR)
 
     rasterize_callback = _make_logger_callback(
         "RasterizeLayer %.1f%% complete %s")
@@ -2152,17 +2142,33 @@ def rasterize(
             "`option_list` is not a list/tuple, the value passed is '%s'",
             repr(option_list))
 
+    vector = gdal.OpenEx(vector_path, gdal.OF_VECTOR)
     layer = vector.GetLayer(layer_id)
     if where_clause:
         layer.SetAttributeFilter(where_clause)
-    result = gdal.RasterizeLayer(
-        raster, [1], layer, burn_values=burn_values,
-        options=option_list, callback=rasterize_callback)
-    raster.FlushCache()
-    raster = None
+
+    try:
+        result = gdal.RasterizeLayer(
+            raster, [1], layer, burn_values=burn_values,
+            options=option_list, callback=rasterize_callback)
+    except Exception:
+        # something bad happened, but still clean up
+        # this case came out of a flaky test condition where the raster
+        # would still be in use by the rasterize layer function
+        LOGGER.exception('bad error on rasterizelayer')
+        result = -1
+
+    layer = None
+    vector = None
 
     if result != 0:
+        # need this __swig_destroy__ because we sometimes encounter a flaky
+        # test where the path to the raster cannot be cleaned up because
+        # it is still in use somewhere, likely a bug in gdal.RasterizeLayer
+        # note it is only invoked if there is a serious error
+        gdal.Dataset.__swig_destroy__(raster)
         raise RuntimeError('Rasterize returned a nonzero exit code.')
+    raster = None
 
 
 def calculate_disjoint_polygon_set(
@@ -3765,7 +3771,6 @@ def numpy_array_to_raster(
     if target_nodata is not None:
         new_band.SetNoDataValue(target_nodata)
     new_band.WriteArray(base_array)
-    new_raster.FlushCache()
     new_band = None
     new_raster = None
 

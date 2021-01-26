@@ -373,7 +373,8 @@ def raster_calculator(
         base_raster_path_band_const_list, local_op, target_raster_path,
         datatype_target, nodata_target,
         n_workers=max(1, multiprocessing.cpu_count()),
-        calc_raster_stats=True, largest_block=_LARGEST_ITERBLOCK,
+        calc_raster_stats=True, use_shared_memory=False,
+        largest_block=_LARGEST_ITERBLOCK,
         raster_driver_creation_tuple=DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS):
     """Apply local a raster operation on a stack of rasters.
 
@@ -423,6 +424,10 @@ def raster_calculator(
             defaults to ``multiprocessing.cpu_count()``.
         calc_raster_stats (boolean): If True, calculates and sets raster
             statistics (min, max, mean, and stdev) for target raster.
+        use_shared_memory (boolean): If True, uses Python Multiprocessing
+            shared memory to calculate raster stats for faster performance.
+            This feature is available for Python >= 3.8 and will otherwise
+            be ignored for earlier versions of Python.
         largest_block (int): Attempts to internally iterate over raster blocks
             with this many elements.  Useful in cases where the blocksize is
             relatively small, memory is available, and the function call
@@ -536,7 +541,7 @@ def raster_calculator(
     for _ in range(n_workers):
         shared_memory = None
         if calc_raster_stats:
-            if sys.version_info >= (3, 8):
+            if sys.version_info >= (3, 8) and use_shared_memory:
                 shared_memory = multiprocessing.shared_memory.SharedMemory(
                     create=True, size=block_size_bytes)
         worker = multiprocessing.Process(
