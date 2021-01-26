@@ -3954,27 +3954,8 @@ def stitch_rasters(
                         _offset_vars[target_off_id] +
                         _offset_vars[win_size_id] - target_raster_x_size)
 
-            LOGGER.debug(
-                f'offset_vars: {_offset_vars}')
             if not overlap:
-                LOGGER.debug('overlap! skipping')
                 continue
-            LOGGER.debug('stitching...')
-            # target_xoff = target_to_base_xoff+offset_dict['xoff']
-            # if target_xoff > target_raster_x_size:
-            #     continue
-            # # how far to move right to get in the target raster
-            # xoff_clip = 0
-            # if target_xoff < 0:
-            #     xoff_clip = -target_xoff
-            # win_xsize = offset_dict['win_xsize']
-            # if xoff_clip > win_xsize:
-            #     # its too far left for the whole window
-            #     continue
-            # # make the win_xsize smaller if it shifts off the target window
-            # if xoff_clip+target_xoff+win_xsize > target_raster_x_size:
-            #     win_xsize -= (
-            #         xoff_clip+target_xoff+win_xsize - target_raster_x_size)
 
             target_array = target_band.ReadAsArray(
                 xoff=_offset_vars['target_xoff']+_offset_vars['xoff_clip'],
@@ -3996,7 +3977,6 @@ def stitch_rasters(
                     base_array.shape, dtype=numpy.bool)
 
             valid_mask = ~base_nodata_mask & target_nodata_mask
-            LOGGER.debug(f'valid mask has {numpy.count_nonzero(valid_mask)} valid elements')
             target_array[valid_mask] = base_array[valid_mask]
             target_band.WriteArray(
                 target_array,
