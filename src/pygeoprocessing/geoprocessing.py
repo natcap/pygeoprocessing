@@ -42,9 +42,11 @@ class ReclassificationMissingValuesError(Exception):
         msg (str) - error message
         missing_values (list) - a list of the missing values from the raster
             that are not keys in the dictionary
+
     """
 
     def __init__(self, msg, missing_values):
+        """See Attributes for args docstring."""
         self.msg = msg
         self.missing_values = missing_values
         super().__init__(msg, missing_values)
@@ -155,11 +157,12 @@ def raster_calculator(
             tuple/list as the second. Defaults to
             geoprocessing.DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS.
 
-    Returns:
+    Return:
         None
 
     Raises:
         ValueError: invalid input provided
+
     """
     if not base_raster_path_band_const_list:
         raise ValueError(
@@ -623,7 +626,7 @@ def align_and_resize_raster_stack(
             ``geoprocessing.DEFAULT_OSR_AXIS_MAPPING_STRATEGY``. This parameter
             should not be changed unless you know what you are doing.
 
-    Returns:
+    Return:
         None
 
     Raises:
@@ -845,7 +848,7 @@ def new_raster_from_base(
             tuple/list as the second. Defaults to a GTiff driver tuple
             defined at geoprocessing.DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS.
 
-    Returns:
+    Return:
         None
     """
     base_raster = gdal.OpenEx(base_path, gdal.OF_RASTER)
@@ -978,7 +981,7 @@ def create_raster_from_vector_extents(
             tuple/list as the second. Defaults to a GTiff driver tuple
             defined at geoprocessing.DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS.
 
-    Returns:
+    Return:
         None
     """
     # Determine the width and height of the tiff in pixels based on the
@@ -1078,7 +1081,7 @@ def interpolate_points(
         interpolation_mode (string): the interpolation method to use for
             scipy.interpolate.griddata, one of 'linear', near', or 'cubic'.
 
-    Returns:
+    Return:
         None
     """
     source_vector = gdal.OpenEx(base_vector_path, gdal.OF_VECTOR)
@@ -1168,7 +1171,7 @@ def zonal_statistics(
         working_dir (string): If not None, indicates where temporary files
             should be created during this run.
 
-    Returns:
+    Return:
         nested dictionary indexed by aggregating feature id, and then by one
         of 'min' 'max' 'sum' 'count' and 'nodata_count'.  Example::
 
@@ -1508,7 +1511,7 @@ def get_vector_info(vector_path, layer_id=0):
         ValueError if ``vector_path`` does not exist on disk or cannot be
         opened as a gdal.OF_VECTOR.
 
-    Returns:
+    Return:
         raster_properties (dictionary):
             a dictionary with the following key-value pairs:
 
@@ -1554,7 +1557,7 @@ def get_raster_info(raster_path):
             if ``raster_path`` is not a file or cannot be opened as a
             ``gdal.OF_RASTER``.
 
-    Returns:
+    Return:
         raster_properties (dictionary):
             a dictionary with the properties stored under relevant keys.
 
@@ -1663,7 +1666,7 @@ def reproject_vector(
             ``geoprocessing.DEFAULT_OSR_AXIS_MAPPING_STRATEGY``. This parameter
             should not be changed unless you know what you are doing.
 
-    Returns:
+    Return:
         None
     """
     base_vector = gdal.OpenEx(base_vector_path, gdal.OF_VECTOR)
@@ -1801,7 +1804,7 @@ def reclassify_raster(
             tuple/list as the second. Defaults to a GTiff driver tuple
             defined at geoprocessing.DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS.
 
-    Returns:
+    Return:
         None
 
     Raises:
@@ -1884,11 +1887,11 @@ def warp_raster(
               vector will be automatically projected to the target
               projection if its base coordinate system does not match
               the target.
-            * ``'mask_layer_id'``: (int/str) the layer index or name to use for
-              masking, if this key is not in the dictionary the default
+            * ``'mask_layer_id'``: (int/str) the layer index or name to use
+              for masking, if this key is not in the dictionary the default
               is to use the layer at index 0.
-            * ``'mask_vector_where_filter'``: (str) an SQL WHERE string that can
-              be used to filter the geometry in the mask. Ex:
+            * ``'mask_vector_where_filter'``: (str) an SQL WHERE string that
+              can be used to filter the geometry in the mask. Ex:
               'id > 10' would use all features whose field value of
               'id' is > 10.
 
@@ -1907,7 +1910,7 @@ def warp_raster(
             ``geoprocessing.DEFAULT_OSR_AXIS_MAPPING_STRATEGY``. This parameter
             should not be changed unless you know what you are doing.
 
-    Returns:
+    Return:
         None
 
     Raises:
@@ -2115,7 +2118,7 @@ def rasterize(
         where_clause (str): If not None, is an SQL query-like string to filter
             which features are used to rasterize, (e.x. where="value=1").
 
-    Returns:
+    Return:
         None
     """
     gdal.PushErrorHandler('CPLQuietErrorHandler')
@@ -2179,7 +2182,7 @@ def calculate_disjoint_polygon_set(
             in the disjoint calculation. Coordinates are in the order
             [minx, miny, maxx, maxy].
 
-    Returns:
+    Return:
         subset_list (sequence): sequence of sets of FIDs from vector_path
 
     """
@@ -2334,7 +2337,7 @@ def distance_transform_edt(
             tuple/list as the second. Defaults to a GTiff driver tuple
             defined at geoprocessing.DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS.
 
-    Returns:
+    Return:
         None
     """
     working_raster_paths = {}
@@ -2400,7 +2403,7 @@ def _next_regular(base):
         base (int): a positive integer to start to find the next Hamming
             number.
 
-    Returns:
+    Return:
         The next regular number greater than or equal to ``base``.
 
     """
@@ -2516,7 +2519,7 @@ def convolve_2d(
             tuple/list as the second. Defaults to a GTiff driver tuple
             defined at geoprocessing.DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS.
 
-    Returns:
+    Return:
         ``None``
 
     Raises:
@@ -2891,10 +2894,11 @@ def transform_bounding_box(
             the midpoint.
         osr_axis_mapping_strategy (int): OSR axis mapping strategy for
             ``SpatialReference`` objects. Defaults to
-            ``geoprocessing.DEFAULT_OSR_AXIS_MAPPING_STRATEGY``. This parameter
-            should not be changed unless you know what you are doing.
+            ``geoprocessing.DEFAULT_OSR_AXIS_MAPPING_STRATEGY``. This
+            parameter should not be changed unless you know what you are
+            doing.
 
-    Returns:
+    Return:
         A list of the form [xmin, ymin, xmax, ymax] that describes the largest
         fitting bounding box around the original warped bounding box in
         ``new_epsg`` coordinate system.
@@ -2983,7 +2987,7 @@ def merge_rasters(
             tuple/list as the second. Defaults to a GTiff driver tuple
             defined at geoprocessing.DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS.
 
-    Returns:
+    Return:
         None
     """
     raster_info_list = [
@@ -3200,7 +3204,7 @@ def mask_raster(
             tuple/list as the second. Defaults to a GTiff driver tuple
             defined at geoprocessing.DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS.
 
-    Returns:
+    Return:
         None
     """
     with tempfile.NamedTemporaryFile(
@@ -3261,7 +3265,7 @@ def _invoke_timed_callback(
         callback_period (float): time in seconds to pass until
             ``callback_lambda`` is invoked.
 
-    Returns:
+    Return:
         ``reference_time`` if ``callback_lambda`` not invoked, otherwise the
         time when ``callback_lambda`` was invoked.
 
@@ -3282,7 +3286,7 @@ def _gdal_to_numpy_type(band):
     Args:
         band (gdal.Band): GDAL Band
 
-    Returns:
+    Return:
         numpy_datatype (numpy.dtype): equivalent of band.DataType
 
     """
@@ -3318,7 +3322,7 @@ def merge_bounding_box_list(bounding_box_list, bounding_box_mode):
         mode (string): either ``'union'`` or ``'intersection'`` for the
             corresponding reduction mode.
 
-    Returns:
+    Return:
         A four tuple bounding box that is the union or intersection of the
         input bounding boxes.
 
@@ -3336,7 +3340,7 @@ def merge_bounding_box_list(bounding_box_list, bounding_box_mode):
                 in the form bb=[minx,miny,maxx,maxy]
             mode (string); one of 'union' or 'intersection'
 
-        Returns:
+        Return:
             Reduced bounding box of bb1/bb2 depending on mode.
 
         """
@@ -3375,7 +3379,7 @@ def get_gis_type(path):
         path (str): path to a file on disk.
 
 
-    Returns:
+    Return:
         A bitwise OR of all GIS types that PyGeoprocessing models, currently
         this is ``pygeoprocessing.UNKNOWN_TYPE``,
         ``pygeoprocessing.RASTER_TYPE``, or ``pygeoprocessing.VECTOR_TYPE``.
@@ -3405,7 +3409,7 @@ def _make_logger_callback(message):
             first for % complete from ``df_complete``, second from
             ``p_progress_arg[0]``.
 
-    Returns:
+    Return:
         Function with signature:
             logger_callback(df_complete, psz_message, p_progress_arg)
 
@@ -3482,7 +3486,7 @@ def _convolve_2d_worker(
                  top_index_result, bottom_index_result) tuple that's used
             for writing and masking.
 
-    Returns:
+    Return:
         None
     """
     signal_raster = gdal.OpenEx(signal_path_band[0], gdal.OF_RASTER)
@@ -3672,7 +3676,7 @@ def shapely_geometry_to_vector(
         ogr_geom_type (ogr geometry enumerated type): sets the target layer
             geometry type. Defaults to wkbPolygon.
 
-    Returns:
+    Return:
         None
     """
     if fields is None:
@@ -3732,7 +3736,7 @@ def numpy_array_to_raster(
             tuple/list as the second. Defaults to
             geoprocessing.DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS.
 
-    Returns:
+    Return:
         None
     """
     numpy_to_gdal_type = {
@@ -3773,7 +3777,7 @@ def raster_to_numpy_array(raster_path, band_id=1):
         raster_path (str): path to raster.
         band_id (int): band in the raster to read.
 
-    Returns:
+    Return:
         numpy array contents of `band_id` in raster.
 
     """
@@ -3787,6 +3791,217 @@ def raster_to_numpy_array(raster_path, band_id=1):
 
 def stitch_rasters(
         base_raster_path_band_list,
-        target_stitch_raster_path,
-        ):
-    pass
+        resample_method_list,
+        target_stitch_raster_path_band,
+        osr_axis_mapping_strategy=DEFAULT_OSR_AXIS_MAPPING_STRATEGY):
+    """Stitch the raster in the base list into the existing target.
+
+    Args:
+        base_raster_path_band_list (sequence): sequence of raster path/band
+            tuples to stitch into target.
+        resample_method_list (sequence): a sequence of resampling methods
+            which one to one map each path in ``base_raster_path_band_list``
+            during resizing.  Each element must be one of
+            "near|bilinear|cubic|cubicspline|lanczos|mode".
+        target_stitch_raster_path_band (tuple): raster path/band tuple to an
+            existing raster, values in ``base_raster_path_band_list`` will
+            be stitched into this raster/band in the order they are in the
+            list. The nodata value for the target band must be defined and
+            will be written over with values from the base raster. Nodata
+            values in the base rasters will not be written into the target.
+            If the pixel size or projection are different between base and
+            target the base is warped to the target's cell size and target
+            with the interpolation method provided.
+        osr_axis_mapping_strategy (int): OSR axis mapping strategy for
+            ``SpatialReference`` objects. Defaults to
+            ``geoprocessing.DEFAULT_OSR_AXIS_MAPPING_STRATEGY``. This
+            parameter should not be changed unless you know what you are
+            doing.
+
+    Return:
+        None.
+    """
+    if not _is_raster_path_band_formatted(target_stitch_raster_path_band):
+        raise ValueError(
+            'Expected raster path/band tuple for '
+            'target_stitch_raster_path_band but got '
+            f'"{target_stitch_raster_path_band}"')
+
+    if not os.path.exists(target_stitch_raster_path_band[0]):
+        raise ValueError(
+            'Target stitch raster does not exist: '
+            f'"{target_stitch_raster_path_band[0]}"')
+    gis_type = get_gis_type(target_stitch_raster_path_band[0])
+    from pygeoprocessing import RASTER_TYPE
+    if gis_type != RASTER_TYPE:
+        raise ValueError(
+            'Target stitch raster is not a raster. '
+            f'Location: "{target_stitch_raster_path_band[0]}"" '
+            f'GIS type: {gis_type}')
+    target_raster_info = get_raster_info(target_stitch_raster_path_band[0])
+    if target_stitch_raster_path_band[1] > len(target_raster_info['nodata']):
+        raise ValueError(
+            'target_stitch_raster_path_band refers to a band that exceeds '
+            'the number of bands in the raster:\n'
+            f'''target_stitch_raster_path_band[1]: {
+                target_stitch_raster_path_band[1]} '''
+            f'n bands: {len(target_raster_info["nodata"])}')
+
+    target_nodata = target_raster_info['nodata'][
+        target_stitch_raster_path_band[1]-1]
+    if target_nodata is None:
+        raise ValueError(
+            f'target stitch raster at "{target_stitch_raster_path_band[0]} "'
+            'nodata value is None, expected non-None value')
+
+    target_raster = gdal.OpenEx(
+        target_stitch_raster_path_band[0], gdal.OF_RASTER | gdal.GA_Update)
+    target_band = target_raster.GetRasterBand(
+        target_stitch_raster_path_band[1])
+    target_inv_gt = gdal.InvGeoTransform(target_raster_info['geotransform'])
+    target_raster_x_size, target_raster_y_size = target_raster_info[
+        'raster_size']
+    for (raster_path, raster_band_id), resample_method in zip(
+            base_raster_path_band_list, resample_method_list):
+        LOGGER.info(
+            f'stitching {(raster_path, raster_band_id)} into '
+            f'{target_stitch_raster_path_band}')
+        raster_info = get_raster_info(raster_path)
+
+        projected_raster_bounding_box = transform_bounding_box(
+            raster_info['bounding_box'],
+            raster_info['projection_wkt'],
+            target_raster_info['projection_wkt'])
+
+        try:
+            # merge the bounding boxes only to see if they don't intersect
+            _ = merge_bounding_box_list(
+                [projected_raster_bounding_box,
+                 target_raster_info['bounding_box']], 'intersection')
+        except ValueError:
+            LOGGER.warning(
+                f'the raster at "{raster_path}"" does not intersect the '
+                f'stitch raster at "{target_stitch_raster_path_band[0]}", '
+                'skipping...')
+            continue
+
+        # use this to determine if we need to warp and delete if we did at
+        # the end
+        if (raster_info['projection_wkt'] ==
+            target_raster_info['projection_wkt'] and
+            raster_info['pixel_size'] ==
+                target_raster_info['pixel_size']):
+            warped_raster = False
+            base_stitch_raster_path = raster_path
+        else:
+            workspace_dir = tempfile.mkdtemp(
+                dir=os.path.dirname(target_stitch_raster_path_band[0]),
+                prefix='stitch_rasters_workspace')
+            base_stitch_raster_path = os.path.join(
+                workspace_dir, os.path.basename(raster_path))
+            warp_raster(
+                raster_path, target_raster_info['pixel_size'],
+                base_stitch_raster_path, resample_method,
+                target_projection_wkt=target_raster_info['projection_wkt'],
+                working_dir=workspace_dir,
+                osr_axis_mapping_strategy=osr_axis_mapping_strategy)
+            warped_raster = True
+
+        base_raster = gdal.OpenEx(base_stitch_raster_path, gdal.OF_RASTER)
+        base_gt = base_raster.GetGeoTransform()
+        base_band = base_raster.GetRasterBand(raster_band_id)
+        base_nodata = base_band.GetNoDataValue()
+        # Get the target upper left xoff/yoff w/r/t the stitch raster 0,0
+        # coordinates
+        target_to_base_xoff, target_to_base_yoff = [
+            int(_) for _ in gdal.ApplyGeoTransform(
+                target_inv_gt, *gdal.ApplyGeoTransform(base_gt, 0, 0))]
+        for offset_dict in iterblocks(
+                (base_stitch_raster_path, raster_band_id), offset_only=True):
+
+            _offset_vars = {}
+            overlap = True
+            for (target_to_base_off, off_val,
+                 target_off_id, off_clip_id, win_size_id) in [
+                        (target_to_base_xoff, offset_dict['xoff'],
+                         'target_xoff', 'xoff_clip', 'win_xsize'),
+                        (target_to_base_yoff, offset_dict['yoff'],
+                         'target_yoff', 'yoff_clip', 'win_ysize')]:
+                _offset_vars[target_off_id] = (target_to_base_off+off_val)
+                if _offset_vars[target_off_id] > target_raster_x_size:
+                    overlap = False
+                    break
+                # how far to move right to get in the target raster
+                _offset_vars[off_clip_id] = 0
+                if _offset_vars[target_off_id] < 0:
+                    _offset_vars[off_clip_id] = -_offset_vars[target_off_id]
+                _offset_vars[win_size_id] = offset_dict[win_size_id]
+                if _offset_vars[off_clip_id] > _offset_vars[win_size_id]:
+                    # its too far left for the whole window
+                    overlap = False
+                    break
+                # make the _offset_vars[win_size_id] smaller if it shifts
+                # off the target window
+                if (_offset_vars[off_clip_id] + _offset_vars[target_off_id] +
+                        _offset_vars[win_size_id] > target_raster_x_size):
+                    _offset_vars[win_size_id] -= (
+                        _offset_vars[off_clip_id] +
+                        _offset_vars[target_off_id] +
+                        _offset_vars[win_size_id] - target_raster_x_size)
+
+            LOGGER.debug(
+                f'offset_vars: {_offset_vars}')
+            if not overlap:
+                LOGGER.debug('overlap! skipping')
+                continue
+            LOGGER.debug('stitching...')
+            # target_xoff = target_to_base_xoff+offset_dict['xoff']
+            # if target_xoff > target_raster_x_size:
+            #     continue
+            # # how far to move right to get in the target raster
+            # xoff_clip = 0
+            # if target_xoff < 0:
+            #     xoff_clip = -target_xoff
+            # win_xsize = offset_dict['win_xsize']
+            # if xoff_clip > win_xsize:
+            #     # its too far left for the whole window
+            #     continue
+            # # make the win_xsize smaller if it shifts off the target window
+            # if xoff_clip+target_xoff+win_xsize > target_raster_x_size:
+            #     win_xsize -= (
+            #         xoff_clip+target_xoff+win_xsize - target_raster_x_size)
+
+            target_array = target_band.ReadAsArray(
+                xoff=_offset_vars['target_xoff']+_offset_vars['xoff_clip'],
+                yoff=_offset_vars['target_yoff']+_offset_vars['yoff_clip'],
+                win_xsize=_offset_vars['win_xsize'],
+                win_ysize=_offset_vars['win_ysize'])
+            target_nodata_mask = numpy.isclose(target_array, target_nodata)
+
+            base_array = base_band.ReadAsArray(
+                xoff=offset_dict['xoff']+_offset_vars['xoff_clip'],
+                yoff=offset_dict['yoff']+_offset_vars['yoff_clip'],
+                win_xsize=_offset_vars['win_xsize'],
+                win_ysize=_offset_vars['win_ysize'])
+
+            if base_nodata is not None:
+                base_nodata_mask = numpy.isclose(base_array, base_nodata)
+            else:
+                base_nodata_mask = numpy.ones(
+                    base_array.shape, dtype=numpy.bool)
+
+            valid_mask = ~base_nodata_mask & target_nodata_mask
+            LOGGER.debug(f'valid mask has {numpy.count_nonzero(valid_mask)} valid elements')
+            target_array[valid_mask] = base_array[valid_mask]
+            target_band.WriteArray(
+                target_array,
+                xoff=_offset_vars['target_xoff']+_offset_vars['xoff_clip'],
+                yoff=_offset_vars['target_yoff']+_offset_vars['yoff_clip'])
+
+        base_raster = None
+        base_band = None
+        if warped_raster:
+            shutil.rmtree(workspace_dir)
+
+    target_raster = None
+    target_band = None
