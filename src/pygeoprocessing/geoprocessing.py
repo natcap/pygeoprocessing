@@ -76,6 +76,7 @@ _GDAL_TYPE_TO_NUMPY_LOOKUP = {
     gdal.GDT_CFloat64: numpy.complex64,
 }
 
+
 def raster_calculator(
         base_raster_path_band_const_list, local_op, target_raster_path,
         datatype_target, nodata_target,
@@ -3798,6 +3799,7 @@ def stitch_rasters(
         base_raster_path_band_list,
         resample_method_list,
         target_stitch_raster_path_band,
+        area_weight_m2_to_wgs84=False,
         osr_axis_mapping_strategy=DEFAULT_OSR_AXIS_MAPPING_STRATEGY):
     """Stitch the raster in the base list into the existing target.
 
@@ -3817,6 +3819,11 @@ def stitch_rasters(
             If the pixel size or projection are different between base and
             target the base is warped to the target's cell size and target
             with the interpolation method provided.
+        area_weight_m2_to_wgs84 (bool): If `True` the stitched raster will be
+            converted to a per-area value before reprojection to wgs84, then
+            multiplied by the m^2 area per pixel in the wgs84 coordinate
+            space. This is useful when the quantity being stitched is a total
+            quantity per pixel rather than a per unit area density.
         osr_axis_mapping_strategy (int): OSR axis mapping strategy for
             ``SpatialReference`` objects. Defaults to
             ``geoprocessing.DEFAULT_OSR_AXIS_MAPPING_STRATEGY``. This
@@ -3912,6 +3919,46 @@ def stitch_rasters(
                 osr_axis_mapping_strategy=osr_axis_mapping_strategy)
             warped_raster = True
 
+        if warped_raster and area_weight_m2_to_wgs84:
+            # determine base area per pixel currently and area per pixel
+            # once it is projected to wgs84 pixel sizes
+            base_pixel_area_m2 = abs(numpy.prod(raster_info['pixel_size']))
+            base_stitch_raster_info = get_raster_info(
+                base_stitch_raster_path)
+            lat_min, lat_max = [
+                base_stitch_raster_info['bounding_box'][_]
+                for _ in [1, 3]]
+            n_rows = base_stitch_raster_info['raster_size'][1]
+            # this column is a longitude invariant latitude variant pixel
+            # area for scaling area dependent values
+            m2_area_per_lat = _create_latitude_m2_area_column(
+                lat_min, lat_max, n_rows)
+
+            def _mult_op(base_array, base_nodata, scale):
+                """Scale non-nodata by scale."""
+                result = numpy.copy(base_array)
+                valid_mask = ~numpy.isclose(base_array, base_nodata)
+                result[valid_mask] *= scale[valid_mask]
+                return result
+
+            base_stitch_nodata = base_stitch_raster_info['nodata'][0]
+            scaled_raster_path = os.path.join(
+                workspace_dir,
+                f'scaled_{os.path.basename(base_stitch_raster_path)}')
+            # multiply the pixels in the resampled raster by the ratio of
+            # the pixel area in the wgs84 units divided by the area of the
+            # original pixel
+            raster_calculator(
+                [(base_stitch_raster_path, 1), (base_stitch_nodata, 'raw'),
+                 m2_area_per_lat/base_pixel_area_m2], _mult_op,
+                scaled_raster_path,
+                base_stitch_raster_info['datatype'], base_stitch_nodata)
+
+            # swap the result to base stitch so the rest of the function
+            # operates on the area scaled raster
+            os.remove(base_stitch_raster_path)
+            base_stitch_raster_path = scaled_raster_path
+
         base_raster = gdal.OpenEx(base_stitch_raster_path, gdal.OF_RASTER)
         base_gt = base_raster.GetGeoTransform()
         base_band = base_raster.GetRasterBand(raster_band_id)
@@ -3990,3 +4037,60 @@ def stitch_rasters(
 
     target_raster = None
     target_band = None
+
+
+def _m2_area_of_wg84_pixel(pixel_size, center_lat):
+    """Calculate m^2 area of a square wgs84 pixel.
+
+    Adapted from: https://gis.stackexchange.com/a/127327/2397
+
+    Args:
+        pixel_size (float): length of side of a square pixel in degrees.
+        center_lat (float): latitude of the center of the pixel. Note this
+            value +/- half the `pixel-size` must not exceed 90/-90 degrees
+            latitude or an invalid area will be calculated.
+
+    Returns:
+        Area of square pixel of side length `pixel_size` centered at
+        `center_lat` in m^2.
+
+    """
+    a = 6378137  # meters
+    b = 6356752.3142  # meters
+    e = math.sqrt(1 - (b/a)**2)
+    area_list = []
+    for f in [center_lat+pixel_size/2, center_lat-pixel_size/2]:
+        zm = 1 - e*math.sin(math.radians(f))
+        zp = 1 + e*math.sin(math.radians(f))
+        area_list.append(
+            math.pi * b**2 * (
+                math.log(zp/zm) / (2*e) +
+                math.sin(math.radians(f)) / (zp*zm)))
+    return abs(pixel_size / 360. * (area_list[0] - area_list[1]))
+
+
+def _create_latitude_m2_area_column(lat_min, lat_max, n_pixels):
+    """Create a (n, 1) sized numpy array with m^2 areas in each element.
+
+    Creates a per pixel m^2 area array that varies with changes in latitude.
+    This array can be used to scale values by area when converting to or
+    from a WGS84 projection to a projected one.
+
+    Args:
+        lat_max (float): maximum latitude in the bound
+        lat_min (float): minimum latitude in the bound
+        n_pixels (int): number of pixels to create for the column. The
+            size of the target square pixels are (lat_max-lat_min)/n_pixels
+            degrees per side.
+
+    Return:
+        A (n, 1) sized numpy array whose elements are the m^2 areas in each
+        element estimated by the latitude value at the center of each pixel.
+    """
+    pixel_size = (lat_max - lat_min) / n_pixels
+    center_lat_array = numpy.linspace(
+        lat_min+pixel_size/2, lat_max-pixel_size/2, n_pixels)
+    area_array = numpy.array([
+        _m2_area_of_wg84_pixel(pixel_size, lat)
+        for lat in reversed(center_lat_array)]).reshape((n_pixels, 1))
+    return area_array
