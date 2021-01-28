@@ -3799,6 +3799,7 @@ def stitch_rasters(
         base_raster_path_band_list,
         resample_method_list,
         target_stitch_raster_path_band,
+        overlap_algorithm='etch',
         area_weight_m2_to_wgs84=False,
         osr_axis_mapping_strategy=DEFAULT_OSR_AXIS_MAPPING_STRATEGY):
     """Stitch the raster in the base list into the existing target.
@@ -3819,6 +3820,17 @@ def stitch_rasters(
             If the pixel size or projection are different between base and
             target the base is warped to the target's cell size and target
             with the interpolation method provided.
+        overlap_algorithm (str): this value indicates which algorithm to use
+            when a raster is stitched on non-nodata values in the target
+            stitch raster. It can be one of the following:
+                'etch': write a value to the target raster only if the target
+                    raster pixel is nodata. If the target pixel is non-nodata
+                    ignore any additional values to write on that pixel.
+                'replace': write a value to the target raster irrespective
+                    of the value of the target raster
+                'add': add the value to be written to the target raster to
+                    any existing value that is there. If the existing value
+                    is nodata, treat it as 0.0.
         area_weight_m2_to_wgs84 (bool): If `True` the stitched raster will be
             converted to a per-area value before reprojection to wgs84, then
             multiplied by the m^2 area per pixel in the wgs84 coordinate
@@ -3833,6 +3845,12 @@ def stitch_rasters(
     Return:
         None.
     """
+    valid_overlap_algorithms = ['etch', 'replace', 'add']
+    if overlap_algorithm not in valid_overlap_algorithms:
+        raise ValueError(
+            f'overlap algorithm {overlap_algorithm} is not one of '
+            f'{valid_overlap_algorithms}')
+
     if not _is_raster_path_band_formatted(target_stitch_raster_path_band):
         raise ValueError(
             'Expected raster path/band tuple for '
@@ -4023,8 +4041,30 @@ def stitch_rasters(
                 base_nodata_mask = numpy.ones(
                     base_array.shape, dtype=numpy.bool)
 
-            valid_mask = ~base_nodata_mask & target_nodata_mask
-            target_array[valid_mask] = base_array[valid_mask]
+            if overlap_algorithm == 'etch':
+                # place values only where target is nodata
+                valid_mask = ~base_nodata_mask & target_nodata_mask
+                target_array[valid_mask] = base_array[valid_mask]
+            elif overlap_algorithm == 'replace':
+                # write valid values into the target -- disregard any
+                # existing values in the target
+                valid_mask = ~base_nodata_mask
+                target_array[valid_mask] = base_array[valid_mask]
+            elif overlap_algorithm == 'add':
+                # add values to the target and treat target nodata as 0.
+                valid_mask = ~base_nodata_mask
+                masked_target_array = target_array[valid_mask]
+                target_array[valid_mask] = (
+                    base_array[valid_mask] +
+                    numpy.where(numpy.isclose(
+                        masked_target_array, target_nodata),
+                        0, masked_target_array))
+            else:
+                raise RuntimeError(
+                    f'overlap_algorithm {overlap_algorithm} was not defined '
+                    'but also not detected earlier -- this should never '
+                    'happen')
+
             target_band.WriteArray(
                 target_array,
                 xoff=_offset_vars['target_xoff']+_offset_vars['xoff_clip'],
