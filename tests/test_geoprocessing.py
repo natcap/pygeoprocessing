@@ -69,8 +69,8 @@ def _array_to_raster(
         target_path, raster_driver_creation_tuple=('GTiff', creation_options))
 
 
-class PyGeoprocessing10(unittest.TestCase):
-    """Tests for the PyGeoprocesing 1.0 refactor."""
+class TestGeoprocessing(unittest.TestCase):
+    """Tests for pygeoprocessing.geoprocessing."""
 
     def setUp(self):
         """Create a temporary workspace that's deleted later."""
@@ -3084,331 +3084,47 @@ class PyGeoprocessing10(unittest.TestCase):
             next_int = pygeoprocessing.geoprocessing._next_regular(next_int+1)
             self.assertEqual(next_int, regular_int)
 
-    def test_merge_rasters(self):
-        """PGP.geoprocessing: test merge_rasters."""
-        driver = gdal.GetDriverByName('GTiff')
-
+    def test_stitch_rasters(self):
+        """PGP.geoprocessing: test stitch_rasters."""
         wgs84_ref = osr.SpatialReference()
         wgs84_ref.ImportFromEPSG(4326)  # WGS84 EPSG
 
         # the following creates a checkerboard of upper left square raster
         # defined, lower right, and equal sized nodata chunks on the other
         # blocks.
-
-        raster_a_path = os.path.join(self.workspace_dir, 'raster_a.tif')
+        workspace_dir = 'test_stich'
+        os.makedirs(workspace_dir, exist_ok=True)
+        raster_a_path = os.path.join(workspace_dir, 'raster_a.tif')
         # everything flows to the right
         raster_a_array = numpy.zeros((128, 128), dtype=numpy.int32)
         raster_a_array[:] = 10
-        raster_a = driver.Create(
-            raster_a_path, raster_a_array.shape[1], raster_a_array.shape[0],
-            2, gdal.GDT_Int32)
-        raster_a_geotransform = [0.1, 1., 0., 0., 0., -1.]
-        raster_a.SetGeoTransform(raster_a_geotransform)
-        raster_a.SetProjection(wgs84_ref.ExportToWkt())
-        band = raster_a.GetRasterBand(1)
-        band.WriteArray(raster_a_array)
-        band.FlushCache()
-        band = None
-        raster_a = None
+        pygeoprocessing.numpy_array_to_raster(
+            raster_a_array, None, (1, -1), (0, 0), wgs84_ref.ExportToWkt(),
+            raster_a_path)
 
-        raster_b_path = os.path.join(self.workspace_dir, 'raster_b.tif')
+        raster_b_path = os.path.join(workspace_dir, 'raster_b.tif')
         raster_b_array = numpy.zeros((128, 128), dtype=numpy.int32)
         raster_b_array[:] = 20
-        raster_b = driver.Create(
-            raster_b_path, raster_b_array.shape[1], raster_b_array.shape[0],
-            2, gdal.GDT_Int32)
-        raster_b.SetProjection(wgs84_ref.ExportToWkt())
-        raster_b_geotransform = [128.1, 1, 0, -128, 0, -1]
-        raster_b.SetGeoTransform(raster_b_geotransform)
-        band = raster_b.GetRasterBand(1)
-        band.WriteArray(raster_b_array)
-        band.FlushCache()
-        raster_b = None
+        pygeoprocessing.numpy_array_to_raster(
+            raster_b_array, None, (1, -1), (128, -128), wgs84_ref.ExportToWkt(),
+            raster_b_path)
 
-        target_path = os.path.join(self.workspace_dir, 'merged.tif')
-        pygeoprocessing.merge_rasters(
-            [raster_a_path, raster_b_path], target_path)
+        target_path = os.path.join(workspace_dir, 'merged.tif')
+        pygeoprocessing.numpy_array_to_raster(
+            numpy.full((256, 256), -1), -1, (1, -1), (0, 0),
+            wgs84_ref.ExportToWkt(), target_path)
 
-        target_raster = gdal.OpenEx(target_path, gdal.OF_RASTER)
-        target_band = target_raster.GetRasterBand(1)
-        self.assertEqual(target_band.GetNoDataValue(), None)
-        target_array = target_band.ReadAsArray()
-        target_band = None
-        expected_array = numpy.zeros((256, 256))
+        pygeoprocessing.stitch_rasters(
+            [(raster_a_path, 1), (raster_b_path, 1)],
+            ['near', 'near'], (target_path, 1))
+
+        target_array = pygeoprocessing.raster_to_numpy_array(target_path)
+
+        expected_array = numpy.full((256, 256), -1)
         expected_array[0:128, 0:128] = 10
         expected_array[128:, 128:] = 20
-        numpy.testing.assert_almost_equal(target_array, expected_array)
-
-        target_band = target_raster.GetRasterBand(2)
-        target_array = target_band.ReadAsArray()
-        target_band = None
-        target_raster = None
-        expected_array = numpy.zeros((256, 256))
-        numpy.testing.assert_almost_equal(target_array, expected_array)
-
-        target_path = os.path.join(self.workspace_dir, 'merged.tif')
-        pygeoprocessing.merge_rasters(
-            [raster_a_path, raster_b_path], target_path,
-            bounding_box=[4, -6, 6, -4])
-
-        target_raster = gdal.OpenEx(target_path, gdal.OF_RASTER)
-        target_band = target_raster.GetRasterBand(1)
-        self.assertEqual(target_band.GetNoDataValue(), None)
-        target_array = target_band.ReadAsArray()
-        target_band = None
-        target_raster = None
-        expected_array = numpy.empty((2, 2))
-        expected_array[:] = 10
-        numpy.testing.assert_almost_equal(target_array, expected_array)
-
-    def test_merge_rasters_target_nodata(self):
-        """PGP.geoprocessing: test merge_rasters with defined nodata."""
-        driver = gdal.GetDriverByName('GTiff')
-
-        wgs84_ref = osr.SpatialReference()
-        wgs84_ref.ImportFromEPSG(4326)  # WGS84 EPSG
-
-        # the following creates a checkerboard of upper left square raster
-        # defined, lower right, and equal sized nodata chunks on the other
-        # blocks.
-
-        raster_a_path = os.path.join(self.workspace_dir, 'raster_a.tif')
-        # everything flows to the right
-        raster_a_array = numpy.zeros((11, 11), dtype=numpy.int32)
-        raster_a_array[:] = 10
-        raster_a = driver.Create(
-            raster_a_path, raster_a_array.shape[1], raster_a_array.shape[0],
-            2, gdal.GDT_Int32)
-        raster_a_geotransform = [0.1, 1., 0., 0., 0., -1.]
-        raster_a.SetGeoTransform(raster_a_geotransform)
-        raster_a.SetProjection(wgs84_ref.ExportToWkt())
-        band = raster_a.GetRasterBand(1)
-        band.WriteArray(raster_a_array)
-        band.FlushCache()
-        band = None
-        raster_a = None
-
-        raster_b_path = os.path.join(self.workspace_dir, 'raster_b.tif')
-        raster_b_array = numpy.zeros((11, 11), dtype=numpy.int32)
-        raster_b_array[:] = 20
-        raster_b = driver.Create(
-            raster_b_path, raster_b_array.shape[1], raster_b_array.shape[0],
-            2, gdal.GDT_Int32)
-        raster_b.SetProjection(wgs84_ref.ExportToWkt())
-        raster_b_geotransform = [11.1, 1, 0, -11, 0, -1]
-        raster_b.SetGeoTransform(raster_b_geotransform)
-        band = raster_b.GetRasterBand(1)
-        band.WriteArray(raster_b_array)
-        band.FlushCache()
-        band = None
-        raster_b = None
-
-        target_path = os.path.join(self.workspace_dir, 'merged.tif')
-        pygeoprocessing.merge_rasters(
-            [raster_a_path, raster_b_path], target_path, target_nodata=0)
-
-        target_raster = gdal.OpenEx(target_path, gdal.OF_RASTER)
-        target_band = target_raster.GetRasterBand(1)
-        target_array = target_band.ReadAsArray()
-        nodata_value = target_raster.GetRasterBand(2).GetNoDataValue()
-        target_band = None
-        target_raster = None
-        expected_array = numpy.zeros((22, 22))
-        expected_array[0:11, 0:11] = 10
-        expected_array[11:, 11:] = 20
 
         numpy.testing.assert_almost_equal(target_array, expected_array)
-        self.assertEqual(nodata_value, 0)
-
-    def test_merge_rasters_exception_cover(self):
-        """PGP.geoprocessing: test merge_rasters with bad data."""
-        driver = gdal.GetDriverByName('GTiff')
-
-        wgs84_ref = osr.SpatialReference()
-        wgs84_ref.ImportFromEPSG(4326)  # WGS84 EPSG
-
-        # the following creates a checkerboard of upper left square raster
-        # defined, lower right, and equal sized nodata chunks on the other
-        # blocks.
-
-        raster_a_path = os.path.join(self.workspace_dir, 'raster_a.tif')
-        # everything flows to the right
-        raster_a_array = numpy.zeros((11, 11), dtype=numpy.int32)
-        raster_a_array[:] = 10
-        raster_a = driver.Create(
-            raster_a_path, raster_a_array.shape[1], raster_a_array.shape[0],
-            2, gdal.GDT_Int32)
-        raster_a_geotransform = [0.1, 1., 0., 0., 0., -1.]
-        raster_a.SetGeoTransform(raster_a_geotransform)
-        raster_a.SetProjection(wgs84_ref.ExportToWkt())
-        band = raster_a.GetRasterBand(1)
-        band.WriteArray(raster_a_array)
-        band.FlushCache()
-        band = None
-        raster_a = None
-
-        raster_b_path = os.path.join(self.workspace_dir, 'raster_b.tif')
-        raster_b_array = numpy.zeros((11, 11), dtype=numpy.int32)
-        raster_b_array[:] = 20
-        raster_b = driver.Create(
-            raster_b_path, raster_b_array.shape[1], raster_b_array.shape[0],
-            2, gdal.GDT_Int32)
-        raster_b.SetProjection(wgs84_ref.ExportToWkt())
-        raster_b_geotransform = [11.1, 1, 0, -11, 0, -1]
-        raster_b.SetGeoTransform(raster_b_geotransform)
-        band = raster_b.GetRasterBand(1)
-        band.SetNoDataValue(-1.0)
-        band.WriteArray(raster_b_array)
-        band.FlushCache()
-        band = None
-        raster_b = None
-
-        target_path = os.path.join(self.workspace_dir, 'merged.tif')
-        with self.assertRaises(ValueError) as cm:
-            pygeoprocessing.merge_rasters(
-                [raster_a_path, raster_b_path], target_path)
-        expected_message = 'Nodata per raster are not the same'
-        actual_message = str(cm.exception)
-        self.assertTrue(expected_message in actual_message, actual_message)
-
-        raster_c_path = os.path.join(self.workspace_dir, 'raster_c.tif')
-        raster_c_array = numpy.zeros((11, 11), dtype=numpy.int32)
-        raster_c_array[:] = 20
-        raster_c = driver.Create(
-            raster_c_path, raster_c_array.shape[1], raster_c_array.shape[0],
-            1, gdal.GDT_Int32)
-        raster_c.SetProjection(wgs84_ref.ExportToWkt())
-        raster_c_geotransform = [11.1, 1, 0, -11, 0, -1]
-        raster_c.SetGeoTransform(raster_c_geotransform)
-        band = raster_c.GetRasterBand(1)
-        band.SetNoDataValue(-1.0)
-        band.WriteArray(raster_c_array)
-        band.FlushCache()
-        band = None
-        raster_c = None
-
-        target_path = os.path.join(self.workspace_dir, 'merged.tif')
-        with self.assertRaises(ValueError) as cm:
-            pygeoprocessing.merge_rasters(
-                [raster_a_path, raster_c_path], target_path)
-        expected_message = 'Number of bands per raster are not the same.'
-        actual_message = str(cm.exception)
-        self.assertTrue(expected_message in actual_message, actual_message)
-
-        raster_d_path = os.path.join(self.workspace_dir, 'raster_d.tif')
-        raster_d_array = numpy.zeros((11, 11), dtype=numpy.float32)
-        raster_d_array[:] = 20
-        raster_d = driver.Create(
-            raster_d_path, raster_d_array.shape[1], raster_d_array.shape[0],
-            2, gdal.GDT_Float32)
-        raster_d.SetProjection(wgs84_ref.ExportToWkt())
-        raster_d_geotransform = [11.1, 1, 0, -11, 0, -1]
-        raster_d.SetGeoTransform(raster_d_geotransform)
-        band = raster_d.GetRasterBand(1)
-        band.SetNoDataValue(-1.0)
-        band.WriteArray(raster_d_array)
-        band.FlushCache()
-        band = None
-        raster_d = None
-
-        target_path = os.path.join(self.workspace_dir, 'merged.tif')
-        with self.assertRaises(ValueError) as cm:
-            pygeoprocessing.merge_rasters(
-                [raster_a_path, raster_d_path], target_path)
-        expected_message = 'Rasters have different datatypes.'
-        actual_message = str(cm.exception)
-        self.assertTrue(expected_message in actual_message, actual_message)
-
-        raster_e_path = os.path.join(self.workspace_dir, 'raster_e.tif')
-        raster_e_array = numpy.zeros((11, 11), dtype=numpy.int32)
-        raster_e_array[:] = 20
-        raster_e = driver.Create(
-            raster_e_path, raster_e_array.shape[1], raster_e_array.shape[0],
-            2, gdal.GDT_Int32)
-        utm10_ref = osr.SpatialReference()
-        utm10_ref.ImportFromEPSG(26910)
-        raster_e.SetProjection(utm10_ref.ExportToWkt())
-        raster_e_geotransform = [11.1, 1, 0, -11, 0, -1]
-        raster_e.SetGeoTransform(raster_e_geotransform)
-        band = raster_e.GetRasterBand(1)
-        band.WriteArray(raster_e_array)
-        band.FlushCache()
-        band = None
-        raster_e = None
-
-        target_path = os.path.join(self.workspace_dir, 'merged.tif')
-        with self.assertRaises(ValueError) as cm:
-            pygeoprocessing.merge_rasters(
-                [raster_a_path, raster_e_path], target_path)
-        expected_message = 'Projections are not identical.'
-        actual_message = str(cm.exception)
-        self.assertTrue(expected_message in actual_message, actual_message)
-
-        raster_f_path = os.path.join(self.workspace_dir, 'raster_f.tif')
-        raster_f_array = numpy.zeros((11, 11), dtype=numpy.uint8)
-        raster_f_array[:] = 20
-        raster_f = driver.Create(
-            raster_f_path, raster_f_array.shape[1], raster_f_array.shape[0],
-            2, gdal.GDT_Byte)
-        utm10_ref = osr.SpatialReference()
-        utm10_ref.ImportFromEPSG(26910)
-        raster_f.SetProjection(utm10_ref.ExportToWkt())
-        raster_f_geotransform = [11.1, 1, 0, -11, 0, -1]
-        raster_f.SetGeoTransform(raster_f_geotransform)
-        band = raster_f.GetRasterBand(1)
-        band.WriteArray(raster_f_array)
-        band.FlushCache()
-        band = None
-        raster_f = None
-
-        raster_g_path = os.path.join(self.workspace_dir, 'raster_g.tif')
-        raster_g_array = numpy.zeros((11, 11), dtype=numpy.int8)
-        raster_g_array[:] = 20
-        raster_g = driver.Create(
-            raster_g_path, raster_g_array.shape[1], raster_g_array.shape[0],
-            2, gdal.GDT_Byte, options=['PIXELTYPE=SIGNEDBYTE'])
-        utm10_ref = osr.SpatialReference()
-        utm10_ref.ImportFromEPSG(26910)
-        raster_g.SetProjection(utm10_ref.ExportToWkt())
-        raster_g_geotransform = [11.1, 1, 0, -11, 0, -1]
-        raster_g.SetGeoTransform(raster_g_geotransform)
-        band = raster_g.GetRasterBand(1)
-        band.WriteArray(raster_g_array)
-        band.FlushCache()
-        band = None
-        raster_g = None
-
-        target_path = os.path.join(self.workspace_dir, 'merged.tif')
-        with self.assertRaises(ValueError) as cm:
-            pygeoprocessing.merge_rasters(
-                [raster_f_path, raster_g_path], target_path)
-        expected_message = 'PIXELTYPE different between rasters'
-        actual_message = str(cm.exception)
-        self.assertTrue(expected_message in actual_message, actual_message)
-
-        raster_h_path = os.path.join(self.workspace_dir, 'raster_h.tif')
-        raster_h_array = numpy.zeros((11, 11), dtype=numpy.int8)
-        raster_h_array[:] = 20
-        raster_h = driver.Create(
-            raster_h_path, raster_h_array.shape[1], raster_h_array.shape[0],
-            2, gdal.GDT_Int32)
-        utm10_ref = osr.SpatialReference()
-        raster_h.SetProjection(wgs84_ref.ExportToWkt())
-        raster_h_geotransform = [11.1, 2, 0, -11, 0, -2]
-        raster_h.SetGeoTransform(raster_h_geotransform)
-        band = raster_h.GetRasterBand(1)
-        band.WriteArray(raster_h_array)
-        band.FlushCache()
-        band = None
-        raster_h = None
-
-        target_path = os.path.join(self.workspace_dir, 'merged.tif')
-        with self.assertRaises(ValueError) as cm:
-            pygeoprocessing.merge_rasters(
-                [raster_a_path, raster_h_path], target_path)
-        expected_message = 'Pixel sizes of all rasters are not the same.'
-        actual_message = str(cm.exception)
-        self.assertTrue(expected_message in actual_message, actual_message)
 
     def test_align_with_target_sr(self):
         """PGP: test align_and_resize_raster_stack with a target sr."""

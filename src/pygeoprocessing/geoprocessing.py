@@ -2964,215 +2964,6 @@ def transform_bounding_box(
     return transformed_bounding_box
 
 
-def merge_rasters(
-        raster_path_list, target_path, bounding_box=None, target_nodata=None,
-        raster_driver_creation_tuple=DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS):
-    """Merge the given rasters into a single raster.
-
-    This operation creates a mosaic of the rasters in ``raster_path_list``.
-    The result is a raster of the size of the union of the bounding box of
-    the inputs where the contents of each raster's bands are copied into the
-    correct georeferenced target's bands.
-
-    Note the input rasters must be in the same projection, same pixel size,
-    same number of bands, and same datatype. If any of these are not true,
-    the operation raises a ValueError with an appropriate error message.
-
-    Args:
-        raster_path_list (sequence): list of file paths to rasters
-        target_path (string): path to the geotiff file that will be created
-            by this operation.
-        bounding_box (sequence): if not None, clip target path to be within
-            these bounds. Format is [minx,miny,maxx,maxy]
-        target_nodata (float): if not None, set the target raster's nodata
-            value to this. Otherwise use the shared nodata value in the
-            ``raster_path_list``. It is an error if different rasters in
-            ``raster_path_list`` have different nodata values and
-            ``target_nodata`` is None.
-        raster_driver_creation_tuple (tuple): a tuple containing a GDAL driver
-            name string as the first element and a GDAL creation options
-            tuple/list as the second. Defaults to a GTiff driver tuple
-            defined at geoprocessing.DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS.
-
-    Return:
-        None
-    """
-    raster_info_list = [
-        get_raster_info(path) for path in raster_path_list]
-    pixel_size_set = set([
-        x['pixel_size'] for x in raster_info_list])
-    if len(pixel_size_set) != 1:
-        raise ValueError(
-            "Pixel sizes of all rasters are not the same. "
-            "Here's the sizes: %s" % str([
-                (path, x['pixel_size']) for path, x in zip(
-                    raster_path_list, raster_info_list)]))
-    n_bands_set = set([x['n_bands'] for x in raster_info_list])
-    if len(n_bands_set) != 1:
-        raise ValueError(
-            "Number of bands per raster are not the same. "
-            "Here's the band counts: %s" % str([
-                (path, x['n_bands']) for path, x in zip(
-                    raster_path_list, raster_info_list)]))
-
-    datatype_set = set([x['datatype'] for x in raster_info_list])
-    if len(datatype_set) != 1:
-        raise ValueError(
-            "Rasters have different datatypes. "
-            "Here's the datatypes: %s" % str([
-                (path, x['datatype']) for path, x in zip(
-                    raster_path_list, raster_info_list)]))
-
-    if target_nodata is None:
-        nodata_set = set([x['nodata'][0] for x in raster_info_list])
-        if len(nodata_set) != 1:
-            raise ValueError(
-                "Nodata per raster are not the same. "
-                "Path and nodata values: %s" % str([
-                    (path, x['nodata']) for path, x in zip(
-                        raster_path_list, raster_info_list)]))
-
-    projection_set = set([x['projection_wkt'] for x in raster_info_list])
-    if len(projection_set) != 1:
-        raise ValueError(
-            "Projections are not identical. Here's the projections: %s" % str(
-                [(path, x['projection_wkt']) for path, x in zip(
-                    raster_path_list, raster_info_list)]))
-
-    pixeltype_set = set()
-    for path in raster_path_list:
-        raster = gdal.OpenEx(path, gdal.OF_RASTER)
-        band = raster.GetRasterBand(1)
-        metadata = band.GetMetadata('IMAGE_STRUCTURE')
-        band = None
-        if 'PIXELTYPE' in metadata:
-            pixeltype_set.add('PIXELTYPE=' + metadata['PIXELTYPE'])
-        else:
-            pixeltype_set.add(None)
-    if len(pixeltype_set) != 1:
-        raise ValueError(
-            "PIXELTYPE different between rasters."
-            "Here is the set of types (should only have 1): %s" % str(
-                pixeltype_set))
-
-    bounding_box_list = [x['bounding_box'] for x in raster_info_list]
-    target_bounding_box = merge_bounding_box_list(bounding_box_list, 'union')
-    if bounding_box is not None:
-        LOGGER.debug("target bounding_box %s", target_bounding_box)
-        target_bounding_box = merge_bounding_box_list(
-            [target_bounding_box, bounding_box], 'intersection')
-        LOGGER.debug("bounding_box %s", bounding_box)
-        LOGGER.debug("merged target bounding_box %s", target_bounding_box)
-
-    driver = gdal.GetDriverByName(raster_driver_creation_tuple[0])
-    target_pixel_size = pixel_size_set.pop()
-    n_cols = int(math.ceil(abs(
-        (target_bounding_box[2]-target_bounding_box[0]) /
-        target_pixel_size[0])))
-    n_rows = int(math.ceil(abs(
-        (target_bounding_box[3]-target_bounding_box[1]) /
-        target_pixel_size[1])))
-
-    target_geotransform = [
-        target_bounding_box[0], target_pixel_size[0], 0,
-        target_bounding_box[1], 0, target_pixel_size[1]]
-
-    # I haven't been able to get the geotransform to ever have a negative x
-    # or positive y, but there's nothing in the spec that would restrict it
-    # so we still test here.
-    if target_pixel_size[0] < 0:
-        target_geotransform[0] = target_bounding_box[2]
-    if target_pixel_size[1] < 0:
-        target_geotransform[3] = target_bounding_box[3]
-
-    # there's only one element in the sets so okay to pop right in the call,
-    # we won't need it after anyway
-    n_bands = n_bands_set.pop()
-    target_raster = driver.Create(
-        target_path, n_cols, n_rows, n_bands,
-        datatype_set.pop(), options=raster_driver_creation_tuple[1])
-    target_raster.SetProjection(raster.GetProjection())
-    target_raster.SetGeoTransform(target_geotransform)
-    if target_nodata is None:
-        nodata = nodata_set.pop()
-    else:
-        nodata = target_nodata
-    # consider what to do if rasters have nodata defined, but do not fill
-    # up the mosaic.
-    if nodata is not None:
-        # geotiffs only have 1 nodata value set through the band
-        target_raster.GetRasterBand(1).SetNoDataValue(nodata)
-        for band_index in range(n_bands):
-            target_raster.GetRasterBand(band_index+1).Fill(nodata)
-    target_band_list = [
-        target_raster.GetRasterBand(band_index) for band_index in range(
-            1, n_bands+1)]
-
-    # the raster was left over from checking pixel types, remove it after
-    raster = None
-
-    for raster_info, raster_path in zip(raster_info_list, raster_path_list):
-        # figure out where raster_path starts w/r/t target_raster
-        raster_start_x = int((
-            raster_info['geotransform'][0] -
-            target_geotransform[0]) / target_pixel_size[0])
-        raster_start_y = int((
-            raster_info['geotransform'][3] -
-            target_geotransform[3]) / target_pixel_size[1])
-        for band_offset in range(n_bands):
-            for offset_info, data_block in iterblocks(
-                    (raster_path, band_offset+1)):
-                # its possible the block reads in coverage that is outside the
-                # target bounds entirely. nothing to do but skip
-                if offset_info['yoff'] + raster_start_y > n_rows:
-                    continue
-                if offset_info['xoff'] + raster_start_x > n_cols:
-                    continue
-                if (offset_info['xoff'] + raster_start_x +
-                        offset_info['win_xsize'] < 0):
-                    continue
-                if (offset_info['yoff'] + raster_start_y +
-                        offset_info['win_ysize'] < 0):
-                    continue
-
-                # invariant: the window described in ``offset_info``
-                # intersects with the target raster.
-
-                # check to see if window hangs off the left/top part of raster
-                # and determine how far to adjust down
-                x_clip_min = 0
-                if raster_start_x + offset_info['xoff'] < 0:
-                    x_clip_min = abs(raster_start_x + offset_info['xoff'])
-                y_clip_min = 0
-                if raster_start_y + offset_info['yoff'] < 0:
-                    y_clip_min = abs(raster_start_y + offset_info['yoff'])
-                x_clip_max = 0
-
-                # check if window hangs off right/bottom part of target raster
-                if (offset_info['xoff'] + raster_start_x +
-                        offset_info['win_xsize'] >= n_cols):
-                    x_clip_max = (
-                        offset_info['xoff'] + raster_start_x +
-                        offset_info['win_xsize'] - n_cols)
-                y_clip_max = 0
-
-                if (offset_info['yoff'] + raster_start_y +
-                        offset_info['win_ysize'] >= n_rows):
-                    y_clip_max = (
-                        offset_info['yoff'] + raster_start_y +
-                        offset_info['win_ysize'] - n_rows)
-
-                target_band_list[band_offset].WriteArray(
-                    data_block[
-                        y_clip_min:offset_info['win_ysize']-y_clip_max,
-                        x_clip_min:offset_info['win_xsize']-x_clip_max],
-                    xoff=offset_info['xoff']+raster_start_x+x_clip_min,
-                    yoff=offset_info['yoff']+raster_start_y+y_clip_min)
-
-    del target_band_list[:]
-    target_raster = None
-
-
 def mask_raster(
         base_raster_path_band, mask_vector_path, target_mask_raster_path,
         mask_layer_id=0, target_mask_value=None, working_dir=None,
@@ -3986,9 +3777,11 @@ def stitch_rasters(
         target_to_base_xoff, target_to_base_yoff = [
             int(_) for _ in gdal.ApplyGeoTransform(
                 target_inv_gt, *gdal.ApplyGeoTransform(base_gt, 0, 0))]
+        LOGGER.debug(
+            f'target_to_base_xoff, target_to_base_yoff: {target_to_base_xoff} {target_to_base_yoff}')
         for offset_dict in iterblocks(
                 (base_stitch_raster_path, raster_band_id), offset_only=True):
-
+            LOGGER.debug(f'{(base_stitch_raster_path, raster_band_id)} {offset_dict}')
             _offset_vars = {}
             overlap = True
             for (target_to_base_off, off_val,
@@ -4028,6 +3821,7 @@ def stitch_rasters(
                 win_xsize=_offset_vars['win_xsize'],
                 win_ysize=_offset_vars['win_ysize'])
             target_nodata_mask = numpy.isclose(target_array, target_nodata)
+            LOGGER.debug(f'target_nodata_mask nonzero: {numpy.count_nonzero(target_nodata_mask)}')
 
             base_array = base_band.ReadAsArray(
                 xoff=offset_dict['xoff']+_offset_vars['xoff_clip'],
@@ -4038,7 +3832,7 @@ def stitch_rasters(
             if base_nodata is not None:
                 base_nodata_mask = numpy.isclose(base_array, base_nodata)
             else:
-                base_nodata_mask = numpy.ones(
+                base_nodata_mask = numpy.zeros(
                     base_array.shape, dtype=numpy.bool)
 
             if overlap_algorithm == 'etch':
@@ -4073,7 +3867,7 @@ def stitch_rasters(
         base_raster = None
         base_band = None
         if warped_raster:
-            shutil.rmtree(workspace_dir)
+            pass#shutil.rmtree(workspace_dir)
 
     target_raster = None
     target_band = None
