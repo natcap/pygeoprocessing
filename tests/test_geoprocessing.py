@@ -1187,8 +1187,8 @@ class TestGeoprocessing(unittest.TestCase):
 
         with self.assertRaises(ValueError) as context:
             pygeoprocessing.warp_raster(
-                base_a_path, base_a_raster_info['pixel_size'], target_raster_path,
-                'not_an_algorithm', n_threads=1)
+                base_a_path, base_a_raster_info['pixel_size'],
+                target_raster_path, 'not_an_algorithm', n_threads=1)
 
         self.assertIn('Invalid resample method', str(context.exception))
 
@@ -3089,42 +3089,82 @@ class TestGeoprocessing(unittest.TestCase):
         wgs84_ref = osr.SpatialReference()
         wgs84_ref.ImportFromEPSG(4326)  # WGS84 EPSG
 
-        # the following creates a checkerboard of upper left square raster
-        # defined, lower right, and equal sized nodata chunks on the other
-        # blocks.
-        workspace_dir = 'test_stich'
-        os.makedirs(workspace_dir, exist_ok=True)
-        raster_a_path = os.path.join(workspace_dir, 'raster_a.tif')
-        # everything flows to the right
+        # the following creates an overlapping set of squares of
+        # left square raster at 10 and middle square of 20 with nodata
+        # everywhere else
+        os.makedirs(self.workspace_dir, exist_ok=True)
+
+        raster_a_path = os.path.join(self.workspace_dir, 'raster_a.tif')
         raster_a_array = numpy.zeros((128, 128), dtype=numpy.int32)
         raster_a_array[:] = 10
         pygeoprocessing.numpy_array_to_raster(
             raster_a_array, None, (1, -1), (0, 0), wgs84_ref.ExportToWkt(),
             raster_a_path)
-
-        raster_b_path = os.path.join(workspace_dir, 'raster_b.tif')
+        raster_b_path = os.path.join(self.workspace_dir, 'raster_b.tif')
         raster_b_array = numpy.zeros((128, 128), dtype=numpy.int32)
         raster_b_array[:] = 20
         pygeoprocessing.numpy_array_to_raster(
-            raster_b_array, None, (1, -1), (128, -128), wgs84_ref.ExportToWkt(),
-            raster_b_path)
+            raster_b_array, None, (1, -1), (64, -64),
+            wgs84_ref.ExportToWkt(), raster_b_path)
 
-        target_path = os.path.join(workspace_dir, 'merged.tif')
+        # Test etch
+        stitch_by_etch_target_path = os.path.join(
+            self.workspace_dir, 'stitch_by_etch.tif')
         pygeoprocessing.numpy_array_to_raster(
             numpy.full((256, 256), -1), -1, (1, -1), (0, 0),
-            wgs84_ref.ExportToWkt(), target_path)
-
+            wgs84_ref.ExportToWkt(), stitch_by_etch_target_path)
         pygeoprocessing.stitch_rasters(
             [(raster_a_path, 1), (raster_b_path, 1)],
-            ['near', 'near'], (target_path, 1))
+            ['near', 'near'], (stitch_by_etch_target_path, 1),
+            overlap_algorithm='etch')
+        target_etch_array = pygeoprocessing.raster_to_numpy_array(
+            stitch_by_etch_target_path)
+        # since we etch, "20" will get overwritten so write it first
+        expected_etch_array = numpy.full((256, 256), -1)
+        expected_etch_array[64:64+128, 64:64+128] = 20
+        expected_etch_array[0:128, 0:128] = 10
+        numpy.testing.assert_almost_equal(
+            target_etch_array, expected_etch_array)
 
-        target_array = pygeoprocessing.raster_to_numpy_array(target_path)
+        # Test replace:
+        stitch_by_replace_target_path = os.path.join(
+            self.workspace_dir, 'stitch_by_etch.tif')
+        pygeoprocessing.numpy_array_to_raster(
+            numpy.full((256, 256), -1), -1, (1, -1), (0, 0),
+            wgs84_ref.ExportToWkt(), stitch_by_replace_target_path)
+        pygeoprocessing.stitch_rasters(
+            [(raster_a_path, 1), (raster_b_path, 1)],
+            ['near', 'near'], (stitch_by_replace_target_path, 1),
+            overlap_algorithm='replace')
+        target_replace_array = pygeoprocessing.raster_to_numpy_array(
+            stitch_by_replace_target_path)
+        # since we replace we write in order 10 then 20
+        expected_replace_array = numpy.full((256, 256), -1)
+        expected_replace_array[0:128, 0:128] = 10
+        expected_replace_array[64:64+128, 64:64+128] = 20
+        numpy.testing.assert_almost_equal(
+            target_replace_array, expected_replace_array)
 
-        expected_array = numpy.full((256, 256), -1)
-        expected_array[0:128, 0:128] = 10
-        expected_array[128:, 128:] = 20
-
-        numpy.testing.assert_almost_equal(target_array, expected_array)
+        # Test add
+        stitch_by_add_target_path = os.path.join(
+            self.workspace_dir, 'stitch_by_add.tif')
+        pygeoprocessing.numpy_array_to_raster(
+            numpy.full((256, 256), -1), -1, (1, -1), (0, 0),
+            wgs84_ref.ExportToWkt(), stitch_by_add_target_path)
+        pygeoprocessing.stitch_rasters(
+            [(raster_a_path, 1), (raster_b_path, 1)],
+            ['near', 'near'], (stitch_by_add_target_path, 1),
+            overlap_algorithm='add')
+        target_add_array = pygeoprocessing.raster_to_numpy_array(
+            stitch_by_add_target_path)
+        # we add on the add
+        expected_add_array = numpy.full((256, 256), -1)
+        expected_add_array[0:128, 0:128] = 10
+        expected_add_array[64:64+128, 64:64+128] = numpy.where(
+            expected_add_array[64:64+128, 64:64+128] == -1, 20,
+            expected_add_array[64:64+128, 64:64+128]+20)
+        numpy.testing.assert_almost_equal(
+            target_add_array, expected_add_array)
 
     def test_align_with_target_sr(self):
         """PGP: test align_and_resize_raster_stack with a target sr."""

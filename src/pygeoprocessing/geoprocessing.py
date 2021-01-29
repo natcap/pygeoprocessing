@@ -3777,11 +3777,8 @@ def stitch_rasters(
         target_to_base_xoff, target_to_base_yoff = [
             int(_) for _ in gdal.ApplyGeoTransform(
                 target_inv_gt, *gdal.ApplyGeoTransform(base_gt, 0, 0))]
-        LOGGER.debug(
-            f'target_to_base_xoff, target_to_base_yoff: {target_to_base_xoff} {target_to_base_yoff}')
         for offset_dict in iterblocks(
                 (base_stitch_raster_path, raster_band_id), offset_only=True):
-            LOGGER.debug(f'{(base_stitch_raster_path, raster_band_id)} {offset_dict}')
             _offset_vars = {}
             overlap = True
             for (target_to_base_off, off_val,
@@ -3821,7 +3818,6 @@ def stitch_rasters(
                 win_xsize=_offset_vars['win_xsize'],
                 win_ysize=_offset_vars['win_ysize'])
             target_nodata_mask = numpy.isclose(target_array, target_nodata)
-            LOGGER.debug(f'target_nodata_mask nonzero: {numpy.count_nonzero(target_nodata_mask)}')
 
             base_array = base_band.ReadAsArray(
                 xoff=offset_dict['xoff']+_offset_vars['xoff_clip'],
@@ -3848,11 +3844,13 @@ def stitch_rasters(
                 # add values to the target and treat target nodata as 0.
                 valid_mask = ~base_nodata_mask
                 masked_target_array = target_array[valid_mask]
+                target_array_nodata_mask = numpy.isclose(
+                    masked_target_array, target_nodata)
+                LOGGER.debug('target_array_nodata_mask')
                 target_array[valid_mask] = (
                     base_array[valid_mask] +
-                    numpy.where(numpy.isclose(
-                        masked_target_array, target_nodata),
-                        0, masked_target_array))
+                    numpy.where(
+                        target_array_nodata_mask, 0, masked_target_array))
             else:
                 raise RuntimeError(
                     f'overlap_algorithm {overlap_algorithm} was not defined '
@@ -3867,7 +3865,7 @@ def stitch_rasters(
         base_raster = None
         base_band = None
         if warped_raster:
-            pass#shutil.rmtree(workspace_dir)
+            shutil.rmtree(workspace_dir)
 
     target_raster = None
     target_band = None
