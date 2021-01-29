@@ -3153,7 +3153,7 @@ class TestGeoprocessing(unittest.TestCase):
         stitch_by_etch_target_path = os.path.join(
             self.workspace_dir, 'stitch_by_etch.tif')
         pygeoprocessing.numpy_array_to_raster(
-            numpy.full((256, 256), -1), -1, (1, -1), (0, 0),
+            numpy.full((256, 256), -1, dtype=numpy.float32), -1, (1, -1), (0, 0),
             wgs84_ref.ExportToWkt(), stitch_by_etch_target_path)
         pygeoprocessing.stitch_rasters(
             [(raster_a_path, 1), (raster_b_path, 1)],
@@ -3172,8 +3172,9 @@ class TestGeoprocessing(unittest.TestCase):
         stitch_by_replace_target_path = os.path.join(
             self.workspace_dir, 'stitch_by_etch.tif')
         pygeoprocessing.numpy_array_to_raster(
-            numpy.full((256, 256), -1), -1, (1, -1), (0, 0),
-            wgs84_ref.ExportToWkt(), stitch_by_replace_target_path)
+            numpy.full((256, 256), -1, dtype=numpy.float32),
+            -1, (1, -1), (0, 0), wgs84_ref.ExportToWkt(),
+            stitch_by_replace_target_path)
         pygeoprocessing.stitch_rasters(
             [(raster_a_path, 1), (raster_b_path, 1)],
             ['near', 'near'], (stitch_by_replace_target_path, 1),
@@ -3191,8 +3192,9 @@ class TestGeoprocessing(unittest.TestCase):
         stitch_by_add_target_path = os.path.join(
             self.workspace_dir, 'stitch_by_add.tif')
         pygeoprocessing.numpy_array_to_raster(
-            numpy.full((256, 256), -1), -1, (1, -1), (0, 0),
-            wgs84_ref.ExportToWkt(), stitch_by_add_target_path)
+            numpy.full((256, 256), -1, dtype=numpy.float32),
+            -1, (1, -1), (0, 0), wgs84_ref.ExportToWkt(),
+            stitch_by_add_target_path)
         pygeoprocessing.stitch_rasters(
             [(raster_a_path, 1), (raster_b_path, 1)],
             ['near', 'near'], (stitch_by_add_target_path, 1),
@@ -3222,21 +3224,21 @@ class TestGeoprocessing(unittest.TestCase):
         wgs84_ref = osr.SpatialReference()
         wgs84_ref.ImportFromEPSG(4326)
         pygeoprocessing.numpy_array_to_raster(
-            numpy.array([[1.0]]), None, (1, -1), (0, 0),
+            numpy.array([[1.0]], dtype=numpy.float32), None, (1, -1), (0, 0),
             wgs84_ref.ExportToWkt(), nodata_undefined_raster_path)
 
         stitch_raster_path = os.path.join(self.workspace_dir, 'stitch.tif')
         wgs84_ref = osr.SpatialReference()
         wgs84_ref.ImportFromEPSG(4326)
         pygeoprocessing.numpy_array_to_raster(
-            numpy.array([[1.0]]), -1, (1, -1), (0, 0),
+            numpy.array([[1.0]], dtype=numpy.float32), -1, (1, -1), (0, 0),
             wgs84_ref.ExportToWkt(), stitch_raster_path)
 
         a_raster_path = os.path.join(self.workspace_dir, 'a.tif')
         wgs84_ref = osr.SpatialReference()
         wgs84_ref.ImportFromEPSG(4326)
         pygeoprocessing.numpy_array_to_raster(
-            numpy.array([[1.0]]), None, (1, -1), (0, 0),
+            numpy.array([[1.0]], dtype=numpy.float32), None, (1, -1), (0, 0),
             wgs84_ref.ExportToWkt(), a_raster_path)
 
         with self.assertRaises(ValueError) as cm:
@@ -3289,7 +3291,6 @@ class TestGeoprocessing(unittest.TestCase):
         actual_message = str(cm.exception)
         self.assertTrue(
             expected_message in actual_message, actual_message)
-
 
     def test_align_with_target_sr(self):
         """PGP: test align_and_resize_raster_stack with a target sr."""
