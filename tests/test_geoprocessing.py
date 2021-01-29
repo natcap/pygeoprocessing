@@ -1,5 +1,6 @@
 """pygeoprocessing.geoprocessing test suite."""
 import os
+import pathlib
 import shutil
 import tempfile
 import time
@@ -3206,6 +3207,89 @@ class TestGeoprocessing(unittest.TestCase):
             expected_add_array[64:64+128, 64:64+128]+20)
         numpy.testing.assert_almost_equal(
             target_add_array, expected_add_array)
+
+    def test_stitch_rasters_error_handling(self):
+        """PGP: test stich_rasters error handling."""
+        regular_file_raster_path = os.path.join(
+            self.workspace_dir, 'file.txt')
+        pathlib.Path(regular_file_raster_path).touch()
+
+        nonexistant_stitch_raster_path = os.path.join(
+            self.workspace_dir, 'nonexistant.tif')
+
+        nodata_undefined_raster_path = os.path.join(
+            self.workspace_dir, 'nodata_undefined.tif')
+        wgs84_ref = osr.SpatialReference()
+        wgs84_ref.ImportFromEPSG(4326)
+        pygeoprocessing.numpy_array_to_raster(
+            numpy.array([[1.0]]), None, (1, -1), (0, 0),
+            wgs84_ref.ExportToWkt(), nodata_undefined_raster_path)
+
+        stitch_raster_path = os.path.join(self.workspace_dir, 'stitch.tif')
+        wgs84_ref = osr.SpatialReference()
+        wgs84_ref.ImportFromEPSG(4326)
+        pygeoprocessing.numpy_array_to_raster(
+            numpy.array([[1.0]]), -1, (1, -1), (0, 0),
+            wgs84_ref.ExportToWkt(), stitch_raster_path)
+
+        a_raster_path = os.path.join(self.workspace_dir, 'a.tif')
+        wgs84_ref = osr.SpatialReference()
+        wgs84_ref.ImportFromEPSG(4326)
+        pygeoprocessing.numpy_array_to_raster(
+            numpy.array([[1.0]]), None, (1, -1), (0, 0),
+            wgs84_ref.ExportToWkt(), a_raster_path)
+
+        with self.assertRaises(ValueError) as cm:
+            pygeoprocessing.stitch_rasters(
+                [(a_raster_path, 1)], ['near'], (stitch_raster_path, 1),
+                overlap_algorithm='bad algo')
+        expected_message = 'overlap algorithm'
+        actual_message = str(cm.exception)
+        self.assertTrue(
+            expected_message in actual_message, actual_message)
+
+        with self.assertRaises(ValueError) as cm:
+            pygeoprocessing.stitch_rasters(
+                [(a_raster_path, 1)], ['near'], stitch_raster_path,
+                overlap_algorithm='etch')
+        expected_message = (
+            'Expected raster path/band tuple for '
+            'target_stitch_raster_path_band')
+        actual_message = str(cm.exception)
+        self.assertTrue(
+            expected_message in actual_message, actual_message)
+
+        with self.assertRaises(ValueError) as cm:
+            pygeoprocessing.stitch_rasters(
+                [(a_raster_path, 1)], ['near'],
+                (nonexistant_stitch_raster_path, 1),
+                overlap_algorithm='etch')
+        expected_message = 'Target stitch raster does not exist'
+        actual_message = str(cm.exception)
+        self.assertTrue(
+            expected_message in actual_message, actual_message)
+
+        with self.assertRaises(ValueError) as cm:
+            pygeoprocessing.stitch_rasters(
+                [(a_raster_path, 1)], ['near'],
+                (regular_file_raster_path, 1),
+                overlap_algorithm='etch')
+        expected_message = 'Target stitch raster is not a raster.'
+        actual_message = str(cm.exception)
+        self.assertTrue(
+            expected_message in actual_message, actual_message)
+
+        with self.assertRaises(ValueError) as cm:
+            pygeoprocessing.stitch_rasters(
+                [(a_raster_path, 1)], ['near'], (stitch_raster_path, 2),
+                overlap_algorithm='add')
+        expected_message = (
+            'target_stitch_raster_path_band refers to a band that '
+            'exceeds')
+        actual_message = str(cm.exception)
+        self.assertTrue(
+            expected_message in actual_message, actual_message)
+
 
     def test_align_with_target_sr(self):
         """PGP: test align_and_resize_raster_stack with a target sr."""
