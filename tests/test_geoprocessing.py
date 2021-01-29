@@ -3084,6 +3084,49 @@ class TestGeoprocessing(unittest.TestCase):
             next_int = pygeoprocessing.geoprocessing._next_regular(next_int+1)
             self.assertEqual(next_int, regular_int)
 
+    def test_stitch_rasters_area_change(self):
+        """PGP.geoprocessing: test stitch_rasters accounting for area."""
+        wgs84_ref = osr.SpatialReference()
+        wgs84_ref.ImportFromEPSG(4326)  # WGS84 EPSG
+
+        workspace_dir = os.path.join('.', 'test_stitch_area')
+        os.makedirs(workspace_dir, exist_ok=True)
+
+        raster_a_path = os.path.join(workspace_dir, 'raster_a.tif')
+        raster_a_array = numpy.zeros((1, 1), dtype=numpy.int32)
+        raster_a_array[:] = 1
+
+        utm_31n_ref = osr.SpatialReference()
+        utm_31n_ref.ImportFromEPSG(32631)
+        # 277438.26, 110597.97 is the easting/northing of UTM 31N
+        # make a raster with a single pixel 10km X 10km
+        pygeoprocessing.numpy_array_to_raster(
+            raster_a_array, None, (10000, -10000), (277438.26, 110597.97),
+            utm_31n_ref.ExportToWkt(), raster_a_path)
+
+        # create a raster in wgs84 space that has a lot of pixel coverage
+        # of the above raster
+        target_stitch_path = os.path.join(
+            workspace_dir, 'stitch_by_area.tif')
+        pygeoprocessing.numpy_array_to_raster(
+            numpy.full((1000, 1000), -1.0), -1, (0.0001, -0.0001), (1, 1),
+            wgs84_ref.ExportToWkt(), target_stitch_path)
+
+        pygeoprocessing.stitch_rasters(
+            [(raster_a_path, 1)],
+            ['near'], (target_stitch_path, 1),
+            overlap_algorithm='etch',
+            area_weight_m2_to_wgs84=True)
+
+        target_stitch_array = pygeoprocessing.raster_to_numpy_array(
+            target_stitch_path)
+        # add all the non-nodata values
+        valid_sum = numpy.sum(target_stitch_array[target_stitch_array != -1])
+        # the result shoudl be pretty close to 1.0. it's not exact because
+        # there's a lot of numerical noise introduced when slicing up pixels
+        # but that's fine for what we're trying to achieve here.
+        numpy.testing.assert_almost_equal(valid_sum, 1.0, decimal=4)
+
     def test_stitch_rasters(self):
         """PGP.geoprocessing: test stitch_rasters."""
         wgs84_ref = osr.SpatialReference()
@@ -3092,8 +3135,6 @@ class TestGeoprocessing(unittest.TestCase):
         # the following creates an overlapping set of squares of
         # left square raster at 10 and middle square of 20 with nodata
         # everywhere else
-        os.makedirs(self.workspace_dir, exist_ok=True)
-
         raster_a_path = os.path.join(self.workspace_dir, 'raster_a.tif')
         raster_a_array = numpy.zeros((128, 128), dtype=numpy.int32)
         raster_a_array[:] = 10

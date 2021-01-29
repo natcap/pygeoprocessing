@@ -3626,7 +3626,9 @@ def stitch_rasters(
             converted to a per-area value before reprojection to wgs84, then
             multiplied by the m^2 area per pixel in the wgs84 coordinate
             space. This is useful when the quantity being stitched is a total
-            quantity per pixel rather than a per unit area density.
+            quantity per pixel rather than a per unit area density. Note
+            this assumes input rasters are in a projected space of meters,
+            if they are not the stitched output will be nonsensical.
         osr_axis_mapping_strategy (int): OSR axis mapping strategy for
             ``SpatialReference`` objects. Defaults to
             ``geoprocessing.DEFAULT_OSR_AXIS_MAPPING_STRATEGY``. This
@@ -3745,9 +3747,14 @@ def stitch_rasters(
 
             def _mult_op(base_array, base_nodata, scale):
                 """Scale non-nodata by scale."""
-                result = numpy.copy(base_array)
-                valid_mask = ~numpy.isclose(base_array, base_nodata)
-                result[valid_mask] *= scale[valid_mask]
+                result = numpy.empty(base_array.shape)
+                result[:] = base_array
+                if base_nodata is not None:
+                    valid_mask = ~numpy.isclose(base_array, base_nodata)
+                else:
+                    valid_mask = numpy.ones(
+                        base_array.shape, dtype=numpy.bool)
+                result[valid_mask] = result[valid_mask] * scale[valid_mask]
                 return result
 
             base_stitch_nodata = base_stitch_raster_info['nodata'][0]
@@ -3761,7 +3768,7 @@ def stitch_rasters(
                 [(base_stitch_raster_path, 1), (base_stitch_nodata, 'raw'),
                  m2_area_per_lat/base_pixel_area_m2], _mult_op,
                 scaled_raster_path,
-                base_stitch_raster_info['datatype'], base_stitch_nodata)
+                target_raster_info['datatype'], base_stitch_nodata)
 
             # swap the result to base stitch so the rest of the function
             # operates on the area scaled raster
