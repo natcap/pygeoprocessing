@@ -900,9 +900,7 @@ def fill_pits(
                                 xi_n, yi_n) == 1:
                             # been set before on a previous iteration, skip
                             continue
-                        if n_height == center_val and (
-                                flat_region_mask_managed_raster.get(
-                                    xi_n, yi_n) == mask_nodata):
+                        if n_height == center_val:
                             # only grow if it's at the same level and not
                             # previously visited
                             search_queue.push(
