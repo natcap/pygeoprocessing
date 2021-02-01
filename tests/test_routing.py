@@ -5,9 +5,9 @@ import tempfile
 import unittest
 
 from osgeo import gdal
-from osgeo import osr
 import numpy
 import numpy.testing
+import scipy.interpolate
 
 import pygeoprocessing
 import pygeoprocessing.routing
@@ -60,6 +60,40 @@ class TestRouting(unittest.TestCase):
         self.assertTrue(
             (result_array == expected_result).all(),
             result_array == expected_result)
+
+    def test_pit_filling_ignore_large_pit(self):
+        """PGP.routing: test pitfilling but ignore large pits."""
+        base_path = os.path.join(self.workspace_dir, 'base.tif')
+        n = 256
+        # create a big pit
+        grid_x, grid_y = numpy.mgrid[0:n, 0:n]
+        values = numpy.array([10, 10, 10, 10, 0])
+        points = numpy.array(
+            [(0, 0),  (0, n-1),  (n-1, 0),  (n-1, n-1), (n//2, n//2)])
+        pit_dem_array = scipy.interpolate.griddata(
+            points, values, (grid_x, grid_y), method='linear')
+
+        _array_to_raster(pit_dem_array, None, base_path)
+        fill_path = os.path.join(self.workspace_dir, 'filled.tif')
+
+        # First limit fill size to 100 pixels, should not fill the pit
+        pygeoprocessing.routing.fill_pits(
+            (base_path, 1), fill_path, working_dir=self.workspace_dir,
+            max_pixel_fill_count=100)
+        result_array = pygeoprocessing.raster_to_numpy_array(fill_path)
+        self.assertTrue(
+            (result_array == pit_dem_array).all(),
+            result_array == pit_dem_array)
+
+        # Let pit fill all the way
+        pygeoprocessing.routing.fill_pits(
+            (base_path, 1), fill_path, working_dir=self.workspace_dir,
+            max_pixel_fill_count=1000000)
+        filled_array = numpy.full((n, n), 10.0)
+        result_array = pygeoprocessing.raster_to_numpy_array(fill_path)
+        self.assertTrue(
+            (numpy.isclose(result_array, filled_array)).all(),
+            f'{result_array == filled_array}, {result_array} {filled_array}')
 
     def test_pit_filling_path_band_checking(self):
         """PGP.routing: test pitfilling catches path-band formatting errors."""

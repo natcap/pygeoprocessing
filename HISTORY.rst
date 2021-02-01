@@ -45,6 +45,8 @@ Unreleased Changes
   vector with points placed on the center of the pixels in a D8 flow
   direction raster that are outlet pixels. The vector has additional metadata
   about the (i, j) locations of the pixel in raster coordinate space.
+* Added a ``max_pixel_fill_count`` parameter to ``routing.fill_pits`` to
+  guard against pitfilling large natural depression. Defaults to 500.
 
 2.1.2 (2020-12-03)
 ------------------
