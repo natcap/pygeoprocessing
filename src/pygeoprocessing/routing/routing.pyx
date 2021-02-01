@@ -84,6 +84,10 @@ cdef int *D8_YOFFSET = [0, -1, -1, -1, 0, +1, +1, +1]
 # as a D8 direction
 cdef int* D8_REVERSE_DIRECTION = [4, 5, 6, 7, 0, 1, 2, 3]
 
+# default of number of pixels to naturally drain. This number was derived off
+# of reasonable expectations from a 30m DEM
+cdef int _MAX_PIXEL_FILL_COUNT = 500
+
 # exposing stl::priority_queue so we can have all 3 template arguments so
 # we can pass a different Compare functor
 cdef extern from "<queue>" namespace "std" nogil:
@@ -607,7 +611,7 @@ def _generate_read_bounds(offset_dict, raster_x_size, raster_y_size):
 
 def fill_pits(
         dem_raster_path_band, target_filled_dem_raster_path,
-        working_dir=None,
+        working_dir=None, max_pixel_fill_count=_MAX_PIXEL_FILL_COUNT,
         raster_driver_creation_tuple=DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS):
     """Fill the pits in a DEM.
 
@@ -631,6 +635,9 @@ def fill_pits(
             it is created by this call. If None, a temporary directory is
             created by tempdir.mkdtemp which is removed after the function
             call completes successfully.
+        max_pixel_fill_count (int): maximum number of pixels to fill a pit
+            before leaving as a depression. Useful if there are natural
+            large depressions.
         raster_driver_creation_tuple (tuple): a tuple containing a GDAL driver
             name string as the first element and a GDAL creation options
             tuple/list as the second. Defaults to a GTiff driver tuple
@@ -658,7 +665,11 @@ def fill_pits(
     # these are booleans used to remember the condition that caused a loop
     # to terminate, though downhill and nodata are equivalent for draining,
     # i keep them separate for cognitive readability.
-    cdef int downhill_neighbor, nodata_neighbor, downhill_drain, nodata_drain
+    cdef int downhill_neighbor, nodata_neighbor, natural_drain_exists
+
+    # keep track of how many steps searched on the pit to test against
+    # max_pixel_fill_count
+    cdef int search_steps
 
     # `search_queue` is used to grow a flat region searching for a pour point
     # to determine if region is plateau or, in the absence of a pour point,
@@ -817,7 +828,6 @@ def fill_pits(
 
                 if flat_region_mask_managed_raster.get(
                         xi_root, yi_root) != mask_nodata:
-                    # already been searched
                     continue
 
                 # search neighbors for downhill or nodata
@@ -850,8 +860,7 @@ def fill_pits(
                 # if it's a pit or plateau
                 search_queue.push(CoordinateType(xi_root, yi_root))
                 flat_region_mask_managed_raster.set(xi_root, yi_root, 1)
-                downhill_drain = 0
-                nodata_drain = 0
+                natural_drain_exists = 0
 
                 # this loop does a BFS starting at this pixel to all pixels
                 # of the same height. the _drain variables are used to
@@ -859,29 +868,39 @@ def fill_pits(
                 # search the whole region even if a drain is encountered, so
                 # it can be entirely marked as processed and not re-accessed
                 # on later iterations
+                search_steps = 0
                 while not search_queue.empty():
                     xi_q = search_queue.front().xi
                     yi_q = search_queue.front().yi
                     search_queue.pop()
+                    if search_steps > max_pixel_fill_count:
+                        # clear the search queue and quit
+                        while not search_queue.empty():
+                            search_queue.pop()
+                        natural_drain_exists = 1
+                        break
+                    search_steps += 1
 
                     for i_n in range(8):
                         xi_n = xi_q+D8_XOFFSET[i_n]
                         yi_n = yi_q+D8_YOFFSET[i_n]
                         if (xi_n < 0 or xi_n >= raster_x_size or
                                 yi_n < 0 or yi_n >= raster_y_size):
-                            nodata_drain = 1
+                            natural_drain_exists = 1
                             continue
                         n_height = filled_dem_managed_raster.get(
                             xi_n, yi_n)
                         if _is_close(n_height, dem_nodata, 1e-8, 1e-5):
-                            nodata_drain = 1
+                            natural_drain_exists = 1
                             continue
                         if n_height < center_val:
-                            downhill_drain = 1
+                            natural_drain_exists = 1
                             continue
-                        if n_height == center_val and (
-                                flat_region_mask_managed_raster.get(
-                                    xi_n, yi_n) == mask_nodata):
+                        if flat_region_mask_managed_raster.get(
+                                xi_n, yi_n) == 1:
+                            # been set before on a previous iteration, skip
+                            continue
+                        if n_height == center_val:
                             # only grow if it's at the same level and not
                             # previously visited
                             search_queue.push(
@@ -889,8 +908,8 @@ def fill_pits(
                             flat_region_mask_managed_raster.set(
                                 xi_n, yi_n, 1)
 
-                if not downhill_drain and not nodata_drain:
-                    # entire region was searched with no drain, do a fill
+                if not natural_drain_exists:
+                    # this space does not naturally drain, so fill it
                     pixel = PixelType(
                         center_val, xi_root, yi_root, (
                             n_x_blocks * (yi_root >> BLOCK_BITS) +
@@ -905,11 +924,22 @@ def fill_pits(
                 # will be the lowest pour point
                 pour_point = 0
                 fill_height = dem_nodata
+                search_steps = 0
                 while not pit_queue.empty():
                     pixel = pit_queue.top()
                     pit_queue.pop()
                     xi_q = pixel.xi
                     yi_q = pixel.yi
+
+                    # search to see if the fill has gone on too long
+                    if search_steps > max_pixel_fill_count:
+                        # clear the search queue and quit
+                        while not search_queue.empty():
+                            search_queue.pop()
+                        natural_drain_exists = 1
+                        break
+                    search_steps += 1
+
                     # this is the potential fill height if pixel is pour point
                     fill_height = pixel.value
 
@@ -923,7 +953,7 @@ def fill_pits(
                             break
 
                         if pit_mask_managed_raster.get(
-                                xi_n, yi_n) == feature_id:
+                                xi_n, yi_n) != mask_nodata:
                             # this cell has already been processed
                             continue
 
@@ -4483,4 +4513,3 @@ def _delete_feature(
         del downstream_to_upstream_ids[
             stream_fid]
     stream_layer.DeleteFeature(stream_fid)
-
