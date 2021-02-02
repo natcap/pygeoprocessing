@@ -3292,6 +3292,15 @@ class TestGeoprocessing(unittest.TestCase):
         self.assertTrue(
             expected_message in actual_message, actual_message)
 
+        with self.assertRaises(ValueError) as cm:
+            pygeoprocessing.stitch_rasters(
+                [(a_raster_path, 1)], ['near']*2, (stitch_raster_path, 1),
+                overlap_algorithm='add')
+        expected_message = 'Expected same number of elements in'
+        actual_message = str(cm.exception)
+        self.assertTrue(
+            expected_message in actual_message, actual_message)
+
     def test_align_with_target_sr(self):
         """PGP: test align_and_resize_raster_stack with a target sr."""
         wgs84_sr = osr.SpatialReference()
