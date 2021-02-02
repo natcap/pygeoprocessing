@@ -3753,11 +3753,9 @@ def stitch_rasters(
             m2_area_per_lat = _create_latitude_m2_area_column(
                 lat_min, lat_max, n_rows)
 
-            def _mult_op(base_array, base_nodata, scale):
+            def _mult_op(base_array, base_nodata, scale, datatype):
                 """Scale non-nodata by scale."""
-                result = numpy.empty(
-                    base_array.shape, dtype=base_array.dtype)
-                result[slice(None)] = base_array
+                result = base_array.astype(datatype)
                 if base_nodata is not None:
                     valid_mask = ~numpy.isclose(base_array, base_nodata)
                 else:
@@ -3775,7 +3773,9 @@ def stitch_rasters(
             # original pixel
             raster_calculator(
                 [(base_stitch_raster_path, 1), (base_stitch_nodata, 'raw'),
-                 m2_area_per_lat/base_pixel_area_m2], _mult_op,
+                 m2_area_per_lat/base_pixel_area_m2,
+                 (_GDAL_TYPE_TO_NUMPY_LOOKUP[
+                    target_raster_info['datatype']], 'raw')], _mult_op,
                 scaled_raster_path,
                 target_raster_info['datatype'], base_stitch_nodata)
 
