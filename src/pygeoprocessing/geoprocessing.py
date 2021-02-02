@@ -3649,28 +3649,35 @@ def stitch_rasters(
 
     if not _is_raster_path_band_formatted(target_stitch_raster_path_band):
         raise ValueError(
-            'Expected raster path/band tuple for '
-            'target_stitch_raster_path_band but got '
+            f'Expected raster path/band tuple for '
+            f'target_stitch_raster_path_band but got '
             f'"{target_stitch_raster_path_band}"')
+
+    if len(base_raster_path_band_list) != len(resample_method_list):
+        raise ValueError(
+            f'Expected same number of elements in '
+            f'`base_raster_path_band_list` as `resample_method_list` but '
+            f'got {len(base_raster_path_band_list)} != '
+            f'{len(resample_method_list)} respectively')
 
     if not os.path.exists(target_stitch_raster_path_band[0]):
         raise ValueError(
-            'Target stitch raster does not exist: '
+            f'Target stitch raster does not exist: '
             f'"{target_stitch_raster_path_band[0]}"')
     gis_type = get_gis_type(target_stitch_raster_path_band[0])
     from pygeoprocessing import RASTER_TYPE
     if gis_type != RASTER_TYPE:
         raise ValueError(
-            'Target stitch raster is not a raster. '
-            f'Location: "{target_stitch_raster_path_band[0]}"" '
+            f'Target stitch raster is not a raster. '
+            f'Location: "{target_stitch_raster_path_band[0]}" '
             f'GIS type: {gis_type}')
     target_raster_info = get_raster_info(target_stitch_raster_path_band[0])
     if target_stitch_raster_path_band[1] > len(target_raster_info['nodata']):
         raise ValueError(
-            'target_stitch_raster_path_band refers to a band that exceeds '
-            'the number of bands in the raster:\n'
-            f'''target_stitch_raster_path_band[1]: {
-                target_stitch_raster_path_band[1]} '''
+            f'target_stitch_raster_path_band refers to a band that exceeds '
+            f'the number of bands in the raster:\n'
+            f'target_stitch_raster_path_band[1]: '
+            f'{target_stitch_raster_path_band[1]} '
             f'n bands: {len(target_raster_info["nodata"])}')
 
     target_nodata = target_raster_info['nodata'][
@@ -3678,7 +3685,7 @@ def stitch_rasters(
     if target_nodata is None:
         raise ValueError(
             f'target stitch raster at "{target_stitch_raster_path_band[0]} "'
-            'nodata value is None, expected non-None value')
+            f'nodata value is `None`, expected non-`None` value')
 
     target_raster = gdal.OpenEx(
         target_stitch_raster_path_band[0], gdal.OF_RASTER | gdal.GA_Update)
@@ -3708,7 +3715,7 @@ def stitch_rasters(
             LOGGER.warning(
                 f'the raster at "{raster_path}"" does not intersect the '
                 f'stitch raster at "{target_stitch_raster_path_band[0]}", '
-                'skipping...')
+                f'skipping...')
             continue
 
         # use this to determine if we need to warp and delete if we did at
@@ -3863,8 +3870,8 @@ def stitch_rasters(
             else:
                 raise RuntimeError(
                     f'overlap_algorithm {overlap_algorithm} was not defined '
-                    'but also not detected earlier -- this should never '
-                    'happen')
+                    f'but also not detected earlier -- this should never '
+                    f'happen')
 
             target_band.WriteArray(
                 target_array,
