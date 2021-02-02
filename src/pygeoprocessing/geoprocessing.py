@@ -3747,8 +3747,9 @@ def stitch_rasters(
 
             def _mult_op(base_array, base_nodata, scale):
                 """Scale non-nodata by scale."""
-                result = numpy.empty(base_array.shape)
-                result[:] = base_array
+                result = numpy.empty(
+                    base_array.shape, dtype=base_array.dtype)
+                result[slice(None)] = base_array
                 if base_nodata is not None:
                     valid_mask = ~numpy.isclose(base_array, base_nodata)
                 else:
