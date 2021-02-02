@@ -3625,9 +3625,9 @@ def stitch_rasters(
                 'add': add the value to be written to the target raster to
                     any existing value that is there. If the existing value
                     is nodata, treat it as 0.0.
-        area_weight_m2_to_wgs84 (bool): If `True` the stitched raster will be
-            converted to a per-area value before reprojection to wgs84, then
-            multiplied by the m^2 area per pixel in the wgs84 coordinate
+        area_weight_m2_to_wgs84 (bool): If ``True`` the stitched raster will
+            be converted to a per-area value before reprojection to wgs84,
+            then multiplied by the m^2 area per pixel in the wgs84 coordinate
             space. This is useful when the quantity being stitched is a total
             quantity per pixel rather than a per unit area density. Note
             this assumes input rasters are in a projected space of meters,
