@@ -51,6 +51,8 @@ Unreleased Changes
   area variant values when stitching from a linear meters projection to
   WGS84. Useful when the units of the base raster are in "units per pixel"
   rather than "units per area".
+* Added a ``max_pixel_fill_count`` parameter to ``routing.fill_pits`` to
+  guard against pitfilling large natural depression. Defaults to 500.
 
 2.1.2 (2020-12-03)
 ------------------
