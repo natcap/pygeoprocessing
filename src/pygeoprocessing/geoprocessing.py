@@ -3736,9 +3736,7 @@ def stitch_rasters(
             base_pixel_area_m2 = abs(numpy.prod(raster_info['pixel_size']))
             base_stitch_raster_info = get_raster_info(
                 base_stitch_raster_path)
-            lat_min, lat_max = [
-                base_stitch_raster_info['bounding_box'][_]
-                for _ in [1, 3]]
+            _, lat_min, _, lat_max = base_stitch_raster_info['bounding_box']
             n_rows = base_stitch_raster_info['raster_size'][1]
             # this column is a longitude invariant latitude variant pixel
             # area for scaling area dependent values
