@@ -3610,7 +3610,10 @@ def stitch_rasters(
             values in the base rasters will not be written into the target.
             If the pixel size or projection are different between base and
             target the base is warped to the target's cell size and target
-            with the interpolation method provided.
+            with the interpolation method provided. If any part of the
+            base raster lies outside of the target, that part of the base
+            is ignored. A warning is logged if the entire base raster is
+            outside of the target bounds.
         overlap_algorithm (str): this value indicates which algorithm to use
             when a raster is stitched on non-nodata values in the target
             stitch raster. It can be one of the following:
