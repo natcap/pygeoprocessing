@@ -45,6 +45,12 @@ Unreleased Changes
   vector with points placed on the center of the pixels in a D8 flow
   direction raster that are outlet pixels. The vector has additional metadata
   about the (i, j) locations of the pixel in raster coordinate space.
+* Replacing ``merge_rasters`` with ``stitch_rasters`` that can take an
+  arbitrary list of raster path bands and stitch them into an existing raster
+  of same or different projection. Additional functionality to preserve
+  area variant values when stitching from a linear meters projection to
+  WGS84. Useful when the units of the base raster are in "units per pixel"
+  rather than "units per area".
 * Added a ``max_pixel_fill_count`` parameter to ``routing.fill_pits`` to
   guard against pitfilling large natural depression. Defaults to 500.
 
