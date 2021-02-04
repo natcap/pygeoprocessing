@@ -40,6 +40,32 @@ class TestRouting(unittest.TestCase):
         dem_array[3:8, 3:8] = 0.0
         numpy.testing.assert_almost_equal(result_array, dem_array)
 
+    def test_pit_filling_large_border(self):
+        """PGP.routing: test pitfilling with large nodata border."""
+        workspace_dir = 'test_pit_filling_large_border'
+        os.makedirs(workspace_dir, exist_ok=True)
+        base_path = os.path.join(workspace_dir, 'base.tif')
+        nodata = -1.0
+        n = 30
+        dem_array = numpy.full((n, n), nodata, dtype=numpy.float32)
+        dem_array[n//10:n-n//10,n//10:n-n//10] = nodata
+        # make a pour point
+        dem_array[n//10+1, n//10+1] = 8
+        # make a pit
+        dem_array[n//10+2:n//10-2+10, n//10+2:n//10-2+10] = 8
+        dem_array[n//10+3:n//10-3+10, n//10+3:n//10-3+10] = 7
+
+        _array_to_raster(dem_array, nodata, base_path)
+        fill_path = os.path.join(workspace_dir, 'filled.tif')
+        pygeoprocessing.routing.fill_pits(
+            (base_path, 1), fill_path, working_dir=workspace_dir)
+        result_array = pygeoprocessing.raster_to_numpy_array(fill_path)
+        expected_result = numpy.copy(dem_array)
+        expected_result[n//10+2:n//10+10, n//10+2:n//10+10] = 9
+        expected_path = os.path.join(workspace_dir, 'expected.tif')
+        _array_to_raster(expected_result, nodata, expected_path)
+        numpy.testing.assert_almost_equal(result_array, expected_result)
+
     def test_pit_filling_small_delta(self):
         """PGP.routing: test pitfilling on small delta."""
         base_path = os.path.join(self.workspace_dir, 'base.tif')
