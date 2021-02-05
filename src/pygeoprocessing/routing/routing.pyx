@@ -953,7 +953,7 @@ def fill_pits(
                             break
 
                         if pit_mask_managed_raster.get(
-                                xi_n, yi_n) != mask_nodata:
+                                xi_n, yi_n) == feature_id:
                             # this cell has already been processed
                             continue
 
