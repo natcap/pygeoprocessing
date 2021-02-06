@@ -90,6 +90,7 @@ class TestRouting(unittest.TestCase):
     def test_pit_filling_ignore_large_pit(self):
         """PGP.routing: test pitfilling but ignore large pits."""
         base_path = os.path.join(self.workspace_dir, 'base.tif')
+        base_path = 'base.tif'
         n = 256
         # create a big pit
         grid_x, grid_y = numpy.mgrid[0:n, 0:n]
