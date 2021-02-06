@@ -61,7 +61,7 @@ class TestRouting(unittest.TestCase):
             (base_path, 1), fill_path, working_dir=workspace_dir)
         result_array = pygeoprocessing.raster_to_numpy_array(fill_path)
         expected_result = numpy.copy(dem_array)
-        expected_result[n//10+2:n//10+10, n//10+2:n//10+10] = 9
+        expected_result[n//10+2:n//10-2+10, n//10+2:n//10-2+10] = 8
         expected_path = os.path.join(workspace_dir, 'expected.tif')
         _array_to_raster(expected_result, nodata, expected_path)
         numpy.testing.assert_almost_equal(result_array, expected_result)
