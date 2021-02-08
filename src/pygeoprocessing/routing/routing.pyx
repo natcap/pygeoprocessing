@@ -812,7 +812,6 @@ def fill_pits(
                 # search neighbors for downhill or nodata
                 downhill_neighbor = 0
                 nodata_neighbor = 0
-                neighbor_list = []
                 for i_n in range(8):
                     xi_n = xi_root+D8_XOFFSET[i_n]
                     yi_n = yi_root+D8_YOFFSET[i_n]
@@ -822,7 +821,6 @@ def fill_pits(
                         nodata_neighbor = 1
                         break
                     n_height = filled_dem_managed_raster.get(xi_n, yi_n)
-                    neighbor_list.append(n_height)
                     if _is_close(n_height, dem_nodata, 1e-8, 1e-5):
                         # it'll drain to nodata
                         nodata_neighbor = 1
