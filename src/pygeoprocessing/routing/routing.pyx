@@ -797,13 +797,12 @@ def fill_pits(
             yi_root = yi-1+yoff
             for xi in range(1, win_xsize+1):
                 xi_root = xi-1+xoff
-                center_val = filled_dem_managed_raster.get(xi_root, yi_root)
-                if _is_close(center_val, dem_nodata, 1e-8, 1e-5):
-                    continue
-
                 # this value is set in case it turns out to be the root of a
                 # pit, we'll start the fill from this pixel in the last phase
                 # of the algorithm
+                center_val = filled_dem_managed_raster.get(xi_root, yi_root)
+                if _is_close(center_val, dem_nodata, 1e-8, 1e-5):
+                    continue
 
                 if flat_region_mask_managed_raster.get(
                         xi_root, yi_root) != mask_nodata:
