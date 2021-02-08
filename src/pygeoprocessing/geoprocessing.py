@@ -1355,7 +1355,7 @@ def zonal_statistics(
                         masked_clipped_block, raster_nodata)
                 else:
                     clipped_nodata_mask = numpy.zeros(
-                        masked_clipped_block.shape, dtype=numpy.bool)
+                        masked_clipped_block.shape, dtype=bool)
                 aggregate_stats[agg_fid]['nodata_count'] += (
                     numpy.count_nonzero(clipped_nodata_mask))
                 if ignore_nodata:
@@ -1446,7 +1446,7 @@ def zonal_statistics(
                 unset_fid_block, raster_nodata)
         else:
             unset_fid_nodata_mask = numpy.zeros(
-                unset_fid_block.shape, dtype=numpy.bool)
+                unset_fid_block.shape, dtype=bool)
 
         valid_unset_fid_block = unset_fid_block[~unset_fid_nodata_mask]
         if valid_unset_fid_block.size == 0:
@@ -2728,7 +2728,7 @@ def convolve_2d(
             if mask_nodata and signal_nodata is not None:
                 valid_mask = ~numpy.isclose(signal_block, signal_nodata)
             else:
-                valid_mask = numpy.ones(target_block.shape, dtype=numpy.bool)
+                valid_mask = numpy.ones(target_block.shape, dtype=bool)
             valid_mask &= (mask_block > 0)
             # divide the target_band by the mask_band
             target_block[valid_mask] /= mask_block[valid_mask].astype(
@@ -3327,7 +3327,7 @@ def _convolve_2d_worker(
                 signal_nodata_mask[:] = 0
         else:
             signal_nodata_mask = numpy.zeros(
-                signal_block.shape, dtype=numpy.bool)
+                signal_block.shape, dtype=bool)
 
         left_index_raster = (
             signal_offset['xoff'] - n_cols_kernel // 2 +
@@ -3538,7 +3538,7 @@ def numpy_array_to_raster(
         None
     """
     numpy_to_gdal_type = {
-        numpy.dtype(numpy.bool): gdal.GDT_Byte,
+        numpy.dtype(bool): gdal.GDT_Byte,
         numpy.dtype(numpy.int8): gdal.GDT_Byte,
         numpy.dtype(numpy.uint8): gdal.GDT_Byte,
         numpy.dtype(numpy.int16): gdal.GDT_Int16,
@@ -3760,7 +3760,7 @@ def stitch_rasters(
                     valid_mask = ~numpy.isclose(base_array, base_nodata)
                 else:
                     valid_mask = numpy.ones(
-                        base_array.shape, dtype=numpy.bool)
+                        base_array.shape, dtype=bool)
                 result[valid_mask] = result[valid_mask] * scale[valid_mask]
                 return result
 
@@ -3845,7 +3845,7 @@ def stitch_rasters(
                 base_nodata_mask = numpy.isclose(base_array, base_nodata)
             else:
                 base_nodata_mask = numpy.zeros(
-                    base_array.shape, dtype=numpy.bool)
+                    base_array.shape, dtype=bool)
 
             if overlap_algorithm == 'etch':
                 # place values only where target is nodata
