@@ -611,7 +611,7 @@ def _generate_read_bounds(offset_dict, raster_x_size, raster_y_size):
 
 def fill_pits(
         dem_raster_path_band, target_filled_dem_raster_path,
-        working_dir=None, max_pixel_fill_count=_MAX_PIXEL_FILL_COUNT,
+        working_dir=None, long max_pixel_fill_count=_MAX_PIXEL_FILL_COUNT,
         raster_driver_creation_tuple=DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS):
     """Fill the pits in a DEM.
 
@@ -647,11 +647,7 @@ def fill_pits(
         None.
     """
     # These variables are used to iterate over the DEM using `iterblock`
-    # indexes, a numpy.float64 type is used since we need to statically cast
-    # and it's the most complex numerical type and will be compatible without
-    # data loss for any lower type that might be used in
-    # `dem_raster_path_band[0]`.
-    cdef numpy.ndarray[numpy.float64_t, ndim=2] dem_buffer_array
+    # indexes
     cdef int win_ysize, win_xsize, xoff, yoff
 
     # the _root variables remembers the pixel index where the plateau/pit
@@ -796,35 +792,17 @@ def fill_pits(
                 f'{current_pixel} of {raster_x_size * raster_y_size} '
                 'pixels complete')
 
-        # make a buffer big enough to capture block and boundaries around it
-        dem_buffer_array = numpy.empty(
-            (offset_dict['win_ysize']+2, offset_dict['win_xsize']+2),
-            dtype=numpy.float64)
-        dem_buffer_array[:] = dem_nodata
-
-        # attempt to expand read block by a pixel boundary
-        (xa, xb, ya, yb), modified_offset_dict = _generate_read_bounds(
-            offset_dict, raster_x_size, raster_y_size)
-        filled_dem_managed_raster.flush()
-        target_dem_raster = gdal.OpenEx(target_filled_dem_raster_path)
-        target_dem_band = target_dem_raster.GetRasterBand(1)
-        dem_buffer_array[ya:yb, xa:xb] = target_dem_band.ReadAsArray(
-                **modified_offset_dict).astype(numpy.float64)
-        target_dem_band = None
-        target_dem_raster = None
-
         # search block for locally undrained pixels
         for yi in range(1, win_ysize+1):
+            yi_root = yi-1+yoff
             for xi in range(1, win_xsize+1):
-                center_val = dem_buffer_array[yi, xi]
-                if _is_close(center_val, dem_nodata, 1e-8, 1e-5):
-                    continue
-
+                xi_root = xi-1+xoff
                 # this value is set in case it turns out to be the root of a
                 # pit, we'll start the fill from this pixel in the last phase
                 # of the algorithm
-                xi_root = xi-1+xoff
-                yi_root = yi-1+yoff
+                center_val = filled_dem_managed_raster.get(xi_root, yi_root)
+                if _is_close(center_val, dem_nodata, 1e-8, 1e-5):
+                    continue
 
                 if flat_region_mask_managed_raster.get(
                         xi_root, yi_root) != mask_nodata:
@@ -833,7 +811,6 @@ def fill_pits(
                 # search neighbors for downhill or nodata
                 downhill_neighbor = 0
                 nodata_neighbor = 0
-
                 for i_n in range(8):
                     xi_n = xi_root+D8_XOFFSET[i_n]
                     yi_n = yi_root+D8_YOFFSET[i_n]
@@ -933,9 +910,8 @@ def fill_pits(
 
                     # search to see if the fill has gone on too long
                     if search_steps > max_pixel_fill_count:
-                        # clear the search queue and quit
-                        while not search_queue.empty():
-                            search_queue.pop()
+                        # clear pit_queue and quit
+                        pit_queue = PitPriorityQueueType()
                         natural_drain_exists = 1
                         break
                     search_steps += 1
@@ -953,13 +929,12 @@ def fill_pits(
                             break
 
                         if pit_mask_managed_raster.get(
-                                xi_n, yi_n) != mask_nodata:
+                                xi_n, yi_n) == feature_id:
                             # this cell has already been processed
                             continue
 
                         # mark as visited in the search for pour point
-                        pit_mask_managed_raster.set(
-                            xi_n, yi_n, feature_id)
+                        pit_mask_managed_raster.set(xi_n, yi_n, feature_id)
 
                         n_height = filled_dem_managed_raster.get(xi_n, yi_n)
                         if _is_close(n_height, dem_nodata, 1e-8, 1e-5) or (
