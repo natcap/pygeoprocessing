@@ -911,7 +911,7 @@ def fill_pits(
 
                     # search to see if the fill has gone on too long
                     if search_steps > max_pixel_fill_count:
-                        # clear the search queue and quit
+                        # clear pit_queue and quit
                         pit_queue = PitPriorityQueueType()
                         natural_drain_exists = 1
                         break
