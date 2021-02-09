@@ -3848,7 +3848,7 @@ def calculate_subwatershed_boundary(
     n_cols, n_rows = discovery_info['raster_size']
 
     geotransform = discovery_info['geotransform']
-    cdef float g0, g1, g2, g3, g4, g5
+    cdef double g0, g1, g2, g3, g4, g5
     g0, g1, g2, g3, g4, g5 = geotransform
 
     if discovery_info['projection_wkt']:
@@ -3875,8 +3875,8 @@ def calculate_subwatershed_boundary(
     watershed_layer.StartTransaction()
 
     cdef int x_l, y_l, outflow_dir
-    cdef float x_f, y_f
-    cdef float x_first, y_first, x_p, y_p
+    cdef double x_f, y_f
+    cdef double x_first, y_first, x_p, y_p
     cdef long discovery, finish
 
     cdef time_t last_log_time = ctime(NULL)
