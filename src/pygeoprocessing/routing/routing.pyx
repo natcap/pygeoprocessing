@@ -3900,12 +3900,8 @@ def calculate_subwatershed_boundary(
     # construct linkage data structure for upstream streams
     upstream_fid_map = collections.defaultdict(list)
     for stream_feature in stream_layer:
-        if outlet_at_confluence:
-            ds_x = int(stream_feature.GetField('ds_x'))
-            ds_y = int(stream_feature.GetField('ds_y'))
-        else:
-            ds_x = int(stream_feature.GetField('ds_x_1'))
-            ds_y = int(stream_feature.GetField('ds_y_1'))
+        ds_x = int(stream_feature.GetField('ds_x'))
+        ds_y = int(stream_feature.GetField('ds_y'))
         upstream_fid_map[(ds_x, ds_y)].append(
             stream_feature.GetFID())
 
@@ -3927,8 +3923,12 @@ def calculate_subwatershed_boundary(
             working_fid = working_stack[-1]
             processed_nodes.add(working_fid)
             working_feature = stream_layer.GetFeature(working_fid)
+
             us_x = int(working_feature.GetField('us_x'))
             us_y = int(working_feature.GetField('us_y'))
+            ds_x_1 = int(working_feature.GetField('ds_x_1'))
+            ds_y_1 = int(working_feature.GetField('ds_y_1'))
+
             upstream_coord = (us_x, us_y)
             upstream_fids = [
                 fid for fid in upstream_fid_map[upstream_coord]
@@ -3937,13 +3937,28 @@ def calculate_subwatershed_boundary(
                 working_stack.extend(upstream_fids)
             else:
                 working_stack.pop()
-                if working_feature.GetField('order') > 1:
-                    visit_order_stack.append((working_fid, us_x, us_y))
+                # the `not outlet_at_confluence` bit allows us to seed
+                # even if the order is 1, otherwise confluences fill fill
+                # the order 1 streams
+                if (working_feature.GetField('order') > 1 or
+                        not outlet_at_confluence):
+                    if outlet_at_confluence:
+                        # seed the upstream point
+                        visit_order_stack.append((working_fid, us_x, us_y))
+                    else:
+                        # seed the downstream but +1 step point
+                        visit_order_stack.append(
+                            (working_fid, ds_x_1, ds_y_1))
                 if working_feature.GetField('outlet') == 1:
                     # an outlet is a special case where the outlet itself
                     # should be a subwatershed done last.
                     ds_x = int(working_feature.GetField('ds_x'))
                     ds_y = int(working_feature.GetField('ds_y'))
+                    if not outlet_at_confluence:
+                        # undo the previous visit because it will be at
+                        # one pixel up and we want the pixel right at
+                        # the outlet
+                        visit_order_stack.pop()
                     visit_order_stack.append((working_fid, ds_x, ds_y))
 
     cdef int edge_side, edge_dir, cell_to_test, out_dir_increase=-1
