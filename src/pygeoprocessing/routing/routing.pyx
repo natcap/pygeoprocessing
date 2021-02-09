@@ -3009,6 +3009,7 @@ def extract_strahler_streams_d8(
         long min_flow_accum_threshold=100,
         int river_order=5,
         float min_p_val=0.05,
+        autotune_flow_accumulation=False,
         osr_axis_mapping_strategy=DEFAULT_OSR_AXIS_MAPPING_STRATEGY):
     """Extract Strahler order stream geometry from flow accumulation.
 
@@ -3056,12 +3057,17 @@ def extract_strahler_streams_d8(
             the above arguments. Contains the fields "order" and "parent" as
             described above.
         min_flow_accum_threshold (int): minimum number of upstream pixels
-            required to create a stream, the final value may be adjusted based
-            on significant differences in 1st and 2nd order streams.
+            required to create a stream. If `autotune_flow_accumulation`
+            is True, then the final value may be adjusted based on
+            significant differences in 1st and 2nd order streams.
         river_order (int): what stream order to define as a river in terms of
             automatically determining flow accumulation threshold for that
             stream collection.
         min_p_val (float): minimum p_value test for significance
+        autotune_flow_accumulation (bool): If true, uses a t-test to test for
+            significant distances in order 1 and order 2 streams. If it is
+            significant the flow accumulation parameter is adjusted upwards
+            until the drop distances are insignificant.
         osr_axis_mapping_strategy (int): OSR axis mapping strategy for
             ``SpatialReference`` objects. Defaults to
             ``geoprocessing.DEFAULT_OSR_AXIS_MAPPING_STRATEGY``. This parameter
@@ -3416,7 +3422,7 @@ def extract_strahler_streams_d8(
                         downstream_to_upstream_ids[feature_id])
 
                 working_flow_accum_threshold = min_flow_accum_threshold
-                while drop_distance_collection:
+                while drop_distance_collection and autotune_flow_accumulation:
                     stream_layer.CommitTransaction()
                     stream_layer.StartTransaction()
                     # decide how much bigger to make the flow_accum
