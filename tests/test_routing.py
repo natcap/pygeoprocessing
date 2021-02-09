@@ -1028,18 +1028,39 @@ class TestRouting(unittest.TestCase):
         pygeoprocessing.routing.flow_accumulation_d8(
             (flow_dir_d8_path, 1), flow_accum_d8_path)
 
-        stream_vector_path = os.path.join(self.workspace_dir, 'stream.gpkg')
+        no_autotune_stream_vector_path = os.path.join(
+            self.workspace_dir, 'no_autotune_stream.gpkg')
         pygeoprocessing.routing.extract_strahler_streams_d8(
             (flow_dir_d8_path, 1),
             (flow_accum_d8_path, 1),
             (filled_pits_path, 1),
-            stream_vector_path,
+            no_autotune_stream_vector_path,
+            autotune_flow_accumulation=False,
+            min_flow_accum_threshold=1)
+
+        # every pixel is a stream
+        stream_vector = gdal.OpenEx(
+            no_autotune_stream_vector_path, gdal.OF_VECTOR)
+        stream_layer = stream_vector.GetLayer()
+        self.assertEqual(stream_layer.GetFeatureCount(), n*2+2)
+        stream_layer = None
+        stream_vector = None
+
+        autotune_stream_vector_path = os.path.join(
+            self.workspace_dir, 'autotune_stream.gpkg')
+        pygeoprocessing.routing.extract_strahler_streams_d8(
+            (flow_dir_d8_path, 1),
+            (flow_accum_d8_path, 1),
+            (filled_pits_path, 1),
+            autotune_stream_vector_path,
+            autotune_flow_accumulation=True,
             min_flow_accum_threshold=2)
 
         # n-1 streams
-        stream_vector = gdal.OpenEx(stream_vector_path, gdal.OF_VECTOR)
+        stream_vector = gdal.OpenEx(
+            autotune_stream_vector_path, gdal.OF_VECTOR)
         stream_layer = stream_vector.GetLayer()
-        self.assertEqual(stream_layer.GetFeatureCount(), (n//2)*2-1)
+        self.assertEqual(stream_layer.GetFeatureCount(), n-2)
 
         # this gets just the single outlet feature
         stream_layer.SetAttributeFilter(f'"outlet"=1')
@@ -1052,7 +1073,7 @@ class TestRouting(unittest.TestCase):
         watershed_vector_path = os.path.join(
             self.workspace_dir, 'watershed.gpkg')
         pygeoprocessing.routing.calculate_subwatershed_boundary(
-            (flow_dir_d8_path, 1), stream_vector_path,
+            (flow_dir_d8_path, 1), autotune_stream_vector_path,
             watershed_vector_path)
 
         watershed_vector = gdal.OpenEx(watershed_vector_path, gdal.OF_VECTOR)
