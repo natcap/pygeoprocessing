@@ -3038,6 +3038,10 @@ def extract_strahler_streams_d8(
             stream segment outlet.
         * "ds_y" (int): the downstream y coordinate in raster space for the
             stream segment outlet.
+        * "ds_x_1" (int): the downstream x coordinate for one pixel upstream
+            from the stream segment outlet raster space coordinates.
+        * "ds_y_1" (int): the downstream y coordinate for one pixel upstream
+            from the stream segment outlet raster space coordinates.
         * "us_x" (int): the upstream x coordinate in raster space for the
             stream segment outlet.
         * "us_y" (int): the upstream y coordinate in raster space for the
