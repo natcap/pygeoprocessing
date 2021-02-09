@@ -3096,6 +3096,8 @@ def extract_strahler_streams_d8(
     stream_layer.CreateField(ogr.FieldDefn('upstream_d8_dir', ogr.OFTInteger))
     stream_layer.CreateField(ogr.FieldDefn('ds_x', ogr.OFTInteger))
     stream_layer.CreateField(ogr.FieldDefn('ds_y', ogr.OFTInteger))
+    stream_layer.CreateField(ogr.FieldDefn('ds_x_1', ogr.OFTInteger))
+    stream_layer.CreateField(ogr.FieldDefn('ds_y_1', ogr.OFTInteger))
     stream_layer.CreateField(ogr.FieldDefn('us_x', ogr.OFTInteger))
     stream_layer.CreateField(ogr.FieldDefn('us_y', ogr.OFTInteger))
     flow_dir_managed_raster = _ManagedRaster(
@@ -3254,7 +3256,7 @@ def extract_strahler_streams_d8(
             min_flow_accum_threshold, coord_to_stream_ids)
         if payload is None:
             continue
-        x_u, y_u, upstream_id_list, stream_line = payload
+        x_u, y_u, ds_x_1, ds_y_1, upstream_id_list, stream_line = payload
 
         downstream_dem = dem_managed_raster.get(
             source_stream_point.xi, source_stream_point.yi)
@@ -3266,6 +3268,8 @@ def extract_strahler_streams_d8(
                 source_stream_point.xi, source_stream_point.yi))
         stream_feature.SetField('ds_x', source_stream_point.xi)
         stream_feature.SetField('ds_y', source_stream_point.yi)
+        stream_feature.SetField('ds_x_1', ds_x_1)
+        stream_feature.SetField('ds_y_1', ds_y_1)
         stream_feature.SetField('us_x', x_u)
         stream_feature.SetField('us_y', y_u)
         stream_feature.SetField(
@@ -3495,7 +3499,8 @@ def extract_strahler_streams_d8(
                                     upstream_to_downstream_id,
                                     downstream_to_upstream_ids)
                                 continue
-                            x_u, y_u, upstream_id_list, stream_line = payload
+                            (x_u, y_u, ds_x_1, ds_y_1, upstream_id_list,
+                                stream_line) = payload
                             # recalculate the drop distance set
                             stream_feature.SetGeometry(stream_line)
                             upstream_dem = dem_managed_raster.get(x_u, y_u)
@@ -3515,6 +3520,10 @@ def extract_strahler_streams_d8(
                                 'ds_x', ds_x)
                             stream_feature.SetField(
                                 'ds_y', ds_y)
+                            stream_feature.SetField(
+                                'ds_x_1', ds_x_1)
+                            stream_feature.SetField(
+                                'ds_y_1', ds_y_1)
                             stream_feature.SetField('us_x', x_u)
                             stream_feature.SetField('us_y', y_u)
 
@@ -3795,7 +3804,8 @@ def _build_discovery_finish_rasters(
 def calculate_subwatershed_boundary(
         d8_flow_dir_raster_path_band,
         strahler_stream_vector_path, target_watershed_boundary_vector_path,
-        max_steps_per_watershed=1000000):
+        max_steps_per_watershed=1000000,
+        outlet_at_confluence=False):
     """Calculate a stringline boundary around all subwatersheds.
 
     Subwatersheds start where the ``strahler_stream_vector`` has a junction
@@ -3812,6 +3822,9 @@ def calculate_subwatershed_boundary(
             defining a watershed boundary. Useful if the DEM is large and
             degenerate or some other user known condition to limit long large
             polygons. Defaults to 1000000.
+        outlet_at_confluence (bool): If True the outlet of subwatersheds
+            starts at the confluence of streams. If False (the default)
+            subwatersheds will start one pixel up from the confluence.
 
     Returns:
         None.
@@ -3887,8 +3900,12 @@ def calculate_subwatershed_boundary(
     # construct linkage data structure for upstream streams
     upstream_fid_map = collections.defaultdict(list)
     for stream_feature in stream_layer:
-        ds_x = int(stream_feature.GetField('ds_x'))
-        ds_y = int(stream_feature.GetField('ds_y'))
+        if outlet_at_confluence:
+            ds_x = int(stream_feature.GetField('ds_x'))
+            ds_y = int(stream_feature.GetField('ds_y'))
+        else:
+            ds_x = int(stream_feature.GetField('ds_x_1'))
+            ds_y = int(stream_feature.GetField('ds_y_1'))
         upstream_fid_map[(ds_x, ds_y)].append(
             stream_feature.GetFID())
 
@@ -4376,10 +4393,13 @@ cdef _calculate_stream_geometry(
             a list of stream ids
 
     Returns:
-        A tuple of (x, y, l, line) where:
+        A tuple of (x, y, x_1, y_1, l, line) where:
 
             * x, y raster coordinates of the upstream source of the stream
                 segment
+            * x_1, y_1 is the first step upstream of the stream segment
+                in raster coordinates. Useful when iterating from the
+                confluence or one step up.
             * l is the list of upstream stream IDs at the upstream point
             * and `stream_line` is a georeferenced linestring connecting x/y
                 to upper point where upper point's threshold is the last
@@ -4389,7 +4409,7 @@ cdef _calculate_stream_geometry(
         Or ``None` if the point at (x_l, y_l) is below flow accum threshold.
 
     """
-    cdef int x_n, y_n, d, d_n, stream_end=0
+    cdef int x_1, y_1, x_n, y_n, d, d_n, stream_end=0, pixel_length
 
     if flow_accum_managed_raster.get(x_l, y_l) < flow_accum_threshold:
         return None
@@ -4406,6 +4426,9 @@ cdef _calculate_stream_geometry(
 
     stream_end = 0
     pixel_length = 0
+    # initialize these for the compiler warniing
+    x_1 = -1
+    y_1 = -1
     while not stream_end:
         # walk upstream
         x_l += D8_XOFFSET[next_dir]
@@ -4413,6 +4436,10 @@ cdef _calculate_stream_geometry(
 
         stream_end = 1
         pixel_length += 1
+        # do <= 1 in case there's a degenerate single point stream
+        if pixel_length <= 1:
+            x_1 = x_l
+            y_1 = y_l
 
         # check if we reached an upstream junction
         if (x_l, y_l) in coord_to_stream_ids:
@@ -4456,7 +4483,7 @@ cdef _calculate_stream_geometry(
 
     if pixel_length == 0:
         return None
-    return x_l, y_l, upstream_id_list, stream_line
+    return x_l, y_l, x_1, y_1, upstream_id_list, stream_line
 
 
 def _delete_feature(
