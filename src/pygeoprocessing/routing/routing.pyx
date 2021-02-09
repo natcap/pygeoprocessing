@@ -3057,7 +3057,7 @@ def extract_strahler_streams_d8(
             the above arguments. Contains the fields "order" and "parent" as
             described above.
         min_flow_accum_threshold (int): minimum number of upstream pixels
-            required to create a stream. If `autotune_flow_accumulation`
+            required to create a stream. If ``autotune_flow_accumulation``
             is True, then the final value may be adjusted based on
             significant differences in 1st and 2nd order streams.
         river_order (int): what stream order to define as a river in terms of
