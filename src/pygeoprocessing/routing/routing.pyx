@@ -3821,7 +3821,19 @@ def calculate_subwatershed_boundary(
             raster
         strahler_stream_vector_path (str): path to stream segment vector
         target_watershed_boundary_vector_path (str): path to created vector
-            of stringline for watershed boundaries.
+            of stringline for watershed boundaries. Contains the fields:
+            "stream_id": this is the stream ID from the
+                ``strahler_stream_vector_path`` that corresponds to this
+                subwatershed.
+            "terminated_early": if set to 1 this watershed generation was
+                terminated before it could be complete. This value should
+                always be 0 unless something is wrong as a software bug
+                or some degenerate case of data.
+            "outlet_x", "outlet_y": this is the x/y coordinate in raster
+                space of the outlet of the watershed. It can be useful when
+                determining other properties about the watershed when indexed
+                with underlying raster data that created the streams in
+                ``strahler_stream_vector_path``.
         max_steps_per_watershed (int): maximum number of steps to take when
             defining a watershed boundary. Useful if the DEM is large and
             degenerate or some other user known condition to limit long large
@@ -3889,6 +3901,8 @@ def calculate_subwatershed_boundary(
     watershed_layer.CreateField(ogr.FieldDefn('stream_fid', ogr.OFTInteger))
     watershed_layer.CreateField(
         ogr.FieldDefn('terminated_early', ogr.OFTInteger))
+    watershed_layer.CreateField(ogr.FieldDefn('outlet_x', ogr.OFTInteger))
+    watershed_layer.CreateField(ogr.FieldDefn('outlet_y', ogr.OFTInteger))
     watershed_layer.StartTransaction()
 
     cdef int x_l, y_l, outflow_dir
@@ -3981,6 +3995,8 @@ def calculate_subwatershed_boundary(
             continue
         boundary_list = [(x_l, y_l)]
         finish = <long>finish_managed_raster.get(x_l, y_l)
+        outlet_x = x_l
+        outlet_y = y_l
 
         watershed_boundary = ogr.Geometry(ogr.wkbLinearRing)
         outflow_dir = <int>d8_flow_dir_managed_raster.get(x_l, y_l)
@@ -4100,6 +4116,8 @@ def calculate_subwatershed_boundary(
         watershed_feature.SetGeometry(watershed_polygon)
         watershed_feature.SetField('stream_fid', stream_fid)
         watershed_feature.SetField('terminated_early', terminated_early)
+        watershed_feature.SetField('outlet_x', outlet_x)
+        watershed_feature.SetField('outlet_y', outlet_y)
         watershed_layer.CreateFeature(watershed_feature)
 
         # this loop fills in the raster at the boundary, done at end so it
