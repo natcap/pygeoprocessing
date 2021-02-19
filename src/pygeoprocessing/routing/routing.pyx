@@ -3962,7 +3962,7 @@ def calculate_subwatershed_boundary(
             else:
                 working_stack.pop()
                 # the `not outlet_at_confluence` bit allows us to seed
-                # even if the order is 1, otherwise confluences fill fill
+                # even if the order is 1, otherwise confluences fill
                 # the order 1 streams
                 if (working_feature.GetField('order') > 1 or
                         not outlet_at_confluence):
