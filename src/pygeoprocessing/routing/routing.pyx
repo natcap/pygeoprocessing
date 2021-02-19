@@ -3816,7 +3816,7 @@ def calculate_subwatershed_boundary(
         strahler_stream_vector_path, target_watershed_boundary_vector_path,
         max_steps_per_watershed=1000000,
         outlet_at_confluence=False):
-    """Calculate a stringline boundary around all subwatersheds.
+    """Calculate a linestring boundary around all subwatersheds.
 
     Subwatersheds start where the ``strahler_stream_vector`` has a junction
     starting at this highest upstream to lowest and ending at the outlet of
@@ -3827,7 +3827,7 @@ def calculate_subwatershed_boundary(
             raster
         strahler_stream_vector_path (str): path to stream segment vector
         target_watershed_boundary_vector_path (str): path to created vector
-            of stringline for watershed boundaries. Contains the fields:
+            of linestring for watershed boundaries. Contains the fields:
             "stream_id": this is the stream ID from the
                 ``strahler_stream_vector_path`` that corresponds to this
                 subwatershed.
