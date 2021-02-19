@@ -3824,18 +3824,20 @@ def calculate_subwatershed_boundary(
         strahler_stream_vector_path (str): path to stream segment vector
         target_watershed_boundary_vector_path (str): path to created vector
             of linestring for watershed boundaries. Contains the fields:
-            "stream_id": this is the stream ID from the
-                ``strahler_stream_vector_path`` that corresponds to this
-                subwatershed.
-            "terminated_early": if set to 1 this watershed generation was
-                terminated before it could be complete. This value should
-                always be 0 unless something is wrong as a software bug
-                or some degenerate case of data.
-            "outlet_x", "outlet_y": this is the x/y coordinate in raster
-                space of the outlet of the watershed. It can be useful when
-                determining other properties about the watershed when indexed
-                with underlying raster data that created the streams in
-                ``strahler_stream_vector_path``.
+
+            * "stream_id": this is the stream ID from the
+              ``strahler_stream_vector_path`` that corresponds to this
+              subwatershed.
+            * "terminated_early": if set to 1 this watershed generation was
+              terminated before it could be complete. This value should
+              always be 0 unless something is wrong as a software bug
+              or some degenerate case of data.
+            * "outlet_x", "outlet_y": this is the x/y coordinate in raster
+              space of the outlet of the watershed. It can be useful when
+              determining other properties about the watershed when indexed
+              with underlying raster data that created the streams in
+              ``strahler_stream_vector_path``.
+
         max_steps_per_watershed (int): maximum number of steps to take when
             defining a watershed boundary. Useful if the DEM is large and
             degenerate or some other user known condition to limit long large
