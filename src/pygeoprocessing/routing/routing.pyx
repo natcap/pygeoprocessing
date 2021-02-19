@@ -3035,18 +3035,14 @@ def extract_strahler_streams_d8(
         * "upstream_d8_dir" (int): a bookkeeping parameter from stream
             calculations that is left in due to the overhead
             of deleting a field.
-        * "ds_x" (int): the downstream x coordinate in raster space for the
-            stream segment outlet.
-        * "ds_y" (int): the downstream y coordinate in raster space for the
-            stream segment outlet.
-        * "ds_x_1" (int): the downstream x coordinate for one pixel upstream
-            from the stream segment outlet raster space coordinates.
-        * "ds_y_1" (int): the downstream y coordinate for one pixel upstream
-            from the stream segment outlet raster space coordinates.
-        * "us_x" (int): the upstream x coordinate in raster space for the
-            stream segment outlet.
-        * "us_y" (int): the upstream y coordinate in raster space for the
-            stream segment outlet.
+        * "ds_x" (int): the raster x coordinate for the outlet.
+        * "ds_y" (int): the raster y coordinate for the outlet.
+        * "ds_x_1" (int): the x raster space coordinate that is 1 pixel
+            upstream from the outlet.
+        * "ds_y_1" (int): the y raster space coordinate that is 1 pixel
+            upstream from the outlet.
+        * "us_x" (int): the raster x coordinate for the upstream inlet.
+        * "us_y" (int): the raster y coordinate for the upstream inlet.
 
     Args:
         flow_dir_d8_raster_path_band (tuple): a path/band representing the D8
