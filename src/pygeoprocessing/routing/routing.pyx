@@ -3035,14 +3035,14 @@ def extract_strahler_streams_d8(
         * "upstream_d8_dir" (int): a bookkeeping parameter from stream
             calculations that is left in due to the overhead
             of deleting a field.
-        * "ds_x" (int): the downstream x coordinate in raster space for the
-            stream segment outlet.
-        * "ds_y" (int): the downstream y coordinate in raster space for the
-            stream segment outlet.
-        * "us_x" (int): the upstream x coordinate in raster space for the
-            stream segment outlet.
-        * "us_y" (int): the upstream y coordinate in raster space for the
-            stream segment outlet.
+        * "ds_x" (int): the raster x coordinate for the outlet.
+        * "ds_y" (int): the raster y coordinate for the outlet.
+        * "ds_x_1" (int): the x raster space coordinate that is 1 pixel
+            upstream from the outlet.
+        * "ds_y_1" (int): the y raster space coordinate that is 1 pixel
+            upstream from the outlet.
+        * "us_x" (int): the raster x coordinate for the upstream inlet.
+        * "us_y" (int): the raster y coordinate for the upstream inlet.
 
     Args:
         flow_dir_d8_raster_path_band (tuple): a path/band representing the D8
@@ -3102,6 +3102,8 @@ def extract_strahler_streams_d8(
     stream_layer.CreateField(ogr.FieldDefn('upstream_d8_dir', ogr.OFTInteger))
     stream_layer.CreateField(ogr.FieldDefn('ds_x', ogr.OFTInteger))
     stream_layer.CreateField(ogr.FieldDefn('ds_y', ogr.OFTInteger))
+    stream_layer.CreateField(ogr.FieldDefn('ds_x_1', ogr.OFTInteger))
+    stream_layer.CreateField(ogr.FieldDefn('ds_y_1', ogr.OFTInteger))
     stream_layer.CreateField(ogr.FieldDefn('us_x', ogr.OFTInteger))
     stream_layer.CreateField(ogr.FieldDefn('us_y', ogr.OFTInteger))
     flow_dir_managed_raster = _ManagedRaster(
@@ -3260,7 +3262,7 @@ def extract_strahler_streams_d8(
             min_flow_accum_threshold, coord_to_stream_ids)
         if payload is None:
             continue
-        x_u, y_u, upstream_id_list, stream_line = payload
+        x_u, y_u, ds_x_1, ds_y_1, upstream_id_list, stream_line = payload
 
         downstream_dem = dem_managed_raster.get(
             source_stream_point.xi, source_stream_point.yi)
@@ -3272,6 +3274,8 @@ def extract_strahler_streams_d8(
                 source_stream_point.xi, source_stream_point.yi))
         stream_feature.SetField('ds_x', source_stream_point.xi)
         stream_feature.SetField('ds_y', source_stream_point.yi)
+        stream_feature.SetField('ds_x_1', ds_x_1)
+        stream_feature.SetField('ds_y_1', ds_y_1)
         stream_feature.SetField('us_x', x_u)
         stream_feature.SetField('us_y', y_u)
         stream_feature.SetField(
@@ -3501,7 +3505,8 @@ def extract_strahler_streams_d8(
                                     upstream_to_downstream_id,
                                     downstream_to_upstream_ids)
                                 continue
-                            x_u, y_u, upstream_id_list, stream_line = payload
+                            (x_u, y_u, ds_x_1, ds_y_1, upstream_id_list,
+                                stream_line) = payload
                             # recalculate the drop distance set
                             stream_feature.SetGeometry(stream_line)
                             upstream_dem = dem_managed_raster.get(x_u, y_u)
@@ -3521,6 +3526,10 @@ def extract_strahler_streams_d8(
                                 'ds_x', ds_x)
                             stream_feature.SetField(
                                 'ds_y', ds_y)
+                            stream_feature.SetField(
+                                'ds_x_1', ds_x_1)
+                            stream_feature.SetField(
+                                'ds_y_1', ds_y_1)
                             stream_feature.SetField('us_x', x_u)
                             stream_feature.SetField('us_y', y_u)
 
@@ -3801,8 +3810,9 @@ def _build_discovery_finish_rasters(
 def calculate_subwatershed_boundary(
         d8_flow_dir_raster_path_band,
         strahler_stream_vector_path, target_watershed_boundary_vector_path,
-        max_steps_per_watershed=1000000):
-    """Calculate a stringline boundary around all subwatersheds.
+        max_steps_per_watershed=1000000,
+        outlet_at_confluence=False):
+    """Calculate a linestring boundary around all subwatersheds.
 
     Subwatersheds start where the ``strahler_stream_vector`` has a junction
     starting at this highest upstream to lowest and ending at the outlet of
@@ -3813,11 +3823,28 @@ def calculate_subwatershed_boundary(
             raster
         strahler_stream_vector_path (str): path to stream segment vector
         target_watershed_boundary_vector_path (str): path to created vector
-            of stringline for watershed boundaries.
+            of linestring for watershed boundaries. Contains the fields:
+
+            * "stream_id": this is the stream ID from the
+              ``strahler_stream_vector_path`` that corresponds to this
+              subwatershed.
+            * "terminated_early": if set to 1 this watershed generation was
+              terminated before it could be complete. This value should
+              always be 0 unless something is wrong as a software bug
+              or some degenerate case of data.
+            * "outlet_x", "outlet_y": this is the x/y coordinate in raster
+              space of the outlet of the watershed. It can be useful when
+              determining other properties about the watershed when indexed
+              with underlying raster data that created the streams in
+              ``strahler_stream_vector_path``.
+
         max_steps_per_watershed (int): maximum number of steps to take when
             defining a watershed boundary. Useful if the DEM is large and
             degenerate or some other user known condition to limit long large
             polygons. Defaults to 1000000.
+        outlet_at_confluence (bool): If True the outlet of subwatersheds
+            starts at the confluence of streams. If False (the default)
+            subwatersheds will start one pixel up from the confluence.
 
     Returns:
         None.
@@ -3878,6 +3905,8 @@ def calculate_subwatershed_boundary(
     watershed_layer.CreateField(ogr.FieldDefn('stream_fid', ogr.OFTInteger))
     watershed_layer.CreateField(
         ogr.FieldDefn('terminated_early', ogr.OFTInteger))
+    watershed_layer.CreateField(ogr.FieldDefn('outlet_x', ogr.OFTInteger))
+    watershed_layer.CreateField(ogr.FieldDefn('outlet_y', ogr.OFTInteger))
     watershed_layer.StartTransaction()
 
     cdef int x_l, y_l, outflow_dir
@@ -3916,8 +3945,12 @@ def calculate_subwatershed_boundary(
             working_fid = working_stack[-1]
             processed_nodes.add(working_fid)
             working_feature = stream_layer.GetFeature(working_fid)
+
             us_x = int(working_feature.GetField('us_x'))
             us_y = int(working_feature.GetField('us_y'))
+            ds_x_1 = int(working_feature.GetField('ds_x_1'))
+            ds_y_1 = int(working_feature.GetField('ds_y_1'))
+
             upstream_coord = (us_x, us_y)
             upstream_fids = [
                 fid for fid in upstream_fid_map[upstream_coord]
@@ -3926,13 +3959,28 @@ def calculate_subwatershed_boundary(
                 working_stack.extend(upstream_fids)
             else:
                 working_stack.pop()
-                if working_feature.GetField('order') > 1:
-                    visit_order_stack.append((working_fid, us_x, us_y))
+                # the `not outlet_at_confluence` bit allows us to seed
+                # even if the order is 1, otherwise confluences fill
+                # the order 1 streams
+                if (working_feature.GetField('order') > 1 or
+                        not outlet_at_confluence):
+                    if outlet_at_confluence:
+                        # seed the upstream point
+                        visit_order_stack.append((working_fid, us_x, us_y))
+                    else:
+                        # seed the downstream but +1 step point
+                        visit_order_stack.append(
+                            (working_fid, ds_x_1, ds_y_1))
                 if working_feature.GetField('outlet') == 1:
                     # an outlet is a special case where the outlet itself
                     # should be a subwatershed done last.
                     ds_x = int(working_feature.GetField('ds_x'))
                     ds_y = int(working_feature.GetField('ds_y'))
+                    if not outlet_at_confluence:
+                        # undo the previous visit because it will be at
+                        # one pixel up and we want the pixel right at
+                        # the outlet
+                        visit_order_stack.pop()
                     visit_order_stack.append((working_fid, ds_x, ds_y))
 
     cdef int edge_side, edge_dir, cell_to_test, out_dir_increase=-1
@@ -3951,6 +3999,8 @@ def calculate_subwatershed_boundary(
             continue
         boundary_list = [(x_l, y_l)]
         finish = <long>finish_managed_raster.get(x_l, y_l)
+        outlet_x = x_l
+        outlet_y = y_l
 
         watershed_boundary = ogr.Geometry(ogr.wkbLinearRing)
         outflow_dir = <int>d8_flow_dir_managed_raster.get(x_l, y_l)
@@ -4070,6 +4120,8 @@ def calculate_subwatershed_boundary(
         watershed_feature.SetGeometry(watershed_polygon)
         watershed_feature.SetField('stream_fid', stream_fid)
         watershed_feature.SetField('terminated_early', terminated_early)
+        watershed_feature.SetField('outlet_x', outlet_x)
+        watershed_feature.SetField('outlet_y', outlet_y)
         watershed_layer.CreateFeature(watershed_feature)
 
         # this loop fills in the raster at the boundary, done at end so it
@@ -4382,10 +4434,13 @@ cdef _calculate_stream_geometry(
             a list of stream ids
 
     Returns:
-        A tuple of (x, y, l, line) where:
+        A tuple of (x, y, x_1, y_1, l, line) where:
 
             * x, y raster coordinates of the upstream source of the stream
                 segment
+            * x_1, y_1 is the first step upstream of the stream segment
+                in raster coordinates. Useful when iterating from the
+                confluence or one step up.
             * l is the list of upstream stream IDs at the upstream point
             * and `stream_line` is a georeferenced linestring connecting x/y
                 to upper point where upper point's threshold is the last
@@ -4395,7 +4450,7 @@ cdef _calculate_stream_geometry(
         Or ``None` if the point at (x_l, y_l) is below flow accum threshold.
 
     """
-    cdef int x_n, y_n, d, d_n, stream_end=0
+    cdef int x_1, y_1, x_n, y_n, d, d_n, stream_end=0, pixel_length
 
     if flow_accum_managed_raster.get(x_l, y_l) < flow_accum_threshold:
         return None
@@ -4412,6 +4467,9 @@ cdef _calculate_stream_geometry(
 
     stream_end = 0
     pixel_length = 0
+    # initialize these for the compiler warniing
+    x_1 = -1
+    y_1 = -1
     while not stream_end:
         # walk upstream
         x_l += D8_XOFFSET[next_dir]
@@ -4419,6 +4477,10 @@ cdef _calculate_stream_geometry(
 
         stream_end = 1
         pixel_length += 1
+        # do <= 1 in case there's a degenerate single point stream
+        if pixel_length <= 1:
+            x_1 = x_l
+            y_1 = y_l
 
         # check if we reached an upstream junction
         if (x_l, y_l) in coord_to_stream_ids:
@@ -4462,7 +4524,7 @@ cdef _calculate_stream_geometry(
 
     if pixel_length == 0:
         return None
-    return x_l, y_l, upstream_id_list, stream_line
+    return x_l, y_l, x_1, y_1, upstream_id_list, stream_line
 
 
 def _delete_feature(

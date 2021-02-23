@@ -1069,20 +1069,34 @@ class TestRouting(unittest.TestCase):
         # known to be order 2 because none of the streams can branch more
         # than once
         self.assertEqual(outlet_feature.GetField('order'), 2)
+        stream_vector = None
+        stream_layer = None
 
-        watershed_vector_path = os.path.join(
-            self.workspace_dir, 'watershed.gpkg')
+        watershed_confluence_vector_path = os.path.join(
+            self.workspace_dir, 'watershed_confluence.gpkg')
         pygeoprocessing.routing.calculate_subwatershed_boundary(
             (flow_dir_d8_path, 1), autotune_stream_vector_path,
-            watershed_vector_path)
+            watershed_confluence_vector_path, outlet_at_confluence=True)
 
-        watershed_vector = gdal.OpenEx(watershed_vector_path, gdal.OF_VECTOR)
+        watershed_vector = gdal.OpenEx(
+            watershed_confluence_vector_path, gdal.OF_VECTOR)
         watershed_layer = watershed_vector.GetLayer()
         # there should be exactly an integer half number of watersheds as
         # the length of the canyon
         self.assertEqual(watershed_layer.GetFeatureCount(), n//2)
-
         watershed_vector = None
         watershed_layer = None
-        stream_vector = None
-        stream_layer = None
+
+        watershed_confluence_vector_path = os.path.join(
+            self.workspace_dir, 'watershed_confluence.gpkg')
+        pygeoprocessing.routing.calculate_subwatershed_boundary(
+            (flow_dir_d8_path, 1), autotune_stream_vector_path,
+            watershed_confluence_vector_path, outlet_at_confluence=False)
+
+        watershed_vector = gdal.OpenEx(
+            watershed_confluence_vector_path, gdal.OF_VECTOR)
+        watershed_layer = watershed_vector.GetLayer()
+        # every stream should have a watershed
+        self.assertEqual(watershed_layer.GetFeatureCount(), n-2)
+        watershed_vector = None
+        watershed_layer = None
