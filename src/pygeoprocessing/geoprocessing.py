@@ -976,6 +976,10 @@ def create_raster_from_vector_extents(
     Return:
         None
     """
+    if target_pixel_type not in _VALID_GDAL_TYPES:
+        raise ValueError(
+            f'Invalid target type, should be a gdal.GDT_* type, received '
+            f'"{target_pixel_type}"')
     # Determine the width and height of the tiff in pixels based on the
     # maximum size of the combined envelope of all the features
     vector = gdal.OpenEx(base_vector_path, gdal.OF_VECTOR)
@@ -1002,10 +1006,10 @@ def create_raster_from_vector_extents(
                 LOGGER.warning(error)
         layer = None
 
-    if target_pixel_type not in _VALID_GDAL_TYPES:
+    if shp_extent is None:
         raise ValueError(
-            'Invalid target type, should be a gdal.GDT_* type, received '
-            '"%s"' % target_pixel_type)
+            f'the vector at {base_vector_path} has no geometry, cannot '
+            f'create a raster from these extents')
 
     # round up on the rows and cols so that the target raster encloses the
     # base vector
