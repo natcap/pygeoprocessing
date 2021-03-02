@@ -1043,12 +1043,9 @@ def create_raster_from_vector_extents(
     if fill_value is not None:
         band = raster.GetRasterBand(1)
         band.Fill(fill_value)
-        band.FlushCache()
         band = None
-    layer = None
     vector = None
     raster = None
-    vector = None
 
 
 def interpolate_points(
