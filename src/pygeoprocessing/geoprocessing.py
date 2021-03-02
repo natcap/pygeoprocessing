@@ -976,36 +976,33 @@ def create_raster_from_vector_extents(
     Return:
         None
     """
+    if target_pixel_type not in _VALID_GDAL_TYPES:
+        raise ValueError(
+            f'Invalid target type, should be a gdal.GDT_* type, received '
+            f'"{target_pixel_type}"')
     # Determine the width and height of the tiff in pixels based on the
     # maximum size of the combined envelope of all the features
     vector = gdal.OpenEx(base_vector_path, gdal.OF_VECTOR)
     shp_extent = None
     for layer_index in range(vector.GetLayerCount()):
         layer = vector.GetLayer(layer_index)
-        for feature in layer:
-            try:
-                # envelope is [xmin, xmax, ymin, ymax]
-                feature_extent = feature.GetGeometryRef().GetEnvelope()
-                if shp_extent is None:
-                    shp_extent = list(feature_extent)
-                else:
-                    # expand bounds of current bounding box to include that
-                    # of the newest feature
-                    shp_extent = [
-                        f(shp_extent[index], feature_extent[index])
-                        for index, f in enumerate([min, max, min, max])]
-            except AttributeError as error:
-                # For some valid OGR objects the geometry can be undefined
-                # since it's valid to have a NULL entry in the attribute table
-                # this is expressed as a None value in the geometry reference
-                # this feature won't contribute
-                LOGGER.warning(error)
+        if layer.GetFeatureCount() == 0:
+            continue
+        layer_extent = layer.GetExtent()
+        if shp_extent is None:
+            shp_extent = list(layer_extent)
+        else:
+            # expand bounds of current bounding box to include that
+            # of the newest feature
+            shp_extent = [
+                f(shp_extent[index], layer_extent[index])
+                for index, f in enumerate([min, max, min, max])]
         layer = None
 
-    if target_pixel_type not in _VALID_GDAL_TYPES:
+    if shp_extent is None:
         raise ValueError(
-            'Invalid target type, should be a gdal.GDT_* type, received '
-            '"%s"' % target_pixel_type)
+            f'the vector at {base_vector_path} has no geometry, cannot '
+            f'create a raster from these extents')
 
     # round up on the rows and cols so that the target raster encloses the
     # base vector
@@ -1046,12 +1043,9 @@ def create_raster_from_vector_extents(
     if fill_value is not None:
         band = raster.GetRasterBand(1)
         band.Fill(fill_value)
-        band.FlushCache()
         band = None
-    layer = None
     vector = None
     raster = None
-    vector = None
 
 
 def interpolate_points(

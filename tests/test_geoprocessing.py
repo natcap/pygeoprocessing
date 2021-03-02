@@ -4155,3 +4155,23 @@ class TestGeoprocessing(unittest.TestCase):
 
         numpy.testing.assert_allclose(
             target_array, expected_output, rtol=1e-6, atol=1e-6)
+
+    def test_empty_vector_extent_creation(self):
+        """PGP: test that empty vector extend closes nicely."""
+        wgs84_srs = osr.SpatialReference()
+        wgs84_srs.ImportFromWkt(osr.SRS_WKT_WGS84_LAT_LONG)
+
+        # Make a vector with no features.
+        gpkg_driver = ogr.GetDriverByName('GPKG')
+        vector_path = os.path.join(self.workspace_dir, 'empty.gpkg')
+        vector = gpkg_driver.CreateDataSource(vector_path)
+        layer = vector.CreateLayer('empty', wgs84_srs)
+        layer = None
+        vector = None
+
+        with self.assertRaises(ValueError) as cm:
+            pygeoprocessing.create_raster_from_vector_extents(
+                vector_path, 'out_raster.tif', (20, -20), gdal.GDT_Byte, 255)
+        expected_message = 'has no geometry'
+        actual_message = str(cm.exception)
+        self.assertTrue(expected_message in actual_message, actual_message)

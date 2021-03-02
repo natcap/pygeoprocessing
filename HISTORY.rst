@@ -3,6 +3,9 @@ Release History
 
 Unreleased Changes
 ------------------
+* Fixed an issue in ``create_raster_from_vector_extents`` that would cause a
+  confusing exception to be raised if there was no geometry in the vector.
+  Now raises a ``ValueError`` with a helpful error message.
 * Changed parameters in ``convolve_2d`` to allow API to set
   ``ignore_nodata_and_edges=True`` while ``mask_nodata=False`` and updated
   docstring to indicate this is useful in cases such as filling nodata holes
