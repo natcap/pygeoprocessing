@@ -15,6 +15,7 @@ from numpy.random import MT19937
 from numpy.random import RandomState
 from numpy.random import SeedSequence
 import numpy
+import numpy.testing
 import scipy.ndimage
 import shapely.geometry
 import shapely.wkt
@@ -3459,6 +3460,15 @@ class TestGeoprocessing(unittest.TestCase):
         # we should have only one pixel left
         self.assertEqual(
             numpy.count_nonzero(target_array[target_array == 1]), 1)
+        expected_bounding_box = [
+            _DEFAULT_ORIGIN[0] + 2*_DEFAULT_PIXEL_SIZE[0],
+            _DEFAULT_ORIGIN[1] + 2*_DEFAULT_PIXEL_SIZE[1],
+            _DEFAULT_ORIGIN[0] + 3*_DEFAULT_PIXEL_SIZE[0],
+            _DEFAULT_ORIGIN[1] + 3*_DEFAULT_PIXEL_SIZE[1]]
+        target_info = pygeoprocessing.get_raster_info(target_path)
+        numpy.testing.assert_allclose(
+            expected_bounding_box, target_info['bounding_box'])
+
 
     def test_align_and_resize_raster_stack_int_with_bad_vector_mask(self):
         """PGP.geoprocessing: align/resize raster w/ bad vector mask."""
