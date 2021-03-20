@@ -15,7 +15,6 @@ from numpy.random import MT19937
 from numpy.random import RandomState
 from numpy.random import SeedSequence
 import numpy
-import numpy.testing
 import scipy.ndimage
 import shapely.geometry
 import shapely.wkt
@@ -3420,9 +3419,7 @@ class TestGeoprocessing(unittest.TestCase):
             _DEFAULT_ORIGIN[0] + 2*_DEFAULT_PIXEL_SIZE[0],
             _DEFAULT_ORIGIN[1] + 2*_DEFAULT_PIXEL_SIZE[1],
             _DEFAULT_ORIGIN[0] + 3*_DEFAULT_PIXEL_SIZE[0],
-            _DEFAULT_ORIGIN[1] + 3*_DEFAULT_PIXEL_SIZE[1],
-
-            )
+            _DEFAULT_ORIGIN[1] + 3*_DEFAULT_PIXEL_SIZE[1])
 
         dual_poly_path = os.path.join(self.workspace_dir, 'dual_poly.gpkg')
         _geometry_to_vector(
@@ -3463,7 +3460,6 @@ class TestGeoprocessing(unittest.TestCase):
         self.assertEqual(
             numpy.count_nonzero(target_array[target_array == 1]), 1)
 
-    #################
     def test_align_and_resize_raster_stack_int_with_vector_mask_bb(self):
         """PGP.geoprocessing: align/resize raster w/ vector mask."""
         os.makedirs(self.workspace_dir, exist_ok=True)
