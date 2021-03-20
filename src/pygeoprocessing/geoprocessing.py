@@ -776,8 +776,8 @@ def align_and_resize_raster_stack(
         if mask_vector_projection_wkt is not None and \
                 target_projection_wkt is not None:
             mask_vector_bb = transform_bounding_box(
-                mask_bounding_box,
-                mask_vector_info['projection_wkt'], target_projection_wkt)
+               mask_bounding_box, mask_vector_info['projection_wkt'],
+               target_projection_wkt)
         else:
             mask_vector_bb = mask_vector_info['bounding_box']
         # Calling `merge_bounding_box_list` will raise an ValueError if the
