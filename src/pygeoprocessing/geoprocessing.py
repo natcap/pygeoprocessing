@@ -769,7 +769,10 @@ def align_and_resize_raster_stack(
                 [[feature.GetGeometryRef().GetEnvelope()[i]
                  for i in [0, 2, 1, 3]] for feature in mask_layer],
                 'union')
+            mask_layer = None
+            mask_vector = None
         else:
+            # if no where filter then use the raw vector bounding box
             mask_bounding_box = mask_vector_info['bounding_box']
 
         mask_vector_projection_wkt = mask_vector_info['projection_wkt']
