@@ -3477,17 +3477,18 @@ class TestGeoprocessing(unittest.TestCase):
 
         # make a vector whose bounding box is 1 degree  large
         poly_a = shapely.geometry.box(0, 0, 1, 1)
+        poly_b = shapely.geometry.box(-180, -90, 180, 90)
 
         poly_path = os.path.join(self.workspace_dir, 'poly.gpkg')
         _geometry_to_vector(
-            [poly_a], poly_path, fields={'value': ogr.OFTInteger},
-            attribute_list=[{'value': 100}],
+            [poly_a, poly_b], poly_path, fields={'value': ogr.OFTInteger},
+            attribute_list=[{'value': 100}, {'value': 1}],
             projection_epsg=4326)
 
         utm_31w_srs = osr.SpatialReference()
         utm_31w_srs.ImportFromEPSG(32631)
 
-        poly_bb = pygeoprocessing.get_vector_info(poly_path)['bounding_box']
+        poly_bb = [0, 0, 2, 2]
         poly_bb_transform = pygeoprocessing.transform_bounding_box(
             poly_bb, osr.SRS_WKT_WGS84_LAT_LONG,
             utm_31w_srs.ExportToWkt())
@@ -3503,6 +3504,7 @@ class TestGeoprocessing(unittest.TestCase):
             vector_mask_options={
                 'mask_vector_path': poly_path,
                 'mask_layer_name': 'poly',
+                'mask_vector_where_filter': 'value=100'
             })
 
         target_array = pygeoprocessing.raster_to_numpy_array(target_path)
