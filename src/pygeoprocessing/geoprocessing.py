@@ -754,14 +754,33 @@ def align_and_resize_raster_stack(
             raise ValueError(
                 'vector_mask_options passed, but no value for '
                 '"mask_vector_path": %s', vector_mask_options)
+
         mask_vector_info = get_vector_info(
             vector_mask_options['mask_vector_path'])
+
+        if 'mask_vector_where_filter' in vector_mask_options:
+            # the bounding box only exists for the filtered features
+            mask_vector = gdal.OpenEx(
+                vector_mask_options['mask_vector_path'], gdal.OF_VECTOR)
+            mask_layer = mask_vector.GetLayer()
+            mask_layer.SetAttributeFilter(
+                vector_mask_options['mask_vector_where_filter'])
+            mask_bounding_box = merge_bounding_box_list(
+                [[feature.GetGeometryRef().GetEnvelope()[i]
+                 for i in [0, 2, 1, 3]] for feature in mask_layer],
+                'union')
+            mask_layer = None
+            mask_vector = None
+        else:
+            # if no where filter then use the raw vector bounding box
+            mask_bounding_box = mask_vector_info['bounding_box']
+
         mask_vector_projection_wkt = mask_vector_info['projection_wkt']
         if mask_vector_projection_wkt is not None and \
                 target_projection_wkt is not None:
             mask_vector_bb = transform_bounding_box(
-                mask_vector_info['bounding_box'],
-                mask_vector_info['projection_wkt'], target_projection_wkt)
+               mask_bounding_box, mask_vector_info['projection_wkt'],
+               target_projection_wkt)
         else:
             mask_vector_bb = mask_vector_info['bounding_box']
         # Calling `merge_bounding_box_list` will raise an ValueError if the

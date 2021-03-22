@@ -3460,6 +3460,54 @@ class TestGeoprocessing(unittest.TestCase):
         self.assertEqual(
             numpy.count_nonzero(target_array[target_array == 1]), 1)
 
+    def test_align_and_resize_raster_stack_int_with_vector_mask_bb(self):
+        """PGP.geoprocessing: align/resize raster w/ vector mask."""
+        os.makedirs(self.workspace_dir, exist_ok=True)
+        pixel_a_matrix = numpy.ones((180, 360), numpy.int16)
+        target_nodata = -1
+        base_a_path = os.path.join(self.workspace_dir, 'base_a.tif')
+        _array_to_raster(
+            pixel_a_matrix, target_nodata, base_a_path,
+            pixel_size=(1, -1), projection_epsg=4326,
+            origin=(-180, 90))
+
+        # make a vector whose bounding box is 1 degree  large
+        poly_a = shapely.geometry.box(0, 0, 1, 1)
+        poly_b = shapely.geometry.box(-180, -90, 180, 90)
+
+        poly_path = os.path.join(self.workspace_dir, 'poly.gpkg')
+        _geometry_to_vector(
+            [poly_a, poly_b], poly_path, fields={'value': ogr.OFTInteger},
+            attribute_list=[{'value': 100}, {'value': 1}],
+            projection_epsg=4326)
+
+        utm_31w_srs = osr.SpatialReference()
+        utm_31w_srs.ImportFromEPSG(32631)
+
+        poly_bb = [0, 0, 2, 2]
+        poly_bb_transform = pygeoprocessing.transform_bounding_box(
+            poly_bb, osr.SRS_WKT_WGS84_LAT_LONG,
+            utm_31w_srs.ExportToWkt())
+
+        target_path = os.path.join(self.workspace_dir, 'target_a.tif')
+
+        pygeoprocessing.align_and_resize_raster_stack(
+            [base_a_path], [target_path],
+            ['near'],
+            (111000/2, -111000/2), poly_bb_transform,
+            raster_align_index=0,
+            target_projection_wkt=utm_31w_srs.ExportToWkt(),
+            vector_mask_options={
+                'mask_vector_path': poly_path,
+                'mask_layer_name': 'poly',
+                'mask_vector_where_filter': 'value=100'
+            })
+
+        target_array = pygeoprocessing.raster_to_numpy_array(target_path)
+        # chose half of 111km so that's 4 pixels in 1 degree
+        self.assertEqual(
+            numpy.count_nonzero(target_array[target_array == 1]), 4)
+
     def test_align_and_resize_raster_stack_int_with_bad_vector_mask(self):
         """PGP.geoprocessing: align/resize raster w/ bad vector mask."""
         pixel_a_matrix = numpy.ones((5, 5), numpy.int16)
