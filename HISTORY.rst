@@ -57,8 +57,9 @@ Unreleased Changes
 * Added a ``max_pixel_fill_count`` parameter to ``routing.fill_pits`` to
   guard against pitfilling large natural depression. Defaults to 500.
 * Fixed an issue in ``align_and_resize_raster_stack`` that would ignore
-  the bounds of a feature in a mask vector if the ``"where"`` clause was
-  invoked and instead only considered the entire bounds of the vector.
+  the bounds of a feature in a mask vector if the
+  ``"mask_vector_where_filter"`` clause was invoked and instead only
+  considered the entire bounds of the vector.
 
 2.1.2 (2020-12-03)
 ------------------
