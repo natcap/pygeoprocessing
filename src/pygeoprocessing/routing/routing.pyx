@@ -4137,7 +4137,7 @@ def calculate_subwatershed_boundary(
 
 def detect_outlets(
         flow_dir_raster_path_band, flow_dir_type, target_outlet_vector_path):
-    """Create point vector indicating D8 outlets.
+    """Create point vector indicating flow raster outlets.
 
     Args:
         flow_dir_raster_path_band (tuple): raster path/band tuple
