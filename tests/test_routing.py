@@ -182,6 +182,28 @@ class TestRouting(unittest.TestCase):
             [4, 6, 6, 6, 6, 6, 6, 6, 6, 6, 0]])
         numpy.testing.assert_almost_equal(flow_array, expected_result)
 
+    def test_invalid_mode_detect_outlets(self):
+        """PGP.routing: ensure invalid mode caught when detecting outlets."""
+        flow_dir_d8 = numpy.full((512, 512), 128, dtype=numpy.uint8)
+        flow_dir_d8[0:4, 0:4] = [
+            [2, 2, 2, 2],
+            [2, 2, 2, 0],
+            [4, 128, 2, 2],
+            [2, 2, 6, 2]]
+        flow_dir_d8[-1, -1] = 0
+        flow_dir_d8_path = os.path.join(self.workspace_dir, 'd8.tif')
+        _array_to_raster(flow_dir_d8, 128, flow_dir_d8_path)
+        outlet_vector_path = os.path.join(
+            self.workspace_dir, 'outlets.gpkg')
+
+        with self.assertRaises(ValueError) as cm:
+            pygeoprocessing.routing.detect_outlets(
+                (flow_dir_d8_path, 1), 'bad_mode', outlet_vector_path)
+        expected_message = (
+            'expected flow dir type of either d8 or mfd but got bad_mode')
+        actual_message = str(cm.exception)
+        self.assertTrue(expected_message in actual_message, actual_message)
+
     def test_detect_outlets_d8(self):
         """PGP.routing: test detect outlets for D8."""
         flow_dir_d8 = numpy.full((512, 512), 128, dtype=numpy.uint8)
