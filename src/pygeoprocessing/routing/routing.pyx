@@ -4181,9 +4181,9 @@ def detect_outlets(
 
     raster_x_size, raster_y_size = raster_info['raster_size']
 
-    d8_flow_dir_raster = gdal.OpenEx(
+    flow_dir_raster = gdal.OpenEx(
         flow_dir_raster_path_band[0], gdal.OF_RASTER)
-    d8_flow_dir_band = d8_flow_dir_raster.GetRasterBand(
+    flow_dir_band = flow_dir_raster.GetRasterBand(
         flow_dir_raster_path_band[1])
 
     if raster_info['projection_wkt']:
@@ -4258,10 +4258,11 @@ def detect_outlets(
             flow_dir_block[-1, :] = flow_dir_nodata
 
         # Read iterblock plus a possible margin on top/bottom/left/right side
+        # and read as type int32 to handle both d8 or mfd formats
         flow_dir_block[
             1-y_off_border:win_ysize+1+win_ysize_border,
             1-x_off_border:win_xsize+1+win_xsize_border] = \
-            d8_flow_dir_band.ReadAsArray(
+            flow_dir_band.ReadAsArray(
                 xoff=xoff-x_off_border,
                 yoff=yoff-y_off_border,
                 win_xsize=win_xsize+win_xsize_border+x_off_border,
@@ -4332,13 +4333,12 @@ def detect_outlets(
                     outlet_feature = None
                     outlet_point = None
 
-
-    d8_flow_dir_raster = None
-    d8_flow_dir_band = None
+    flow_dir_raster = None
+    flow_dir_band = None
     LOGGER.info('outlet detection: 100% complete -- committing transaction')
     outlet_layer.CommitTransaction()
     outlet_layer = None
-    outlet_vector =  None
+    outlet_vector = None
     LOGGER.info('outlet detection: done')
 
 
