@@ -182,8 +182,8 @@ class TestRouting(unittest.TestCase):
             [4, 6, 6, 6, 6, 6, 6, 6, 6, 6, 0]])
         numpy.testing.assert_almost_equal(flow_array, expected_result)
 
-    def test_detect_outlets(self):
-        """PGP.routing: test detect outlets."""
+    def test_detect_outlets_d8(self):
+        """PGP.routing: test detect outlets for D8."""
         flow_dir_d8 = numpy.full((512, 512), 128, dtype=numpy.uint8)
         flow_dir_d8[0:4, 0:4] = [
             [2, 2, 2, 2],
@@ -196,7 +196,48 @@ class TestRouting(unittest.TestCase):
         outlet_vector_path = os.path.join(
             self.workspace_dir, 'outlets.gpkg')
         pygeoprocessing.routing.detect_outlets(
-            (flow_dir_d8_path, 1), outlet_vector_path)
+            (flow_dir_d8_path, 1), 'd8', outlet_vector_path)
+        outlet_vector = gdal.OpenEx(
+            outlet_vector_path, gdal.OF_VECTOR)
+        outlet_layer = outlet_vector.GetLayer()
+        outlet_ij_set = set()
+        id_list = []
+        for outlet_feature in outlet_layer:
+            outlet_ij_set.add(
+                (outlet_feature.GetField('i'),
+                 outlet_feature.GetField('j')))
+            id_list.append(outlet_feature.GetField('ID'))
+        # We know the expected outlets because we constructed them above
+        expected_outlet_ij_set = {
+            (0, 0), (1, 0), (2, 0), (3, 0),
+            (3, 1),
+            (0, 2),
+            (1, 3), (2, 3),
+            (511, 511)}
+        self.assertEqual(outlet_ij_set, expected_outlet_ij_set)
+        self.assertEqual(
+            sorted(id_list), list(range(len(expected_outlet_ij_set))))
+
+    def test_detect_outlets_mfd(self):
+        """PGP.routing: test detect outlets for MFD."""
+        d8_nodata = 128
+        flow_dir_mfd = numpy.full((512, 512), d8_nodata, dtype=numpy.int32)
+        flow_dir_mfd[0:4, 0:4] = [
+            [2, 2, 2, 2],
+            [2, 2, 2, 0],
+            [4, d8_nodata, 2, 2],
+            [2, 2, 6, 2]]
+        flow_dir_mfd[-1, -1] = 0
+        nodata_mask = flow_dir_mfd == d8_nodata
+        flow_dir_mfd[~nodata_mask] = (1 << (flow_dir_mfd[~nodata_mask]*4))
+        flow_dir_mfd[nodata_mask] = 0  # set to MFD nodata
+        flow_dir_mfd_path = os.path.join(self.workspace_dir, 'mfd.tif')
+        _array_to_raster(flow_dir_mfd, 0, flow_dir_mfd_path)
+        print(flow_dir_mfd)
+        outlet_vector_path = os.path.join(
+            self.workspace_dir, 'outlets.gpkg')
+        pygeoprocessing.routing.detect_outlets(
+            (flow_dir_mfd_path, 1), 'mfd', outlet_vector_path)
         outlet_vector = gdal.OpenEx(
             outlet_vector_path, gdal.OF_VECTOR)
         outlet_layer = outlet_vector.GetLayer()
@@ -252,7 +293,7 @@ class TestRouting(unittest.TestCase):
                 'pygeoprocessing.iterblocks',
                 mock_iterblocks):
             pygeoprocessing.routing.detect_outlets(
-                (d8_flow_dir_raster_path, 1), outlet_vector_path)
+                (d8_flow_dir_raster_path, 1), 'd8', outlet_vector_path)
 
         outlet_vector = gdal.OpenEx(outlet_vector_path, gdal.OF_VECTOR)
         outlet_layer = outlet_vector.GetLayer()
