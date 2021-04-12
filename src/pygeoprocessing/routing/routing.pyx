@@ -4141,9 +4141,11 @@ def detect_outlets(
 
     Args:
         flow_dir_raster_path_band (tuple): raster path/band tuple
-            of type uint8  indicating D8 flow direction created by
-            `routing.flow_dir_d8`.
-        flow_dir_type (str): one of 'd8' or 'mfd'
+            indicating D8 or MFD flow direction created by
+            `routing.flow_dir_d8` or `routing.flow_dir_mfd`.
+        flow_dir_type (str): one of 'd8' or 'mfd' to indicate the
+            ``flow_dir_raster_path_band`` is either a D8 or MFD flow
+            direction raster.
         target_outlet_vector_path (str): path to a vector that is created
             by this call that will be in the same projection units as the
             raster and have a point feature in the center of each pixel that
