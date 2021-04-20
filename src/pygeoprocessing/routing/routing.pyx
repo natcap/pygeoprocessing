@@ -4303,6 +4303,14 @@ def detect_outlets(
                         # shift the 0xF mask to the outflow direction and
                         # test if there's any outflow or not. 0 means nothing
                         # flows out of that pixel in the ``n_dir`` direction.
+                        # 0xF is a binary number equaling 1111. The
+                        # <<(n_dir*4) will shift these 1111's over 4*`n_dir`
+                        # spaces thus aligning them with the section of the
+                        # MFD integer that represents the proportional flow
+                        # in that direction. The final bitwise & masks the
+                        # entire MFD direction to the bit shifted 1111 mask,
+                        # if it equals 0 it means there was no proportional
+                        # flow in the `n_dir` direction.
                         if flow_dir&(0xF<<(n_dir*4)) == 0:
                             continue
                         flow_dir_n = flow_dir_block[
