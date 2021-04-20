@@ -4139,6 +4139,10 @@ def detect_outlets(
         flow_dir_raster_path_band, flow_dir_type, target_outlet_vector_path):
     """Create point vector indicating flow raster outlets.
 
+    If either D8 or MFD rasters have a flow direction to the edge of the
+    raster or to a nodata flow direction pixel the originating pixel is
+    considered an outlet.
+
     Args:
         flow_dir_raster_path_band (tuple): raster path/band tuple
             indicating D8 or MFD flow direction created by
