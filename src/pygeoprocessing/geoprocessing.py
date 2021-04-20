@@ -2506,7 +2506,11 @@ def convolve_2d(
             values in these areas will be nonsensical numbers, perhaps
             numerical infinity or NaNs.
         normalize_kernel (boolean): If true, the result is divided by the
-            sum of the kernel.
+            sum of the kernel. If ``ignore_nodata_and_edges`` is also true,
+            this divides by the sum of the area of the kernel that is valid 
+            (not nodata or edge). For instance, a 3x3 kernel centered on a 
+            corner pixel would sum the 4 pixels that are within the raster 
+            and divide by 4.This combination is useful for averaging a raster.
         mask_nodata (boolean): If true, ``target_path`` raster's output is
             nodata where ``signal_path_band``'s pixels were nodata. Note that
             setting ``ignore_nodata_and_edges`` to ``True`` while setting
