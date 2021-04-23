@@ -4166,8 +4166,9 @@ class TestGeoprocessing(unittest.TestCase):
         target_array = pygeoprocessing.raster_to_numpy_array(target_path)
         target_nodata = pygeoprocessing.get_raster_info(
             target_path)['nodata'][0]
+        self.assertIsNotNone(target_nodata)
 
-        expected_output = numpy.empty(signal_array.shape, numpy.float32)
+        expected_output = numpy.empty(signal_array.shape, numpy.float64)
         expected_output[:] = target_nodata
         expected_output[0, 0] = 1
         expected_output[-1, -1] = 1
