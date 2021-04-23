@@ -3875,7 +3875,6 @@ def stitch_rasters(
                 masked_target_array = target_array[valid_mask]
                 target_array_nodata_mask = numpy.isclose(
                     masked_target_array, target_nodata)
-                LOGGER.debug('target_array_nodata_mask')
                 target_array[valid_mask] = (
                     base_array[valid_mask] +
                     numpy.where(
