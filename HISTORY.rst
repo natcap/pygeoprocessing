@@ -60,6 +60,8 @@ Unreleased Changes
   the bounds of a feature in a mask vector if the
   ``"mask_vector_where_filter"`` clause was invoked and instead only
   considered the entire bounds of the vector.
+* Fixed an issue with ``convolve_2d`` that allowed output rasters to be
+  created without a defined nodata value.
 
 2.1.2 (2020-12-03)
 ------------------
