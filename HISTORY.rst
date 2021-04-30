@@ -60,6 +60,7 @@ Unreleased Changes
   the bounds of a feature in a mask vector if the
   ``"mask_vector_where_filter"`` clause was invoked and instead only
   considered the entire bounds of the vector.
+* Fixed a LOGGER message bug that occurred in ``zonal_statistics``.
 
 2.1.2 (2020-12-03)
 ------------------
