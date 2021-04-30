@@ -45,7 +45,7 @@ Unreleased Changes
   allows a user to tune in cases that may involve significant latency such
   as in a heavy multiprocess environment.
 * Added a ``pygeoprocessing.routing.detect_outlets`` function that creates a
-  vector with points placed on the center of the pixels in a D8 flow
+  vector with points placed on the center of the pixels in a D8 or MFD flow
   direction raster that are outlet pixels. The vector has additional metadata
   about the (i, j) locations of the pixel in raster coordinate space.
 * Replacing ``merge_rasters`` with ``stitch_rasters`` that can take an
@@ -62,6 +62,7 @@ Unreleased Changes
   considered the entire bounds of the vector.
 * Fixed an issue with ``convolve_2d`` that allowed output rasters to be
   created without a defined nodata value.
+* Fixed a LOGGER message bug that occurred in ``zonal_statistics``.
 
 2.1.2 (2020-12-03)
 ------------------

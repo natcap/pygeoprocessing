@@ -1338,7 +1338,7 @@ def zonal_statistics(
             os.path.basename(aggregate_vector_path))
         rasterize_callback = _make_logger_callback(
             "rasterizing polygon " + str(set_index+1) + " of " +
-            str(len(disjoint_fid_set)) + " set %.1f%% complete")
+            str(len(disjoint_fid_set)) + " set %.1f%% complete %s")
         gdal.RasterizeLayer(
             agg_fid_raster, [1], disjoint_layer,
             callback=rasterize_callback, **rasterize_layer_args)
@@ -3874,7 +3874,6 @@ def stitch_rasters(
                 masked_target_array = target_array[valid_mask]
                 target_array_nodata_mask = numpy.isclose(
                     masked_target_array, target_nodata)
-                LOGGER.debug('target_array_nodata_mask')
                 target_array[valid_mask] = (
                     base_array[valid_mask] +
                     numpy.where(

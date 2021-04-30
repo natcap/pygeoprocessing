@@ -736,7 +736,7 @@ def fill_pits(
 
     pygeoprocessing.new_raster_from_base(
         dem_raster_path_band[0], flat_region_mask_path, gdal.GDT_Byte,
-        [mask_nodata], fill_value_list=[mask_nodata],
+        [mask_nodata],
         raster_driver_creation_tuple=raster_driver_creation_tuple)
     flat_region_mask_managed_raster = _ManagedRaster(
         flat_region_mask_path, 1, 1)
@@ -747,7 +747,7 @@ def fill_pits(
     pit_mask_path = os.path.join(working_dir_path, 'pit_mask.tif')
     pygeoprocessing.new_raster_from_base(
         dem_raster_path_band[0], pit_mask_path, gdal.GDT_Int32,
-        [mask_nodata], fill_value_list=[mask_nodata],
+        [mask_nodata],
         raster_driver_creation_tuple=raster_driver_creation_tuple)
     pit_mask_managed_raster = _ManagedRaster(
         pit_mask_path, 1, 1)
@@ -1103,7 +1103,7 @@ def flow_dir_d8(
         working_dir_path, 'flat_region_mask.tif')
     pygeoprocessing.new_raster_from_base(
         dem_raster_path_band[0], flat_region_mask_path, gdal.GDT_Byte,
-        [mask_nodata], fill_value_list=[mask_nodata],
+        [mask_nodata],
         raster_driver_creation_tuple=raster_driver_creation_tuple)
     flat_region_mask_managed_raster = _ManagedRaster(
         flat_region_mask_path, 1, 1)
@@ -1111,7 +1111,7 @@ def flow_dir_d8(
     flow_dir_nodata = 128
     pygeoprocessing.new_raster_from_base(
         dem_raster_path_band[0], target_flow_dir_path, gdal.GDT_Byte,
-        [flow_dir_nodata], fill_value_list=[flow_dir_nodata],
+        [flow_dir_nodata],
         raster_driver_creation_tuple=raster_driver_creation_tuple)
     flow_dir_managed_raster = _ManagedRaster(target_flow_dir_path, 1, 1)
 
@@ -1445,7 +1445,6 @@ def flow_accumulation_d8(
     pygeoprocessing.new_raster_from_base(
         flow_dir_raster_path_band[0], target_flow_accum_raster_path,
         gdal.GDT_Float64, [flow_accum_nodata],
-        fill_value_list=[flow_accum_nodata],
         raster_driver_creation_tuple=raster_driver_creation_tuple)
     flow_accum_managed_raster = _ManagedRaster(
         target_flow_accum_raster_path, 1, 1)
@@ -1715,7 +1714,7 @@ def flow_dir_mfd(
         working_dir_path, 'flat_region_mask.tif')
     pygeoprocessing.new_raster_from_base(
         dem_raster_path_band[0], flat_region_mask_path, gdal.GDT_Byte,
-        [mask_nodata], fill_value_list=[mask_nodata],
+        [mask_nodata],
         raster_driver_creation_tuple=raster_driver_creation_tuple)
     flat_region_mask_managed_raster = _ManagedRaster(
         flat_region_mask_path, 1, 1)
@@ -1723,7 +1722,7 @@ def flow_dir_mfd(
     flow_dir_nodata = 0
     pygeoprocessing.new_raster_from_base(
         dem_raster_path_band[0], target_flow_dir_path, gdal.GDT_Int32,
-        [flow_dir_nodata], fill_value_list=[flow_dir_nodata],
+        [flow_dir_nodata],
         raster_driver_creation_tuple=raster_driver_creation_tuple)
     flow_dir_managed_raster = _ManagedRaster(target_flow_dir_path, 1, 1)
 
@@ -1731,7 +1730,7 @@ def flow_dir_mfd(
         working_dir_path, 'plateu_drain_mask.tif')
     pygeoprocessing.new_raster_from_base(
         dem_raster_path_band[0], plateu_drain_mask_path, gdal.GDT_Byte,
-        [mask_nodata], fill_value_list=[mask_nodata],
+        [mask_nodata],
         raster_driver_creation_tuple=raster_driver_creation_tuple)
     plateau_drain_mask_managed_raster = _ManagedRaster(
         plateu_drain_mask_path, 1, 1)
@@ -2171,7 +2170,6 @@ def flow_accumulation_mfd(
     pygeoprocessing.new_raster_from_base(
         flow_dir_mfd_raster_path_band[0], target_flow_accum_raster_path,
         gdal.GDT_Float64, [flow_accum_nodata],
-        fill_value_list=[flow_accum_nodata],
         raster_driver_creation_tuple=raster_driver_creation_tuple)
 
     flow_accum_managed_raster = _ManagedRaster(
@@ -2429,7 +2427,6 @@ def distance_to_channel_d8(
         flow_dir_d8_raster_path_band[0],
         target_distance_to_channel_raster_path,
         gdal.GDT_Float64, [distance_nodata],
-        fill_value_list=[distance_nodata],
         raster_driver_creation_tuple=raster_driver_creation_tuple)
     distance_to_channel_managed_raster = _ManagedRaster(
         target_distance_to_channel_raster_path, 1, 1)
@@ -2619,7 +2616,6 @@ def distance_to_channel_mfd(
         flow_dir_mfd_raster_path_band[0],
         target_distance_to_channel_raster_path,
         gdal.GDT_Float64, [distance_nodata],
-        fill_value_list=[distance_nodata],
         raster_driver_creation_tuple=raster_driver_creation_tuple)
     distance_to_channel_managed_raster = _ManagedRaster(
         target_distance_to_channel_raster_path, 1, 1)
@@ -2845,7 +2841,7 @@ def extract_streams_mfd(
 
     pygeoprocessing.new_raster_from_base(
         flow_accum_raster_path_band[0], target_stream_raster_path,
-        gdal.GDT_Byte, [stream_nodata], fill_value_list=[stream_nodata],
+        gdal.GDT_Byte, [stream_nodata],
         raster_driver_creation_tuple=raster_driver_creation_tuple)
 
     cdef _ManagedRaster flow_accum_mr = _ManagedRaster(
@@ -4139,13 +4135,21 @@ def calculate_subwatershed_boundary(
         '(calculate_subwatershed_boundary): watershed building 100% complete')
 
 
-def detect_outlets(d8_flow_dir_raster_path_band, target_outlet_vector_path):
-    """Create point vector indicating D8 outlets.
+def detect_outlets(
+        flow_dir_raster_path_band, flow_dir_type, target_outlet_vector_path):
+    """Create point vector indicating flow raster outlets.
+
+    If either D8 or MFD rasters have a flow direction to the edge of the
+    raster or to a nodata flow direction pixel the originating pixel is
+    considered an outlet.
 
     Args:
-        d8_flow_dir_raster_path_band (tuple): raster path/band tuple
-            of type uint8  indicating D8 flow direction created by
-            `routing.flow_dir_d8`.
+        flow_dir_raster_path_band (tuple): raster path/band tuple
+            indicating D8 or MFD flow direction created by
+            `routing.flow_dir_d8` or `routing.flow_dir_mfd`.
+        flow_dir_type (str): one of 'd8' or 'mfd' to indicate the
+            ``flow_dir_raster_path_band`` is either a D8 or MFD flow
+            direction raster.
         target_outlet_vector_path (str): path to a vector that is created
             by this call that will be in the same projection units as the
             raster and have a point feature in the center of each pixel that
@@ -4158,26 +4162,33 @@ def detect_outlets(d8_flow_dir_raster_path_band, target_outlet_vector_path):
     Return:
         None.
     """
+    flow_dir_type = flow_dir_type.lower()
+    if flow_dir_type not in ['d8', 'mfd']:
+        raise ValueError(
+            f'expected flow dir type of either d8 or mfd but got '
+            f'{flow_dir_type}')
+    cdef int d8_flow_dir_mode = (flow_dir_type == 'd8')
+
     cdef int xoff, yoff, win_xsize, win_ysize, xi, yi
     cdef int xi_root, yi_root, raster_x_size, raster_y_size
     cdef int flow_dir, flow_dir_n
-    cdef int next_id=0
+    cdef int next_id=0, n_dir, is_outlet
     cdef char x_off_border, y_off_border, win_xsize_border, win_ysize_border
 
-    cdef numpy.ndarray[numpy.npy_uint8, ndim=2] flow_dir_block
+    cdef numpy.ndarray[numpy.npy_int32, ndim=2] flow_dir_block
 
     raster_info = pygeoprocessing.get_raster_info(
-        d8_flow_dir_raster_path_band[0])
+        flow_dir_raster_path_band[0])
 
     cdef int flow_dir_nodata = raster_info['nodata'][
-        d8_flow_dir_raster_path_band[1]-1]
+        flow_dir_raster_path_band[1]-1]
 
     raster_x_size, raster_y_size = raster_info['raster_size']
 
-    d8_flow_dir_raster = gdal.OpenEx(
-        d8_flow_dir_raster_path_band[0], gdal.OF_RASTER)
-    d8_flow_dir_band = d8_flow_dir_raster.GetRasterBand(
-        d8_flow_dir_raster_path_band[1])
+    flow_dir_raster = gdal.OpenEx(
+        flow_dir_raster_path_band[0], gdal.OF_RASTER)
+    flow_dir_band = flow_dir_raster.GetRasterBand(
+        flow_dir_raster_path_band[1])
 
     if raster_info['projection_wkt']:
         raster_srs = osr.SpatialReference()
@@ -4210,7 +4221,7 @@ def detect_outlets(d8_flow_dir_raster_path_band, target_outlet_vector_path):
     # and writes
     LOGGER.info('outlet detection: 0% complete')
     for block_offsets in pygeoprocessing.iterblocks(
-            d8_flow_dir_raster_path_band, offset_only=True):
+            flow_dir_raster_path_band, offset_only=True):
         xoff = block_offsets['xoff']
         yoff = block_offsets['yoff']
         win_xsize = block_offsets['win_xsize']
@@ -4220,7 +4231,7 @@ def detect_outlets(d8_flow_dir_raster_path_band, target_outlet_vector_path):
         # That border will be filled in with nodata or data from the raster
         # if the window does not align with a top/bottom/left/right edge
         flow_dir_block = numpy.empty(
-            (win_ysize+2, win_xsize+2), dtype=numpy.uint8)
+            (win_ysize+2, win_xsize+2), dtype=numpy.int32)
 
         # Test for left border and if so stripe nodata on the left margin
         x_off_border = 0
@@ -4251,14 +4262,16 @@ def detect_outlets(d8_flow_dir_raster_path_band, target_outlet_vector_path):
             flow_dir_block[-1, :] = flow_dir_nodata
 
         # Read iterblock plus a possible margin on top/bottom/left/right side
-        d8_flow_dir_band.ReadAsArray(
+        # and read as type int32 to handle both d8 or mfd formats
+        flow_dir_block[
+            1-y_off_border:win_ysize+1+win_ysize_border,
+            1-x_off_border:win_xsize+1+win_xsize_border] = \
+            flow_dir_band.ReadAsArray(
                 xoff=xoff-x_off_border,
                 yoff=yoff-y_off_border,
                 win_xsize=win_xsize+win_xsize_border+x_off_border,
-                win_ysize=win_ysize+win_ysize_border+y_off_border,
-                buf_obj=flow_dir_block[
-                    1-y_off_border:win_ysize+1+win_ysize_border,
-                    1-x_off_border:win_xsize+1+win_xsize_border])
+                win_ysize=win_ysize+win_ysize_border+y_off_border).astype(
+                    numpy.int32)
 
         for yi in range(1, win_ysize+1):
             if ctime(NULL) - last_log_time > 5.0:
@@ -4273,15 +4286,43 @@ def detect_outlets(d8_flow_dir_raster_path_band, target_outlet_vector_path):
                 if flow_dir == flow_dir_nodata:
                     continue
 
-                # inspect the outflow pixel neighbor
-                flow_dir_n = flow_dir_block[
-                    yi+D8_YOFFSET[flow_dir],
-                    xi+D8_XOFFSET[flow_dir]]
+                is_outlet = 1
+                if d8_flow_dir_mode:
+                    # inspect the outflow pixel neighbor
+                    flow_dir_n = flow_dir_block[
+                        yi+D8_YOFFSET[flow_dir],
+                        xi+D8_XOFFSET[flow_dir]]
+
+                    # if the outflow pixel is outside the raster boundaries or
+                    # is a nodata pixel it must mean xi,yi is an outlet
+                    if flow_dir_n != flow_dir_nodata:
+                        is_outlet = 0
+                else:
+                    # inspect all the outflow pixel neighbors in MFD mode
+                    for n_dir in range(8):
+                        # shift the 0xF mask to the outflow direction and
+                        # test if there's any outflow or not. 0 means nothing
+                        # flows out of that pixel in the ``n_dir`` direction.
+                        # 0xF is a binary number equaling 1111. The
+                        # <<(n_dir*4) will shift these 1111's over 4*`n_dir`
+                        # spaces thus aligning them with the section of the
+                        # MFD integer that represents the proportional flow
+                        # in that direction. The final bitwise & masks the
+                        # entire MFD direction to the bit shifted 1111 mask,
+                        # if it equals 0 it means there was no proportional
+                        # flow in the `n_dir` direction.
+                        if flow_dir&(0xF<<(n_dir*4)) == 0:
+                            continue
+                        flow_dir_n = flow_dir_block[
+                            yi+D8_YOFFSET[n_dir],
+                            xi+D8_XOFFSET[n_dir]]
+                        if flow_dir_n != flow_dir_nodata:
+                            is_outlet = 0
+                            break
 
                 # if the outflow pixel is outside the raster boundaries or
                 # is a nodata pixel it must mean xi,yi is an outlet
-                if flow_dir_n == flow_dir_nodata:
-
+                if is_outlet:
                     outlet_point = ogr.Geometry(ogr.wkbPoint)
                     # calculate global x/y raster coordinate, the -1 is for
                     # the left/top border of the test array window
@@ -4304,8 +4345,8 @@ def detect_outlets(d8_flow_dir_raster_path_band, target_outlet_vector_path):
                     outlet_feature = None
                     outlet_point = None
 
-    d8_flow_dir_raster = None
-    d8_flow_dir_band = None
+    flow_dir_raster = None
+    flow_dir_band = None
     LOGGER.info('outlet detection: 100% complete -- committing transaction')
     outlet_layer.CommitTransaction()
     outlet_layer = None
