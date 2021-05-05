@@ -2661,7 +2661,7 @@ def convolve_2d(
     n_blocks_processed = 0
     LOGGER.info(f'{n_blocks} sent to workers, wait for worker results')
     while True:
-        write_payload = write_queue.get()
+        write_payload = write_queue.get(timeout=_MAX_TIMEOUT)
         if write_payload:
             (index_dict, result, mask_result,
              left_index_raster, right_index_raster,
@@ -3328,8 +3328,12 @@ def _convolve_2d_worker(
 
         signal_offset, kernel_offset = payload
 
-        signal_block = signal_band.ReadAsArray(**signal_offset)
-        kernel_block = kernel_band.ReadAsArray(**kernel_offset)
+        # ensure signal and kernel are internally float64 precision
+        # irrespective of their base type
+        signal_block = signal_band.ReadAsArray(**signal_offset).astype(
+            numpy.float64)
+        kernel_block = kernel_band.ReadAsArray(**kernel_offset).astype(
+            numpy.float64)
 
         # don't ever convolve the nodata value
         if signal_nodata is not None:
@@ -3374,6 +3378,7 @@ def _convolve_2d_worker(
         shape = (
             numpy.array(signal_block.shape) +
             numpy.array(kernel_block.shape) - 1)
+
 
         # add zero padding so FFT is fast
         fshape = [_next_regular(int(d)) for d in shape]
