@@ -2553,6 +2553,8 @@ def convolve_2d(
             "`target_datatype` is set, but `target_nodata` is None. "
             "`target_nodata` must be set if `target_datatype` is not "
             "`gdal.GDT_Float64`.  `target_nodata` is set to None.")
+    if target_nodata is None:
+        target_nodata = float(numpy.finfo(numpy.float32).min)
 
     if ignore_nodata_and_edges and not mask_nodata:
         LOGGER.debug(
@@ -2773,10 +2775,7 @@ def convolve_2d(
             f"{os.path.basename(target_path)}")
 
     # set the nodata value from 0 to a reasonable value for the result
-    if target_nodata is None:
-        target_band.DeleteNoDataValue()
-    else:
-        target_band.SetNoDataValue(target_nodata)
+    target_band.SetNoDataValue(target_nodata)
 
     target_band = None
     target_raster = None
