@@ -2799,6 +2799,7 @@ def distance_to_channel_mfd(
     flow_dir_mfd_managed_raster.close()
     if weight_raster is not None:
         weight_raster.close()
+    visited_managed_raster.close()
     shutil.rmtree(tmp_work_dir)
     LOGGER.info('%.1f%% complete', 100.0)
 
