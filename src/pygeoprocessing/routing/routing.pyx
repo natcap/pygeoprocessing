@@ -2715,7 +2715,7 @@ def distance_to_channel_mfd(
                 if visited_managed_raster.get(xi_root, yi_root) == 0:
                     visited_managed_raster.set(xi_root, yi_root, 1)
                     distance_to_channel_stack.push(
-                        FlowPixelType(xi_root, yi_root, 0, -1))
+                        FlowPixelType(xi_root, yi_root, 0, distance_nodata))
 
                 while not distance_to_channel_stack.empty():
                     pixel = distance_to_channel_stack.top()
@@ -2752,7 +2752,7 @@ def distance_to_channel_mfd(
                             pixel.last_flow_dir = i_n
                             distance_to_channel_stack.push(pixel)
                             distance_to_channel_stack.push(
-                                FlowPixelType(xi_n, yi_n, 0, -1))
+                                FlowPixelType(xi_n, yi_n, 0, distance_nodata))
                             break
 
                         n_distance = distance_to_channel_managed_raster.get(
@@ -2774,7 +2774,7 @@ def distance_to_channel_mfd(
                         else:
                             weight_val = (SQRT2 if i_n % 2 else 1)
 
-                        if pixel.value == -1:
+                        if pixel.value == distance_nodata:
                             pixel.value = 0
                         pixel.value += flow_dir_weight * (
                             weight_val + n_distance)
