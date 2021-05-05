@@ -2661,6 +2661,8 @@ def convolve_2d(
     n_blocks_processed = 0
     LOGGER.info(f'{n_blocks} sent to workers, wait for worker results')
     while True:
+        # the timeout guards against a worst case scenario where the
+        # ``_convolve_2d_worker`` has crashed.
         write_payload = write_queue.get(timeout=_MAX_TIMEOUT)
         if write_payload:
             (index_dict, result, mask_result,
