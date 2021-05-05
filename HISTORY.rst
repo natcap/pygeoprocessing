@@ -3,6 +3,7 @@ Release History
 
 Unreleased Changes
 ------------------
+* Adding explicit support for Python 3.9 and testing on Python 3.9.
 * Fixed an issue in ``create_raster_from_vector_extents`` that would cause a
   confusing exception to be raised if there was no geometry in the vector.
   Now raises a ``ValueError`` with a helpful error message.
