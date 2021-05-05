@@ -3379,7 +3379,6 @@ def _convolve_2d_worker(
             numpy.array(signal_block.shape) +
             numpy.array(kernel_block.shape) - 1)
 
-
         # add zero padding so FFT is fast
         fshape = [_next_regular(int(d)) for d in shape]
 
