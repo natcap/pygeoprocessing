@@ -1163,3 +1163,39 @@ class TestRouting(unittest.TestCase):
         self.assertEqual(watershed_layer.GetFeatureCount(), n-2)
         watershed_vector = None
         watershed_layer = None
+
+    def test_channel_not_exist_distance(self):
+        """PGP.routing: test for nodata result if channel doesn't exist."""
+        from osgeo import osr
+        srs = osr.SpatialReference()
+        srs.ImportFromEPSG(3857)
+        projection_wkt = srs.ExportToWkt()
+
+        flow_dir = numpy.ones((10, 10))
+        streams = numpy.zeros((10, 10))
+        expected_result = numpy.full((10, 10), -1)
+
+        flow_dir_path = os.path.join(
+            self.workspace_dir, 'test_stream_distance_flow_dir.tif')
+        streams_path = os.path.join(
+            self.workspace_dir, 'test_stream_distance_streams.tif')
+        distance_path = os.path.join(
+            self.workspace_dir, 'test_stream_distance_output.tif')
+        pygeoprocessing.numpy_array_to_raster(
+            flow_dir, -1, (10, -10), (1000, 1000), projection_wkt,
+            flow_dir_path)
+        pygeoprocessing.numpy_array_to_raster(
+            streams, -1, (10, -10), (1000, 1000), projection_wkt,
+            streams_path)
+
+        pygeoprocessing.routing.distance_to_channel_d8(
+            (flow_dir_path, 1), (streams_path, 1), distance_path)
+        numpy.testing.assert_almost_equal(
+            pygeoprocessing.raster_to_numpy_array(distance_path),
+            expected_result)
+
+        pygeoprocessing.routing.distance_to_channel_mfd(
+            (flow_dir_path, 1), (streams_path, 1), distance_path)
+        numpy.testing.assert_almost_equal(
+            pygeoprocessing.raster_to_numpy_array(distance_path),
+            expected_result)
