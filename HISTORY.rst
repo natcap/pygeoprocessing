@@ -64,6 +64,9 @@ Unreleased Changes
 * Fixed an issue with ``convolve_2d`` that allowed output rasters to be
   created without a defined nodata value.
 * Fixed a LOGGER message bug that occurred in ``zonal_statistics``.
+* Fixed an issue in ``distance_to_channel_mfd`` that would generate a raster
+  with distances to the edge of the raster even if there was no channel. Now
+  generates nodata so it is consistent with ``distance_to_channel_d8``.
 
 2.1.2 (2020-12-03)
 ------------------

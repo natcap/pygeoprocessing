@@ -2611,7 +2611,7 @@ def distance_to_channel_mfd(
                 "%s is supposed to be a raster band tuple but it's not." % (
                     path))
 
-    distance_nodata = IMPROBABLE_FLOAT_NODATA
+    distance_nodata = -1
     pygeoprocessing.new_raster_from_base(
         flow_dir_mfd_raster_path_band[0],
         target_distance_to_channel_raster_path,
@@ -2619,9 +2619,19 @@ def distance_to_channel_mfd(
         raster_driver_creation_tuple=raster_driver_creation_tuple)
     distance_to_channel_managed_raster = _ManagedRaster(
         target_distance_to_channel_raster_path, 1, 1)
-
     channel_managed_raster = _ManagedRaster(
         channel_raster_path_band[0], channel_raster_path_band[1], 0)
+
+    tmp_work_dir = tempfile.mkdtemp(
+        suffix=None, prefix='dist_to_channel_mfd_work_dir',
+        dir=os.path.dirname(target_distance_to_channel_raster_path))
+    visited_raster_path = os.path.join(tmp_work_dir, 'visited.tif')
+    pygeoprocessing.new_raster_from_base(
+        flow_dir_mfd_raster_path_band[0],
+        visited_raster_path,
+        gdal.GDT_Byte, [0],
+        raster_driver_creation_tuple=raster_driver_creation_tuple)
+    visited_managed_raster = _ManagedRaster(visited_raster_path, 1, 1)
 
     flow_dir_mfd_managed_raster = _ManagedRaster(
         flow_dir_mfd_raster_path_band[0], flow_dir_mfd_raster_path_band[1], 0)
@@ -2702,10 +2712,10 @@ def distance_to_channel_mfd(
                     # nodata flow, so we skip
                     continue
 
-                if _is_close(distance_to_channel_managed_raster.get(
-                        xi_root, yi_root), distance_nodata, 1e-8, 1e-5):
+                if visited_managed_raster.get(xi_root, yi_root) == 0:
+                    visited_managed_raster.set(xi_root, yi_root, 1)
                     distance_to_channel_stack.push(
-                        FlowPixelType(xi_root, yi_root, 0, 0.0))
+                        FlowPixelType(xi_root, yi_root, 0, -1))
 
                 while not distance_to_channel_stack.empty():
                     pixel = distance_to_channel_stack.top()
@@ -2735,16 +2745,22 @@ def distance_to_channel_mfd(
                                 yi_n < 0 or yi_n >= raster_y_size):
                             continue
 
-                        n_distance = distance_to_channel_managed_raster.get(
-                            xi_n, yi_n)
 
-                        if _is_close(n_distance, distance_nodata, 1e-8, 1e-5):
+                        if visited_managed_raster.get(xi_n, yi_n) == 0:
+                            visited_managed_raster.set(xi_n, yi_n, 1)
                             preempted = 1
                             pixel.last_flow_dir = i_n
                             distance_to_channel_stack.push(pixel)
                             distance_to_channel_stack.push(
-                                FlowPixelType(xi_n, yi_n, 0, 0.0))
+                                FlowPixelType(xi_n, yi_n, 0, -1))
                             break
+
+                        n_distance = distance_to_channel_managed_raster.get(
+                            xi_n, yi_n)
+
+                        if n_distance == distance_nodata:
+                            # a channel was never found
+                            continue
 
                         # if a weight is passed we use it directly and do
                         # not consider that a diagonal pixel is further
@@ -2758,6 +2774,8 @@ def distance_to_channel_mfd(
                         else:
                             weight_val = (SQRT2 if i_n % 2 else 1)
 
+                        if pixel.value == -1:
+                            pixel.value = 0
                         pixel.value += flow_dir_weight * (
                             weight_val + n_distance)
 
@@ -2781,6 +2799,7 @@ def distance_to_channel_mfd(
     flow_dir_mfd_managed_raster.close()
     if weight_raster is not None:
         weight_raster.close()
+    shutil.rmtree(tmp_work_dir)
     LOGGER.info('%.1f%% complete', 100.0)
 
 
