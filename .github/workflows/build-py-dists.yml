@@ -8,13 +8,15 @@ jobs:
             fail-fast: false
             matrix:
                 os: [windows-latest, macos-latest]
-                python-version: [3.7, 3.8]
+                python-version: [3.7, 3.8, 3.9]
                 python-arch: [x86, x64]
                 include:
                     - python-version: 3.7
                       numpy: "numpy~=1.15"
                     - python-version: 3.8
                       numpy: "numpy~=1.17"
+                    - python-version: 3.9
+                      numpy: "numpy~=1.19"
 
                 exclude:
                     - os: macos-latest
