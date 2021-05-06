@@ -2922,6 +2922,11 @@ def transform_bounding_box(
         fitting bounding box around the original warped bounding box in
         ``new_epsg`` coordinate system.
 
+    Raises:
+        ``ValueError`` if resulting transform yields non-finite coordinates.
+        This would indicate an ill posed transform region that the user
+        should address.
+
     """
     base_ref = osr.SpatialReference()
     base_ref.ImportFromWkt(base_projection_wkt)
