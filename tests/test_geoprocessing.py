@@ -1,4 +1,5 @@
 """pygeoprocessing.geoprocessing test suite."""
+import itertools
 import os
 import pathlib
 import shutil
@@ -4226,3 +4227,43 @@ class TestGeoprocessing(unittest.TestCase):
         expected_message = 'has no geometry'
         actual_message = str(cm.exception)
         self.assertTrue(expected_message in actual_message, actual_message)
+
+    def test_convolve_2d_non_square_blocksizes(self):
+        """PGP.geo: test that convolve 2d errors on non-square blocksizes."""
+        a_path = os.path.join(self.workspace_dir, 'a.tif')
+        b_path = os.path.join(self.workspace_dir, 'b.tif')
+        c_path = os.path.join(self.workspace_dir, 'c.tif')
+        n_pixels = 100
+        signal_array = numpy.ones((n_pixels, n_pixels), numpy.float32)
+        kernel_array = numpy.ones((3, 3), numpy.float32)
+        target_nodata = -1
+        pixel_size = (1, -1)
+        origin = (0, 0)
+
+        # make row block (can't do a column block because geotiffs force a
+        # larger blocksize in that case)
+        pygeoprocessing.numpy_array_to_raster(
+            signal_array, target_nodata, pixel_size, origin,
+            osr.SRS_WKT_WGS84_LAT_LONG,
+            a_path,
+            raster_driver_creation_tuple=(
+                'GTIFF', (f'BLOCKXSIZE={n_pixels}', 'BLOCKYSIZE=1')))
+        pygeoprocessing.numpy_array_to_raster(
+            kernel_array, target_nodata, pixel_size, origin,
+            osr.SRS_WKT_WGS84_LAT_LONG,
+            b_path,
+            raster_driver_creation_tuple=(
+                'GTIFF', (f'BLOCKXSIZE={n_pixels}', f'BLOCKYSIZE={n_pixels}')))
+
+        target_path = os.path.join(self.workspace_dir, 'target.tif')
+
+        # test both combinations of a, b
+        for signal_path, kernel_path in itertools.permutations(
+                [a_path, b_path], 2):
+            with self.assertRaises(ValueError) as cm:
+                pygeoprocessing.convolve_2d(
+                    (signal_path, 1), (kernel_path, 1), target_path,
+                    ignore_nodata_and_edges=False)
+            expected_message = 'has a row blocksize'
+            actual_message = str(cm.exception)
+            self.assertTrue(expected_message in actual_message, actual_message)
