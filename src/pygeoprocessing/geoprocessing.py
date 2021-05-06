@@ -2973,6 +2973,11 @@ def transform_bounding_box(
     minx, maxx = sorted([raw_bounding_box[0], raw_bounding_box[2]])
     miny, maxy = sorted([raw_bounding_box[1], raw_bounding_box[3]])
     transformed_bounding_box = [minx, miny, maxx, maxy]
+    if not all(numpy.isfinite(numpy.array(transformed_bounding_box))):
+        raise ValueError(
+            f'some transformed coordinates are not finite: '
+            f'{transformed_bounding_box}, base bounding box may not fit into '
+            f'target coordinate projection system.')
     return transformed_bounding_box
 
 
