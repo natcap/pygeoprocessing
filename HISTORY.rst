@@ -64,11 +64,6 @@ Unreleased Changes
 * Fixed an issue with ``convolve_2d`` that allowed output rasters to be
   created without a defined nodata value.
 * Fixed a LOGGER message bug that occurred in ``zonal_statistics``.
-* Fixed an issue in ``calculate_subwatershed_boundary`` that would cause
-  excessive runtimes when calculating subwatershed boundaries in the case
-  where projected coordinates were large enough that numerical roundoff
-  error would cause the algorithm to be unable to determine when to quit
-  when drawing the boundary around the watershed area.
 
 2.1.2 (2020-12-03)
 ------------------
