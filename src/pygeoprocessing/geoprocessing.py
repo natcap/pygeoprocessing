@@ -2477,6 +2477,18 @@ def convolve_2d(
     Nodata values are treated as 0.0 during the convolution and masked to
     nodata for the output result where ``signal_path`` has nodata.
 
+    Note with default values, boundary effects can be seen in the result where
+    the kernel would hang off the edge of the raster or in regions with 
+    nodata pixels. The function would treat these areas as values with "0.0"
+    by default thus pulling the total convolution down in these areas. This
+    is similar to setting ``mode='same'`` in Numpy's ``convolve`` function:
+    https://numpy.org/doc/stable/reference/generated/numpy.convolve.html
+
+    This boundary effect can be avoided by setting 
+    ``ignore_nodata_and_edges=True`` which normalizes the target result by 
+    dynamically accounting for the number of valid signal pixels the kernel 
+    overlapped during the convolution step.
+
     Args:
         signal_path_band (tuple): a 2 tuple of the form
             (filepath to signal raster, band index).
@@ -2505,12 +2517,11 @@ def convolve_2d(
             over any areas except nodata holes, in this case the resulting
             values in these areas will be nonsensical numbers, perhaps
             numerical infinity or NaNs.
+                Setting this value to ``True`` is similar to the effect
+            created by setting ``mode`` to ``"valid"`` in Numpy's
+            convolve function: https://numpy.org/doc/stable/reference/generated/numpy.convolve.html
         normalize_kernel (boolean): If true, the result is divided by the
-            sum of the kernel. If ``ignore_nodata_and_edges`` is also true,
-            this divides by the sum of the area of the kernel that is valid 
-            (not nodata or edge). For instance, a 3x3 kernel centered on a 
-            corner pixel would sum the 4 pixels that are within the raster 
-            and divide by 4.This combination is useful for averaging a raster.
+            sum of the kernel.
         mask_nodata (boolean): If true, ``target_path`` raster's output is
             nodata where ``signal_path_band``'s pixels were nodata. Note that
             setting ``ignore_nodata_and_edges`` to ``True`` while setting
