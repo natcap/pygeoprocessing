@@ -2413,7 +2413,6 @@ class TestGeoprocessing(unittest.TestCase):
             result = pygeoprocessing.transform_bounding_box(
                 bounding_box_lat_lng_oob, osr.SRS_WKT_WGS84_LAT_LONG,
                 target_srs.ExportToWkt())
-            print(result)
         expected_message = "transformed coordinates are not finite"
         actual_message = str(cm.exception)
         self.assertTrue(expected_message in actual_message)
