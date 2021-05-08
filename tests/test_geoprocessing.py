@@ -2402,6 +2402,22 @@ class TestGeoprocessing(unittest.TestCase):
             numpy.testing.assert_allclose(
                 result, expected_result), None)
 
+    def test_transform_bounding_box_out_of_bounds(self):
+        """PGP.geoprocessing: test that bad transform raises an exception."""
+        # going to 91 degrees north to make an error
+        bounding_box_lat_lng_oob = [-45, 89, -43, 91]
+
+        target_srs = osr.SpatialReference()
+        target_srs.ImportFromEPSG(32619)  # UTM19N EPSG
+
+        with self.assertRaises(ValueError) as cm:
+            result = pygeoprocessing.transform_bounding_box(
+                bounding_box_lat_lng_oob, osr.SRS_WKT_WGS84_LAT_LONG,
+                target_srs.ExportToWkt())
+        expected_message = "transformed coordinates are not finite"
+        actual_message = str(cm.exception)
+        self.assertTrue(expected_message in actual_message)
+
     def test_iterblocks(self):
         """PGP.geoprocessing: test iterblocks."""
         n_pixels = 100
