@@ -1163,3 +1163,33 @@ class TestRouting(unittest.TestCase):
         self.assertEqual(watershed_layer.GetFeatureCount(), n-2)
         watershed_vector = None
         watershed_layer = None
+
+    def test_single_drain_point(self):
+        """PGP.routing: test pitfilling."""
+        dem_array = numpy.zeros((11, 11), dtype=numpy.float32)
+        dem_array[3:8, 3:8] = -1.0
+        dem_array[0, 0] = -1.0
+        dem_array[10, 10] = -1.0
+
+        # outlet tuple at 0,0, just drain one edge
+        expected_array_0_0 = numpy.copy(dem_array)
+        expected_array_0_0[3:8, 3:8] = 0.0
+        expected_array_0_0[10, 10] = 0.0
+
+        # output tuple at 5,5, it's a massive pit so drain the edges
+        expected_array_5_5 = numpy.copy(dem_array)
+        expected_array_5_5[0, 0] = 0.0
+        expected_array_5_5[10, 10] = 0.0
+
+        for output_tuple, expected_array in [
+                ((0, 0), expected_array_0_0),
+                ((5, 5), expected_array_5_5)]:
+            dem_path = os.path.join(self.workspace_dir, 'dem.tif')
+            _array_to_raster(dem_array, None, dem_path)
+            fill_path = os.path.join(self.workspace_dir, 'filled.tif')
+            pygeoprocessing.routing.fill_pits(
+                (dem_path, 1), fill_path,
+                single_outlet_tuple=output_tuple,
+                working_dir=self.workspace_dir)
+            result_array = pygeoprocessing.raster_to_numpy_array(fill_path)
+            numpy.testing.assert_almost_equal(result_array, expected_array)

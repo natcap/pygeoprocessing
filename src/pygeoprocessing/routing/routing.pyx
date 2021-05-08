@@ -612,6 +612,7 @@ def _generate_read_bounds(offset_dict, raster_x_size, raster_y_size):
 def fill_pits(
         dem_raster_path_band, target_filled_dem_raster_path,
         working_dir=None, long max_pixel_fill_count=_MAX_PIXEL_FILL_COUNT,
+        single_outlet_tuple=None,
         raster_driver_creation_tuple=DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS):
     """Fill the pits in a DEM.
 
@@ -638,6 +639,11 @@ def fill_pits(
         max_pixel_fill_count (int): maximum number of pixels to fill a pit
             before leaving as a depression. Useful if there are natural
             large depressions.
+        single_outlet_tuple (tuple): If not None, this is an x/y tuple in
+            raster coordinates indicating the only pixel that can be
+            considered a drain. If None then any pixel that would drain to
+            the edge of the raster or a nodata hole will be considered a
+            drain.
         raster_driver_creation_tuple (tuple): a tuple containing a GDAL driver
             name string as the first element and a GDAL creation options
             tuple/list as the second. Defaults to a GTiff driver tuple
@@ -695,6 +701,13 @@ def fill_pits(
     # algorithm, it's written into the mask rasters to indicate which pixels
     # have already been processed
     cdef int feature_id
+
+    # used to handle the case for single outlet mode
+
+    cdef int single_outlet=0, outlet_x=-1, outlet_y=-1
+    if single_outlet_tuple is not None:
+        single_outlet = 1
+        outlet_x, outlet_y = single_outlet_tuple
 
     # used for time-delayed logging
     cdef time_t last_log_time
@@ -808,19 +821,35 @@ def fill_pits(
                         xi_root, yi_root) != mask_nodata:
                     continue
 
+                # a single outlet trivially drains
+                if (single_outlet and
+                        xi_root == outlet_x and
+                        yi_root == outlet_y):
+                    continue
+
                 # search neighbors for downhill or nodata
                 downhill_neighbor = 0
                 nodata_neighbor = 0
                 for i_n in range(8):
                     xi_n = xi_root+D8_XOFFSET[i_n]
                     yi_n = yi_root+D8_YOFFSET[i_n]
+
+                    if single_outlet:
+                        if (xi_n == outlet_x and yi_n == outlet_y):
+                            downhill_neighbor = 1
+                            break
                     if (xi_n < 0 or xi_n >= raster_x_size or
                             yi_n < 0 or yi_n >= raster_y_size):
-                        # it'll drain off the edge of the raster
-                        nodata_neighbor = 1
-                        break
+                        if not single_outlet:
+                            # it'll drain off the edge of the raster
+                            nodata_neighbor = 1
+                            break
+                        else:
+                            # continue so we don't access out of bounds
+                            continue
                     n_height = filled_dem_managed_raster.get(xi_n, yi_n)
-                    if _is_close(n_height, dem_nodata, 1e-8, 1e-5):
+                    if not single_outlet and _is_close(
+                            n_height, dem_nodata, 1e-8, 1e-5):
                         # it'll drain to nodata
                         nodata_neighbor = 1
                         break
@@ -861,18 +890,27 @@ def fill_pits(
                     for i_n in range(8):
                         xi_n = xi_q+D8_XOFFSET[i_n]
                         yi_n = yi_q+D8_YOFFSET[i_n]
+
                         if (xi_n < 0 or xi_n >= raster_x_size or
                                 yi_n < 0 or yi_n >= raster_y_size):
-                            natural_drain_exists = 1
+                            if not single_outlet:
+                                natural_drain_exists = 1
                             continue
+
+                        if single_outlet:
+                            if xi_n == outlet_x and yi_n == outlet_y:
+                                natural_drain_exists = 1
+                                continue
                         n_height = filled_dem_managed_raster.get(
                             xi_n, yi_n)
-                        if _is_close(n_height, dem_nodata, 1e-8, 1e-5):
+                        if not single_outlet and _is_close(
+                                n_height, dem_nodata, 1e-8, 1e-5):
                             natural_drain_exists = 1
                             continue
                         if n_height < center_val:
                             natural_drain_exists = 1
                             continue
+
                         if flat_region_mask_managed_raster.get(
                                 xi_n, yi_n) == 1:
                             # been set before on a previous iteration, skip
@@ -922,11 +960,20 @@ def fill_pits(
                     for i_n in range(8):
                         xi_n = xi_q+D8_XOFFSET[i_n]
                         yi_n = yi_q+D8_YOFFSET[i_n]
+
                         if (xi_n < 0 or xi_n >= raster_x_size or
                                 yi_n < 0 or yi_n >= raster_y_size):
                             # drain off the edge of the raster
-                            pour_point = 1
-                            break
+                            if not single_outlet:
+                                pour_point = 1
+                                break
+                            else:
+                                continue
+
+                        if single_outlet:
+                            if xi_n == outlet_x and yi_n == outlet_y:
+                                pour_point = 1
+                                break
 
                         if pit_mask_managed_raster.get(
                                 xi_n, yi_n) == feature_id:
@@ -937,8 +984,9 @@ def fill_pits(
                         pit_mask_managed_raster.set(xi_n, yi_n, feature_id)
 
                         n_height = filled_dem_managed_raster.get(xi_n, yi_n)
-                        if _is_close(n_height, dem_nodata, 1e-8, 1e-5) or (
-                                n_height < fill_height):
+                        if (not single_outlet and
+                                _is_close(n_height, dem_nodata, 1e-8, 1e-5)) \
+                                or (n_height < fill_height):
                             # we encounter a neighbor not processed that is
                             # lower than the current pixel or nodata
                             pour_point = 1
