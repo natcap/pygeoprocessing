@@ -67,6 +67,9 @@ Unreleased Changes
 * Fixed an issue in ``distance_to_channel_mfd`` that would generate a raster
   with distances to the edge of the raster even if there was no channel. Now
   generates nodata so it is consistent with ``distance_to_channel_d8``.
+* Fixed an issue that would cause a ``convolve_2d`` worker to crash if the
+  integrating kernel was not a float and also ``normalize_kernel=True``
+  thus causing the entire function call to deadlock.
 * Added a check on ``transform_bounding_box`` to ensure the target bounding
   box's coordinates were finite. This guards against cases where a transform
   into another coordinate system creates a degenerate bounding box.
