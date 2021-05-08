@@ -67,6 +67,9 @@ Unreleased Changes
 * The ``convolve_2d`` function now raises a ValueError if either the signal
   or kernel raster has a row based blocksize since this could result in
   very long runtimes due to gdal cache thrashing.
+* Fixed an issue that would cause a ``convolve_2d`` worker to crash if the
+  integrating kernel was not a float and also ``normalize_kernel=True``
+  thus causing the entire function call to deadlock.
 * Added a check on ``transform_bounding_box`` to ensure the target bounding
   box's coordinates were finite. This guards against cases where a transform
   into another coordinate system creates a degenerate bounding box.

@@ -4244,6 +4244,7 @@ class TestGeoprocessing(unittest.TestCase):
         actual_message = str(cm.exception)
         self.assertTrue(expected_message in actual_message, actual_message)
 
+<<<<<<< HEAD
     def test_convolve_2d_non_square_blocksizes(self):
         """PGP.geo: test that convolve 2d errors on non-square blocksizes."""
         a_path = os.path.join(self.workspace_dir, 'a.tif')
@@ -4283,3 +4284,41 @@ class TestGeoprocessing(unittest.TestCase):
             expected_message = 'has a row blocksize'
             actual_message = str(cm.exception)
             self.assertTrue(expected_message in actual_message, actual_message)
+=======
+    def test_convolve_with_byte_kernel(self):
+        """PGP: test that byte kernel can still convolve."""
+        array = numpy.ones((10, 10), dtype=numpy.float32)
+        kernel = numpy.ones((3, 3))
+        signal_path = os.path.join(
+            self.workspace_dir, 'test_convolve_2d_signal.tif')
+        float_kernel_path = os.path.join(
+            self.workspace_dir, 'test_convolve_2d_float_kernel.tif')
+        int_kernel_path = os.path.join(
+            self.workspace_dir, 'test_convolve_2d_int_kernel.tif')
+        float_out_path = os.path.join(
+            self.workspace_dir, 'test_convolve_2d_float_out.tif')
+        int_out_path = os.path.join(
+            self.workspace_dir, 'test_convolve_2d_int_out.tif')
+
+        srs = osr.SpatialReference()
+        srs.ImportFromEPSG(3857)
+        projection_wkt = srs.ExportToWkt()
+
+        pygeoprocessing.numpy_array_to_raster(
+            array, 255, (20, -20), (0, 0), projection_wkt, signal_path)
+        pygeoprocessing.numpy_array_to_raster(kernel.astype(numpy.uint8),
+            255, (20, -20), (0, 0), projection_wkt, int_kernel_path)
+
+        pygeoprocessing.convolve_2d(
+            (signal_path, 1),
+            (int_kernel_path, 1),
+            int_out_path,
+            ignore_nodata_and_edges=True,
+            normalize_kernel=True)
+
+        # the above configuration should leave the signal intact except for
+        # numerical noise
+        numpy.testing.assert_almost_equal(
+            pygeoprocessing.raster_to_numpy_array(int_out_path),
+            array)
+>>>>>>> main
