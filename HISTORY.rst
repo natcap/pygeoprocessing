@@ -71,6 +71,10 @@ Unreleased Changes
   box's coordinates were finite. This guards against cases where a transform
   into another coordinate system creates a degenerate bounding box.
   Previously the function would silently return non-finite coordinates.
+* Added a ``single_outlet_tuple`` parameter to ``routing.fill_pits`` that
+  forces a DEM to only have one outlet at any point on the raster. The
+  fill effect is that all pixels will drain to the raster coordinate at
+  ``single_outlet_tuple``.
 
 2.1.2 (2020-12-03)
 ------------------
