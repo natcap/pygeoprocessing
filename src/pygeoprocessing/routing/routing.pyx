@@ -4192,7 +4192,7 @@ def calculate_subwatershed_boundary(
         '(calculate_subwatershed_boundary): watershed building 100% complete')
 
 
-def detect_lowest_sink_and_drain(dem_raster_path_band):
+def detect_lowest_drain_and_sink(dem_raster_path_band):
     """Find the lowest drain and sink pixel in the DEM.
 
     This function is used to specify conditions to DEMs that are known to
@@ -4211,15 +4211,15 @@ def detect_lowest_sink_and_drain(dem_raster_path_band):
 
         The result is two pixels indicating the first lowest edge and first
         lowest sink seen:
-            edge_pixel = (3, 4), 10
-            pit_pixel = (10, 15), 5
+            drain_pixel = (3, 4), 10
+            sink_pixel = (10, 15), 5
 
     Args:
         dem_raster_path_band (tuple): a raster/path band tuple to detect
             sinks in.
 
     Return:
-        (edge_pixel, edge_height, pit_pixel, pit_height) -
+        (drain_pixel, drain_height, sink_pixel, sink_height) -
             two (x, y) tuples with corresponding heights, first
             list is for edge drains, the second is for pit sinks. The x/y
             coordinate is in raster coordinate space and `height` is the
@@ -4227,10 +4227,10 @@ def detect_lowest_sink_and_drain(dem_raster_path_band):
     """
     # this outer loop drives the raster block search
     cdef double lowest_drain_height = numpy.inf
-    cdef double lowest_pit_height = numpy.inf
+    cdef double lowest_sink_height = numpy.inf
 
     drain_pixel = None
-    pit_pixel = None
+    sink_pixel = None
 
     dem_raster_info = pygeoprocessing.get_raster_info(
         dem_raster_path_band[0])
@@ -4277,7 +4277,7 @@ def detect_lowest_sink_and_drain(dem_raster_path_band):
                     continue
 
                 if (center_val > lowest_drain_height and
-                        center_val > lowest_pit_height):
+                        center_val > lowest_sink_height):
                     # already found something lower
                     continue
 
@@ -4309,12 +4309,12 @@ def detect_lowest_sink_and_drain(dem_raster_path_band):
                         # it'll drain downhill
                         pixel_drains = 1
                         break
-                if not pixel_drains and center_val < lowest_pit_height:
-                    lowest_pit_height = center_val
-                    pit_pixel = (xi_root, yi_root)
+                if not pixel_drains and center_val < lowest_sink_height:
+                    lowest_sink_height = center_val
+                    sink_pixel = (xi_root, yi_root)
     return (
         drain_pixel, lowest_drain_height,
-        pit_pixel, lowest_pit_height)
+        sink_pixel, lowest_sink_height)
 
 
 def detect_outlets(

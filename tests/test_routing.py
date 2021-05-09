@@ -1198,7 +1198,7 @@ class TestRouting(unittest.TestCase):
             result_array = pygeoprocessing.raster_to_numpy_array(fill_path)
             numpy.testing.assert_almost_equal(result_array, expected_array)
 
-    def test_detect_lowest_sink_and_drain(self):
+    def test_detect_lowest_drain_and_sink(self):
         """PGP>routing: test detect_lowest_sink_and_drain."""
         dem_array = numpy.zeros((11, 11), dtype=numpy.float32)
         dem_array[3:8, 3:8] = -1.0
@@ -1208,16 +1208,16 @@ class TestRouting(unittest.TestCase):
         dem_path = os.path.join(self.workspace_dir, 'dem.tif')
         _array_to_raster(dem_array, None, dem_path)
 
-        edge_pixel, edge_height, pit_pixel, pit_height = \
-            pygeoprocessing.routing.detect_lowest_sink_and_drain(
+        drain_pixel, drain_height, sink_pixel, sink_height = \
+            pygeoprocessing.routing.detect_lowest_drain_and_sink(
                 (dem_path, 1))
 
-        expected_edge_pixel = (0, 0)
-        expected_edge_height = -1
-        expected_pit_pixel = (3, 3)
-        expected_pit_height = -1
+        expected_drain_pixel = (0, 0)
+        expected_drain_height = -1
+        expected_sink_pixel = (3, 3)
+        expected_sink_height = -1
 
-        self.assertEqual(edge_pixel, expected_edge_pixel)
-        self.assertEqual(edge_height, expected_edge_height)
-        self.assertEqual(pit_pixel, expected_pit_pixel)
-        self.assertEqual(pit_height, expected_pit_height)
+        self.assertEqual(drain_pixel, expected_drain_pixel)
+        self.assertEqual(drain_height, expected_drain_height)
+        self.assertEqual(sink_pixel, expected_sink_pixel)
+        self.assertEqual(sink_height, expected_sink_height)
