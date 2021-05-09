@@ -4244,7 +4244,6 @@ class TestGeoprocessing(unittest.TestCase):
         actual_message = str(cm.exception)
         self.assertTrue(expected_message in actual_message, actual_message)
 
-<<<<<<< HEAD
     def test_convolve_2d_non_square_blocksizes(self):
         """PGP.geo: test that convolve 2d errors on non-square blocksizes."""
         a_path = os.path.join(self.workspace_dir, 'a.tif')
@@ -4284,7 +4283,7 @@ class TestGeoprocessing(unittest.TestCase):
             expected_message = 'has a row blocksize'
             actual_message = str(cm.exception)
             self.assertTrue(expected_message in actual_message, actual_message)
-=======
+
     def test_convolve_with_byte_kernel(self):
         """PGP: test that byte kernel can still convolve."""
         array = numpy.ones((10, 10), dtype=numpy.float32)
@@ -4321,4 +4320,3 @@ class TestGeoprocessing(unittest.TestCase):
         numpy.testing.assert_almost_equal(
             pygeoprocessing.raster_to_numpy_array(int_out_path),
             array)
->>>>>>> main
