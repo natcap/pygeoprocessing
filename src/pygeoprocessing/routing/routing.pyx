@@ -84,10 +84,6 @@ cdef int *D8_YOFFSET = [0, -1, -1, -1, 0, +1, +1, +1]
 # as a D8 direction
 cdef int* D8_REVERSE_DIRECTION = [4, 5, 6, 7, 0, 1, 2, 3]
 
-# default of number of pixels to naturally drain. This number was derived off
-# of reasonable expectations from a 30m DEM
-cdef int _MAX_PIXEL_FILL_COUNT = 500
-
 # exposing stl::priority_queue so we can have all 3 template arguments so
 # we can pass a different Compare functor
 cdef extern from "<queue>" namespace "std" nogil:
@@ -612,7 +608,7 @@ def _generate_read_bounds(offset_dict, raster_x_size, raster_y_size):
 def fill_pits(
         dem_raster_path_band, target_filled_dem_raster_path,
         working_dir=None,
-        long long max_pixel_fill_count=_MAX_PIXEL_FILL_COUNT,
+        long long max_pixel_fill_count=-1,
         single_outlet_tuple=None,
         raster_driver_creation_tuple=DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS):
     """Fill the pits in a DEM.
