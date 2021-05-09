@@ -80,6 +80,8 @@ Unreleased Changes
   be a sink. The values that result from this call can be used to condition
   a DEM that is known to have a single drain using the
   ``single_outlet_tuple`` parameter in ``routing.fill_pits``.
+* Fixed a bug in ``routing.fill_pits`` that could cause the nodata region of
+  a DEM to be incorrectly filled with non-nodata values.
 
 2.1.2 (2020-12-03)
 ------------------
