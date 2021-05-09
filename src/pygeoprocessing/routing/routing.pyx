@@ -804,10 +804,10 @@ def fill_pits(
                 'pixels complete')
 
         # search block for locally undrained pixels
-        for yi in range(1, win_ysize+1):
-            yi_root = yi-1+yoff
-            for xi in range(1, win_xsize+1):
-                xi_root = xi-1+xoff
+        for yi in range(win_ysize):
+            yi_root = yi+yoff
+            for xi in range(win_xsize):
+                xi_root = xi+xoff
                 # this value is set in case it turns out to be the root of a
                 # pit, we'll start the fill from this pixel in the last phase
                 # of the algorithm
@@ -832,10 +832,6 @@ def fill_pits(
                     xi_n = xi_root+D8_XOFFSET[i_n]
                     yi_n = yi_root+D8_YOFFSET[i_n]
 
-                    if single_outlet:
-                        if (xi_n == outlet_x and yi_n == outlet_y):
-                            downhill_neighbor = 1
-                            break
                     if (xi_n < 0 or xi_n >= raster_x_size or
                             yi_n < 0 or yi_n >= raster_y_size):
                         if not single_outlet:
@@ -896,10 +892,6 @@ def fill_pits(
                                 natural_drain_exists = 1
                             continue
 
-                        if single_outlet:
-                            if xi_n == outlet_x and yi_n == outlet_y:
-                                natural_drain_exists = 1
-                                continue
                         n_height = filled_dem_managed_raster.get(
                             xi_n, yi_n)
                         if not single_outlet and _is_close(
@@ -970,20 +962,23 @@ def fill_pits(
                             else:
                                 continue
 
-                        if single_outlet:
-                            if xi_n == outlet_x and yi_n == outlet_y:
-                                pour_point = 1
-                                break
-
                         if pit_mask_managed_raster.get(
                                 xi_n, yi_n) == feature_id:
                             # this cell has already been processed
                             continue
-
                         # mark as visited in the search for pour point
                         pit_mask_managed_raster.set(xi_n, yi_n, feature_id)
 
                         n_height = filled_dem_managed_raster.get(xi_n, yi_n)
+                        if (single_outlet and xi_n == outlet_x
+                                and yi_n == outlet_y):
+                            LOGGER.debug(
+                                f'found single outlet pour point at '
+                                f'{xi_q} {yi_q} to {xi_n} {yi_n}')
+                            fill_height = n_height
+                            pour_point = 1
+                            break
+
                         if (not single_outlet and
                                 _is_close(n_height, dem_nodata, 1e-8, 1e-5)) \
                                 or (n_height < fill_height):

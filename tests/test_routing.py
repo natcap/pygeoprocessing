@@ -255,7 +255,6 @@ class TestRouting(unittest.TestCase):
         flow_dir_mfd[nodata_mask] = 0  # set to MFD nodata
         flow_dir_mfd_path = os.path.join(self.workspace_dir, 'mfd.tif')
         _array_to_raster(flow_dir_mfd, 0, flow_dir_mfd_path)
-        print(flow_dir_mfd)
         outlet_vector_path = os.path.join(
             self.workspace_dir, 'outlets.gpkg')
         pygeoprocessing.routing.detect_outlets(
@@ -1167,25 +1166,25 @@ class TestRouting(unittest.TestCase):
     def test_single_drain_point(self):
         """PGP.routing: test single_drain_point pitfill."""
         dem_array = numpy.zeros((11, 11), dtype=numpy.float32)
-        dem_array[3:8, 3:8] = -1.0
         dem_array[0, 0] = -1.0
-        dem_array[10, 10] = -1.0
+        dem_array[1:8, 1:8] = -2.0
+        dem_array[10, 10] = -7.0
         dem_path = os.path.join(self.workspace_dir, 'dem.tif')
         _array_to_raster(dem_array, None, dem_path)
 
         # outlet tuple at 0,0, just drain one edge
         expected_array_0_0 = numpy.copy(dem_array)
-        expected_array_0_0[3:8, 3:8] = 0.0
-        expected_array_0_0[10, 10] = 0.0
+        expected_array_0_0[1:8, 1:8] = -1
+        expected_array_0_0[10, 10] = 0
 
         # output tuple at 5,5, it's a massive pit so drain the edges
         expected_array_5_5 = numpy.copy(dem_array)
-        expected_array_5_5[0, 0] = 0.0
         expected_array_5_5[10, 10] = 0.0
 
         for output_tuple, expected_array in [
                 ((0, 0), expected_array_0_0),
-                ((5, 5), expected_array_5_5)]:
+                ((5, 5), expected_array_5_5),
+                ]:
             fill_path = os.path.join(self.workspace_dir, 'filled.tif')
             pygeoprocessing.routing.fill_pits(
                 (dem_path, 1), fill_path,
@@ -1215,6 +1214,5 @@ class TestRouting(unittest.TestCase):
 
         self.assertEqual(edge_pixel, expected_edge_pixel)
         self.assertEqual(edge_height, expected_edge_height)
-        print(pit_pixel)
         self.assertEqual(pit_pixel, expected_pit_pixel)
         self.assertEqual(pit_height, expected_pit_height)
