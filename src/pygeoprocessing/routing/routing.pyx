@@ -4183,6 +4183,131 @@ def calculate_subwatershed_boundary(
         '(calculate_subwatershed_boundary): watershed building 100% complete')
 
 
+def detect_lowest_sink_and_drain(dem_raster_path_band):
+    """Find the lowest drain and sink pixel in the DEM.
+
+    This function is used to specify conditions to DEMs that are known to
+    have one real sink/drain, but may have several numerical sink/drains by
+    detecting both the lowest pixel that could drain the raster on an edge
+    and the lowest internal pixel that might sink the whole raster.
+
+    Example:
+        raster A contains the following
+            * pixel at (3, 4) at 10m draining to a nodata  pixel
+            * pixel at (15, 19) at 11m draining to a nodata pixel
+            * pixel at (19, 21) at 10m draining to a nodata pixel
+            * pit pixel at (10, 15) at 5m surrounded by non-draining pixels
+            * pit pixel at (25, 15) at 15m surrounded by non-draining pixels
+            * pit pixel at (2, 125) at 5m surrounded by non-draining pixels
+
+        The result is two pixels indicating the first lowest edge and first
+        lowest sink seen:
+            edge_pixel = (3, 4), 10
+            pit_pixel = (10, 15), 5
+
+    Args:
+        dem_raster_path_band (tuple): a raster/path band tuple to detect
+            sinks in.
+
+    Return:
+        (edge_pixel, edge_height, pit_pixel, pit_height) -
+            two (x, y) tuples with corresponding heights, first
+            list is for edge drains, the second is for pit sinks. The x/y
+            coordinate is in raster coordinate space and `height` is the
+            height of the given pixels in edge and pit respectively.
+    """
+    # this outer loop drives the raster block search
+    cdef double lowest_drain_height = numpy.inf
+    cdef double lowest_pit_height = numpy.inf
+
+    drain_pixel = None
+    pit_pixel = None
+
+    dem_raster_info = pygeoprocessing.get_raster_info(
+        dem_raster_path_band[0])
+    cdef double dem_nodata
+    # guard against undefined nodata by picking a value that's unlikely to
+    # be a dem value
+    if dem_raster_info['nodata'][0] is not None:
+        dem_nodata = dem_raster_info['nodata'][0]
+    else:
+        dem_nodata = IMPROBABLE_FLOAT_NODATA
+
+    raster_x_size, raster_y_size = dem_raster_info['raster_size']
+
+    cdef _ManagedRaster dem_managed_raster = _ManagedRaster(
+        dem_raster_path_band[0], dem_raster_path_band[1], 0)
+
+    cdef time_t last_log_time = ctime(NULL)
+
+    for offset_dict in pygeoprocessing.iterblocks(
+            dem_raster_path_band, offset_only=True, largest_block=0):
+        win_xsize = offset_dict['win_xsize']
+        win_ysize = offset_dict['win_ysize']
+        xoff = offset_dict['xoff']
+        yoff = offset_dict['yoff']
+
+        if ctime(NULL) - last_log_time > _LOGGING_PERIOD:
+            last_log_time = ctime(NULL)
+            current_pixel = xoff + yoff * raster_x_size
+            LOGGER.info(
+                '(infer_sinks): '
+                f'{current_pixel} of {raster_x_size * raster_y_size} '
+                'pixels complete')
+
+        # search block for locally undrained pixels
+        for yi in range(1, win_ysize+1):
+            yi_root = yi-1+yoff
+            for xi in range(1, win_xsize+1):
+                xi_root = xi-1+xoff
+                # this value is set in case it turns out to be the root of a
+                # pit, we'll start the fill from this pixel in the last phase
+                # of the algorithm
+                center_val = dem_managed_raster.get(xi_root, yi_root)
+                if _is_close(center_val, dem_nodata, 1e-8, 1e-5):
+                    continue
+
+                if (center_val > lowest_drain_height and
+                        center_val > lowest_pit_height):
+                    # already found something lower
+                    continue
+
+                # search neighbors for downhill or nodata
+                pixel_drains = 0
+                for i_n in range(8):
+                    xi_n = xi_root+D8_XOFFSET[i_n]
+                    yi_n = yi_root+D8_YOFFSET[i_n]
+
+                    if (xi_n < 0 or xi_n >= raster_x_size or
+                            yi_n < 0 or yi_n >= raster_y_size):
+                        # it'll drain off the edge of the raster
+                        if center_val < lowest_drain_height:
+                            # found a new lower edge height
+                            lowest_drain_height = center_val
+                            drain_pixel = (xi_root, yi_root)
+                        pixel_drains = 1
+                        break
+                    n_height = dem_managed_raster.get(xi_n, yi_n)
+                    if _is_close(n_height, dem_nodata, 1e-8, 1e-5):
+                        # it'll drain to nodata
+                        if center_val < lowest_drain_height:
+                            # found a new lower edge height
+                            lowest_drain_height = center_val
+                            drain_pixel = (xi_root, yi_root)
+                        pixel_drains = 1
+                        break
+                    if n_height < center_val:
+                        # it'll drain downhill
+                        pixel_drains = 1
+                        break
+                if not pixel_drains and center_val < lowest_pit_height:
+                    lowest_pit_height = center_val
+                    pit_pixel = (xi_root, yi_root)
+    return (
+        drain_pixel, lowest_drain_height,
+        pit_pixel, lowest_pit_height)
+
+
 def detect_outlets(
         flow_dir_raster_path_band, flow_dir_type, target_outlet_vector_path):
     """Create point vector indicating flow raster outlets.
