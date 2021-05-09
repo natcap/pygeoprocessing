@@ -3907,7 +3907,7 @@ def calculate_subwatershed_boundary(
 
     cdef int x_l, y_l, outflow_dir
     cdef double x_f, y_f
-    cdef double x_first, y_first, x_p, y_p
+    cdef double x_p, y_p
     cdef long discovery, finish
 
     cdef time_t last_log_time = ctime(NULL)
@@ -3981,7 +3981,7 @@ def calculate_subwatershed_boundary(
 
     cdef int edge_side, edge_dir, cell_to_test, out_dir_increase=-1
     cdef int left, right, n_steps, terminated_early
-    cdef double abs_delta_x, abs_delta_y
+    cdef int delta_x, delta_y
     cdef int _int_max_steps_per_watershed = max_steps_per_watershed
 
     for index, (stream_fid, x_l, y_l) in enumerate(visit_order_stack):
@@ -4016,7 +4016,9 @@ def calculate_subwatershed_boundary(
         x_p, y_p = gdal.ApplyGeoTransform(geotransform, x_f, y_f)
         watershed_boundary.AddPoint(x_p, y_p)
 
-        x_first, y_first = x_p, y_p
+        # keep track of how many steps x/y and when we get back to 0 we've
+        # made a loop
+        delta_x, delta_y = 0, 0
 
         # determine the first edge
         if outflow_dir % 2 == 0:
@@ -4042,13 +4044,12 @@ def calculate_subwatershed_boundary(
 
         n_steps = 0
         terminated_early = 0
-        # deltas should be within 0.01 % of a pixel width
-        abs_delta_x = (abs(g1)+abs(g2)) * 0.01
-        abs_delta_y = (abs(g4)+abs(g5)) * 0.01
         while True:
             # step the edge then determine the projected coordinates
             x_f += D8_XOFFSET[edge_dir]
             y_f += D8_YOFFSET[edge_dir]
+            delta_x += D8_XOFFSET[edge_dir]
+            delta_y += D8_YOFFSET[edge_dir]
             # equivalent to gdal.ApplyGeoTransform(geotransform, x_f, y_f)
             # to eliminate python function call overhead
             x_p = g0 + g1*x_f + g2*y_f
@@ -4105,8 +4106,7 @@ def calculate_subwatershed_boundary(
                 edge_side = edge_dir
                 edge_dir = (edge_side + out_dir_increase) % 8
 
-            if _is_close(x_p, x_first, abs_delta_x, 0.0) and \
-                    _is_close(y_p, y_first, abs_delta_y, 0.0):
+            if delta_x == 0 and delta_y == 0:
                 # met the start point so we completed the watershed loop
                 break
 
