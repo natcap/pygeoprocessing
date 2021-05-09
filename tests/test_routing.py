@@ -1174,18 +1174,17 @@ class TestRouting(unittest.TestCase):
         dem_array[10, 10] = -7.0
         dem_path = os.path.join(self.workspace_dir, 'dem.tif')
         _array_to_raster(dem_array, None, dem_path)
-        _array_to_raster(dem_array, None, 'dem.tif')
 
         # outlet tuple at 0,0, just drain one edge
         expected_array_0_0 = numpy.copy(dem_array)
         expected_array_0_0[1:8, 1:8] = -1
         expected_array_0_0[10, 7] = 0
         expected_array_0_0[8:11, 8:11] = 2.0
-        _array_to_raster(expected_array_0_0, None, 'expected.tif')
 
         # output tuple at 5,5, it's a massive pit so drain the edges
         expected_array_5_5 = numpy.copy(dem_array)
-        expected_array_5_5[9:11, 9:11] = 0
+        expected_array_5_5[8:11, 8:11] = 2.0
+        expected_array_5_5[10, 7] = 0
 
         for output_tuple, expected_array in [
                 ((0, 0), expected_array_0_0),
@@ -1197,7 +1196,6 @@ class TestRouting(unittest.TestCase):
                 single_outlet_tuple=output_tuple,
                 working_dir=self.workspace_dir)
             result_array = pygeoprocessing.raster_to_numpy_array(fill_path)
-            _array_to_raster(result_array, None, 'filled.tif')
             numpy.testing.assert_almost_equal(result_array, expected_array)
 
     def test_detect_lowest_sink_and_drain(self):
