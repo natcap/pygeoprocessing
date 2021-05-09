@@ -842,11 +842,14 @@ def fill_pits(
                             # continue so we don't access out of bounds
                             continue
                     n_height = filled_dem_managed_raster.get(xi_n, yi_n)
-                    if not single_outlet and _is_close(
-                            n_height, dem_nodata, 1e-8, 1e-5):
-                        # it'll drain to nodata
-                        nodata_neighbor = 1
-                        break
+                    if _is_close(n_height, dem_nodata, 1e-8, 1e-5):
+                        if not single_outlet:
+                            # it'll drain to nodata
+                            nodata_neighbor = 1
+                            break
+                        else:
+                            # skip the rest so it doesn't drain downhill
+                            continue
                     if n_height < center_val:
                         # it'll drain downhill
                         downhill_neighbor = 1
@@ -876,6 +879,9 @@ def fill_pits(
                     if (max_pixel_fill_count > 0 and
                             search_steps > max_pixel_fill_count):
                         # clear the search queue and quit
+                        LOGGER.debug(
+                            'exceeded max pixel fill count when searching '
+                            'for plateau drain')
                         while not search_queue.empty():
                             search_queue.pop()
                         natural_drain_exists = 1
@@ -894,9 +900,9 @@ def fill_pits(
 
                         n_height = filled_dem_managed_raster.get(
                             xi_n, yi_n)
-                        if not single_outlet and _is_close(
-                                n_height, dem_nodata, 1e-8, 1e-5):
-                            natural_drain_exists = 1
+                        if _is_close(n_height, dem_nodata, 1e-8, 1e-5):
+                            if not single_outlet:
+                                natural_drain_exists = 1
                             continue
                         if n_height < center_val:
                             natural_drain_exists = 1
@@ -941,6 +947,9 @@ def fill_pits(
                     if (max_pixel_fill_count > 0 and
                             search_steps > max_pixel_fill_count):
                         # clear pit_queue and quit
+                        LOGGER.debug(
+                            'exceeded max pixel fill count when searching '
+                            'for pour point')
                         pit_queue = PitPriorityQueueType()
                         natural_drain_exists = 1
                         break
@@ -972,18 +981,22 @@ def fill_pits(
                         n_height = filled_dem_managed_raster.get(xi_n, yi_n)
                         if (single_outlet and xi_n == outlet_x
                                 and yi_n == outlet_y):
-                            LOGGER.debug(
-                                f'found single outlet pour point at '
-                                f'{xi_q} {yi_q} to {xi_n} {yi_n}')
                             fill_height = n_height
                             pour_point = 1
                             break
 
-                        if (not single_outlet and
-                                _is_close(n_height, dem_nodata, 1e-8, 1e-5)) \
-                                or (n_height < fill_height):
+                        if _is_close(n_height, dem_nodata, 1e-8, 1e-5):
+                            # we encounter a neighbor not processed that
+                            # is nodata
+                            if not single_outlet:
+                                # it's only a pour point if we aren't in
+                                # single outlet mode
+                                pour_point = 1
+                            # skip so we don't go negative
+                            continue
+                        if n_height < fill_height:
                             # we encounter a neighbor not processed that is
-                            # lower than the current pixel or nodata
+                            # lower than the current pixel
                             pour_point = 1
                             break
 
@@ -1021,9 +1034,10 @@ def fill_pits(
                         if (xi_n < 0 or xi_n >= raster_x_size or
                                 yi_n < 0 or yi_n >= raster_y_size):
                             continue
-
-                        if filled_dem_managed_raster.get(
-                                xi_n, yi_n) < fill_height:
+                        n_height = filled_dem_managed_raster.get(xi_n, yi_n)
+                        if _is_close(n_height, dem_nodata, 1e-8, 1e-5):
+                            continue
+                        if n_height < fill_height:
                             filled_dem_managed_raster.set(
                                 xi_n, yi_n, fill_height)
                             fill_queue.push(CoordinateType(xi_n, yi_n))
