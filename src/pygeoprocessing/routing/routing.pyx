@@ -611,7 +611,8 @@ def _generate_read_bounds(offset_dict, raster_x_size, raster_y_size):
 
 def fill_pits(
         dem_raster_path_band, target_filled_dem_raster_path,
-        working_dir=None, long max_pixel_fill_count=_MAX_PIXEL_FILL_COUNT,
+        working_dir=None,
+        long long max_pixel_fill_count=_MAX_PIXEL_FILL_COUNT,
         single_outlet_tuple=None,
         raster_driver_creation_tuple=DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS):
     """Fill the pits in a DEM.
@@ -638,7 +639,8 @@ def fill_pits(
             call completes successfully.
         max_pixel_fill_count (int): maximum number of pixels to fill a pit
             before leaving as a depression. Useful if there are natural
-            large depressions.
+            large depressions. Value of -1 fills the raster with no search
+            limit.
         single_outlet_tuple (tuple): If not None, this is an x/y tuple in
             raster coordinates indicating the only pixel that can be
             considered a drain. If None then any pixel that would drain to
@@ -671,7 +673,7 @@ def fill_pits(
 
     # keep track of how many steps searched on the pit to test against
     # max_pixel_fill_count
-    cdef int search_steps
+    cdef long long search_steps
 
     # `search_queue` is used to grow a flat region searching for a pour point
     # to determine if region is plateau or, in the absence of a pour point,
@@ -879,7 +881,8 @@ def fill_pits(
                     xi_q = search_queue.front().xi
                     yi_q = search_queue.front().yi
                     search_queue.pop()
-                    if search_steps > max_pixel_fill_count:
+                    if (max_pixel_fill_count > 0 and
+                            search_steps > max_pixel_fill_count):
                         # clear the search queue and quit
                         while not search_queue.empty():
                             search_queue.pop()
@@ -947,7 +950,8 @@ def fill_pits(
                     yi_q = pixel.yi
 
                     # search to see if the fill has gone on too long
-                    if search_steps > max_pixel_fill_count:
+                    if (max_pixel_fill_count > 0 and
+                            search_steps > max_pixel_fill_count):
                         # clear pit_queue and quit
                         pit_queue = PitPriorityQueueType()
                         natural_drain_exists = 1
