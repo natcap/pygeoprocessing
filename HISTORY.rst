@@ -64,6 +64,9 @@ Unreleased Changes
 * Fixed an issue with ``convolve_2d`` that allowed output rasters to be
   created without a defined nodata value.
 * Fixed a LOGGER message bug that occurred in ``zonal_statistics``.
+* The ``convolve_2d`` function now raises a ValueError if either the signal
+  or kernel raster has a row based blocksize since this could result in
+  very long runtimes due to gdal cache thrashing.
 * Fixed an issue that would cause a ``convolve_2d`` worker to crash if the
   integrating kernel was not a float and also ``normalize_kernel=True``
   thus causing the entire function call to deadlock.
