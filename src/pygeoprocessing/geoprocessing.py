@@ -1171,7 +1171,7 @@ def zonal_statistics(
             aggregation coverage close to optimally by rasterizing sets of
             polygons that don't overlap.  However, this step can be
             computationally expensive for cases where there are many polygons.
-            Setting this flag to False directs the function rasterize in one
+              this flag to False directs the function rasterize in one
             step.
         working_dir (string): If not None, indicates where temporary files
             should be created during this run.
@@ -2477,6 +2477,18 @@ def convolve_2d(
     Nodata values are treated as 0.0 during the convolution and masked to
     nodata for the output result where ``signal_path`` has nodata.
 
+    Note with default values, boundary effects can be seen in the result where
+    the kernel would hang off the edge of the raster or in regions with 
+    nodata pixels. The function would treat these areas as values with "0.0"
+    by default thus pulling the total convolution down in these areas. This
+    is similar to setting ``mode='same'`` in Numpy's ``convolve`` function:
+    https://numpy.org/doc/stable/reference/generated/numpy.convolve.html
+
+    This boundary effect can be avoided by setting 
+    ``ignore_nodata_and_edges=True`` which normalizes the target result by 
+    dynamically accounting for the number of valid signal pixels the kernel 
+    overlapped during the convolution step.
+
     Args:
         signal_path_band (tuple): a 2 tuple of the form
             (filepath to signal raster, band index).
@@ -2543,9 +2555,13 @@ def convolve_2d(
         ``None``
 
     Raises:
-        ValueError
+        ValueError:
             if ``ignore_nodata_and_edges`` is ``True`` and ``mask_nodata``
-            is ``False``
+            is ``False``.
+        ValueError:
+            if ``signal_path_band`` or ``kernel_path_band`` is a row based
+            blocksize which would result in slow runtimes due to gdal
+            cache thrashing.
 
     """
     if target_datatype is not gdal.GDT_Float64 and target_nodata is None:
@@ -2572,6 +2588,17 @@ def convolve_2d(
             "Expected raster path band sequences for the following arguments "
             f"but instead got: {bad_raster_path_list}")
 
+    signal_raster_info = get_raster_info(signal_path_band[0])
+    kernel_raster_info = get_raster_info(kernel_path_band[0])
+
+    for info_dict in [signal_raster_info, kernel_raster_info]:
+        if 1 in info_dict['block_size']:
+            raise ValueError(
+                f'{signal_path_band} has a row blocksize which can make this '
+                f'function run very slow, create a square blocksize using '
+                f'`warp_raster` or `align_and_resize_raster_stack` which '
+                f'creates square blocksizes by default')
+
     # The nodata value is reset to a different value at the end of this
     # function. Here 0 is chosen as a default value since data are
     # incrementally added to the raster
@@ -2579,8 +2606,6 @@ def convolve_2d(
         signal_path_band[0], target_path, target_datatype, [0],
         raster_driver_creation_tuple=raster_driver_creation_tuple)
 
-    signal_raster_info = get_raster_info(signal_path_band[0])
-    kernel_raster_info = get_raster_info(kernel_path_band[0])
 
     n_cols_signal, n_rows_signal = signal_raster_info['raster_size']
     n_cols_kernel, n_rows_kernel = kernel_raster_info['raster_size']

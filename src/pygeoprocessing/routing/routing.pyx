@@ -2668,7 +2668,7 @@ def distance_to_channel_mfd(
                 "%s is supposed to be a raster band tuple but it's not." % (
                     path))
 
-    distance_nodata = IMPROBABLE_FLOAT_NODATA
+    distance_nodata = -1
     pygeoprocessing.new_raster_from_base(
         flow_dir_mfd_raster_path_band[0],
         target_distance_to_channel_raster_path,
@@ -2676,9 +2676,19 @@ def distance_to_channel_mfd(
         raster_driver_creation_tuple=raster_driver_creation_tuple)
     distance_to_channel_managed_raster = _ManagedRaster(
         target_distance_to_channel_raster_path, 1, 1)
-
     channel_managed_raster = _ManagedRaster(
         channel_raster_path_band[0], channel_raster_path_band[1], 0)
+
+    tmp_work_dir = tempfile.mkdtemp(
+        suffix=None, prefix='dist_to_channel_mfd_work_dir',
+        dir=os.path.dirname(target_distance_to_channel_raster_path))
+    visited_raster_path = os.path.join(tmp_work_dir, 'visited.tif')
+    pygeoprocessing.new_raster_from_base(
+        flow_dir_mfd_raster_path_band[0],
+        visited_raster_path,
+        gdal.GDT_Byte, [0],
+        raster_driver_creation_tuple=raster_driver_creation_tuple)
+    visited_managed_raster = _ManagedRaster(visited_raster_path, 1, 1)
 
     flow_dir_mfd_managed_raster = _ManagedRaster(
         flow_dir_mfd_raster_path_band[0], flow_dir_mfd_raster_path_band[1], 0)
@@ -2759,10 +2769,14 @@ def distance_to_channel_mfd(
                     # nodata flow, so we skip
                     continue
 
-                if _is_close(distance_to_channel_managed_raster.get(
-                        xi_root, yi_root), distance_nodata, 1e-8, 1e-5):
+                if visited_managed_raster.get(xi_root, yi_root) == 0:
+                    visited_managed_raster.set(xi_root, yi_root, 1)
+                    # arguments are x,y position of pixel, then last D8 flow
+                    # direction processed (0-7), and last is the running
+                    # accumulation distance accumulated by this pixel so far
+                    # initialized to nodata
                     distance_to_channel_stack.push(
-                        FlowPixelType(xi_root, yi_root, 0, 0.0))
+                        FlowPixelType(xi_root, yi_root, 0, distance_nodata))
 
                 while not distance_to_channel_stack.empty():
                     pixel = distance_to_channel_stack.top()
@@ -2792,16 +2806,22 @@ def distance_to_channel_mfd(
                                 yi_n < 0 or yi_n >= raster_y_size):
                             continue
 
-                        n_distance = distance_to_channel_managed_raster.get(
-                            xi_n, yi_n)
 
-                        if _is_close(n_distance, distance_nodata, 1e-8, 1e-5):
+                        if visited_managed_raster.get(xi_n, yi_n) == 0:
+                            visited_managed_raster.set(xi_n, yi_n, 1)
                             preempted = 1
                             pixel.last_flow_dir = i_n
                             distance_to_channel_stack.push(pixel)
                             distance_to_channel_stack.push(
-                                FlowPixelType(xi_n, yi_n, 0, 0.0))
+                                FlowPixelType(xi_n, yi_n, 0, distance_nodata))
                             break
+
+                        n_distance = distance_to_channel_managed_raster.get(
+                            xi_n, yi_n)
+
+                        if n_distance == distance_nodata:
+                            # a channel was never found
+                            continue
 
                         # if a weight is passed we use it directly and do
                         # not consider that a diagonal pixel is further
@@ -2815,6 +2835,8 @@ def distance_to_channel_mfd(
                         else:
                             weight_val = (SQRT2 if i_n % 2 else 1)
 
+                        if pixel.value == distance_nodata:
+                            pixel.value = 0
                         pixel.value += flow_dir_weight * (
                             weight_val + n_distance)
 
@@ -2838,6 +2860,8 @@ def distance_to_channel_mfd(
     flow_dir_mfd_managed_raster.close()
     if weight_raster is not None:
         weight_raster.close()
+    visited_managed_raster.close()
+    shutil.rmtree(tmp_work_dir)
     LOGGER.info('%.1f%% complete', 100.0)
 
 
@@ -3964,7 +3988,7 @@ def calculate_subwatershed_boundary(
 
     cdef int x_l, y_l, outflow_dir
     cdef double x_f, y_f
-    cdef double x_first, y_first, x_p, y_p
+    cdef double x_p, y_p
     cdef long discovery, finish
 
     cdef time_t last_log_time = ctime(NULL)
@@ -4038,7 +4062,7 @@ def calculate_subwatershed_boundary(
 
     cdef int edge_side, edge_dir, cell_to_test, out_dir_increase=-1
     cdef int left, right, n_steps, terminated_early
-    cdef double abs_delta_x, abs_delta_y
+    cdef int delta_x, delta_y
     cdef int _int_max_steps_per_watershed = max_steps_per_watershed
 
     for index, (stream_fid, x_l, y_l) in enumerate(visit_order_stack):
@@ -4073,7 +4097,9 @@ def calculate_subwatershed_boundary(
         x_p, y_p = gdal.ApplyGeoTransform(geotransform, x_f, y_f)
         watershed_boundary.AddPoint(x_p, y_p)
 
-        x_first, y_first = x_p, y_p
+        # keep track of how many steps x/y and when we get back to 0 we've
+        # made a loop
+        delta_x, delta_y = 0, 0
 
         # determine the first edge
         if outflow_dir % 2 == 0:
@@ -4099,13 +4125,12 @@ def calculate_subwatershed_boundary(
 
         n_steps = 0
         terminated_early = 0
-        # deltas should be within 0.01 % of a pixel width
-        abs_delta_x = (abs(g1)+abs(g2)) * 0.01
-        abs_delta_y = (abs(g4)+abs(g5)) * 0.01
         while True:
             # step the edge then determine the projected coordinates
             x_f += D8_XOFFSET[edge_dir]
             y_f += D8_YOFFSET[edge_dir]
+            delta_x += D8_XOFFSET[edge_dir]
+            delta_y += D8_YOFFSET[edge_dir]
             # equivalent to gdal.ApplyGeoTransform(geotransform, x_f, y_f)
             # to eliminate python function call overhead
             x_p = g0 + g1*x_f + g2*y_f
@@ -4162,8 +4187,7 @@ def calculate_subwatershed_boundary(
                 edge_side = edge_dir
                 edge_dir = (edge_side + out_dir_increase) % 8
 
-            if _is_close(x_p, x_first, abs_delta_x, 0.0) and \
-                    _is_close(y_p, y_first, abs_delta_y, 0.0):
+            if delta_x == 0 and delta_y == 0:
                 # met the start point so we completed the watershed loop
                 break
 
