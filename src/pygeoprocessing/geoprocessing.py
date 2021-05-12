@@ -1171,7 +1171,7 @@ def zonal_statistics(
             aggregation coverage close to optimally by rasterizing sets of
             polygons that don't overlap.  However, this step can be
             computationally expensive for cases where there are many polygons.
-            Setting this flag to False directs the function rasterize in one
+              this flag to False directs the function rasterize in one
             step.
         working_dir (string): If not None, indicates where temporary files
             should be created during this run.
@@ -2476,6 +2476,18 @@ def convolve_2d(
     Convolves the raster in ``kernel_path_band`` over ``signal_path_band``.
     Nodata values are treated as 0.0 during the convolution and masked to
     nodata for the output result where ``signal_path`` has nodata.
+
+    Note with default values, boundary effects can be seen in the result where
+    the kernel would hang off the edge of the raster or in regions with 
+    nodata pixels. The function would treat these areas as values with "0.0"
+    by default thus pulling the total convolution down in these areas. This
+    is similar to setting ``mode='same'`` in Numpy's ``convolve`` function:
+    https://numpy.org/doc/stable/reference/generated/numpy.convolve.html
+
+    This boundary effect can be avoided by setting 
+    ``ignore_nodata_and_edges=True`` which normalizes the target result by 
+    dynamically accounting for the number of valid signal pixels the kernel 
+    overlapped during the convolution step.
 
     Args:
         signal_path_band (tuple): a 2 tuple of the form
