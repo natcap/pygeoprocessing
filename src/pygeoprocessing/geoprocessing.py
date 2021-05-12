@@ -2543,9 +2543,13 @@ def convolve_2d(
         ``None``
 
     Raises:
-        ValueError
+        ValueError:
             if ``ignore_nodata_and_edges`` is ``True`` and ``mask_nodata``
-            is ``False``
+            is ``False``.
+        ValueError:
+            if ``signal_path_band`` or ``kernel_path_band`` is a row based
+            blocksize which would result in slow runtimes due to gdal
+            cache thrashing.
 
     """
     if target_datatype is not gdal.GDT_Float64 and target_nodata is None:
@@ -2572,6 +2576,17 @@ def convolve_2d(
             "Expected raster path band sequences for the following arguments "
             f"but instead got: {bad_raster_path_list}")
 
+    signal_raster_info = get_raster_info(signal_path_band[0])
+    kernel_raster_info = get_raster_info(kernel_path_band[0])
+
+    for info_dict in [signal_raster_info, kernel_raster_info]:
+        if 1 in info_dict['block_size']:
+            raise ValueError(
+                f'{signal_path_band} has a row blocksize which can make this '
+                f'function run very slow, create a square blocksize using '
+                f'`warp_raster` or `align_and_resize_raster_stack` which '
+                f'creates square blocksizes by default')
+
     # The nodata value is reset to a different value at the end of this
     # function. Here 0 is chosen as a default value since data are
     # incrementally added to the raster
@@ -2579,8 +2594,6 @@ def convolve_2d(
         signal_path_band[0], target_path, target_datatype, [0],
         raster_driver_creation_tuple=raster_driver_creation_tuple)
 
-    signal_raster_info = get_raster_info(signal_path_band[0])
-    kernel_raster_info = get_raster_info(kernel_path_band[0])
 
     n_cols_signal, n_rows_signal = signal_raster_info['raster_size']
     n_cols_kernel, n_rows_kernel = kernel_raster_info['raster_size']
