@@ -1173,7 +1173,8 @@ class TestRouting(unittest.TestCase):
 
         flow_dir = numpy.ones((10, 10))
         streams = numpy.zeros((10, 10))
-        expected_result = numpy.full((10, 10), -1)
+        nodata = -1
+        expected_result = numpy.full((10, 10), nodata)
 
         flow_dir_path = os.path.join(
             self.workspace_dir, 'test_stream_distance_flow_dir.tif')
@@ -1182,10 +1183,10 @@ class TestRouting(unittest.TestCase):
         distance_path = os.path.join(
             self.workspace_dir, 'test_stream_distance_output.tif')
         pygeoprocessing.numpy_array_to_raster(
-            flow_dir, -1, (10, -10), (1000, 1000), projection_wkt,
+            flow_dir, nodata, (10, -10), (1000, 1000), projection_wkt,
             flow_dir_path)
         pygeoprocessing.numpy_array_to_raster(
-            streams, -1, (10, -10), (1000, 1000), projection_wkt,
+            streams, nodata, (10, -10), (1000, 1000), projection_wkt,
             streams_path)
 
         pygeoprocessing.routing.distance_to_channel_d8(
