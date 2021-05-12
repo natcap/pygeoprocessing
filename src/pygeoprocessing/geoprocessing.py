@@ -1171,7 +1171,7 @@ def zonal_statistics(
             aggregation coverage close to optimally by rasterizing sets of
             polygons that don't overlap.  However, this step can be
             computationally expensive for cases where there are many polygons.
-            Setting this flag to False directs the function rasterize in one
+              this flag to False directs the function rasterize in one
             step.
         working_dir (string): If not None, indicates where temporary files
             should be created during this run.
@@ -2517,9 +2517,6 @@ def convolve_2d(
             over any areas except nodata holes, in this case the resulting
             values in these areas will be nonsensical numbers, perhaps
             numerical infinity or NaNs.
-                Setting this value to ``True`` is similar to the effect
-            created by setting ``mode`` to ``"valid"`` in Numpy's
-            convolve function: https://numpy.org/doc/stable/reference/generated/numpy.convolve.html
         normalize_kernel (boolean): If true, the result is divided by the
             sum of the kernel.
         mask_nodata (boolean): If true, ``target_path`` raster's output is
