@@ -2714,6 +2714,10 @@ def distance_to_channel_mfd(
 
                 if visited_managed_raster.get(xi_root, yi_root) == 0:
                     visited_managed_raster.set(xi_root, yi_root, 1)
+                    # arguments are x,y position of pixel, then last D8 flow
+                    # direction processed (0-7), and last is the running
+                    # accumulation distance accumulated by this pixel so far
+                    # initialized to nodata
                     distance_to_channel_stack.push(
                         FlowPixelType(xi_root, yi_root, 0, distance_nodata))
 
