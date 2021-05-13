@@ -734,8 +734,9 @@ def _raster_band_percentile_int(
         pixels_processed += block_data.size
         if time.time() - last_update > 5.0:
             LOGGER.debug(
-                'data sort to heap %.2f%% complete',
-                (100.*pixels_processed)/n_pixels)
+                f'data sort to heap {(100.*pixels_processed)/n_pixels}% '
+                f'complete, {pixels_processed} out of {n_pixels}'),
+
             last_update = time.time()
         buffer_data = numpy.sort(
             block_data[~numpy.isclose(block_data, nodata)]).astype(
@@ -868,8 +869,8 @@ def _raster_band_percentile_double(
     raster_info = pygeoprocessing.get_raster_info(
         base_raster_path_band[0])
     nodata = raster_info['nodata'][base_raster_path_band[1]-1]
-    n_pixels = numpy.prod(raster_info['raster_size'])
-    pixels_processed = 0
+    cdef long long n_pixels = numpy.prod(raster_info['raster_size'])
+    cdef long long pixels_processed = 0
 
     last_update = time.time()
     LOGGER.debug('sorting data to heap')
@@ -878,8 +879,9 @@ def _raster_band_percentile_double(
         pixels_processed += block_data.size
         if time.time() - last_update > 5.0:
             LOGGER.debug(
-                'data sort to heap %.2f%% complete',
-                (100.*pixels_processed)/n_pixels)
+                f'data sort to heap {(100.*pixels_processed)/n_pixels}% '
+                f'complete, {pixels_processed} out of {n_pixels}'),
+
             last_update = time.time()
         buffer_data = numpy.sort(
             block_data[~numpy.isclose(block_data, nodata)]).astype(
