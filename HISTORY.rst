@@ -77,6 +77,8 @@ Unreleased Changes
   box's coordinates were finite. This guards against cases where a transform
   into another coordinate system creates a degenerate bounding box.
   Previously the function would silently return non-finite coordinates.
+* Fixing issue when calculating histogram for floating point rasters the
+  logging progress percent would be incorrectly calculated.
 
 2.1.2 (2020-12-03)
 ------------------
