@@ -734,7 +734,7 @@ def _raster_band_percentile_int(
         pixels_processed += block_data.size
         if time.time() - last_update > 5.0:
             LOGGER.debug(
-                f'data sort to heap {(100.*pixels_processed)/n_pixels}% '
+                f'data sort to heap {(100.*pixels_processed)/n_pixels:.1f}% '
                 f'complete, {pixels_processed} out of {n_pixels}'),
 
             last_update = time.time()
@@ -880,7 +880,7 @@ def _raster_band_percentile_double(
         pixels_processed += block_data.size
         if time.time() - last_update > 5.0:
             LOGGER.debug(
-                f'data sort to heap {(100.*pixels_processed)/n_pixels}% '
+                f'data sort to heap {(100.*pixels_processed)/n_pixels:.1f}% '
                 f'complete, {pixels_processed} out of {n_pixels}'),
 
             last_update = time.time()
