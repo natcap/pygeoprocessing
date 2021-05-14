@@ -1,7 +1,7 @@
 Release History
 ===============
 
-2.2.0 (2020-05-04)
+2.2.0 (2020-05-14)
 ------------------
 * Adding explicit support for Python 3.9 and testing on Python 3.9.
 * Fixed an issue in ``create_raster_from_vector_extents`` that would cause a
