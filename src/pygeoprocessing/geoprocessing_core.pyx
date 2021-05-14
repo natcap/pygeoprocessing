@@ -869,7 +869,8 @@ def _raster_band_percentile_double(
     raster_info = pygeoprocessing.get_raster_info(
         base_raster_path_band[0])
     nodata = raster_info['nodata'][base_raster_path_band[1]-1]
-    cdef long long n_pixels = numpy.prod(raster_info['raster_size'])
+    cdef long long n_pixels = (
+        raster_info['raster_size'][0] * raster_info['raster_size'][1])
     cdef long long pixels_processed = 0
 
     last_update = time.time()
