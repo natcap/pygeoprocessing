@@ -3,6 +3,20 @@ Release History
 
 Unreleased Changes
 ------------------
+* Added a ``single_outlet_tuple`` parameter to ``routing.fill_pits`` that
+  forces a DEM to only have one outlet at any point on the raster. The
+  fill effect is that all pixels will drain to the raster coordinate at
+  ``single_outlet_tuple``.
+* Added a ``detect_lowest_sink_and_drain`` function that finds the lowest
+  DEM pixel that drains to nodata/edge and the lowest DEM pixel that could
+  be a sink. The values that result from this call can be used to condition
+  a DEM that is known to have a single drain using the
+  ``single_outlet_tuple`` parameter in ``routing.fill_pits``.
+* Fixed a bug in ``routing.fill_pits`` that could cause the nodata region of
+  a DEM to be incorrectly filled with non-nodata values.
+
+2.2.0 (2020-05-14)
+------------------
 * Adding explicit support for Python 3.9 and testing on Python 3.9.
 * Fixed an issue in ``create_raster_from_vector_extents`` that would cause a
   confusing exception to be raised if there was no geometry in the vector.
@@ -77,17 +91,8 @@ Unreleased Changes
   box's coordinates were finite. This guards against cases where a transform
   into another coordinate system creates a degenerate bounding box.
   Previously the function would silently return non-finite coordinates.
-* Added a ``single_outlet_tuple`` parameter to ``routing.fill_pits`` that
-  forces a DEM to only have one outlet at any point on the raster. The
-  fill effect is that all pixels will drain to the raster coordinate at
-  ``single_outlet_tuple``.
-* Added a ``detect_lowest_sink_and_drain`` function that finds the lowest
-  DEM pixel that drains to nodata/edge and the lowest DEM pixel that could
-  be a sink. The values that result from this call can be used to condition
-  a DEM that is known to have a single drain using the
-  ``single_outlet_tuple`` parameter in ``routing.fill_pits``.
-* Fixed a bug in ``routing.fill_pits`` that could cause the nodata region of
-  a DEM to be incorrectly filled with non-nodata values.
+* Fixing issue when calculating histogram for floating point rasters the
+  logging progress percent would be incorrectly calculated.
 
 2.1.2 (2020-12-03)
 ------------------
