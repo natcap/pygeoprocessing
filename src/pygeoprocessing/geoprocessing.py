@@ -1005,17 +1005,24 @@ def create_raster_from_vector_extents(
     shp_extent = None
     for layer_index in range(vector.GetLayerCount()):
         layer = vector.GetLayer(layer_index)
-        if layer.GetFeatureCount() == 0:
-            continue
-        layer_extent = layer.GetExtent()
-        if shp_extent is None:
-            shp_extent = list(layer_extent)
-        else:
-            # expand bounds of current bounding box to include that
-            # of the newest feature
-            shp_extent = [
-                f(shp_extent[index], layer_extent[index])
-                for index, f in enumerate([min, max, min, max])]
+        for feature in layer:
+            try:
+                # envelope is [xmin, xmax, ymin, ymax]
+                feature_extent = feature.GetGeometryRef().GetEnvelope()
+                if shp_extent is None:
+                    shp_extent = list(feature_extent)
+                else:
+                    # expand bounds of current bounding box to include that
+                    # of the newest feature
+                    shp_extent = [
+                        f(shp_extent[index], feature_extent[index])
+                        for index, f in enumerate([min, max, min, max])]
+            except AttributeError as error:
+                # For some valid OGR objects the geometry can be undefined
+                # since it's valid to have a NULL entry in the attribute table
+                # this is expressed as a None value in the geometry reference
+                # this feature won't contribute
+                LOGGER.warning(error)
         layer = None
 
     if shp_extent is None:
