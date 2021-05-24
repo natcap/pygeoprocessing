@@ -37,7 +37,7 @@ jobs:
       run: |
           conda install --file requirements.txt
           conda install $PACKAGES
-          conda install ${{ matrix.gdal }}
+          conda install gdal==${{ matrix.gdal }}
           python setup.py install
 
     - name: Lint with flake8
