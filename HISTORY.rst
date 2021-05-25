@@ -1,6 +1,12 @@
 Release History
 ===============
 
+Unreleased Changes
+------------------
+* Fixed an issue where ``create_raster_from_vector_extent`` would use an
+  approximation of the layer extent to infer the input vector extent. Now
+  uses the individual geometry to infer vector extents.
+
 2.2.0 (2020-05-14)
 ------------------
 * Adding explicit support for Python 3.9 and testing on Python 3.9.
