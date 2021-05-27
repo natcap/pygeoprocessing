@@ -14,6 +14,9 @@ Unreleased Changes
   ``single_outlet_tuple`` parameter in ``routing.fill_pits``.
 * Fixed a bug in ``routing.fill_pits`` that could cause the nodata region of
   a DEM to be incorrectly filled with non-nodata values.
+* Fixed an issue where ``create_raster_from_vector_extent`` would use an
+  approximation of the layer extent to infer the input vector extent. Now
+  uses the individual geometry to infer vector extents.
 
 2.2.0 (2020-05-14)
 ------------------
