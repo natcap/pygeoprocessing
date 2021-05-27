@@ -4292,9 +4292,6 @@ def detect_lowest_drain_and_sink(dem_raster_path_band):
             yi_root = yi+yoff
             for xi in range(0, win_xsize):
                 xi_root = xi+xoff
-                # this value is set in case it turns out to be the root of a
-                # pit, we'll start the fill from this pixel in the last phase
-                # of the algorithm
                 center_val = dem_managed_raster.get(xi_root, yi_root)
                 if _is_close(center_val, dem_nodata, 1e-8, 1e-5):
                     continue
