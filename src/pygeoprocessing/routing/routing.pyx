@@ -701,7 +701,6 @@ def fill_pits(
     cdef int feature_id
 
     # used to handle the case for single outlet mode
-
     cdef int single_outlet=0, outlet_x=-1, outlet_y=-1
     if single_outlet_tuple is not None:
         single_outlet = 1
