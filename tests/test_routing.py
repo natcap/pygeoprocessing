@@ -1198,7 +1198,7 @@ class TestRouting(unittest.TestCase):
             numpy.testing.assert_almost_equal(result_array, expected_array)
 
     def test_detect_lowest_drain_and_sink(self):
-        """PGP>routing: test detect_lowest_sink_and_drain."""
+        """PGP.routing: test detect_lowest_sink_and_drain."""
         dem_array = numpy.zeros((11, 11), dtype=numpy.float32)
         dem_array[3:8, 3:8] = -1.0
         dem_array[0, 0] = -1.0
