@@ -1167,7 +1167,7 @@ class TestRouting(unittest.TestCase):
         dem_array = numpy.zeros((11, 11), dtype=numpy.float32)
         dem_array[0, 0] = -1.0
         dem_array[1:8, 1:8] = -2.0
-        dem_array[10, 7] = -4
+        dem_array[10, 7] = -4.0
         dem_array[8:11, 8:11] = 2.0
         dem_array[9:11, 9:11] = 1.0
         dem_array[10, 10] = -7.0
