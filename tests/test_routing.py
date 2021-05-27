@@ -1185,14 +1185,17 @@ class TestRouting(unittest.TestCase):
         expected_array_5_5[8:11, 8:11] = 2.0
         expected_array_5_5[10, 7] = 0
 
-        for output_tuple, expected_array in [
-                ((0, 0), expected_array_0_0),
-                ((5, 5), expected_array_5_5),
+        for output_tuple, expected_array, fill_dist in [
+                ((0, 0), expected_array_0_0, -1),
+                ((5, 5), expected_array_5_5, -1),
+                ((0, 0), dem_array, 0),
+                ((5, 5), dem_array, 0),
                 ]:
             fill_path = os.path.join(self.workspace_dir, 'filled.tif')
             pygeoprocessing.routing.fill_pits(
                 (dem_path, 1), fill_path,
                 single_outlet_tuple=output_tuple,
+                max_pixel_fill_count=fill_dist,
                 working_dir=self.workspace_dir)
             result_array = pygeoprocessing.raster_to_numpy_array(fill_path)
             numpy.testing.assert_almost_equal(result_array, expected_array)
