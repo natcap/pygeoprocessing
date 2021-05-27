@@ -4245,7 +4245,7 @@ def detect_lowest_drain_and_sink(dem_raster_path_band):
         (drain_pixel, drain_height, sink_pixel, sink_height) -
             two (x, y) tuples with corresponding heights, first
             list is for edge drains, the second is for pit sinks. The x/y
-            coordinate is in raster coordinate space and `height` is the
+            coordinate is in raster coordinate space and ``height`` is the
             height of the given pixels in edge and pit respectively.
     """
     # this outer loop drives the raster block search
