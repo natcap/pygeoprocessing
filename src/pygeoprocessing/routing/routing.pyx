@@ -4288,10 +4288,10 @@ def detect_lowest_drain_and_sink(dem_raster_path_band):
                 'pixels complete')
 
         # search block for local sinks
-        for yi in range(1, win_ysize+1):
-            yi_root = yi-1+yoff
-            for xi in range(1, win_xsize+1):
-                xi_root = xi-1+xoff
+        for yi in range(0, win_ysize):
+            yi_root = yi+yoff
+            for xi in range(0, win_xsize):
+                xi_root = xi+xoff
                 # this value is set in case it turns out to be the root of a
                 # pit, we'll start the fill from this pixel in the last phase
                 # of the algorithm
