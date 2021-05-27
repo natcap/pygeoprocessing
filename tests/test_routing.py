@@ -1188,8 +1188,8 @@ class TestRouting(unittest.TestCase):
         for output_tuple, expected_array, fill_dist in [
                 ((0, 0), expected_array_0_0, -1),
                 ((5, 5), expected_array_5_5, -1),
-                ((0, 0), dem_array, 0),
-                ((5, 5), dem_array, 0),
+                ((0, 0), dem_array, 1),
+                ((5, 5), dem_array, 1),
                 ]:
             fill_path = os.path.join(self.workspace_dir, 'filled.tif')
             pygeoprocessing.routing.fill_pits(
@@ -1198,7 +1198,8 @@ class TestRouting(unittest.TestCase):
                 max_pixel_fill_count=fill_dist,
                 working_dir=self.workspace_dir)
             result_array = pygeoprocessing.raster_to_numpy_array(fill_path)
-            numpy.testing.assert_almost_equal(result_array, expected_array)
+            numpy.testing.assert_almost_equal(
+                result_array, expected_array)
 
     def test_detect_lowest_drain_and_sink(self):
         """PGP.routing: test detect_lowest_sink_and_drain."""
