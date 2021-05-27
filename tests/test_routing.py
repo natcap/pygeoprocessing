@@ -42,9 +42,8 @@ class TestRouting(unittest.TestCase):
 
     def test_pit_filling_large_border(self):
         """PGP.routing: test pitfilling with large nodata border."""
-        workspace_dir = 'test_pit_filling_large_border'
-        os.makedirs(workspace_dir, exist_ok=True)
-        base_path = os.path.join(workspace_dir, 'base.tif')
+        os.makedirs(self.workspace_dir, exist_ok=True)
+        base_path = os.path.join(self.workspace_dir, 'base.tif')
         nodata = -1.0
         n = 30
         dem_array = numpy.full((n, n), nodata, dtype=numpy.float32)
@@ -56,13 +55,13 @@ class TestRouting(unittest.TestCase):
         dem_array[n//10+3:n//10-3+10, n//10+3:n//10-3+10] = 7
 
         _array_to_raster(dem_array, nodata, base_path)
-        fill_path = os.path.join(workspace_dir, 'filled.tif')
+        fill_path = os.path.join(self.workspace_dir, 'filled.tif')
         pygeoprocessing.routing.fill_pits(
-            (base_path, 1), fill_path, working_dir=workspace_dir)
+            (base_path, 1), fill_path, working_dir=self.workspace_dir)
         result_array = pygeoprocessing.raster_to_numpy_array(fill_path)
         expected_result = numpy.copy(dem_array)
         expected_result[n//10+2:n//10-2+10, n//10+2:n//10-2+10] = 8
-        expected_path = os.path.join(workspace_dir, 'expected.tif')
+        expected_path = os.path.join(self.workspace_dir, 'expected.tif')
         _array_to_raster(expected_result, nodata, expected_path)
         numpy.testing.assert_almost_equal(result_array, expected_result)
 
@@ -255,7 +254,6 @@ class TestRouting(unittest.TestCase):
         flow_dir_mfd[nodata_mask] = 0  # set to MFD nodata
         flow_dir_mfd_path = os.path.join(self.workspace_dir, 'mfd.tif')
         _array_to_raster(flow_dir_mfd, 0, flow_dir_mfd_path)
-        print(flow_dir_mfd)
         outlet_vector_path = os.path.join(
             self.workspace_dir, 'outlets.gpkg')
         pygeoprocessing.routing.detect_outlets(
@@ -1163,6 +1161,69 @@ class TestRouting(unittest.TestCase):
         self.assertEqual(watershed_layer.GetFeatureCount(), n-2)
         watershed_vector = None
         watershed_layer = None
+
+    def test_single_drain_point(self):
+        """PGP.routing: test single_drain_point pitfill."""
+        dem_array = numpy.zeros((11, 11), dtype=numpy.float32)
+        dem_array[0, 0] = -1.0
+        dem_array[1:8, 1:8] = -2.0
+        dem_array[10, 7] = -4.0
+        dem_array[8:11, 8:11] = 2.0
+        dem_array[9:11, 9:11] = 1.0
+        dem_array[10, 10] = -7.0
+        dem_path = os.path.join(self.workspace_dir, 'dem.tif')
+        _array_to_raster(dem_array, None, dem_path)
+
+        # outlet tuple at 0,0, just drain one edge
+        expected_array_0_0 = numpy.copy(dem_array)
+        expected_array_0_0[1:8, 1:8] = -1
+        expected_array_0_0[10, 7] = 0
+        expected_array_0_0[8:11, 8:11] = 2.0
+
+        # output tuple at 5,5, it's a massive pit so drain the edges
+        expected_array_5_5 = numpy.copy(dem_array)
+        expected_array_5_5[8:11, 8:11] = 2.0
+        expected_array_5_5[10, 7] = 0
+
+        for output_tuple, expected_array, fill_dist in [
+                ((0, 0), expected_array_0_0, -1),
+                ((5, 5), expected_array_5_5, -1),
+                ((0, 0), dem_array, 1),
+                ((5, 5), dem_array, 1),
+                ]:
+            fill_path = os.path.join(self.workspace_dir, 'filled.tif')
+            pygeoprocessing.routing.fill_pits(
+                (dem_path, 1), fill_path,
+                single_outlet_tuple=output_tuple,
+                max_pixel_fill_count=fill_dist,
+                working_dir=self.workspace_dir)
+            result_array = pygeoprocessing.raster_to_numpy_array(fill_path)
+            numpy.testing.assert_almost_equal(
+                result_array, expected_array)
+
+    def test_detect_lowest_drain_and_sink(self):
+        """PGP.routing: test detect_lowest_sink_and_drain."""
+        dem_array = numpy.zeros((11, 11), dtype=numpy.float32)
+        dem_array[3:8, 3:8] = -1.0
+        dem_array[0, 0] = -1.0
+        dem_array[10, 10] = -1.0
+
+        dem_path = os.path.join(self.workspace_dir, 'dem.tif')
+        _array_to_raster(dem_array, None, dem_path)
+
+        drain_pixel, drain_height, sink_pixel, sink_height = \
+            pygeoprocessing.routing.detect_lowest_drain_and_sink(
+                (dem_path, 1))
+
+        expected_drain_pixel = (0, 0)
+        expected_drain_height = -1
+        expected_sink_pixel = (3, 3)
+        expected_sink_height = -1
+
+        self.assertEqual(drain_pixel, expected_drain_pixel)
+        self.assertEqual(drain_height, expected_drain_height)
+        self.assertEqual(sink_pixel, expected_sink_pixel)
+        self.assertEqual(sink_height, expected_sink_height)
 
     def test_channel_not_exist_distance(self):
         """PGP.routing: test for nodata result if channel doesn't exist."""

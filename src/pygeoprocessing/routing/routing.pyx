@@ -84,10 +84,6 @@ cdef int *D8_YOFFSET = [0, -1, -1, -1, 0, +1, +1, +1]
 # as a D8 direction
 cdef int* D8_REVERSE_DIRECTION = [4, 5, 6, 7, 0, 1, 2, 3]
 
-# default of number of pixels to naturally drain. This number was derived off
-# of reasonable expectations from a 30m DEM
-cdef int _MAX_PIXEL_FILL_COUNT = 500
-
 # exposing stl::priority_queue so we can have all 3 template arguments so
 # we can pass a different Compare functor
 cdef extern from "<queue>" namespace "std" nogil:
@@ -611,7 +607,9 @@ def _generate_read_bounds(offset_dict, raster_x_size, raster_y_size):
 
 def fill_pits(
         dem_raster_path_band, target_filled_dem_raster_path,
-        working_dir=None, long max_pixel_fill_count=_MAX_PIXEL_FILL_COUNT,
+        working_dir=None,
+        long long max_pixel_fill_count=-1,
+        single_outlet_tuple=None,
         raster_driver_creation_tuple=DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS):
     """Fill the pits in a DEM.
 
@@ -637,7 +635,13 @@ def fill_pits(
             call completes successfully.
         max_pixel_fill_count (int): maximum number of pixels to fill a pit
             before leaving as a depression. Useful if there are natural
-            large depressions.
+            large depressions. Value of -1 fills the raster with no search
+            limit.
+        single_outlet_tuple (tuple): If not None, this is an x/y tuple in
+            raster coordinates indicating the only pixel that can be
+            considered a drain. If None then any pixel that would drain to
+            the edge of the raster or a nodata hole will be considered a
+            drain.
         raster_driver_creation_tuple (tuple): a tuple containing a GDAL driver
             name string as the first element and a GDAL creation options
             tuple/list as the second. Defaults to a GTiff driver tuple
@@ -665,7 +669,7 @@ def fill_pits(
 
     # keep track of how many steps searched on the pit to test against
     # max_pixel_fill_count
-    cdef int search_steps
+    cdef long long search_steps
 
     # `search_queue` is used to grow a flat region searching for a pour point
     # to determine if region is plateau or, in the absence of a pour point,
@@ -695,6 +699,12 @@ def fill_pits(
     # algorithm, it's written into the mask rasters to indicate which pixels
     # have already been processed
     cdef int feature_id
+
+    # used to handle the case for single outlet mode
+    cdef int single_outlet=0, outlet_x=-1, outlet_y=-1
+    if single_outlet_tuple is not None:
+        single_outlet = 1
+        outlet_x, outlet_y = single_outlet_tuple
 
     # used for time-delayed logging
     cdef time_t last_log_time
@@ -793,10 +803,10 @@ def fill_pits(
                 'pixels complete')
 
         # search block for locally undrained pixels
-        for yi in range(1, win_ysize+1):
-            yi_root = yi-1+yoff
-            for xi in range(1, win_xsize+1):
-                xi_root = xi-1+xoff
+        for yi in range(win_ysize):
+            yi_root = yi+yoff
+            for xi in range(win_xsize):
+                xi_root = xi+xoff
                 # this value is set in case it turns out to be the root of a
                 # pit, we'll start the fill from this pixel in the last phase
                 # of the algorithm
@@ -808,22 +818,37 @@ def fill_pits(
                         xi_root, yi_root) != mask_nodata:
                     continue
 
+                # a single outlet trivially drains
+                if (single_outlet and
+                        xi_root == outlet_x and
+                        yi_root == outlet_y):
+                    continue
+
                 # search neighbors for downhill or nodata
                 downhill_neighbor = 0
                 nodata_neighbor = 0
                 for i_n in range(8):
                     xi_n = xi_root+D8_XOFFSET[i_n]
                     yi_n = yi_root+D8_YOFFSET[i_n]
+
                     if (xi_n < 0 or xi_n >= raster_x_size or
                             yi_n < 0 or yi_n >= raster_y_size):
-                        # it'll drain off the edge of the raster
-                        nodata_neighbor = 1
-                        break
+                        if not single_outlet:
+                            # it'll drain off the edge of the raster
+                            nodata_neighbor = 1
+                            break
+                        else:
+                            # continue so we don't access out of bounds
+                            continue
                     n_height = filled_dem_managed_raster.get(xi_n, yi_n)
                     if _is_close(n_height, dem_nodata, 1e-8, 1e-5):
-                        # it'll drain to nodata
-                        nodata_neighbor = 1
-                        break
+                        if not single_outlet:
+                            # it'll drain to nodata
+                            nodata_neighbor = 1
+                            break
+                        else:
+                            # skip the rest so it doesn't drain downhill
+                            continue
                     if n_height < center_val:
                         # it'll drain downhill
                         downhill_neighbor = 1
@@ -850,8 +875,12 @@ def fill_pits(
                     xi_q = search_queue.front().xi
                     yi_q = search_queue.front().yi
                     search_queue.pop()
-                    if search_steps > max_pixel_fill_count:
+                    if (max_pixel_fill_count > 0 and
+                            search_steps > max_pixel_fill_count):
                         # clear the search queue and quit
+                        LOGGER.debug(
+                            'exceeded max pixel fill count when searching '
+                            'for plateau drain')
                         while not search_queue.empty():
                             search_queue.pop()
                         natural_drain_exists = 1
@@ -861,18 +890,23 @@ def fill_pits(
                     for i_n in range(8):
                         xi_n = xi_q+D8_XOFFSET[i_n]
                         yi_n = yi_q+D8_YOFFSET[i_n]
+
                         if (xi_n < 0 or xi_n >= raster_x_size or
                                 yi_n < 0 or yi_n >= raster_y_size):
-                            natural_drain_exists = 1
+                            if not single_outlet:
+                                natural_drain_exists = 1
                             continue
+
                         n_height = filled_dem_managed_raster.get(
                             xi_n, yi_n)
                         if _is_close(n_height, dem_nodata, 1e-8, 1e-5):
-                            natural_drain_exists = 1
+                            if not single_outlet:
+                                natural_drain_exists = 1
                             continue
                         if n_height < center_val:
                             natural_drain_exists = 1
                             continue
+
                         if flat_region_mask_managed_raster.get(
                                 xi_n, yi_n) == 1:
                             # been set before on a previous iteration, skip
@@ -909,8 +943,12 @@ def fill_pits(
                     yi_q = pixel.yi
 
                     # search to see if the fill has gone on too long
-                    if search_steps > max_pixel_fill_count:
+                    if (max_pixel_fill_count > 0 and
+                            search_steps > max_pixel_fill_count):
                         # clear pit_queue and quit
+                        LOGGER.debug(
+                            'exceeded max pixel fill count when searching '
+                            'for pour point')
                         pit_queue = PitPriorityQueueType()
                         natural_drain_exists = 1
                         break
@@ -922,25 +960,42 @@ def fill_pits(
                     for i_n in range(8):
                         xi_n = xi_q+D8_XOFFSET[i_n]
                         yi_n = yi_q+D8_YOFFSET[i_n]
+
                         if (xi_n < 0 or xi_n >= raster_x_size or
                                 yi_n < 0 or yi_n >= raster_y_size):
                             # drain off the edge of the raster
-                            pour_point = 1
-                            break
+                            if not single_outlet:
+                                pour_point = 1
+                                break
+                            else:
+                                continue
 
                         if pit_mask_managed_raster.get(
                                 xi_n, yi_n) == feature_id:
                             # this cell has already been processed
                             continue
-
                         # mark as visited in the search for pour point
                         pit_mask_managed_raster.set(xi_n, yi_n, feature_id)
 
                         n_height = filled_dem_managed_raster.get(xi_n, yi_n)
-                        if _is_close(n_height, dem_nodata, 1e-8, 1e-5) or (
-                                n_height < fill_height):
+                        if (single_outlet and xi_n == outlet_x
+                                and yi_n == outlet_y):
+                            fill_height = n_height
+                            pour_point = 1
+                            break
+
+                        if _is_close(n_height, dem_nodata, 1e-8, 1e-5):
+                            # we encounter a neighbor not processed that
+                            # is nodata
+                            if not single_outlet:
+                                # it's only a pour point if we aren't in
+                                # single outlet mode
+                                pour_point = 1
+                            # skip so we don't go negative
+                            continue
+                        if n_height < fill_height:
                             # we encounter a neighbor not processed that is
-                            # lower than the current pixel or nodata
+                            # lower than the current pixel
                             pour_point = 1
                             break
 
@@ -978,9 +1033,10 @@ def fill_pits(
                         if (xi_n < 0 or xi_n >= raster_x_size or
                                 yi_n < 0 or yi_n >= raster_y_size):
                             continue
-
-                        if filled_dem_managed_raster.get(
-                                xi_n, yi_n) < fill_height:
+                        n_height = filled_dem_managed_raster.get(xi_n, yi_n)
+                        if _is_close(n_height, dem_nodata, 1e-8, 1e-5):
+                            continue
+                        if n_height < fill_height:
                             filled_dem_managed_raster.set(
                                 xi_n, yi_n, fill_height)
                             fill_queue.push(CoordinateType(xi_n, yi_n))
@@ -4157,6 +4213,128 @@ def calculate_subwatershed_boundary(
     shutil.rmtree(workspace_dir)
     LOGGER.info(
         '(calculate_subwatershed_boundary): watershed building 100% complete')
+
+
+def detect_lowest_drain_and_sink(dem_raster_path_band):
+    """Find the lowest drain and sink pixel in the DEM.
+
+    This function is used to specify conditions to DEMs that are known to
+    have one real sink/drain, but may have several numerical sink/drains by
+    detecting both the lowest pixel that could drain the raster on an edge
+    and the lowest internal pixel that might sink the whole raster.
+
+    Example:
+        raster A contains the following
+            * pixel at (3, 4) at 10m draining to a nodata  pixel
+            * pixel at (15, 19) at 11m draining to a nodata pixel
+            * pixel at (19, 21) at 10m draining to a nodata pixel
+            * pit pixel at (10, 15) at 5m surrounded by non-draining pixels
+            * pit pixel at (25, 15) at 15m surrounded by non-draining pixels
+            * pit pixel at (2, 125) at 5m surrounded by non-draining pixels
+
+        The result is two pixels indicating the first lowest edge and first
+        lowest sink seen:
+            drain_pixel = (3, 4), 10
+            sink_pixel = (10, 15), 5
+
+    Args:
+        dem_raster_path_band (tuple): a raster/path band tuple to detect
+            sinks in.
+
+    Return:
+        (drain_pixel, drain_height, sink_pixel, sink_height) -
+            two (x, y) tuples with corresponding heights, first
+            list is for edge drains, the second is for pit sinks. The x/y
+            coordinate is in raster coordinate space and _height is the
+            height of the given pixels in edge and pit respectively.
+    """
+    # this outer loop drives the raster block search
+    cdef double lowest_drain_height = numpy.inf
+    cdef double lowest_sink_height = numpy.inf
+
+    drain_pixel = None
+    sink_pixel = None
+
+    dem_raster_info = pygeoprocessing.get_raster_info(
+        dem_raster_path_band[0])
+    cdef double dem_nodata
+    # guard against undefined nodata by picking a value that's unlikely to
+    # be a dem value
+    if dem_raster_info['nodata'][0] is not None:
+        dem_nodata = dem_raster_info['nodata'][0]
+    else:
+        dem_nodata = IMPROBABLE_FLOAT_NODATA
+
+    raster_x_size, raster_y_size = dem_raster_info['raster_size']
+
+    cdef _ManagedRaster dem_managed_raster = _ManagedRaster(
+        dem_raster_path_band[0], dem_raster_path_band[1], 0)
+
+    cdef time_t last_log_time = ctime(NULL)
+
+    for offset_dict in pygeoprocessing.iterblocks(
+            dem_raster_path_band, offset_only=True, largest_block=0):
+        win_xsize = offset_dict['win_xsize']
+        win_ysize = offset_dict['win_ysize']
+        xoff = offset_dict['xoff']
+        yoff = offset_dict['yoff']
+
+        if ctime(NULL) - last_log_time > _LOGGING_PERIOD:
+            last_log_time = ctime(NULL)
+            current_pixel = xoff + yoff * raster_x_size
+            LOGGER.info(
+                '(infer_sinks): '
+                f'{current_pixel} of {raster_x_size * raster_y_size} '
+                'pixels complete')
+
+        # search block for local sinks
+        for yi in range(0, win_ysize):
+            yi_root = yi+yoff
+            for xi in range(0, win_xsize):
+                xi_root = xi+xoff
+                center_val = dem_managed_raster.get(xi_root, yi_root)
+                if _is_close(center_val, dem_nodata, 1e-8, 1e-5):
+                    continue
+
+                if (center_val > lowest_drain_height and
+                        center_val > lowest_sink_height):
+                    # already found something lower
+                    continue
+
+                # search neighbors for downhill or nodata
+                pixel_drains = 0
+                for i_n in range(8):
+                    xi_n = xi_root+D8_XOFFSET[i_n]
+                    yi_n = yi_root+D8_YOFFSET[i_n]
+
+                    if (xi_n < 0 or xi_n >= raster_x_size or
+                            yi_n < 0 or yi_n >= raster_y_size):
+                        # it'll drain off the edge of the raster
+                        if center_val < lowest_drain_height:
+                            # found a new lower edge height
+                            lowest_drain_height = center_val
+                            drain_pixel = (xi_root, yi_root)
+                        pixel_drains = 1
+                        break
+                    n_height = dem_managed_raster.get(xi_n, yi_n)
+                    if _is_close(n_height, dem_nodata, 1e-8, 1e-5):
+                        # it'll drain to nodata
+                        if center_val < lowest_drain_height:
+                            # found a new lower edge height
+                            lowest_drain_height = center_val
+                            drain_pixel = (xi_root, yi_root)
+                        pixel_drains = 1
+                        break
+                    if n_height < center_val:
+                        # it'll drain downhill
+                        pixel_drains = 1
+                        break
+                if not pixel_drains and center_val < lowest_sink_height:
+                    lowest_sink_height = center_val
+                    sink_pixel = (xi_root, yi_root)
+    return (
+        drain_pixel, lowest_drain_height,
+        sink_pixel, lowest_sink_height)
 
 
 def detect_outlets(

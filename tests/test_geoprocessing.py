@@ -3107,10 +3107,7 @@ class TestGeoprocessing(unittest.TestCase):
         wgs84_ref = osr.SpatialReference()
         wgs84_ref.ImportFromEPSG(4326)  # WGS84 EPSG
 
-        workspace_dir = os.path.join('.', 'test_stitch_area')
-        os.makedirs(workspace_dir, exist_ok=True)
-
-        raster_a_path = os.path.join(workspace_dir, 'raster_a.tif')
+        raster_a_path = os.path.join(self.workspace_dir, 'raster_a.tif')
         raster_a_array = numpy.zeros((1, 1), dtype=numpy.int32)
         raster_a_array[:] = 1
 
@@ -3125,7 +3122,7 @@ class TestGeoprocessing(unittest.TestCase):
         # create a raster in wgs84 space that has a lot of pixel coverage
         # of the above raster
         target_stitch_path = os.path.join(
-            workspace_dir, 'stitch_by_area.tif')
+            self.workspace_dir, 'stitch_by_area.tif')
         pygeoprocessing.numpy_array_to_raster(
             numpy.full((1000, 1000), -1.0), -1, (0.0001, -0.0001), (1, 1),
             wgs84_ref.ExportToWkt(), target_stitch_path)

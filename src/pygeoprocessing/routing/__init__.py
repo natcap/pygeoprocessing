@@ -11,6 +11,7 @@ from pygeoprocessing.routing.routing import (
     detect_outlets,
     extract_strahler_streams_d8,
     calculate_subwatershed_boundary,
+    detect_lowest_drain_and_sink,
     )
 from pygeoprocessing.routing.watershed import (
     delineate_watersheds_d8)
@@ -29,4 +30,5 @@ __all__ = (
     'detect_outlets',
     'extract_strahler_streams_d8',
     'calculate_subwatershed_boundary',
+    'detect_lowest_drain_and_sink',
 )

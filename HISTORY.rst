@@ -3,6 +3,17 @@ Release History
 
 Unreleased Changes
 ------------------
+* Added a ``single_outlet_tuple`` parameter to ``routing.fill_pits`` that
+  forces a DEM to only have one outlet at any point on the raster. The
+  fill effect is that all pixels will drain to the raster coordinate at
+  ``single_outlet_tuple``.
+* Added a ``detect_lowest_sink_and_drain`` function that finds the lowest
+  DEM pixel that drains to nodata/edge and the lowest DEM pixel that could
+  be a sink. The values that result from this call can be used to condition
+  a DEM that is known to have a single drain using the
+  ``single_outlet_tuple`` parameter in ``routing.fill_pits``.
+* Fixed a bug in ``routing.fill_pits`` that could cause the nodata region of
+  a DEM to be incorrectly filled with non-nodata values.
 * Fixed an issue where ``create_raster_from_vector_extent`` would use an
   approximation of the layer extent to infer the input vector extent. Now
   uses the individual geometry to infer vector extents.
