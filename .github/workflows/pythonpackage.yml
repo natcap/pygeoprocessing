@@ -12,14 +12,8 @@ jobs:
       max-parallel: 4
       matrix:
         python-version: [3.7, 3.8, 3.9]
+        gdal: [3.2.2, 3.3.0]
         os: [ubuntu-latest, windows-latest, macos-latest]
-        include:
-            - python-version: 3.7
-              gdal: 3.0.4
-            - python-version: 3.8
-              gdal: 3.2.0
-            - python-version: 3.9
-              gdal: 3.3.0
 
     steps:
     - uses: actions/checkout@v2
