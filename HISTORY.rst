@@ -19,6 +19,8 @@ Unreleased Changes
   uses the individual geometry to infer vector extents.
 * Fixed a bug in ``routing.distance_to_channel_mfd`` where pixels that drained
   off the edge of the raster had negative values rather than nodata values.
+* Expanded the error message raised by ``transform_bounding_box`` when the
+  bounding box cannot be transformed to provide more helpful details.
 
 2.2.0 (2020-05-14)
 ------------------

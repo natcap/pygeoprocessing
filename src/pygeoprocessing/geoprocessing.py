@@ -2485,15 +2485,15 @@ def convolve_2d(
     nodata for the output result where ``signal_path`` has nodata.
 
     Note with default values, boundary effects can be seen in the result where
-    the kernel would hang off the edge of the raster or in regions with 
+    the kernel would hang off the edge of the raster or in regions with
     nodata pixels. The function would treat these areas as values with "0.0"
     by default thus pulling the total convolution down in these areas. This
     is similar to setting ``mode='same'`` in Numpy's ``convolve`` function:
     https://numpy.org/doc/stable/reference/generated/numpy.convolve.html
 
-    This boundary effect can be avoided by setting 
-    ``ignore_nodata_and_edges=True`` which normalizes the target result by 
-    dynamically accounting for the number of valid signal pixels the kernel 
+    This boundary effect can be avoided by setting
+    ``ignore_nodata_and_edges=True`` which normalizes the target result by
+    dynamically accounting for the number of valid signal pixels the kernel
     overlapped during the convolution step.
 
     Args:
@@ -3014,9 +3014,13 @@ def transform_bounding_box(
     transformed_bounding_box = [minx, miny, maxx, maxy]
     if not all(numpy.isfinite(numpy.array(transformed_bounding_box))):
         raise ValueError(
-            f'some transformed coordinates are not finite: '
+            f'Could not transform bounding box from base to target projection.'
+            f'Some transformed coordinates are not finite: '
             f'{transformed_bounding_box}, base bounding box may not fit into '
-            f'target coordinate projection system.')
+            f'target coordinate projection system.\n'
+            f'Original bounding box: {bounding_box}\n'
+            f'Base projection: {base_projection_wkt}\n'
+            f'Target projection: {target_projection_wkt}\n')
     return transformed_bounding_box
 
 
