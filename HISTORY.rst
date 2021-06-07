@@ -17,6 +17,8 @@ Unreleased Changes
 * Fixed an issue where ``create_raster_from_vector_extent`` would use an
   approximation of the layer extent to infer the input vector extent. Now
   uses the individual geometry to infer vector extents.
+* Fixed a bug in ``routing.distance_to_channel_mfd`` where pixels that drained
+  off the edge of the raster had negative values rather than nodata values.
 
 2.2.0 (2020-05-14)
 ------------------

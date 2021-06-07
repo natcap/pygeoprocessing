@@ -2805,7 +2805,6 @@ def distance_to_channel_mfd(
                                 yi_n < 0 or yi_n >= raster_y_size):
                             continue
 
-
                         if visited_managed_raster.get(xi_n, yi_n) == 0:
                             visited_managed_raster.set(xi_n, yi_n, 1)
                             preempted = 1
@@ -2839,7 +2838,7 @@ def distance_to_channel_mfd(
                         pixel.value += flow_dir_weight * (
                             weight_val + n_distance)
 
-                    if preempted:
+                    if preempted or pixel.value == distance_nodata:
                         continue
 
                     sum_of_flow_weights = 0
