@@ -17,6 +17,9 @@ Unreleased Changes
 * Fixed an issue where ``create_raster_from_vector_extent`` would use an
   approximation of the layer extent to infer the input vector extent. Now
   uses the individual geometry to infer vector extents.
+* Expanded the error message raised by ``transform_bounding_box`` when the
+  bounding box cannot be transformed to provide more helpful details.
+
 
 2.2.0 (2020-05-14)
 ------------------
