@@ -3015,9 +3015,13 @@ def transform_bounding_box(
     transformed_bounding_box = [minx, miny, maxx, maxy]
     if not all(numpy.isfinite(numpy.array(transformed_bounding_box))):
         raise ValueError(
-            f'some transformed coordinates are not finite: '
+            f'Could not transform bounding box from base to target projection.'
+            f'Some transformed coordinates are not finite: '
             f'{transformed_bounding_box}, base bounding box may not fit into '
-            f'target coordinate projection system.')
+            f'target coordinate projection system.\n'
+            f'Original bounding box: {bounding_box}\n'
+            f'Base projection: {base_projection_wkt}\n'
+            f'Target projection: {target_projection_wkt}\n')
     return transformed_bounding_box
 
 
