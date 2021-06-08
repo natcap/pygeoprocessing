@@ -1,23 +1,5 @@
 # coding=UTF-8
 # cython: language_level=3
-import pygeoprocessing
-import shapely.wkb
-import shapely.prepared
-import shapely.geometry
-import numpy
-from osgeo import osr
-from osgeo import ogr
-from osgeo import gdal
-from libcpp.set cimport set as cset
-from libcpp.queue cimport queue
-from libcpp.pair cimport pair
-from libcpp.map cimport map as cmap
-from libcpp.list cimport list as clist
-from libc.time cimport time_t
-from libc.time cimport time as ctime
-from cython.operator cimport preincrement as inc
-from cython.operator cimport dereference as deref
-from cpython.mem cimport PyMem_Malloc, PyMem_Free
 import logging
 import os
 import shutil
@@ -26,7 +8,25 @@ import time
 
 cimport cython
 cimport numpy
+from cpython.mem cimport PyMem_Malloc, PyMem_Free
+from cython.operator cimport dereference as deref
+from cython.operator cimport preincrement as inc
+from libc.time cimport time as ctime
+from libc.time cimport time_t
+from libcpp.list cimport list as clist
+from libcpp.map cimport map as cmap
+from libcpp.pair cimport pair
+from libcpp.queue cimport queue
+from libcpp.set cimport set as cset
+from osgeo import gdal
+from osgeo import ogr
+from osgeo import osr
+import numpy
+import shapely.geometry
+import shapely.prepared
+import shapely.wkb
 
+import pygeoprocessing
 
 LOGGER = logging.getLogger(__name__)
 
@@ -45,18 +45,18 @@ GTIFF_CREATION_OPTIONS = (
 
 # this is used to calculate the opposite D8 direction interpreting the index
 # as a D8 direction
-cdef int * D8_REVERSE_DIRECTION = [4, 5, 6, 7, 0, 1, 2, 3]
-cdef int * NEIGHBOR_COL = [1, 1, 0, -1, -1, -1, 0, 1]
-cdef int * NEIGHBOR_ROW = [0, -1, -1, -1, 0, 1, 1, 1]
+cdef int* D8_REVERSE_DIRECTION = [4, 5, 6, 7, 0, 1, 2, 3]
+cdef int* NEIGHBOR_COL = [1, 1, 0, -1, -1, -1, 0, 1]
+cdef int* NEIGHBOR_ROW = [0, -1, -1, -1, 0, 1, 1, 1]
 
 # this is a least recently used cache written in C++ in an external file,
 # exposing here so _ManagedRaster can use it
 cdef extern from "LRUCache.h" nogil:
     cdef cppclass LRUCache[KEY_T, VAL_T]:
         LRUCache(int)
-        void put(KEY_T &, VAL_T&, clist[pair[KEY_T, VAL_T]]&)
-        clist[pair[KEY_T, VAL_T]].iterator begin()
-        clist[pair[KEY_T, VAL_T]].iterator end()
+        void put(KEY_T&, VAL_T&, clist[pair[KEY_T,VAL_T]]&)
+        clist[pair[KEY_T,VAL_T]].iterator begin()
+        clist[pair[KEY_T,VAL_T]].iterator end()
         bint exist(KEY_T &)
         VAL_T get(KEY_T &)
 
@@ -67,7 +67,7 @@ ctypedef pair[int, int*] BlockBufferPair
 # a class to allow fast random per-pixel access to a raster for both setting
 # and reading pixels.
 cdef class _ManagedRaster:
-    cdef LRUCache[int, int*] * lru_cache
+    cdef LRUCache[int, int*]* lru_cache
     cdef cset[int] dirty_blocks
     cdef int block_xsize
     cdef int block_ysize
@@ -160,7 +160,7 @@ cdef class _ManagedRaster:
             self.raster_y_size + (self.block_ysize) - 1) // self.block_ysize
 
         self.lru_cache = new LRUCache[int, int*](MANAGED_RASTER_N_BLOCKS)
-        self.raster_path = <bytes > raster_path
+        self.raster_path = <bytes> raster_path
         self.write_mode = write_mode
         self.closed = 0
 
@@ -185,9 +185,9 @@ cdef class _ManagedRaster:
             return
         self.closed = 1
         cdef int xi_copy, yi_copy
-        cdef numpy.ndarray[int, ndim = 2] block_array = numpy.empty(
+        cdef numpy.ndarray[int, ndim=2] block_array = numpy.empty(
             (self.block_ysize, self.block_xsize), dtype=numpy.int32)
-        cdef int * int_buffer
+        cdef int *int_buffer
         cdef int block_xi
         cdef int block_yi
         # initially the win size is the same as the block size unless
@@ -265,7 +265,7 @@ cdef class _ManagedRaster:
             self._load_block(block_index)
         self.lru_cache.get(
             block_index)[
-                ((yi & (self.block_ymod)) << self.block_xbits) +
+                ((yi & (self.block_ymod))<<self.block_xbits) +
                 (xi & (self.block_xmod))] = value
         if self.write_mode:
             dirty_itr = self.dirty_blocks.find(block_index)
@@ -282,7 +282,7 @@ cdef class _ManagedRaster:
             self._load_block(block_index)
         return self.lru_cache.get(
             block_index)[
-                ((yi & (self.block_ymod)) << self.block_xbits) +
+                ((yi & (self.block_ymod))<<self.block_xbits) +
                 (xi & (self.block_xmod))]
 
     cdef void _load_block(self, int block_index) except *:
@@ -294,8 +294,8 @@ cdef class _ManagedRaster:
         cdef int yoff = block_yi << self.block_ybits
 
         cdef int xi_copy, yi_copy
-        cdef numpy.ndarray[int, ndim = 2] block_array
-        cdef int * int_buffer
+        cdef numpy.ndarray[int, ndim=2] block_array
+        cdef int *int_buffer
         cdef clist[BlockBufferPair] removed_value_list
 
         # determine the block aligned xoffset for read as array
@@ -323,10 +323,10 @@ cdef class _ManagedRaster:
             (sizeof(int) << self.block_xbits) * win_ysize)
         for xi_copy in xrange(win_xsize):
             for yi_copy in xrange(win_ysize):
-                int_buffer[(yi_copy << self.block_xbits)+xi_copy] = (
+                int_buffer[(yi_copy<<self.block_xbits)+xi_copy] = (
                     block_array[yi_copy, xi_copy])
         self.lru_cache.put(
-            < int > block_index, < int*>int_buffer, removed_value_list)
+            <int>block_index, <int*>int_buffer, removed_value_list)
 
         if self.write_mode:
             raster = gdal.OpenEx(
@@ -443,10 +443,10 @@ cdef cset[CoordinatePair] _c_split_geometry_into_seeds(
     geometry = shapely.wkb.loads(source_geom_wkb)
 
     minx, miny, maxx, maxy = geometry.bounds
-    cdef int minx_pixelcoord = <int > ((minx - x_origin) // x_pixelwidth)
-    cdef int miny_pixelcoord = <int > ((miny - y_origin) // y_pixelwidth)
-    cdef int maxx_pixelcoord = <int > ((maxx - x_origin) // x_pixelwidth)
-    cdef int maxy_pixelcoord = <int > ((maxy - y_origin) // y_pixelwidth)
+    cdef int minx_pixelcoord = <int>((minx - x_origin) // x_pixelwidth)
+    cdef int miny_pixelcoord = <int>((miny - y_origin) // y_pixelwidth)
+    cdef int maxx_pixelcoord = <int>((maxx - x_origin) // x_pixelwidth)
+    cdef int maxy_pixelcoord = <int>((maxy - y_origin) // y_pixelwidth)
 
     # If the geometry only intersects a single pixel, we can treat it
     # as a single point, which means that we can track it directly in our
@@ -475,17 +475,14 @@ cdef cset[CoordinatePair] _c_split_geometry_into_seeds(
 
     # It's possible for a perfectly vertical or horizontal line to cover 0 rows
     # or columns, so defaulting to row/col count of 1 in these cases.
-    local_n_cols = max(abs(maxx_aligned - minx_aligned) //
-                       abs(x_pixelwidth), 1)
-    local_n_rows = max(abs(maxy_aligned - miny_aligned) //
-                       abs(y_pixelwidth), 1)
+    local_n_cols = max(abs(maxx_aligned - minx_aligned) // abs(x_pixelwidth), 1)
+    local_n_rows = max(abs(maxy_aligned - miny_aligned) // abs(y_pixelwidth), 1)
 
     # The geometry does not fit into a single pixel, so let's create a new
     # raster onto which to rasterize it.
     memory_driver = gdal.GetDriverByName('Memory')
     new_vector = memory_driver.Create('mem', 0, 0, 0, gdal.GDT_Unknown)
-    new_layer = new_vector.CreateLayer(
-        'user_geometry', flow_dir_srs, ogr.wkbUnknown)
+    new_layer = new_vector.CreateLayer('user_geometry', flow_dir_srs, ogr.wkbUnknown)
     new_layer.StartTransaction()
     new_feature = ogr.Feature(new_layer.GetLayerDefn())
     new_feature.SetGeometry(ogr.CreateGeometryFromWkb(source_geom_wkb))
@@ -531,12 +528,12 @@ cdef cset[CoordinatePair] _c_split_geometry_into_seeds(
 
     cdef int row, col
     cdef int global_row, global_col
-    cdef int seed_raster_origin_col = <int > ((local_origin_x - x_origin) // x_pixelwidth)
-    cdef int seed_raster_origin_row = <int > ((local_origin_y - y_origin) // y_pixelwidth)
+    cdef int seed_raster_origin_col = <int>((local_origin_x - x_origin) // x_pixelwidth)
+    cdef int seed_raster_origin_row = <int>((local_origin_y - y_origin) // y_pixelwidth)
     cdef dict block_info
     cdef int block_xoff
     cdef int block_yoff
-    cdef numpy.ndarray[numpy.npy_uint8, ndim = 2] seed_array
+    cdef numpy.ndarray[numpy.npy_uint8, ndim=2] seed_array
     for block_info, seed_array in pygeoprocessing.iterblocks(
             (target_raster_path, 1)):
         block_xoff = block_info['xoff']
@@ -708,8 +705,7 @@ def delineate_watersheds_d8(
 
     outflow_vector = gdal.OpenEx(outflow_vector_path, gdal.OF_VECTOR)
     if outflow_vector is None:
-        raise ValueError(u'Could not open outflow vector %s' %
-                         outflow_vector_path)
+        raise ValueError(u'Could not open outflow vector %s' % outflow_vector_path)
 
     driver = ogr.GetDriverByName('GPKG')
     watersheds_srs = osr.SpatialReference()
@@ -729,9 +725,9 @@ def delineate_watersheds_d8(
     index_field.SetWidth(24)
     polygonized_watersheds_layer.CreateField(index_field)
 
-    cdef int * reverse_flow = [4, 5, 6, 7, 0, 1, 2, 3]
-    cdef int * neighbor_col = [1, 1, 0, -1, -1, -1, 0, 1]
-    cdef int * neighbor_row = [0, -1, -1, -1, 0, 1, 1, 1]
+    cdef int* reverse_flow = [4, 5, 6, 7, 0, 1, 2, 3]
+    cdef int* neighbor_col = [1, 1, 0, -1, -1, -1, 0, 1]
+    cdef int* neighbor_row = [0, -1, -1, -1, 0, 1, 1, 1]
     cdef queue[CoordinatePair] process_queue
     cdef cset[CoordinatePair] process_queue_set
     cdef CoordinatePair neighbor_pixel
@@ -764,7 +760,6 @@ def delineate_watersheds_d8(
                 'Outflow feature %s has empty geometry.  Skipping.',
                 current_fid)
             continue
-        # with GDAL>=3.3.0 ExportToWkb returns a bytearray instead of bytes
         geom_wkb = bytes(geom.ExportToWkb())
         shapely_geom = shapely.wkb.loads(geom_wkb)
 
@@ -775,11 +770,9 @@ def delineate_watersheds_d8(
                 'direction raster. Skipping.', current_fid)
             continue
 
-        seeds_raster_path = os.path.join(
-            working_dir_path, '%s_rasterized.tif' % ws_id)
+        seeds_raster_path = os.path.join(working_dir_path, '%s_rasterized.tif' % ws_id)
         if write_diagnostic_vector:
-            diagnostic_vector_path = os.path.join(
-                working_dir_path, '%s_seeds.gpkg' % ws_id)
+            diagnostic_vector_path = os.path.join(working_dir_path, '%s_seeds.gpkg' % ws_id)
         else:
             diagnostic_vector_path = None
         seeds_in_watershed = _c_split_geometry_into_seeds(
@@ -904,10 +897,8 @@ def delineate_watersheds_d8(
         # the whole scratch raster in order to polygonize.
         x1 = (flow_dir_origin_x + (max(ix_min-1, 0)*flow_dir_pixelsize_x))  # minx
         y1 = (flow_dir_origin_y + (max(iy_min-1, 0)*flow_dir_pixelsize_y))  # miny
-        x2 = (flow_dir_origin_x + (min(ix_max+1, flow_dir_n_cols)
-                                   * flow_dir_pixelsize_x))  # maxx
-        y2 = (flow_dir_origin_y + (min(iy_max+1, flow_dir_n_rows)
-                                   * flow_dir_pixelsize_y))  # maxy
+        x2 = (flow_dir_origin_x + (min(ix_max+1, flow_dir_n_cols)*flow_dir_pixelsize_x))  # maxx
+        y2 = (flow_dir_origin_y + (min(iy_max+1, flow_dir_n_rows)*flow_dir_pixelsize_y))  # maxy
 
         vrt_options = gdal.BuildVRTOptions(
             outputBounds=(
@@ -920,8 +911,7 @@ def delineate_watersheds_d8(
         gdal.BuildVRT(vrt_path, [scratch_raster_path], options=vrt_options)
 
         # Polygonize this new watershed from the VRT.
-        vrt_raster = gdal.OpenEx(
-            vrt_path, gdal.OF_RASTER, allowed_drivers=['VRT'])
+        vrt_raster = gdal.OpenEx(vrt_path, gdal.OF_RASTER, allowed_drivers=['VRT'])
         vrt_band = vrt_raster.GetRasterBand(1)
         _ = gdal.Polygonize(
             vrt_band,  # The source band
@@ -983,8 +973,7 @@ def delineate_watersheds_d8(
 
         if duplicate_ids_set.size() == 1:
             duplicate_fid = deref(duplicate_ids_set_iterator)
-            source_feature = polygonized_watersheds_layer.GetFeature(
-                duplicate_fid)
+            source_feature = polygonized_watersheds_layer.GetFeature(duplicate_fid)
             new_geometry = source_feature.GetGeometryRef()
         else:
             new_geometry = ogr.Geometry(ogr.wkbMultiPolygon)
@@ -992,8 +981,7 @@ def delineate_watersheds_d8(
                 duplicate_fid = deref(duplicate_ids_set_iterator)
                 inc(duplicate_ids_set_iterator)
 
-                duplicate_feature = polygonized_watersheds_layer.GetFeature(
-                    duplicate_fid)
+                duplicate_feature = polygonized_watersheds_layer.GetFeature(duplicate_fid)
                 duplicate_geometry = duplicate_feature.GetGeometryRef()
                 new_geometry.AddGeometry(duplicate_geometry)
 

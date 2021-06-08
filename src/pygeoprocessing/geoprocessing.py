@@ -767,7 +767,7 @@ def align_and_resize_raster_stack(
                 vector_mask_options['mask_vector_where_filter'])
             mask_bounding_box = merge_bounding_box_list(
                 [[feature.GetGeometryRef().GetEnvelope()[i]
-                  for i in [0, 2, 1, 3]] for feature in mask_layer],
+                 for i in [0, 2, 1, 3]] for feature in mask_layer],
                 'union')
             mask_layer = None
             mask_vector = None
@@ -779,8 +779,8 @@ def align_and_resize_raster_stack(
         if mask_vector_projection_wkt is not None and \
                 target_projection_wkt is not None:
             mask_vector_bb = transform_bounding_box(
-                mask_bounding_box, mask_vector_info['projection_wkt'],
-                target_projection_wkt)
+               mask_bounding_box, mask_vector_info['projection_wkt'],
+               target_projection_wkt)
         else:
             mask_vector_bb = mask_vector_info['bounding_box']
         # Calling `merge_bounding_box_list` will raise an ValueError if the
@@ -814,8 +814,8 @@ def align_and_resize_raster_stack(
             raster_driver_creation_tuple=(raster_driver_creation_tuple),
             target_projection_wkt=target_projection_wkt,
             base_projection_wkt=(
-                None if not base_projection_wkt_list else
-                base_projection_wkt_list[index]),
+                    None if not base_projection_wkt_list else
+                    base_projection_wkt_list[index]),
             vector_mask_options=vector_mask_options,
             gdal_warp_options=gdal_warp_options)
         LOGGER.info(
@@ -1227,7 +1227,7 @@ def zonal_statistics(
         'options': [
             'ALL_TOUCHED=FALSE',
             'ATTRIBUTE=%s' % local_aggregate_field_name]
-    }
+        }
 
     # clip base raster to aggregating vector intersection
     raster_info = get_raster_info(base_raster_path_band[0])
@@ -2239,8 +2239,8 @@ def calculate_disjoint_polygon_set(
                 f'no geometry in {vector_path} FID: {poly_feat.GetFID()}, '
                 'skipping...')
             continue
+        # with GDAL>=3.3.0 ExportToWkb returns a bytearray instead of bytes
         shapely_polygon_lookup[poly_feat.GetFID()] = (
-            # with GDAL>=3.3.0 ExportToWkb returns a bytesarray instead of bytes
             shapely.wkb.loads(bytes(poly_geom_ref.ExportToWkb())))
         poly_geom_ref = None
     poly_feat = None
@@ -2613,6 +2613,7 @@ def convolve_2d(
     new_raster_from_base(
         signal_path_band[0], target_path, target_datatype, [0],
         raster_driver_creation_tuple=raster_driver_creation_tuple)
+
 
     n_cols_signal, n_rows_signal = signal_raster_info['raster_size']
     n_cols_kernel, n_rows_kernel = kernel_raster_info['raster_size']
@@ -3835,7 +3836,7 @@ def stitch_rasters(
                 [(base_stitch_raster_path, 1), (base_stitch_nodata, 'raw'),
                  m2_area_per_lat/base_pixel_area_m2,
                  (_GDAL_TYPE_TO_NUMPY_LOOKUP[
-                     target_raster_info['datatype']], 'raw')], _mult_op,
+                    target_raster_info['datatype']], 'raw')], _mult_op,
                 scaled_raster_path,
                 target_raster_info['datatype'], base_stitch_nodata)
 
@@ -3859,10 +3860,10 @@ def stitch_rasters(
             overlap = True
             for (target_to_base_off, off_val,
                  target_off_id, off_clip_id, win_size_id) in [
-                (target_to_base_xoff, offset_dict['xoff'],
-                 'target_xoff', 'xoff_clip', 'win_xsize'),
-                (target_to_base_yoff, offset_dict['yoff'],
-                 'target_yoff', 'yoff_clip', 'win_ysize')]:
+                        (target_to_base_xoff, offset_dict['xoff'],
+                         'target_xoff', 'xoff_clip', 'win_xsize'),
+                        (target_to_base_yoff, offset_dict['yoff'],
+                         'target_yoff', 'yoff_clip', 'win_ysize')]:
                 _offset_vars[target_off_id] = (target_to_base_off+off_val)
                 if _offset_vars[target_off_id] > target_raster_x_size:
                     overlap = False
