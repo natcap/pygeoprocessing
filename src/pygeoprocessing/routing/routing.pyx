@@ -3698,7 +3698,7 @@ def extract_strahler_streams_d8(
             multi_line = working_geom.Union(downstream_geom)
             joined_line = ogr.CreateGeometryFromWkb(
                 shapely.ops.linemerge(shapely.wkb.loads(
-                    multi_line.ExportToWkb())).wkb)
+                    bytes(multi_line.ExportToWkb()))).wkb)
 
             downstream_feature.SetGeometry(joined_line)
             downstream_feature.SetField(

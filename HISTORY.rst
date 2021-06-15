@@ -21,6 +21,7 @@ Unreleased Changes
   off the edge of the raster had negative values rather than nodata values.
 * Expanded the error message raised by ``transform_bounding_box`` when the
   bounding box cannot be transformed to provide more helpful details.
+* Add support and testing for GDAL 3.3.0.
 
 2.2.0 (2020-05-14)
 ------------------

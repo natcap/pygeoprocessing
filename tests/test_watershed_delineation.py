@@ -18,6 +18,7 @@ import pygeoprocessing.routing
 
 class WatershedDelineationTests(unittest.TestCase):
     """Main Watershed test module."""
+
     def setUp(self):
         """Create empty workspace dir."""
         self.workspace_dir = tempfile.mkdtemp()
@@ -181,7 +182,7 @@ class WatershedDelineationTests(unittest.TestCase):
         id_to_fields = {}
         for feature in watersheds_layer:
             geometry = feature.GetGeometryRef()
-            shapely_geom = shapely.wkb.loads(geometry.ExportToWkb())
+            shapely_geom = shapely.wkb.loads(bytes(geometry.ExportToWkb()))
             self.assertEqual(
                 shapely_geom.area, expected_watershed_geometry.area)
             self.assertEqual(

@@ -760,7 +760,7 @@ def delineate_watersheds_d8(
                 'Outflow feature %s has empty geometry.  Skipping.',
                 current_fid)
             continue
-        geom_wkb = geom.ExportToWkb()
+        geom_wkb = bytes(geom.ExportToWkb())
         shapely_geom = shapely.wkb.loads(geom_wkb)
 
         LOGGER.debug('Testing geometry bbox')
