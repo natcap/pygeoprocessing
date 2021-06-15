@@ -1,7 +1,7 @@
 Release History
 ===============
 
-Unreleased Changes
+2.2.1 (2021-06-15)
 ------------------
 * Added a ``single_outlet_tuple`` parameter to ``routing.fill_pits`` that
   forces a DEM to only have one outlet at any point on the raster. The
@@ -23,7 +23,7 @@ Unreleased Changes
   bounding box cannot be transformed to provide more helpful details.
 * Add support and testing for GDAL 3.3.0.
 
-2.2.0 (2020-05-14)
+2.2.0 (2021-05-14)
 ------------------
 * Adding explicit support for Python 3.9 and testing on Python 3.9.
 * Fixed an issue in ``create_raster_from_vector_extents`` that would cause a
