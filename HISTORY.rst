@@ -1,7 +1,7 @@
 Release History
 ===============
 
-2.2.1 (2021-06-15)
+2.3.0 (2021-06-21)
 ------------------
 * Added a ``single_outlet_tuple`` parameter to ``routing.fill_pits`` that
   forces a DEM to only have one outlet at any point on the raster. The
