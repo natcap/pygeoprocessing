@@ -3863,13 +3863,15 @@ def stitch_rasters(
             _offset_vars = {}
             overlap = True
             for (target_to_base_off, off_val,
-                 target_off_id, off_clip_id, win_size_id) in [
+                 target_off_id, off_clip_id, win_size_id, raster_size) in [
                         (target_to_base_xoff, offset_dict['xoff'],
-                         'target_xoff', 'xoff_clip', 'win_xsize'),
+                         'target_xoff', 'xoff_clip', 'win_xsize',
+                         target_raster_x_size),
                         (target_to_base_yoff, offset_dict['yoff'],
-                         'target_yoff', 'yoff_clip', 'win_ysize')]:
+                         'target_yoff', 'yoff_clip', 'win_ysize',
+                         target_raster_y_size)]:
                 _offset_vars[target_off_id] = (target_to_base_off+off_val)
-                if _offset_vars[target_off_id] > target_raster_x_size:
+                if _offset_vars[target_off_id] >= raster_size:
                     overlap = False
                     break
                 # how far to move right to get in the target raster
@@ -3877,18 +3879,18 @@ def stitch_rasters(
                 if _offset_vars[target_off_id] < 0:
                     _offset_vars[off_clip_id] = -_offset_vars[target_off_id]
                 _offset_vars[win_size_id] = offset_dict[win_size_id]
-                if _offset_vars[off_clip_id] > _offset_vars[win_size_id]:
+                if _offset_vars[off_clip_id] >= _offset_vars[win_size_id]:
                     # its too far left for the whole window
                     overlap = False
                     break
                 # make the _offset_vars[win_size_id] smaller if it shifts
                 # off the target window
                 if (_offset_vars[off_clip_id] + _offset_vars[target_off_id] +
-                        _offset_vars[win_size_id] > target_raster_x_size):
+                        _offset_vars[win_size_id] >= raster_size):
                     _offset_vars[win_size_id] -= (
                         _offset_vars[off_clip_id] +
                         _offset_vars[target_off_id] +
-                        _offset_vars[win_size_id] - target_raster_x_size)
+                        _offset_vars[win_size_id] - raster_size)
 
             if not overlap:
                 continue
@@ -3899,7 +3901,6 @@ def stitch_rasters(
                 win_xsize=_offset_vars['win_xsize'],
                 win_ysize=_offset_vars['win_ysize'])
             target_nodata_mask = numpy.isclose(target_array, target_nodata)
-
             base_array = base_band.ReadAsArray(
                 xoff=offset_dict['xoff']+_offset_vars['xoff_clip'],
                 yoff=offset_dict['yoff']+_offset_vars['yoff_clip'],

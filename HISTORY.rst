@@ -22,6 +22,8 @@ Release History
 * Expanded the error message raised by ``transform_bounding_box`` when the
   bounding box cannot be transformed to provide more helpful details.
 * Add support and testing for GDAL 3.3.0.
+* Fixed exception occuring in ``stitch_rasters`` when base rasters were
+  larger than the target raster on the ``y`` axis.
 
 2.2.0 (2021-05-14)
 ------------------
