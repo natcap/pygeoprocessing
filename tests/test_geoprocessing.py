@@ -3676,8 +3676,8 @@ class TestGeoprocessing(unittest.TestCase):
         actual_message = str(cm.exception)
         self.assertTrue(expected_message in actual_message, actual_message)
 
-    def test_percentile_long_type(self):
-        """PGP: test percentile with long type."""
+    def test_percentile_int_type(self):
+        """PGP: test percentile with int type."""
         srs = osr.SpatialReference()
         srs.ImportFromEPSG(4326)
         int_raster_path = os.path.join(self.workspace_dir, 'int_raster.tif')
@@ -3776,13 +3776,13 @@ class TestGeoprocessing(unittest.TestCase):
             "Expected only one file in the workspace directory after "
             "the call")
 
-    def test_percentile_long_type_undefined_nodata(self):
-        """PGP: test percentile with long type with undefined nodata."""
+    def test_percentile_int_type_undefined_nodata(self):
+        """PGP: test percentile with int type with undefined nodata."""
         srs = osr.SpatialReference()
         srs.ImportFromEPSG(4326)
         int_raster_path = os.path.join(self.workspace_dir, 'int_raster.tif')
         n_length = 10
-        # I made this array from a random set and since it's 100 elements long
+        # I made this array from a random set and since it's 100 elements int
         # I know exactly the percentile cutoffs.
         array = numpy.array([
             0, 153829, 346236, 359534, 372568, 432350, 468065, 620239,

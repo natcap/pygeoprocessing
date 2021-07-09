@@ -1,6 +1,11 @@
 Release History
 ===============
 
+Unreleased Changes
+------------------
+* Fixed an issue with ``raster_band_percentile`` that would raise an
+  exception if an input raster had an undefined nodata value.
+
 2.3.0 (2021-06-21)
 ------------------
 * Added a ``single_outlet_tuple`` parameter to ``routing.fill_pits`` that
