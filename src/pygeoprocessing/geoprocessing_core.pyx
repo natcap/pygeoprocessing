@@ -738,9 +738,12 @@ def _raster_band_percentile_int(
                 f'complete, {pixels_processed} out of {n_pixels}'),
 
             last_update = time.time()
+        if nodata is not None:
+            valid_mask = ~numpy.isclose(block_data, nodata)
+        else:
+            valid_mask = numpy.ones(block_data.shape, dtype=bool)
         buffer_data = numpy.sort(
-            block_data[~numpy.isclose(block_data, nodata)]).astype(
-            numpy.int64)
+            block_data[valid_mask]).astype(numpy.int64)
         if buffer_data.size == 0:
             continue
         n_elements += buffer_data.size
@@ -884,9 +887,12 @@ def _raster_band_percentile_double(
                 f'complete, {pixels_processed} out of {n_pixels}'),
 
             last_update = time.time()
+        if nodata is not None:
+            valid_mask = ~numpy.isclose(block_data, nodata)
+        else:
+            valid_mask = numpy.ones(block_data.shape, dtype=bool)
         buffer_data = numpy.sort(
-            block_data[~numpy.isclose(block_data, nodata)]).astype(
-            numpy.double)
+            block_data[valid_mask]).astype(numpy.double)
         if buffer_data.size == 0:
             continue
         n_elements += buffer_data.size
