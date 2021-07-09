@@ -3723,7 +3723,7 @@ class TestGeoprocessing(unittest.TestCase):
         srs.ImportFromEPSG(4326)
         percentile_cutoffs = [0.0, 22.5, 72.1, 99.0, 100.0]
         array = numpy.array([
-            -1, 0.012483605193988612, 0.015538926080136628,
+            numpy.nan, -1, 0.015538926080136628,
             0.0349541783138948, 0.056811563936455145, 0.06472245939357957,
             0.06763766500876733, 0.0996146617328485, 0.10319174490493743,
             0.1108529662149651, 0.11748524088704182, 0.13932099810203546,
@@ -3764,7 +3764,7 @@ class TestGeoprocessing(unittest.TestCase):
             array.reshape((n_length, n_length)), -1, double_raster_path)
 
         expected_float_percentiles = [
-            array[1], array[24], array[73], array[99]]
+            array[2], array[25], array[73], array[99]]
         actual_percentiles = pygeoprocessing.raster_band_percentile(
             (double_raster_path, 1), self.workspace_dir, percentile_cutoffs,
             heap_buffer_size=0)

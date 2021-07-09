@@ -4,7 +4,9 @@ Release History
 Unreleased Changes
 ------------------
 * Fixed an issue with ``raster_band_percentile`` that would raise an
-  exception if an input raster had an undefined nodata value.
+  exception if an input raster had an undefined nodata value and/or
+  would cause an invalid result if the raster contained non-finite
+  values.
 
 2.3.0 (2021-06-21)
 ------------------
