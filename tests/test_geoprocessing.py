@@ -3685,7 +3685,7 @@ class TestGeoprocessing(unittest.TestCase):
         # I made this array from a random set and since it's 100 elements long
         # I know exactly the percentile cutoffs.
         array = numpy.array([
-            1975, 153829, 346236, 359534, 372568, 432350, 468065, 620239,
+            0, 153829, 346236, 359534, 372568, 432350, 468065, 620239,
             757710, 835119, 870788, 880695, 899211, 939183, 949597, 976023,
             1210404, 1242155, 1395436, 1484104, 1563806, 1787749, 2001579,
             2015145, 2080141, 2107594, 2331278, 2335667, 2508967, 2513463,
@@ -3701,12 +3701,12 @@ class TestGeoprocessing(unittest.TestCase):
             9250199, 9262560, 9365311, 9404229, 9529068, 9597598,
             2**31], dtype=numpy.uint32)
         _array_to_raster(
-            array.reshape((n_length, n_length)), -1, int_raster_path)
+            array.reshape((n_length, n_length)), 0, int_raster_path)
 
         percentile_cutoffs = [0.0, 22.5, 72.1, 99.0, 100.0]
         # manually rounding up the percentiles
         expected_int_percentiles = [
-            array[0], array[23], array[73], array[99], array[99]]
+            array[1], array[24], array[73], array[99]]
         working_dir = os.path.join(
             self.workspace_dir, 'percentile_working_dir')
         actual_int_percentiles = pygeoprocessing.raster_band_percentile(
@@ -3723,7 +3723,7 @@ class TestGeoprocessing(unittest.TestCase):
         srs.ImportFromEPSG(4326)
         percentile_cutoffs = [0.0, 22.5, 72.1, 99.0, 100.0]
         array = numpy.array([
-            0.003998113607125986, 0.012483605193988612, 0.015538926080136628,
+            -1, 0.012483605193988612, 0.015538926080136628,
             0.0349541783138948, 0.056811563936455145, 0.06472245939357957,
             0.06763766500876733, 0.0996146617328485, 0.10319174490493743,
             0.1108529662149651, 0.11748524088704182, 0.13932099810203546,
@@ -3764,7 +3764,7 @@ class TestGeoprocessing(unittest.TestCase):
             array.reshape((n_length, n_length)), -1, double_raster_path)
 
         expected_float_percentiles = [
-            array[0], array[23], array[73], array[99], array[99]]
+            array[1], array[24], array[73], array[99], array[99]]
         actual_percentiles = pygeoprocessing.raster_band_percentile(
             (double_raster_path, 1), self.workspace_dir, percentile_cutoffs,
             heap_buffer_size=0)
