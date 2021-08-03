@@ -41,13 +41,16 @@ class ReclassificationMissingValuesError(Exception):
 
     Attributes:
         msg (str) - error message
+        missing_values (list) - a list of the missing values from the raster
+            that are not keys in the dictionary
 
     """
 
-    def __init__(self, msg):
+    def __init__(self, msg, missing_values):
         """See Attributes for args docstring."""
         self.msg = msg
-        super().__init__(msg)
+        self.missing_values = missing_values
+        super().__init__(msg, missing_values)
 
 
 LOGGER = logging.getLogger(__name__)
@@ -1831,31 +1834,30 @@ def reclassify_raster(
             base_raster_path_band)
     raster_info = get_raster_info(base_raster_path_band[0])
     nodata = raster_info['nodata'][base_raster_path_band[1]-1]
-    value_map_copy = value_map.copy()
-    # possible that nodata value is not defined, so test for None first
-    # otherwise if nodata not predefined, remap it into the dictionary
-    if nodata is not None and nodata not in value_map_copy:
-        value_map_copy[nodata] = target_nodata
-    keys = sorted(numpy.array(list(value_map_copy.keys())))
-    values = numpy.array([value_map_copy[x] for x in keys])
+    keys = sorted(numpy.array(list(value_map.keys())))
+    values = numpy.array([value_map[x] for x in keys])
 
     def _map_dataset_to_value_op(original_values):
         """Convert a block of original values to the lookup values."""
-        if values_required:
-            unique = numpy.unique(original_values)
-            missing_values = []
-            for unique_value in unique:
-                if not numpy.isclose(unique_value, keys).any():
-                    missing_values.append(unique_value)
+        out_array = numpy.full(original_values.shape, target_nodata)
+        if nodata is None:
+            valid_mask = numpy.full(original_values.shape, True)
+        else:
+            valid_mask = ~numpy.isclose(original_values, nodata)
 
-            if missing_values:
+        if values_required:
+            unique = numpy.unique(original_values[valid_mask])
+            has_map = numpy.isin(unique, keys)
+            if not all(has_map):
+                missing_values = unique[~has_map]
                 raise ReclassificationMissingValuesError(
-                    f'The following {len(missing_values)} raster values'
+                    f'The following {missing_values.size} raster values'
                     f' {missing_values} from "{base_raster_path_band[0]}"'
                     ' do not have corresponding entries in the ``value_map``:'
-                    f' {value_map_copy}.')
-        index = numpy.digitize(original_values.ravel(), keys, right=True)
-        return values[index].reshape(original_values.shape)
+                    f' {value_map}.', missing_values)
+        index = numpy.digitize(original_values[valid_mask], keys, right=True)
+        out_array[valid_mask] = values[index]
+        return out_array
 
     raster_calculator(
         [base_raster_path_band], _map_dataset_to_value_op,
