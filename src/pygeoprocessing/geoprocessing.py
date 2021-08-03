@@ -41,16 +41,13 @@ class ReclassificationMissingValuesError(Exception):
 
     Attributes:
         msg (str) - error message
-        missing_values (list) - a list of the missing values from the raster
-            that are not keys in the dictionary
 
     """
 
-    def __init__(self, msg, missing_values):
+    def __init__(self, msg):
         """See Attributes for args docstring."""
         self.msg = msg
-        self.missing_values = missing_values
-        super().__init__(msg, missing_values)
+        super().__init__(msg)
 
 
 LOGGER = logging.getLogger(__name__)
@@ -1851,10 +1848,10 @@ def reclassify_raster(
             if not all(has_map):
                 missing_values = unique[~has_map]
                 raise ReclassificationMissingValuesError(
-                    f'The following {missing_values.size} raster values'
-                    f' {missing_values} from "{base_raster_path_band[0]}"'
-                    ' do not have corresponding entries in the ``value_map``:'
-                    f' {value_map}.', missing_values)
+                    f'The following {missing_values.size} raster values '
+                    f'{missing_values} from "{base_raster_path_band[0]}" '
+                    'do not have corresponding entries in the ``value_map``: '
+                    f'{value_map}.')
         index = numpy.digitize(original_values[valid_mask], keys, right=True)
         out_array[valid_mask] = values[index]
         return out_array

@@ -1,6 +1,12 @@
 Release History
 ===============
 
+Unreleased Changes
+------------------
+* Slightly change the error message displayed for a
+  ``ReclassificationMissingValuesError``.
+* Handle float nodata values correctly in ``reclassify_raster``.
+
 2.3.0 (2021-06-21)
 ------------------
 * Added a ``single_outlet_tuple`` parameter to ``routing.fill_pits`` that
