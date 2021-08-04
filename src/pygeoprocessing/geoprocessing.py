@@ -46,11 +46,14 @@ class ReclassificationMissingValuesError(Exception):
 
     """
 
-    def __init__(self, msg, missing_values):
+    def __init__(self, missing_values, raster_path, value_map):
         """See Attributes for args docstring."""
-        self.msg = msg
+        self.msg = (
+            f'The following {missing_values.size} raster values '
+            f'{missing_values} from "{raster_path}" do not have corresponding '
+            f'entries in the value map: {value_map}.')
         self.missing_values = missing_values
-        super().__init__(msg, missing_values)
+        super().__init__(self.msg)
 
 
 LOGGER = logging.getLogger(__name__)
@@ -767,7 +770,7 @@ def align_and_resize_raster_stack(
                 vector_mask_options['mask_vector_where_filter'])
             mask_bounding_box = merge_bounding_box_list(
                 [[feature.GetGeometryRef().GetEnvelope()[i]
-                 for i in [0, 2, 1, 3]] for feature in mask_layer],
+                  for i in [0, 2, 1, 3]] for feature in mask_layer],
                 'union')
             mask_layer = None
             mask_vector = None
@@ -779,8 +782,8 @@ def align_and_resize_raster_stack(
         if mask_vector_projection_wkt is not None and \
                 target_projection_wkt is not None:
             mask_vector_bb = transform_bounding_box(
-               mask_bounding_box, mask_vector_info['projection_wkt'],
-               target_projection_wkt)
+                mask_bounding_box, mask_vector_info['projection_wkt'],
+                target_projection_wkt)
         else:
             mask_vector_bb = mask_vector_info['bounding_box']
         # Calling `merge_bounding_box_list` will raise an ValueError if the
@@ -814,8 +817,8 @@ def align_and_resize_raster_stack(
             raster_driver_creation_tuple=(raster_driver_creation_tuple),
             target_projection_wkt=target_projection_wkt,
             base_projection_wkt=(
-                    None if not base_projection_wkt_list else
-                    base_projection_wkt_list[index]),
+                None if not base_projection_wkt_list else
+                base_projection_wkt_list[index]),
             vector_mask_options=vector_mask_options,
             gdal_warp_options=gdal_warp_options)
         LOGGER.info(
@@ -1227,7 +1230,7 @@ def zonal_statistics(
         'options': [
             'ALL_TOUCHED=FALSE',
             'ATTRIBUTE=%s' % local_aggregate_field_name]
-        }
+    }
 
     # clip base raster to aggregating vector intersection
     raster_info = get_raster_info(base_raster_path_band[0])
@@ -1834,28 +1837,28 @@ def reclassify_raster(
             base_raster_path_band)
     raster_info = get_raster_info(base_raster_path_band[0])
     nodata = raster_info['nodata'][base_raster_path_band[1]-1]
-    value_map_copy = value_map.copy()
-    # possible that nodata value is not defined, so test for None first
-    # otherwise if nodata not predefined, remap it into the dictionary
-    if nodata is not None and nodata not in value_map_copy:
-        value_map_copy[nodata] = target_nodata
-    keys = sorted(numpy.array(list(value_map_copy.keys())))
-    values = numpy.array([value_map_copy[x] for x in keys])
+    keys = sorted(numpy.array(list(value_map.keys())))
+    values = numpy.array([value_map[x] for x in keys])
 
     def _map_dataset_to_value_op(original_values):
         """Convert a block of original values to the lookup values."""
+        out_array = numpy.full(original_values.shape, target_nodata)
+        if nodata is None:
+            valid_mask = numpy.full(original_values.shape, True)
+        else:
+            valid_mask = ~numpy.isclose(original_values, nodata)
+
         if values_required:
-            unique = numpy.unique(original_values)
-            has_map = numpy.in1d(unique, keys)
+            unique = numpy.unique(original_values[valid_mask])
+            has_map = numpy.isin(unique, keys)
             if not all(has_map):
                 missing_values = unique[~has_map]
                 raise ReclassificationMissingValuesError(
-                    f'The following {missing_values.size} raster values'
-                    f' {missing_values} from "{base_raster_path_band[0]}"'
-                    ' do not have corresponding entries in the ``value_map``:'
-                    f' {value_map}.', missing_values)
-        index = numpy.digitize(original_values.ravel(), keys, right=True)
-        return values[index].reshape(original_values.shape)
+                    missing_values, base_raster_path_band[0], value_map
+                )
+        index = numpy.digitize(original_values[valid_mask], keys, right=True)
+        out_array[valid_mask] = values[index]
+        return out_array
 
     raster_calculator(
         [base_raster_path_band], _map_dataset_to_value_op,
@@ -2613,7 +2616,6 @@ def convolve_2d(
     new_raster_from_base(
         signal_path_band[0], target_path, target_datatype, [0],
         raster_driver_creation_tuple=raster_driver_creation_tuple)
-
 
     n_cols_signal, n_rows_signal = signal_raster_info['raster_size']
     n_cols_kernel, n_rows_kernel = kernel_raster_info['raster_size']
@@ -3840,7 +3842,7 @@ def stitch_rasters(
                 [(base_stitch_raster_path, 1), (base_stitch_nodata, 'raw'),
                  m2_area_per_lat/base_pixel_area_m2,
                  (_GDAL_TYPE_TO_NUMPY_LOOKUP[
-                    target_raster_info['datatype']], 'raw')], _mult_op,
+                     target_raster_info['datatype']], 'raw')], _mult_op,
                 scaled_raster_path,
                 target_raster_info['datatype'], base_stitch_nodata)
 
@@ -3864,12 +3866,12 @@ def stitch_rasters(
             overlap = True
             for (target_to_base_off, off_val,
                  target_off_id, off_clip_id, win_size_id, raster_size) in [
-                        (target_to_base_xoff, offset_dict['xoff'],
-                         'target_xoff', 'xoff_clip', 'win_xsize',
-                         target_raster_x_size),
-                        (target_to_base_yoff, offset_dict['yoff'],
-                         'target_yoff', 'yoff_clip', 'win_ysize',
-                         target_raster_y_size)]:
+                (target_to_base_xoff, offset_dict['xoff'],
+                 'target_xoff', 'xoff_clip', 'win_xsize',
+                 target_raster_x_size),
+                (target_to_base_yoff, offset_dict['yoff'],
+                 'target_yoff', 'yoff_clip', 'win_ysize',
+                 target_raster_y_size)]:
                 _offset_vars[target_off_id] = (target_to_base_off+off_val)
                 if _offset_vars[target_off_id] >= raster_size:
                     overlap = False
