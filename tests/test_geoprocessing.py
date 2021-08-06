@@ -201,6 +201,32 @@ class TestGeoprocessing(unittest.TestCase):
                 (raster_path, 1), empty_value_map, target_path,
                 gdal.GDT_Float32, target_nodata, values_required=False)
 
+    def test_reclassify_raster_int_to_float(self):
+        """PGP.geoprocessing: test reclassify to float types."""
+        pixel_matrix = numpy.array([
+            [2, 2],
+            [3, 3]
+        ], dtype=numpy.int8)
+        target_nodata = -1
+        raster_path = os.path.join(self.workspace_dir, 'raster.tif')
+        target_path = os.path.join(self.workspace_dir, 'target.tif')
+        _array_to_raster(
+            pixel_matrix, target_nodata, raster_path)
+
+        value_map = {
+            2: 3.1,
+            3: 4.567
+        }
+        expected = numpy.array([
+            [3.1, 3.1],
+            [4.567, 4.567]
+        ])
+        pygeoprocessing.reclassify_raster(
+            (raster_path, 1), value_map, target_path,
+            gdal.GDT_Float32, target_nodata, values_required=True)
+        actual = pygeoprocessing.raster_to_numpy_array(target_path)
+        numpy.testing.assert_allclose(actual, expected)
+
     def test_reproject_vector(self):
         """PGP.geoprocessing: test reproject vector."""
         # Create polygon shapefile to reproject
@@ -967,11 +993,11 @@ class TestGeoprocessing(unittest.TestCase):
         n = 2
         _geometry_to_vector(
             [shapely.geometry.Polygon([
-                 (origin_x, origin_y),
-                 (origin_x+n, origin_y),
-                 (origin_x+n, origin_y-n),
-                 (origin_x, origin_y-n),
-                 (origin_x, origin_y)])],
+                (origin_x, origin_y),
+                (origin_x+n, origin_y),
+                (origin_x+n, origin_y-n),
+                (origin_x, origin_y-n),
+                (origin_x, origin_y)])],
             vector_path, projection_epsg=4326, vector_format='gpkg')
 
         # create raster with nodata value of 0
@@ -2084,7 +2110,7 @@ class TestGeoprocessing(unittest.TestCase):
             fill_value_list=[None],
             raster_driver_creation_tuple=('GTiff', [
                 'PIXELTYPE=SIGNEDBYTE',
-                ]))
+            ]))
 
         raster_properties = pygeoprocessing.get_raster_info(target_path)
         self.assertEqual(raster_properties['nodata'], [None])
@@ -3167,7 +3193,8 @@ class TestGeoprocessing(unittest.TestCase):
         stitch_by_etch_target_path = os.path.join(
             self.workspace_dir, 'stitch_by_etch.tif')
         pygeoprocessing.numpy_array_to_raster(
-            numpy.full((256, 256), -1, dtype=numpy.float32), -1, (1, -1), (0, 0),
+            numpy.full((256, 256), -1, dtype=numpy.float32),
+            -1, (1, -1), (0, 0),
             wgs84_ref.ExportToWkt(), stitch_by_etch_target_path)
         pygeoprocessing.stitch_rasters(
             [(raster_a_path, 1), (raster_b_path, 1)],
@@ -4302,8 +4329,9 @@ class TestGeoprocessing(unittest.TestCase):
 
         pygeoprocessing.numpy_array_to_raster(
             array, 255, (20, -20), (0, 0), projection_wkt, signal_path)
-        pygeoprocessing.numpy_array_to_raster(kernel.astype(numpy.uint8),
-            255, (20, -20), (0, 0), projection_wkt, int_kernel_path)
+        pygeoprocessing.numpy_array_to_raster(
+            kernel.astype(numpy.uint8), 255, (20, -20), (0, 0), projection_wkt,
+            int_kernel_path)
 
         pygeoprocessing.convolve_2d(
             (signal_path, 1),
