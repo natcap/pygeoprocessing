@@ -3193,8 +3193,8 @@ class TestGeoprocessing(unittest.TestCase):
         stitch_by_etch_target_path = os.path.join(
             self.workspace_dir, 'stitch_by_etch.tif')
         pygeoprocessing.numpy_array_to_raster(
-            numpy.full((256, 256), -1, dtype=numpy.float32), -
-            1, (1, -1), (0, 0),
+            numpy.full((256, 256), -1, dtype=numpy.float32),
+            -1, (1, -1), (0, 0),
             wgs84_ref.ExportToWkt(), stitch_by_etch_target_path)
         pygeoprocessing.stitch_rasters(
             [(raster_a_path, 1), (raster_b_path, 1)],
@@ -4329,8 +4329,9 @@ class TestGeoprocessing(unittest.TestCase):
 
         pygeoprocessing.numpy_array_to_raster(
             array, 255, (20, -20), (0, 0), projection_wkt, signal_path)
-        pygeoprocessing.numpy_array_to_raster(kernel.astype(numpy.uint8),
-                                              255, (20, -20), (0, 0), projection_wkt, int_kernel_path)
+        pygeoprocessing.numpy_array_to_raster(
+            kernel.astype(numpy.uint8), 255, (20, -20), (0, 0), projection_wkt,
+            int_kernel_path)
 
         pygeoprocessing.convolve_2d(
             (signal_path, 1),
