@@ -1842,7 +1842,8 @@ def reclassify_raster(
 
     def _map_dataset_to_value_op(original_values):
         """Convert a block of original values to the lookup values."""
-        out_array = numpy.full(original_values.shape, target_nodata)
+        out_array = numpy.full(original_values.shape, target_nodata,
+                               dtype=numpy.float32)
         if nodata is None:
             valid_mask = numpy.full(original_values.shape, True)
         else:
