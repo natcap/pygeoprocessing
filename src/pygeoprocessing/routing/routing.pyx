@@ -125,6 +125,15 @@ cdef struct FlowPixelType:
     int last_flow_dir
     double value
 
+# this struct is used to record an intermediate flow pixel's last calculated
+# direction and the flow accumulation value so far
+cdef struct MFDFlowPixelType:
+    int xi
+    int yi
+    int last_flow_dir
+    double value
+    double sum_of_weights
+
 # used when constructing geometric streams, the x/y coordinates represent
 # a seed point to walk upstream from, the upstream_flow_dir indicates the
 # d8 flow direction to walk and the source_id indicates the source stream it
@@ -2609,19 +2618,37 @@ def distance_to_channel_mfd(
     MFD distance to channel for a pixel ``i`` is the average distance that
     water travels from ``i`` until it reaches a stream, defined as::
 
-              ⎧ 0,                                  if i is a stream pixel
+              ⎧ 0,                                       if i is a stream pixel
               ⎪
-              ⎪  ⎛                  ⎞
-        d_i = ⎨  ⎜ ⎲ d_n * p(i, n) ⎜+ l(i, n),     otherwise
-              ⎪  ⎜ ⎳               ⎜
-              ⎩  ⎝n ∈ N             ⎠
+              ⎪ undefined,   if i is not a stream and there are 0 elements in N
+       d_i =  ⎨
+              ⎪
+              ⎪   ⎲ ((d_n + l(i, n)) * p(i, n),                     otherwise
+              ⎪   ⎳
+              ⎩  n ∈ N
 
         where
-        - N is the set of immediate downstream neighbors of i
+        - N is the set of immediate downstream neighbors of i that drain to
+          a stream on the map
         - p(i, n) is the proportion of water on pixel i that flows onto n
         - l(i, n) is the distance between i and n. This is 1 for lateral
           neigbors, and √2 for diagonal neighbors.
 
+    Distance is measured in units of pixels.
+
+    If a pixel does not drain to a stream at all (no fraction of its flow
+    reaches a stream on the map), ``d_i`` is undefined, and that pixel has
+    nodata in the output.
+
+    If only some of a pixel's flow reaches a stream on the map, ``d_i`` is
+    defined in terms of only that portion of flow that reaches a stream. It is
+    the average distance traveled by the water that does reach a stream.
+
+    The algorithm begins from an arbitrary pixel and pushes downstream
+    neighbors to the stack depth-first, until reaching a stream (the first case
+    in the function for ``d_i`` above) or a raster edge (the second case).
+    Non-stream pixels are only calculated once all their downstream neighbors
+    have been calculated (the third case).
 
     Args:
         flow_dir_mfd_raster_path_band (tuple): a path/band index tuple
@@ -2658,14 +2685,14 @@ def distance_to_channel_mfd(
     # these variables are used as pixel or neighbor indexes.
     # _n is related to a neighbor pixel
     cdef int i_n, xi, yi, xi_n, yi_n
-    cdef int flow_dir_weight, sum_of_flow_weights, compressed_flow_dir
+    cdef int flow_dir_weight, mfd_value
 
     # used to remember if the current pixel is a channel for routing
     cdef int is_a_channel
 
     # `distance_to_channel_queue` is the data structure that walks upstream
     # from a defined flow distance pixel
-    cdef stack[FlowPixelType] distance_to_channel_stack
+    cdef stack[MFDFlowPixelType] distance_to_channel_stack
 
     # properties of the parallel rasters
     cdef int raster_x_size, raster_y_size
@@ -2779,6 +2806,7 @@ def distance_to_channel_mfd(
                 xi_root = xi+xoff-1
                 yi_root = yi+yoff-1
 
+                # d_i is 0 if pixel i is a stream
                 if channel_buffer_array[yi, xi] == 1:
                     distance_to_channel_managed_raster.set(
                         xi_root, yi_root, 0)
@@ -2788,6 +2816,10 @@ def distance_to_channel_mfd(
                     # nodata flow, so we skip
                     continue
 
+                # the algorithm starts from an arbitrary pixel
+                # it pushes its downstream neighbors to a stack, working depth-first
+                # until reaching either a stream or a raster edge
+
                 if visited_managed_raster.get(xi_root, yi_root) == 0:
                     visited_managed_raster.set(xi_root, yi_root, 1)
                     # arguments are x,y position of pixel, then last D8 flow
@@ -2795,7 +2827,7 @@ def distance_to_channel_mfd(
                     # accumulation distance accumulated by this pixel so far
                     # initialized to nodata
                     distance_to_channel_stack.push(
-                        FlowPixelType(xi_root, yi_root, 0, distance_nodata))
+                        MFDFlowPixelType(xi_root, yi_root, 0, distance_nodata, 0))
 
                 while not distance_to_channel_stack.empty():
                     pixel = distance_to_channel_stack.top()
@@ -2807,36 +2839,51 @@ def distance_to_channel_mfd(
                             pixel.xi, pixel.yi, 0)
                         continue
 
-                    compressed_flow_dir = (
+                    mfd_value = (
                         <int>flow_dir_mfd_managed_raster.get(
                             pixel.xi, pixel.yi))
 
+                    # a pixel will be "preempted" if it gets pushed back onto
+                    # the stack because not all its downstream neighbors are
+                    # visited yet
                     preempted = 0
+
+                    # iterate over neighbors
+                    # look for ones that are downstream, that are within the raster bounds,
+                    # and that haven't been visited yet
+                    # when we find one that hasn't been visited yet, push `pixel` and
+                    # the neighbor back onto the stack and exit the loop
+                    # if all have been visited, we can calculate d_i
                     for i_n in range(pixel.last_flow_dir, 8):
-                        flow_dir_weight = 0xF & (
-                            compressed_flow_dir >> (i_n * 4))
+                        flow_dir_weight = 0xF & (mfd_value >> (i_n * 4))
                         if flow_dir_weight == 0:
                             continue
 
                         xi_n = pixel.xi+D8_XOFFSET[i_n]
                         yi_n = pixel.yi+D8_YOFFSET[i_n]
-
                         if (xi_n < 0 or xi_n >= raster_x_size or
                                 yi_n < 0 or yi_n >= raster_y_size):
                             continue
 
+                        # if the pixel has a neighbor that hasn't been visited yet,
+                        # push it back onto the stack, and also push its neighbor
+                        # onto the stack, and exit the loop.
+                        # we won't calculate d_i until d_n is defined for every n
                         if visited_managed_raster.get(xi_n, yi_n) == 0:
                             visited_managed_raster.set(xi_n, yi_n, 1)
                             preempted = 1
                             pixel.last_flow_dir = i_n
                             distance_to_channel_stack.push(pixel)
                             distance_to_channel_stack.push(
-                                FlowPixelType(xi_n, yi_n, 0, distance_nodata))
+                                MFDFlowPixelType(xi_n, yi_n, 0, distance_nodata, 0))
                             break
-
+                        # at this point, the pixel's downstream neighbor n
+                        # distance to channel (d_n) will already be calculated
                         n_distance = distance_to_channel_managed_raster.get(
                             xi_n, yi_n)
-
+                        # if it's still nodata, that means this neighbor
+                        # never reaches a stream. we don't count this towards
+                        # the average.
                         if n_distance == distance_nodata:
                             # a channel was never found
                             continue
@@ -2851,27 +2898,33 @@ def distance_to_channel_mfd(
                             if _is_close(weight_val, weight_nodata, 1e-8, 1e-5):
                                 weight_val = 0.0
                         else:
+                            # neighbors 0, 2, 4, 6 are lateral
+                            # 1, 3, 5, 7 are diagonal
                             weight_val = (SQRT2 if i_n % 2 else 1)
 
+                        # for only those neighbors which do drain to a stream,
+                        # sum up the MFD values (the denominator in the average)
+                        pixel.sum_of_weights += flow_dir_weight
+                        # and sum up the d_n values weighted by MFD (the numerator)
                         if pixel.value == distance_nodata:
                             pixel.value = 0
                         pixel.value += flow_dir_weight * (
                             weight_val + n_distance)
 
+                    # "preempted" means that this pixel got pushed back onto the stack
+                    # because at least one of its downstream neighbors isn't calculated yet
+                    #
+                    # if pixel.value is still nodata, and preempted is False,
+                    # that means all its downstream neighbors
                     if preempted or pixel.value == distance_nodata:
                         continue
 
-                    sum_of_flow_weights = 0
-                    for i_n in range(8):
-                        sum_of_flow_weights += 0xF & (
-                            compressed_flow_dir >> (i_n * 4))
-
-                    if sum_of_flow_weights != 0:
-                        pixel.value = pixel.value / sum_of_flow_weights
-                    else:
-                        pixel.value = 0
-                    distance_to_channel_managed_raster.set(
-                        pixel.xi, pixel.yi, pixel.value)
+                    # if the sum of flow weights is 0, that means that no neighbors
+                    # drain to a stream. d_i is undefined for this pixel.
+                    if pixel.sum_of_weights != 0:
+                        pixel.value = pixel.value / pixel.sum_of_weights
+                        distance_to_channel_managed_raster.set(
+                            pixel.xi, pixel.yi, pixel.value)
 
     distance_to_channel_managed_raster.close()
     channel_managed_raster.close()
