@@ -131,7 +131,7 @@ cdef struct MFDFlowPixelType:
     int xi
     int yi
     int last_flow_dir
-    double value
+    double sum_of_weighted_distances
     double sum_of_weights
 
 # used when constructing geometric streams, the x/y coordinates represent
@@ -2827,7 +2827,7 @@ def distance_to_channel_mfd(
                     # accumulation distance accumulated by this pixel so far
                     # initialized to nodata
                     distance_to_channel_stack.push(
-                        MFDFlowPixelType(xi_root, yi_root, 0, distance_nodata, 0))
+                        MFDFlowPixelType(xi_root, yi_root, 0, 0, 0))
 
                 while not distance_to_channel_stack.empty():
                     pixel = distance_to_channel_stack.top()
@@ -2875,7 +2875,7 @@ def distance_to_channel_mfd(
                             pixel.last_flow_dir = i_n
                             distance_to_channel_stack.push(pixel)
                             distance_to_channel_stack.push(
-                                MFDFlowPixelType(xi_n, yi_n, 0, distance_nodata, 0))
+                                MFDFlowPixelType(xi_n, yi_n, 0, 0, 0))
                             break
                         # at this point, the pixel's downstream neighbor n
                         # distance to channel (d_n) will already be calculated
@@ -2906,9 +2906,7 @@ def distance_to_channel_mfd(
                         # sum up the MFD values (the denominator in the average)
                         pixel.sum_of_weights += flow_dir_weight
                         # and sum up the d_n values weighted by MFD (the numerator)
-                        if pixel.value == distance_nodata:
-                            pixel.value = 0
-                        pixel.value += flow_dir_weight * (
+                        pixel.sum_of_weighted_distances += flow_dir_weight * (
                             weight_val + n_distance)
 
                     # "preempted" means that this pixel got pushed back onto the stack
@@ -2922,9 +2920,10 @@ def distance_to_channel_mfd(
                     # if the sum of flow weights is 0, that means that no neighbors
                     # drain to a stream. d_i is undefined for this pixel.
                     if pixel.sum_of_weights != 0:
-                        pixel.value = pixel.value / pixel.sum_of_weights
+                        # divide to get the average
                         distance_to_channel_managed_raster.set(
-                            pixel.xi, pixel.yi, pixel.value)
+                            pixel.xi, pixel.yi,
+                            pixel.sum_of_weighted_distances / pixel.sum_of_weights)
 
     distance_to_channel_managed_raster.close()
     channel_managed_raster.close()
