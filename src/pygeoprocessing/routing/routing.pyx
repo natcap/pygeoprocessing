@@ -125,8 +125,8 @@ cdef struct FlowPixelType:
     int last_flow_dir
     double value
 
-# this struct is used to record an intermediate flow pixel's last calculated
-# direction and the flow accumulation value so far
+# this struct is used in distance_to_channel_mfd to add up each pixel's
+# weighted distances and flow weights
 cdef struct MFDFlowPixelType:
     int xi
     int yi
@@ -2620,7 +2620,7 @@ def distance_to_channel_mfd(
               ⎪ undefined,   if i is not a stream and there are 0 elements in N
        d_i =  ⎨
               ⎪
-              ⎪   ⎲ ((d_n + l(i, n)) * p(i, n),                     otherwise
+              ⎪   ⎲ ((d_n + l(i, n)) * p(i, n),                       otherwise
               ⎪   ⎳
               ⎩  n ∈ N
 
@@ -2629,13 +2629,14 @@ def distance_to_channel_mfd(
           a stream on the map
         - p(i, n) is the proportion of water on pixel i that flows onto n
         - l(i, n) is the distance between i and n. This is 1 for lateral
-          neigbors, and √2 for diagonal neighbors.
+          neighbors, and √2 for diagonal neighbors.
 
-    Distance is measured in units of pixels.
+    Distance is measured in units of pixel lengths. Pixels must be square, and
+    both input rasters must have the same spatial reference, geotransform, and
+    extent, so that their pixels overlap exactly.
 
-    If a pixel does not drain to a stream at all (no fraction of its flow
-    reaches a stream on the map), ``d_i`` is undefined, and that pixel has
-    nodata in the output.
+    If a none of a pixel's flow drains to any stream on the map, ``d_i`` is
+    undefined, and that pixel has nodata in the output.
 
     If only some of a pixel's flow reaches a stream on the map, ``d_i`` is
     defined in terms of only that portion of flow that reaches a stream. It is
