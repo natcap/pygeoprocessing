@@ -2908,15 +2908,14 @@ def distance_to_channel_mfd(
                             weight_val + n_distance)
 
                     # "preempted" means that this pixel got pushed back onto the stack
-                    # because at least one of its downstream neighbors isn't calculated yet
-                    #
-                    # if pixel.value is still nodata, and preempted is False,
-                    # that means all its downstream neighbors
-                    if preempted or pixel.value == distance_nodata:
+                    # because at least one of its downstream neighbors isn't done
+                    # and so this pixel isn't ready to be calculated yet
+                    if preempted:
                         continue
 
-                    # if the sum of flow weights is 0, that means that no neighbors
-                    # drain to a stream. d_i is undefined for this pixel.
+                    # if the sum of flow weights is 0, that means that no
+                    # neighbors drain to a stream, and so d_i is undefined.
+                    # in that case leave it unset (nodata).
                     if pixel.sum_of_weights != 0:
                         # divide to get the average
                         distance_to_channel_managed_raster.set(
