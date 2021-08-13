@@ -2606,9 +2606,6 @@ def distance_to_channel_d8(
         weight_raster.close()
 
 
-
-
-
 def distance_to_channel_mfd(
         flow_dir_mfd_raster_path_band, channel_raster_path_band,
         target_distance_to_channel_raster_path, weight_raster_path_band=None,
@@ -2819,7 +2816,6 @@ def distance_to_channel_mfd(
                 # the algorithm starts from an arbitrary pixel
                 # it pushes its downstream neighbors to a stack, working depth-first
                 # until reaching either a stream or a raster edge
-
                 if visited_managed_raster.get(xi_root, yi_root) == 0:
                     visited_managed_raster.set(xi_root, yi_root, 1)
                     # arguments are x,y position of pixel, then last D8 flow
@@ -2877,10 +2873,12 @@ def distance_to_channel_mfd(
                             distance_to_channel_stack.push(
                                 MFDFlowPixelType(xi_n, yi_n, 0, 0, 0))
                             break
+
                         # at this point, the pixel's downstream neighbor n
                         # distance to channel (d_n) will already be calculated
                         n_distance = distance_to_channel_managed_raster.get(
                             xi_n, yi_n)
+
                         # if it's still nodata, that means this neighbor
                         # never reaches a stream. we don't count this towards
                         # the average.
