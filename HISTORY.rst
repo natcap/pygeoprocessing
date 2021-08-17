@@ -6,6 +6,8 @@ Unreleased Changes
 * Slightly change the error message displayed for a
   ``ReclassificationMissingValuesError``.
 * Handle float nodata values correctly in ``reclassify_raster``.
+* Fix a bug in ``distance_to_channel_mfd`` where pixels that only partially
+  drained to a stream were given incorrect distances.
 
 2.3.0 (2021-06-21)
 ------------------

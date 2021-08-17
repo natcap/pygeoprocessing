@@ -1032,6 +1032,56 @@ class TestRouting(unittest.TestCase):
         numpy.testing.assert_almost_equal(
             distance_to_channel_mfd_array, zero_array)
 
+
+    def test_distance_to_channel_mfd_no_stream(self):
+        """PGP.routing: MFD stream distance including area that doesn't drain to stream."""
+        stream_array = numpy.array([
+            [0, 0, 0],
+            [0, 0, 0],
+            [0, 0, 1]], dtype=numpy.int8)
+        flow_dir_nodata = 0
+        flow_dir_array = numpy.array([
+            [268435458, 1, 16777216],
+            [16777216, 285212672, 16777216],
+            [16777216, 16777216, 16777216]], dtype=numpy.int32)
+        # this MFD array is equivalent to these flow direction weights:
+        #
+        # [0 0 0] [0 0 0] [0 0 0]
+        # [0 a 2] [0 b 1] [0 c 0]
+        # [0 0 1] [0 0 0] [0 1 0]
+        #
+        # [0 0 0] [0 0 0] [0 0 0]
+        # [0 d 0] [0 e 0] [0 f 0]
+        # [0 1 0] [0 1 1] [0 1 0]
+        #
+        # [0 0 0] [0 0 0] [0 0 0]
+        # [0 g 0] [0 h 0] [0 i 0]
+        # [0 1 0] [0 1 0] [0 1 0]
+        #
+        # - pixel i is the only stream
+        # - g, h, and i flow off the bottom edge
+        # - flow paths are a->b->c->f->i, a->e->i, a->e->h, and d->g
+        # - d, g, and h are nodata because none of their flow reaches a stream
+        # - part of a and e's flow doesn't reach a stream. their distances
+        #   only measure the fraction that does reach the stream.
+        nodata = -1
+        expected_distance = numpy.array([
+            [(8+2*2**.5)/3, 3,      2],
+            [nodata,        2**.5,  1],
+            [nodata,        nodata, 0]])
+
+        flow_dir_path = os.path.join(self.workspace_dir, 'flow_dir.tif')
+        stream_path = os.path.join(self.workspace_dir, 'stream.tif')
+        target_path = os.path.join(self.workspace_dir, 'distance.tif')
+        _array_to_raster(flow_dir_array, flow_dir_nodata, flow_dir_path)
+        _array_to_raster(stream_array, None, stream_path)
+        pygeoprocessing.routing.distance_to_channel_mfd(
+            (flow_dir_path, 1), (stream_path, 1), target_path)
+
+        distance = pygeoprocessing.raster_to_numpy_array(target_path)
+        numpy.testing.assert_allclose(expected_distance, distance)
+
+
     def test_flow_dir_mfd_plateau(self):
         """PGP.routing: MFD on a plateau."""
         dem_path = os.path.join(self.workspace_dir, 'dem.tif')
