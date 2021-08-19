@@ -12,6 +12,10 @@ Unreleased Changes
   exception if an input raster had an undefined nodata value and/or
   would cause an invalid result if the raster contained non-finite
   values.
+* After many years with the Natural Capital Project, Rich Sharp has stepped
+  down from the Project and as the maintainer of ``pygeoprocessing``.  James
+  Douglass is taking his place, and this change is now reflected in
+  ``setup.py``.
 
 2.3.0 (2021-06-21)
 ------------------

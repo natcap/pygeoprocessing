@@ -27,8 +27,8 @@ setup(
     description="PyGeoprocessing: Geoprocessing routines for GIS",
     long_description=LONG_DESCRIPTION,
     long_description_content_type='text/x-rst',
-    maintainer='Rich Sharp',
-    maintainer_email='richpsharp@gmail.com',
+    maintainer='James Douglass',
+    maintainer_email='jdouglass@stanford.edu',
     url='https://github.com/natcap/pygeoprocessing',
     packages=[
         'pygeoprocessing',
