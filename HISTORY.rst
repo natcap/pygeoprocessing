@@ -8,6 +8,10 @@ Unreleased Changes
 * Handle float nodata values correctly in ``reclassify_raster``.
 * Fix a bug in ``distance_to_channel_mfd`` where pixels that only partially
   drained to a stream were given incorrect distances.
+* Fixed an issue with ``raster_band_percentile`` that would raise an
+  exception if an input raster had an undefined nodata value and/or
+  would cause an invalid result if the raster contained non-finite
+  values.
 
 2.3.0 (2021-06-21)
 ------------------
