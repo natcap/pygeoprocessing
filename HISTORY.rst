@@ -1,7 +1,7 @@
 Release History
 ===============
 
-2.3.1 (2021-08-23)
+2.3.1 (2021-08-24)
 ------------------
 * Slightly change the error message displayed for a
   ``ReclassificationMissingValuesError``.
