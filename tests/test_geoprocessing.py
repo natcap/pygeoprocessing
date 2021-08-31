@@ -227,6 +227,56 @@ class TestGeoprocessing(unittest.TestCase):
         actual = pygeoprocessing.raster_to_numpy_array(target_path)
         numpy.testing.assert_allclose(actual, expected)
 
+    def test_reclassify_raster_reclass_nodata(self):
+        """PGP.geoprocessing: test reclassifying nodata value."""
+        n_pixels = 9
+        pixel_matrix = numpy.ones((n_pixels, n_pixels), numpy.float32)
+        test_value = 0.5
+        pixel_matrix[:] = test_value
+        nodata = -1
+        pixel_matrix[0,0] = nodata
+        pixel_matrix[5,7] = nodata
+        raster_path = os.path.join(self.workspace_dir, 'raster.tif')
+        target_path = os.path.join(self.workspace_dir, 'target.tif')
+        _array_to_raster(
+            pixel_matrix, nodata, raster_path)
+
+        value_map = {
+            test_value: 0,
+            nodata: 1,
+        }
+        target_nodata = -1
+        pygeoprocessing.reclassify_raster(
+            (raster_path, 1), value_map, target_path, gdal.GDT_Float32,
+            target_nodata, values_required=True)
+        target_array = pygeoprocessing.raster_to_numpy_array(target_path)
+        self.assertAlmostEqual(numpy.sum(target_array), 2)
+
+    def test_reclassify_raster_reclass_max_nodata(self):
+        """PGP.geoprocessing: test reclassifying max nodata value."""
+        n_pixels = 9
+        pixel_matrix = numpy.ones((n_pixels, n_pixels), numpy.float32)
+        test_value = 0.5
+        pixel_matrix[:] = test_value
+        nodata = numpy.finfo(numpy.float32).max - 1
+        pixel_matrix[0,0] = nodata
+        pixel_matrix[5,7] = nodata
+        raster_path = os.path.join(self.workspace_dir, 'raster.tif')
+        target_path = os.path.join(self.workspace_dir, 'target.tif')
+        _array_to_raster(
+            pixel_matrix, nodata, raster_path)
+
+        value_map = {
+            test_value: 0,
+            nodata: 1,
+        }
+        target_nodata = -1
+        pygeoprocessing.reclassify_raster(
+            (raster_path, 1), value_map, target_path, gdal.GDT_Float32,
+            target_nodata, values_required=True)
+        target_array = pygeoprocessing.raster_to_numpy_array(target_path)
+        self.assertAlmostEqual(numpy.sum(target_array), 2)
+
     def test_reproject_vector(self):
         """PGP.geoprocessing: test reproject vector."""
         # Create polygon shapefile to reproject
