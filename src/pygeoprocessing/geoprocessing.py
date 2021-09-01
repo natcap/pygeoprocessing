@@ -1850,6 +1850,7 @@ def reclassify_raster(
             if numpy.isclose(key, nodata):
                 nodata_dest_value = val
                 del value_map_copy[key]
+                break
 
     keys = sorted(numpy.array(list(value_map_copy.keys())))
     values = numpy.array([value_map_copy[x] for x in keys])
