@@ -1834,6 +1834,8 @@ def reclassify_raster(
     """
     if len(value_map) == 0:
         raise ValueError("value_map must contain at least one value")
+    if target_nodata is None:
+        raise ValueError("target_nodata must be a valid number, received None")
     if not _is_raster_path_band_formatted(base_raster_path_band):
         raise ValueError(
             "Expected a (path, band_id) tuple, instead got '%s'" %
