@@ -281,6 +281,30 @@ class TestGeoprocessing(unittest.TestCase):
         self.assertAlmostEqual(numpy.sum(target_array), 2)
         self.assertAlmostEqual(target_info['nodata'][0], target_nodata)
 
+    def test_reclassify_raster_reclass_new_nodata(self):
+        """PGP.geoprocessing: test reclassifying None nodata value."""
+        n_pixels = 9
+        pixel_matrix = numpy.array([[0, 1, -1]], dtype=numpy.int16)
+        nodata = 0
+        raster_path = os.path.join(self.workspace_dir, 'raster.tif')
+        target_path = os.path.join(self.workspace_dir, 'target.tif')
+        _array_to_raster(pixel_matrix, nodata, raster_path)
+
+        value_map = {
+            1: 5,
+            -1: 6,
+        }
+        target_nodata = 10
+
+        pygeoprocessing.reclassify_raster(
+            (raster_path, 1), value_map, target_path, gdal.GDT_Int16,
+            target_nodata, values_required=True)
+        target_info = pygeoprocessing.get_raster_info(target_path)
+        target_array = pygeoprocessing.raster_to_numpy_array(target_path)
+        expected = numpy.array([[10, 5, 6]])
+        numpy.testing.assert_allclose(target_array, expected)
+        self.assertAlmostEqual(target_info['nodata'][0], target_nodata)
+
     def test_reclassify_raster_reclass_nodata_none(self):
         """PGP.geoprocessing: test reclassifying None nodata value."""
         n_pixels = 9
