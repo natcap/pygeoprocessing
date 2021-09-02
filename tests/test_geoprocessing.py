@@ -2075,6 +2075,37 @@ class TestGeoprocessing(unittest.TestCase):
         expected_result[127, 127] = nodata
         numpy.testing.assert_allclose(result, expected_result)
 
+    def test_raster_calculator_signed_byte(self):
+        """PGP.geoprocessing: test that signed byte pixels interpreted."""
+        pixel_array = numpy.ones((128, 128), numpy.byte)
+        # ArcGIS will create a signed byte raster with an unsigned value of 255
+        # that actually is supposed to represent -1, even though the nodata
+        # value will be set as -1.
+        pixel_array[0, 0] = 255  # 255 ubyte is -1 byte
+        nodata_base = -1
+        base_path = os.path.join(self.workspace_dir, 'base.tif')
+        _array_to_raster(
+            pixel_array, nodata_base, base_path,
+            creation_options=['PIXELTYPE=SIGNEDBYTE'])
+
+        # The local_op should receive at least one value less than 0
+        def local_op(byte_values):
+            byte_values[byte_values < 0] = 2
+            return byte_values
+
+        target_path = os.path.join(self.workspace_dir, 'target.tif')
+        pygeoprocessing.raster_calculator(
+            [(base_path, 1)], local_op, target_path, gdal.GDT_Byte, None)
+
+        target_array = pygeoprocessing.raster_to_numpy_array(target_path)
+        # We expect that any values less than 0 are converted to 2.
+        # This ensures that
+        # we expect a negative result even though we put in a positive because
+        # we know signed bytes will convert.
+        self.assertEqual(target_array[0, 0], 2)
+        self.assertEqual(target_array.sum(), 128 * 128 + 1)
+        self.assertEqual(list(numpy.unique(target_array)), [1, 2])
+
     def test_new_raster_from_base_unsigned_byte(self):
         """PGP.geoprocessing: test that signed byte rasters copy over."""
         pixel_array = numpy.ones((128, 128), numpy.byte)
