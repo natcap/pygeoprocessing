@@ -1798,10 +1798,9 @@ def reclassify_raster(
     """Reclassify pixel values in a raster.
 
     A function to reclassify values in raster to any output type. By default
-    the values except for nodata must be in ``value_map``. If the base
-    raster nodata value is in ``value_map``, then nodata values are
-    reclassified to the mapped value. This would essentially leave no nodata
-    holes in the target raster.
+    the values except for nodata must be in ``value_map``. Include the
+    base raster nodata value in ``value_map`` to reclassify nodata pixels
+    to a valid value.
 
     Args:
         base_raster_path_band (tuple): a tuple including file path to a raster
@@ -1816,7 +1815,9 @@ def reclassify_raster(
             it exists
         target_datatype (gdal type): the numerical type for the target raster
         target_nodata (numerical type): the nodata value for the target raster.
-            Must be the same type as target_datatype
+            Must be the same type as target_datatype. All nodata pixels in
+            the base raster will be reclassified to this value, unless the
+            base raster notata values are present in ``value_map``.
         values_required (bool): If True, raise a ValueError if there is a
             value in the raster that is not found in ``value_map``.
         raster_driver_creation_tuple (tuple): a tuple containing a GDAL driver
