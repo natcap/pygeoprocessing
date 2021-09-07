@@ -2099,9 +2099,8 @@ class TestGeoprocessing(unittest.TestCase):
 
         target_array = pygeoprocessing.raster_to_numpy_array(target_path)
         # We expect that any values less than 0 are converted to 2.
-        # This ensures that
-        # we expect a negative result even though we put in a positive because
-        # we know signed bytes will convert.
+        # This ensures that we expect a negative result even though we
+        # put in a positive because we know signed bytes will convert.
         self.assertEqual(target_array[0, 0], 2)
         self.assertEqual(target_array.sum(), 128 * 128 + 1)
         self.assertEqual(list(numpy.unique(target_array)), [1, 2])
