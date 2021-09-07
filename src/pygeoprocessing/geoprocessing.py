@@ -1837,8 +1837,6 @@ def reclassify_raster(
     """
     if len(value_map) == 0:
         raise ValueError("value_map must contain at least one value")
-    if target_nodata is None:
-        raise ValueError("target_nodata must be a valid number, received None")
     if not _is_raster_path_band_formatted(base_raster_path_band):
         raise ValueError(
             "Expected a (path, band_id) tuple, instead got '%s'" %
@@ -1856,6 +1854,14 @@ def reclassify_raster(
                 nodata_dest_value = val
                 del value_map_copy[key]
                 break
+
+    if target_nodata is None and nodata_dest_value is None:
+        raise ValueError(
+            "target_nodata was set to None and the base raster nodata"
+            " value was not represented in the value_map. reclassify_raster"
+            " does not assume the base raster nodata value should be used"
+            " as the target_nodata value. Set target_nodata to a valid number"
+            " and/or add a base raster nodata value mapping to value_map.")
 
     keys = sorted(numpy.array(list(value_map_copy.keys())))
     values = numpy.array([value_map_copy[x] for x in keys])
