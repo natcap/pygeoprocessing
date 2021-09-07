@@ -2106,6 +2106,15 @@ class TestGeoprocessing(unittest.TestCase):
         self.assertEqual(target_array.sum(), 128 * 128 + 1)
         self.assertEqual(list(numpy.unique(target_array)), [1, 2])
 
+        # Nodata value is not set, so it should come back as ``None``.
+        try:
+            target_raster = gdal.OpenEx(target_path)
+            target_band = target_raster.GetRasterBand(1)
+            self.assertEqual(target_band.GetNoDataValue(), None)
+        finally:
+            target_band = None
+            target_raster = None
+
     def test_new_raster_from_base_unsigned_byte(self):
         """PGP.geoprocessing: test that signed byte rasters copy over."""
         pixel_array = numpy.ones((128, 128), numpy.byte)
