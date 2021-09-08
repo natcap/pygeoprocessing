@@ -1,8 +1,8 @@
 Release History
 ===============
 
-Unreleased
-----------
+2.3.2 (2021-09-08)
+------------------
 * Restore functionality in ``reclassify_raster`` that allows for nodata
   values to be reclassified. This was accidentally removed in 2.3.1.
 
