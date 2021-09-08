@@ -1798,7 +1798,9 @@ def reclassify_raster(
     """Reclassify pixel values in a raster.
 
     A function to reclassify values in raster to any output type. By default
-    the values except for nodata must be in ``value_map``.
+    the values except for nodata must be in ``value_map``. Include the
+    base raster nodata value in ``value_map`` to reclassify nodata pixels
+    to a valid value.
 
     Args:
         base_raster_path_band (tuple): a tuple including file path to a raster
@@ -1806,12 +1808,16 @@ def reclassify_raster(
         value_map (dictionary): a dictionary of values of
             {source_value: dest_value, ...} where source_value's type is the
             same as the values in ``base_raster_path`` at band ``band_index``.
-            Must contain at least one value.
+            Cannot be empty and must contain a mapping for all raster values
+            if ``values_required=True``. If nodata is mapped, nodata will be
+            reclassified, otherwise nodata will be set to ``target_nodata``.
         target_raster_path (string): target raster output path; overwritten if
             it exists
         target_datatype (gdal type): the numerical type for the target raster
-        target_nodata (numerical type): the nodata value for the target raster
-            Must be the same type as target_datatype
+        target_nodata (numerical type): the nodata value for the target raster.
+            Must be the same type as target_datatype. All nodata pixels in
+            the base raster will be reclassified to this value, unless the
+            base raster notata values are present in ``value_map``.
         values_required (bool): If True, raise a ValueError if there is a
             value in the raster that is not found in ``value_map``.
         raster_driver_creation_tuple (tuple): a tuple containing a GDAL driver
@@ -1837,8 +1843,28 @@ def reclassify_raster(
             base_raster_path_band)
     raster_info = get_raster_info(base_raster_path_band[0])
     nodata = raster_info['nodata'][base_raster_path_band[1]-1]
-    keys = sorted(numpy.array(list(value_map.keys())))
-    values = numpy.array([value_map[x] for x in keys])
+    # If nodata was included in the value_map pop it from our lists
+    # and handle it separately. Doing this on the off chance nodata is
+    # a max or min float which can cause floating decimal discrepencies.
+    value_map_copy = value_map.copy()
+    nodata_dest_value = target_nodata
+    if nodata is not None:
+        for key, val in value_map.items():
+            if numpy.isclose(key, nodata):
+                nodata_dest_value = val
+                del value_map_copy[key]
+                break
+
+    if target_nodata is None and nodata_dest_value is None:
+        raise ValueError(
+            "target_nodata was set to None and the base raster nodata"
+            " value was not represented in the value_map. reclassify_raster"
+            " does not assume the base raster nodata value should be used"
+            " as the target_nodata value. Set target_nodata to a valid number"
+            " and/or add a base raster nodata value mapping to value_map.")
+
+    keys = sorted(numpy.array(list(value_map_copy.keys())))
+    values = numpy.array([value_map_copy[x] for x in keys])
 
     def _map_dataset_to_value_op(original_values):
         """Convert a block of original values to the lookup values."""
@@ -1849,6 +1875,7 @@ def reclassify_raster(
             valid_mask = numpy.full(original_values.shape, True)
         else:
             valid_mask = ~numpy.isclose(original_values, nodata)
+            out_array[~valid_mask] = nodata_dest_value
 
         if values_required:
             unique = numpy.unique(original_values[valid_mask])
