@@ -1,6 +1,12 @@
 Release History
 ===============
 
+Unreleased Changes
+------------------
+* Fixing a bug in ``shapely_geometry_to_vector`` where a feature name mismatch
+  between the ``fields`` and ``attribute_list`` inputs would silently pass
+  under most circumstances.  Now an informative ``ValueError`` is raised.
+
 2.3.2 (2021-09-08)
 ------------------
 * Restore functionality in ``reclassify_raster`` that allows for nodata
