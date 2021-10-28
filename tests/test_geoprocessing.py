@@ -4619,3 +4619,20 @@ class TestGeoprocessing(unittest.TestCase):
         numpy.testing.assert_almost_equal(
             pygeoprocessing.raster_to_numpy_array(int_out_path),
             array)
+
+    def test_geometry_field_mismatch(self):
+        """PGP: test exception in field name mismatch."""
+        projection = osr.SpatialReference()
+        projection.ImportFromEPSG(3116)
+        with self.assertRaises(ValueError) as cm:
+            pygeoprocessing.shapely_geometry_to_vector(
+                [shapely.geometry.Point(1, -1)],
+                os.path.join(self.workspace_dir, 'vector.gpkg'),
+                projection.ExportToWkt(),
+                'GPKG',
+                fields={'field_a': ogr.OFTReal},
+                attribute_list=[{'field_b': 123}],
+                ogr_geom_type=ogr.wkbPoint)
+
+        self.assertIn(
+            "The fields and attributes for feature 0", str(cm.exception))

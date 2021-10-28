@@ -3598,12 +3598,19 @@ def shapely_geometry_to_vector(
         target_layer.CreateField(ogr.FieldDefn(field_name, field_type))
     layer_defn = target_layer.GetLayerDefn()
 
-    for shapely_feature, fields in zip(shapely_geometry_list, attribute_list):
+    for field_index, (shapely_feature, feature_attributes) in enumerate(
+            zip(shapely_geometry_list, attribute_list)):
         new_feature = ogr.Feature(layer_defn)
         new_geometry = ogr.CreateGeometryFromWkb(shapely_feature.wkb)
         new_feature.SetGeometry(new_geometry)
 
-        for field_name, field_value in fields.items():
+        if set(fields.keys()) != set(feature_attributes.keys()):
+            raise ValueError(
+                f"The fields and attributes for feature {field_index} "
+                f"do not match.  Field definitions={fields}. "
+                f"Feature attributes={feature_attributes}.")
+
+        for field_name, field_value in feature_attributes.items():
             new_feature.SetField(field_name, field_value)
         target_layer.CreateFeature(new_feature)
 
