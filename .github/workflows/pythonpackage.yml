@@ -5,8 +5,6 @@ on: [push, pull_request]
 jobs:
   Test:
     runs-on: ${{ matrix.os }}
-    env:
-      PACKAGES: "pytest flake8"
     strategy:
       fail-fast: false
       matrix:
@@ -39,14 +37,7 @@ jobs:
         run: |
           conda install mamba -n base -c conda-forge
           conda upgrade -y pip setuptools
-
-      - name: Install PyGeoprocessing
-        shell: bash -l {0}
-        run: |
-            mamba install --file requirements.txt
-            mamba install $PACKAGES
-            mamba install gdal==${{ matrix.gdal }}
-            python setup.py install
+          conda install -y flake8
 
       - name: Lint with flake8
         shell: bash -l {0}
@@ -57,6 +48,14 @@ jobs:
           # chars wide
           flake8 . --count --exit-zero --max-complexity=10 \
             --max-line-length=127 --statistics
+
+      - name: Install PyGeoprocessing
+        shell: bash -l {0}
+        run: |
+            mamba install --file requirements.txt
+            mamba install gdal==${{ matrix.gdal }} pytest
+            python setup.py install
+
       - name: Test with pytest
         shell: bash -l {0}
         run: pytest
