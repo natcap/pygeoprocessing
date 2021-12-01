@@ -27,6 +27,7 @@ jobs:
       - name: setup-miniconda
         uses: conda-incubator/setup-miniconda@v2
         with:
+          mamba-version: "*"
           activate-environment: pyenv
           auto-update-conda: false
           python-version: ${{ matrix.python-version }}
