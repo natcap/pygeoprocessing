@@ -24,6 +24,9 @@ jobs:
                     - os: macos-latest
                       python-arch: x86
 
+                    - python-version: "3.10"
+                      python-arch: x86
+
         steps:
             - uses: actions/checkout@v2
               with:
