@@ -16,12 +16,12 @@ jobs:
           # No conda-forge builds of GDAL 3.2.2 or 3.3.0 for python 3.10
           - python-version: "3.10"
             gdal: ["3.2.2", "3.3.0"]
-            os: ${{ matrix.os }}
+            os: "*"
 
         include:
           - python-version: "3.10"
             gdal: "3.3.3"
-            os: ${{ matrix.os }}
+            os: "*"
 
     steps:
       - uses: actions/checkout@v2
