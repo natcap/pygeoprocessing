@@ -61,10 +61,10 @@ jobs:
       - name: Install PyGeoprocessing
         shell: bash -l {0}
         run: |
-            mamba install --file requirements.txt
-            mamba install -c conda-forge gdal==${{ matrix.gdal }} pytest
-            mamba upgrade -y setuptools
-            python setup.py install
+            mamba install -c conda-forge --file requirements.txt
+            mamba install -c conda-forge gdal==${{ matrix.gdal }} pytest setuptools build
+            python -m build --wheel
+            python -m pip install pygeoprocessing --find-links=dist
 
       - name: Test with pytest
         shell: bash -l {0}
