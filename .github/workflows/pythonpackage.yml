@@ -38,7 +38,7 @@ jobs:
         shell: bash -l {0}
         run: |
           conda install mamba -n base -c conda-forge
-          mamba upgrade -y pip setuptools
+          conda upgrade -y pip setuptools
 
       - name: Install PyGeoprocessing
         shell: bash -l {0}
