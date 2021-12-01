@@ -34,16 +34,19 @@ jobs:
           auto-update-conda: false
           python-version: ${{ matrix.python-version }}
           channels: conda-forge, anaconda
+
       - name: Install dependencies
         shell: bash -l {0}
-        run: conda upgrade -y pip setuptools
+        run: |
+          conda install mamba -n base -c conda-forge
+          mamba upgrade -y pip setuptools
 
       - name: Install PyGeoprocessing
         shell: bash -l {0}
         run: |
-            conda install --file requirements.txt
-            conda install $PACKAGES
-            conda install gdal==${{ matrix.gdal }}
+            mamba install --file requirements.txt
+            mamba install $PACKAGES
+            mamba install gdal==${{ matrix.gdal }}
             python setup.py install
 
       - name: Lint with flake8
