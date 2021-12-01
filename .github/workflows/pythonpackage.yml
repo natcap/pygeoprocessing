@@ -53,7 +53,7 @@ jobs:
         shell: bash -l {0}
         run: |
             mamba install --file requirements.txt
-            mamba install gdal==${{ matrix.gdal }} pytest
+            mamba install -c conda-forge gdal==${{ matrix.gdal }} pytest
             python setup.py install
 
       - name: Test with pytest
