@@ -35,7 +35,6 @@ jobs:
       - name: setup-miniconda
         uses: conda-incubator/setup-miniconda@v2
         with:
-          mamba-version: "*"
           activate-environment: pyenv
           auto-update-conda: false
           python-version: ${{ matrix.python-version }}
@@ -44,7 +43,6 @@ jobs:
       - name: Install dependencies
         shell: bash -l {0}
         run: |
-          conda install mamba -n base -c conda-forge
           conda upgrade -y pip setuptools
           conda install -y flake8
 
@@ -61,8 +59,8 @@ jobs:
       - name: Install PyGeoprocessing
         shell: bash -l {0}
         run: |
-            mamba install -c conda-forge --file requirements.txt
-            mamba install -c conda-forge gdal==${{ matrix.gdal }} pytest setuptools build
+            conda install -c conda-forge --file requirements.txt
+            conda install -c conda-forge gdal==${{ matrix.gdal }} pytest setuptools build
             python -m build --wheel
             python -m pip install pygeoprocessing --find-links=dist
 
