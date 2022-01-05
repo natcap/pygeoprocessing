@@ -1,6 +1,10 @@
 Release History
 ===============
 
+Unreleased Changes
+------------------
+* Testing against Python 3.10.
+
 2.3.2 (2021-09-08)
 ------------------
 * Restore functionality in ``reclassify_raster`` that allows for nodata
