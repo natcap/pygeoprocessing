@@ -4636,3 +4636,92 @@ class TestGeoprocessing(unittest.TestCase):
 
         self.assertIn(
             "The fields and attributes for feature 0", str(cm.exception))
+
+    def test_raster_calculator_2_multiply_by_scalar(self):
+
+        array = numpy.array([
+            [1, 2, 3],
+            [4, 5, 6],
+            [7, 8, 9]], dtype=numpy.float32)
+        path = os.path.join(self.workspace_dir, 'a.tif')
+        out_path = os.path.join(self.workspace_dir, 'out.tif')
+
+        srs = osr.SpatialReference()
+        srs.ImportFromEPSG(3857)
+        projection_wkt = srs.ExportToWkt()
+
+        pygeoprocessing.numpy_array_to_raster(
+            array, -1, (20, -20), (0, 0), projection_wkt, path)
+
+        pygeoprocessing.raster_calculator_2(
+            lambda a: a * 2, path, target_path=out_path)
+
+        out_array = pygeoprocessing.raster_to_numpy_array(out_path)
+        numpy.testing.assert_allclose(out_array, array * 2)
+
+    def test_raster_calculator_2_sum_series(self):
+
+        array_a = numpy.array([
+            [1, 2, 3],
+            [4, 5, 6],
+            [7, 8, 9]], dtype=numpy.float32)
+        array_b = array_a * 10
+        array_c = array_b * 10
+        a_path = os.path.join(self.workspace_dir, 'a.tif')
+        b_path = os.path.join(self.workspace_dir, 'b.tif')
+        c_path = os.path.join(self.workspace_dir, 'c.tif')
+        out_path = os.path.join(self.workspace_dir, 'out.tif')
+
+        srs = osr.SpatialReference()
+        srs.ImportFromEPSG(3857)
+        projection_wkt = srs.ExportToWkt()
+
+        pygeoprocessing.numpy_array_to_raster(
+            array_a, -1, (20, -20), (0, 0), projection_wkt, a_path)
+        pygeoprocessing.numpy_array_to_raster(
+            array_b, -1, (20, -20), (0, 0), projection_wkt, b_path)
+        pygeoprocessing.numpy_array_to_raster(
+            array_c, -1, (20, -20), (0, 0), projection_wkt, c_path)
+
+        pygeoprocessing.raster_calculator_2(
+            lambda *xs: numpy.sum(xs, axis=0),
+            a_path, b_path, c_path, target_path=out_path)
+
+        out_array = pygeoprocessing.raster_to_numpy_array(out_path)
+        expected_array = array_a + array_b + array_c
+        numpy.testing.assert_allclose(out_array, expected_array)
+
+    def test_raster_calculator_2_multi_part_arithmetic(self):
+
+        eff_array = numpy.array([
+            [0.5, 0.5, 0.5],
+            [0.5, 0.5, 0.5],
+            [0.5, 0.5, 0.5]], dtype=numpy.float32)
+        ic_array = numpy.array([
+            [0.1, 0.1, 0.3],
+            [0.3, 0.3, 0.4],
+            [0.6, 0.9, 1]], dtype=numpy.float32)
+        eff_path = os.path.join(self.workspace_dir, 'eff.tif')
+        ic_path = os.path.join(self.workspace_dir, 'ic.tif')
+        out_path = os.path.join(self.workspace_dir, 'out.tif')
+
+        srs = osr.SpatialReference()
+        srs.ImportFromEPSG(3857)
+        projection_wkt = srs.ExportToWkt()
+
+        pygeoprocessing.numpy_array_to_raster(
+            eff_array, -1, (20, -20), (0, 0), projection_wkt, eff_path)
+        pygeoprocessing.numpy_array_to_raster(
+            ic_array, -1, (20, -20), (0, 0), projection_wkt, ic_path)
+
+        def ndr(eff, ic):
+            return (1 - eff) / (1 + numpy.exp((0.5 - ic) / 2))
+
+        pygeoprocessing.raster_calculator_2(
+            ndr, eff_path, ic_path, target_path=out_path)
+
+        out_array = pygeoprocessing.raster_to_numpy_array(out_path)
+        print(out_array)
+        expected_array = ndr(eff_array, ic_array)
+        numpy.testing.assert_allclose(out_array, expected_array)
+

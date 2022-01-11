@@ -4089,8 +4089,7 @@ def choose_nodata(dtype):
 
 def raster_calculator_2(op, *rasters, target_path='', target_nodata=None,
                         target_dtype=None):
-    """
-    Apply a pixelwise function to a series of raster and/or scalar inputs.
+    """Apply a pixelwise function to a series of raster inputs.
 
     The output raster will have nodata where any input raster has nodata.
     Raster inputs are split into aligned blocks, and the function is
@@ -4100,10 +4099,9 @@ def raster_calculator_2(op, *rasters, target_path='', target_nodata=None,
         op (function): Function to apply to the inputs. It should accept a
             number of arguments equal to the length of ``*inputs``. It should
            return a numpy array with the same shape as its array input(s).
-        *rasters (strs): Paths to rasters to input to ``op``, in the
-            order that they will be passed to ``op``. All raster inputs
-            should be aligned and have the same dimensions. At least one input
-            must be a raster.
+        *rasters (strs): Paths to rasters to input to ``op``, in the order that
+           they will be passed to ``op``. All rasters should be aligned and
+           have the same dimensions.
         target_path (str): path to write out the output raster.
         target_nodata (number): Nodata value to use for the output raster.
             Optional. If not provided, a suitable nodata value will be chosen.
@@ -4132,13 +4130,14 @@ def raster_calculator_2(op, *rasters, target_path='', target_nodata=None,
         for array, nodata in zip(arrays, nodatas):
             if nodata is not None:
                 if numpy.issubdtype(array.dtype, numpy.integer):
-                    valid_mask &= array == nodata  # compare integers directly
+                    valid_mask &= array != nodata  # compare integers directly
                 else:  # allow tolerance for float imprecision
-                    valid_mask &= numpy.isclose(array, nodata, equal_nan=True)
+                    valid_mask &= ~numpy.isclose(array, nodata, equal_nan=True)
 
         # mask all arrays to the area where they all are valid
+        masked_arrays = [array[valid_mask] for array in arrays]
         # apply op to the masked arrays in order
-        result[valid_mask] = op(array[valid_mask] for arr in arrays)
+        result[valid_mask] = op(*masked_arrays)
         return result
 
     if target_dtype is None:
@@ -4155,6 +4154,7 @@ def raster_calculator_2(op, *rasters, target_path='', target_nodata=None,
         numpy.int32: gdal.GDT_Int32,
         numpy.uint16: gdal.GDT_UInt16,
         numpy.uint32: gdal.GDT_UInt32,
+        numpy.float16: gdal.GDT_Float32,
         numpy.float32: gdal.GDT_Float32,
         numpy.float64: gdal.GDT_Float64,
         numpy.csingle: gdal.GDT_CFloat32,
