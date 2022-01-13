@@ -14,7 +14,8 @@ import threading
 import time
 
 from . import geoprocessing_core
-from .geoprocessing_core import DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS
+from .geoprocessing_core import DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS, \
+    DEFAULT_CREATION_OPTIONS, INT8_CREATION_OPTIONS
 from .geoprocessing_core import DEFAULT_OSR_AXIS_MAPPING_STRATEGY
 from osgeo import gdal
 from osgeo import ogr
@@ -2075,10 +2076,10 @@ def warp_raster(
         warped_raster_path = target_raster_path
     base_raster = gdal.OpenEx(base_raster_path, gdal.OF_RASTER)
 
-    raster_creation_options = list(raster_driver_creation_tuple[1])
+    raster_creation_options = DEFAULT_CREATION_OPTIONS
     if (base_raster_info['numpy_type'] == numpy.int8 and
             'PIXELTYPE' not in ' '.join(raster_creation_options)):
-        raster_creation_options.append('PIXELTYPE=SIGNEDBYTE')
+        raster_creation_options = INT8_CREATION_OPTIONS
 
     # WarpOptions.this is None when an invalid option is passed, and it's a
     # truthy SWIG proxy object when it's given a valid resample arg.
@@ -4154,9 +4155,14 @@ def raster_op(op, *rasters, target_path='', target_nodata=None,
                 f'Target nodata value {target_nodata} is incompatible with '
                 f'the target dtype {target_dtype}')
 
+    creation_options = DEFAULT_CREATION_OPTIONS
+    if target_dtype == numpy.int8:
+        creation_options = INT8_CREATION_OPTIONS
+
     raster_calculator(
         [(path, 1) for path in rasters],  # assume the first band
         apply_op,
         target_path,
         NUMPY_TO_GDAL_TYPE[numpy.dtype(target_dtype)],
-        target_nodata)
+        target_nodata,
+        raster_driver_creation_tuple=('GTIFF', tuple(creation_options)))
