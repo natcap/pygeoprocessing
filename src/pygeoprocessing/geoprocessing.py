@@ -35,6 +35,20 @@ import shapely.wkb
 if sys.version_info >= (3, 8):
     import multiprocessing.shared_memory
 
+NUMPY_TO_GDAL_TYPE = {
+    numpy.dtype(bool): gdal.GDT_Byte,
+    numpy.dtype(numpy.int8): gdal.GDT_Byte,
+    numpy.dtype(numpy.uint8): gdal.GDT_Byte,
+    numpy.dtype(numpy.int16): gdal.GDT_Int16,
+    numpy.dtype(numpy.int32): gdal.GDT_Int32,
+    numpy.dtype(numpy.uint16): gdal.GDT_UInt16,
+    numpy.dtype(numpy.uint32): gdal.GDT_UInt32,
+    numpy.dtype(numpy.float32): gdal.GDT_Float32,
+    numpy.dtype(numpy.float64): gdal.GDT_Float64,
+    numpy.dtype(numpy.csingle): gdal.GDT_CFloat32,
+    numpy.dtype(numpy.complex64): gdal.GDT_CFloat64,
+}
+
 
 class ReclassificationMissingValuesError(Exception):
     """Raised when a raster value is not a valid key to a dictionary.
@@ -3640,23 +3654,11 @@ def numpy_array_to_raster(
     Return:
         None
     """
-    numpy_to_gdal_type = {
-        numpy.dtype(bool): gdal.GDT_Byte,
-        numpy.dtype(numpy.int8): gdal.GDT_Byte,
-        numpy.dtype(numpy.uint8): gdal.GDT_Byte,
-        numpy.dtype(numpy.int16): gdal.GDT_Int16,
-        numpy.dtype(numpy.int32): gdal.GDT_Int32,
-        numpy.dtype(numpy.uint16): gdal.GDT_UInt16,
-        numpy.dtype(numpy.uint32): gdal.GDT_UInt32,
-        numpy.dtype(numpy.float32): gdal.GDT_Float32,
-        numpy.dtype(numpy.float64): gdal.GDT_Float64,
-        numpy.dtype(numpy.csingle): gdal.GDT_CFloat32,
-        numpy.dtype(numpy.complex64): gdal.GDT_CFloat64,
-    }
+
     raster_driver = gdal.GetDriverByName(raster_driver_creation_tuple[0])
     ny, nx = base_array.shape
     new_raster = raster_driver.Create(
-        target_path, nx, ny, 1, numpy_to_gdal_type[base_array.dtype],
+        target_path, nx, ny, 1, NUMPY_TO_GDAL_TYPE[base_array.dtype],
         options=raster_driver_creation_tuple[1])
     if projection_wkt is not None:
         new_raster.SetProjection(projection_wkt)
@@ -4047,7 +4049,7 @@ def _create_latitude_m2_area_column(lat_min, lat_max, n_pixels):
     return area_array
 
 
-def choose_dtype(*inputs):
+def choose_dtype(*raster_paths):
     """
     Choose an appropriate dtype for an output derived from the given inputs.
 
@@ -4055,20 +4057,17 @@ def choose_dtype(*inputs):
     that information will not be lost.
 
     Args:
-        *inputs: series of raster paths and/or numbers
+        *raster_paths: series of raster path strings
 
     Returns:
         numpy dtype
     """
-    for i in inputs:
-        if isinstance(i, str):
-            raster = gdal.OpenEx(i, gdal.OF_RASTER)
-            band = raster.GetRasterBand(1)
-            numpy_dtype_of_raster = _gdal_to_numpy_type(band)
-        elif isinstance(i, float):
-            pass
-        elif isinstance(i, int):
-            pass
+    dtypes = []
+    for path in raster_paths:
+        raster = gdal.OpenEx(path, gdal.OF_RASTER)
+        band = raster.GetRasterBand(1)
+        dtypes.append(_gdal_to_numpy_type(band))
+    return numpy.result_type(*dtypes)
 
 
 def choose_nodata(dtype):
@@ -4087,8 +4086,8 @@ def choose_nodata(dtype):
         return int(numpy.iinfo(dtype).max)
 
 
-def raster_calculator_2(op, *rasters, target_path='', target_nodata=None,
-                        target_dtype=None):
+def raster_op(op, *rasters, target_path='', target_nodata=None,
+              target_dtype=None):
     """Apply a pixelwise function to a series of raster inputs.
 
     The output raster will have nodata where any input raster has nodata.
@@ -4140,30 +4139,24 @@ def raster_calculator_2(op, *rasters, target_path='', target_nodata=None,
         result[valid_mask] = op(*masked_arrays)
         return result
 
+    # choose an appropriate dtype if none was given
     if target_dtype is None:
-        target_dtype = numpy.float32
+        target_dtype = choose_dtype(*rasters)
 
+    # choose an appropriate nodata value if none was given
+    # if the user provides a target nodata,
+    # check that it can fit in the target dtype
     if target_nodata is None:
         target_nodata = choose_nodata(target_dtype)
-
-    numpy_to_gdal_type = {
-        bool: gdal.GDT_Byte,
-        numpy.int8: gdal.GDT_Byte,
-        numpy.uint8: gdal.GDT_Byte,
-        numpy.int16: gdal.GDT_Int16,
-        numpy.int32: gdal.GDT_Int32,
-        numpy.uint16: gdal.GDT_UInt16,
-        numpy.uint32: gdal.GDT_UInt32,
-        numpy.float16: gdal.GDT_Float32,
-        numpy.float32: gdal.GDT_Float32,
-        numpy.float64: gdal.GDT_Float64,
-        numpy.csingle: gdal.GDT_CFloat32,
-        numpy.complex64: gdal.GDT_CFloat64,
-    }
+    else:
+        if not numpy.can_cast(target_nodata, target_dtype):
+            raise ValueError(
+                f'Target nodata value {target_nodata} is incompatible with '
+                f'the target dtype {target_dtype}')
 
     raster_calculator(
         [(path, 1) for path in rasters],  # assume the first band
         apply_op,
         target_path,
-        numpy_to_gdal_type[target_dtype],
+        NUMPY_TO_GDAL_TYPE[numpy.dtype(target_dtype)],
         target_nodata)
