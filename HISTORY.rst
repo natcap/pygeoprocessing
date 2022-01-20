@@ -7,6 +7,10 @@ Unreleased Changes
   between the ``fields`` and ``attribute_list`` inputs would silently pass
   under most circumstances.  Now an informative ``ValueError`` is raised.
 * Testing against Python 3.10.
+* Pinned ``numpy`` versions in ``pyproject.toml`` to the lowest compatible
+  version for each supported python version. This prevents issues when
+  ``pygeoprocessing`` is used in an environment with a lower numpy version
+  than it was built with (https://github.com/cython/cython/issues/4452).
 
 2.3.2 (2021-09-08)
 ------------------
