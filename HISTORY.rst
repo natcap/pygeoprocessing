@@ -1,7 +1,7 @@
 Release History
 ===============
 
-Unreleased Changes
+2.3.3 (2022-01-26)
 ------------------
 * Fixing a bug in ``shapely_geometry_to_vector`` where a feature name mismatch
   between the ``fields`` and ``attribute_list`` inputs would silently pass
