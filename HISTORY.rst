@@ -1,6 +1,11 @@
 Release History
 ===============
 
+2.3.3.post0 (2022-01-28)
+------------------------
+* Post-release due to corrupted sdist released on Github and PyPI. The sdist
+  for 2.3.3 failed to install. The wheels were unaffected. No code changes.
+
 2.3.3 (2022-01-26)
 ------------------
 * Fixing a bug in ``shapely_geometry_to_vector`` where a feature name mismatch
