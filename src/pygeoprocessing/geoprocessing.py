@@ -1415,9 +1415,10 @@ def zonal_statistics(
         unset_feat = aggregate_layer.GetFeature(unset_fid)
         unset_geom_ref = unset_feat.GetGeometryRef()
         if unset_geom_ref is None:
-            LOGGER.warn(
+            LOGGER.warning(
                 f'no geometry in {aggregate_vector_path} FID: {unset_fid}')
             continue
+
         unset_geom_envelope = list(unset_geom_ref.GetEnvelope())
         unset_geom_ref = None
         unset_feat = None

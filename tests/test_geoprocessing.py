@@ -815,6 +815,12 @@ class TestGeoprocessing(unittest.TestCase):
                 expected_value = row_index // 2 * n + col_index // 2
                 new_feature.SetField('expected_value', expected_value)
                 layer.CreateFeature(new_feature)
+
+        # Add a feature with no geometry to make sure we can handle it.
+        new_feature = ogr.Feature(layer_defn)
+        new_feature.SetField('expected_value', 0)
+        layer.CreateFeature(new_feature)
+
         layer.CommitTransaction()
         layer.SyncToDisk()
 
@@ -826,7 +832,7 @@ class TestGeoprocessing(unittest.TestCase):
 
         zonal_stats = pygeoprocessing.zonal_statistics(
             (raster_path, 1), vector_path)
-        self.assertEqual(len(zonal_stats), 4*n*n)
+        self.assertEqual(len(zonal_stats), 4*n*n + 1)
         for poly_id in zonal_stats:
             feature = layer.GetFeature(poly_id)
             self.assertEqual(
