@@ -19,3 +19,8 @@ build-backend = "setuptools.build_meta"
 [tool.pytest.ini_options]
 # Raise warnings to exceptions.
 filterwarnings = 'error'
+
+
+[tool.setuptools_scm]
+version_scheme = "post-release"
+local_scheme = "node-and-date"
