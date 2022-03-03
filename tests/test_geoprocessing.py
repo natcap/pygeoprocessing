@@ -753,6 +753,13 @@ class TestGeoprocessing(unittest.TestCase):
                 expected_value = row_index // 2 * n + col_index // 2
                 new_feature.SetField('expected_value', expected_value)
                 layer.CreateFeature(new_feature)
+
+        # Now create one additional feature that has no geometry in order to
+        # exercise a warning.
+        new_feature = ogr.Feature(layer_defn)
+        new_feature.SetField('expected_value', 0)
+        layer.CreateFeature(new_feature)
+
         layer.CommitTransaction()
         layer.SyncToDisk()
 

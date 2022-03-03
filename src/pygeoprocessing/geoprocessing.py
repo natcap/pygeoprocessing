@@ -2267,7 +2267,7 @@ def calculate_disjoint_polygon_set(
     for poly_feat in vector_layer:
         poly_geom_ref = poly_feat.GetGeometryRef()
         if poly_geom_ref is None:
-            LOGGER.warn(
+            LOGGER.warning(
                 f'no geometry in {vector_path} FID: {poly_feat.GetFID()}, '
                 'skipping...')
             continue
