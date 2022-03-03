@@ -661,7 +661,7 @@ class TestGeoprocessing(unittest.TestCase):
         feature = next(iter(target_layer))
         feature_geom = shapely.wkt.loads(
             feature.GetGeometryRef().ExportToWkt())
-        self.assertTrue(feature_geom.almost_equals(polygon_a))
+        self.assertTrue(feature_geom.equals_exact(polygon_a, 1e-6))
 
     def test_reproject_vector_utm_to_utm(self):
         """PGP.geoprocessing: reproject vector from utm to utm."""
