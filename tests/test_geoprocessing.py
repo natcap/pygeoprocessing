@@ -9,20 +9,19 @@ import types
 import unittest
 import unittest.mock
 
-from osgeo import gdal
-from osgeo import ogr
-from osgeo import osr
-from numpy.random import MT19937
-from numpy.random import RandomState
-from numpy.random import SeedSequence
 import numpy
-import scipy.ndimage
-import shapely.geometry
-import shapely.wkt
-
 import pygeoprocessing
 import pygeoprocessing.multiprocessing
 import pygeoprocessing.symbolic
+import scipy.ndimage
+import shapely.geometry
+import shapely.wkt
+from numpy.random import MT19937
+from numpy.random import RandomState
+from numpy.random import SeedSequence
+from osgeo import gdal
+from osgeo import ogr
+from osgeo import osr
 from pygeoprocessing.geoprocessing_core import \
     DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS
 

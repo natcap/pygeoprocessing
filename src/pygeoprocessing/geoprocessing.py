@@ -13,12 +13,6 @@ import tempfile
 import threading
 import time
 
-from . import geoprocessing_core
-from .geoprocessing_core import DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS
-from .geoprocessing_core import DEFAULT_OSR_AXIS_MAPPING_STRATEGY
-from osgeo import gdal
-from osgeo import ogr
-from osgeo import osr
 import numpy
 import numpy.ma
 import rtree
@@ -30,6 +24,13 @@ import scipy.sparse
 import shapely.ops
 import shapely.prepared
 import shapely.wkb
+from osgeo import gdal
+from osgeo import ogr
+from osgeo import osr
+
+from . import geoprocessing_core
+from .geoprocessing_core import DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS
+from .geoprocessing_core import DEFAULT_OSR_AXIS_MAPPING_STRATEGY
 
 # This is used to efficiently pass data to the raster stats worker if available
 if sys.version_info >= (3, 8):
