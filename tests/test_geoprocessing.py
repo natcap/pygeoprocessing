@@ -3210,7 +3210,7 @@ class TestGeoprocessing(unittest.TestCase):
                 working_dir=self.workspace_dir)
             target_array = pygeoprocessing.raster_to_numpy_array(
                 target_distance_raster_path)
-            expected_result = scipy.ndimage.morphology.distance_transform_edt(
+            expected_result = scipy.ndimage.distance_transform_edt(
                 1 - (base_raster_array == 1), sampling=(
                     sampling_distance[1], sampling_distance[0]))
             numpy.testing.assert_array_almost_equal(
@@ -3248,7 +3248,7 @@ class TestGeoprocessing(unittest.TestCase):
             working_dir=self.workspace_dir)
         target_array = pygeoprocessing.raster_to_numpy_array(
             target_distance_raster_path)
-        expected_result = scipy.ndimage.morphology.distance_transform_edt(
+        expected_result = scipy.ndimage.distance_transform_edt(
             1 - (base_raster_array == 1), sampling=(
                 sampling_distance[1], sampling_distance[0]))
         numpy.testing.assert_array_almost_equal(
