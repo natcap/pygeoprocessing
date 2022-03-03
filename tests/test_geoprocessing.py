@@ -759,6 +759,13 @@ class TestGeoprocessing(unittest.TestCase):
         new_feature.SetField('expected_value', 0)
         layer.CreateFeature(new_feature)
 
+        # Now create one more feature, but with valid (but empty) geometry.
+        new_feature = ogr.Feature(layer_defn)
+        new_geometry = ogr.CreateGeometryFromWkt('GEOMETRYCOLLECTION EMPTY')
+        new_feature.SetGeometry(new_geometry)
+        new_feature.SetField('expected_value', 1)
+        layer.CreateFeature(new_feature)
+
         layer.CommitTransaction()
         layer.SyncToDisk()
 

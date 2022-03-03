@@ -2272,6 +2272,12 @@ def calculate_disjoint_polygon_set(
                 f'no geometry in {vector_path} FID: {poly_feat.GetFID()}, '
                 'skipping...')
             continue
+        if poly_geom_ref.IsEmpty():
+            LOGGER.warning(
+                f'empty geometry in {vector_path} FID: {poly_feat.GetFID()}, '
+                'skipping...')
+            continue
+        LOGGER.info(poly_geom_ref.ExportToWkt())
         # with GDAL>=3.3.0 ExportToWkb returns a bytearray instead of bytes
         shapely_polygon_lookup[poly_feat.GetFID()] = (
             shapely.wkb.loads(bytes(poly_geom_ref.ExportToWkb())))
