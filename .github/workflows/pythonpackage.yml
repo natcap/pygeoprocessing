@@ -9,6 +9,7 @@ defaults:
 jobs:
   Test:
     runs-on: ${{ matrix.os }}
+    name: Test (py${{ matrix.python-version }}, GDAL ${{ matrix.gdal }}, ${{ matrix.os }})
     strategy:
       fail-fast: false
       matrix:
