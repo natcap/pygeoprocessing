@@ -2262,9 +2262,6 @@ def calculate_disjoint_polygon_set(
         bounding_box = get_vector_info(vector_path)['bounding_box']
     bounding_box = shapely.prepared.prep(shapely.geometry.box(*bounding_box))
 
-    # As much as I want this to be in a comprehension, a comprehension version
-    # of this loop causes python 3.6 to crash on linux in GDAL 2.1.2 (which is
-    # what's in the debian:stretch repos.)
     shapely_polygon_lookup = {}
     for poly_feat in vector_layer:
         poly_geom_ref = poly_feat.GetGeometryRef()
