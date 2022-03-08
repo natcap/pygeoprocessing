@@ -1,6 +1,8 @@
 """pygeoprocessing.geoprocessing test suite."""
 import itertools
+import queue
 import os
+import logging.handlers
 import pathlib
 import shutil
 import tempfile
@@ -9,6 +11,8 @@ import types
 import unittest
 import unittest.mock
 import warnings
+import logging
+import contextlib
 
 import numpy
 import pygeoprocessing
@@ -69,6 +73,36 @@ def _array_to_raster(
     pygeoprocessing.numpy_array_to_raster(
         base_array, target_nodata, pixel_size, origin, projection_wkt,
         target_path, raster_driver_creation_tuple=('GTiff', creation_options))
+
+
+@contextlib.contextmanager
+def capture_logging(logger):
+    """Capture logging within a context manager.
+
+    Args:
+        logger (logging.Logger): The logger that should be monitored for
+            log records within the scope of the context manager.
+
+    Yields:
+        log_records (list): A list of logging.LogRecord objects.  This list is
+            yielded early in the execution, and may have logging progressively
+            added to it until the context manager is exited.
+    Returns:
+        ``None``
+    """
+    message_queue = queue.Queue()
+    queuehandler = logging.handlers.QueueHandler(message_queue)
+    logger.addHandler(queuehandler)
+    log_records = []
+    yield log_records
+    logger.removeHandler(queuehandler)
+
+    # Append log records to the existing log_records list.
+    while True:
+        try:
+            log_records.append(message_queue.get_nowait())
+        except queue.Empty:
+            break
 
 
 class TestGeoprocessing(unittest.TestCase):
@@ -755,7 +789,8 @@ class TestGeoprocessing(unittest.TestCase):
                 layer.CreateFeature(new_feature)
 
         # Now create one additional feature that has no geometry in order to
-        # exercise a warning.
+        # exercise the warning around the feature not having a geometry defined
+        # at all.
         new_feature = ogr.Feature(layer_defn)
         new_feature.SetField('expected_value', 0)
         layer.CreateFeature(new_feature)
@@ -770,13 +805,25 @@ class TestGeoprocessing(unittest.TestCase):
         layer.CommitTransaction()
         layer.SyncToDisk()
 
-        result = pygeoprocessing.calculate_disjoint_polygon_set(
-            vector_path, bounding_box=[-10, -10, -9, -9])
-        self.assertTrue(not result)
 
-        # otherwise none overlap:
-        result = pygeoprocessing.calculate_disjoint_polygon_set(vector_path)
+        pygeoprocessing_logger = logging.getLogger('pygeoprocessing')
+        with capture_logging(pygeoprocessing_logger) as captured_logging:
+            result = pygeoprocessing.calculate_disjoint_polygon_set(
+                vector_path, bounding_box=[-10, -10, -9, -9])
+        self.assertTrue(not result)
+        self.assertEqual(len(captured_logging), 3)
+        self.assertIn('no geometry in', captured_logging[0].msg)
+        self.assertIn('empty geometry in', captured_logging[1].msg)
+        self.assertEqual('no polygons intersected the bounding box',
+                         captured_logging[2].msg)
+
+        # otherwise none overlap
+        with capture_logging(pygeoprocessing_logger) as captured_logging:
+            result = pygeoprocessing.calculate_disjoint_polygon_set(vector_path)
         self.assertEqual(len(result), 1, result)
+        self.assertEqual(len(captured_logging), 2)
+        self.assertIn('no geometry in', captured_logging[0].msg)
+        self.assertIn('empty geometry in', captured_logging[1].msg)
 
     def test_zonal_stats_for_small_polygons(self):
         """PGP.geoprocessing: test small polygons for zonal stats."""
