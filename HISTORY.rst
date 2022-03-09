@@ -1,6 +1,14 @@
 Release History
 ===============
 
+Unreleased Changes
+------------------
+* ``calculate_disjoint_polygon_set`` will now skip over empty geometries.
+  Previously, the presence of empty geometries would cause an error to be
+  raised.
+* Fixed a ``DeprecationWarning`` in ``calculate_disjoint_polygon_set`` caused
+  by the use of a deprecated logging ``warn`` method.
+
 2.3.3.post0 (2022-01-28)
 ------------------------
 * Post-release due to corrupted sdist released on Github and PyPI. The sdist

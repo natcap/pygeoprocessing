@@ -13,12 +13,6 @@ import tempfile
 import threading
 import time
 
-from . import geoprocessing_core
-from .geoprocessing_core import DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS
-from .geoprocessing_core import DEFAULT_OSR_AXIS_MAPPING_STRATEGY
-from osgeo import gdal
-from osgeo import ogr
-from osgeo import osr
 import numpy
 import numpy.ma
 import rtree
@@ -30,6 +24,13 @@ import scipy.sparse
 import shapely.ops
 import shapely.prepared
 import shapely.wkb
+from osgeo import gdal
+from osgeo import ogr
+from osgeo import osr
+
+from . import geoprocessing_core
+from .geoprocessing_core import DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS
+from .geoprocessing_core import DEFAULT_OSR_AXIS_MAPPING_STRATEGY
 
 # This is used to efficiently pass data to the raster stats worker if available
 if sys.version_info >= (3, 8):
@@ -1414,9 +1415,10 @@ def zonal_statistics(
         unset_feat = aggregate_layer.GetFeature(unset_fid)
         unset_geom_ref = unset_feat.GetGeometryRef()
         if unset_geom_ref is None:
-            LOGGER.warn(
+            LOGGER.warning(
                 f'no geometry in {aggregate_vector_path} FID: {unset_fid}')
             continue
+
         unset_geom_envelope = list(unset_geom_ref.GetEnvelope())
         unset_geom_ref = None
         unset_feat = None
@@ -2260,15 +2262,17 @@ def calculate_disjoint_polygon_set(
         bounding_box = get_vector_info(vector_path)['bounding_box']
     bounding_box = shapely.prepared.prep(shapely.geometry.box(*bounding_box))
 
-    # As much as I want this to be in a comprehension, a comprehension version
-    # of this loop causes python 3.6 to crash on linux in GDAL 2.1.2 (which is
-    # what's in the debian:stretch repos.)
     shapely_polygon_lookup = {}
     for poly_feat in vector_layer:
         poly_geom_ref = poly_feat.GetGeometryRef()
         if poly_geom_ref is None:
-            LOGGER.warn(
+            LOGGER.warning(
                 f'no geometry in {vector_path} FID: {poly_feat.GetFID()}, '
+                'skipping...')
+            continue
+        if poly_geom_ref.IsEmpty():
+            LOGGER.warning(
+                f'empty geometry in {vector_path} FID: {poly_feat.GetFID()}, '
                 'skipping...')
             continue
         # with GDAL>=3.3.0 ExportToWkb returns a bytearray instead of bytes

@@ -1,6 +1,8 @@
 """pygeoprocessing.geoprocessing test suite."""
 import itertools
+import queue
 import os
+import logging.handlers
 import pathlib
 import shutil
 import tempfile
@@ -8,21 +10,23 @@ import time
 import types
 import unittest
 import unittest.mock
+import warnings
+import logging
+import contextlib
 
-from osgeo import gdal
-from osgeo import ogr
-from osgeo import osr
-from numpy.random import MT19937
-from numpy.random import RandomState
-from numpy.random import SeedSequence
 import numpy
-import scipy.ndimage
-import shapely.geometry
-import shapely.wkt
-
 import pygeoprocessing
 import pygeoprocessing.multiprocessing
 import pygeoprocessing.symbolic
+import scipy.ndimage
+import shapely.geometry
+import shapely.wkt
+from numpy.random import MT19937
+from numpy.random import RandomState
+from numpy.random import SeedSequence
+from osgeo import gdal
+from osgeo import ogr
+from osgeo import osr
 from pygeoprocessing.geoprocessing_core import \
     DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS
 
@@ -69,6 +73,36 @@ def _array_to_raster(
     pygeoprocessing.numpy_array_to_raster(
         base_array, target_nodata, pixel_size, origin, projection_wkt,
         target_path, raster_driver_creation_tuple=('GTiff', creation_options))
+
+
+@contextlib.contextmanager
+def capture_logging(logger):
+    """Capture logging within a context manager.
+
+    Args:
+        logger (logging.Logger): The logger that should be monitored for
+            log records within the scope of the context manager.
+
+    Yields:
+        log_records (list): A list of logging.LogRecord objects.  This list is
+            yielded early in the execution, and may have logging progressively
+            added to it until the context manager is exited.
+    Returns:
+        ``None``
+    """
+    message_queue = queue.Queue()
+    queuehandler = logging.handlers.QueueHandler(message_queue)
+    logger.addHandler(queuehandler)
+    log_records = []
+    yield log_records
+    logger.removeHandler(queuehandler)
+
+    # Append log records to the existing log_records list.
+    while True:
+        try:
+            log_records.append(message_queue.get_nowait())
+        except queue.Empty:
+            break
 
 
 class TestGeoprocessing(unittest.TestCase):
@@ -661,7 +695,7 @@ class TestGeoprocessing(unittest.TestCase):
         feature = next(iter(target_layer))
         feature_geom = shapely.wkt.loads(
             feature.GetGeometryRef().ExportToWkt())
-        self.assertTrue(feature_geom.almost_equals(polygon_a))
+        self.assertTrue(feature_geom.equals_exact(polygon_a, 1e-6))
 
     def test_reproject_vector_utm_to_utm(self):
         """PGP.geoprocessing: reproject vector from utm to utm."""
@@ -753,16 +787,43 @@ class TestGeoprocessing(unittest.TestCase):
                 expected_value = row_index // 2 * n + col_index // 2
                 new_feature.SetField('expected_value', expected_value)
                 layer.CreateFeature(new_feature)
+
+        # Now create one additional feature that has no geometry in order to
+        # exercise the warning around the feature not having a geometry defined
+        # at all.
+        new_feature = ogr.Feature(layer_defn)
+        new_feature.SetField('expected_value', 0)
+        layer.CreateFeature(new_feature)
+
+        # Now create one more feature, but with valid (but empty) geometry.
+        new_feature = ogr.Feature(layer_defn)
+        new_geometry = ogr.CreateGeometryFromWkt('GEOMETRYCOLLECTION EMPTY')
+        new_feature.SetGeometry(new_geometry)
+        new_feature.SetField('expected_value', 1)
+        layer.CreateFeature(new_feature)
+
         layer.CommitTransaction()
         layer.SyncToDisk()
 
-        result = pygeoprocessing.calculate_disjoint_polygon_set(
-            vector_path, bounding_box=[-10, -10, -9, -9])
-        self.assertTrue(not result)
 
-        # otherwise none overlap:
-        result = pygeoprocessing.calculate_disjoint_polygon_set(vector_path)
+        pygeoprocessing_logger = logging.getLogger('pygeoprocessing')
+        with capture_logging(pygeoprocessing_logger) as captured_logging:
+            result = pygeoprocessing.calculate_disjoint_polygon_set(
+                vector_path, bounding_box=[-10, -10, -9, -9])
+        self.assertTrue(not result)
+        self.assertEqual(len(captured_logging), 3)
+        self.assertIn('no geometry in', captured_logging[0].msg)
+        self.assertIn('empty geometry in', captured_logging[1].msg)
+        self.assertEqual('no polygons intersected the bounding box',
+                         captured_logging[2].msg)
+
+        # otherwise none overlap
+        with capture_logging(pygeoprocessing_logger) as captured_logging:
+            result = pygeoprocessing.calculate_disjoint_polygon_set(vector_path)
         self.assertEqual(len(result), 1, result)
+        self.assertEqual(len(captured_logging), 2)
+        self.assertIn('no geometry in', captured_logging[0].msg)
+        self.assertIn('empty geometry in', captured_logging[1].msg)
 
     def test_zonal_stats_for_small_polygons(self):
         """PGP.geoprocessing: test small polygons for zonal stats."""
@@ -801,6 +862,12 @@ class TestGeoprocessing(unittest.TestCase):
                 expected_value = row_index // 2 * n + col_index // 2
                 new_feature.SetField('expected_value', expected_value)
                 layer.CreateFeature(new_feature)
+
+        # Add a feature with no geometry to make sure we can handle it.
+        new_feature = ogr.Feature(layer_defn)
+        new_feature.SetField('expected_value', 0)
+        layer.CreateFeature(new_feature)
+
         layer.CommitTransaction()
         layer.SyncToDisk()
 
@@ -812,7 +879,7 @@ class TestGeoprocessing(unittest.TestCase):
 
         zonal_stats = pygeoprocessing.zonal_statistics(
             (raster_path, 1), vector_path)
-        self.assertEqual(len(zonal_stats), 4*n*n)
+        self.assertEqual(len(zonal_stats), 4*n*n + 1)
         for poly_id in zonal_stats:
             feature = layer.GetFeature(poly_id)
             self.assertEqual(
@@ -3196,7 +3263,7 @@ class TestGeoprocessing(unittest.TestCase):
                 working_dir=self.workspace_dir)
             target_array = pygeoprocessing.raster_to_numpy_array(
                 target_distance_raster_path)
-            expected_result = scipy.ndimage.morphology.distance_transform_edt(
+            expected_result = scipy.ndimage.distance_transform_edt(
                 1 - (base_raster_array == 1), sampling=(
                     sampling_distance[1], sampling_distance[0]))
             numpy.testing.assert_array_almost_equal(
@@ -3234,7 +3301,7 @@ class TestGeoprocessing(unittest.TestCase):
             working_dir=self.workspace_dir)
         target_array = pygeoprocessing.raster_to_numpy_array(
             target_distance_raster_path)
-        expected_result = scipy.ndimage.morphology.distance_transform_edt(
+        expected_result = scipy.ndimage.distance_transform_edt(
             1 - (base_raster_array == 1), sampling=(
                 sampling_distance[1], sampling_distance[0]))
         numpy.testing.assert_array_almost_equal(
@@ -4192,20 +4259,33 @@ class TestGeoprocessing(unittest.TestCase):
         actual_message = str(cm.exception)
         self.assertTrue(expected_message in actual_message, actual_message)
 
-        # test divide by zero
+        # test that divide by zero yields an inf
         divide_by_zero_expr = 'all_ones / all_zeros'
         target_raster_path = os.path.join(self.workspace_dir, 'target.tif')
         with self.assertRaises(ValueError) as cm:
-            pygeoprocessing.symbolic.evaluate_raster_calculator_expression(
-                divide_by_zero_expr, symbol_to_path_band_map, target_nodata,
-                target_raster_path)
+            with warnings.catch_warnings():
+                # Ignore the specific divide-by-zero warning we expect.
+                warnings.filterwarnings(
+                    action="ignore",
+                    message="divide by zero encountered in true_divide",
+                    category=RuntimeWarning
+                )
+                pygeoprocessing.symbolic.evaluate_raster_calculator_expression(
+                    divide_by_zero_expr, symbol_to_path_band_map, target_nodata,
+                    target_raster_path)
         expected_message = 'Encountered inf in calculation'
         actual_message = str(cm.exception)
         self.assertTrue(expected_message in actual_message, actual_message)
 
-        pygeoprocessing.symbolic.evaluate_raster_calculator_expression(
-            divide_by_zero_expr, symbol_to_path_band_map, target_nodata,
-            target_raster_path, default_inf=-9999)
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                action="ignore",
+                message="divide by zero encountered in true_divide",
+                category=RuntimeWarning
+            )
+            pygeoprocessing.symbolic.evaluate_raster_calculator_expression(
+                divide_by_zero_expr, symbol_to_path_band_map, target_nodata,
+                target_raster_path, default_inf=-9999)
         expected_array = numpy.empty(val_array.shape)
         expected_array[:] = -9999
         target_array = pygeoprocessing.raster_to_numpy_array(
@@ -4214,16 +4294,28 @@ class TestGeoprocessing(unittest.TestCase):
 
         zero_by_zero_expr = 'all_zeros / a'
         with self.assertRaises(ValueError) as cm:
-            pygeoprocessing.symbolic.evaluate_raster_calculator_expression(
-                zero_by_zero_expr, symbol_to_path_band_map, target_nodata,
-                target_raster_path)
+            with warnings.catch_warnings():
+                warnings.filterwarnings(
+                    action="ignore",
+                    message="invalid value encountered in true_divide",
+                    category=RuntimeWarning
+                )
+                pygeoprocessing.symbolic.evaluate_raster_calculator_expression(
+                    zero_by_zero_expr, symbol_to_path_band_map, target_nodata,
+                    target_raster_path)
         expected_message = 'Encountered NaN in calculation'
         actual_message = str(cm.exception)
         self.assertTrue(expected_message in actual_message, actual_message)
 
-        pygeoprocessing.symbolic.evaluate_raster_calculator_expression(
-            zero_by_zero_expr, symbol_to_path_band_map, target_nodata,
-            target_raster_path, default_nan=-9999)
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                action="ignore",
+                message="invalid value encountered in true_divide",
+                category=RuntimeWarning
+            )
+            pygeoprocessing.symbolic.evaluate_raster_calculator_expression(
+                zero_by_zero_expr, symbol_to_path_band_map, target_nodata,
+                target_raster_path, default_nan=-9999)
         expected_array = numpy.zeros(val_array.shape)
         expected_array[0, 0] = -9999
         target_array = pygeoprocessing.raster_to_numpy_array(

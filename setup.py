@@ -2,8 +2,8 @@
 import platform
 
 import numpy
-from setuptools.extension import Extension
 from setuptools import setup
+from setuptools.extension import Extension
 
 # Read in requirements.txt and populate the python readme with the non-comment
 # contents.
@@ -38,10 +38,7 @@ setup(
     package_dir={
         'pygeoprocessing': 'src/pygeoprocessing'
     },
-    use_scm_version={
-        'version_scheme': 'post-release',
-        'local_scheme': 'node-and-date'},
-    setup_requires=['setuptools_scm', 'cython', 'numpy'],
+    setup_requires=['cython', 'numpy'],
     include_package_data=True,
     install_requires=_REQUIREMENTS,
     license='BSD',

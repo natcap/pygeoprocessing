@@ -9,6 +9,7 @@ defaults:
 jobs:
   Test:
     runs-on: ${{ matrix.os }}
+    name: Test (py${{ matrix.python-version }}, GDAL ${{ matrix.gdal }}, ${{ matrix.os }})
     strategy:
       fail-fast: false
       matrix:
@@ -61,7 +62,7 @@ jobs:
             conda install --file requirements.txt
             conda install gdal==${{ matrix.gdal }} setuptools build
             python -m build --wheel
-            python -m pip install pygeoprocessing --find-links=dist
+            python -m pip install $(find dist -name "*.whl")
 
       - name: Test with pytest
         run: pytest
