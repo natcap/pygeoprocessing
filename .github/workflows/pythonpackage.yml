@@ -41,7 +41,7 @@ jobs:
         uses: conda-incubator/setup-miniconda@v2
         with:
           activate-environment: pyenv
-          auto-update-conda: false
+          auto-update-conda: true
           python-version: ${{ matrix.python-version }}
           channels: conda-forge
 
