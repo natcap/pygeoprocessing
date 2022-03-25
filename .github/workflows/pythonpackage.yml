@@ -48,6 +48,14 @@ jobs:
       - name: Install dependencies
         run: conda install flake8 pytest
 
+      - name: Install mac dependencies
+        if: matrix.os == 'macos-latest'
+        run: |
+          # Homebrew popppler appears to be more recent than what I'm getting
+          # in conda-forge on mac, so installing it here as a hacky workaround
+          # for some mac-specific import errors with _gdal.
+          brew install poppler
+
       - name: Lint with flake8
         run: |
           # stop the build if there are Python syntax errors or undefined names
