@@ -16,9 +16,10 @@ jobs:
         python-version: [3.7, 3.8, 3.9]
         gdal: ["3.2.2", "3.3.0", "3.4.0"]
         os: [ubuntu-latest, windows-latest, macos-latest]
-        # Fontconfig needed for binary build issues on mac. Specfically, see
-        # natcap/pygeoprocessing#252
+        # Fontconfig, poppler needed for binary build issues on mac.
+        # Specfically, see natcap/pygeoprocessing#252
         fontconfig: ["2.13.96"]
+        poppler: ["21.11.0"]
 
         include:
           - python-version: "3.10"
@@ -73,7 +74,7 @@ jobs:
             # Installing all of these in the same line will force conda to
             # resolve all requirements at once, reducing the chance of DLL
             # conflicts.
-            conda install --file requirements.txt gdal==${{ matrix.gdal }} fontconfig==${{ matrix.fontconfig }} setuptools build
+            conda install --file requirements.txt gdal==${{ matrix.gdal }} fontconfig==${{ matrix.fontconfig }} poppler==${{ matrix.poppler }} setuptools build
             python -m build --wheel
             python -m pip install $(find dist -name "*.whl")
 
