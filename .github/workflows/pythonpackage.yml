@@ -18,7 +18,7 @@ jobs:
         os: [ubuntu-latest, windows-latest, macos-latest]
         # Fontconfig needed for binary build issues on mac. Specfically, see
         # natcap/pygeoprocessing#252
-        fontconfig: "2.13.96"
+        fontconfig: ["2.13.96"]
 
         include:
           - python-version: "3.10"
