@@ -3,6 +3,9 @@ Release History
 
 Unreleased Changes
 ------------------
+* Reducing the amount of memory used by
+  ``pygeoprocessing.new_raster_from_base`` when filling an array with values to
+  only as much memory as is needed for the datatype.
 * ``calculate_disjoint_polygon_set`` will now skip over empty geometries.
   Previously, the presence of empty geometries would cause an error to be
   raised.
