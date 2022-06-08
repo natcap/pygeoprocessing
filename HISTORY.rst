@@ -3,6 +3,9 @@ Release History
 
 Unreleased Changes
 ------------------
+* Fixing a memory leak in ``pygeoprocessing.raster_calculator`` where
+  shared memory objects were being inadvertently created when they should not
+  have been and then they were not subsequently destroyed.
 * ``calculate_disjoint_polygon_set`` will now skip over empty geometries.
   Previously, the presence of empty geometries would cause an error to be
   raised.
