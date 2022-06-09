@@ -66,12 +66,5 @@ jobs:
             python -m build --wheel
             python -m pip install $(find dist -name "*.whl")
 
-      - name: Mac dylib hack
-        if: matrix.os == 'macos-latest'
-        run: |
-            # Specific fontconfig needed for binary build issues on mac.
-            # See natcap/pygeoprocessing#252
-            conda install fontconfig=2.13.1
-
       - name: Test with pytest
         run: pytest
