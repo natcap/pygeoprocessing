@@ -14,20 +14,32 @@ jobs:
       fail-fast: false
       matrix:
         python-version: [3.7, 3.8, 3.9]
-        gdal: ["3.2.2", "3.3.0", "3.4.0"]
+        gdal: ["3.2.2", "3.3", "3.4", "3.5"]
         os: [ubuntu-latest, windows-latest, macos-latest]
 
         include:
           - python-version: "3.10"
-            gdal: "3.4.0"
+            gdal: "3.4"
             os: ubuntu-latest
 
           - python-version: "3.10"
-            gdal: "3.4.0"
+            gdal: "3.4"
             os: windows-latest
 
           - python-version: "3.10"
-            gdal: "3.4.0"
+            gdal: "3.4"
+            os: macos-latest
+
+          - python-version: "3.10"
+            gdal: "3.5"
+            os: ubuntu-latest
+
+          - python-version: "3.10"
+            gdal: "3.5"
+            os: windows-latest
+
+          - python-version: "3.10"
+            gdal: "3.5"
             os: macos-latest
 
     steps:
@@ -59,7 +71,7 @@ jobs:
 
       - name: Install PyGeoprocessing
         run: |
-            conda install --file requirements.txt gdal==${{ matrix.gdal }} setuptools build
+            conda install --file requirements.txt gdal=${{ matrix.gdal }} setuptools build
             python -m build --wheel
             python -m pip install $(find dist -name "*.whl")
 
