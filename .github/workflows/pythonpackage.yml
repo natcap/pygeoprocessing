@@ -53,7 +53,7 @@ jobs:
         uses: conda-incubator/setup-miniconda@v2
         with:
           activate-environment: pyenv
-          auto-update-conda: false
+          auto-update-conda: true
           python-version: ${{ matrix.python-version }}
           channels: conda-forge
 
@@ -71,6 +71,9 @@ jobs:
 
       - name: Install PyGeoprocessing
         run: |
+            # Installing all of these in the same line will force conda to
+            # resolve all requirements at once, reducing the chance of DLL
+            # conflicts.
             conda install --file requirements.txt gdal==${{ matrix.gdal }} setuptools build
             python -m build --wheel
             python -m pip install $(find dist -name "*.whl")
