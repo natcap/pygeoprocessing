@@ -370,7 +370,7 @@ def raster_calculator(
             stats_worker_queue = queue.Queue()
             exception_queue = queue.Queue()
 
-            if sys.version_info >= (3, 8):
+            if sys.version_info >= (3, 8) and use_shared_memory:
                 # The stats worker keeps running variables as a float64, so
                 # all input rasters are dtype float64 -- make the shared memory
                 # size equivalent.
@@ -381,7 +381,6 @@ def raster_calculator(
 
                 shared_memory = multiprocessing.shared_memory.SharedMemory(
                     create=True, size=block_size_bytes)
-
         else:
             stats_worker_queue = None
 
