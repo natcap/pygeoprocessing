@@ -3,6 +3,9 @@ Release History
 
 Unreleased Changes
 ------------------
+* Reducing the amount of memory used by
+  ``pygeoprocessing.new_raster_from_base`` when filling an array with values to
+  only as much memory as is needed for the datatype.
 * Fixing a memory leak in ``pygeoprocessing.raster_calculator`` where
   shared memory objects were being inadvertently created when they should not
   have been and then they were not subsequently destroyed.

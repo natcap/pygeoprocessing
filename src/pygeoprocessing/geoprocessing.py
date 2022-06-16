@@ -935,6 +935,7 @@ def new_raster_from_base(
     last_time = time.time()
     pixels_processed = 0
     n_pixels = n_cols * n_rows
+    numpy_dtype = _GDAL_TYPE_TO_NUMPY_LOOKUP[datatype]
     if fill_value_list is not None:
         for index, fill_value in enumerate(fill_value_list):
             if fill_value is None:
@@ -945,11 +946,10 @@ def new_raster_from_base(
             # efficient than ``band.Fill`` will give real-time feedback about
             # how the fill is progressing.
             for offsets in iterblocks((target_path, 1), offset_only=True):
-                fill_array = numpy.empty(
-                    (offsets['win_ysize'], offsets['win_xsize']))
+                shape = (offsets['win_ysize'], offsets['win_xsize'])
+                fill_array = numpy.full(shape, fill_value, dtype=numpy_dtype)
                 pixels_processed += (
                     offsets['win_ysize'] * offsets['win_xsize'])
-                fill_array[:] = fill_value
                 target_band.WriteArray(
                     fill_array, offsets['xoff'], offsets['yoff'])
 
