@@ -50,7 +50,8 @@ except (pkg_resources.extern.packaging.version.InvalidVersion,
     # string as well.
     __version__ = 'unknown'
 
-# Programmatically defining
+# Programmatically defining __all__ based on what's been imported.
+# Thus, the imports are the source of truth for __all__.
 __all__ = ('calculate_slope', 'raster_band_percentile',
            'ReclassificationMissingValuesError')
 for attrname in [k for k in locals().keys()]:
