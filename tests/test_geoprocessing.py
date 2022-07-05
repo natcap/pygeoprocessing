@@ -1,9 +1,11 @@
 """pygeoprocessing.geoprocessing test suite."""
+import contextlib
 import itertools
-import queue
-import os
+import logging
 import logging.handlers
+import os
 import pathlib
+import queue
 import shutil
 import tempfile
 import time
@@ -11,10 +13,9 @@ import types
 import unittest
 import unittest.mock
 import warnings
-import logging
-import contextlib
 
 import numpy
+import packaging.version
 import pygeoprocessing
 import pygeoprocessing.multiprocessing
 import pygeoprocessing.symbolic
@@ -33,6 +34,15 @@ from pygeoprocessing.geoprocessing_core import \
 _DEFAULT_ORIGIN = (444720, 3751320)
 _DEFAULT_PIXEL_SIZE = (30, -30)
 _DEFAULT_EPSG = 3116
+
+# Numpy changed their division-by-zero warning message in numpy 1.23.0
+if (packaging.version.parse(numpy.__version__) <
+        packaging.version.parse('1.23.0')):
+    NUMPY_DIV_BY_ZERO_MSG = 'divide by zero encountered in true_divide'
+    NUMPY_DIV_INVALID_VAL_MSG = 'invalid value encountered in true_divide'
+else:
+    NUMPY_DIV_BY_ZERO_MSG = 'divide by zero encountered in divide'
+    NUMPY_DIV_INVALID_VAL_MSG = 'invalid value encountered in divide'
 
 
 def passthrough(x):
@@ -4267,20 +4277,21 @@ class TestGeoprocessing(unittest.TestCase):
                 # Ignore the specific divide-by-zero warning we expect.
                 warnings.filterwarnings(
                     action="ignore",
-                    message="divide by zero encountered in true_divide",
+                    message=NUMPY_DIV_BY_ZERO_MSG,
                     category=RuntimeWarning
                 )
                 pygeoprocessing.symbolic.evaluate_raster_calculator_expression(
-                    divide_by_zero_expr, symbol_to_path_band_map, target_nodata,
-                    target_raster_path)
+                    divide_by_zero_expr, symbol_to_path_band_map,
+                    target_nodata, target_raster_path)
         expected_message = 'Encountered inf in calculation'
         actual_message = str(cm.exception)
         self.assertTrue(expected_message in actual_message, actual_message)
 
         with warnings.catch_warnings():
+            # Ignore the specific divide-by-zero warning we expect.
             warnings.filterwarnings(
                 action="ignore",
-                message="divide by zero encountered in true_divide",
+                message=NUMPY_DIV_BY_ZERO_MSG,
                 category=RuntimeWarning
             )
             pygeoprocessing.symbolic.evaluate_raster_calculator_expression(
@@ -4297,7 +4308,7 @@ class TestGeoprocessing(unittest.TestCase):
             with warnings.catch_warnings():
                 warnings.filterwarnings(
                     action="ignore",
-                    message="invalid value encountered in true_divide",
+                    message=NUMPY_DIV_INVALID_VAL_MSG,
                     category=RuntimeWarning
                 )
                 pygeoprocessing.symbolic.evaluate_raster_calculator_expression(
@@ -4310,7 +4321,7 @@ class TestGeoprocessing(unittest.TestCase):
         with warnings.catch_warnings():
             warnings.filterwarnings(
                 action="ignore",
-                message="invalid value encountered in true_divide",
+                message=NUMPY_DIV_INVALID_VAL_MSG,
                 category=RuntimeWarning
             )
             pygeoprocessing.symbolic.evaluate_raster_calculator_expression(
