@@ -3,6 +3,10 @@ Release History
 
 Unreleased Changes
 ------------------
+* Fixing an issue with imports at the ``pygeoprocessing`` module level that was
+  causing linters like PyLint and IDE command-completion programs like JEDI-vim
+  to not be able to identify the attributes of the ``pygeoprocessing`` module
+  namespace.
 * Reducing the amount of memory used by
   ``pygeoprocessing.new_raster_from_base`` when filling an array with values to
   only as much memory as is needed for the datatype.

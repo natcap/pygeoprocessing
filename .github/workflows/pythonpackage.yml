@@ -79,4 +79,4 @@ jobs:
             python -m pip install $(find dist -name "*.whl")
 
       - name: Test with pytest
-        run: pytest
+        run: python -m pytest tests
