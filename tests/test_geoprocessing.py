@@ -1155,6 +1155,79 @@ class TestGeoprocessing(unittest.TestCase):
                 'sum': 0.0}}
         self.assertEqual(result, expected_result)
 
+    def test_zonal_statistics_value_counts(self):
+        """PGP.geoprocessing: test zonal stats function (value counts)."""
+        # create aggregating polygon
+        pixel_size = 30.0
+        n_pixels = 9
+        origin = (444720, 3751320)
+        polygon_a = shapely.geometry.Polygon([
+            (origin[0], origin[1]),
+            (origin[0], -pixel_size * n_pixels+origin[1]),
+            (origin[0]+pixel_size * n_pixels,
+             -pixel_size * n_pixels+origin[1]),
+            (origin[0]+pixel_size * n_pixels, origin[1]),
+            (origin[0], origin[1])])
+        origin = (444720, 3751320)
+        polygon_b = shapely.geometry.Polygon([
+            (origin[0], origin[1]),
+            (origin[0], -pixel_size+origin[1]),
+            (origin[0]+pixel_size, -pixel_size+origin[1]),
+            (origin[0]+pixel_size, origin[1]),
+            (origin[0], origin[1])])
+        polygon_c = shapely.geometry.Polygon([
+            (origin[1]*2, origin[1]*3),
+            (origin[1]*2, -pixel_size+origin[1]*3),
+            (origin[1]*2+pixel_size,
+             -pixel_size+origin[1]*3),
+            (origin[1]*2+pixel_size, origin[1]*3),
+            (origin[1]*2, origin[1]*3)])
+        aggregating_vector_path = os.path.join(
+            self.workspace_dir, 'aggregate_vector')
+        _geometry_to_vector(
+            [polygon_a, polygon_b, polygon_c], aggregating_vector_path)
+        pixel_matrix = numpy.ones((n_pixels, n_pixels), numpy.float32)
+        target_nodata = None
+        raster_path = os.path.join(self.workspace_dir, 'raster.tif')
+        _array_to_raster(
+            pixel_matrix, target_nodata, raster_path)
+        with capture_logging(
+                logging.getLogger('pygeoprocessing')) as log_messages:
+            result = pygeoprocessing.zonal_statistics(
+                (raster_path, 1), aggregating_vector_path,
+                aggregate_layer_name=None,
+                ignore_nodata=True,
+                include_value_counts=True,
+                polygons_might_overlap=True)
+
+        # Raster is float32, so we expect a warning to be posted.
+        self.assertEqual(len(log_messages), 1)
+        self.assertEqual(log_messages[0].level, logging.WARNING)
+        expected_result = {
+            0: {
+                'count': 81,
+                'max': 1.0,
+                'min': 1.0,
+                'nodata_count': 0,
+                'sum': 81.0,
+                'value_counts': {1.0: 81}},
+            1: {
+                'count': 1,
+                'max': 1.0,
+                'min': 1.0,
+                'nodata_count': 0,
+                'sum': 1.0,
+                'value_counts': {1.0: 1}},
+            2: {
+                'min': None,
+                'max': None,
+                'count': 0,
+                'nodata_count': 0,
+                'sum': 0.0,
+                'value_counts': {}}
+        }
+        self.assertEqual(result, expected_result)
+
     def test_zonal_statistics_nodata(self):
         """PGP.geoprocessing: test zonal stats function with non-overlap."""
         # create aggregating polygon
