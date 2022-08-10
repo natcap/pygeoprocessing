@@ -1160,7 +1160,7 @@ def zonal_statistics(
         There may be some degenerate cases where the bounding box vs. actual
         geometry intersection would be incorrect, but these are so unlikely as
         to be manually constructed. If you encounter one of these please email
-        the description and dataset to richsharp@stanford.edu.
+        the description and dataset to jdouglass@stanford.edu.
 
     Args:
         base_raster_path_band (tuple): a str/int tuple indicating the path to
@@ -1486,7 +1486,7 @@ def zonal_statistics(
         # is as small as a pixel. There could be some degenerate cases that
         # make this estimation very wrong, but we do not know of any that
         # would come from natural data. If you do encounter such a dataset
-        # please email the description and datset to richsharp@stanford.edu.
+        # please email the description and datset to jdouglass@stanford.edu.
         unset_fid_block = clipped_band.ReadAsArray(
             xoff=xoff, yoff=yoff, win_xsize=win_xsize, win_ysize=win_ysize)
 
