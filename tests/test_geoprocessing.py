@@ -1202,7 +1202,9 @@ class TestGeoprocessing(unittest.TestCase):
 
         # Raster is float32, so we expect a warning to be posted.
         self.assertEqual(len(log_messages), 1)
-        self.assertEqual(log_messages[0].level, logging.WARNING)
+        self.assertEqual(log_messages[0].levelno, logging.WARNING)
+        self.assertIn('Value counts requested on a floating-point raster',
+                      log_messages[0].msg)
         expected_result = {
             0: {
                 'count': 81,

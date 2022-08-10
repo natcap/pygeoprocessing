@@ -1248,7 +1248,7 @@ def zonal_statistics(
     if (raster_info['datatype'] in {gdal.GDT_Float32, gdal.GDT_Float64}
             and include_value_counts):
         LOGGER.warning(
-            "Value counts requested on a floating-point raster, which can "
+            "Value counts requested on a floating-point raster which can "
             "cause excessive memory usage.")
 
     # -1 here because bands are 1 indexed
@@ -1317,7 +1317,8 @@ def zonal_statistics(
         iterblocks((agg_fid_raster_path, 1), offset_only=True))
     agg_fid_raster = gdal.OpenEx(
         agg_fid_raster_path, gdal.GA_Update | gdal.OF_RASTER)
-    aggregate_stats = collections.defaultdict(lambda: sample_aggregate_dict)
+    aggregate_stats = collections.defaultdict(
+        lambda: sample_aggregate_dict.copy())
     last_time = time.time()
     LOGGER.info("processing %d disjoint polygon sets", len(disjoint_fid_sets))
     for set_index, disjoint_fid_set in enumerate(disjoint_fid_sets):
