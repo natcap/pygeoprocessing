@@ -3,6 +3,11 @@ Release History
 
 Unreleased Changes
 ------------------
+* ``pygeoprocessing.zonal_statistics`` will now optionally include a count of
+  the number of pixels per value encountered under each polygon.  A warning
+  will be logged when invoked on floating-point rasters, as using this on
+  continuous rasters can result in excessive memory consumption.  To use this
+  feature, set ``include_value_counts=True`` when calling ``zonal_statistics``.
 * Fixing an issue with imports at the ``pygeoprocessing`` module level that was
   causing linters like PyLint and IDE command-completion programs like JEDI-vim
   to not be able to identify the attributes of the ``pygeoprocessing`` module
