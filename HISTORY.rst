@@ -1,7 +1,9 @@
 Release History
 ===============
 
-Unreleased Changes
+.. Unreleased Changes
+
+2.3.4 (2022-08-22)
 ------------------
 * Fixing an issue with imports at the ``pygeoprocessing`` module level that was
   causing linters like PyLint and IDE command-completion programs like JEDI-vim
