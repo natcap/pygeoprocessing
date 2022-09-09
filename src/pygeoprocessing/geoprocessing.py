@@ -1430,7 +1430,6 @@ def zonal_statistics(
                             collections.defaultdict(int))
                     for pixel_value, pixel_count in zip(*numpy.unique(
                             masked_clipped_block, return_counts=True)):
-                        LOGGER.info(f"{pixel_value}, {pixel_count}")
                         aggregate_stats[agg_fid][
                             'value_counts'][pixel_value] += pixel_count
     unset_fids = aggregate_layer_fid_set.difference(aggregate_stats)
@@ -1523,7 +1522,6 @@ def zonal_statistics(
                     collections.defaultdict(int))
             for pixel_value, pixel_count in zip(*numpy.unique(
                     value_unset_fid_block, return_counts=True)):
-                LOGGER.info(f"{pixel_value}, {pixel_count}")
                 aggregate_stats[unset_fid][
                     'value_counts'][pixel_value] += pixel_count
 
