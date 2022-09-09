@@ -1,7 +1,9 @@
 Release History
 ===============
 
-Unreleased Changes
+.. Unreleased Changes
+
+2.3.4 (2022-08-22)
 ------------------
 * ``pygeoprocessing.zonal_statistics`` will now optionally include a count of
   the number of pixels per value encountered under each polygon.  A warning
