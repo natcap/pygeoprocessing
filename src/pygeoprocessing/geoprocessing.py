@@ -1425,10 +1425,14 @@ def zonal_statistics(
                     masked_clipped_block)
 
                 if include_value_counts:
-                    aggregate_stats[agg_fid]['value_counts'] = dict(
-                        pair for pair in zip(
-                            *numpy.unique(masked_clipped_block,
-                                          return_counts=True)))
+                    if not aggregate_stats[agg_fid]['value_counts']:
+                        aggregate_stats[agg_fid]['value_counts'] = (
+                            collections.defaultdict(int))
+                    for pixel_value, pixel_count in zip(*numpy.unique(
+                            masked_clipped_block, return_counts=True)):
+                        LOGGER.info(f"{pixel_value}, {pixel_count}")
+                        aggregate_stats[agg_fid][
+                            'value_counts'][pixel_value] += pixel_count
     unset_fids = aggregate_layer_fid_set.difference(aggregate_stats)
     LOGGER.debug(
         "unset_fids: %s of %s ", len(unset_fids),
@@ -1514,9 +1518,14 @@ def zonal_statistics(
         aggregate_stats[unset_fid]['nodata_count'] = numpy.count_nonzero(
             unset_fid_nodata_mask)
         if include_value_counts:
-            aggregate_stats[unset_fid]['value_counts'] = dict(
-                pair for pair in zip(*numpy.unique(valid_unset_fid_block,
-                                                   return_counts=True)))
+            if not aggregate_stats[agg_fid]['value_counts']:
+                aggregate_stats[agg_fid]['value_counts'] = (
+                    collections.defaultdict(int))
+            for pixel_value, pixel_count in zip(*numpy.unique(
+                    value_unset_fid_block, return_counts=True)):
+                LOGGER.info(f"{pixel_value}, {pixel_count}")
+                aggregate_stats[unset_fid][
+                    'value_counts'][pixel_value] += pixel_count
 
     unset_fids = aggregate_layer_fid_set.difference(aggregate_stats)
     LOGGER.debug(
@@ -1542,7 +1551,12 @@ def zonal_statistics(
     aggregate_vector = None
 
     shutil.rmtree(temp_working_dir)
-    return dict(aggregate_stats)
+    aggregate_stats = dict(aggregate_stats)
+    if include_value_counts:
+        for key, value in aggregate_stats.items():
+            aggregate_stats[key]['value_counts'] = dict(
+                aggregate_stats[key]['value_counts'])
+    return aggregate_stats
 
 
 def get_vector_info(vector_path, layer_id=0):
