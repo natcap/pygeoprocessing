@@ -1248,8 +1248,9 @@ def zonal_statistics(
     if (raster_info['datatype'] in {gdal.GDT_Float32, gdal.GDT_Float64}
             and include_value_counts):
         LOGGER.warning(
-            "Value counts requested on a floating-point raster which can "
-            "cause excessive memory usage.")
+            "Value counts requested on a floating-point raster. This can "
+            "cause excessive memory usage if the raster has continuous "
+            "values.")
 
     # -1 here because bands are 1 indexed
     raster_nodata = raster_info['nodata'][base_raster_path_band[1]-1]
