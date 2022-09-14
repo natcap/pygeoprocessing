@@ -1271,7 +1271,8 @@ def zonal_statistics(
             ``collections.defaultdict`` when a key does not already exist.
         """
         sample_aggregate_dict = {
-            'min': None, 'max': None, 'count': 0, 'nodata_count': 0, 'sum': 0.0}
+            'min': None, 'max': None, 'count': 0, 'nodata_count': 0,
+            'sum': 0.0}
         if include_value_counts:
             sample_aggregate_dict['value_counts'] = collections.Counter()
         return sample_aggregate_dict
