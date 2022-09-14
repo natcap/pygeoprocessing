@@ -1257,10 +1257,23 @@ def zonal_statistics(
     clipped_raster_path = os.path.join(
         temp_working_dir, 'clipped_raster.tif')
 
-    sample_aggregate_dict = {
-        'min': None, 'max': None, 'count': 0, 'nodata_count': 0, 'sum': 0.0}
-    if include_value_counts:
-        sample_aggregate_dict['value_counts'] = {}
+    def _make_sample_dict():
+        """Build a sample aggregate dict.
+
+        This function is needed over a lambda because it allows us to control
+        in a single place how the initial values of the
+        ``sample_aggregate_dict`` should be defined.  These are then used in
+        several ``collections.defaultdict``s in this function.
+
+        Returns:
+            A sample aggregate dict with starter values, used for a
+            ``collections.defaultdict`` when a key does not already exist.
+        """
+        sample_aggregate_dict = {
+            'min': None, 'max': None, 'count': 0, 'nodata_count': 0, 'sum': 0.0}
+        if include_value_counts:
+            sample_aggregate_dict['value_counts'] = collections.Counter()
+        return sample_aggregate_dict
 
     try:
         align_and_resize_raster_stack(
@@ -1275,8 +1288,7 @@ def zonal_statistics(
             LOGGER.error(
                 "aggregate vector %s does not intersect with the raster %s",
                 aggregate_vector_path, base_raster_path_band)
-            aggregate_stats = collections.defaultdict(
-                lambda: sample_aggregate_dict)
+            aggregate_stats = collections.defaultdict(_make_sample_dict)
             for feature in aggregate_layer:
                 _ = aggregate_stats[feature.GetFID()]
             return dict(aggregate_stats)
@@ -1317,8 +1329,7 @@ def zonal_statistics(
         iterblocks((agg_fid_raster_path, 1), offset_only=True))
     agg_fid_raster = gdal.OpenEx(
         agg_fid_raster_path, gdal.GA_Update | gdal.OF_RASTER)
-    aggregate_stats = collections.defaultdict(
-        lambda: sample_aggregate_dict.copy())
+    aggregate_stats = collections.defaultdict(_make_sample_dict)
     last_time = time.time()
     LOGGER.info("processing %d disjoint polygon sets", len(disjoint_fid_sets))
     for set_index, disjoint_fid_set in enumerate(disjoint_fid_sets):
@@ -1423,15 +1434,10 @@ def zonal_statistics(
                     masked_clipped_block.size)
                 aggregate_stats[agg_fid]['sum'] += numpy.sum(
                     masked_clipped_block)
-
                 if include_value_counts:
-                    if not aggregate_stats[agg_fid]['value_counts']:
-                        aggregate_stats[agg_fid]['value_counts'] = (
-                            collections.defaultdict(int))
-                    for pixel_value, pixel_count in zip(*numpy.unique(
-                            masked_clipped_block, return_counts=True)):
-                        aggregate_stats[agg_fid][
-                            'value_counts'][pixel_value] += pixel_count
+                    aggregate_stats[agg_fid]['value_counts'].update(
+                        dict(zip(*numpy.unique(
+                            masked_clipped_block, return_counts=True))))
     unset_fids = aggregate_layer_fid_set.difference(aggregate_stats)
     LOGGER.debug(
         "unset_fids: %s of %s ", len(unset_fids),
@@ -1517,13 +1523,9 @@ def zonal_statistics(
         aggregate_stats[unset_fid]['nodata_count'] = numpy.count_nonzero(
             unset_fid_nodata_mask)
         if include_value_counts:
-            if not aggregate_stats[agg_fid]['value_counts']:
-                aggregate_stats[agg_fid]['value_counts'] = (
-                    collections.defaultdict(int))
-            for pixel_value, pixel_count in zip(*numpy.unique(
-                    value_unset_fid_block, return_counts=True)):
-                aggregate_stats[unset_fid][
-                    'value_counts'][pixel_value] += pixel_count
+            aggregate_stats[unset_fid]['value_counts'].update(
+                dict(zip(*numpy.unique(
+                    value_unset_fid_block, return_counts=True))))
 
     unset_fids = aggregate_layer_fid_set.difference(aggregate_stats)
     LOGGER.debug(
