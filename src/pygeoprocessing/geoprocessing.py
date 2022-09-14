@@ -1526,7 +1526,7 @@ def zonal_statistics(
         if include_value_counts:
             aggregate_stats[unset_fid]['value_counts'].update(
                 dict(zip(*numpy.unique(
-                    value_unset_fid_block, return_counts=True))))
+                    valid_unset_fid_block, return_counts=True))))
 
     unset_fids = aggregate_layer_fid_set.difference(aggregate_stats)
     LOGGER.debug(
