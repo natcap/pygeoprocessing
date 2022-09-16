@@ -1437,6 +1437,8 @@ def zonal_statistics(
                 aggregate_stats[agg_fid]['sum'] += numpy.sum(
                     masked_clipped_block)
                 if include_value_counts:
+                    # .update() here is operating on a Counter, so values are
+                    # ADDED, not replaced.
                     aggregate_stats[agg_fid]['value_counts'].update(
                         dict(zip(*numpy.unique(
                             masked_clipped_block, return_counts=True))))
@@ -1525,6 +1527,8 @@ def zonal_statistics(
         aggregate_stats[unset_fid]['nodata_count'] = numpy.count_nonzero(
             unset_fid_nodata_mask)
         if include_value_counts:
+            # .update() here is operating on a Counter, so values are ADDED,
+            # not replaced.
             aggregate_stats[unset_fid]['value_counts'].update(
                 dict(zip(*numpy.unique(
                     valid_unset_fid_block, return_counts=True))))
