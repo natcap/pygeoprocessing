@@ -1258,24 +1258,24 @@ def zonal_statistics(
     clipped_raster_path = os.path.join(
         temp_working_dir, 'clipped_raster.tif')
 
-    def _make_sample_dict():
-        """Build a sample aggregate dict.
+    def _new_aggregate_dict():
+        """Build a new aggregate dict for ``collections.defaultdict``.
 
         This function is needed over a lambda because it allows us to control
-        in a single place how the initial values of the
-        ``sample_aggregate_dict`` should be defined.  These are then used in
-        several ``collections.defaultdict``s in this function.
+        in a single place how the initial values of an aggregate dict should be
+        defined.  These are then used in several ``collections.defaultdict``s
+        within ``zonal_statistics``.
 
         Returns:
-            A sample aggregate dict with starter values, used for a
+            A new aggregate dict with starter values, used for a
             ``collections.defaultdict`` when a key does not already exist.
         """
-        sample_aggregate_dict = {
+        aggregate_dict = {
             'min': None, 'max': None, 'count': 0, 'nodata_count': 0,
             'sum': 0.0}
         if include_value_counts:
-            sample_aggregate_dict['value_counts'] = collections.Counter()
-        return sample_aggregate_dict
+            aggregate_dict['value_counts'] = collections.Counter()
+        return aggregate_dict
 
     try:
         align_and_resize_raster_stack(
@@ -1290,7 +1290,7 @@ def zonal_statistics(
             LOGGER.error(
                 "aggregate vector %s does not intersect with the raster %s",
                 aggregate_vector_path, base_raster_path_band)
-            aggregate_stats = collections.defaultdict(_make_sample_dict)
+            aggregate_stats = collections.defaultdict(_new_aggregate_dict)
             for feature in aggregate_layer:
                 _ = aggregate_stats[feature.GetFID()]
             return dict(aggregate_stats)
@@ -1331,7 +1331,7 @@ def zonal_statistics(
         iterblocks((agg_fid_raster_path, 1), offset_only=True))
     agg_fid_raster = gdal.OpenEx(
         agg_fid_raster_path, gdal.GA_Update | gdal.OF_RASTER)
-    aggregate_stats = collections.defaultdict(_make_sample_dict)
+    aggregate_stats = collections.defaultdict(_new_aggregate_dict)
     last_time = time.time()
     LOGGER.info("processing %d disjoint polygon sets", len(disjoint_fid_sets))
     for set_index, disjoint_fid_set in enumerate(disjoint_fid_sets):
