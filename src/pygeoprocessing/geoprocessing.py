@@ -1196,9 +1196,9 @@ def zonal_statistics(
         of 'min' 'max' 'sum' 'count' and 'nodata_count'.  Example::
 
             {0: {'min': 0,
-                 'max': 1,
-                 'sum': 1.7,
-                 'count': 3,
+                 'max': 14,
+                 'sum': 42,
+                 'count': 8,
                  'nodata_count': 1,
                  'value_counts': {
                      2: 5,
