@@ -1144,7 +1144,8 @@ def interpolate_points(
 def zonal_statistics(
         base_raster_path_band, aggregate_vector_path,
         aggregate_layer_name=None, ignore_nodata=True,
-        polygons_might_overlap=True, working_dir=None):
+        polygons_might_overlap=True, include_value_counts=False,
+        working_dir=None):
     """Collect stats on pixel values which lie within polygons.
 
     This function summarizes raster statistics including min, max,
@@ -1159,7 +1160,7 @@ def zonal_statistics(
         There may be some degenerate cases where the bounding box vs. actual
         geometry intersection would be incorrect, but these are so unlikely as
         to be manually constructed. If you encounter one of these please email
-        the description and dataset to richsharp@stanford.edu.
+        the description and dataset to jdouglass@stanford.edu.
 
     Args:
         base_raster_path_band (tuple): a str/int tuple indicating the path to
@@ -1183,6 +1184,10 @@ def zonal_statistics(
             computationally expensive for cases where there are many polygons.
               this flag to False directs the function rasterize in one
             step.
+        include_value_counts (boolean): If True, the function tallies the
+            number of pixels of each value under the polygon.  This is useful
+            for classified rasters but could exhaust available memory when run
+            on a continuous (floating-point) raster.  Defaults to False.
         working_dir (string): If not None, indicates where temporary files
             should be created during this run.
 
@@ -1191,10 +1196,15 @@ def zonal_statistics(
         of 'min' 'max' 'sum' 'count' and 'nodata_count'.  Example::
 
             {0: {'min': 0,
-                 'max': 1,
-                 'sum': 1.7,
-                 'count': 3,
-                 'nodata_count': 1
+                 'max': 14,
+                 'sum': 42,
+                 'count': 8,
+                 'nodata_count': 1,
+                 'value_counts': {
+                     2: 5,
+                     4: 1,
+                     14: 2,
+                    }
                  }
             }
 
@@ -1234,11 +1244,38 @@ def zonal_statistics(
 
     # clip base raster to aggregating vector intersection
     raster_info = get_raster_info(base_raster_path_band[0])
+
+    if (raster_info['datatype'] in {gdal.GDT_Float32, gdal.GDT_Float64}
+            and include_value_counts):
+        LOGGER.warning(
+            "Value counts requested on a floating-point raster. This can "
+            "cause excessive memory usage if the raster has continuous "
+            "values.")
+
     # -1 here because bands are 1 indexed
     raster_nodata = raster_info['nodata'][base_raster_path_band[1]-1]
     temp_working_dir = tempfile.mkdtemp(dir=working_dir)
     clipped_raster_path = os.path.join(
         temp_working_dir, 'clipped_raster.tif')
+
+    def _new_aggregate_dict():
+        """Build a new aggregate dict for ``collections.defaultdict``.
+
+        This function is needed over a lambda because it allows us to control
+        in a single place how the initial values of an aggregate dict should be
+        defined.  These are then used in several ``collections.defaultdict``s
+        within ``zonal_statistics``.
+
+        Returns:
+            A new aggregate dict with starter values, used for a
+            ``collections.defaultdict`` when a key does not already exist.
+        """
+        aggregate_dict = {
+            'min': None, 'max': None, 'count': 0, 'nodata_count': 0,
+            'sum': 0.0}
+        if include_value_counts:
+            aggregate_dict['value_counts'] = collections.Counter()
+        return aggregate_dict
 
     try:
         align_and_resize_raster_stack(
@@ -1253,10 +1290,7 @@ def zonal_statistics(
             LOGGER.error(
                 "aggregate vector %s does not intersect with the raster %s",
                 aggregate_vector_path, base_raster_path_band)
-            aggregate_stats = collections.defaultdict(
-                lambda: {
-                    'min': None, 'max': None, 'count': 0, 'nodata_count': 0,
-                    'sum': 0.0})
+            aggregate_stats = collections.defaultdict(_new_aggregate_dict)
             for feature in aggregate_layer:
                 _ = aggregate_stats[feature.GetFID()]
             return dict(aggregate_stats)
@@ -1297,8 +1331,7 @@ def zonal_statistics(
         iterblocks((agg_fid_raster_path, 1), offset_only=True))
     agg_fid_raster = gdal.OpenEx(
         agg_fid_raster_path, gdal.GA_Update | gdal.OF_RASTER)
-    aggregate_stats = collections.defaultdict(lambda: {
-        'min': None, 'max': None, 'count': 0, 'nodata_count': 0, 'sum': 0.0})
+    aggregate_stats = collections.defaultdict(_new_aggregate_dict)
     last_time = time.time()
     LOGGER.info("processing %d disjoint polygon sets", len(disjoint_fid_sets))
     for set_index, disjoint_fid_set in enumerate(disjoint_fid_sets):
@@ -1403,6 +1436,12 @@ def zonal_statistics(
                     masked_clipped_block.size)
                 aggregate_stats[agg_fid]['sum'] += numpy.sum(
                     masked_clipped_block)
+                if include_value_counts:
+                    # .update() here is operating on a Counter, so values are
+                    # ADDED, not replaced.
+                    aggregate_stats[agg_fid]['value_counts'].update(
+                        dict(zip(*numpy.unique(
+                            masked_clipped_block, return_counts=True))))
     unset_fids = aggregate_layer_fid_set.difference(aggregate_stats)
     LOGGER.debug(
         "unset_fids: %s of %s ", len(unset_fids),
@@ -1461,7 +1500,7 @@ def zonal_statistics(
         # is as small as a pixel. There could be some degenerate cases that
         # make this estimation very wrong, but we do not know of any that
         # would come from natural data. If you do encounter such a dataset
-        # please email the description and datset to richsharp@stanford.edu.
+        # please email the description and datset to jdouglass@stanford.edu.
         unset_fid_block = clipped_band.ReadAsArray(
             xoff=xoff, yoff=yoff, win_xsize=win_xsize, win_ysize=win_ysize)
 
@@ -1487,6 +1526,12 @@ def zonal_statistics(
         aggregate_stats[unset_fid]['count'] = valid_unset_fid_block.size
         aggregate_stats[unset_fid]['nodata_count'] = numpy.count_nonzero(
             unset_fid_nodata_mask)
+        if include_value_counts:
+            # .update() here is operating on a Counter, so values are ADDED,
+            # not replaced.
+            aggregate_stats[unset_fid]['value_counts'].update(
+                dict(zip(*numpy.unique(
+                    valid_unset_fid_block, return_counts=True))))
 
     unset_fids = aggregate_layer_fid_set.difference(aggregate_stats)
     LOGGER.debug(
@@ -1512,7 +1557,12 @@ def zonal_statistics(
     aggregate_vector = None
 
     shutil.rmtree(temp_working_dir)
-    return dict(aggregate_stats)
+    aggregate_stats = dict(aggregate_stats)
+    if include_value_counts:
+        for key, value in aggregate_stats.items():
+            aggregate_stats[key]['value_counts'] = dict(
+                aggregate_stats[key]['value_counts'])
+    return aggregate_stats
 
 
 def get_vector_info(vector_path, layer_id=0):
