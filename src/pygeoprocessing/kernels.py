@@ -8,6 +8,17 @@ from osgeo import osr
 
 FLOAT32_NODATA = numpy.finfo(numpy.float32).min
 LOGGER = logging.getLogger(__name__)
+_DEFAULT_SRS = osr.SpatialReference()
+_DEFAULT_SRS.SetWellKnownGeogCS('WGS84')
+_DEFAULT_GEOTRANSFORM = [0, 1, 0, 0, 0, -1]
+
+
+def kernel_from_numpy_array(numpy_array, target_kernel_path):
+    pixel_size = (_DEFAULT_GEOTRANSFORM[1], _DEFAULT_GEOTRANSFORM[5])
+    origin = (_DEFAULT_GEOTRANSFORM[0], _DEFAULT_GEOTRANSFORM[3])
+    pygeoprocessing.numpy_array_to_raster(
+        numpy_array, None, pixel_size, origin,
+        _DEFAULT_SRS.ExportToWkt(), target_kernel_path)
 
 
 def dichotomous_kernel(target_kernel_path, max_distance):
@@ -99,10 +110,8 @@ def _create_distance_based_kernel(
 
     # Make some kind of geotransform, it doesn't matter what but
     # will make GIS libraries behave better if it's all defined
-    kernel_dataset.SetGeoTransform([0, 1, 0, 0, 0, -1])
-    srs = osr.SpatialReference()
-    srs.SetWellKnownGeogCS('WGS84')
-    kernel_dataset.SetProjection(srs.ExportToWkt())
+    kernel_dataset.SetGeoTransform(_DEFAULT_GEOTRANSFORM)
+    kernel_dataset.SetProjection(_DEFAULT_SRS.ExportToWkt())
 
     kernel_band = kernel_dataset.GetRasterBand(1)
     kernel_nodata = FLOAT32_NODATA
