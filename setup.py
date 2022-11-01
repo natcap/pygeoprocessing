@@ -32,6 +32,7 @@ setup(
     url='https://github.com/natcap/pygeoprocessing',
     packages=[
         'pygeoprocessing',
+        'pygeoprocessing.kernels',
         'pygeoprocessing.routing',
         'pygeoprocessing.multiprocessing',
     ],
