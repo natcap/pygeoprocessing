@@ -10,8 +10,66 @@ FLOAT32_NODATA = numpy.finfo(numpy.float32).min
 LOGGER = logging.getLogger(__name__)
 
 
+def dichotomous_kernel(target_kernel_path, max_distance):
+    def _dichotomy(distance_from_center):
+        return numpy.array(
+            distance_from_center <= max_distance, dtype=numpy.float32)
+
+    _create_distance_based_kernel(
+        target_kernel_path, _dichotomy, max_distance, normalize=False)
+
+
+def density_decay_kernel(target_kernel_path, max_distance):
+    def _density(distance_from_center):
+        density = numpy.zeros(
+            distance_from_center.shape, dtype=numpy.float32)
+        pixels_in_radius = (distance_from_center <= max_distance)
+        density[pixels_in_radius] = (
+            0.75 * (1 - (distance_from_center[
+                pixels_in_radius] / max_distance) ** 2))
+        return density
+
+    _create_distance_based_kernel(
+        target_kernel_path, _density, max_distance, normalize=False)
+
+
+def exponential_decay_kernel(target_kernel_path, max_distance):
+    def _exp_decay(distance_from_center):
+        kernel = numpy.where(
+            distance_from_center > max_distance, 0.0,
+            numpy.exp(-distance_from_center / max_distance))
+        return kernel
+
+    _create_distance_based_kernel(
+        target_kernel_path, _exp_decay, max_distance, normalize=True)
+
+
+def linear_decay_kernel(target_kernel_path, max_distance):
+    def _linear_decay(distance_from_center):
+        return numpy.where(
+            distance_from_center > max_distance, 0.0,
+            (max_distance - distance_from_center) / max_distance)
+
+    _create_distance_based_kernel(
+        target_kernel_path, _linear_decay, max_distance, normalize=True)
+
+
+def gaussian_decay_kernel(target_kernel_path, sigma, n_std_dev):
+    max_distance = sigma * n_std_dev
+
+    def _gaussian_decay(distance_from_center):
+        kernel = numpy.where(
+            distance_from_center > max_distance, 0.0,
+            (1 / (2.0 * numpy.pi * sigma ** 2) *
+             numpy.exp(-distance_from_center**2 / (2 * sigma ** 2))))
+        return kernel
+
+    _create_distance_based_kernel(
+        target_kernel_path, _gaussian_decay, max_distance, normalize=True)
+
+
 def _create_distance_based_kernel(
-        target_kernel_path, function, max_distance, normalize):
+        target_kernel_path, function, max_distance, normalize=False):
     """
     Create a kernel raster based on pixel distance from the centerpoint.
 
@@ -25,7 +83,7 @@ def _create_distance_based_kernel(
         max_distance (float): The maximum distance of kernel values from
             the center point.  Values outside of this distance will be set to
             ``0.0``.
-        normalize (bool): Whether to normalize the resulting kernel.
+        normalize=False (bool): Whether to normalize the resulting kernel.
 
     Returns:
         ``None``
