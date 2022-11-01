@@ -42,6 +42,18 @@ jobs:
             gdal: "3.5"
             os: macos-latest
 
+          - python-version: "3.11"
+            gdal: "3.5"
+            os: ubuntu-latest
+
+          - python-version: "3.11"
+            gdal: "3.5"
+            os: windows-latest
+
+          - python-version: "3.11"
+            gdal: "3.5"
+            os: macos-latest
+
     steps:
       - uses: actions/checkout@v2
         with:
