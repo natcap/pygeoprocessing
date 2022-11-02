@@ -1,3 +1,4 @@
+import functools
 import logging
 import math
 
@@ -12,8 +13,17 @@ _DEFAULT_SRS = osr.SpatialReference()
 _DEFAULT_SRS.SetWellKnownGeogCS('WGS84')
 _DEFAULT_GEOTRANSFORM = [0, 1, 0, 0, 0, -1]
 
+# note that convolve_2d requires that all pixels are valid
+#    pixels may not be nodata.
+# TODO: are kernels required to be square?
+    # From what I can tell, no, they just need to have same num. dimensions.
+# TODO: what happens if kernels are not centered on the target pixel?
+# TODO: use type hints for these modules and note it in the changelog.
+
 
 def kernel_from_numpy_array(numpy_array, target_kernel_path):
+    """Create a convolution kernel from a numpy array.
+    """
     pixel_size = (_DEFAULT_GEOTRANSFORM[1], _DEFAULT_GEOTRANSFORM[5])
     origin = (_DEFAULT_GEOTRANSFORM[0], _DEFAULT_GEOTRANSFORM[3])
     pygeoprocessing.numpy_array_to_raster(
@@ -22,6 +32,23 @@ def kernel_from_numpy_array(numpy_array, target_kernel_path):
 
 
 def dichotomous_kernel(target_kernel_path, max_distance):
+    """Create a binary kernel indicating presence/absence within a distance.
+
+    Given a centerpoint pixel C and an arbitrary pixel P in the target kernel,
+    if the distance between C and P exceeds ``max_distance``, the value of P
+    will be 0.  The value of P will be 1 otherwise.
+
+    Args:
+        target_kernel_path (string): Where the target kernel file should be
+            stored.
+        max_distance (float): The maximum distance within which pixels should
+            indicate presence (1) in the output kernel.  Pixels that are more
+            than this distance (in units of pixels) from the center pixel will
+            indicate absence (0) in the output kernel.
+
+    Returns:
+        ``None``
+    """
     def _dichotomy(distance_from_center):
         return numpy.array(
             distance_from_center <= max_distance, dtype=numpy.float32)
@@ -30,7 +57,12 @@ def dichotomous_kernel(target_kernel_path, max_distance):
         target_kernel_path, _dichotomy, max_distance, normalize=False)
 
 
-def density_decay_kernel(target_kernel_path, max_distance):
+# UNA calls this a density kernel
+# really, this is quite specific to UNA
+def parabolic_decay_kernel(target_kernel_path, max_distance):
+    """Create an inverted parabola that reaches a value of 0 at ``max_distance``
+
+    """
     def _density(distance_from_center):
         density = numpy.zeros(
             distance_from_center.shape, dtype=numpy.float32)
@@ -44,11 +76,22 @@ def density_decay_kernel(target_kernel_path, max_distance):
         target_kernel_path, _density, max_distance, normalize=False)
 
 
-def exponential_decay_kernel(target_kernel_path, max_distance):
+def numexpr_kernel(target_kernel_path, max_distance, expression, extras=None):
+    import numexpr
+    if not extras:
+        extras = {}
+
+    def _numexpr_expression(distance_from_center):
+        # evaluate a numexpr expression provided by the user
+        return numexpr.evaluate(expression)
+
+
+def exponential_decay_kernel(target_kernel_path, max_distance,
+                             distance_factor=1):
     def _exp_decay(distance_from_center):
         kernel = numpy.where(
             distance_from_center > max_distance, 0.0,
-            numpy.exp(-distance_from_center / max_distance))
+            numpy.exp(-(distance_from_center*distance_factor) / max_distance))
         return kernel
 
     _create_distance_based_kernel(
@@ -125,6 +168,17 @@ def _create_distance_based_kernel(
     band_x_size = kernel_band.XSize
     band_y_size = kernel_band.YSize
     running_sum = 0
+
+    # If the user provided a string rather than a callable, assume it's a
+    # python expression appropriate for evaling.
+    if isinstance(function, str):
+        # Avoid recompiling on each iteration.
+        code = compile(function, '<string>', 'eval'),
+        numpy_namespace = {name: getattr(numpy, name) for name in dir(numpy)}
+
+        def function(d):
+            return eval(code, locals={'d': d}, globals=numpy_namespace)
+
     for block_data in pygeoprocessing.iterblocks(
             (target_kernel_path, 1), offset_only=True):
         array_xmin = block_data['xoff'] - pixel_radius
