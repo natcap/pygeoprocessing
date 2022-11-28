@@ -3,6 +3,8 @@ Release History
 
 Unreleased Changes
 ------------------
+* Adding the target filename to progress logging in
+  ``pygeoprocessing.raster_calculator``.
 * ``pygeoprocessing.zonal_statistics`` will now optionally include a count of
   the number of pixels per value encountered under each polygon. A warning
   will be logged when invoked on floating-point rasters, as using this on
