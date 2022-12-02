@@ -10,6 +10,8 @@ Unreleased Changes
   will be logged when invoked on floating-point rasters, as using this on
   continuous rasters can result in excessive memory consumption. To use this
   feature, set ``include_value_counts=True`` when calling ``zonal_statistics``.
+* Fixing an error message in ``convolve_2d`` when the signal or kernel is a
+  row based blocksize. https://github.com/natcap/pygeoprocessing/issues/228.
 
 2.3.4 (2022-08-22)
 ------------------
