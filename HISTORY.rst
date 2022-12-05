@@ -3,6 +3,7 @@ Release History
 
 Unreleased Changes
 ------------------
+* Pygeoprocessing is now tested against Python 3.11.
 * Adding the target filename to progress logging in
   ``pygeoprocessing.raster_calculator``.
 * ``pygeoprocessing.zonal_statistics`` will now optionally include a count of

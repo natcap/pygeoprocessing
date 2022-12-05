@@ -42,8 +42,20 @@ jobs:
             gdal: "3.5"
             os: macos-latest
 
+          - python-version: "3.11"
+            gdal: "3.5"
+            os: ubuntu-latest
+
+          - python-version: "3.11"
+            gdal: "3.5"
+            os: windows-latest
+
+          - python-version: "3.11"
+            gdal: "3.5"
+            os: macos-latest
+
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
         with:
           # Fetch all history so that setuptool_scm can build the correct
           # version string.
@@ -74,7 +86,9 @@ jobs:
             # Installing all of these in the same line will force conda to
             # resolve all requirements at once, reducing the chance of DLL
             # conflicts.
-            conda install --file requirements.txt gdal==${{ matrix.gdal }} setuptools build
+            #
+            # Using single-equals to get whatever bugfix version satisfies the resolver.
+            conda install --file requirements.txt gdal=${{ matrix.gdal }} setuptools build
             python -m build --wheel
             python -m pip install $(find dist -name "*.whl")
 
