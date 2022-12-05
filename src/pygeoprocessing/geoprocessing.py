@@ -2685,10 +2685,12 @@ def convolve_2d(
     signal_raster_info = get_raster_info(signal_path_band[0])
     kernel_raster_info = get_raster_info(kernel_path_band[0])
 
-    for info_dict in [signal_raster_info, kernel_raster_info]:
+    for info_dict, raster_path_band in zip(
+            [signal_raster_info, kernel_raster_info],
+            [signal_path_band, kernel_path_band]):
         if 1 in info_dict['block_size']:
             raise ValueError(
-                f'{signal_path_band} has a row blocksize which can make this '
+                f'{raster_path_band} has a row blocksize which can make this '
                 f'function run very slow, create a square blocksize using '
                 f'`warp_raster` or `align_and_resize_raster_stack` which '
                 f'creates square blocksizes by default')
