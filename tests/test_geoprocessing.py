@@ -774,7 +774,6 @@ class TestGeoprocessing(unittest.TestCase):
 
         # make an n x n raster with 2*m x 2*m polygons inside.
         pixel_size = 1.0
-        subpixel_size = 1./5. * pixel_size
         origin_x = 1.0
         origin_y = -1.0
         n = 1
@@ -782,14 +781,14 @@ class TestGeoprocessing(unittest.TestCase):
         for row_index in range(n * 2):
             for col_index in range(n * 2):
                 x_pos = origin_x + (
-                    col_index*2 + 1 + col_index // 2) * subpixel_size
+                    col_index*2 + 1 + col_index // 2) * pixel_size
                 y_pos = origin_y - (
-                    row_index*2 + 1 + row_index // 2) * subpixel_size
+                    row_index*2 + 1 + row_index // 2) * pixel_size
                 shapely_feature = shapely.geometry.Polygon([
                     (x_pos, y_pos),
-                    (x_pos+subpixel_size, y_pos),
-                    (x_pos+subpixel_size, y_pos-subpixel_size),
-                    (x_pos, y_pos-subpixel_size),
+                    (x_pos+pixel_size, y_pos),
+                    (x_pos+pixel_size, y_pos-pixel_size),
+                    (x_pos, y_pos-pixel_size),
                     (x_pos, y_pos)])
                 new_feature = ogr.Feature(layer_defn)
                 new_geometry = ogr.CreateGeometryFromWkb(shapely_feature.wkb)
@@ -797,6 +796,14 @@ class TestGeoprocessing(unittest.TestCase):
                 expected_value = row_index // 2 * n + col_index // 2
                 new_feature.SetField('expected_value', expected_value)
                 layer.CreateFeature(new_feature)
+
+        # Create a feature right in the middle of the 4 geometries above
+        new_feature = ogr.Feature(layer_defn)
+        new_geometry = ogr.CreateGeometryFromWkb(
+            shapely.geometry.box(3, -4, 4, -3).wkb)
+        new_feature.SetField('expected_value', 10)
+        new_feature.SetGeometry(new_geometry)
+        layer.CreateFeature(new_feature)
 
         # Now create one additional feature that has no geometry in order to
         # exercise the warning around the feature not having a geometry defined
@@ -815,8 +822,8 @@ class TestGeoprocessing(unittest.TestCase):
         layer.CommitTransaction()
         layer.SyncToDisk()
 
-
         pygeoprocessing_logger = logging.getLogger('pygeoprocessing')
+        # None of the polygons overlap the given bounding box
         with capture_logging(pygeoprocessing_logger) as captured_logging:
             result = pygeoprocessing.calculate_disjoint_polygon_set(
                 vector_path, bounding_box=[-10, -10, -9, -9])
@@ -827,9 +834,19 @@ class TestGeoprocessing(unittest.TestCase):
         self.assertEqual('no polygons intersected the bounding box',
                          captured_logging[2].msg)
 
-        # otherwise none overlap
+        # 4 polygons touch the center polygon, so 2 groups returned
         with capture_logging(pygeoprocessing_logger) as captured_logging:
             result = pygeoprocessing.calculate_disjoint_polygon_set(vector_path)
+        self.assertEqual(len(result), 2, result)
+        self.assertEqual(len(captured_logging), 2)
+        self.assertIn('no geometry in', captured_logging[0].msg)
+        self.assertIn('empty geometry in', captured_logging[1].msg)
+
+        # When polygons are allowed to touch, we end up with 1 group.  The 4
+        # outer polygons touch the central polygon at the corner vertices.
+        with capture_logging(pygeoprocessing_logger) as captured_logging:
+            result = pygeoprocessing.calculate_disjoint_polygon_set(
+                vector_path, geometries_may_touch=True)
         self.assertEqual(len(result), 1, result)
         self.assertEqual(len(captured_logging), 2)
         self.assertIn('no geometry in', captured_logging[0].msg)
