@@ -3,6 +3,10 @@ Release History
 
 Unreleased Changes
 ------------------
+* ``pygeoprocessing.calculate_disjoint_polygon_set`` now offers an optional
+  parameter, ``geometries_may_touch`` for cases where geometries are known to
+  have intersecting boundaries but nonintersecting interiors.
+  https://github.com/natcap/pygeoprocessing/issues/269
 * Pygeoprocessing is now tested against Python 3.11.
 * Adding the target filename to progress logging in
   ``pygeoprocessing.raster_calculator``.

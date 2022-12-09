@@ -1183,8 +1183,8 @@ def zonal_statistics(
             aggregation coverage close to optimally by rasterizing sets of
             polygons that don't overlap.  However, this step can be
             computationally expensive for cases where there are many polygons.
-              this flag to False directs the function rasterize in one
-            step.
+            Setting this flag to ``False`` directs the function rasterize in
+            one step.
         include_value_counts (boolean): If True, the function tallies the
             number of pixels of each value under the polygon.  This is useful
             for classified rasters but could exhaust available memory when run
