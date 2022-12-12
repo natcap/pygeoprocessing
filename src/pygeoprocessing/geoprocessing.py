@@ -1183,8 +1183,8 @@ def zonal_statistics(
             aggregation coverage close to optimally by rasterizing sets of
             polygons that don't overlap.  However, this step can be
             computationally expensive for cases where there are many polygons.
-              this flag to False directs the function rasterize in one
-            step.
+            Setting this flag to ``False`` directs the function rasterize in
+            one step.
         include_value_counts (boolean): If True, the function tallies the
             number of pixels of each value under the polygon.  This is useful
             for classified rasters but could exhaust available memory when run
@@ -2277,7 +2277,8 @@ def rasterize(
 
 
 def calculate_disjoint_polygon_set(
-        vector_path, layer_id=0, bounding_box=None):
+        vector_path, layer_id=0, bounding_box=None,
+        geometries_may_touch=False):
     """Create a sequence of sets of polygons that don't overlap.
 
     Determining the minimal number of those sets is an np-complete problem so
@@ -2292,6 +2293,10 @@ def calculate_disjoint_polygon_set(
             does not intersect this bounding box it will not be considered
             in the disjoint calculation. Coordinates are in the order
             [minx, miny, maxx, maxy].
+        geometries_may_touch=False(bool): If ``True``, geometries in a subset
+            are allowed to have touching boundaries, but are not allowed to
+            have intersecting interiors.  If ``False`` (the default), no
+            geometries in a subset may intersect in any way.
 
     Return:
         subset_list (sequence): sequence of sets of FIDs from vector_path
@@ -2366,6 +2371,12 @@ def calculate_disjoint_polygon_set(
         else:
             polygon = poly_geom
         for intersect_poly_fid in possible_intersection_set:
+            # If geometries touch (share 1+ boundary point), then do not count
+            # it as an intersection.
+            if geometries_may_touch and polygon.touches(
+                    shapely_polygon_lookup[intersect_poly_fid]):
+                continue
+
             if intersect_poly_fid == poly_fid or polygon.intersects(
                     shapely_polygon_lookup[intersect_poly_fid]):
                 poly_intersect_lookup[poly_fid].add(intersect_poly_fid)
