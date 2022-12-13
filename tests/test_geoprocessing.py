@@ -4484,14 +4484,16 @@ class TestGeoprocessing(unittest.TestCase):
             text_file.write('test')
 
         self.assertEqual(
-            pygeoprocessing.get_gis_type(text_file_path),
-            pygeoprocessing.UNKNOWN_TYPE)
-        self.assertEqual(
             pygeoprocessing.get_gis_type(raster_path),
             pygeoprocessing.RASTER_TYPE)
         self.assertEqual(
             pygeoprocessing.get_gis_type(vector_path),
             pygeoprocessing.VECTOR_TYPE)
+
+        with self.assertRaises(ValueError) as cm:
+            pygeoprocessing.get_gis_type(text_file_path)
+        actual_message = str(cm.exception)
+        self.assertTrue('Could not open' in actual_message, actual_message)
 
         with self.assertRaises(ValueError) as cm:
             pygeoprocessing.get_gis_type('totally_fake_file')
