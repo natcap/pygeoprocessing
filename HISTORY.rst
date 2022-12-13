@@ -1,7 +1,8 @@
 Release History
 ===============
 
-Unreleased Changes
+
+2.3.5 (2022-12-13)
 ------------------
 * ``pygeoprocessing.calculate_disjoint_polygon_set`` now offers an optional
   parameter, ``geometries_may_touch`` for cases where geometries are known to
