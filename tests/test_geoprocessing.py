@@ -3659,7 +3659,7 @@ class TestGeoprocessing(unittest.TestCase):
                 [(a_raster_path, 1)], ['near'],
                 (regular_file_raster_path, 1),
                 overlap_algorithm='etch')
-        expected_message = 'Target stitch raster is not a raster.'
+        expected_message = 'Could not open'
         actual_message = str(cm.exception)
         self.assertTrue(
             expected_message in actual_message, actual_message)
