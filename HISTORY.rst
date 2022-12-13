@@ -10,6 +10,9 @@ Unreleased Changes
   will be logged when invoked on floating-point rasters, as using this on
   continuous rasters can result in excessive memory consumption. To use this
   feature, set ``include_value_counts=True`` when calling ``zonal_statistics``.
+* ``pygeoprocessing.get_gis_type`` will now raise a ``ValueError`` if the file
+  cannot be opened as ``gdal.OF_RASTER`` or ``gdal.OF_VECTOR``.
+  https://github.com/natcap/pygeoprocessing/issues/244
 
 2.3.4 (2022-08-22)
 ------------------
