@@ -3347,7 +3347,7 @@ def get_gis_type(path):
         from pygeoprocessing import VECTOR_TYPE
         gis_type |= VECTOR_TYPE
         gis_vector = None
-    if gis_type == UNKNOWN_TYPE
+    if gis_type == UNKNOWN_TYPE:
         raise ValueError(
             f"Could not open {path} as a gdal.OF_RASTER or gdal.OF_VECTOR.")
     return gis_type
