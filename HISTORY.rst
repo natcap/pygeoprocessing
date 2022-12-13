@@ -3,6 +3,11 @@ Release History
 
 Unreleased Changes
 ------------------
+* ``pygeoprocessing.calculate_disjoint_polygon_set`` now offers an optional
+  parameter, ``geometries_may_touch`` for cases where geometries are known to
+  have intersecting boundaries but nonintersecting interiors.
+  https://github.com/natcap/pygeoprocessing/issues/269
+* Pygeoprocessing is now tested against Python 3.11.
 * Adding the target filename to progress logging in
   ``pygeoprocessing.raster_calculator``.
 * ``pygeoprocessing.zonal_statistics`` will now optionally include a count of
@@ -13,6 +18,8 @@ Unreleased Changes
 * ``pygeoprocessing.get_gis_type`` will now raise a ``ValueError`` if the file
   cannot be opened as ``gdal.OF_RASTER`` or ``gdal.OF_VECTOR``.
   https://github.com/natcap/pygeoprocessing/issues/244
+* Fixing an error message in ``convolve_2d`` when the signal or kernel is a
+  row based blocksize. https://github.com/natcap/pygeoprocessing/issues/228.
 
 2.3.4 (2022-08-22)
 ------------------
