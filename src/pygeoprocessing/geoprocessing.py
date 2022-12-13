@@ -3335,15 +3335,19 @@ def get_gis_type(path):
     Args:
         path (str): path to a file on disk.
 
+    Raises:
+        ValueError
+            if ``path`` is not a file or cannot be opened as a
+            ``gdal.OF_RASTER`` or ``gdal.OF_VECTOR``.
 
     Return:
         A bitwise OR of all GIS types that PyGeoprocessing models, currently
-        this is ``pygeoprocessing.UNKNOWN_TYPE``,
+        this is
         ``pygeoprocessing.RASTER_TYPE``, or ``pygeoprocessing.VECTOR_TYPE``.
 
     """
     if not os.path.exists(path):
-        raise ValueError("%s does not exist", path)
+        raise ValueError(f"{path} does not exist.")
     from pygeoprocessing import UNKNOWN_TYPE
     gis_type = UNKNOWN_TYPE
     gis_raster = gdal.OpenEx(path, gdal.OF_RASTER)
@@ -3355,6 +3359,10 @@ def get_gis_type(path):
     if gis_vector is not None:
         from pygeoprocessing import VECTOR_TYPE
         gis_type |= VECTOR_TYPE
+        gis_vector = None
+    if gis_type == UNKNOWN_TYPE:
+        raise ValueError(
+            f"Could not open {path} as a gdal.OF_RASTER or gdal.OF_VECTOR.")
     return gis_type
 
 

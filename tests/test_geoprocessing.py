@@ -3659,7 +3659,7 @@ class TestGeoprocessing(unittest.TestCase):
                 [(a_raster_path, 1)], ['near'],
                 (regular_file_raster_path, 1),
                 overlap_algorithm='etch')
-        expected_message = 'Target stitch raster is not a raster.'
+        expected_message = 'Could not open'
         actual_message = str(cm.exception)
         self.assertTrue(
             expected_message in actual_message, actual_message)
@@ -4501,14 +4501,16 @@ class TestGeoprocessing(unittest.TestCase):
             text_file.write('test')
 
         self.assertEqual(
-            pygeoprocessing.get_gis_type(text_file_path),
-            pygeoprocessing.UNKNOWN_TYPE)
-        self.assertEqual(
             pygeoprocessing.get_gis_type(raster_path),
             pygeoprocessing.RASTER_TYPE)
         self.assertEqual(
             pygeoprocessing.get_gis_type(vector_path),
             pygeoprocessing.VECTOR_TYPE)
+
+        with self.assertRaises(ValueError) as cm:
+            pygeoprocessing.get_gis_type(text_file_path)
+        actual_message = str(cm.exception)
+        self.assertTrue('Could not open' in actual_message, actual_message)
 
         with self.assertRaises(ValueError) as cm:
             pygeoprocessing.get_gis_type('totally_fake_file')
