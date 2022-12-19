@@ -535,6 +535,59 @@ def raster_calculator(
                 pass
 
 
+def raster_reduce(function, raster_path, initializer, band=1):
+    """Cumulatively apply a reducing function to each block of a raster.
+
+    This effectively reduces the entire raster to a single value, but it works
+    by blocks to be memory-efficient.
+
+    The ``function`` signature should be ``function(aggregator, block)``, where
+    ``aggregator`` is the aggregated value so far, and ``block`` is a 2D numpy
+    array containing the data from the block to reduce next.
+
+    ``function`` is called once on each block. On the first ``function`` call,
+    ``aggregator`` is initialized with ``initializer``. The return value from
+    each ``function`` call is passed in as the ``aggregator`` argument to the
+    subsequent ``function`` call. When all blocks have been reduced, the return
+    value of the final ``function`` call is returned.
+
+    Example:
+        Calculate the sum of all values in a raster::
+
+            raster_reduce(lambda total, block: total + numpy.sum(block),
+                          raster_path, 0)
+
+        Calculate a histogram of all values in a raster::
+
+            def add_to_histogram(histogram, block):
+                return histogram + numpy.histogram(block, bins=10)[0]
+
+            raster_reduce(add_to_histogram, raster_path, numpy.zeros(10))
+
+        Calculate the sum of all values in a raster, excluding nodata::
+
+            nodata = pygeoprocessing.get_raster_info(raster_path)['nodata'][0]
+            def sum_excluding_nodata(total, block):
+                return total + numpy.sum(block[block != nodata])
+
+            raster_reduce(sum_excluding_nodata, raster_path, 0)
+
+    Args:
+        raster_path (str): path of the raster to reduce
+        function (func): function to apply to each raster block
+        initializer (obj): value to initialize the aggregator for the
+            first function call
+        band (int): index of the raster band to use. defaults to 1.
+
+    Returns:
+        aggregate value, the final value returned from ``function``
+    """
+    aggregator = initializer
+    for (_, block) in iterblocks((raster_path, band)):
+        aggregator = function(aggregator, block)
+    return aggregator
+
+
 def align_and_resize_raster_stack(
         base_raster_path_list, target_raster_path_list, resample_method_list,
         target_pixel_size, bounding_box_mode, base_vector_path_list=None,
