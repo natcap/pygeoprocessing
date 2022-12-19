@@ -1,6 +1,11 @@
 Release History
 ===============
 
+Unreleased Changes
+------------------
+* Implement the proposed new function ``pygeoprocessing.raster_reduce``, a
+  wrapper around ``pygeoprocessing.iterblocks``
+   (https://github.com/natcap/pygeoprocessing/issues/285)
 
 2.3.5 (2022-12-13)
 ------------------
