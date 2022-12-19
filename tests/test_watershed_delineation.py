@@ -39,7 +39,7 @@ class WatershedDelineationTests(unittest.TestCase):
             [2, 2, 2, 2, 2, 2, 2, 2, 2, 2],
             [2, 2, 2, 2, 2, 2, 2, 2, 2, 2],
             [2, 2, 2, 2, 2, 2, 2, 2, 2, 2]],
-            dtype=numpy.int8)
+            dtype=numpy.uint8)
 
         srs = osr.SpatialReference()
         srs.ImportFromEPSG(32731)  # WGS84 / UTM zone 31s
@@ -110,7 +110,7 @@ class WatershedDelineationTests(unittest.TestCase):
             [2, 2, 2, 2, 2, 2, 2, 2, 2, 2],
             [2, 2, 2, 2, 2, 2, 2, 2, 2, 2],
             [2, 2, 2, 2, 2, 2, 2, 2, 2, 2]],
-            dtype=numpy.int8)
+            dtype=numpy.uint8)
 
         srs = osr.SpatialReference()
         srs.ImportFromEPSG(32731)  # WGS84 / UTM zone 31s
