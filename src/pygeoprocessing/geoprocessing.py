@@ -1079,16 +1079,17 @@ def create_raster_from_vector_extents(
 
 
 def create_raster_from_bounding_box(
-        target_raster_path, target_bounding_box, target_pixel_size,
+        target_bounding_box, target_raster_path, target_pixel_size,
         target_pixel_type, target_srs_wkt, target_nodata=None,
         fill_value=None):
     """Create a raster from a given bounding box.
+
     Args:
-        target_raster_path (string): The path to where the new raster should be
-            created on disk.
         target_bounding_box (tuple): a 4-element iterable of (minx, miny,
             maxx, maxy) in projected units matching the SRS of
             ``target_srs_wkt``.
+        target_raster_path (string): The path to where the new raster should be
+            created on disk.
         target_pixel_size (tuple): A 2-element tuple of the (x, y) pixel size
             of the target raster.  Elements are in units of the target SRS.
         target_pixel_type (int): The GDAL GDT_* type of the target raster.
@@ -1098,9 +1099,15 @@ def create_raster_from_bounding_box(
             raster.
         fill_value=None (number): If provided, the value that the target raster
             should be filled with.
+
     Returns:
         ``None``
     """
+    if target_pixel_type not in _VALID_GDAL_TYPES:
+        raise ValueError(
+            f'Invalid target type, should be a gdal.GDT_* type, received '
+            f'"{target_pixel_type}"')
+
     bbox_minx, bbox_miny, bbox_maxx, bbox_maxy = target_bounding_box
 
     driver = gdal.GetDriverByName('GTiff')
