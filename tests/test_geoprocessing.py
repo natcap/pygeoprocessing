@@ -2649,6 +2649,28 @@ class TestGeoprocessing(unittest.TestCase):
         result = pygeoprocessing.raster_to_numpy_array(target_raster_path)
         numpy.testing.assert_array_equal(expected_result, result)
 
+    def test_create_raster_from_bounding_box(self):
+        """PGP.geoprocessing: test create raster from bbox."""
+        bbox = [_DEFAULT_ORIGIN[0], _DEFAULT_ORIGIN[1],
+                _DEFAULT_ORIGIN[0] + 100, _DEFAULT_ORIGIN[1] + 150]
+        target_srs = osr.SpatialReference()
+        target_srs.ImportFromEPSG(_DEFAULT_EPSG)
+        target_wkt = target_srs.ExportToWkt()
+
+        target_raster_path = os.path.join(self.workspace_dir, 'raster.tif')
+        target_nodata = -12345
+        fill_value = 5678
+        pixel_size = (10, -10)
+        pygeoprocessing.create_raster_from_bounding_box(
+            bbox, target_raster_path, pixel_size, gdal.GDT_Int32,
+            target_wkt, target_nodata=target_nodata, fill_value=fill_value)
+
+        info = pygeoprocessing.get_raster_info(target_raster_path)
+        self.assertEqual(info['pixel_size'], pixel_size)
+        self.assertEqual(info['raster_size'], (10, 15))
+        self.assertEqual(info['nodata'], [target_nodata])
+        self.assertEqual(info['datatype'], gdal.GDT_Int32)
+
     def test_transform_box(self):
         """PGP.geoprocessing: test geotransforming lat/lng box to UTM10N."""
         # Willamette valley in lat/lng
