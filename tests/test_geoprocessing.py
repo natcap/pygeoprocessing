@@ -2419,7 +2419,7 @@ class TestGeoprocessing(unittest.TestCase):
 
     def test_new_raster_from_base_unsigned_byte(self):
         """PGP.geoprocessing: test that signed byte rasters copy over."""
-        pixel_array = numpy.ones((128, 128), numpy.byte)
+        pixel_array = numpy.ones((128, 128), numpy.uint8)
         pixel_array[0, 0] = 255  # 255 ubyte is -1 byte
         nodata_base = -1
         base_path = os.path.join(self.workspace_dir, 'base.tif')
