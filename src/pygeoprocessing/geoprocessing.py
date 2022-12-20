@@ -1034,54 +1034,25 @@ def create_raster_from_vector_extents(
             f'the vector at {base_vector_path} has no geometry, cannot '
             f'create a raster from these extents')
 
-    # round up on the rows and cols so that the target raster encloses the
-    # base vector
-    n_cols = int(numpy.ceil(
-        abs((shp_extent[1] - shp_extent[0]) / target_pixel_size[0])))
-    n_cols = max(1, n_cols)
-
-    n_rows = int(numpy.ceil(
-        abs((shp_extent[3] - shp_extent[2]) / target_pixel_size[1])))
-    n_rows = max(1, n_rows)
-
-    driver = gdal.GetDriverByName(raster_driver_creation_tuple[0])
-    n_bands = 1
-    raster = driver.Create(
-        target_raster_path, n_cols, n_rows, n_bands, target_pixel_type,
-        options=raster_driver_creation_tuple[1])
-    raster.GetRasterBand(1).SetNoDataValue(target_nodata)
-
-    # Set the transform based on the upper left corner and given pixel
-    # dimensions
-    if target_pixel_size[0] < 0:
-        x_source = shp_extent[1]
-    else:
-        x_source = shp_extent[0]
-    if target_pixel_size[1] < 0:
-        y_source = shp_extent[3]
-    else:
-        y_source = shp_extent[2]
-    raster_transform = [
-        x_source, target_pixel_size[0], 0.0,
-        y_source, 0.0, target_pixel_size[1]]
-    raster.SetGeoTransform(raster_transform)
-
-    # Use the same projection on the raster as the shapefile
-    raster.SetProjection(vector.GetLayer(0).GetSpatialRef().ExportToWkt())
-
-    # Initialize everything to nodata
-    if fill_value is not None:
-        band = raster.GetRasterBand(1)
-        band.Fill(fill_value)
-        band = None
-    vector = None
-    raster = None
+    target_srs_wkt = vector.GetLayer(0).GetSpatialRef().ExportToWkt()
+    create_raster_from_bounding_box(
+        target_bounding_box=[
+            shp_extent[0], shp_extent[2], shp_extent[1], shp_extent[3]
+        ],
+        target_raster_path=target_raster_path,
+        target_pixel_size=target_pixel_size,
+        target_pixel_type=target_pixel_type,
+        target_srs_wkt=target_srs_wkt,
+        target_nodata=target_nodata,
+        fill_value=fill_value,
+        raster_driver_creation_tuple=raster_driver_creation_tuple
+    )
 
 
 def create_raster_from_bounding_box(
         target_bounding_box, target_raster_path, target_pixel_size,
-        target_pixel_type, target_srs_wkt, target_nodata=None,
-        fill_value=None):
+        target_pixel_type, target_srs_wkt, target_nodata, fill_value=None,
+        raster_driver_creation_tuple=DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS):
     """Create a raster from a given bounding box.
 
     Args:
@@ -1095,10 +1066,14 @@ def create_raster_from_bounding_box(
         target_pixel_type (int): The GDAL GDT_* type of the target raster.
         target_srs_wkt (string): The SRS of the target raster, in Well-Known
             Text format.
-        target_nodata (float): If provided, the nodata value of the target
-            raster.
+        target_nodata (float): The nodata value of the target raster, or
+            ``None`` if no nodata value is to be set.
         fill_value=None (number): If provided, the value that the target raster
             should be filled with.
+        raster_driver_creation_tuple (tuple): a tuple containing a GDAL driver
+            name string as the first element and a GDAL creation options
+            tuple/list as the second. Defaults to a GTiff driver tuple
+            defined at geoprocessing.DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS.
 
     Returns:
         ``None``
@@ -1110,17 +1085,19 @@ def create_raster_from_bounding_box(
 
     bbox_minx, bbox_miny, bbox_maxx, bbox_maxy = target_bounding_box
 
-    driver = gdal.GetDriverByName('GTiff')
+    driver = gdal.GetDriverByName(raster_driver_creation_tuple[0])
     n_bands = 1
     n_cols = int(numpy.ceil(
         abs((bbox_maxx - bbox_minx) / target_pixel_size[0])))
+    n_cols = max(1, n_cols)
+
     n_rows = int(numpy.ceil(
         abs((bbox_maxy - bbox_miny) / target_pixel_size[1])))
+    n_rows = max(1, n_rows)
 
     raster = driver.Create(
         target_raster_path, n_cols, n_rows, n_bands, target_pixel_type,
-        options=['TILED=YES', 'BIGTIFF=YES', 'COMPRESS=DEFLATE',
-                 'BLOCKXSIZE=256', 'BLOCKYSIZE=256'])
+        options=raster_driver_creation_tuple[1])
     raster.SetProjection(target_srs_wkt)
 
     # Set the transform based on the upper left corner and given pixel

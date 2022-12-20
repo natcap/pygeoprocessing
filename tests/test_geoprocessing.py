@@ -2652,7 +2652,7 @@ class TestGeoprocessing(unittest.TestCase):
     def test_create_raster_from_bounding_box(self):
         """PGP.geoprocessing: test create raster from bbox."""
         bbox = [_DEFAULT_ORIGIN[0], _DEFAULT_ORIGIN[1],
-                _DEFAULT_ORIGIN[0] + 100, _DEFAULT_ORIGIN[1] + 150]
+                _DEFAULT_ORIGIN[0] + 100, _DEFAULT_ORIGIN[1] + 145]
         target_srs = osr.SpatialReference()
         target_srs.ImportFromEPSG(_DEFAULT_EPSG)
         target_wkt = target_srs.ExportToWkt()
