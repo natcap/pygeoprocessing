@@ -1029,12 +1029,14 @@ def create_raster_from_vector_extents(
                 LOGGER.warning(error)
         layer = None
 
+    target_srs_wkt = vector.GetLayer(0).GetSpatialRef().ExportToWkt()
+    vector = None
+
     if shp_extent is None:
         raise ValueError(
             f'the vector at {base_vector_path} has no geometry, cannot '
             f'create a raster from these extents')
 
-    target_srs_wkt = vector.GetLayer(0).GetSpatialRef().ExportToWkt()
     create_raster_from_bounding_box(
         target_bounding_box=[
             shp_extent[0], shp_extent[2], shp_extent[1], shp_extent[3]
