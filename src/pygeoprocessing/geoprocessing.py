@@ -1113,8 +1113,8 @@ def create_raster_from_bounding_box(
     else:
         y_source = bbox_miny
     raster_transform = [
-        x_source, target_pixel_size[0], 0.0,
-        y_source, 0.0, target_pixel_size[1]]
+        x_source, target_pixel_size[0], 0,
+        y_source, 0, target_pixel_size[1]]
     raster.SetGeoTransform(raster_transform)
 
     # Fill the band if requested.
