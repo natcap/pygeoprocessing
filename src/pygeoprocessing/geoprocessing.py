@@ -1104,14 +1104,8 @@ def create_raster_from_bounding_box(
 
     # Set the transform based on the upper left corner and given pixel
     # dimensions.  Bounding box is in format [minx, miny, maxx, maxy]
-    if target_pixel_size[0] < 0:
-        x_source = bbox_maxx
-    else:
-        x_source = bbox_minx
-    if target_pixel_size[1] < 0:
-        y_source = bbox_maxy
-    else:
-        y_source = bbox_miny
+    x_source = bbox_maxx if target_pixel_size[0] < 0 else bbox_minx
+    y_source = bbox_maxy if target_pixel_size[1] < 0 else bbox_miny
     raster_transform = [
         x_source, target_pixel_size[0], 0,
         y_source, 0, target_pixel_size[1]]
