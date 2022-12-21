@@ -1103,7 +1103,7 @@ def create_raster_from_bounding_box(
     raster.SetProjection(target_srs_wkt)
 
     # Set the transform based on the upper left corner and given pixel
-    # dimensions.  Bounding box is in format [minx, miny, maxx, maxy]
+    # dimensions.
     x_source = bbox_maxx if target_pixel_size[0] < 0 else bbox_minx
     y_source = bbox_maxy if target_pixel_size[1] < 0 else bbox_miny
     raster_transform = [
