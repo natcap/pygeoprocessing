@@ -4067,6 +4067,22 @@ def stitch_rasters(
 
 def build_overviews(raster_path_band_tuple, internal=False,
                     resample_method='nearest', overwrite=False):
+    """Build overviews for a raster dataset.
+
+    Args:
+        raster_path_band_tuple (tuple): A path/band tuple of the path to the
+            raster on disk and the band index to build overviews for.
+        internal=False (bool): Whether to modify the raster when building
+            overviews. In GeoTiffs, this builds internal overviews when
+            ``internal=True``, and external overviews when ``internal=False``.
+        resample_method='nearest' (str): The resample method to use when
+            building overviews.
+        overwrite=False (bool): Whether to overwrite existing overviews, if
+            any exist.
+
+    Returns:
+        ``None``
+    """
     if not _is_raster_path_band_formatted(raster_path_band_tuple):
         raise ValueError(
             "Expected raster path/band tuple for "

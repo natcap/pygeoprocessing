@@ -4889,3 +4889,5 @@ class TestGeoprocessing(unittest.TestCase):
             pygeoprocessing.build_overviews(
                 raster_path)
         self.assertIn("Expected raster path/band tuple for", str(cm.exception))
+
+        # TODO: fix the band issue - overviews built for whole raster
