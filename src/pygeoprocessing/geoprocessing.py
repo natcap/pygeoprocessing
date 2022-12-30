@@ -4110,7 +4110,7 @@ def build_overviews(raster_path_band_tuple, internal=False,
 
     LOGGER.debug(f"Using overviews {overview_scales}")
     result = raster.BuildOverviews(
-        pszResampling=resample_method,
+        resampling=resample_method,
         overviewlist=overview_scales,
         callback=overviews_progress
     )
