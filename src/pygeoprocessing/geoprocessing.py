@@ -4066,7 +4066,7 @@ def stitch_rasters(
 
 
 def build_overviews(raster_path_band_tuple, internal=False,
-                    resample_method='nearest'):
+                    resample_method='nearest', overwrite=False):
     if not _is_raster_path_band_formatted(raster_path_band_tuple):
         raise ValueError(
             "Expected raster path/band tuple for "
@@ -4078,6 +4078,14 @@ def build_overviews(raster_path_band_tuple, internal=False,
         raise ValueError(
             f'Invalid overview resample method: "{resample_method}"')
 
+    def overviews_progress(*args, **kwargs):
+        pct_complete, name, other = args
+        percent = round(pct_complete * 100, 2)
+        if time.time() - overviews_progress.last_progress_report > 5.0:
+            LOGGER.info(f"Overviews progress: {percent}%")
+            overviews_progress.last_progress_report = time.time()
+    overviews_progress.last_progress_report = time.time()
+
     raster_path, raster_band_index = raster_path_band_tuple
     open_flags = gdal.OF_RASTER
     if internal:
@@ -4086,8 +4094,22 @@ def build_overviews(raster_path_band_tuple, internal=False,
     else:
         LOGGER.info("Building external overviews.")
     raster = gdal.OpenEx(raster_path, open_flags)
-    n_pixels_x = raster.RasterXSize
-    n_pixels_y = raster.RasterYSize
+    band = raster.GetRasterBand(raster_band_index)
+    overview_count = band.GetOverviewCount()
+    if overview_count > 0:
+        if overwrite:
+            LOGGER.info(f"Clearing existing overviews from {raster_path}")
+            result = raster.BuildOverviews(
+                resampling=resample_method,
+                overviewlist=[],
+                callback=overviews_progress
+            )
+            LOGGER.info(f"Overviews cleared from {raster_path}")
+        else:
+            raise ValueError(
+                f"Band {raster_band_index} already has overviews.  Use "
+                "overwrite=True to override this and regenerate overviews on "
+                f"{raster_path}")
 
     # This loop and limiting factor borrowed from gdaladdo.cpp.
     # Create overviews so long as the overviews are at least 256 pixels in
@@ -4095,18 +4117,10 @@ def build_overviews(raster_path_band_tuple, internal=False,
     overview_scales = []
     factor = 2
     limiting_factor = 256
-    while (math.ceil(n_pixels_x / factor) > limiting_factor or
-           math.ceil(n_pixels_y / factor) > limiting_factor):
+    while (math.ceil(raster.RasterXSize / factor) > limiting_factor or
+           math.ceil(raster.RasterYSize / factor) > limiting_factor):
         overview_scales.append(factor)
         factor *= 2
-
-    def overviews_progress(*args, **kwargs):
-        pct_complete, name, other = args
-        percent = round(pct_complete * 100, 2)
-        if time.time() - overviews_progress.last_progress_report > 5.0:
-            LOGGER.info(f"Overviews progress: {percent}%")
-            overviews_progress.last_progress_report = time.time()
-    overviews_progress.last_progress_report = time.time()
 
     LOGGER.debug(f"Using overviews {overview_scales}")
     result = raster.BuildOverviews(

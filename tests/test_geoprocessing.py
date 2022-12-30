@@ -4866,3 +4866,20 @@ class TestGeoprocessing(unittest.TestCase):
             finally:
                 band = None
                 raster = None
+
+        # Test that an error was raised if we try to re-build overviews on a
+        # raster that already has them.
+        with self.assertRaises(ValueError) as cm:
+            pygeoprocessing.build_overviews((raster_path, 1))
+        self.assertIn("Band 1 already has overviews", str(cm.exception))
+
+        # Forcibly overwriting the overviews should work fine, though.
+        pygeoprocessing.build_overviews((raster_path, 1), overwrite=True)
+
+        # Check that we can catch invalid resample methods
+        with self.assertRaises(ValueError) as cm:
+            pygeoprocessing.build_overviews(
+                (raster_path, 1), overwrite=True,
+                resample_method='invalid choice')
+        self.assertIn('Invalid overview resample method: "invalid choice"',
+                      str(cm.exception))
