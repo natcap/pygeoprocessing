@@ -4834,27 +4834,35 @@ class TestGeoprocessing(unittest.TestCase):
         self.assertIn(
             "The fields and attributes for feature 0", str(cm.exception))
 
-    def test_build_overviews_gtiff_internal(self):
-        """PGP: test internal raster overviews."""
+    def test_build_overviews_gtiff(self):
+        """PGP: test raster overviews."""
         array = numpy.ones((2000, 1000), dtype=numpy.byte)
-        raster_path = os.path.join(self.workspace_dir, 'raster.tif')
-        _array_to_raster(array, 255, raster_path)
 
-        pygeoprocessing.build_overviews((raster_path, 1), internal=True,
-                                        resample_method='nearest')
-        try:
-            raster = gdal.Open(raster_path)
-            band = raster.GetRasterBand(1)
-            self.assertEqual(band.GetOverviewCount(), 2)
+        for internal, expected_filecount in ((True, 1), (False, 2)):
+            # Rewriting raster on each iteration to ensure we're working with a
+            # fresh raster each time.
+            raster_path = os.path.join(self.workspace_dir, 'raster.tif')
+            _array_to_raster(array, 255, raster_path)
+            pygeoprocessing.build_overviews((raster_path, 1),
+                                            internal=internal,
+                                            resample_method='nearest')
 
-            for ovr_index, (shape_x, shape_y) in enumerate(
-                    [(500, 1000), (250, 500)]):
-                overview = band.GetOverview(ovr_index)
-                self.assertEqual(overview.XSize, shape_x)
-                self.assertEqual(overview.YSize, shape_y)
-                numpy.testing.assert_array_equal(
-                    overview.ReadAsArray(),
-                    numpy.ones((shape_y, shape_x), dtype=array.dtype))
-        finally:
-            band = None
-            raster = None
+            # internal overviews mean only 1 file in raster
+            self.assertEqual(len(os.listdir(self.workspace_dir)),
+                             expected_filecount)
+            try:
+                raster = gdal.Open(raster_path)
+                band = raster.GetRasterBand(1)
+                self.assertEqual(band.GetOverviewCount(), 2)
+
+                for ovr_index, (shape_x, shape_y) in enumerate(
+                        [(500, 1000), (250, 500)]):
+                    overview = band.GetOverview(ovr_index)
+                    self.assertEqual(overview.XSize, shape_x)
+                    self.assertEqual(overview.YSize, shape_y)
+                    numpy.testing.assert_array_equal(
+                        overview.ReadAsArray(),
+                        numpy.ones((shape_y, shape_x), dtype=array.dtype))
+            finally:
+                band = None
+                raster = None
