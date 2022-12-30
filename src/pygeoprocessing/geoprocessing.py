@@ -4065,6 +4065,61 @@ def stitch_rasters(
     target_band = None
 
 
+def build_overviews(raster_path_band_tuple, internal=False,
+                    resample_method='nearest'):
+    if not _is_raster_path_band_formatted(raster_path_band_tuple):
+        raise ValueError(
+            "Expected raster path/band tuple for "
+
+            f"raster_path_band_tuple but got {raster_path_band_tuple}")
+    # WarpOptions.this is None when an invalid option is passed, and it's a
+    # truthy SWIG proxy object when it's given a valid resample arg.
+    if not gdal.WarpOptions(resampleAlg=resample_method)[0].this:
+        raise ValueError(
+            f'Invalid overview resample method: "{resample_method}"')
+
+    raster_path, raster_band_index = raster_path_band_tuple
+    open_flags = gdal.OF_RASTER
+    if internal:
+        open_flags |= gdal.GA_Update
+        LOGGER.info(f"Building internal overviews on {raster_path}")
+    else:
+        LOGGER.info("Building external overviews.")
+    raster = gdal.OpenEx(raster_path, open_flags)
+    n_pixels_x = raster.RasterXSize
+    n_pixels_y = raster.RasterYSize
+
+    # This loop and limiting factor borrowed from gdaladdo.cpp.
+    # Create overviews so long as the overviews are at least 256 pixels in
+    # either x or y dimensions.
+    overview_scales = []
+    factor = 2
+    limiting_factor = 256
+    while (math.ceil(n_pixels_x / factor) > limiting_factor or
+           math.ceil(n_pixels_y / factor) > limiting_factor):
+        overview_scales.append(factor)
+        factor *= 2
+
+    def overviews_progress(*args, **kwargs):
+        pct_complete, name, other = args
+        percent = round(pct_complete * 100, 2)
+        if time.time() - overviews_progress.last_progress_report > 5.0:
+            LOGGER.info(f"Overviews progress: {percent}%")
+            overviews_progress.last_progress_report = time.time()
+    overviews_progress.last_progress_report = time.time()
+
+    LOGGER.debug(f"Using overviews {overview_scales}")
+    result = raster.BuildOverviews(
+        pszResampling=resample_method,
+        overviewlist=overview_scales,
+        callback=overviews_progress
+    )
+    LOGGER.info(f"Overviews completed for {raster_path}")
+    if result:  # Result will be nonzero on error.
+        raise RuntimeError(
+            f"Building overviews failed or was interrupted for {raster_path}")
+
+
 def _m2_area_of_wg84_pixel(pixel_size, center_lat):
     """Calculate m^2 area of a square wgs84 pixel.
 
