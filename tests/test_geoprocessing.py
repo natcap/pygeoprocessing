@@ -4883,3 +4883,9 @@ class TestGeoprocessing(unittest.TestCase):
                 resample_method='invalid choice')
         self.assertIn('Invalid overview resample method: "invalid choice"',
                       str(cm.exception))
+
+        # Check that invalid path/band input is handled
+        with self.assertRaises(ValueError) as cm:
+            pygeoprocessing.build_overviews(
+                raster_path)
+        self.assertIn("Expected raster path/band tuple for", str(cm.exception))

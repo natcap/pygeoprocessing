@@ -4070,7 +4070,6 @@ def build_overviews(raster_path_band_tuple, internal=False,
     if not _is_raster_path_band_formatted(raster_path_band_tuple):
         raise ValueError(
             "Expected raster path/band tuple for "
-
             f"raster_path_band_tuple but got {raster_path_band_tuple}")
     # WarpOptions.this is None when an invalid option is passed, and it's a
     # truthy SWIG proxy object when it's given a valid resample arg.
