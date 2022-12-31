@@ -4843,7 +4843,7 @@ class TestGeoprocessing(unittest.TestCase):
             # fresh raster each time.
             raster_path = os.path.join(self.workspace_dir, 'raster.tif')
             _array_to_raster(array, 255, raster_path)
-            pygeoprocessing.build_overviews((raster_path, 1),
+            pygeoprocessing.build_overviews(raster_path,
                                             internal=internal,
                                             resample_method='nearest')
 
@@ -4870,24 +4870,16 @@ class TestGeoprocessing(unittest.TestCase):
         # Test that an error was raised if we try to re-build overviews on a
         # raster that already has them.
         with self.assertRaises(ValueError) as cm:
-            pygeoprocessing.build_overviews((raster_path, 1))
-        self.assertIn("Band 1 already has overviews", str(cm.exception))
+            pygeoprocessing.build_overviews(raster_path)
+        self.assertIn("Raster already has overviews", str(cm.exception))
 
         # Forcibly overwriting the overviews should work fine, though.
-        pygeoprocessing.build_overviews((raster_path, 1), overwrite=True)
+        pygeoprocessing.build_overviews(raster_path, overwrite=True)
 
         # Check that we can catch invalid resample methods
         with self.assertRaises(ValueError) as cm:
             pygeoprocessing.build_overviews(
-                (raster_path, 1), overwrite=True,
+                raster_path, overwrite=True,
                 resample_method='invalid choice')
         self.assertIn('Invalid overview resample method: "invalid choice"',
                       str(cm.exception))
-
-        # Check that invalid path/band input is handled
-        with self.assertRaises(ValueError) as cm:
-            pygeoprocessing.build_overviews(
-                raster_path)
-        self.assertIn("Expected raster path/band tuple for", str(cm.exception))
-
-        # TODO: fix the band issue - overviews built for whole raster

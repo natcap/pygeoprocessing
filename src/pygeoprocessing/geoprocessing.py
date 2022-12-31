@@ -4065,13 +4065,13 @@ def stitch_rasters(
     target_band = None
 
 
-def build_overviews(raster_path_band_tuple, internal=False,
+def build_overviews(raster_path, internal=False,
                     resample_method='nearest', overwrite=False):
     """Build overviews for a raster dataset.
 
     Args:
-        raster_path_band_tuple (tuple): A path/band tuple of the path to the
-            raster on disk and the band index to build overviews for.
+        raster_path (str): A path to a raster on disk and the band index to
+            build overviews for.
         internal=False (bool): Whether to modify the raster when building
             overviews. In GeoTiffs, this builds internal overviews when
             ``internal=True``, and external overviews when ``internal=False``.
@@ -4083,10 +4083,6 @@ def build_overviews(raster_path_band_tuple, internal=False,
     Returns:
         ``None``
     """
-    if not _is_raster_path_band_formatted(raster_path_band_tuple):
-        raise ValueError(
-            "Expected raster path/band tuple for "
-            f"raster_path_band_tuple but got {raster_path_band_tuple}")
     # WarpOptions.this is None when an invalid option is passed, and it's a
     # truthy SWIG proxy object when it's given a valid resample arg.
     if not gdal.WarpOptions(resampleAlg=resample_method)[0].this:
@@ -4101,7 +4097,7 @@ def build_overviews(raster_path_band_tuple, internal=False,
             overviews_progress.last_progress_report = time.time()
     overviews_progress.last_progress_report = time.time()
 
-    raster_path, raster_band_index = raster_path_band_tuple
+    raster_path = raster_path
     open_flags = gdal.OF_RASTER
     if internal:
         open_flags |= gdal.GA_Update
@@ -4109,8 +4105,11 @@ def build_overviews(raster_path_band_tuple, internal=False,
     else:
         LOGGER.info("Building external overviews.")
     raster = gdal.OpenEx(raster_path, open_flags)
-    band = raster.GetRasterBand(raster_band_index)
-    overview_count = band.GetOverviewCount()
+    overview_count = 0
+    for band_index in range(1, raster.RasterCount + 1):
+        band = raster.GetRasterBand(band_index)
+        overview_count += band.GetOverviewCount()
+
     if overview_count > 0:
         if overwrite:
             LOGGER.info(f"Clearing existing overviews from {raster_path}")
@@ -4122,7 +4121,7 @@ def build_overviews(raster_path_band_tuple, internal=False,
             LOGGER.info(f"Overviews cleared from {raster_path}")
         else:
             raise ValueError(
-                f"Band {raster_band_index} already has overviews.  Use "
+                f"Raster already has overviews.  Use "
                 "overwrite=True to override this and regenerate overviews on "
                 f"{raster_path}")
 
