@@ -3,6 +3,10 @@ Release History
 
 Unreleased Changes
 ------------------
+* Added a function to build overviews for a raster. Related to this,
+  ``pygeoprocessing.get_raster_info()`` now includes an ``'overviews'`` key
+  listing the pixel dimensions of each overview layer in a raster.
+  https://github.com/natcap/pygeoprocessing/issues/280
 * Win32 wheels of PyGeoprocessing are no longer created through our GitHub
   Actions workflows and will no longer be produced or distributed as part of
   our release checklist.  For details (and metrics!) see:
