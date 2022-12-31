@@ -4883,3 +4883,17 @@ class TestGeoprocessing(unittest.TestCase):
                 resample_method='invalid choice')
         self.assertIn('Invalid overview resample method: "invalid choice"',
                       str(cm.exception))
+
+    def test_get_raster_info_overviews(self):
+        """PGP: raster info about overviews."""
+        array = numpy.ones((2000, 1000), dtype=numpy.byte)
+        raster_path = os.path.join(self.workspace_dir, 'raster.tif')
+        _array_to_raster(array, 255, raster_path)
+        pygeoprocessing.build_overviews(
+            raster_path, resample_method='nearest')
+
+        raster_info = pygeoprocessing.get_raster_info(raster_path)
+
+        # The ordering of x, y is reversed from the numpy array shape.
+        self.assertEqual(
+            raster_info['overviews'], [(500, 1000), (250, 500)])

@@ -1649,6 +1649,10 @@ def get_raster_info(raster_path):
           efficient reading.
         * ``'numpy_type'`` (numpy type): this is the equivalent numpy datatype
           for the raster bands including signed bytes.
+        * ``'overviews'`` (sequence): A list of (x, y) tuples for the
+          number of pixels in the width and height of each overview level of
+          the raster.
+        * ``'file_list'`` (sequence): A list of files that make up this raster.
 
     """
     raster = gdal.OpenEx(raster_path, gdal.OF_RASTER)
@@ -1671,6 +1675,15 @@ def get_raster_info(raster_path):
     raster_properties['nodata'] = [
         raster.GetRasterBand(index).GetNoDataValue() for index in range(
             1, raster_properties['n_bands']+1)]
+
+    # GDAL creates overviews for the whole raster but has overviews accessed
+    # per band.  We assume that all bands have the same overviews.
+    raster_properties['overviews'] = []
+    for overview_index in range(raster.GetRasterBand(1).GetOverviewCount()):
+        overview_band = raster.GetRasterBand(1).GetOverview(overview_index)
+        raster_properties['overviews'].append((
+            overview_band.XSize, overview_band.YSize))
+
     # blocksize is the same for all bands, so we can just get the first
     raster_properties['block_size'] = raster.GetRasterBand(1).GetBlockSize()
 
