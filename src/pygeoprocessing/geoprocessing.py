@@ -4078,8 +4078,9 @@ def stitch_rasters(
     target_band = None
 
 
-def build_overviews(raster_path, internal=False,
-                    resample_method='nearest', overwrite=False):
+def build_overviews(
+        raster_path, internal=False, resample_method='nearest',
+        overwrite=False, levels='auto'):
     """Build overviews for a raster dataset.
 
     Args:
@@ -4092,6 +4093,21 @@ def build_overviews(raster_path, internal=False,
             building overviews.
         overwrite=False (bool): Whether to overwrite existing overviews, if
             any exist.
+        levels='auto' (sequence): A sequence of integer overview levels. If
+            ``'auto'``, overview levels will be determined by using factors of
+            2 until the overview's x and y dimensions are both less than 256.
+
+    Example:
+        Generate overviews, regardless of whether overviews already exist
+        for the raster, letting the function determine the levels of overviews
+        to generate::
+
+            build_overviews(raster_path)
+
+        Generate overviews for 4 levels, at 1/2, 1/4, 1/8 and 1/16 the
+        resolution::
+
+            build_overviews(raster_path, levels=[2, 4, 8, 16])
 
     Returns:
         ``None``
@@ -4141,13 +4157,16 @@ def build_overviews(raster_path, internal=False,
     # This loop and limiting factor borrowed from gdaladdo.cpp.
     # Create overviews so long as the overviews are at least 256 pixels in
     # either x or y dimensions.
-    overview_scales = []
-    factor = 2
-    limiting_factor = 256
-    while (math.ceil(raster.RasterXSize / factor) > limiting_factor or
-           math.ceil(raster.RasterYSize / factor) > limiting_factor):
-        overview_scales.append(factor)
-        factor *= 2
+    if levels == 'auto':
+        overview_scales = []
+        factor = 2
+        limiting_factor = 256
+        while (math.ceil(raster.RasterXSize / factor) > limiting_factor or
+               math.ceil(raster.RasterYSize / factor) > limiting_factor):
+            overview_scales.append(factor)
+            factor *= 2
+    else:
+        overview_scales = [int(level) for level in levels]
 
     LOGGER.debug(f"Using overviews {overview_scales}")
     result = raster.BuildOverviews(

@@ -4838,7 +4838,8 @@ class TestGeoprocessing(unittest.TestCase):
         """PGP: test raster overviews."""
         array = numpy.ones((2000, 1000), dtype=numpy.byte)
 
-        for internal, expected_filecount in ((True, 1), (False, 2)):
+        for internal, expected_filecount, levels in (
+                (True, 1, 'auto'), (False, 2, [2, 4])):
             # Rewriting raster on each iteration to ensure we're working with a
             # fresh raster each time.
             raster_path = os.path.join(self.workspace_dir, 'raster.tif')
