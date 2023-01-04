@@ -2197,7 +2197,8 @@ def warp_raster(
 
     if resample_method.lower() not in _GDAL_WARP_ALGORITHMS:
         raise ValueError(
-            f'Invalid resample method: "{resample_method}"')
+            f'Invalid resample method: "{resample_method}". '
+            f'Must be one of {_GDAL_WARP_ALGOS_FOR_HUMAN_EYES}')
 
     gdal.Warp(
         warped_raster_path, base_raster,
@@ -4177,7 +4178,8 @@ def build_overviews(
     """
     if resample_method.lower() not in _GDAL_WARP_ALGORITHMS:
         raise ValueError(
-            f'Invalid overview resample method: "{resample_method}"')
+            f'Invalid overview resample method: "{resample_method}". '
+            f'Must be one of {_GDAL_WARP_ALGOS_FOR_HUMAN_EYES}')
 
     def overviews_progress(*args, **kwargs):
         pct_complete, name, other = args
