@@ -4836,18 +4836,19 @@ class TestGeoprocessing(unittest.TestCase):
 
     def test_raster_reduce(self):
         """PGP: test raster_reduce can calculate a sum."""
-        array = numpy.ones((512, 512))
+        block_size = 256
+        array = numpy.ones((block_size * 2, block_size * 2))
         raster_path = os.path.join(self.workspace_dir, 'raster.tif')
         _array_to_raster(array, -1, raster_path)
 
         def sum_blocks(total, block): return total + numpy.sum(block)
         spy_sum_blocks = unittest.mock.Mock(wraps=sum_blocks)
         result = pygeoprocessing.raster_reduce(spy_sum_blocks, raster_path, 0)
-        self.assertEqual(result, 512*512)
+        self.assertEqual(result, numpy.sum(array))
 
+        # assert sum_blocks was called with the correct arguments each time
+        # default block size is 256x256 resulting in four calls
         for i, (_, (total, block), _) in enumerate(spy_sum_blocks.mock_calls):
-            self.assertEqual(total, i * 256 * 256)
-            numpy.testing.assert_array_equal(block, numpy.ones((256, 256)))
-
-
-
+            self.assertEqual(total, i * block_size * block_size)
+            numpy.testing.assert_array_equal(
+                block, numpy.ones((block_size, block_size)))

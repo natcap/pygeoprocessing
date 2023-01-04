@@ -535,7 +535,8 @@ def raster_calculator(
                 pass
 
 
-def raster_reduce(function, raster_path, initializer, band=1):
+def raster_reduce(function, raster_path_band, initializer,
+                  largest_block=_LARGEST_ITERBLOCK):
     """Cumulatively apply a reducing function to each block of a raster.
 
     This effectively reduces the entire raster to a single value, but it works
@@ -555,14 +556,14 @@ def raster_reduce(function, raster_path, initializer, band=1):
         Calculate the sum of all values in a raster::
 
             raster_reduce(lambda total, block: total + numpy.sum(block),
-                          raster_path, 0)
+                          (raster_path, 1), 0)
 
         Calculate a histogram of all values in a raster::
 
             def add_to_histogram(histogram, block):
                 return histogram + numpy.histogram(block, bins=10)[0]
 
-            raster_reduce(add_to_histogram, raster_path, numpy.zeros(10))
+            raster_reduce(add_to_histogram, (raster_path, 1), numpy.zeros(10))
 
         Calculate the sum of all values in a raster, excluding nodata::
 
@@ -570,21 +571,34 @@ def raster_reduce(function, raster_path, initializer, band=1):
             def sum_excluding_nodata(total, block):
                 return total + numpy.sum(block[block != nodata])
 
-            raster_reduce(sum_excluding_nodata, raster_path, 0)
+            raster_reduce(sum_excluding_nodata, (raster_path, 1), 0)
 
     Args:
-        raster_path (str): path of the raster to reduce
         function (func): function to apply to each raster block
+        raster_path_band (tuple): (path, band) tuple of the raster to reduce
         initializer (obj): value to initialize the aggregator for the
             first function call
-        band (int): index of the raster band to use. defaults to 1.
 
     Returns:
         aggregate value, the final value returned from ``function``
     """
     aggregator = initializer
-    for (_, block) in iterblocks((raster_path, band)):
+    last_time = time.time()
+    pixels_processed = 0
+    x_size, y_size = get_raster_info(raster_path_band[0])['raster_size']
+    n_pixels = x_size * y_size
+    filename = os.path.basename(target_raster_path)
+    for (_, block) in iterblocks(raster_path_band,
+                                 largest_block=largest_block):
         aggregator = function(aggregator, block)
+        pixels_processed += block.shape[0] * block.shape[1]
+        percent_complete = pixels_processed / n_pixels * 100
+        last_time = _invoke_timed_callback(
+            last_time, lambda: LOGGER.info(
+                f'{filename} {percent_complete:.1f}%% complete'),
+            _LOGGING_PERIOD)
+
+    LOGGER.info('100.0%% complete')
     return aggregator
 
 
