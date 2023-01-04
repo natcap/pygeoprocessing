@@ -4846,7 +4846,7 @@ class TestGeoprocessing(unittest.TestCase):
             _array_to_raster(array, 255, raster_path)
             pygeoprocessing.build_overviews(raster_path,
                                             internal=internal,
-                                            resample_method='nearest',
+                                            resample_method='near',
                                             levels=levels)
 
             # internal overviews mean only 1 file in raster
@@ -4892,7 +4892,7 @@ class TestGeoprocessing(unittest.TestCase):
         raster_path = os.path.join(self.workspace_dir, 'raster.tif')
         _array_to_raster(array, 255, raster_path)
         pygeoprocessing.build_overviews(
-            raster_path, resample_method='nearest')
+            raster_path, resample_method='near')
 
         raster_info = pygeoprocessing.get_raster_info(raster_path)
 

@@ -25,6 +25,7 @@ import shapely.ops
 import shapely.prepared
 import shapely.wkb
 from osgeo import gdal
+from osgeo import gdalconst
 from osgeo import ogr
 from osgeo import osr
 
@@ -79,6 +80,22 @@ _GDAL_TYPE_TO_NUMPY_LOOKUP = {
     gdal.GDT_CFloat32: numpy.csingle,
     gdal.GDT_CFloat64: numpy.complex64,
 }
+
+# GDAL's python API recognizes certain strings but the only way to retrieve
+# those strings is to do this conversion of gdalconst.GRA_* types to the
+# human-readable labels via gdal.WarpOptions like so.
+_GDAL_WARP_ALGORITHMS = []
+for _warp_algo in (_attrname for _attrname in dir(gdalconst)
+                   if _attrname.startswith('GRA_')):
+    # Appends ['-r', 'near'] to _GDAL_WARP_ALGORITHMS if _warp_algo is
+    # gdalconst.GRA_NearestNeighbor.  See gdal.WarpOptions for the dict
+    # defining this mapping.
+    gdal.WarpOptions(options=_GDAL_WARP_ALGORITHMS,
+                     resampleAlg=getattr(gdalconst, _warp_algo))
+_GDAL_WARP_ALGORITHMS = set(_GDAL_WARP_ALGORITHMS)
+_GDAL_WARP_ALGORITHMS.discard('-r')
+LOGGER.debug(
+    f'Detected warp algorithms: {", ".join(_GDAL_WARP_ALGORITHMS)}')
 
 
 def raster_calculator(
@@ -2131,9 +2148,7 @@ def warp_raster(
             'PIXELTYPE' not in ' '.join(raster_creation_options)):
         raster_creation_options.append('PIXELTYPE=SIGNEDBYTE')
 
-    # WarpOptions.this is None when an invalid option is passed, and it's a
-    # truthy SWIG proxy object when it's given a valid resample arg.
-    if not gdal.WarpOptions(resampleAlg=resample_method)[0].this:
+    if resample_method.lower() not in _GDAL_WARP_ALGORITHMS:
         raise ValueError(
             f'Invalid resample method: "{resample_method}"')
 
@@ -4079,7 +4094,7 @@ def stitch_rasters(
 
 
 def build_overviews(
-        raster_path, internal=False, resample_method='nearest',
+        raster_path, internal=False, resample_method='near',
         overwrite=False, levels='auto'):
     """Build overviews for a raster dataset.
 
@@ -4089,7 +4104,7 @@ def build_overviews(
         internal=False (bool): Whether to modify the raster when building
             overviews. In GeoTiffs, this builds internal overviews when
             ``internal=True``, and external overviews when ``internal=False``.
-        resample_method='nearest' (str): The resample method to use when
+        resample_method='near' (str): The resample method to use when
             building overviews.
         overwrite=False (bool): Whether to overwrite existing overviews, if
             any exist.
@@ -4114,7 +4129,7 @@ def build_overviews(
     """
     # WarpOptions.this is None when an invalid option is passed, and it's a
     # truthy SWIG proxy object when it's given a valid resample arg.
-    if not gdal.WarpOptions(resampleAlg=resample_method)[0].this:
+    if resample_method.lower() not in _GDAL_WARP_ALGORITHMS:
         raise ValueError(
             f'Invalid overview resample method: "{resample_method}"')
 
