@@ -4084,8 +4084,8 @@ def build_overviews(
     """Build overviews for a raster dataset.
 
     Args:
-        raster_path (str): A path to a raster on disk and the band index to
-            build overviews for.
+        raster_path (str): A path to a raster on disk for which overviews
+            should be built.
         internal=False (bool): Whether to modify the raster when building
             overviews. In GeoTiffs, this builds internal overviews when
             ``internal=True``, and external overviews when ``internal=False``.
@@ -4126,7 +4126,6 @@ def build_overviews(
             overviews_progress.last_progress_report = time.time()
     overviews_progress.last_progress_report = time.time()
 
-    raster_path = raster_path
     open_flags = gdal.OF_RASTER
     if internal:
         open_flags |= gdal.GA_Update
