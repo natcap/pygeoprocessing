@@ -8,6 +8,11 @@ Unreleased Changes
   ``pygeoprocessing.get_raster_info()`` now includes an ``'overviews'`` key
   listing the pixel dimensions of each overview layer in a raster.
   https://github.com/natcap/pygeoprocessing/issues/280
+* Added a D8 stream extraction function at
+  ``pygeoprocessing.routing.extract_streams_d8`` which takes a D8 flow
+  accumulation raster and a flow accumulation threshold, setting all pixels
+  with accumulation above that threshold to 1 and all other valid pixels to 0.
+  https://github.com/natcap/pygeoprocessing/issues/272
 * Adding a new function, ``pygeoprocessing.create_raster_from_bounding_box``,
   that enables the creation of a new raster from a bounding box.
   https://github.com/natcap/pygeoprocessing/issues/276
