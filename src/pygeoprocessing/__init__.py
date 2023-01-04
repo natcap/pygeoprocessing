@@ -14,6 +14,7 @@ from .geoprocessing import align_and_resize_raster_stack
 from .geoprocessing import build_overviews
 from .geoprocessing import calculate_disjoint_polygon_set
 from .geoprocessing import convolve_2d
+from .geoprocessing import create_raster_from_bounding_box
 from .geoprocessing import create_raster_from_vector_extents
 from .geoprocessing import distance_transform_edt
 from .geoprocessing import get_gis_type
