@@ -3,7 +3,8 @@ Release History
 
 Unreleased Changes
 ------------------
-* Added a function to build overviews for a raster. Related to this,
+* Added a function to build overviews for a raster,
+  ``pygeoprocessing.build_overviews``. Related to this,
   ``pygeoprocessing.get_raster_info()`` now includes an ``'overviews'`` key
   listing the pixel dimensions of each overview layer in a raster.
   https://github.com/natcap/pygeoprocessing/issues/280
