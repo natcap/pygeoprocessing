@@ -1029,52 +1029,98 @@ def create_raster_from_vector_extents(
                 LOGGER.warning(error)
         layer = None
 
+    target_srs_wkt = vector.GetLayer(0).GetSpatialRef().ExportToWkt()
+    vector = None
+
     if shp_extent is None:
         raise ValueError(
             f'the vector at {base_vector_path} has no geometry, cannot '
             f'create a raster from these extents')
 
-    # round up on the rows and cols so that the target raster encloses the
-    # base vector
-    n_cols = int(numpy.ceil(
-        abs((shp_extent[1] - shp_extent[0]) / target_pixel_size[0])))
-    n_cols = max(1, n_cols)
+    create_raster_from_bounding_box(
+        target_bounding_box=[
+            shp_extent[0], shp_extent[2], shp_extent[1], shp_extent[3]
+        ],
+        target_raster_path=target_raster_path,
+        target_pixel_size=target_pixel_size,
+        target_pixel_type=target_pixel_type,
+        target_srs_wkt=target_srs_wkt,
+        target_nodata=target_nodata,
+        fill_value=fill_value,
+        raster_driver_creation_tuple=raster_driver_creation_tuple
+    )
 
-    n_rows = int(numpy.ceil(
-        abs((shp_extent[3] - shp_extent[2]) / target_pixel_size[1])))
-    n_rows = max(1, n_rows)
+
+def create_raster_from_bounding_box(
+        target_bounding_box, target_raster_path, target_pixel_size,
+        target_pixel_type, target_srs_wkt, target_nodata, fill_value=None,
+        raster_driver_creation_tuple=DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS):
+    """Create a raster from a given bounding box.
+
+    Args:
+        target_bounding_box (tuple): a 4-element iterable of (minx, miny,
+            maxx, maxy) in projected units matching the SRS of
+            ``target_srs_wkt``.
+        target_raster_path (string): The path to where the new raster should be
+            created on disk.
+        target_pixel_size (tuple): A 2-element tuple of the (x, y) pixel size
+            of the target raster.  Elements are in units of the target SRS.
+        target_pixel_type (int): The GDAL GDT_* type of the target raster.
+        target_srs_wkt (string): The SRS of the target raster, in Well-Known
+            Text format.
+        target_nodata (float): The nodata value of the target raster, or
+            ``None`` if no nodata value is to be set.
+        fill_value=None (number): If provided, the value that the target raster
+            should be filled with.
+        raster_driver_creation_tuple (tuple): a tuple containing a GDAL driver
+            name string as the first element and a GDAL creation options
+            tuple/list as the second. Defaults to a GTiff driver tuple
+            defined at geoprocessing.DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS.
+
+    Returns:
+        ``None``
+    """
+    if target_pixel_type not in _VALID_GDAL_TYPES:
+        raise ValueError(
+            f'Invalid target type, should be a gdal.GDT_* type, received '
+            f'"{target_pixel_type}"')
+
+    bbox_minx, bbox_miny, bbox_maxx, bbox_maxy = target_bounding_box
 
     driver = gdal.GetDriverByName(raster_driver_creation_tuple[0])
     n_bands = 1
+    n_cols = int(numpy.ceil(
+        abs((bbox_maxx - bbox_minx) / target_pixel_size[0])))
+    n_cols = max(1, n_cols)
+
+    n_rows = int(numpy.ceil(
+        abs((bbox_maxy - bbox_miny) / target_pixel_size[1])))
+    n_rows = max(1, n_rows)
+
     raster = driver.Create(
         target_raster_path, n_cols, n_rows, n_bands, target_pixel_type,
         options=raster_driver_creation_tuple[1])
-    raster.GetRasterBand(1).SetNoDataValue(target_nodata)
+    raster.SetProjection(target_srs_wkt)
 
     # Set the transform based on the upper left corner and given pixel
-    # dimensions
-    if target_pixel_size[0] < 0:
-        x_source = shp_extent[1]
-    else:
-        x_source = shp_extent[0]
-    if target_pixel_size[1] < 0:
-        y_source = shp_extent[3]
-    else:
-        y_source = shp_extent[2]
+    # dimensions.
+    x_source = bbox_maxx if target_pixel_size[0] < 0 else bbox_minx
+    y_source = bbox_maxy if target_pixel_size[1] < 0 else bbox_miny
     raster_transform = [
-        x_source, target_pixel_size[0], 0.0,
-        y_source, 0.0, target_pixel_size[1]]
+        x_source, target_pixel_size[0], 0,
+        y_source, 0, target_pixel_size[1]]
     raster.SetGeoTransform(raster_transform)
 
-    # Use the same projection on the raster as the shapefile
-    raster.SetProjection(vector.GetLayer(0).GetSpatialRef().ExportToWkt())
-
-    # Initialize everything to nodata
+    # Fill the band if requested.
+    band = raster.GetRasterBand(1)
     if fill_value is not None:
-        band = raster.GetRasterBand(1)
         band.Fill(fill_value)
-        band = None
-    vector = None
+
+    # Set the nodata value.
+    if target_nodata is not None:
+        band.SetNoDataValue(float(target_nodata))
+
+    band = None
     raster = None
 
 
