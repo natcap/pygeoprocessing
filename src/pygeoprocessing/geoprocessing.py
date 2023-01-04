@@ -94,8 +94,9 @@ for _warp_algo in (_attrname for _attrname in dir(gdalconst)
                      resampleAlg=getattr(gdalconst, _warp_algo))
 _GDAL_WARP_ALGORITHMS = set(_GDAL_WARP_ALGORITHMS)
 _GDAL_WARP_ALGORITHMS.discard('-r')
+_GDAL_WARP_ALGOS_FOR_HUMAN_EYES = "|".join(_GDAL_WARP_ALGORITHMS)
 LOGGER.debug(
-    f'Detected warp algorithms: {", ".join(_GDAL_WARP_ALGORITHMS)}')
+    f'Detected warp algorithms: {", ".join(_GDAL_WARP_ALGOS_FOR_HUMAN_EYES)}')
 
 
 def raster_calculator(
@@ -1984,7 +1985,7 @@ def warp_raster(
         gdal_warp_options=None, working_dir=None,
         raster_driver_creation_tuple=DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS,
         osr_axis_mapping_strategy=DEFAULT_OSR_AXIS_MAPPING_STRATEGY):
-    """Resize/resample raster to desired pixel size, bbox and projection.
+    f"""Resize/resample raster to desired pixel size, bbox and projection.
 
     Args:
         base_raster_path (string): path to base raster.
@@ -1993,7 +1994,7 @@ def warp_raster(
         target_raster_path (string): the location of the resized and
             resampled raster.
         resample_method (string): the resampling technique, one of
-            ``near|bilinear|cubic|cubicspline|lanczos|average|mode|max|min|med|q1|q3``
+            ``{_GDAL_WARP_ALGOS_FOR_HUMAN_EYES}``
         target_bb (sequence): if None, target bounding box is the same as the
             source bounding box.  Otherwise it's a sequence of float
             describing target bounding box in target coordinate system as
@@ -3799,7 +3800,7 @@ def stitch_rasters(
         overlap_algorithm='etch',
         area_weight_m2_to_wgs84=False,
         osr_axis_mapping_strategy=DEFAULT_OSR_AXIS_MAPPING_STRATEGY):
-    """Stitch the raster in the base list into the existing target.
+    f"""Stitch the raster in the base list into the existing target.
 
     Args:
         base_raster_path_band_list (sequence): sequence of raster path/band
@@ -3807,7 +3808,7 @@ def stitch_rasters(
         resample_method_list (sequence): a sequence of resampling methods
             which one to one map each path in ``base_raster_path_band_list``
             during resizing.  Each element must be one of
-            "near|bilinear|cubic|cubicspline|lanczos|mode".
+            ``{_GDAL_WARP_ALGOS_FOR_HUMAN_EYES}``
         target_stitch_raster_path_band (tuple): raster path/band tuple to an
             existing raster, values in ``base_raster_path_band_list`` will
             be stitched into this raster/band in the order they are in the
@@ -4096,7 +4097,7 @@ def stitch_rasters(
 def build_overviews(
         raster_path, internal=False, resample_method='near',
         overwrite=False, levels='auto'):
-    """Build overviews for a raster dataset.
+    f"""Build overviews for a raster dataset.
 
     Args:
         raster_path (str): A path to a raster on disk for which overviews
@@ -4105,7 +4106,8 @@ def build_overviews(
             overviews. In GeoTiffs, this builds internal overviews when
             ``internal=True``, and external overviews when ``internal=False``.
         resample_method='near' (str): The resample method to use when
-            building overviews.
+            building overviews.  Must be one of
+            ``{_GDAL_WARP_ALGOS_FOR_HUMAN_EYES}``.
         overwrite=False (bool): Whether to overwrite existing overviews, if
             any exist.
         levels='auto' (sequence): A sequence of integer overview levels. If
