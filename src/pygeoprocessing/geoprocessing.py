@@ -4175,8 +4175,6 @@ def build_overviews(
     Returns:
         ``None``
     """
-    # WarpOptions.this is None when an invalid option is passed, and it's a
-    # truthy SWIG proxy object when it's given a valid resample arg.
     if resample_method.lower() not in _GDAL_WARP_ALGORITHMS:
         raise ValueError(
             f'Invalid overview resample method: "{resample_method}"')
