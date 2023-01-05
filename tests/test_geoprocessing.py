@@ -4865,7 +4865,7 @@ class TestGeoprocessing(unittest.TestCase):
 
         def sum_blocks(total, block): return total + numpy.sum(block)
         spy_sum_blocks = unittest.mock.Mock(wraps=sum_blocks)
-        result = pygeoprocessing.raster_reduce(spy_sum_blocks, raster_path, 0)
+        result = pygeoprocessing.raster_reduce(spy_sum_blocks, (raster_path, 1), 0)
         self.assertEqual(result, numpy.sum(array))
 
         # assert sum_blocks was called with the correct arguments each time

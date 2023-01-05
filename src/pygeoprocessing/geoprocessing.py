@@ -587,15 +587,14 @@ def raster_reduce(function, raster_path_band, initializer,
     pixels_processed = 0
     x_size, y_size = get_raster_info(raster_path_band[0])['raster_size']
     n_pixels = x_size * y_size
-    filename = os.path.basename(target_raster_path)
     for (_, block) in iterblocks(raster_path_band,
                                  largest_block=largest_block):
         aggregator = function(aggregator, block)
         pixels_processed += block.shape[0] * block.shape[1]
-        percent_complete = pixels_processed / n_pixels * 100
         last_time = _invoke_timed_callback(
             last_time, lambda: LOGGER.info(
-                f'{filename} {percent_complete:.1f}%% complete'),
+                f'{raster_path_band[0]} reduce '
+                f'{pixels_processed / n_pixels * 100:.1f}%% complete'),
             _LOGGING_PERIOD)
 
     LOGGER.info('100.0%% complete')
