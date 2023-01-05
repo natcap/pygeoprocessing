@@ -4,13 +4,12 @@ import shutil
 import tempfile
 import unittest
 
-from osgeo import gdal
 import numpy
 import numpy.testing
-import scipy.interpolate
-
 import pygeoprocessing
 import pygeoprocessing.routing
+import scipy.interpolate
+from osgeo import gdal
 from test_geoprocessing import _array_to_raster
 
 
@@ -1311,3 +1310,46 @@ class TestRouting(unittest.TestCase):
         numpy.testing.assert_almost_equal(
             pygeoprocessing.raster_to_numpy_array(distance_path),
             expected_result)
+
+    def test_extract_streams_d8(self):
+        """PGP.routing: test d8 stream thresholding."""
+        # test without nodata
+        flow_accum_no_nodata_path = os.path.join(
+            self.workspace_dir, 'flow_accum_no_nodata.tif')
+        flow_accum = numpy.array([
+            [2, 3, 4, 4, 4, 4],
+            [3, 5, 6, 2, 3, 4],
+            [2, 3, 4, 1, 2, 3],
+            [0, 0, 0, 4, 4, 0]], dtype=numpy.int32)
+        _array_to_raster(
+            flow_accum, target_nodata=None,
+            target_path=flow_accum_no_nodata_path)
+
+        expected_array = numpy.array([
+            [0, 0, 1, 1, 1, 1],
+            [0, 1, 1, 0, 0, 1],
+            [0, 0, 1, 0, 0, 0],
+            [0, 0, 0, 1, 1, 0]], dtype=numpy.uint8)
+        target_streams_path = os.path.join(
+            self.workspace_dir, 'streams.tif')
+        pygeoprocessing.routing.extract_streams_d8(
+            (flow_accum_no_nodata_path, 1), 3.5, target_streams_path)
+        numpy.testing.assert_array_equal(
+            pygeoprocessing.raster_to_numpy_array(target_streams_path),
+            expected_array)
+
+        # test with nodata
+        n = 255  # nodata value
+        expected_array = numpy.array([
+            [0, 0, 1, 1, 1, 1],
+            [0, 1, 1, 0, 0, 1],
+            [0, 0, 1, 0, 0, 0],
+            [n, n, n, 1, 1, n]], dtype=numpy.uint8)
+        _array_to_raster(
+            flow_accum, target_nodata=0,
+            target_path=flow_accum_no_nodata_path)
+        pygeoprocessing.routing.extract_streams_d8(
+            (flow_accum_no_nodata_path, 1), 3.5, target_streams_path)
+        numpy.testing.assert_array_equal(
+            pygeoprocessing.raster_to_numpy_array(target_streams_path),
+            expected_array)
