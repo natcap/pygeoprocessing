@@ -4855,3 +4855,69 @@ class TestGeoprocessing(unittest.TestCase):
 
         self.assertIn(
             "The fields and attributes for feature 0", str(cm.exception))
+
+    def test_build_overviews_gtiff(self):
+        """PGP: test raster overviews."""
+        array = numpy.ones((2000, 1000), dtype=numpy.byte)
+
+        for internal, expected_filecount, levels in (
+                (True, 1, 'auto'), (False, 2, [2, 4])):
+            # Rewriting raster on each iteration to ensure we're working with a
+            # fresh raster each time.
+            raster_path = os.path.join(self.workspace_dir, 'raster.tif')
+            _array_to_raster(array, 255, raster_path)
+            pygeoprocessing.build_overviews(raster_path,
+                                            internal=internal,
+                                            resample_method='near',
+                                            levels=levels)
+
+            # internal overviews mean only 1 file in raster
+            self.assertEqual(len(os.listdir(self.workspace_dir)),
+                             expected_filecount)
+            try:
+                raster = gdal.Open(raster_path)
+                band = raster.GetRasterBand(1)
+                self.assertEqual(band.GetOverviewCount(), 2)
+
+                for ovr_index, (shape_x, shape_y) in enumerate(
+                        [(500, 1000), (250, 500)]):
+                    overview = band.GetOverview(ovr_index)
+                    self.assertEqual(overview.XSize, shape_x)
+                    self.assertEqual(overview.YSize, shape_y)
+                    numpy.testing.assert_array_equal(
+                        overview.ReadAsArray(),
+                        numpy.ones((shape_y, shape_x), dtype=array.dtype))
+            finally:
+                band = None
+                raster = None
+
+        # Test that an error was raised if we try to re-build overviews on a
+        # raster that already has them.
+        with self.assertRaises(ValueError) as cm:
+            pygeoprocessing.build_overviews(raster_path)
+        self.assertIn("Raster already has overviews", str(cm.exception))
+
+        # Forcibly overwriting the overviews should work fine, though.
+        pygeoprocessing.build_overviews(raster_path, overwrite=True)
+
+        # Check that we can catch invalid resample methods
+        with self.assertRaises(ValueError) as cm:
+            pygeoprocessing.build_overviews(
+                raster_path, overwrite=True,
+                resample_method='invalid choice')
+        self.assertIn('Invalid overview resample method: "invalid choice"',
+                      str(cm.exception))
+
+    def test_get_raster_info_overviews(self):
+        """PGP: raster info about overviews."""
+        array = numpy.ones((2000, 1000), dtype=numpy.byte)
+        raster_path = os.path.join(self.workspace_dir, 'raster.tif')
+        _array_to_raster(array, 255, raster_path)
+        pygeoprocessing.build_overviews(
+            raster_path, resample_method='near')
+
+        raster_info = pygeoprocessing.get_raster_info(raster_path)
+
+        # The ordering of x, y is reversed from the numpy array shape.
+        self.assertEqual(
+            raster_info['overviews'], [(500, 1000), (250, 500)])

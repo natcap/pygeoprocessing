@@ -25,6 +25,7 @@ import shapely.ops
 import shapely.prepared
 import shapely.wkb
 from osgeo import gdal
+from osgeo import gdalconst
 from osgeo import ogr
 from osgeo import osr
 
@@ -79,6 +80,23 @@ _GDAL_TYPE_TO_NUMPY_LOOKUP = {
     gdal.GDT_CFloat32: numpy.csingle,
     gdal.GDT_CFloat64: numpy.complex64,
 }
+
+# GDAL's python API recognizes certain strings but the only way to retrieve
+# those strings is to do this conversion of gdalconst.GRA_* types to the
+# human-readable labels via gdal.WarpOptions like so.
+_GDAL_WARP_ALGORITHMS = []
+for _warp_algo in (_attrname for _attrname in dir(gdalconst)
+                   if _attrname.startswith('GRA_')):
+    # Appends ['-r', 'near'] to _GDAL_WARP_ALGORITHMS if _warp_algo is
+    # gdalconst.GRA_NearestNeighbor.  See gdal.WarpOptions for the dict
+    # defining this mapping.
+    gdal.WarpOptions(options=_GDAL_WARP_ALGORITHMS,
+                     resampleAlg=getattr(gdalconst, _warp_algo))
+_GDAL_WARP_ALGORITHMS = set(_GDAL_WARP_ALGORITHMS)
+_GDAL_WARP_ALGORITHMS.discard('-r')
+_GDAL_WARP_ALGOS_FOR_HUMAN_EYES = "|".join(_GDAL_WARP_ALGORITHMS)
+LOGGER.debug(
+    f'Detected warp algorithms: {", ".join(_GDAL_WARP_ALGOS_FOR_HUMAN_EYES)}')
 
 
 def raster_calculator(
@@ -1695,6 +1713,10 @@ def get_raster_info(raster_path):
           efficient reading.
         * ``'numpy_type'`` (numpy type): this is the equivalent numpy datatype
           for the raster bands including signed bytes.
+        * ``'overviews'`` (sequence): A list of (x, y) tuples for the
+          number of pixels in the width and height of each overview level of
+          the raster.
+        * ``'file_list'`` (sequence): A list of files that make up this raster.
 
     """
     raster = gdal.OpenEx(raster_path, gdal.OF_RASTER)
@@ -1717,6 +1739,15 @@ def get_raster_info(raster_path):
     raster_properties['nodata'] = [
         raster.GetRasterBand(index).GetNoDataValue() for index in range(
             1, raster_properties['n_bands']+1)]
+
+    # GDAL creates overviews for the whole raster but has overviews accessed
+    # per band.  We assume that all bands have the same overviews.
+    raster_properties['overviews'] = []
+    for overview_index in range(raster.GetRasterBand(1).GetOverviewCount()):
+        overview_band = raster.GetRasterBand(1).GetOverview(overview_index)
+        raster_properties['overviews'].append((
+            overview_band.XSize, overview_band.YSize))
+
     # blocksize is the same for all bands, so we can just get the first
     raster_properties['block_size'] = raster.GetRasterBand(1).GetBlockSize()
 
@@ -2000,7 +2031,7 @@ def warp_raster(
         gdal_warp_options=None, working_dir=None,
         raster_driver_creation_tuple=DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS,
         osr_axis_mapping_strategy=DEFAULT_OSR_AXIS_MAPPING_STRATEGY):
-    """Resize/resample raster to desired pixel size, bbox and projection.
+    f"""Resize/resample raster to desired pixel size, bbox and projection.
 
     Args:
         base_raster_path (string): path to base raster.
@@ -2009,7 +2040,7 @@ def warp_raster(
         target_raster_path (string): the location of the resized and
             resampled raster.
         resample_method (string): the resampling technique, one of
-            ``near|bilinear|cubic|cubicspline|lanczos|average|mode|max|min|med|q1|q3``
+            ``{_GDAL_WARP_ALGOS_FOR_HUMAN_EYES}``
         target_bb (sequence): if None, target bounding box is the same as the
             source bounding box.  Otherwise it's a sequence of float
             describing target bounding box in target coordinate system as
@@ -2164,11 +2195,10 @@ def warp_raster(
             'PIXELTYPE' not in ' '.join(raster_creation_options)):
         raster_creation_options.append('PIXELTYPE=SIGNEDBYTE')
 
-    # WarpOptions.this is None when an invalid option is passed, and it's a
-    # truthy SWIG proxy object when it's given a valid resample arg.
-    if not gdal.WarpOptions(resampleAlg=resample_method)[0].this:
+    if resample_method.lower() not in _GDAL_WARP_ALGORITHMS:
         raise ValueError(
-            f'Invalid resample method: "{resample_method}"')
+            f'Invalid resample method: "{resample_method}". '
+            f'Must be one of {_GDAL_WARP_ALGOS_FOR_HUMAN_EYES}')
 
     gdal.Warp(
         warped_raster_path, base_raster,
@@ -3817,7 +3847,7 @@ def stitch_rasters(
         overlap_algorithm='etch',
         area_weight_m2_to_wgs84=False,
         osr_axis_mapping_strategy=DEFAULT_OSR_AXIS_MAPPING_STRATEGY):
-    """Stitch the raster in the base list into the existing target.
+    f"""Stitch the raster in the base list into the existing target.
 
     Args:
         base_raster_path_band_list (sequence): sequence of raster path/band
@@ -3825,7 +3855,7 @@ def stitch_rasters(
         resample_method_list (sequence): a sequence of resampling methods
             which one to one map each path in ``base_raster_path_band_list``
             during resizing.  Each element must be one of
-            "near|bilinear|cubic|cubicspline|lanczos|mode".
+            ``{_GDAL_WARP_ALGOS_FOR_HUMAN_EYES}``
         target_stitch_raster_path_band (tuple): raster path/band tuple to an
             existing raster, values in ``base_raster_path_band_list`` will
             be stitched into this raster/band in the order they are in the
@@ -4109,6 +4139,107 @@ def stitch_rasters(
 
     target_raster = None
     target_band = None
+
+
+def build_overviews(
+        raster_path, internal=False, resample_method='near',
+        overwrite=False, levels='auto'):
+    f"""Build overviews for a raster dataset.
+
+    Args:
+        raster_path (str): A path to a raster on disk for which overviews
+            should be built.
+        internal=False (bool): Whether to modify the raster when building
+            overviews. In GeoTiffs, this builds internal overviews when
+            ``internal=True``, and external overviews when ``internal=False``.
+        resample_method='near' (str): The resample method to use when
+            building overviews.  Must be one of
+            ``{_GDAL_WARP_ALGOS_FOR_HUMAN_EYES}``.
+        overwrite=False (bool): Whether to overwrite existing overviews, if
+            any exist.
+        levels='auto' (sequence): A sequence of integer overview levels. If
+            ``'auto'``, overview levels will be determined by using factors of
+            2 until the overview's x and y dimensions are both less than 256.
+
+    Example:
+        Generate overviews, regardless of whether overviews already exist
+        for the raster, letting the function determine the levels of overviews
+        to generate::
+
+            build_overviews(raster_path)
+
+        Generate overviews for 4 levels, at 1/2, 1/4, 1/8 and 1/16 the
+        resolution::
+
+            build_overviews(raster_path, levels=[2, 4, 8, 16])
+
+    Returns:
+        ``None``
+    """
+    if resample_method.lower() not in _GDAL_WARP_ALGORITHMS:
+        raise ValueError(
+            f'Invalid overview resample method: "{resample_method}". '
+            f'Must be one of {_GDAL_WARP_ALGOS_FOR_HUMAN_EYES}')
+
+    def overviews_progress(*args, **kwargs):
+        pct_complete, name, other = args
+        percent = round(pct_complete * 100, 2)
+        if time.time() - overviews_progress.last_progress_report > 5.0:
+            LOGGER.info(f"Overviews progress: {percent}%")
+            overviews_progress.last_progress_report = time.time()
+    overviews_progress.last_progress_report = time.time()
+
+    open_flags = gdal.OF_RASTER
+    if internal:
+        open_flags |= gdal.GA_Update
+        LOGGER.info(f"Building internal overviews on {raster_path}")
+    else:
+        LOGGER.info("Building external overviews.")
+    raster = gdal.OpenEx(raster_path, open_flags)
+    overview_count = 0
+    for band_index in range(1, raster.RasterCount + 1):
+        band = raster.GetRasterBand(band_index)
+        overview_count += band.GetOverviewCount()
+
+    if overview_count > 0:
+        if overwrite:
+            LOGGER.info(f"Clearing existing overviews from {raster_path}")
+            result = raster.BuildOverviews(
+                resampling=resample_method,
+                overviewlist=[],
+                callback=overviews_progress
+            )
+            LOGGER.info(f"Overviews cleared from {raster_path}")
+        else:
+            raise ValueError(
+                f"Raster already has overviews.  Use "
+                "overwrite=True to override this and regenerate overviews on "
+                f"{raster_path}")
+
+    # This loop and limiting factor borrowed from gdaladdo.cpp.
+    # Create overviews so long as the overviews are at least 256 pixels in
+    # either x or y dimensions.
+    if levels == 'auto':
+        overview_scales = []
+        factor = 2
+        limiting_factor = 256
+        while (math.ceil(raster.RasterXSize / factor) > limiting_factor or
+               math.ceil(raster.RasterYSize / factor) > limiting_factor):
+            overview_scales.append(factor)
+            factor *= 2
+    else:
+        overview_scales = [int(level) for level in levels]
+
+    LOGGER.debug(f"Using overviews {overview_scales}")
+    result = raster.BuildOverviews(
+        resampling=resample_method,
+        overviewlist=overview_scales,
+        callback=overviews_progress
+    )
+    LOGGER.info(f"Overviews completed for {raster_path}")
+    if result:  # Result will be nonzero on error.
+        raise RuntimeError(
+            f"Building overviews failed or was interrupted for {raster_path}")
 
 
 def _m2_area_of_wg84_pixel(pixel_size, center_lat):
