@@ -31,6 +31,7 @@ from cython.operator cimport dereference as deref
 from cython.operator cimport preincrement as inc
 from libc.time cimport time as ctime
 from libc.time cimport time_t
+from libc.math cimport isnan
 from libcpp.deque cimport deque
 from libcpp.list cimport list as clist
 from libcpp.pair cimport pair
@@ -182,6 +183,8 @@ cdef cppclass GreaterPixel nogil:
         return 0
 
 cdef int _is_close(double x, double y, double abs_delta, double rel_delta):
+    if isnan(x) and isnan(y):
+        return 1
     return abs(x-y) <= (abs_delta+rel_delta*abs(y))
 
 # a class to allow fast random per-pixel access to a raster for both setting
