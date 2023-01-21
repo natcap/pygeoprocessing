@@ -3,6 +3,11 @@ Release History
 
 Unreleased Changes
 ------------------
+* Nodata value checking in ``pygeoprocessing.routing`` now correctly handles
+  comparison of ``nan`` values.  This is explicitly tested in
+  ``pygeoprocessing.routing.fill_pits``, but should also improve the
+  experience of other routing functions as well.
+  https://github.com/natcap/pygeoprocessing/issues/248
 * Added a function to build overviews for a raster,
   ``pygeoprocessing.build_overviews``. Related to this,
   ``pygeoprocessing.get_raster_info()`` now includes an ``'overviews'`` key
