@@ -590,7 +590,7 @@ def raster_reduce(function, raster_path_band, initializer,
     for (_, block) in iterblocks(raster_path_band,
                                  largest_block=largest_block):
         aggregator = function(aggregator, block)
-        pixels_processed += block.shape[0] * block.shape[1]
+        pixels_processed += block.size
         last_time = _invoke_timed_callback(
             last_time, lambda: LOGGER.info(
                 f'{raster_path_band[0]} reduce '
