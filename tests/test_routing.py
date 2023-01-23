@@ -149,6 +149,26 @@ class TestRouting(unittest.TestCase):
         dem_array[3:8, 3:8] = 0.0
         numpy.testing.assert_almost_equal(result_array, dem_array)
 
+    def test_pit_filling_nodata_nan(self):
+        """PGP.routing: test pitfilling with nan nodata value."""
+        base_path = os.path.join(self.workspace_dir, 'base.tif')
+        dem_array = numpy.zeros((11, 11), dtype=numpy.float32)
+        nodata = numpy.nan
+        dem_array[3:8, 3:8] = -1
+        dem_array[0, 0] = -1
+        dem_array[1, 1] = nodata
+        _array_to_raster(dem_array, nodata, base_path)
+
+        fill_path = os.path.join(self.workspace_dir, 'filled.tif')
+        pygeoprocessing.routing.fill_pits(
+            (base_path, 1), fill_path, working_dir=self.workspace_dir)
+
+        result_array = pygeoprocessing.raster_to_numpy_array(fill_path)
+        self.assertEqual(result_array.dtype, numpy.float32)
+        # the expected result is that the pit is filled in
+        dem_array[3:8, 3:8] = 0.0
+        numpy.testing.assert_almost_equal(result_array, dem_array)
+
     def test_flow_dir_d8(self):
         """PGP.routing: test D8 flow."""
         dem_path = os.path.join(self.workspace_dir, 'dem.tif')

@@ -6,6 +6,16 @@ Unreleased Changes
 * Implement the proposed new function ``pygeoprocessing.raster_reduce``, a
   wrapper around ``pygeoprocessing.iterblocks``
    (https://github.com/natcap/pygeoprocessing/issues/285)
+* Nodata value checking in ``pygeoprocessing.routing`` now correctly handles
+  comparison of ``nan`` values.  This is explicitly tested in
+  ``pygeoprocessing.routing.fill_pits``, but should also improve the
+  experience of other routing functions as well.
+  https://github.com/natcap/pygeoprocessing/issues/248
+* Added a function to build overviews for a raster,
+  ``pygeoprocessing.build_overviews``. Related to this,
+  ``pygeoprocessing.get_raster_info()`` now includes an ``'overviews'`` key
+  listing the pixel dimensions of each overview layer in a raster.
+  https://github.com/natcap/pygeoprocessing/issues/280
 * Added a D8 stream extraction function at
   ``pygeoprocessing.routing.extract_streams_d8`` which takes a D8 flow
   accumulation raster and a flow accumulation threshold, setting all pixels
