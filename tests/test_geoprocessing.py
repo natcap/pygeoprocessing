@@ -4873,7 +4873,29 @@ class TestGeoprocessing(unittest.TestCase):
         for i, (_, (total, block), _) in enumerate(spy_sum_blocks.mock_calls):
             self.assertEqual(total, i * block_size * block_size)
             numpy.testing.assert_array_equal(
-                block, numpy.ones((block_size, block_size)))
+                block, numpy.ones(block_size ** 2))  # flattened block
+
+    def test_raster_reduce_mask_nodata(self):
+        """PGP: test raster_reduce can mask out nodata by default."""
+        block_size = 256
+        nodata = -2
+        array = numpy.ones((block_size * 2, block_size * 2))
+        array[0][0] = nodata  # set a pixel to nodata
+        raster_path = os.path.join(self.workspace_dir, 'raster.tif')
+        _array_to_raster(array, nodata, raster_path)
+
+        def sum_blocks(total, block): return total + numpy.sum(block)
+
+        # by default, nodata should be masked out
+        result = pygeoprocessing.raster_reduce(sum_blocks, (raster_path, 1), 0)
+        # the nodata pixel should not be counted
+        self.assertEqual(result, array.size - 1)
+
+        # set mask_nodata=False to allow nodata
+        result = pygeoprocessing.raster_reduce(
+            sum_blocks, (raster_path, 1), 0, mask_nodata=False)
+        # the nodata pixel should be counted
+        self.assertEqual(result, array.size - 3)
 
     def test_build_overviews_gtiff(self):
         """PGP: test raster overviews."""

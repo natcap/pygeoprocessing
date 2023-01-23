@@ -553,7 +553,31 @@ def raster_calculator(
                 pass
 
 
-def raster_reduce(function, raster_path_band, initializer,
+def array_equals_nodata(array, nodata):
+    """Check for the presence of ``nodata`` values in ``array``.
+
+    The comparison supports ``numpy.nan`` and unset (``None``) nodata values.
+
+    Args:
+        array (numpy array): the array to mask for nodata values.
+        nodata (number): the nodata value to check for. Supports ``numpy.nan``.
+
+    Returns:
+        A boolean numpy array with values of 1 where ``array`` is equal to
+        ``nodata`` and 0 otherwise.
+    """
+    # If nodata is undefined, nothing matches nodata.
+    if nodata is None:
+        return numpy.zeros(array.shape, dtype=bool)
+
+    # comparing an integer array against numpy.nan works correctly and is
+    # faster than using numpy.isclose().
+    if numpy.issubdtype(array.dtype, numpy.integer):
+        return array == nodata
+    return numpy.isclose(array, nodata, equal_nan=True)
+
+
+def raster_reduce(function, raster_path_band, initializer, mask_nodata=True,
                   largest_block=_LARGEST_ITERBLOCK):
     """Cumulatively apply a reducing function to each block of a raster.
 
@@ -596,6 +620,10 @@ def raster_reduce(function, raster_path_band, initializer,
         raster_path_band (tuple): (path, band) tuple of the raster to reduce
         initializer (obj): value to initialize the aggregator for the
             first function call
+        mask_nodata (bool): if True, mask out nodata before aggregating. A
+            flattened array of non-nodata pixels from each block is passed to
+            the ``function``. if False, each block is passed directly to the
+            ``function`` without masking.
 
     Returns:
         aggregate value, the final value returned from ``function``
@@ -603,11 +631,17 @@ def raster_reduce(function, raster_path_band, initializer,
     aggregator = initializer
     last_time = time.time()
     pixels_processed = 0
-    x_size, y_size = get_raster_info(raster_path_band[0])['raster_size']
+    raster_info = get_raster_info(raster_path_band[0])
+    x_size, y_size = raster_info['raster_size']
     n_pixels = x_size * y_size
     for (_, block) in iterblocks(raster_path_band,
                                  largest_block=largest_block):
-        aggregator = function(aggregator, block)
+        if mask_nodata:
+            data = block[~array_equals_nodata(
+                block, raster_info['nodata'][raster_path_band[1] - 1])]
+        else:
+            data = block
+        aggregator = function(aggregator, data)
         pixels_processed += block.size
         last_time = _invoke_timed_callback(
             last_time, lambda: LOGGER.info(
