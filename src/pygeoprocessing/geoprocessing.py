@@ -624,6 +624,7 @@ def raster_reduce(function, raster_path_band, initializer, mask_nodata=True,
             flattened array of non-nodata pixels from each block is passed to
             the ``function``. if False, each block is passed directly to the
             ``function`` without masking.
+        largest_block (int): largest block parameter to pass to ``iterblocks``
 
     Returns:
         aggregate value, the final value returned from ``function``
