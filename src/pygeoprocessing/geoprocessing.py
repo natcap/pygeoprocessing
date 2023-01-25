@@ -585,8 +585,8 @@ def raster_reduce(function, raster_path_band, initializer, mask_nodata=True,
     by blocks to be memory-efficient.
 
     The ``function`` signature should be ``function(aggregator, block)``, where
-    ``aggregator`` is the aggregated value so far, and ``block`` is a 2D numpy
-    array containing the data from the block to reduce next.
+    ``aggregator`` is the aggregated value so far, and ``block`` is a flattened
+    numpy array containing the data from the block to reduce next.
 
     ``function`` is called once on each block. On the first ``function`` call,
     ``aggregator`` is initialized with ``initializer``. The return value from
@@ -622,7 +622,7 @@ def raster_reduce(function, raster_path_band, initializer, mask_nodata=True,
             first function call
         mask_nodata (bool): if True, mask out nodata before aggregating. A
             flattened array of non-nodata pixels from each block is passed to
-            the ``function``. if False, each block is passed directly to the
+            the ``function``. if False, each block is passed to the
             ``function`` without masking.
         largest_block (int): largest block parameter to pass to ``iterblocks``
 
@@ -641,7 +641,7 @@ def raster_reduce(function, raster_path_band, initializer, mask_nodata=True,
             data = block[~array_equals_nodata(
                 block, raster_info['nodata'][raster_path_band[1] - 1])]
         else:
-            data = block
+            data = block.flatten()
         aggregator = function(aggregator, data)
         pixels_processed += block.size
         last_time = _invoke_timed_callback(
