@@ -3,6 +3,9 @@ Release History
 
 Unreleased Changes
 ------------------
+* Implement the proposed new function ``pygeoprocessing.raster_reduce``, a
+  wrapper around ``pygeoprocessing.iterblocks``
+   (https://github.com/natcap/pygeoprocessing/issues/285)
 * Nodata value checking in ``pygeoprocessing.routing`` now correctly handles
   comparison of ``nan`` values.  This is explicitly tested in
   ``pygeoprocessing.routing.fill_pits``, but should also improve the
@@ -25,7 +28,6 @@ Unreleased Changes
   Actions workflows and will no longer be produced or distributed as part of
   our release checklist.  For details (and metrics!) see:
   https://github.com/natcap/pygeoprocessing/issues/232
-
 
 2.3.5 (2022-12-13)
 ------------------

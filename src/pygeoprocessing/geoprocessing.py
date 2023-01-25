@@ -553,6 +553,107 @@ def raster_calculator(
                 pass
 
 
+def array_equals_nodata(array, nodata):
+    """Check for the presence of ``nodata`` values in ``array``.
+
+    The comparison supports ``numpy.nan`` and unset (``None``) nodata values.
+
+    Args:
+        array (numpy array): the array to mask for nodata values.
+        nodata (number): the nodata value to check for. Supports ``numpy.nan``.
+
+    Returns:
+        A boolean numpy array with values of 1 where ``array`` is equal to
+        ``nodata`` and 0 otherwise.
+    """
+    # If nodata is undefined, nothing matches nodata.
+    if nodata is None:
+        return numpy.zeros(array.shape, dtype=bool)
+
+    # comparing an integer array against numpy.nan works correctly and is
+    # faster than using numpy.isclose().
+    if numpy.issubdtype(array.dtype, numpy.integer):
+        return array == nodata
+    return numpy.isclose(array, nodata, equal_nan=True)
+
+
+def raster_reduce(function, raster_path_band, initializer, mask_nodata=True,
+                  largest_block=_LARGEST_ITERBLOCK):
+    """Cumulatively apply a reducing function to each block of a raster.
+
+    This effectively reduces the entire raster to a single value, but it works
+    by blocks to be memory-efficient.
+
+    The ``function`` signature should be ``function(aggregator, block)``, where
+    ``aggregator`` is the aggregated value so far, and ``block`` is a flattened
+    numpy array containing the data from the block to reduce next.
+
+    ``function`` is called once on each block. On the first ``function`` call,
+    ``aggregator`` is initialized with ``initializer``. The return value from
+    each ``function`` call is passed in as the ``aggregator`` argument to the
+    subsequent ``function`` call. When all blocks have been reduced, the return
+    value of the final ``function`` call is returned.
+
+    Example:
+        Calculate the sum of all values in a raster::
+
+            raster_reduce(lambda total, block: total + numpy.sum(block),
+                          (raster_path, 1), 0)
+
+        Calculate a histogram of all values in a raster::
+
+            def add_to_histogram(histogram, block):
+                return histogram + numpy.histogram(block, bins=10)[0]
+
+            raster_reduce(add_to_histogram, (raster_path, 1), numpy.zeros(10))
+
+        Calculate the sum of all values in a raster, excluding nodata::
+
+            nodata = pygeoprocessing.get_raster_info(raster_path)['nodata'][0]
+            def sum_excluding_nodata(total, block):
+                return total + numpy.sum(block[block != nodata])
+
+            raster_reduce(sum_excluding_nodata, (raster_path, 1), 0)
+
+    Args:
+        function (func): function to apply to each raster block
+        raster_path_band (tuple): (path, band) tuple of the raster to reduce
+        initializer (obj): value to initialize the aggregator for the
+            first function call
+        mask_nodata (bool): if True, mask out nodata before aggregating. A
+            flattened array of non-nodata pixels from each block is passed to
+            the ``function``. if False, each block is passed to the
+            ``function`` without masking.
+        largest_block (int): largest block parameter to pass to ``iterblocks``
+
+    Returns:
+        aggregate value, the final value returned from ``function``
+    """
+    aggregator = initializer
+    last_time = time.time()
+    pixels_processed = 0
+    raster_info = get_raster_info(raster_path_band[0])
+    x_size, y_size = raster_info['raster_size']
+    n_pixels = x_size * y_size
+    for (_, block) in iterblocks(raster_path_band,
+                                 largest_block=largest_block):
+        if mask_nodata:
+            data = block[~array_equals_nodata(
+                block, raster_info['nodata'][raster_path_band[1] - 1])]
+        else:
+            data = block.flatten()
+        aggregator = function(aggregator, data)
+        pixels_processed += block.size
+        last_time = _invoke_timed_callback(
+            last_time, lambda: LOGGER.info(
+                f'{raster_path_band[0]} reduce '
+                f'{pixels_processed / n_pixels * 100:.1f}%% complete'),
+            _LOGGING_PERIOD)
+
+    LOGGER.info('100.0%% complete')
+    return aggregator
+
+
 def align_and_resize_raster_stack(
         base_raster_path_list, target_raster_path_list, resample_method_list,
         target_pixel_size, bounding_box_mode, base_vector_path_list=None,

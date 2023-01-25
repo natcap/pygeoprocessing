@@ -27,6 +27,7 @@ from .geoprocessing import merge_bounding_box_list
 from .geoprocessing import new_raster_from_base
 from .geoprocessing import numpy_array_to_raster
 from .geoprocessing import raster_calculator
+from .geoprocessing import raster_reduce
 from .geoprocessing import raster_to_numpy_array
 from .geoprocessing import rasterize
 from .geoprocessing import ReclassificationMissingValuesError
