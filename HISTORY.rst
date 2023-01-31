@@ -3,6 +3,11 @@ Release History
 
 Unreleased Changes
 ------------------
+* The function ``pygeoprocessing.reproject_vector`` now accepts an optional
+  parameter ``layer_name`` to allow the target vector layer name to be defined
+  by the user.  If the user does not provide a ``layer_name``, the layer name
+  will be copied from the source vector.
+  https://github.com/natcap/pygeoprocessing/issues/301
 * Implement the proposed new function ``pygeoprocessing.raster_reduce``, a
   wrapper around ``pygeoprocessing.iterblocks``
    (https://github.com/natcap/pygeoprocessing/issues/285)
