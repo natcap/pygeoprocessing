@@ -1891,7 +1891,12 @@ def reproject_vector(
     """Reproject OGR DataSource (vector).
 
     Transforms the features of the base vector to the desired output
-    projection in a new ESRI Shapefile.
+    projection in a new vector.
+
+    Note:
+        If the ESRI Shapefile driver is used, the ``target_layer_name``
+        optional parameter is ignored. ESRI Shapefiles by definition use the
+        filename to define the layer name.
 
     Args:
         base_vector_path (string): Path to the base shapefile to transform.
@@ -1915,7 +1920,7 @@ def reproject_vector(
             ``geoprocessing.DEFAULT_OSR_AXIS_MAPPING_STRATEGY``. This parameter
             should not be changed unless you know what you are doing.
 
-    Return:
+    Returns:
         None
     """
     base_vector = gdal.OpenEx(base_vector_path, gdal.OF_VECTOR)
