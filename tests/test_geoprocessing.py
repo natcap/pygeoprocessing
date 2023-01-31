@@ -446,20 +446,50 @@ class TestGeoprocessing(unittest.TestCase):
         # create the file first so the model needs to deal with that
         target_file = open(target_vector_path, 'w')
         target_file.close()
-        pygeoprocessing.reproject_vector(
-            base_vector_path, target_reference.ExportToWkt(),
-            target_vector_path, layer_id=0)
 
-        vector = ogr.Open(target_vector_path)
-        layer = vector.GetLayer()
-        result_reference = layer.GetSpatialRef()
+        pygeoprocessing_logger = logging.getLogger('pygeoprocessing')
+        layer_name = 'my_fun_layer'
+        with capture_logging(pygeoprocessing_logger) as captured_logging:
+            pygeoprocessing.reproject_vector(
+                base_vector_path, target_reference.ExportToWkt(),
+                target_vector_path, layer_id=0, target_layer_name=layer_name)
+        self.assertEqual(len(captured_logging), 2)
+        self.assertIn(f'already exists, removing and overwriting',
+                      captured_logging[0].msg)
+        self.assertIn(f'Ignoring user-defined layer name {layer_name}',
+                      captured_logging[1].msg)
+        try:
+            vector = ogr.Open(target_vector_path)
+            layer = vector.GetLayer()
+            result_reference = layer.GetSpatialRef()
+            self.assertTrue(
+                osr.SpatialReference(result_reference.ExportToWkt()).IsSame(
+                    osr.SpatialReference(target_reference.ExportToWkt())))
+            self.assertEqual(layer.GetLayerDefn().GetName(), 'target_vector')
+        finally:
+            layer = None
+            vector = None
 
-        layer = None
-        vector = None
+        with capture_logging(pygeoprocessing_logger) as captured_logging:
+            target_vector_path = os.path.join(self.workspace_dir, 'test.gpkg')
+            pygeoprocessing.reproject_vector(
+                base_vector_path, target_reference.ExportToWkt(),
+                target_vector_path, layer_id=0, driver_name='GPKG',
+                target_layer_name=layer_name)
+        self.assertEqual(len(captured_logging), 0)
 
-        self.assertTrue(
-            osr.SpatialReference(result_reference.ExportToWkt()).IsSame(
-                osr.SpatialReference(target_reference.ExportToWkt())))
+        try:
+            vector = ogr.Open(target_vector_path)
+            layer = vector.GetLayer()
+            result_reference = layer.GetSpatialRef()
+            self.assertTrue(
+                osr.SpatialReference(result_reference.ExportToWkt()).IsSame(
+                    osr.SpatialReference(target_reference.ExportToWkt())))
+            self.assertEqual(layer.GetLayerDefn().GetName(), layer_name)
+        finally:
+            layer = None
+            vector = None
+
 
     def test_reproject_vector_partial_fields(self):
         """PGP.geoprocessing: reproject vector with partial field copy."""
