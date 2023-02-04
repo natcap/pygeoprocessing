@@ -177,7 +177,8 @@ def _create_distance_based_kernel(
         numpy_namespace = {name: getattr(numpy, name) for name in dir(numpy)}
 
         def function(d):
-            return eval(code, locals={'d': d}, globals=numpy_namespace)
+            return eval(code, locals={'dist': d, 'max_dist': max_distance},
+                        globals=numpy_namespace)
 
     for block_data in pygeoprocessing.iterblocks(
             (target_kernel_path, 1), offset_only=True):
@@ -194,8 +195,12 @@ def _create_distance_based_kernel(
             *numpy.mgrid[
                 array_ymin:array_ymax,
                 array_xmin:array_xmax])
+
         kernel = function(pixel_dist_from_center)
-        running_sum += kernel.sum()
+
+        if normalize:
+            running_sum += kernel.sum()
+
         kernel_band.WriteArray(
             kernel,
             yoff=block_data['yoff'],
