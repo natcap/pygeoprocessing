@@ -65,10 +65,10 @@ def parabolic_decay_kernel(target_kernel_path, max_distance, **kwargs):
         max_distance, **kwargs)
 
 
-def exponential_decay_kernel(target_kernel_path, max_distance,
-                             **kwargs):
+def exponential_decay_kernel(target_kernel_path, expected_distance,
+                             max_distance, **kwargs):
     create_kernel(
-        target_kernel_path, "exp(-dist / max_dist)",
+        target_kernel_path, f"exp(-dist / {expected_distance})",
         max_distance, **kwargs)
 
 
