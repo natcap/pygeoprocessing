@@ -3900,9 +3900,12 @@ def numpy_array_to_raster(
     Args:
         base_array (numpy.array): a 2d numpy array.
         target_nodata (numeric): nodata value of target array, can be None.
-        pixel_size (tuple): square dimensions (in ``(x, y)``) of pixel.
-        origin (tuple/list): x/y coordinate of the raster origin.
-        projection_wkt (str): target projection in wkt.
+        pixel_size (tuple): square dimensions (in ``(x, y)``) of pixel. Can be
+            None to indicate no stated pixel size.
+        origin (tuple/list): x/y coordinate of the raster origin. Can be None
+            to indicate no stated origin.
+        projection_wkt (str): target projection in wkt.  Can be None to
+            indicate no projection/SRS.
         target_path (str): path to raster to create that will be of the
             same type of base_array with contents of base_array.
         raster_driver_creation_tuple (tuple): a tuple containing a GDAL driver
@@ -3933,8 +3936,12 @@ def numpy_array_to_raster(
         options=raster_driver_creation_tuple[1])
     if projection_wkt is not None:
         new_raster.SetProjection(projection_wkt)
-    new_raster.SetGeoTransform(
-        [origin[0], pixel_size[0], 0.0, origin[1], 0.0, pixel_size[1]])
+    if origin is not None and pixel_size is not None:
+        new_raster.SetGeoTransform(
+            [origin[0], pixel_size[0], 0.0, origin[1], 0.0, pixel_size[1]])
+    elif origin is not None or pixel_size is not None:
+        raise ValueError(
+            "Origin and pixel size must both be defined or both be None")
     new_band = new_raster.GetRasterBand(1)
     if target_nodata is not None:
         new_band.SetNoDataValue(target_nodata)

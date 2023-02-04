@@ -1,22 +1,22 @@
+import dataclasses
 import functools
 import logging
 import math
+from typing import Callable
+from typing import Union
 
 import numpy
 import pygeoprocessing
 from osgeo import gdal
 from osgeo import osr
 
-FLOAT32_NODATA = numpy.finfo(numpy.float32).min
+FLOAT32_NODATA = float(numpy.finfo(numpy.float32).min)
 LOGGER = logging.getLogger(__name__)
-_DEFAULT_SRS = osr.SpatialReference()
-_DEFAULT_SRS.SetWellKnownGeogCS('WGS84')
-_DEFAULT_GEOTRANSFORM = [0, 1, 0, 0, 0, -1]
 
 # note that convolve_2d requires that all pixels are valid
 #    pixels may not be nodata.
 # TODO: are kernels required to be square?
-    # From what I can tell, no, they just need to have same num. dimensions.
+#     From what I can tell, no, they just need to have same num. dimensions.
 # TODO: what happens if kernels are not centered on the target pixel?
 # TODO: use type hints for these modules and note it in the changelog.
 
@@ -24,11 +24,9 @@ _DEFAULT_GEOTRANSFORM = [0, 1, 0, 0, 0, -1]
 def kernel_from_numpy_array(numpy_array, target_kernel_path):
     """Create a convolution kernel from a numpy array.
     """
-    pixel_size = (_DEFAULT_GEOTRANSFORM[1], _DEFAULT_GEOTRANSFORM[5])
-    origin = (_DEFAULT_GEOTRANSFORM[0], _DEFAULT_GEOTRANSFORM[3])
     pygeoprocessing.numpy_array_to_raster(
-        numpy_array, None, pixel_size, origin,
-        _DEFAULT_SRS.ExportToWkt(), target_kernel_path)
+        numpy_array, target_nodata=None, pixel_size=None, origin=None,
+        projection_wkt=None, target_path=target_kernel_path)
 
 
 def dichotomous_kernel(target_kernel_path, max_distance):
@@ -123,7 +121,10 @@ def gaussian_decay_kernel(target_kernel_path, sigma, n_std_dev):
 
 
 def _create_distance_based_kernel(
-        target_kernel_path, function, max_distance, normalize=False):
+        target_kernel_path: str,
+        function: Union[str, Callable],
+        max_distance: Union[int, float],
+        normalize=False):
     """
     Create a kernel raster based on pixel distance from the centerpoint.
 
@@ -151,10 +152,9 @@ def _create_distance_based_kernel(
             'BIGTIFF=IF_SAFER', 'TILED=YES', 'BLOCKXSIZE=256',
             'BLOCKYSIZE=256'])
 
-    # Make some kind of geotransform, it doesn't matter what but
-    # will make GIS libraries behave better if it's all defined
-    kernel_dataset.SetGeoTransform(_DEFAULT_GEOTRANSFORM)
-    kernel_dataset.SetProjection(_DEFAULT_SRS.ExportToWkt())
+    # NOTE: We are deliberately NOT setting a coordinate system because it
+    # isn't needed.  By omitting this, we're telling GDAL to just create a
+    # TIFF.
 
     kernel_band = kernel_dataset.GetRasterBand(1)
     kernel_nodata = FLOAT32_NODATA
