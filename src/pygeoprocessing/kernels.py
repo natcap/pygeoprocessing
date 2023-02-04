@@ -20,6 +20,12 @@ LOGGER = logging.getLogger(__name__)
 # TODO: what happens if kernels are not centered on the target pixel?
 # TODO: use type hints for these modules and note it in the changelog.
 
+# ok, so the questions needed when we have a kernel is:
+#   * how big should the kernel be (pixel radius)
+#   * what function should be used to determine pixel values (function of
+#     distance from centerpoint)
+#   * should the kernel be normalized.
+
 
 def kernel_from_numpy_array(numpy_array, target_kernel_path):
     """Create a convolution kernel from a numpy array.
@@ -51,7 +57,7 @@ def dichotomous_kernel(target_kernel_path, max_distance):
         return numpy.array(
             distance_from_center <= max_distance, dtype=numpy.float32)
 
-    _create_distance_based_kernel(
+    create_kernel(
         target_kernel_path, _dichotomy, max_distance, normalize=False)
 
 
@@ -70,7 +76,7 @@ def parabolic_decay_kernel(target_kernel_path, max_distance):
                 pixels_in_radius] / max_distance) ** 2))
         return density
 
-    _create_distance_based_kernel(
+    create_kernel(
         target_kernel_path, _density, max_distance, normalize=False)
 
 
@@ -92,7 +98,7 @@ def exponential_decay_kernel(target_kernel_path, max_distance,
             numpy.exp(-(distance_from_center*distance_factor) / max_distance))
         return kernel
 
-    _create_distance_based_kernel(
+    create_kernel(
         target_kernel_path, _exp_decay, max_distance, normalize=True)
 
 
@@ -102,7 +108,7 @@ def linear_decay_kernel(target_kernel_path, max_distance):
             distance_from_center > max_distance, 0.0,
             (max_distance - distance_from_center) / max_distance)
 
-    _create_distance_based_kernel(
+    create_kernel(
         target_kernel_path, _linear_decay, max_distance, normalize=True)
 
 
@@ -116,11 +122,11 @@ def gaussian_decay_kernel(target_kernel_path, sigma, n_std_dev):
              numpy.exp(-distance_from_center**2 / (2 * sigma ** 2))))
         return kernel
 
-    _create_distance_based_kernel(
+    create_kernel(
         target_kernel_path, _gaussian_decay, max_distance, normalize=True)
 
 
-def _create_distance_based_kernel(
+def create_kernel(
         target_kernel_path: str,
         function: Union[str, Callable],
         max_distance: Union[int, float],
