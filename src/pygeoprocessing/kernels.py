@@ -82,7 +82,7 @@ def normal_distribution_kernel(target_kernel_path, sigma, n_std_dev=3,
                                **kwargs):
     create_kernel(
         target_kernel_path,
-        expression=f"(1/(2*pi*{sigma}**2))*exp((-dist**2)/(2*{sigma}**2))",
+        function=f"(1/(2*pi*{sigma}**2))*exp((-dist**2)/(2*{sigma}**2))",
         max_distance=(sigma * n_std_dev),
         **kwargs)
 
@@ -114,8 +114,10 @@ def create_kernel(
         ``None``
     """
     if pixel_radius is None:
-        pixel_radius = math.ceil(max_distance)
+        pixel_radius = max_distance
+    pixel_radius = math.ceil(pixel_radius)
     kernel_size = pixel_radius * 2 + 1  # allow for a center pixel
+    assert kernel_size % 2 == 1
     driver = gdal.GetDriverByName('GTiff')
     kernel_dataset = driver.Create(
         target_kernel_path.encode('utf-8'), kernel_size, kernel_size, 1,
