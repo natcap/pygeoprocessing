@@ -32,7 +32,7 @@ def kernel_from_numpy_array(numpy_array, target_kernel_path):
         projection_wkt=None, target_path=target_kernel_path)
 
 
-def dichotomous_kernel(target_kernel_path, max_distance, normalize):
+def dichotomous_kernel(target_kernel_path, max_distance, **kwargs):
     """Create a binary kernel indicating presence/absence within a distance.
 
     Given a centerpoint pixel C and an arbitrary pixel P in the target kernel,
@@ -52,39 +52,39 @@ def dichotomous_kernel(target_kernel_path, max_distance, normalize):
     """
     create_kernel(
         target_kernel_path, "dist <= max_dist", max_distance,
-        normalize=normalize)
+        **kwargs)
 
 
 # UNA calls this a density kernel
 # really, this is quite specific to UNA
-def parabolic_decay_kernel(target_kernel_path, max_distance, normalize=True):
+def parabolic_decay_kernel(target_kernel_path, max_distance, **kwargs):
     """Create an inverted parabola that reaches 0 at ``max_distance``
     """
     create_kernel(
         target_kernel_path, "0.75 * (1-(dist / max_dist) ** 2)",
-        max_distance, normalize=normalize)
+        max_distance, **kwargs)
 
 
 def exponential_decay_kernel(target_kernel_path, max_distance,
-                             normalize=True):
+                             **kwargs):
     create_kernel(
         target_kernel_path, "exp(-dist / max_dist)",
-        max_distance, normalize=normalize)
+        max_distance, **kwargs)
 
 
-def linear_decay_kernel(target_kernel_path, max_distance, normalize=True):
+def linear_decay_kernel(target_kernel_path, max_distance, **kwargs):
     create_kernel(
         target_kernel_path, "(max_dist - dist) / max_dist",
-        max_distance, normalize=normalize)
+        max_distance, **kwargs)
 
 
 def normal_distribution_kernel(target_kernel_path, sigma, n_std_dev=3,
-                               normalize=True):
+                               **kwargs):
     create_kernel(
         target_kernel_path,
         expression=f"(1/(2*pi*{sigma}**2))*exp((-dist**2)/(2*{sigma}**2))",
         max_distance=(sigma * n_std_dev),
-        normalize=normalize)
+        **kwargs)
 
 
 def create_kernel(
