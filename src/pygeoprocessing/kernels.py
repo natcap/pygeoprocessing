@@ -173,12 +173,15 @@ def _create_distance_based_kernel(
     # python expression appropriate for evaling.
     if isinstance(function, str):
         # Avoid recompiling on each iteration.
-        code = compile(function, '<string>', 'eval'),
+        code = compile(function, '<string>', 'eval')
         numpy_namespace = {name: getattr(numpy, name) for name in dir(numpy)}
 
         def function(d):
-            return eval(code, locals={'dist': d, 'max_dist': max_distance},
-                        globals=numpy_namespace)
+            result = eval(
+                code,
+                numpy_namespace,  # globals
+                {'dist': d, 'max_dist': max_distance})  # locals
+            return result
 
     for block_data in pygeoprocessing.iterblocks(
             (target_kernel_path, 1), offset_only=True):
