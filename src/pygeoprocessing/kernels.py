@@ -35,7 +35,7 @@ def kernel_from_numpy_array(numpy_array, target_kernel_path):
         projection_wkt=None, target_path=target_kernel_path)
 
 
-def dichotomous_kernel(target_kernel_path, max_distance):
+def dichotomous_kernel(target_kernel_path, max_distance, normalize):
     """Create a binary kernel indicating presence/absence within a distance.
 
     Given a centerpoint pixel C and an arbitrary pixel P in the target kernel,
@@ -53,31 +53,22 @@ def dichotomous_kernel(target_kernel_path, max_distance):
     Returns:
         ``None``
     """
-    def _dichotomy(distance_from_center):
-        return numpy.array(
-            distance_from_center <= max_distance, dtype=numpy.float32)
-
     create_kernel(
-        target_kernel_path, _dichotomy, max_distance, normalize=False)
+        target_kernel_path, "dist <= max_dist", max_distance,
+        normalize=normalize)
 
 
 # UNA calls this a density kernel
 # really, this is quite specific to UNA
-def parabolic_decay_kernel(target_kernel_path, max_distance):
+def parabolic_decay_kernel(target_kernel_path, max_distance, normalize=True):
     """Create an inverted parabola that reaches a value of 0 at ``max_distance``
 
     """
-    def _density(distance_from_center):
-        density = numpy.zeros(
-            distance_from_center.shape, dtype=numpy.float32)
-        pixels_in_radius = (distance_from_center <= max_distance)
-        density[pixels_in_radius] = (
-            0.75 * (1 - (distance_from_center[
-                pixels_in_radius] / max_distance) ** 2))
-        return density
+    def _density(dist):
+        return (0.75 * (1 - (dist / max_distance) ** 2))
 
     create_kernel(
-        target_kernel_path, _density, max_distance, normalize=False)
+        target_kernel_path, _density, max_distance, normalize=normalize)
 
 
 def numexpr_kernel(target_kernel_path, max_distance, expression, extras=None):
@@ -91,46 +82,39 @@ def numexpr_kernel(target_kernel_path, max_distance, expression, extras=None):
 
 
 def exponential_decay_kernel(target_kernel_path, max_distance,
-                             distance_factor=1):
-    def _exp_decay(distance_from_center):
-        kernel = numpy.where(
-            distance_from_center > max_distance, 0.0,
-            numpy.exp(-(distance_from_center*distance_factor) / max_distance))
-        return kernel
+                             distance_factor=1, normalize=True):
+    def _exp_decay(dist):
+        return numpy.exp(-(dist*distance_factor) / max_distance)
 
     create_kernel(
-        target_kernel_path, _exp_decay, max_distance, normalize=True)
+        target_kernel_path, _exp_decay, max_distance, normalize=normalize)
 
 
-def linear_decay_kernel(target_kernel_path, max_distance):
-    def _linear_decay(distance_from_center):
-        return numpy.where(
-            distance_from_center > max_distance, 0.0,
-            (max_distance - distance_from_center) / max_distance)
+def linear_decay_kernel(target_kernel_path, max_distance, normalize=True):
+    def _linear_decay(dist):
+        return (max_distance - dist) / max_distance
 
     create_kernel(
-        target_kernel_path, _linear_decay, max_distance, normalize=True)
+        target_kernel_path, _linear_decay, max_distance, normalize=normalize)
 
 
-def gaussian_decay_kernel(target_kernel_path, sigma, n_std_dev):
+def gaussian_decay_kernel(target_kernel_path, sigma, n_std_dev=3,
+                          normalize=True):
     max_distance = sigma * n_std_dev
 
-    def _gaussian_decay(distance_from_center):
-        kernel = numpy.where(
-            distance_from_center > max_distance, 0.0,
-            (1 / (2.0 * numpy.pi * sigma ** 2) *
-             numpy.exp(-distance_from_center**2 / (2 * sigma ** 2))))
-        return kernel
+    def _gaussian_decay(dist):
+        return (1 / (2 * numpy.pi * sigma ** 2) * numpy.exp(
+            -dist ** 2 / (2 * sigma ** 2)))
 
     create_kernel(
-        target_kernel_path, _gaussian_decay, max_distance, normalize=True)
+        target_kernel_path, _gaussian_decay, max_distance, normalize=normalize)
 
 
 def create_kernel(
         target_kernel_path: str,
         function: Union[str, Callable],
         max_distance: Union[int, float],
-        normalize=False):
+        normalize=True):
     """
     Create a kernel raster based on pixel distance from the centerpoint.
 
@@ -205,7 +189,11 @@ def create_kernel(
                 array_ymin:array_ymax,
                 array_xmin:array_xmax])
 
-        kernel = function(pixel_dist_from_center)
+        valid_pixels = (pixel_dist_from_center <= max_distance)
+
+        kernel = numpy.zeros(pixel_dist_from_center.shape,
+                             dtype=numpy.float32)
+        kernel[valid_pixels] = function(pixel_dist_from_center[valid_pixels])
 
         if normalize:
             running_sum += kernel.sum()
