@@ -61,14 +61,11 @@ def dichotomous_kernel(target_kernel_path, max_distance, normalize):
 # UNA calls this a density kernel
 # really, this is quite specific to UNA
 def parabolic_decay_kernel(target_kernel_path, max_distance, normalize=True):
-    """Create an inverted parabola that reaches a value of 0 at ``max_distance``
-
+    """Create an inverted parabola that reaches 0 at ``max_distance``
     """
-    def _density(dist):
-        return (0.75 * (1 - (dist / max_distance) ** 2))
-
     create_kernel(
-        target_kernel_path, _density, max_distance, normalize=normalize)
+        target_kernel_path, "0.75 * (1-(dist / max_dist) ** 2)",
+        max_distance, normalize=normalize)
 
 
 def numexpr_kernel(target_kernel_path, max_distance, expression, extras=None):
@@ -82,20 +79,16 @@ def numexpr_kernel(target_kernel_path, max_distance, expression, extras=None):
 
 
 def exponential_decay_kernel(target_kernel_path, max_distance,
-                             distance_factor=1, normalize=True):
-    def _exp_decay(dist):
-        return numpy.exp(-(dist*distance_factor) / max_distance)
-
+                             normalize=True):
     create_kernel(
-        target_kernel_path, _exp_decay, max_distance, normalize=normalize)
+        target_kernel_path, "exp(-dist / max_dist)",
+        max_distance, normalize=normalize)
 
 
 def linear_decay_kernel(target_kernel_path, max_distance, normalize=True):
-    def _linear_decay(dist):
-        return (max_distance - dist) / max_distance
-
     create_kernel(
-        target_kernel_path, _linear_decay, max_distance, normalize=normalize)
+        target_kernel_path, "(max_dist - dist) / max_dist",
+        max_distance, normalize=normalize)
 
 
 def gaussian_decay_kernel(target_kernel_path, sigma, n_std_dev=3,
