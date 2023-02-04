@@ -91,6 +91,7 @@ def create_kernel(
         target_kernel_path: str,
         function: Union[str, Callable],
         max_distance: Union[int, float],
+        pixel_radius=None,
         normalize=True):
     """
     Create a kernel raster based on pixel distance from the centerpoint.
@@ -105,12 +106,15 @@ def create_kernel(
         max_distance (float): The maximum distance of kernel values from
             the center point.  Values outside of this distance will be set to
             ``0.0``.
+        pixel_radius=None (float): The radius (in pixels) of the target kernel.
+            If ``None``, the radius will be ``math.ceil(max_distance)``.
         normalize=False (bool): Whether to normalize the resulting kernel.
 
     Returns:
         ``None``
     """
-    pixel_radius = math.ceil(max_distance)
+    if pixel_radius is None:
+        pixel_radius = math.ceil(max_distance)
     kernel_size = pixel_radius * 2 + 1  # allow for a center pixel
     driver = gdal.GetDriverByName('GTiff')
     kernel_dataset = driver.Create(
