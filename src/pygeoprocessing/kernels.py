@@ -1,5 +1,3 @@
-import dataclasses
-import functools
 import logging
 import math
 from typing import Callable
@@ -8,7 +6,6 @@ from typing import Union
 import numpy
 import pygeoprocessing
 from osgeo import gdal
-from osgeo import osr
 
 FLOAT32_NODATA = float(numpy.finfo(numpy.float32).min)
 LOGGER = logging.getLogger(__name__)
@@ -66,16 +63,6 @@ def parabolic_decay_kernel(target_kernel_path, max_distance, normalize=True):
     create_kernel(
         target_kernel_path, "0.75 * (1-(dist / max_dist) ** 2)",
         max_distance, normalize=normalize)
-
-
-def numexpr_kernel(target_kernel_path, max_distance, expression, extras=None):
-    import numexpr
-    if not extras:
-        extras = {}
-
-    def _numexpr_expression(distance_from_center):
-        # evaluate a numexpr expression provided by the user
-        return numexpr.evaluate(expression)
 
 
 def exponential_decay_kernel(target_kernel_path, max_distance,
