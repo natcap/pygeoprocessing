@@ -91,16 +91,13 @@ def linear_decay_kernel(target_kernel_path, max_distance, normalize=True):
         max_distance, normalize=normalize)
 
 
-def gaussian_decay_kernel(target_kernel_path, sigma, n_std_dev=3,
-                          normalize=True):
-    max_distance = sigma * n_std_dev
-
-    def _gaussian_decay(dist):
-        return (1 / (2 * numpy.pi * sigma ** 2) * numpy.exp(
-            -dist ** 2 / (2 * sigma ** 2)))
-
+def normal_distribution_kernel(target_kernel_path, sigma, n_std_dev=3,
+                               normalize=True):
     create_kernel(
-        target_kernel_path, _gaussian_decay, max_distance, normalize=normalize)
+        target_kernel_path,
+        expression=f"(1/(2*pi*{sigma}**2))*exp((-dist**2)/(2*{sigma}**2))",
+        max_distance=(sigma * n_std_dev),
+        normalize=normalize)
 
 
 def create_kernel(
