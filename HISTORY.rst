@@ -3,11 +3,56 @@ Release History
 
 Unreleased Changes
 ------------------
+* The function ``pygeoprocessing.reproject_vector`` now accepts an optional
+  parameter ``layer_name`` to allow the target vector layer name to be defined
+  by the user.  If the user does not provide a ``layer_name``, the layer name
+  will be copied from the source vector.
+  https://github.com/natcap/pygeoprocessing/issues/301
+* Implement the proposed new function ``pygeoprocessing.raster_reduce``, a
+  wrapper around ``pygeoprocessing.iterblocks``
+   (https://github.com/natcap/pygeoprocessing/issues/285)
+* Nodata value checking in ``pygeoprocessing.routing`` now correctly handles
+  comparison of ``nan`` values.  This is explicitly tested in
+  ``pygeoprocessing.routing.fill_pits``, but should also improve the
+  experience of other routing functions as well.
+  https://github.com/natcap/pygeoprocessing/issues/248
+* Added a function to build overviews for a raster,
+  ``pygeoprocessing.build_overviews``. Related to this,
+  ``pygeoprocessing.get_raster_info()`` now includes an ``'overviews'`` key
+  listing the pixel dimensions of each overview layer in a raster.
+  https://github.com/natcap/pygeoprocessing/issues/280
+* Added a D8 stream extraction function at
+  ``pygeoprocessing.routing.extract_streams_d8`` which takes a D8 flow
+  accumulation raster and a flow accumulation threshold, setting all pixels
+  with accumulation above that threshold to 1 and all other valid pixels to 0.
+  https://github.com/natcap/pygeoprocessing/issues/272
+* Adding a new function, ``pygeoprocessing.create_raster_from_bounding_box``,
+  that enables the creation of a new raster from a bounding box.
+  https://github.com/natcap/pygeoprocessing/issues/276
+* Win32 wheels of PyGeoprocessing are no longer created through our GitHub
+  Actions workflows and will no longer be produced or distributed as part of
+  our release checklist.  For details (and metrics!) see:
+  https://github.com/natcap/pygeoprocessing/issues/232
+
+2.3.5 (2022-12-13)
+------------------
+* ``pygeoprocessing.calculate_disjoint_polygon_set`` now offers an optional
+  parameter, ``geometries_may_touch`` for cases where geometries are known to
+  have intersecting boundaries but nonintersecting interiors.
+  https://github.com/natcap/pygeoprocessing/issues/269
+* Pygeoprocessing is now tested against Python 3.11.
+* Adding the target filename to progress logging in
+  ``pygeoprocessing.raster_calculator``.
 * ``pygeoprocessing.zonal_statistics`` will now optionally include a count of
   the number of pixels per value encountered under each polygon. A warning
   will be logged when invoked on floating-point rasters, as using this on
   continuous rasters can result in excessive memory consumption. To use this
   feature, set ``include_value_counts=True`` when calling ``zonal_statistics``.
+* ``pygeoprocessing.get_gis_type`` will now raise a ``ValueError`` if the file
+  cannot be opened as ``gdal.OF_RASTER`` or ``gdal.OF_VECTOR``.
+  https://github.com/natcap/pygeoprocessing/issues/244
+* Fixing an error message in ``convolve_2d`` when the signal or kernel is a
+  row based blocksize. https://github.com/natcap/pygeoprocessing/issues/228.
 
 2.3.4 (2022-08-22)
 ------------------
