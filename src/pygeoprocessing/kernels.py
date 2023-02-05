@@ -17,12 +17,6 @@ LOGGER = logging.getLogger(__name__)
 # TODO: what happens if kernels are not centered on the target pixel?
 # TODO: use type hints for these modules and note it in the changelog.
 
-# ok, so the questions needed when we have a kernel is:
-#   * how big should the kernel be (pixel radius)
-#   * what function should be used to determine pixel values (function of
-#     distance from centerpoint)
-#   * should the kernel be normalized.
-
 
 def kernel_from_numpy_array(numpy_array, target_kernel_path):
     """Create a convolution kernel from a numpy array.
@@ -32,7 +26,8 @@ def kernel_from_numpy_array(numpy_array, target_kernel_path):
         projection_wkt=None, target_path=target_kernel_path)
 
 
-def dichotomous_kernel(target_kernel_path, max_distance, **kwargs):
+def dichotomous_kernel(target_kernel_path, max_distance, pixel_radius=None,
+                       normalize=True):
     """Create a binary kernel indicating presence/absence within a distance.
 
     Given a centerpoint pixel C and an arbitrary pixel P in the target kernel,
@@ -51,40 +46,61 @@ def dichotomous_kernel(target_kernel_path, max_distance, **kwargs):
         ``None``
     """
     create_kernel(
-        target_kernel_path, "dist <= max_dist", max_distance,
-        **kwargs)
+        target_kernel_path=target_kernel_path,
+        function="dist <= max_dist",
+        max_distance=max_distance,
+        pixel_radius=pixel_radius,
+        normalize=normalize
+    )
 
 
 # UNA calls this a density kernel
 # really, this is quite specific to UNA
-def parabolic_decay_kernel(target_kernel_path, max_distance, **kwargs):
+def parabolic_decay_kernel(target_kernel_path, max_distance, pixel_radius=None,
+                           normalize=True):
     """Create an inverted parabola that reaches 0 at ``max_distance``
     """
     create_kernel(
-        target_kernel_path, "0.75 * (1-(dist / max_dist) ** 2)",
-        max_distance, **kwargs)
+        target_kernel_path=target_kernel_path,
+        function="0.75 * (1-(dist / max_dist) ** 2)",
+        max_distance=max_distance,
+        pixel_radius=pixel_radius,
+        normalize=normalize
+    )
 
 
-def exponential_decay_kernel(target_kernel_path, expected_distance,
-                             max_distance, **kwargs):
+def exponential_decay_kernel(target_kernel_path, max_distance,
+                             expected_distance, pixel_radius=None,
+                             normalize=True):
     create_kernel(
-        target_kernel_path, f"exp(-dist / {expected_distance})",
-        max_distance, **kwargs)
+        target_kernel_path=target_kernel_path,
+        function=f"exp(-dist / {expected_distance})",
+        max_distance=max_distance,
+        pixel_radius=pixel_radius,
+        normalize=normalize
+    )
 
 
-def linear_decay_kernel(target_kernel_path, max_distance, **kwargs):
+def linear_decay_kernel(target_kernel_path, max_distance, pixel_radius=None,
+                        normalize=True):
     create_kernel(
-        target_kernel_path, "(max_dist - dist) / max_dist",
-        max_distance, **kwargs)
+        target_kernel_path=target_kernel_path,
+        function="(max_dist - dist) / max_dist",
+        max_distance=max_distance,
+        pixel_radius=pixel_radius,
+        normalize=normalize
+    )
 
 
-def normal_distribution_kernel(target_kernel_path, sigma, n_std_dev=3,
-                               **kwargs):
+def normal_distribution_kernel(target_kernel_path, sigma,
+                               n_std_dev=3, pixel_radius=None, normalize=True):
     create_kernel(
-        target_kernel_path,
+        target_kernel_path=target_kernel_path,
         function=f"(1/(2*pi*{sigma}**2))*exp((-dist**2)/(2*{sigma}**2))",
         max_distance=(sigma * n_std_dev),
-        **kwargs)
+        pixel_radius=pixel_radius,
+        normalize=normalize
+    )
 
 
 def create_kernel(
