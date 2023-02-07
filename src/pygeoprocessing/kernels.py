@@ -119,11 +119,35 @@ def linear_decay_kernel(target_kernel_path, max_distance, pixel_radius=None,
     )
 
 
-def normal_distribution_kernel(target_kernel_path, sigma,
-                               n_std_dev=3, pixel_radius=None, normalize=True):
+def normal_distribution_kernel(
+        target_kernel_path: Text,
+        sigma: Union[int, float],
+        n_std_dev: Union[int, float] = 3,
+        pixel_radius: Union[int, float] = None,
+        normalize: bool = True):
+    """Create an decay kernel following a normal distribution.
+
+    Args:
+        target_kernel_path: The path to where the kernel will be written.
+            Must have a file extension of ``.tif``.
+        sigma: The width (in pixels) of a standard deviation.
+        n_std_dev: The number of standard deviations to include in the kernel.
+            The kernel will have values of 0 when at a distance of
+            ``(sigma * n_std_dev)`` away from the centerpoint.
+        pixel_radius: The radius of the target kernel, in pixels.  If ``None``,
+            then ``math.ceil(sigma * n_std_dev)`` will be used.
+        normalize: Whether to normalize the kernel.
+
+    Returns:
+        ``None``
+    """
+    def _normal_decay(dist):
+        return (1 / (2 * numpy.pi * sigma ** 2)) * numpy.exp(
+            (-dist ** 2) / (2 * sigma ** 2))
+
     create_kernel(
         target_kernel_path=target_kernel_path,
-        function=f"(1/(2*pi*{sigma}**2))*exp((-dist**2)/(2*{sigma}**2))",
+        function=_normal_decay,
         max_distance=(sigma * n_std_dev),
         pixel_radius=pixel_radius,
         normalize=normalize
