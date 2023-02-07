@@ -1,6 +1,7 @@
 import logging
 import math
 from typing import Callable
+from typing import Text
 from typing import Union
 
 import numpy
@@ -69,12 +70,38 @@ def parabolic_decay_kernel(target_kernel_path, max_distance, pixel_radius=None,
     )
 
 
-def exponential_decay_kernel(target_kernel_path, max_distance,
-                             expected_distance, pixel_radius=None,
-                             normalize=True):
+def exponential_decay_kernel(
+        target_kernel_path: Text,
+        max_distance: Union[int, float],
+        expected_distance: Union[int, float],
+        pixel_radius: Union[int, float] = None,
+        normalize: bool = True) -> None:
+    """Create an exponential decay kernel.
+
+    This kernel will reach 1/e at ``expected_distance``, but will continue to
+    have nonzero values out to ``max_distance``.
+
+    Args:
+        target_kernel_path: The path to where the kernel will be written.
+            Must have a file extension of ``.tif``.
+        max_distance: The maximum distance of the kernel, in pixels. Kernel
+            pixels that are greater than ``max_distance`` from the centerpoint
+            of the kernel will have values of ``0.0``.
+        expected_distance: The distance, in pixels, from the centerpoint at
+            which decayed values will equal ``1/e``.
+        pixel_radius: The radius of the target kernel, in pixels.  If ``None``,
+            then ``math.ceil(max_distance)`` will be used.
+        normalize: Whether to normalize the kernel.
+
+    Returns:
+        ``None``
+    """
+    def _exponential_decay(dist):
+        return numpy.exp(-dist / expected_distance)
+
     create_kernel(
         target_kernel_path=target_kernel_path,
-        function=f"exp(-dist / {expected_distance})",
+        function=_exponential_decay,
         max_distance=max_distance,
         pixel_radius=pixel_radius,
         normalize=normalize
