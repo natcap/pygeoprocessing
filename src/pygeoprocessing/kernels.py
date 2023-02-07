@@ -43,8 +43,11 @@ def kernel_from_numpy_array(
         projection_wkt=None, target_path=target_kernel_path)
 
 
-def dichotomous_kernel(target_kernel_path, max_distance, pixel_radius=None,
-                       normalize=True):
+def dichotomous_kernel(
+        target_kernel_path: Text,
+        max_distance: Union[int, float],
+        pixel_radius: Union[int, float] = None,
+        normalize: bool = True) -> None:
     """Create a binary kernel indicating presence/absence within a distance.
 
     Given a centerpoint pixel C and an arbitrary pixel P in the target kernel,
@@ -52,19 +55,24 @@ def dichotomous_kernel(target_kernel_path, max_distance, pixel_radius=None,
     will be 0.  The value of P will be 1 otherwise.
 
     Args:
-        target_kernel_path (string): Where the target kernel file should be
-            stored.
-        max_distance (float): The maximum distance within which pixels should
-            indicate presence (1) in the output kernel.  Pixels that are more
-            than this distance (in units of pixels) from the center pixel will
-            indicate absence (0) in the output kernel.
+        target_kernel_path: The path to where the kernel will be written.
+            Must have a file extension of ``.tif``.
+        max_distance: The maximum distance of the kernel, in pixels. Kernel
+            pixels that are greater than ``max_distance`` from the centerpoint
+            of the kernel will have values of ``0.0``.
+        pixel_radius: The radius of the target kernel, in pixels.  If ``None``,
+            then ``math.ceil(max_distance)`` will be used.
+        normalize: Whether to normalize the kernel.
 
     Returns:
         ``None``
     """
+    def _dichotomous(dist):
+        return dist <= max_distance
+
     create_kernel(
         target_kernel_path=target_kernel_path,
-        function="dist <= max_dist",
+        function=_dichotomous,
         max_distance=max_distance,
         pixel_radius=pixel_radius,
         normalize=normalize
