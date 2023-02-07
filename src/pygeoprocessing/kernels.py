@@ -6,6 +6,7 @@ from typing import Union
 
 import numpy
 import pygeoprocessing
+from numpy.typing import ArrayLike
 from osgeo import gdal
 
 FLOAT32_NODATA = float(numpy.finfo(numpy.float32).min)
@@ -19,9 +20,24 @@ LOGGER = logging.getLogger(__name__)
 # TODO: use type hints for these modules and note it in the changelog.
 
 
-def kernel_from_numpy_array(numpy_array, target_kernel_path):
+def kernel_from_numpy_array(
+        numpy_array: ArrayLike, target_kernel_path: Text) -> None:
     """Create a convolution kernel from a numpy array.
+
+    Args:
+        numpy_array: A 2-dimensional numpy array to convert into a raster.
+        target_kernel_path: The path to where the kernel should be written.
+
+    Returns:
+        ``None``
     """
+    n_dimensions = numpy.array(numpy_array).ndim
+    if n_dimensions != 2:
+        raise ValueError(
+            "The kernel array must have exactly 2 dimensions, not "
+            f"{n_dimensions}")
+
+    # The kernel is technically a TIFF, not a GeoTiff.
     pygeoprocessing.numpy_array_to_raster(
         numpy_array, target_nodata=None, pixel_size=None, origin=None,
         projection_wkt=None, target_path=target_kernel_path)
