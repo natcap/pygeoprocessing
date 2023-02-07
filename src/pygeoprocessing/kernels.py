@@ -55,15 +55,34 @@ def dichotomous_kernel(target_kernel_path, max_distance, pixel_radius=None,
     )
 
 
-# UNA calls this a density kernel
-# really, this is quite specific to UNA
-def parabolic_decay_kernel(target_kernel_path, max_distance, pixel_radius=None,
-                           normalize=True):
-    """Create an inverted parabola that reaches 0 at ``max_distance``
+def parabolic_decay_kernel(
+        target_kernel_path: Text,
+        max_distance: Union[int, float],
+        pixel_radius: Union[int, float] = None,
+        normalize: bool = True) -> None:
+    """Create a kernel matching an inverted parabola.
+
+    This parabola reaches 0 at ``max_distance``.
+
+    Args:
+        target_kernel_path: The path to where the kernel will be written.
+            Must have a file extension of ``.tif``.
+        max_distance: The maximum distance of the kernel, in pixels. Kernel
+            pixels that are greater than ``max_distance`` from the centerpoint
+            of the kernel will have values of ``0.0``.
+        pixel_radius: The radius of the target kernel, in pixels.  If ``None``,
+            then ``math.ceil(max_distance)`` will be used.
+        normalize: Whether to normalize the kernel.
+
+    Returns:
+        ``None``
     """
+    def _parabolic_decay(dist):
+        return 0.75 * (1 - dist / max_distance) ** 2
+
     create_kernel(
         target_kernel_path=target_kernel_path,
-        function="0.75 * (1-(dist / max_dist) ** 2)",
+        function=_parabolic_decay,
         max_distance=max_distance,
         pixel_radius=pixel_radius,
         normalize=normalize
@@ -128,7 +147,6 @@ def linear_decay_kernel(
     Returns:
         ``None``
     """
-
     def _linear_decay(dist):
         return (max_distance - dist) / max_distance
 
