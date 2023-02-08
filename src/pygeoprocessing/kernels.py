@@ -12,13 +12,6 @@ from osgeo import gdal
 FLOAT32_NODATA = float(numpy.finfo(numpy.float32).min)
 LOGGER = logging.getLogger(__name__)
 
-# note that convolve_2d requires that all pixels are valid
-#    pixels may not be nodata.
-# TODO: are kernels required to be square?
-#     From what I can tell, no, they just need to have same num. dimensions.
-# TODO: what happens if kernels are not centered on the target pixel?
-# TODO: use type hints for these modules and note it in the changelog.
-
 
 def kernel_from_numpy_array(
         numpy_array: ArrayLike, target_kernel_path: Text) -> None:
@@ -198,7 +191,7 @@ def create_kernel(
             be written on disk.  If this file does not have the suffix
             ``.tif``, it will be added to the filepath.
         function (callable): A python callable that takes as input a
-            2D numpy array and returns a 2D numpy array.  The input array will
+            1D numpy array and returns a 1D numpy array.  The input array will
             contain float32 distances to the centerpoint pixel of the kernel.
         max_distance (float): The maximum distance of kernel values from
             the center point.  Values outside of this distance will be set to

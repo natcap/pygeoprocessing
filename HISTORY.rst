@@ -3,6 +3,15 @@ Release History
 
 Unreleased Changes
 ------------------
+* A new submodule, ``pygeoprocessing.kernels`` has been added to facilitate the
+  creation of kernel rasters needed for calls to
+  ``pygeoprocessing.convolve_2d``. Functions for creating common decay kernels
+  have been added, along with functions to facilitate the creation of
+  distance-based kernels using a user-defined function
+  (``pygeoprocessing.create_kernel``) and to facilitate the creation of kernels
+  using custom 2D numpy arrays, such as those commonly used in image processing
+  (``pygeoprocessing.kernel_from_numpy_array``).
+  https://github.com/natcap/pygeoprocessing/issues/268
 * The function ``pygeoprocessing.reproject_vector`` now accepts an optional
   parameter ``layer_name`` to allow the target vector layer name to be defined
   by the user.  If the user does not provide a ``layer_name``, the layer name
