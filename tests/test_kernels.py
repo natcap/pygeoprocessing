@@ -108,3 +108,24 @@ class KernelTests(unittest.TestCase):
             numpy.testing.assert_allclose(kernel_array.sum(), expected_sum)
             self.assertEqual(numpy.count_nonzero(kernel_array),
                              n_nonzero_pixels)
+
+    def test_normal_distribution(self):
+        """Kernels: test normal distribution."""
+        import pygeoprocessing.kernels
+
+        sigma = 3
+        n_std_dev = 10
+        n_nonzero_pixels = 2821
+        for normalize, expected_sum in [(True, 1), (False, 0.98877025)]:
+            pygeoprocessing.kernels.normal_distribution_kernel(
+                self.filepath, sigma=10, n_std_dev=3,
+                normalize=normalize)
+
+            kernel_array = pygeoprocessing.raster_to_numpy_array(
+                self.filepath)
+
+            max_dist = sigma * n_std_dev
+            self.assertEqual(kernel_array.shape, (max_dist*2+1, max_dist*2+1))
+            numpy.testing.assert_allclose(kernel_array.sum(), expected_sum)
+            self.assertEqual(numpy.count_nonzero(kernel_array),
+                             n_nonzero_pixels)
