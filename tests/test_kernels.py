@@ -129,3 +129,31 @@ class KernelTests(unittest.TestCase):
             numpy.testing.assert_allclose(kernel_array.sum(), expected_sum)
             self.assertEqual(numpy.count_nonzero(kernel_array),
                              n_nonzero_pixels)
+
+    def test_create_kernel_callable(self):
+        """Kernels: test kernel creation from function."""
+        import pygeoprocessing.kernels
+
+        # should create a sort of bullseye effect.
+        # pixel outside max_distance are 0.
+        # The kernel's rings alternate between -1 and 1.
+        def _my_weird_kernel(dist):
+            return ((numpy.floor(dist) % 2) * 2) - 1
+
+        # do the same thing, but as a string
+        my_string_kernel = "((floor(dist) % 2) * 2) - 1"
+
+        for function in (_my_weird_kernel, my_string_kernel):
+            pygeoprocessing.kernels.create_kernel(
+                self.filepath, _my_weird_kernel, max_distance=30,
+                pixel_radius=40, normalize=False)
+
+            array = pygeoprocessing.raster_to_numpy_array(self.filepath)
+            self.assertEqual(array.shape, (81, 81))
+            self.assertEqual(set(numpy.unique(array)), {-1, 0, 1})
+
+            # confirm the 10-pixel boundaries are all 0
+            numpy.testing.assert_allclose(numpy.unique(array[:10][:]), 0)
+            numpy.testing.assert_allclose(numpy.unique(array[71:][:]), 0)
+            numpy.testing.assert_allclose(numpy.unique(array[:][:10]), 0)
+            numpy.testing.assert_allclose(numpy.unique(array[:][71:]), 0)
