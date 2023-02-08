@@ -89,3 +89,22 @@ class KernelTests(unittest.TestCase):
             numpy.testing.assert_allclose(kernel_array.sum(), expected_sum)
             self.assertEqual(numpy.count_nonzero(kernel_array),
                              n_nonzero_pixels)
+
+    def test_linear_decay(self):
+        """Kernels: test linear decay."""
+        import pygeoprocessing.kernels
+
+        max_dist = 30
+        n_nonzero_pixels = 2809
+        for normalize, expected_sum in [(True, 1), (False, 942.44055)]:
+            pygeoprocessing.kernels.linear_decay_kernel(
+                self.filepath, max_distance=max_dist,
+                normalize=normalize)
+
+            kernel_array = pygeoprocessing.raster_to_numpy_array(
+                self.filepath)
+
+            self.assertEqual(kernel_array.shape, (max_dist*2+1, max_dist*2+1))
+            numpy.testing.assert_allclose(kernel_array.sum(), expected_sum)
+            self.assertEqual(numpy.count_nonzero(kernel_array),
+                             n_nonzero_pixels)
