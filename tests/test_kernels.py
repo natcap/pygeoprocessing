@@ -69,3 +69,23 @@ class KernelTests(unittest.TestCase):
             numpy.testing.assert_allclose(kernel_array.sum(), expected_sum)
             self.assertEqual(numpy.count_nonzero(kernel_array),
                              n_nonzero_pixels)
+
+    def test_exponential_decay(self):
+        """Kernels: test exponential decay."""
+        import pygeoprocessing.kernels
+
+        max_dist = 30
+        expected_distance = 15
+        n_nonzero_pixels = 2821
+        for normalize, expected_sum in [(True, 1), (False, 838.87195)]:
+            pygeoprocessing.kernels.exponential_decay_kernel(
+                self.filepath, max_distance=max_dist,
+                expected_distance=expected_distance, normalize=normalize)
+
+            kernel_array = pygeoprocessing.raster_to_numpy_array(
+                self.filepath)
+
+            self.assertEqual(kernel_array.shape, (max_dist*2+1, max_dist*2+1))
+            numpy.testing.assert_allclose(kernel_array.sum(), expected_sum)
+            self.assertEqual(numpy.count_nonzero(kernel_array),
+                             n_nonzero_pixels)
