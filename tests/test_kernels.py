@@ -53,7 +53,19 @@ class KernelTests(unittest.TestCase):
                       str(cm.exception))
 
     def test_dichotomy(self):
-        from pygeoprocessing import kernels
+        """Kernels: test dichotomous kernel."""
+        import pygeoprocessing.kernels
 
-        kernels.dichotomous_kernel(
-            self.filepath, max_distance=30, normalize=True)
+        max_dist = 30
+        n_nonzero_pixels = 2821
+        for normalize, expected_sum in [(True, 1), (False, n_nonzero_pixels)]:
+            pygeoprocessing.kernels.dichotomous_kernel(
+                self.filepath, max_distance=max_dist, normalize=normalize)
+
+            kernel_array = pygeoprocessing.raster_to_numpy_array(
+                self.filepath)
+
+            self.assertEqual(kernel_array.shape, (max_dist*2+1, max_dist*2+1))
+            numpy.testing.assert_allclose(kernel_array.sum(), expected_sum)
+            self.assertEqual(numpy.count_nonzero(kernel_array),
+                             n_nonzero_pixels)
