@@ -1506,14 +1506,6 @@ class TestGeoprocessing(unittest.TestCase):
 
         numpy.testing.assert_array_equal(result_array, expected_result)
 
-    def test_invoke_timed_callback(self):
-        """PGP.geoprocessing: cover a timed callback."""
-        reference_time = time.time()
-        time.sleep(0.1)
-        new_time = pygeoprocessing.geoprocessing._invoke_timed_callback(
-            reference_time, lambda: None, 0.05)
-        self.assertNotEqual(reference_time, new_time)
-
     def test_timed_logging_adapter(self):
         """PGP.geoprocessing: check timed logging."""
         from pygeoprocessing.geoprocessing import TimedLoggingAdapter
