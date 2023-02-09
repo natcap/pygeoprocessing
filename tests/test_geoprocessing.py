@@ -7,6 +7,7 @@ import os
 import pathlib
 import queue
 import shutil
+import sys
 import tempfile
 import time
 import types
@@ -1532,9 +1533,15 @@ class TestGeoprocessing(unittest.TestCase):
             self.assertEqual(record.msg, expected_message)
 
             # check that the function name logged is the name of this test
-            # (which is the calling function)
-            self.assertEqual(
-                record.funcName, self.test_timed_logging_adapter.__name__)
+            # (which is the calling function).  This is only possible on python
+            # 3.8 or later.
+            if sys.version_info >= (3, 8):
+                self.assertEqual(
+                    record.funcName, self.test_timed_logging_adapter.__name__)
+
+        # The rest of this test only applies to python 3.8+
+        if sys.version_info < (3, 8):
+            return
 
         # Check the custom stack frame adjustment
         with capture_logging(pygeoprocessing_logger) as captured_logging:

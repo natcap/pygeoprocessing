@@ -2,6 +2,7 @@
 """A collection of raster and vector algorithms and utilities."""
 import collections
 import functools
+import inspect
 import logging
 import math
 import os
@@ -130,11 +131,21 @@ class TimedLoggingAdapter(logging.LoggerAdapter):
         Returns:
             ``None``.
         """
-        # Don't override the user's defined stacklevel if present
-        # Otherwise, it's safe to assume that the target funcname is 3 stack
-        # frames above this one.
-        if 'stacklevel' not in kwargs:
-            kwargs['stacklevel'] = 3
+        # The stacklevel arg to logging was introduced to logging in python
+        # 3.8 and there isn't a clear way to spoof this in python 3.7, so
+        # ignore.
+        if sys.version_info >= (3, 8):
+            # Don't override user-defined stacklevel if present.
+            if 'stacklevel' not in kwargs:
+                # Based on logging internals, 3 is the expected stack depth.
+                kwargs['stacklevel'] = 3
+
+            # Python 3.11 modified the stacklevel argument to be more
+            # consistent with the behavior in the warnings module.
+            # https://github.com/python/cpython/issues/89334
+            if sys.version_info >= (3, 11):
+                kwargs['stacklevel'] -= 1
+
         now = time.time()
         if now >= self.last_time + self.interval:
             self.last_time = now
