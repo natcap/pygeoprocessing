@@ -496,7 +496,7 @@ def raster_calculator(
                     '%s %.1f%% complete',
                     os.path.basename(target_raster_path),
                     float(pixels_processed) / n_pixels * 100.0,
-                    stack_level=3
+                    stacklevel=3
                 ),
                 _LOGGING_PERIOD)
 
@@ -650,7 +650,7 @@ def raster_reduce(function, raster_path_band, initializer, mask_nodata=True,
             last_time, lambda: LOGGER.info(
                 f'{raster_path_band[0]} reduce '
                 f'{pixels_processed / n_pixels * 100:.1f}%% complete',
-                stack_level=3
+                stacklevel=3
             ),
             _LOGGING_PERIOD)
 
@@ -1082,7 +1082,7 @@ def new_raster_from_base(
                         f'filling new raster {target_path} with {fill_value} '
                         f'-- {float(pixels_processed)/n_pixels*100.0:.2f}% '
                         f'complete',
-                        stack_level=3),
+                        stacklevel=3),
                     _LOGGING_PERIOD)
             target_band = None
     target_band = None
@@ -1511,7 +1511,7 @@ def zonal_statistics(
                 "zonal stats approximately %.1f%% complete on %s",
                 100.0 * float(set_index+1) / len(disjoint_fid_sets),
                 os.path.basename(aggregate_vector_path),
-                stack_level=3),
+                stacklevel=3),
             _LOGGING_PERIOD)
         disjoint_layer = disjoint_vector.CreateLayer(
             'disjoint_vector', spat_ref, ogr.wkbPolygon)
@@ -1527,7 +1527,7 @@ def zonal_statistics(
                     "on %s", set_index+1, len(disjoint_fid_sets),
                     100.0 * float(index+1) / len(disjoint_fid_set),
                     os.path.basename(aggregate_vector_path),
-                    stack_level=3),
+                    stacklevel=3),
                 _LOGGING_PERIOD)
             agg_feat = aggregate_layer.GetFeature(feature_fid)
             agg_geom_ref = agg_feat.GetGeometryRef()
@@ -2003,7 +2003,7 @@ def reproject_vector(
                 "reprojection approximately %.1f%% complete on %s",
                 100.0 * float(feature_index+1) / (layer.GetFeatureCount()),
                 os.path.basename(target_path),
-                stack_level=3),
+                stacklevel=3),
             _LOGGING_PERIOD)
 
         geom = base_feature.GetGeometryRef()
@@ -2568,7 +2568,7 @@ def calculate_disjoint_polygon_set(
                 "poly intersection lookup approximately %.1f%% complete "
                 "on %s", 100.0 * float(poly_index+1) / len(
                     shapely_polygon_lookup), os.path.basename(vector_path),
-                stack_level=3),
+                stacklevel=3),
             _LOGGING_PERIOD)
         possible_intersection_set = list(poly_rtree_index.intersection(
             poly_geom.bounds))
@@ -2611,7 +2611,7 @@ def calculate_disjoint_polygon_set(
                     "on %s", 100.0 * float(
                         feature_count - len(poly_intersect_lookup)) /
                     feature_count, os.path.basename(vector_path),
-                    stack_level=3),
+                    stacklevel=3),
                 _LOGGING_PERIOD)
             if not poly_intersect_set.intersection(maximal_set):
                 # no intersection, add poly_fid to the maximal set and remove
