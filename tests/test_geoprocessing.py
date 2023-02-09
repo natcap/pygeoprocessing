@@ -1514,6 +1514,36 @@ class TestGeoprocessing(unittest.TestCase):
             reference_time, lambda: None, 0.05)
         self.assertNotEqual(reference_time, new_time)
 
+    def test_timed_logging_adapter(self):
+        """PGP.geoprocessing: check timed logging."""
+        from pygeoprocessing.geoprocessing import TimedLoggingAdapter
+
+        pygeoprocessing_logger = logging.getLogger('pygeoprocessing')
+        with capture_logging(pygeoprocessing_logger) as captured_logging:
+            timed_logger = TimedLoggingAdapter(interval_s=0.1)
+            time.sleep(0.1)
+            timed_logger.warning('message 1')  # Logged
+            timed_logger.warning('message 2')  # Skipped
+            pygeoprocessing_logger.warning('normal 1')  # logged
+            time.sleep(0.1)
+            timed_logger.warning('message 3')  # logged
+            pygeoprocessing_logger.warning('normal 2')  # logged
+            timed_logger.warning('message 4')  # skipped
+            pygeoprocessing_logger.warning('normal 3')  # logged
+
+        self.assertEqual(len(captured_logging), 5)
+        expected_messages = [
+            'message 1', 'normal 1', 'message 3', 'normal 2', 'normal 3']
+        for record, expected_message in zip(captured_logging,
+                                            expected_messages):
+            # Check the message string
+            self.assertEqual(record.msg, expected_message)
+
+            # check that the function name logged is the name of this test
+            # (which is the calling function)
+            self.assertEqual(
+                record.funcName, self.test_timed_logging_adapter.__name__)
+
     def test_warp_raster(self):
         """PGP.geoprocessing: warp raster test."""
         pixel_a_matrix = numpy.ones((5, 5), numpy.int16)

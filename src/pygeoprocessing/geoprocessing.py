@@ -99,6 +99,48 @@ LOGGER.debug(
     f'Detected warp algorithms: {", ".join(_GDAL_WARP_ALGOS_FOR_HUMAN_EYES)}')
 
 
+class TimedLoggingAdapter(logging.LoggerAdapter):
+    """A logging adapter to restrict logging based on a timer.
+
+    This object is helpful for creating consistency in logging callbacks and is
+    derived from the python stdlib ``logging.LoggerAdapter``.
+    """
+    def __init__(self, interval_s=_LOGGING_PERIOD):
+        """Initialize the timed logging adapter.
+
+        Args:
+            interval_s (float): The logging interval, in seconds.  Defaults to
+                ``_LOGGING_PERIOD``.
+        """
+        logging.LoggerAdapter.__init__(self, LOGGER, extra=None)
+        self.interval = interval_s
+        self.last_time = time.time()
+
+    def log(self, level, msg, *args, **kwargs):
+        """Log a ``LogRecord``.
+
+        Args:
+            level (int): The logging level.
+            msg (str): The log message.
+            args (list): The user-defined positional arguments for the log
+                message.
+            kwargs (dict): The user-defined keyword arguments for the log
+                message.
+
+        Returns:
+            ``None``.
+        """
+        # Don't override the user's defined stacklevel if present
+        # Otherwise, it's safe to assume that the target funcname is 3 stack
+        # frames above this one.
+        if 'stacklevel' not in kwargs:
+            kwargs['stacklevel'] = 3
+        now = time.time()
+        if now >= self.last_time + self.interval:
+            self.last_time = now
+            self.logger.log(level, msg, *args, **kwargs)
+
+
 def raster_calculator(
         base_raster_path_band_const_list, local_op, target_raster_path,
         datatype_target, nodata_target,
