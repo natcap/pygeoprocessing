@@ -1541,7 +1541,7 @@ class TestGeoprocessing(unittest.TestCase):
             timed_logger = TimedLoggingAdapter(interval_s=0.1)
 
             def _sub_stackframe():
-                time.sleep(0.5) # make sure we pass the interval threshold
+                time.sleep(0.5)  # make sure we pass the interval threshold
                 # The 4 is 1 more than the default, so the message SHOULD
                 # report that the test called it.
                 timed_logger.critical('DANGER', stacklevel=4)
