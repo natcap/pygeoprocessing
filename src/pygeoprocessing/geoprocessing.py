@@ -741,7 +741,7 @@ def align_and_resize_raster_stack(
             ``geoprocessing.DEFAULT_OSR_AXIS_MAPPING_STRATEGY``. This parameter
             should not be changed unless you know what you are doing.
 
-    Return:
+    Returns:
         None
 
     Raises:
@@ -765,7 +765,6 @@ def align_and_resize_raster_stack(
             file.
         ValueError
             If ``pixel_size`` is not a 2 element sequence of numbers.
-
     """
     # make sure that the input lists are of the same length
     list_lengths = [
@@ -2854,7 +2853,7 @@ def convolve_2d(
             tuple/list as the second. Defaults to a GTiff driver tuple
             defined at geoprocessing.DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS.
 
-    Return:
+    Returns:
         ``None``
 
     Raises:
@@ -2865,7 +2864,6 @@ def convolve_2d(
             if ``signal_path_band`` or ``kernel_path_band`` is a row based
             blocksize which would result in slow runtimes due to gdal
             cache thrashing.
-
     """
     if target_datatype is not gdal.GDT_Float64 and target_nodata is None:
         raise ValueError(
