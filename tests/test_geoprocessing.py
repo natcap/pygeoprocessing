@@ -1536,6 +1536,26 @@ class TestGeoprocessing(unittest.TestCase):
             self.assertEqual(
                 record.funcName, self.test_timed_logging_adapter.__name__)
 
+        # Check the custom stack frame adjustment
+        with capture_logging(pygeoprocessing_logger) as captured_logging:
+            timed_logger = TimedLoggingAdapter(interval_s=0.1)
+
+            def _sub_stackframe():
+                time.sleep(0.5) # make sure we pass the interval threshold
+                # The 4 is 1 more than the default, so the message SHOULD
+                # report that the test called it.
+                timed_logger.critical('DANGER', stacklevel=4)
+
+            _sub_stackframe()
+
+        self.assertEqual(len(captured_logging), 1)
+        self.assertEqual(captured_logging[0].msg, 'DANGER')
+
+        # check that the function name logged is the name of this test
+        # (which is the parent of the calling function)
+        self.assertEqual(
+            record.funcName, self.test_timed_logging_adapter.__name__)
+
     def test_warp_raster(self):
         """PGP.geoprocessing: warp raster test."""
         pixel_a_matrix = numpy.ones((5, 5), numpy.int16)
