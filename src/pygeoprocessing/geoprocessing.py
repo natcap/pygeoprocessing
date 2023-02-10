@@ -3936,7 +3936,7 @@ def numpy_array_to_raster(
         new_raster.SetProjection(projection_wkt)
     if origin is not None and pixel_size is not None:
         new_raster.SetGeoTransform(
-            [origin[0], pixel_size[0], 0.0, origin[1], 0.0, pixel_size[1]])
+            [origin[0], pixel_size[0], 0, origin[1], 0, pixel_size[1]])
     elif origin is not None or pixel_size is not None:
         raise ValueError(
             "Origin and pixel size must both be defined or both be None")
