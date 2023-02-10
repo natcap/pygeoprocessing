@@ -65,7 +65,7 @@ def dichotomous_kernel(
 
     create_distance_decay_kernel(
         target_kernel_path=target_kernel_path,
-        function=_dichotomous,
+        distance_decay_function=_dichotomous,
         max_distance=max_distance,
         pixel_radius=pixel_radius,
         normalize=normalize
@@ -103,7 +103,7 @@ def exponential_decay_kernel(
 
     create_distance_decay_kernel(
         target_kernel_path=target_kernel_path,
-        function=_exponential_decay,
+        distance_decay_function=_exponential_decay,
         max_distance=max_distance,
         pixel_radius=pixel_radius,
         normalize=normalize
@@ -135,7 +135,7 @@ def linear_decay_kernel(
 
     create_distance_decay_kernel(
         target_kernel_path=target_kernel_path,
-        function="(max_dist - dist) / max_dist",
+        distance_decay_function="(max_dist - dist) / max_dist",
         max_distance=max_distance,
         pixel_radius=pixel_radius,
         normalize=normalize
@@ -170,7 +170,7 @@ def normal_distribution_kernel(
 
     create_distance_decay_kernel(
         target_kernel_path=target_kernel_path,
-        function=_normal_decay,
+        distance_decay_function=_normal_decay,
         max_distance=(sigma * n_std_dev),
         pixel_radius=pixel_radius,
         normalize=normalize
@@ -179,7 +179,7 @@ def normal_distribution_kernel(
 
 def create_distance_decay_kernel(
         target_kernel_path: str,
-        function: Union[str, Callable],
+        distance_decay_function: Union[str, Callable],
         max_distance: Union[int, float],
         pixel_radius=None,
         normalize=True):
@@ -190,7 +190,7 @@ def create_distance_decay_kernel(
         target_kernel_path (string): The path to where the target kernel should
             be written on disk.  If this file does not have the suffix
             ``.tif``, it will be added to the filepath.
-        function (callable): A python callable that takes as input a
+        distance_decay_function (callable): A python callable that takes as input a
             1D numpy array and returns a 1D numpy array.  The input array will
             contain float32 distances to the centerpoint pixel of the kernel.
         max_distance (float): The maximum distance of kernel values from
@@ -234,12 +234,12 @@ def create_distance_decay_kernel(
 
     # If the user provided a string rather than a callable, assume it's a
     # python expression appropriate for evaling.
-    if isinstance(function, str):
+    if isinstance(distance_decay_function, str):
         # Avoid recompiling on each iteration.
-        code = compile(function, '<string>', 'eval')
+        code = compile(distance_decay_function, '<string>', 'eval')
         numpy_namespace = {name: getattr(numpy, name) for name in dir(numpy)}
 
-        def function(d):
+        def distance_decay_function(d):
             result = eval(
                 code,
                 numpy_namespace,  # globals
@@ -266,7 +266,8 @@ def create_distance_decay_kernel(
 
         kernel = numpy.zeros(pixel_dist_from_center.shape,
                              dtype=numpy.float32)
-        kernel[valid_pixels] = function(pixel_dist_from_center[valid_pixels])
+        kernel[valid_pixels] = distance_decay_function(
+            pixel_dist_from_center[valid_pixels])
 
         if normalize:
             running_sum += kernel.sum()
