@@ -130,7 +130,7 @@ class KernelTests(unittest.TestCase):
             self.assertEqual(numpy.count_nonzero(kernel_array),
                              n_nonzero_pixels)
 
-    def test_create_kernel_callable(self):
+    def test_create_distance_decay_kernel_callable(self):
         """Kernels: test kernel creation from function."""
         import pygeoprocessing.kernels
 
@@ -144,7 +144,7 @@ class KernelTests(unittest.TestCase):
         my_string_kernel = "((floor(dist) % 2) * 2) - 1"
 
         for function in (_my_weird_kernel, my_string_kernel):
-            pygeoprocessing.kernels.create_kernel(
+            pygeoprocessing.kernels.create_distance_decay_kernel(
                 self.filepath, _my_weird_kernel, max_distance=30,
                 pixel_radius=40, normalize=False)
 

@@ -63,7 +63,7 @@ def dichotomous_kernel(
     def _dichotomous(dist):
         return dist <= max_distance
 
-    create_kernel(
+    create_distance_decay_kernel(
         target_kernel_path=target_kernel_path,
         function=_dichotomous,
         max_distance=max_distance,
@@ -101,7 +101,7 @@ def exponential_decay_kernel(
     def _exponential_decay(dist):
         return numpy.exp(-dist / expected_distance)
 
-    create_kernel(
+    create_distance_decay_kernel(
         target_kernel_path=target_kernel_path,
         function=_exponential_decay,
         max_distance=max_distance,
@@ -133,7 +133,7 @@ def linear_decay_kernel(
     def _linear_decay(dist):
         return (max_distance - dist) / max_distance
 
-    create_kernel(
+    create_distance_decay_kernel(
         target_kernel_path=target_kernel_path,
         function="(max_dist - dist) / max_dist",
         max_distance=max_distance,
@@ -168,7 +168,7 @@ def normal_distribution_kernel(
         return (1 / (2 * numpy.pi * sigma ** 2)) * numpy.exp(
             (-dist ** 2) / (2 * sigma ** 2))
 
-    create_kernel(
+    create_distance_decay_kernel(
         target_kernel_path=target_kernel_path,
         function=_normal_decay,
         max_distance=(sigma * n_std_dev),
@@ -177,7 +177,7 @@ def normal_distribution_kernel(
     )
 
 
-def create_kernel(
+def create_distance_decay_kernel(
         target_kernel_path: str,
         function: Union[str, Callable],
         max_distance: Union[int, float],
