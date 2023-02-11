@@ -1,3 +1,35 @@
+"""A library of kernels for use in ``pygeoprocessing.convolve_2d``.
+
+``pygeoprocessing.convolve_2d`` has some stringent requirements for its kernels
+that require a thorough understanding of GDAL and GeoTiffs to be able to use,
+including:
+
+    * Kernels must be GDAL-readable rasters, preferably GeoTiffs
+    * Kernels must not be striped, and, for more efficient disk I/O, should be
+      tiled.
+    * The pixel values of a kernel may not represent nodata (GDAL's internal
+      way of indicating invalid pixel data)
+    * Pixel values must be finite, real numbers.  That is, they may not
+      represent positive or negative infinity or NaN.
+
+The functions in this module represent kernels that we have found to be
+commonly used, including:
+
+    * Dichotomous kernel: :meth:`dichotomous_kernel`
+    * Gaussian (normal) decay kernel: :meth:`normal_distribution_kernel`
+    * Linear decay kernel: :meth:`linear_decay_kernel`
+    * Exponential decay kernel: :meth:`exponential_decay_kernel`
+
+Additionally, the user may define their own kernel using the helper functions
+included here:
+
+    * :meth:`kernel_from_numpy_array`, for kernels where the kernel array is
+      already available as a ``numpy`` array, such as those used in common
+      image processing operations like sharpening and edge detection.
+      https://en.wikipedia.org/wiki/Kernel_(image_processing)
+    * :meth:`create_distance_decay_kernel`, for kernels that are a function of
+      distance from the center pixel
+"""
 import logging
 import math
 from typing import Callable
@@ -200,10 +232,16 @@ def create_distance_decay_kernel(
         target_kernel_path (string): The path to where the target kernel should
             be written on disk.  If this file does not have the suffix
             ``.tif``, it will be added to the filepath.
-        distance_decay_function (callable): A python callable that takes as
+        distance_decay_function (callable or str): A python callable that takes as
             input a single 1D numpy array and returns a 1D numpy array.  The
             input array will contain float32 distances to the centerpoint pixel
-            of the kernel, in units of pixels.
+            of the kernel, in units of pixels. If a ``str``, then it must be a
+            python expression using the local variables:
+
+                * ``dist`` - a 1D numpy array of distances from the
+                  centerpoint.
+                * ``max_dist`` - a float indicating the max distance.
+
         max_distance (float): The maximum distance of kernel values from
             the center point.  Values outside of this distance will be set to
             ``0.0``.

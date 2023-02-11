@@ -2797,7 +2797,9 @@ def convolve_2d(
         kernel_path_band (tuple): a 2 tuple of the form
             (filepath to kernel raster, band index), all pixel values should
             be valid -- output is not well defined if the kernel raster has
-            nodata values.
+            nodata values.  To create a kernel raster, see the documentation
+            and helper functions available in the
+            :doc:`pygeoprocessing kernels module <pygeoprocessing.kernels>`.
         target_path (string): filepath to target raster that's the convolution
             of signal with kernel.  Output will be a single band raster of
             same size and projection as ``signal_path_band``. Any nodata pixels
