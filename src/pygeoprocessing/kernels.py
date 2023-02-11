@@ -39,7 +39,7 @@ def kernel_from_numpy_array(
 def dichotomous_kernel(
         target_kernel_path: Text,
         max_distance: Union[int, float],
-        pixel_radius: Union[int, float] = None,
+        apothem: Union[int, float] = None,
         normalize: bool = True) -> None:
     """Create a binary kernel indicating presence/absence within a distance.
 
@@ -53,7 +53,7 @@ def dichotomous_kernel(
         max_distance: The maximum distance of the kernel, in pixels. Kernel
             pixels that are greater than ``max_distance`` from the centerpoint
             of the kernel will have values of ``0.0``.
-        pixel_radius: The radius of the target kernel, in pixels.  If ``None``,
+        apothem: The apothem of the target kernel, in pixels.  If ``None``,
             then ``math.ceil(max_distance)`` will be used.
         normalize: Whether to normalize the kernel.
 
@@ -67,7 +67,7 @@ def dichotomous_kernel(
         target_kernel_path=target_kernel_path,
         distance_decay_function=_dichotomous,
         max_distance=max_distance,
-        pixel_radius=pixel_radius,
+        apothem=apothem,
         normalize=normalize
     )
 
@@ -76,7 +76,7 @@ def exponential_decay_kernel(
         target_kernel_path: Text,
         max_distance: Union[int, float],
         expected_distance: Union[int, float],
-        pixel_radius: Union[int, float] = None,
+        apothem: Union[int, float] = None,
         normalize: bool = True) -> None:
     """Create an exponential decay kernel.
 
@@ -95,7 +95,7 @@ def exponential_decay_kernel(
             of the kernel will have values of ``0.0``.
         expected_distance: The distance, in pixels, from the centerpoint at
             which decayed values will equal ``1/e``.
-        pixel_radius: The radius of the target kernel, in pixels.  If ``None``,
+        apothem: The apothem of the target kernel, in pixels.  If ``None``,
             then ``math.ceil(max_distance)`` will be used.
         normalize: Whether to normalize the kernel.
 
@@ -109,7 +109,7 @@ def exponential_decay_kernel(
         target_kernel_path=target_kernel_path,
         distance_decay_function=_exponential_decay,
         max_distance=max_distance,
-        pixel_radius=pixel_radius,
+        apothem=apothem,
         normalize=normalize
     )
 
@@ -117,7 +117,7 @@ def exponential_decay_kernel(
 def linear_decay_kernel(
         target_kernel_path: Text,
         max_distance: Union[int, float],
-        pixel_radius: Union[int, float] = None,
+        apothem: Union[int, float] = None,
         normalize: bool = True) -> None:
     """Create a linear decay kernel.
 
@@ -132,7 +132,7 @@ def linear_decay_kernel(
         max_distance: The maximum distance of the kernel, in pixels. Kernel
             pixels that are greater than ``max_distance`` from the centerpoint
             of the kernel will have values of ``0.0``.
-        pixel_radius: The radius of the target kernel, in pixels.  If ``None``,
+        apothem: The apothem of the target kernel, in pixels.  If ``None``,
             then ``math.ceil(max_distance)`` will be used.
         normalize: Whether to normalize the kernel.
 
@@ -146,7 +146,7 @@ def linear_decay_kernel(
         target_kernel_path=target_kernel_path,
         distance_decay_function=_linear_decay,
         max_distance=max_distance,
-        pixel_radius=pixel_radius,
+        apothem=apothem,
         normalize=normalize
     )
 
@@ -191,7 +191,7 @@ def create_distance_decay_kernel(
         target_kernel_path: str,
         distance_decay_function: Union[str, Callable],
         max_distance: Union[int, float],
-        pixel_radius=None,
+        apothem=None,
         normalize=True):
     """
     Create a kernel raster based on pixel distance from the centerpoint.
@@ -207,17 +207,17 @@ def create_distance_decay_kernel(
         max_distance (float): The maximum distance of kernel values from
             the center point.  Values outside of this distance will be set to
             ``0.0``.
-        pixel_radius=None (float): The radius (in pixels) of the target kernel.
-            If ``None``, the radius will be ``math.ceil(max_distance)``.
+        apothem=None (float): The apothem (in pixels) of the target kernel.
+            If ``None``, the apothem will be ``math.ceil(max_distance)``.
         normalize=False (bool): Whether to normalize the resulting kernel.
 
     Returns:
         ``None``
     """
-    if pixel_radius is None:
-        pixel_radius = max_distance
-    pixel_radius = math.ceil(pixel_radius)
-    kernel_size = pixel_radius * 2 + 1  # allow for a center pixel
+    if apothem is None:
+        apothem = max_distance
+    apothem = math.ceil(apothem)
+    kernel_size = apothem * 2 + 1  # allow for a center pixel
     assert kernel_size % 2 == 1
     driver = gdal.GetDriverByName('GTiff')
     kernel_dataset = driver.Create(
@@ -259,14 +259,14 @@ def create_distance_decay_kernel(
 
     for block_data in pygeoprocessing.iterblocks(
             (target_kernel_path, 1), offset_only=True):
-        array_xmin = block_data['xoff'] - pixel_radius
+        array_xmin = block_data['xoff'] - apothem
         array_xmax = min(
             array_xmin + block_data['win_xsize'],
-            band_x_size - pixel_radius)
-        array_ymin = block_data['yoff'] - pixel_radius
+            band_x_size - apothem)
+        array_ymin = block_data['yoff'] - apothem
         array_ymax = min(
             array_ymin + block_data['win_ysize'],
-            band_y_size - pixel_radius)
+            band_y_size - apothem)
 
         pixel_dist_from_center = numpy.hypot(
             *numpy.mgrid[

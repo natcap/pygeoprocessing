@@ -146,7 +146,7 @@ class KernelTests(unittest.TestCase):
         for function in (_my_weird_kernel, my_string_kernel):
             pygeoprocessing.kernels.create_distance_decay_kernel(
                 self.filepath, _my_weird_kernel, max_distance=30,
-                pixel_radius=40, normalize=False)
+                apothem=40, normalize=False)
 
             array = pygeoprocessing.raster_to_numpy_array(self.filepath)
             self.assertEqual(array.shape, (81, 81))
