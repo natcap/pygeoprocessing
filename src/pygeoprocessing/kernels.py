@@ -155,7 +155,6 @@ def normal_distribution_kernel(
         target_kernel_path: Text,
         sigma: Union[int, float],
         n_std_dev: Union[int, float] = 3,
-        pixel_radius: Union[int, float] = None,
         normalize: bool = True):
     """Create an decay kernel following a normal distribution.
 
@@ -171,8 +170,6 @@ def normal_distribution_kernel(
         n_std_dev: The number of standard deviations to include in the kernel.
             The kernel will have values of 0 when at a distance of
             ``(sigma * n_std_dev)`` away from the centerpoint.
-        pixel_radius: The radius of the target kernel, in pixels.  If ``None``,
-            then ``math.ceil(sigma * n_std_dev)`` will be used.
         normalize: Whether to normalize the kernel.
 
     Returns:
@@ -186,7 +183,6 @@ def normal_distribution_kernel(
         target_kernel_path=target_kernel_path,
         distance_decay_function=_normal_decay,
         max_distance=(sigma * n_std_dev),
-        pixel_radius=pixel_radius,
         normalize=normalize
     )
 
