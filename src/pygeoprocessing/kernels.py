@@ -43,9 +43,9 @@ def dichotomous_kernel(
         normalize: bool = True) -> None:
     """Create a binary kernel indicating presence/absence within a distance.
 
-    Given a centerpoint pixel C and an arbitrary pixel P in the target kernel,
-    if the distance between C and P exceeds ``max_distance``, the value of P
-    will be 0.  The value of P will be 1 otherwise.
+    This is equivalent to ``int(dist <= max_distance)`` for each pixel in the
+    kernel, where ``dist`` is the euclidean distance of the pixel's centerpoint
+    to the centerpoint of the center pixel.
 
     Args:
         target_kernel_path: The path to where the kernel will be written.
@@ -80,8 +80,12 @@ def exponential_decay_kernel(
         normalize: bool = True) -> None:
     """Create an exponential decay kernel.
 
-    This kernel will reach 1/e at ``expected_distance``, but will continue to
-    have nonzero values out to ``max_distance``.
+    This is equivalent to ``e**(-dist / expected_distance)`` for each pixel in
+    the kernel, where ``dist`` is the euclidean distance of the pixel's
+    centerpoint to the centerpoint of the center pixel and
+    ``expected_distance`` represents the distance at which the kernel's values
+    reach ``1/e``.  The kernel will continue to have nonzero values out to
+    ``max_distance``.
 
     Args:
         target_kernel_path: The path to where the kernel will be written.
@@ -117,6 +121,11 @@ def linear_decay_kernel(
         normalize: bool = True) -> None:
     """Create a linear decay kernel.
 
+    This is equivalent to ``(max_distance - dist) / max_distance`` for each
+    pixel in the kernel, where ``dist`` is the euclidean distance between the
+    centerpoint of the current pixel and the centerpoint of the center pixel in
+    the kernel.
+
     Args:
         target_kernel_path: The path to where the kernel will be written.
             Must have a file extension of ``.tif``.
@@ -135,7 +144,7 @@ def linear_decay_kernel(
 
     create_distance_decay_kernel(
         target_kernel_path=target_kernel_path,
-        distance_decay_function="(max_dist - dist) / max_dist",
+        distance_decay_function=_linear_decay,
         max_distance=max_distance,
         pixel_radius=pixel_radius,
         normalize=normalize
@@ -149,6 +158,11 @@ def normal_distribution_kernel(
         pixel_radius: Union[int, float] = None,
         normalize: bool = True):
     """Create an decay kernel following a normal distribution.
+
+    This is equivalent to
+    ``(1/(2*pi*sigma**2))*(e**((-dist**2)/(2*sigma**2)))`` for each pixel,
+    where ``dist`` is the euclidean distance between the current pixel and the
+    centerpoint of the center pixel.
 
     Args:
         target_kernel_path: The path to where the kernel will be written.
@@ -190,9 +204,10 @@ def create_distance_decay_kernel(
         target_kernel_path (string): The path to where the target kernel should
             be written on disk.  If this file does not have the suffix
             ``.tif``, it will be added to the filepath.
-        distance_decay_function (callable): A python callable that takes as input a
-            1D numpy array and returns a 1D numpy array.  The input array will
-            contain float32 distances to the centerpoint pixel of the kernel.
+        distance_decay_function (callable): A python callable that takes as
+            input a single 1D numpy array and returns a 1D numpy array.  The
+            input array will contain float32 distances to the centerpoint pixel
+            of the kernel, in units of pixels.
         max_distance (float): The maximum distance of kernel values from
             the center point.  Values outside of this distance will be set to
             ``0.0``.
