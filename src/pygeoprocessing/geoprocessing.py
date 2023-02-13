@@ -3897,6 +3897,14 @@ def numpy_array_to_raster(
         raster_driver_creation_tuple=DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS):
     """Create a single band raster of size ``base_array.shape``.
 
+    The GDAL datatype of the target raster is determined by the numpy dtype of
+    ``base_array``.
+
+    Note:
+        The ``origin`` and ``pixel_size`` parameters must both be defined
+        properly as 2-tuples of floats, or else must both be set to ``None``.
+        A ``ValueError`` will be raised otherwise.
+
     Args:
         base_array (numpy.array): a 2d numpy array.
         target_nodata (numeric): nodata value of target array, can be None.
