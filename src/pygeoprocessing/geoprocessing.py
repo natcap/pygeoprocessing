@@ -2,7 +2,6 @@
 """A collection of raster and vector algorithms and utilities."""
 import collections
 import functools
-import inspect
 import logging
 import math
 import os
@@ -102,6 +101,10 @@ LOGGER.debug(
 
 class TimedLoggingAdapter(logging.LoggerAdapter):
     """A logging adapter to restrict logging based on a timer.
+
+    The objective is to have a ``logging.LOGGER``-like object that can be
+    called multiple times in rapid successtion, but with log messages only
+    propagating every X seconds.
 
     This object is helpful for creating consistency in logging callbacks and is
     derived from the python stdlib ``logging.LoggerAdapter``.
