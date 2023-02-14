@@ -99,6 +99,62 @@ LOGGER.debug(
     f'Detected warp algorithms: {", ".join(_GDAL_WARP_ALGOS_FOR_HUMAN_EYES)}')
 
 
+class TimedLoggingAdapter(logging.LoggerAdapter):
+    """A logging adapter to restrict logging based on a timer.
+
+    The objective is to have a ``logging.LOGGER``-like object that can be
+    called multiple times in rapid successtion, but with log messages only
+    propagating every X seconds.
+
+    This object is helpful for creating consistency in logging callbacks and is
+    derived from the python stdlib ``logging.LoggerAdapter``.
+    """
+    def __init__(self, interval_s=_LOGGING_PERIOD):
+        """Initialize the timed logging adapter.
+
+        Args:
+            interval_s (float): The logging interval, in seconds.  Defaults to
+                ``_LOGGING_PERIOD``.
+        """
+        logging.LoggerAdapter.__init__(self, LOGGER, extra=None)
+        self.interval = interval_s
+        self.last_time = time.time()
+
+    def log(self, level, msg, *args, **kwargs):
+        """Log a ``LogRecord``.
+
+        Args:
+            level (int): The logging level.
+            msg (str): The log message.
+            args (list): The user-defined positional arguments for the log
+                message.
+            kwargs (dict): The user-defined keyword arguments for the log
+                message.
+
+        Returns:
+            ``None``.
+        """
+        # The stacklevel arg to logging was introduced to logging in python
+        # 3.8 and there isn't a clear way to spoof this in python 3.7, so
+        # ignore.
+        if sys.version_info >= (3, 8):
+            # Don't override user-defined stacklevel if present.
+            if 'stacklevel' not in kwargs:
+                # Based on logging internals, 3 is the expected stack depth.
+                kwargs['stacklevel'] = 3
+
+            # Python 3.11 modified the stacklevel argument to be more
+            # consistent with the behavior in the warnings module.
+            # https://github.com/python/cpython/issues/89334
+            if sys.version_info >= (3, 11):
+                kwargs['stacklevel'] -= 1
+
+        now = time.time()
+        if now >= self.last_time + self.interval:
+            self.last_time = now
+            self.logger.log(level, msg, *args, **kwargs)
+
+
 def raster_calculator(
         base_raster_path_band_const_list, local_op, target_raster_path,
         datatype_target, nodata_target,
@@ -376,7 +432,7 @@ def raster_calculator(
     target_raster.FlushCache()
 
     try:
-        last_time = time.time()
+        timed_logger = TimedLoggingAdapter(_LOGGING_PERIOD)
 
         block_offset_list = list(iterblocks(
             (target_raster_path, 1), offset_only=True,
@@ -491,12 +547,10 @@ def raster_calculator(
                     stats_worker_queue.put(target_block)
 
             pixels_processed += blocksize[0] * blocksize[1]
-            last_time = _invoke_timed_callback(
-                last_time, lambda: LOGGER.info(
-                    '%s %.1f%% complete',
-                    os.path.basename(target_raster_path),
-                    float(pixels_processed) / n_pixels * 100.0),
-                _LOGGING_PERIOD)
+            timed_logger.info(
+                '%s %.1f%% complete',
+                os.path.basename(target_raster_path),
+                float(pixels_processed) / n_pixels * 100.0)
 
         LOGGER.info('100.0% complete')
 
@@ -630,7 +684,7 @@ def raster_reduce(function, raster_path_band, initializer, mask_nodata=True,
         aggregate value, the final value returned from ``function``
     """
     aggregator = initializer
-    last_time = time.time()
+    timed_logger = TimedLoggingAdapter(_LOGGING_PERIOD)
     pixels_processed = 0
     raster_info = get_raster_info(raster_path_band[0])
     x_size, y_size = raster_info['raster_size']
@@ -644,11 +698,10 @@ def raster_reduce(function, raster_path_band, initializer, mask_nodata=True,
             data = block.flatten()
         aggregator = function(aggregator, data)
         pixels_processed += block.size
-        last_time = _invoke_timed_callback(
-            last_time, lambda: LOGGER.info(
-                f'{raster_path_band[0]} reduce '
-                f'{pixels_processed / n_pixels * 100:.1f}%% complete'),
-            _LOGGING_PERIOD)
+        timed_logger.info(
+            f'{raster_path_band[0]} reduce '
+            f'{pixels_processed / n_pixels * 100:.1f}%% complete'
+        )
 
     LOGGER.info('100.0%% complete')
     return aggregator
@@ -1051,7 +1104,7 @@ def new_raster_from_base(
             target_band.SetNoDataValue(nodata_value)
 
     target_raster.FlushCache()
-    last_time = time.time()
+    timed_logger = TimedLoggingAdapter(_LOGGING_PERIOD)
     pixels_processed = 0
     n_pixels = n_cols * n_rows
     numpy_dtype = _GDAL_TYPE_TO_NUMPY_LOOKUP[datatype]
@@ -1071,13 +1124,10 @@ def new_raster_from_base(
                     offsets['win_ysize'] * offsets['win_xsize'])
                 target_band.WriteArray(
                     fill_array, offsets['xoff'], offsets['yoff'])
-
-                last_time = _invoke_timed_callback(
-                    last_time, lambda: LOGGER.info(
-                        f'filling new raster {target_path} with {fill_value} '
-                        f'-- {float(pixels_processed)/n_pixels*100.0:.2f}% '
-                        f'complete'),
-                    _LOGGING_PERIOD)
+                timed_logger.info(
+                    f'filling new raster {target_path} with {fill_value} '
+                    f'-- {float(pixels_processed)/n_pixels*100.0:.2f}% '
+                    f'complete')
             target_band = None
     target_band = None
     target_raster = None
@@ -1497,15 +1547,13 @@ def zonal_statistics(
     agg_fid_raster = gdal.OpenEx(
         agg_fid_raster_path, gdal.GA_Update | gdal.OF_RASTER)
     aggregate_stats = collections.defaultdict(_new_aggregate_dict)
-    last_time = time.time()
+    timed_logger = TimedLoggingAdapter(_LOGGING_PERIOD)
     LOGGER.info("processing %d disjoint polygon sets", len(disjoint_fid_sets))
     for set_index, disjoint_fid_set in enumerate(disjoint_fid_sets):
-        last_time = _invoke_timed_callback(
-            last_time, lambda: LOGGER.info(
-                "zonal stats approximately %.1f%% complete on %s",
-                100.0 * float(set_index+1) / len(disjoint_fid_sets),
-                os.path.basename(aggregate_vector_path)),
-            _LOGGING_PERIOD)
+        timed_logger.info(
+            "zonal stats approximately %.1f%% complete on %s",
+            100.0 * float(set_index+1) / len(disjoint_fid_sets),
+            os.path.basename(aggregate_vector_path))
         disjoint_layer = disjoint_vector.CreateLayer(
             'disjoint_vector', spat_ref, ogr.wkbPolygon)
         disjoint_layer.CreateField(
@@ -1514,13 +1562,11 @@ def zonal_statistics(
         # add polygons to subset_layer
         disjoint_layer.StartTransaction()
         for index, feature_fid in enumerate(disjoint_fid_set):
-            last_time = _invoke_timed_callback(
-                last_time, lambda: LOGGER.info(
-                    "polygon set %d of %d approximately %.1f%% processed "
-                    "on %s", set_index+1, len(disjoint_fid_sets),
-                    100.0 * float(index+1) / len(disjoint_fid_set),
-                    os.path.basename(aggregate_vector_path)),
-                _LOGGING_PERIOD)
+            timed_logger.info(
+                "polygon set %d of %d approximately %.1f%% processed "
+                "on %s", set_index+1, len(disjoint_fid_sets),
+                100.0 * float(index+1) / len(disjoint_fid_set),
+                os.path.basename(aggregate_vector_path))
             agg_feat = aggregate_layer.GetFeature(feature_fid)
             agg_geom_ref = agg_feat.GetGeometryRef()
             disjoint_feat = ogr.Feature(disjoint_layer_defn)
@@ -1987,15 +2033,13 @@ def reproject_vector(
     # Copy all of the features in layer to the new shapefile
     target_layer.StartTransaction()
     error_count = 0
-    last_time = time.time()
+    timed_logger = TimedLoggingAdapter(_LOGGING_PERIOD)
     LOGGER.info("starting reprojection")
     for feature_index, base_feature in enumerate(layer):
-        last_time = _invoke_timed_callback(
-            last_time, lambda: LOGGER.info(
-                "reprojection approximately %.1f%% complete on %s",
-                100.0 * float(feature_index+1) / (layer.GetFeatureCount()),
-                os.path.basename(target_path)),
-            _LOGGING_PERIOD)
+        timed_logger.info(
+            "reprojection approximately %.1f%% complete on %s",
+            100.0 * float(feature_index+1) / (layer.GetFeatureCount()),
+            os.path.basename(target_path))
 
         geom = base_feature.GetGeometryRef()
         if geom is None:
@@ -2507,8 +2551,8 @@ def calculate_disjoint_polygon_set(
         raise RuntimeError('Vector must have geometries but does not: %s'
                            % vector_path)
 
-    last_time = time.time()
     LOGGER.info("build shapely polygon list")
+    timed_logger = TimedLoggingAdapter(_LOGGING_PERIOD)
 
     if bounding_box is None:
         bounding_box = get_vector_info(vector_path)['bounding_box']
@@ -2554,12 +2598,10 @@ def calculate_disjoint_polygon_set(
     poly_intersect_lookup = collections.defaultdict(set)
     for poly_index, (poly_fid, poly_geom) in enumerate(
             shapely_polygon_lookup.items()):
-        last_time = _invoke_timed_callback(
-            last_time, lambda: LOGGER.info(
-                "poly intersection lookup approximately %.1f%% complete "
-                "on %s", 100.0 * float(poly_index+1) / len(
-                    shapely_polygon_lookup), os.path.basename(vector_path)),
-            _LOGGING_PERIOD)
+        timed_logger.info(
+            "poly intersection lookup approximately %.1f%% complete "
+            "on %s", 100.0 * float(poly_index+1) / len(
+                shapely_polygon_lookup), os.path.basename(vector_path))
         possible_intersection_set = list(poly_rtree_index.intersection(
             poly_geom.bounds))
         # no reason to prep the polygon to intersect itself
@@ -2595,13 +2637,11 @@ def calculate_disjoint_polygon_set(
         # build maximal subset
         maximal_set = set()
         for _, poly_fid, poly_intersect_set in intersections_list:
-            last_time = _invoke_timed_callback(
-                last_time, lambda: LOGGER.info(
-                    "maximal subset build approximately %.1f%% complete "
-                    "on %s", 100.0 * float(
-                        feature_count - len(poly_intersect_lookup)) /
-                    feature_count, os.path.basename(vector_path)),
-                _LOGGING_PERIOD)
+            timed_logger.info(
+                "maximal subset build approximately %.1f%% complete "
+                "on %s", 100.0 * float(
+                    feature_count - len(poly_intersect_lookup)) /
+                feature_count, os.path.basename(vector_path))
             if not poly_intersect_set.intersection(maximal_set):
                 # no intersection, add poly_fid to the maximal set and remove
                 # the polygon from the lookup
@@ -2941,7 +2981,7 @@ def convolve_2d(
         mask_band = mask_raster.GetRasterBand(1)
 
     LOGGER.info('starting convolve')
-    last_time = time.time()
+    timed_logger = TimedLoggingAdapter(_LOGGING_PERIOD)
 
     # calculate the kernel sum for normalization
     kernel_nodata = kernel_raster_info['nodata'][0]
@@ -3047,12 +3087,10 @@ def convolve_2d(
                 yoff=index_dict['yoff'])
 
         n_blocks_processed += 1
-        last_time = _invoke_timed_callback(
-            last_time, lambda: LOGGER.info(
-                "convolution worker approximately %.1f%% complete on %s",
-                100.0 * float(n_blocks_processed) / (n_blocks),
-                os.path.basename(target_path)),
-            _LOGGING_PERIOD)
+        timed_logger.info(
+            "convolution worker approximately %.1f%% complete on %s",
+            100.0 * float(n_blocks_processed) / (n_blocks),
+            os.path.basename(target_path))
 
     LOGGER.info(
         f"convolution worker 100.0% complete on "
@@ -3090,13 +3128,10 @@ def convolve_2d(
                 yoff=target_offset_data['yoff'])
 
             mask_pixels_processed += target_block.size
-            last_time = _invoke_timed_callback(
-                last_time, lambda: LOGGER.info(
-                    "convolution nodata normalizer approximately %.1f%% "
-                    "complete on %s", 100.0 * float(mask_pixels_processed) / (
-                        n_cols_signal * n_rows_signal),
-                    os.path.basename(target_path)),
-                _LOGGING_PERIOD)
+            timed_logger.info(
+                "convolution nodata normalizer approximately %.1f%% "
+                "complete on %s", 100.0 * float(mask_pixels_processed) / (
+                    n_cols_signal * n_rows_signal))
 
         mask_raster = None
         mask_band = None
@@ -3403,33 +3438,6 @@ def mask_raster(
         raster_driver_creation_tuple=raster_driver_creation_tuple)
 
     os.remove(mask_raster_path)
-
-
-def _invoke_timed_callback(
-        reference_time, callback_lambda, callback_period):
-    """Invoke callback if a certain amount of time has passed.
-
-    This is a convenience function to standardize update callbacks from the
-    module.
-
-    Args:
-        reference_time (float): time to base ``callback_period`` length from.
-        callback_lambda (lambda): function to invoke if difference between
-            current time and ``reference_time`` has exceeded
-            ``callback_period``.
-        callback_period (float): time in seconds to pass until
-            ``callback_lambda`` is invoked.
-
-    Return:
-        ``reference_time`` if ``callback_lambda`` not invoked, otherwise the
-        time when ``callback_lambda`` was invoked.
-
-    """
-    current_time = time.time()
-    if current_time - reference_time > callback_period:
-        callback_lambda()
-        return current_time
-    return reference_time
 
 
 def _gdal_to_numpy_type(band):
