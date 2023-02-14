@@ -3,6 +3,9 @@ Release History
 
 Unreleased Changes
 ------------------
+* Logging across functions in ``pygeoprocessing.geoprocessing`` now correctly
+  reports the function that it's being called from rather than ``<lambda>``.
+  https://github.com/natcap/pygeoprocessing/issues/300
 * The function ``pygeoprocessing.reproject_vector`` now accepts an optional
   parameter ``layer_name`` to allow the target vector layer name to be defined
   by the user.  If the user does not provide a ``layer_name``, the layer name

@@ -7,6 +7,7 @@ import os
 import pathlib
 import queue
 import shutil
+import sys
 import tempfile
 import time
 import types
@@ -1506,13 +1507,63 @@ class TestGeoprocessing(unittest.TestCase):
 
         numpy.testing.assert_array_equal(result_array, expected_result)
 
-    def test_invoke_timed_callback(self):
-        """PGP.geoprocessing: cover a timed callback."""
-        reference_time = time.time()
-        time.sleep(0.1)
-        new_time = pygeoprocessing.geoprocessing._invoke_timed_callback(
-            reference_time, lambda: None, 0.05)
-        self.assertNotEqual(reference_time, new_time)
+    def test_timed_logging_adapter(self):
+        """PGP.geoprocessing: check timed logging."""
+        from pygeoprocessing.geoprocessing import TimedLoggingAdapter
+
+        pygeoprocessing_logger = logging.getLogger('pygeoprocessing')
+        with capture_logging(pygeoprocessing_logger) as captured_logging:
+            timed_logger = TimedLoggingAdapter(interval_s=0.1)
+            time.sleep(0.1)
+            timed_logger.warning('message 1')  # Logged
+            timed_logger.warning('message 2')  # Skipped
+            pygeoprocessing_logger.warning('normal 1')  # logged
+            time.sleep(0.1)
+            timed_logger.warning('message 3')  # logged
+            pygeoprocessing_logger.warning('normal 2')  # logged
+            timed_logger.warning('message 4')  # skipped
+            pygeoprocessing_logger.warning('normal 3')  # logged
+
+        self.assertEqual(len(captured_logging), 5)
+        expected_messages = [
+            'message 1', 'normal 1', 'message 3', 'normal 2', 'normal 3']
+        for record, expected_message in zip(captured_logging,
+                                            expected_messages):
+            # Check the message string
+            self.assertEqual(record.msg, expected_message)
+
+            # check that the function name logged is the name of this test
+            # (which is the calling function).  This is only possible on python
+            # 3.8 or later.
+            if sys.version_info >= (3, 8):
+                self.assertEqual(
+                    record.funcName, self.test_timed_logging_adapter.__name__)
+
+        # The rest of this test only applies to python 3.8+
+        if sys.version_info < (3, 8):
+            return
+
+        # Check the custom stack frame adjustment
+        with capture_logging(pygeoprocessing_logger) as captured_logging:
+            timed_logger = TimedLoggingAdapter(interval_s=0.1)
+
+            def _sub_stackframe():
+                time.sleep(0.5)  # make sure we pass the interval threshold
+                # The 4 is 1 more than the default, so the message SHOULD
+                # report that the test called it.
+                timed_logger.critical('DANGER', stacklevel=4)
+
+            _sub_stackframe()
+
+        self.assertEqual(len(captured_logging), 1)
+
+        record = captured_logging[0]
+        self.assertEqual(record.msg, 'DANGER')
+
+        # check that the function name logged is the name of this test
+        # (which is the parent of the calling function)
+        self.assertEqual(
+            record.funcName, self.test_timed_logging_adapter.__name__)
 
     def test_warp_raster(self):
         """PGP.geoprocessing: warp raster test."""
