@@ -82,7 +82,7 @@ def dichotomous_kernel(
     Args:
         target_kernel_path: The path to where the kernel will be written.
             Must have a file extension of ``.tif``.
-        max_distance: The maximum distance of the kernel, in pixels. Kernel
+        max_distance: The distance threshold, in pixels. Kernel
             pixels that are greater than ``max_distance`` from the centerpoint
             of the kernel will have values of ``0.0``.
         apothem: The apothem of the target kernel, in pixels.  If ``None``,
