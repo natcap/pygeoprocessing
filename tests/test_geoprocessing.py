@@ -1556,7 +1556,9 @@ class TestGeoprocessing(unittest.TestCase):
             _sub_stackframe()
 
         self.assertEqual(len(captured_logging), 1)
-        self.assertEqual(captured_logging[0].msg, 'DANGER')
+
+        record = captured_logging[0]
+        self.assertEqual(record.msg, 'DANGER')
 
         # check that the function name logged is the name of this test
         # (which is the parent of the calling function)
