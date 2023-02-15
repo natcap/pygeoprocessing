@@ -246,7 +246,7 @@ def create_distance_decay_kernel(
             the center point.  Values outside of this distance will be set to
             ``0.0``.
         apothem=None (float): The apothem (in pixels) of the target kernel.
-            If ``None``, the apothem will be ``math.ceil(max_distance)``.
+            If ``None``, the apothem will be ``math.floor(max_distance)``.
         normalize=False (bool): Whether to normalize the resulting kernel.
 
     Returns:
@@ -254,7 +254,10 @@ def create_distance_decay_kernel(
     """
     if apothem is None:
         apothem = max_distance
-    apothem = math.ceil(apothem)
+    if max_distance > apothem:
+        raise AssertionError(
+            "max_distance must be less than or equal to the apothem.")
+    apothem = math.floor(apothem)
     kernel_size = apothem * 2 + 1  # allow for a center pixel
     assert kernel_size % 2 == 1
     driver = gdal.GetDriverByName('GTiff')

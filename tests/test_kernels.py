@@ -157,3 +157,17 @@ class KernelTests(unittest.TestCase):
             numpy.testing.assert_allclose(numpy.unique(array[71:][:]), 0)
             numpy.testing.assert_allclose(numpy.unique(array[:][:10]), 0)
             numpy.testing.assert_allclose(numpy.unique(array[:][71:]), 0)
+
+    def test_max_distance_vs_apothem(self):
+        """Kernels: test the kernel distance vs the apothem."""
+        import pygeoprocessing.kernels
+
+        my_kernel = "dist <= max_dist"
+        with self.assertRaises(AssertionError) as cm:
+            pygeoprocessing.kernels.create_distance_decay_kernel(
+                self.filepath, my_kernel, max_distance=40, apothem=30,
+                normalize=True)
+
+        self.assertIn(
+            str(cm.exception).lower(),
+            'max_distance must be less than or equal to the apothem.')
