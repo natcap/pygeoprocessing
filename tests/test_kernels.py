@@ -146,28 +146,8 @@ class KernelTests(unittest.TestCase):
         for function in (_my_weird_kernel, my_string_kernel):
             pygeoprocessing.kernels.create_distance_decay_kernel(
                 self.filepath, _my_weird_kernel, max_distance=30,
-                apothem=40, normalize=False)
+                normalize=False)
 
             array = pygeoprocessing.raster_to_numpy_array(self.filepath)
-            self.assertEqual(array.shape, (81, 81))
+            self.assertEqual(array.shape, (61, 61))
             self.assertEqual(set(numpy.unique(array)), {-1, 0, 1})
-
-            # confirm the 10-pixel boundaries are all 0
-            numpy.testing.assert_allclose(numpy.unique(array[:10][:]), 0)
-            numpy.testing.assert_allclose(numpy.unique(array[71:][:]), 0)
-            numpy.testing.assert_allclose(numpy.unique(array[:][:10]), 0)
-            numpy.testing.assert_allclose(numpy.unique(array[:][71:]), 0)
-
-    def test_max_distance_vs_apothem(self):
-        """Kernels: test the kernel distance vs the apothem."""
-        import pygeoprocessing.kernels
-
-        my_kernel = "dist <= max_dist"
-        with self.assertRaises(AssertionError) as cm:
-            pygeoprocessing.kernels.create_distance_decay_kernel(
-                self.filepath, my_kernel, max_distance=40, apothem=30,
-                normalize=True)
-
-        self.assertIn(
-            str(cm.exception).lower(),
-            'max_distance must be less than or equal to the apothem.')

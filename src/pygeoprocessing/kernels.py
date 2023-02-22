@@ -71,7 +71,6 @@ def kernel_from_numpy_array(
 def dichotomous_kernel(
         target_kernel_path: Text,
         max_distance: Union[int, float],
-        apothem: Union[int, float] = None,
         normalize: bool = True) -> None:
     """Create a binary kernel indicating presence/absence within a distance.
 
@@ -85,8 +84,6 @@ def dichotomous_kernel(
         max_distance: The distance threshold, in pixels. Kernel
             pixels that are greater than ``max_distance`` from the centerpoint
             of the kernel will have values of ``0.0``.
-        apothem: The apothem of the target kernel, in pixels.  If ``None``,
-            then ``math.ceil(max_distance)`` will be used.
         normalize: Whether to normalize the kernel.
 
     Returns:
@@ -99,7 +96,6 @@ def dichotomous_kernel(
         target_kernel_path=target_kernel_path,
         distance_decay_function=_dichotomous,
         max_distance=max_distance,
-        apothem=apothem,
         normalize=normalize
     )
 
@@ -108,7 +104,6 @@ def exponential_decay_kernel(
         target_kernel_path: Text,
         max_distance: Union[int, float],
         expected_distance: Union[int, float],
-        apothem: Union[int, float] = None,
         normalize: bool = True) -> None:
     """Create an exponential decay kernel.
 
@@ -127,8 +122,6 @@ def exponential_decay_kernel(
             of the kernel will have values of ``0.0``.
         expected_distance: The distance, in pixels, from the centerpoint at
             which decayed values will equal ``1/e``.
-        apothem: The apothem of the target kernel, in pixels.  If ``None``,
-            then ``math.ceil(max_distance)`` will be used.
         normalize: Whether to normalize the kernel.
 
     Returns:
@@ -141,7 +134,6 @@ def exponential_decay_kernel(
         target_kernel_path=target_kernel_path,
         distance_decay_function=_exponential_decay,
         max_distance=max_distance,
-        apothem=apothem,
         normalize=normalize
     )
 
@@ -149,7 +141,6 @@ def exponential_decay_kernel(
 def linear_decay_kernel(
         target_kernel_path: Text,
         max_distance: Union[int, float],
-        apothem: Union[int, float] = None,
         normalize: bool = True) -> None:
     """Create a linear decay kernel.
 
@@ -164,8 +155,6 @@ def linear_decay_kernel(
         max_distance: The maximum distance of the kernel, in pixels. Kernel
             pixels that are greater than ``max_distance`` from the centerpoint
             of the kernel will have values of ``0.0``.
-        apothem: The apothem of the target kernel, in pixels.  If ``None``,
-            then ``math.ceil(max_distance)`` will be used.
         normalize: Whether to normalize the kernel.
 
     Returns:
@@ -178,7 +167,6 @@ def linear_decay_kernel(
         target_kernel_path=target_kernel_path,
         distance_decay_function=_linear_decay,
         max_distance=max_distance,
-        apothem=apothem,
         normalize=normalize
     )
 
@@ -223,7 +211,6 @@ def create_distance_decay_kernel(
         target_kernel_path: str,
         distance_decay_function: Union[str, Callable],
         max_distance: Union[int, float],
-        apothem=None,
         normalize=True):
     """
     Create a kernel raster based on pixel distance from the centerpoint.
@@ -245,19 +232,12 @@ def create_distance_decay_kernel(
         max_distance (float): The maximum distance of kernel values from
             the center point.  Values outside of this distance will be set to
             ``0.0``.
-        apothem=None (float): The apothem (in pixels) of the target kernel.
-            If ``None``, the apothem will be ``math.floor(max_distance)``.
         normalize=False (bool): Whether to normalize the resulting kernel.
 
     Returns:
         ``None``
     """
-    if apothem is None:
-        apothem = max_distance
-    if max_distance > apothem:
-        raise AssertionError(
-            "max_distance must be less than or equal to the apothem.")
-    apothem = math.floor(apothem)
+    apothem = math.floor(max_distance)
     kernel_size = apothem * 2 + 1  # allow for a center pixel
     assert kernel_size % 2 == 1
     driver = gdal.GetDriverByName('GTiff')
