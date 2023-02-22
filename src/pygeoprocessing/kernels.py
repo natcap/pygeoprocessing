@@ -86,7 +86,7 @@ def dichotomous_kernel(
             pixels that are greater than ``max_distance`` from the centerpoint
             of the kernel will have values of ``0.0``.
         apothem: The apothem of the target kernel, in pixels.  If ``None``,
-            then ``math.ceil(max_distance)`` will be used.
+            then ``math.floor(max_distance)`` will be used.
         normalize: Whether to normalize the kernel.
 
     Returns:
@@ -128,7 +128,7 @@ def exponential_decay_kernel(
         expected_distance: The distance, in pixels, from the centerpoint at
             which decayed values will equal ``1/e``.
         apothem: The apothem of the target kernel, in pixels.  If ``None``,
-            then ``math.ceil(max_distance)`` will be used.
+            then ``math.floor(max_distance)`` will be used.
         normalize: Whether to normalize the kernel.
 
     Returns:
@@ -165,7 +165,7 @@ def linear_decay_kernel(
             pixels that are greater than ``max_distance`` from the centerpoint
             of the kernel will have values of ``0.0``.
         apothem: The apothem of the target kernel, in pixels.  If ``None``,
-            then ``math.ceil(max_distance)`` will be used.
+            then ``math.floor(max_distance)`` will be used.
         normalize: Whether to normalize the kernel.
 
     Returns:
