@@ -794,7 +794,7 @@ def align_and_resize_raster_stack(
             ``geoprocessing.DEFAULT_OSR_AXIS_MAPPING_STRATEGY``. This parameter
             should not be changed unless you know what you are doing.
 
-    Return:
+    Returns:
         None
 
     Raises:
@@ -818,7 +818,6 @@ def align_and_resize_raster_stack(
             file.
         ValueError
             If ``pixel_size`` is not a 2 element sequence of numbers.
-
     """
     # make sure that the input lists are of the same length
     list_lengths = [
@@ -2838,7 +2837,9 @@ def convolve_2d(
         kernel_path_band (tuple): a 2 tuple of the form
             (filepath to kernel raster, band index), all pixel values should
             be valid -- output is not well defined if the kernel raster has
-            nodata values.
+            nodata values.  To create a kernel raster, see the documentation
+            and helper functions available in the
+            :doc:`pygeoprocessing kernels module <pygeoprocessing.kernels>`.
         target_path (string): filepath to target raster that's the convolution
             of signal with kernel.  Output will be a single band raster of
             same size and projection as ``signal_path_band``. Any nodata pixels
@@ -2894,7 +2895,7 @@ def convolve_2d(
             tuple/list as the second. Defaults to a GTiff driver tuple
             defined at geoprocessing.DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS.
 
-    Return:
+    Returns:
         ``None``
 
     Raises:
@@ -2905,7 +2906,6 @@ def convolve_2d(
             if ``signal_path_band`` or ``kernel_path_band`` is a row based
             blocksize which would result in slow runtimes due to gdal
             cache thrashing.
-
     """
     if target_datatype is not gdal.GDT_Float64 and target_nodata is None:
         raise ValueError(
@@ -3905,12 +3905,23 @@ def numpy_array_to_raster(
         raster_driver_creation_tuple=DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS):
     """Create a single band raster of size ``base_array.shape``.
 
+    The GDAL datatype of the target raster is determined by the numpy dtype of
+    ``base_array``.
+
+    Note:
+        The ``origin`` and ``pixel_size`` parameters must both be defined
+        properly as 2-tuples of floats, or else must both be set to ``None``.
+        A ``ValueError`` will be raised otherwise.
+
     Args:
         base_array (numpy.array): a 2d numpy array.
         target_nodata (numeric): nodata value of target array, can be None.
-        pixel_size (tuple): square dimensions (in ``(x, y)``) of pixel.
-        origin (tuple/list): x/y coordinate of the raster origin.
-        projection_wkt (str): target projection in wkt.
+        pixel_size (tuple): square dimensions (in ``(x, y)``) of pixel. Can be
+            None to indicate no stated pixel size.
+        origin (tuple/list): x/y coordinate of the raster origin. Can be None
+            to indicate no stated origin.
+        projection_wkt (str): target projection in wkt.  Can be None to
+            indicate no projection/SRS.
         target_path (str): path to raster to create that will be of the
             same type of base_array with contents of base_array.
         raster_driver_creation_tuple (tuple): a tuple containing a GDAL driver
@@ -3941,8 +3952,12 @@ def numpy_array_to_raster(
         options=raster_driver_creation_tuple[1])
     if projection_wkt is not None:
         new_raster.SetProjection(projection_wkt)
-    new_raster.SetGeoTransform(
-        [origin[0], pixel_size[0], 0.0, origin[1], 0.0, pixel_size[1]])
+    if origin is not None and pixel_size is not None:
+        new_raster.SetGeoTransform(
+            [origin[0], pixel_size[0], 0, origin[1], 0, pixel_size[1]])
+    elif origin is not None or pixel_size is not None:
+        raise ValueError(
+            "Origin and pixel size must both be defined or both be None")
     new_band = new_raster.GetRasterBand(1)
     if target_nodata is not None:
         new_band.SetNoDataValue(target_nodata)
