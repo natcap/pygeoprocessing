@@ -1,7 +1,7 @@
 Release History
 ===============
 
-Unreleased Changes
+2.4.0 (2023-03-03)
 ------------------
 * A new submodule, ``pygeoprocessing.kernels`` has been added to facilitate the
   creation of kernel rasters needed for calls to
@@ -22,7 +22,7 @@ Unreleased Changes
   https://github.com/natcap/pygeoprocessing/issues/301
 * Implement the proposed new function ``pygeoprocessing.raster_reduce``, a
   wrapper around ``pygeoprocessing.iterblocks``
-   (https://github.com/natcap/pygeoprocessing/issues/285)
+  (https://github.com/natcap/pygeoprocessing/issues/285)
 * Nodata value checking in ``pygeoprocessing.routing`` now correctly handles
   comparison of ``nan`` values.  This is explicitly tested in
   ``pygeoprocessing.routing.fill_pits``, but should also improve the
