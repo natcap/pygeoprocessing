@@ -1357,7 +1357,7 @@ def interpolate_points(
 
 
 def zonal_statistics(
-        base_raster_path_band, aggregate_vector_path,
+        base_raster_path_band_list, aggregate_vector_path,
         aggregate_layer_name=None, ignore_nodata=True,
         polygons_might_overlap=True, include_value_counts=False,
         working_dir=None):
@@ -1378,8 +1378,8 @@ def zonal_statistics(
         the description and dataset to jdouglass@stanford.edu.
 
     Args:
-        base_raster_path_band (tuple): a str/int tuple indicating the path to
-            the base raster and the band index of that raster to analyze.
+        base_raster_path_band_list (list[tuple]): a list of str/int tuples
+            indicating the base raster paths and bands to analyze.
         aggregate_vector_path (string): a path to a polygon vector whose
             geometric features indicate the areas in
             ``base_raster_path_band`` to calculate zonal statistics.
@@ -1407,21 +1407,24 @@ def zonal_statistics(
             should be created during this run.
 
     Return:
-        nested dictionary indexed by aggregating feature id, and then by one
+        list of nested dictionaries. each list item is a nested dictionary
+        of stats for the corresponding raster in the `base_raster_path_band_list`.
+        each nested dictionary is indexed by aggregating feature id, and then by one
         of 'min' 'max' 'sum' 'count' and 'nodata_count'.  Example::
-
-            {0: {'min': 0,
-                 'max': 14,
-                 'sum': 42,
-                 'count': 8,
-                 'nodata_count': 1,
-                 'value_counts': {
-                     2: 5,
-                     4: 1,
-                     14: 2,
+            [
+                {0: {'min': 0,
+                     'max': 14,
+                     'sum': 42,
+                     'count': 8,
+                     'nodata_count': 1,
+                     'value_counts': {
+                         2: 5,
+                         4: 1,
+                         14: 2,
+                        }
                     }
-                 }
-            }
+                }
+            ]
 
     Raises:
         ValueError
@@ -1430,14 +1433,15 @@ def zonal_statistics(
             if the aggregate vector or layer cannot open.
 
     """
-    if not _is_raster_path_band_formatted(base_raster_path_band):
-        raise ValueError(
-            "`base_raster_path_band` not formatted as expected.  Expects "
-            "(path, band_index), received %s" % repr(base_raster_path_band))
+    for base_raster_path_band in base_raster_path_band_list:
+        if not _is_raster_path_band_formatted(base_raster_path_band):
+            raise ValueError(
+                '`base_raster_path_band` not formatted as expected.  Expects '
+                f'(path, band_index), received {repr(base_raster_path_band)}')
     aggregate_vector = gdal.OpenEx(aggregate_vector_path, gdal.OF_VECTOR)
     if aggregate_vector is None:
         raise RuntimeError(
-            "Could not open aggregate vector at %s" % aggregate_vector_path)
+            f'Could not open aggregate vector at {aggregate_vector_path}')
     if aggregate_layer_name is not None:
         aggregate_layer = aggregate_vector.GetLayerByName(
             aggregate_layer_name)
@@ -1445,8 +1449,7 @@ def zonal_statistics(
         aggregate_layer = aggregate_vector.GetLayer()
     if aggregate_layer is None:
         raise RuntimeError(
-            "Could not open layer %s on %s" % (
-                aggregate_layer_name, aggregate_vector_path))
+            f'Could not open layer {aggregate_layer_name} on {aggregate_vector_path}')
 
     # create a new aggregate ID field to map base vector aggregate fields to
     # local ones that are guaranteed to be integers.
@@ -1454,24 +1457,25 @@ def zonal_statistics(
     rasterize_layer_args = {
         'options': [
             'ALL_TOUCHED=FALSE',
-            'ATTRIBUTE=%s' % local_aggregate_field_name]
+            f'ATTRIBUTE={local_aggregate_field_name}']
     }
 
     # clip base raster to aggregating vector intersection
-    raster_info = get_raster_info(base_raster_path_band[0])
-
-    if (raster_info['datatype'] in {gdal.GDT_Float32, gdal.GDT_Float64}
-            and include_value_counts):
-        LOGGER.warning(
-            "Value counts requested on a floating-point raster. This can "
-            "cause excessive memory usage if the raster has continuous "
-            "values.")
-
-    # -1 here because bands are 1 indexed
-    raster_nodata = raster_info['nodata'][base_raster_path_band[1]-1]
     temp_working_dir = tempfile.mkdtemp(dir=working_dir)
-    clipped_raster_path = os.path.join(
-        temp_working_dir, 'clipped_raster.tif')
+    raster_nodatas = []
+    raster_pixel_sizes = []
+    for i, base_raster_path_band in enumerate(base_raster_path_band_list):
+        raster_info = get_raster_info(base_raster_path_band[0])
+        if (raster_info['datatype'] in {gdal.GDT_Float32, gdal.GDT_Float64}
+                and include_value_counts):
+            LOGGER.warning(
+                'Value counts requested on a floating-point raster. This can '
+                'cause excessive memory usage if the raster has continuous '
+                'values.')
+        # -1 here because bands are 1 indexed
+        raster_nodatas.append(raster_info['nodata'][base_raster_path_band[1]-1])
+        raster_pixel_sizes.append(raster_info['pixel_size'])
+        clipped_raster_path = os.path.join(temp_working_dir, f'clipped_raster_{i}.tif')
 
     def _new_aggregate_dict():
         """Build a new aggregate dict for ``collections.defaultdict``.
@@ -1487,12 +1491,14 @@ def zonal_statistics(
         """
         aggregate_dict = {
             'min': None, 'max': None, 'count': 0, 'nodata_count': 0,
-            'sum': 0.0}
+            'sum': 0}
         if include_value_counts:
             aggregate_dict['value_counts'] = collections.Counter()
         return aggregate_dict
 
     try:
+        # nearest neighbor should be okay for all types of data
+        # because we aren't changing pixel size
         align_and_resize_raster_stack(
             [base_raster_path_band[0]], [clipped_raster_path], ['near'],
             raster_info['pixel_size'], 'intersection',
@@ -1503,8 +1509,8 @@ def zonal_statistics(
     except ValueError as e:
         if 'Bounding boxes do not intersect' in repr(e):
             LOGGER.error(
-                "aggregate vector %s does not intersect with the raster %s",
-                aggregate_vector_path, base_raster_path_band)
+                f'aggregate vector {aggregate_vector_path} does not intersect '
+                f'with the raster {base_raster_path_band}')
             aggregate_stats = collections.defaultdict(_new_aggregate_dict)
             for feature in aggregate_layer:
                 _ = aggregate_stats[feature.GetFID()]
@@ -1521,14 +1527,14 @@ def zonal_statistics(
 
     # Initialize these dictionaries to have the shapefile fields in the
     # original datasource even if we don't pick up a value later
-    LOGGER.info("build a lookup of aggregate field value to FID")
+    LOGGER.info('build a lookup of aggregate field value to FID')
 
     aggregate_layer_fid_set = set(
         [agg_feat.GetFID() for agg_feat in aggregate_layer])
     agg_feat = None
     # Loop over each polygon and aggregate
     if polygons_might_overlap:
-        LOGGER.info("creating disjoint polygon set")
+        LOGGER.info('creating disjoint polygon set')
         disjoint_fid_sets = calculate_disjoint_polygon_set(
             aggregate_vector_path, bounding_box=raster_info['bounding_box'])
     else:
@@ -1548,12 +1554,12 @@ def zonal_statistics(
         agg_fid_raster_path, gdal.GA_Update | gdal.OF_RASTER)
     aggregate_stats = collections.defaultdict(_new_aggregate_dict)
     timed_logger = TimedLoggingAdapter(_LOGGING_PERIOD)
-    LOGGER.info("processing %d disjoint polygon sets", len(disjoint_fid_sets))
+    LOGGER.info(f'processing {len(disjoint_fid_sets)} disjoint polygon sets')
     for set_index, disjoint_fid_set in enumerate(disjoint_fid_sets):
         timed_logger.info(
-            "zonal stats approximately %.1f%% complete on %s",
+            f'zonal stats approximately %.1f%% complete on {os.path.basename(aggregate_vector_path)}',
             100.0 * float(set_index+1) / len(disjoint_fid_sets),
-            os.path.basename(aggregate_vector_path))
+            )
         disjoint_layer = disjoint_vector.CreateLayer(
             'disjoint_vector', spat_ref, ogr.wkbPolygon)
         disjoint_layer.CreateField(
@@ -1563,10 +1569,9 @@ def zonal_statistics(
         disjoint_layer.StartTransaction()
         for index, feature_fid in enumerate(disjoint_fid_set):
             timed_logger.info(
-                "polygon set %d of %d approximately %.1f%% processed "
-                "on %s", set_index+1, len(disjoint_fid_sets),
-                100.0 * float(index+1) / len(disjoint_fid_set),
-                os.path.basename(aggregate_vector_path))
+                f'polygon set {set_index+1} of {len(disjoint_fid_sets)} '
+                f'approximately %.1f%% processed on {os.path.basename(aggregate_vector_path)}',
+                100.0 * float(index+1) / len(disjoint_fid_set))
             agg_feat = aggregate_layer.GetFeature(feature_fid)
             agg_geom_ref = agg_feat.GetGeometryRef()
             disjoint_feat = ogr.Feature(disjoint_layer_defn)
@@ -1579,20 +1584,18 @@ def zonal_statistics(
         disjoint_layer.CommitTransaction()
 
         LOGGER.info(
-            "disjoint polygon set %d of %d 100.0%% processed on %s",
-            set_index+1, len(disjoint_fid_sets), os.path.basename(
-                aggregate_vector_path))
+            f'disjoint polygon set {set_index+1} of {len(disjoint_fid_sets)} '
+            f'100.0%% processed on {os.path.basename(aggregate_vector_path)}')
 
         # nodata out the mask
         agg_fid_band = agg_fid_raster.GetRasterBand(1)
         agg_fid_band.Fill(agg_fid_nodata)
         LOGGER.info(
-            "rasterizing disjoint polygon set %d of %d %s", set_index+1,
-            len(disjoint_fid_sets),
-            os.path.basename(aggregate_vector_path))
+            f'rasterizing disjoint polygon set {set_index+1} of '
+            f'{len(disjoint_fid_sets)} {os.path.basename(aggregate_vector_path)}')
         rasterize_callback = _make_logger_callback(
-            "rasterizing polygon " + str(set_index+1) + " of " +
-            str(len(disjoint_fid_set)) + " set %.1f%% complete %s")
+            f'rasterizing polygon {str(set_index+1)} of '
+            f'{str(len(disjoint_fid_set))} set %.1f%% complete %s')
         gdal.RasterizeLayer(
             agg_fid_raster, [1], disjoint_layer,
             callback=rasterize_callback, **rasterize_layer_args)
@@ -1605,9 +1608,8 @@ def zonal_statistics(
         # create a key array
         # and parallel min, max, count, and nodata count arrays
         LOGGER.info(
-            "summarizing rasterized disjoint polygon set %d of %d %s",
-            set_index+1, len(disjoint_fid_sets),
-            os.path.basename(aggregate_vector_path))
+            f'summarizing rasterized disjoint polygon set {set_index+1} of '
+            f'{len(disjoint_fid_sets)} {os.path.basename(aggregate_vector_path)}')
         for agg_fid_offset in agg_fid_offset_list:
             agg_fid_block = agg_fid_band.ReadAsArray(**agg_fid_offset)
             clipped_block = clipped_band.ReadAsArray(**agg_fid_offset)
