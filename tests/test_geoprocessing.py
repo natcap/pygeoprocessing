@@ -936,7 +936,7 @@ class TestGeoprocessing(unittest.TestCase):
             pixel_size=(pixel_size, -pixel_size))
 
         zonal_stats = pygeoprocessing.zonal_statistics(
-            (raster_path, 1), vector_path)
+            [(raster_path, 1)], vector_path)[0]
         self.assertEqual(len(zonal_stats), 4*n*n + 1)
         for poly_id in zonal_stats:
             feature = layer.GetFeature(poly_id)
@@ -985,7 +985,7 @@ class TestGeoprocessing(unittest.TestCase):
             -1, raster_path)
 
         zonal_stats = pygeoprocessing.zonal_statistics(
-            (raster_path, 1), vector_path)
+            [(raster_path, 1)], vector_path)[0]
         for poly_id in zonal_stats:
             self.assertEqual(zonal_stats[poly_id]['sum'], 0.0)
 
@@ -1068,7 +1068,7 @@ class TestGeoprocessing(unittest.TestCase):
         _array_to_raster(array, -1, raster_path)
 
         zonal_stats = pygeoprocessing.zonal_statistics(
-            (raster_path, 1), vector_path)
+            [(raster_path, 1)], vector_path)[0]
         for poly_id in zonal_stats:
             self.assertEqual(zonal_stats[poly_id]['sum'], 0.0)
 
@@ -1083,7 +1083,7 @@ class TestGeoprocessing(unittest.TestCase):
             origin=(origin_x+n, origin_y-n), pixel_size=(-1, 1))
 
         zonal_stats = pygeoprocessing.zonal_statistics(
-            (raster_path, 1), vector_path)
+            [(raster_path, 1)], vector_path)[0]
         for poly_id in zonal_stats:
             self.assertEqual(zonal_stats[poly_id]['sum'], 0.0)
 
@@ -1178,11 +1178,11 @@ class TestGeoprocessing(unittest.TestCase):
         _array_to_raster(
             pixel_matrix, target_nodata, raster_path)
         result = pygeoprocessing.zonal_statistics(
-            (raster_path, 1), aggregating_vector_path,
+            [(raster_path, 1)], aggregating_vector_path,
             aggregate_layer_name=None,
             ignore_nodata=True,
             polygons_might_overlap=True)
-        expected_result = {
+        expected_result = [{
             0: {
                 'count': 81,
                 'max': 1.0,
@@ -1200,7 +1200,7 @@ class TestGeoprocessing(unittest.TestCase):
                 'max': None,
                 'count': 0,
                 'nodata_count': 0,
-                'sum': 0.0}}
+                'sum': 0.0}}]
         self.assertEqual(result, expected_result)
 
     def test_zonal_statistics_value_counts(self):
@@ -1242,7 +1242,7 @@ class TestGeoprocessing(unittest.TestCase):
         with capture_logging(
                 logging.getLogger('pygeoprocessing')) as log_messages:
             result = pygeoprocessing.zonal_statistics(
-                (raster_path, 1), aggregating_vector_path,
+                [(raster_path, 1)], aggregating_vector_path,
                 aggregate_layer_name=None,
                 ignore_nodata=True,
                 include_value_counts=True,
@@ -1253,7 +1253,7 @@ class TestGeoprocessing(unittest.TestCase):
         self.assertEqual(log_messages[0].levelno, logging.WARNING)
         self.assertIn('Value counts requested on a floating-point raster',
                       log_messages[0].msg)
-        expected_result = {
+        expected_result = [{
             0: {
                 'count': 81,
                 'max': 1.0,
@@ -1275,7 +1275,7 @@ class TestGeoprocessing(unittest.TestCase):
                 'nodata_count': 0,
                 'sum': 0.0,
                 'value_counts': {}}
-        }
+        }]
         self.assertEqual(result, expected_result)
 
     def test_zonal_statistics_nodata(self):
@@ -1305,17 +1305,17 @@ class TestGeoprocessing(unittest.TestCase):
         _array_to_raster(
             pixel_matrix, target_nodata, raster_path)
         result = pygeoprocessing.zonal_statistics(
-            (raster_path, 1), aggregating_vector_path,
+            [(raster_path, 1)], aggregating_vector_path,
             aggregate_layer_name=None,
             ignore_nodata=True,
             polygons_might_overlap=False)
-        expected_result = {
+        expected_result = [{
             0: {
                 'count': 0,
                 'max': None,
                 'min': None,
                 'nodata_count': 81,
-                'sum': 0.0}}
+                'sum': 0.0}}]
         self.assertEqual(result, expected_result)
 
     def test_zonal_statistics_nodata_is_zero(self):
@@ -1341,17 +1341,17 @@ class TestGeoprocessing(unittest.TestCase):
             origin=(origin_x, origin_y), pixel_size=(1.0, -1.0))
 
         result = pygeoprocessing.zonal_statistics(
-            (raster_path, 1), vector_path,
+            [(raster_path, 1)], vector_path,
             aggregate_layer_name=None,
             ignore_nodata=True,
             polygons_might_overlap=False)
-        expected_result = {
+        expected_result = [{
             1: {
                 'count': 2,
                 'max': 1,
                 'min': 1,
                 'nodata_count': 2,
-                'sum': 2.0}}
+                'sum': 2.0}}]
         self.assertEqual(result, expected_result)
 
     def test_zonal_statistics_named_layer(self):
@@ -1378,17 +1378,17 @@ class TestGeoprocessing(unittest.TestCase):
         _array_to_raster(
             pixel_matrix, target_nodata, raster_path)
         result = pygeoprocessing.zonal_statistics(
-            (raster_path, 1), aggregating_vector_path,
+            [(raster_path, 1)], aggregating_vector_path,
             aggregate_layer_name='aggregate_vector',
             ignore_nodata=True,
             polygons_might_overlap=True)
-        expected_result = {
+        expected_result = [{
             0: {
                 'count': 81,
                 'max': 1.0,
                 'min': 1.0,
                 'nodata_count': 0,
-                'sum': 81.0}}
+                'sum': 81.0}}]
         self.assertEqual(result, expected_result)
 
     def test_zonal_statistics_bad_vector(self):
@@ -1404,7 +1404,7 @@ class TestGeoprocessing(unittest.TestCase):
             pixel_matrix, target_nodata, raster_path)
         with self.assertRaises(RuntimeError) as cm:
             _ = pygeoprocessing.zonal_statistics(
-                (raster_path, 1), missing_aggregating_vector_path,
+                [(raster_path, 1)], missing_aggregating_vector_path,
                 ignore_nodata=True,
                 polygons_might_overlap=True)
         expected_message = 'Could not open aggregate vector'
@@ -1427,7 +1427,7 @@ class TestGeoprocessing(unittest.TestCase):
             vector_format='ESRI Shapefile')
         with self.assertRaises(RuntimeError) as cm:
             _ = pygeoprocessing.zonal_statistics(
-                (raster_path, 1), aggregating_vector_path,
+                [(raster_path, 1)], aggregating_vector_path,
                 ignore_nodata=True,
                 aggregate_layer_name='not a layer name',
                 polygons_might_overlap=True)
@@ -1469,7 +1469,7 @@ class TestGeoprocessing(unittest.TestCase):
         with self.assertRaises(ValueError):
             # intentionally not passing a (path, band) tuple as first arg
             _ = pygeoprocessing.zonal_statistics(
-                raster_path, aggregating_vector_path,
+                [raster_path], aggregating_vector_path,
                 aggregate_layer_name=None,
                 ignore_nodata=True,
                 polygons_might_overlap=True)
