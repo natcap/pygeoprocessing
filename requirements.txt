@@ -9,4 +9,4 @@ numpy>=1.10.1
 Rtree>=0.8.3
 scipy>=0.14.1,!=0.19.1
 Shapely>=1.6.4
-importlib_metadata; python_version < '3.8'
+importlib_metadata  # technically only required on python < 3.8; easier to install with conda across all versions
