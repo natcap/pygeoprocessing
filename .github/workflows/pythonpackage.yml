@@ -65,13 +65,13 @@ jobs:
         uses: mamba-org/provision-with-micromamba@main
         with:
           # Grab requirements from pip-compatible requirements.txt
-          environment-file: requirements.txt
+          #environment-file: requirements.txt
           extra-specs: |
+              python=${{ matrix.python-version }}
               gdal=${{ matrix.gdal }}
               setuptools
               python-build
           environment-name: pyenv
-          python-version: ${{ matrix.python-version }}
           channels: conda-forge
 
       - name: Install dependencies
