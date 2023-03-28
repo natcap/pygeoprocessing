@@ -1,6 +1,14 @@
 Release History
 ===============
 
+Unreleased Changes
+------------------
+* Fixed another memory leak in ``pygeoprocessing.raster_calculator``, where
+  shared memory objects under certain circumstances were not being unlinked at
+  the end of the function, resulting in excess memory usage and a warning
+  during the shutdown of the python process.
+  https://github.com/natcap/pygeoprocessing/issues/247
+
 2.4.0 (2023-03-03)
 ------------------
 * A new submodule, ``pygeoprocessing.kernels`` has been added to facilitate the
