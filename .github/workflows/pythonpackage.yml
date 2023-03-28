@@ -61,17 +61,16 @@ jobs:
           # version string.
           fetch-depth: 0
 
-      - name: Write environment JSON
-        run: |
-            python -c "import json; json.dump({'dependencies': ['gdal=${{matrix.gdal}}', 'setuptools', 'python-build', {'pip': ['-r requirements.txt']}]}, open('environment.json', 'w'))"
-
       - name: setup-micromamba
         uses: mamba-org/provision-with-micromamba@main
         with:
-          # json is valid yaml and easier to write with the python stdlib
-          environment-file: environment.json
-          activate-environment: pyenv
-          auto-update-conda: true
+          # Grab requirements from pip-compatible requirements.txt
+          environment-file: requirements.txt
+          extra-specs: |
+              gdal=${{ matrix.gdal }}
+              setuptools
+              python-build
+          environment-name: pyenv
           python-version: ${{ matrix.python-version }}
           channels: conda-forge
 
