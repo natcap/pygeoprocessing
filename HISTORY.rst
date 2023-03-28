@@ -3,6 +3,11 @@ Release History
 
 Unreleased Changes
 ------------------
+* The ``pygeoprocessing`` package metadata has been updated to use
+  ``importlib.metadata`` (python >= 3.8) or ``importlib_metadata``
+  (python < 3.8) for retrieving the package version, in keeping with
+  recommendations from ``setuptools_scm``.  The dependency
+  ``importlib_metadata`` is now required for installs on python < 3.8.
 * Fixed another memory leak in ``pygeoprocessing.raster_calculator``, where
   shared memory objects under certain circumstances were not being unlinked at
   the end of the function, resulting in excess memory usage and a warning

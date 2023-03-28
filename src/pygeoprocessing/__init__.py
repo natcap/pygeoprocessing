@@ -8,6 +8,13 @@ import types
 import pkg_resources
 import pkg_resources.extern.packaging.version
 
+try:
+    from importlib.metadata import PackageNotFoundError
+    from importlib.metadata import version
+except ImportError:
+    from importlib_metadata import version
+    from importlib_metadata import PackageNotFoundError
+
 from . import geoprocessing
 from .geoprocessing import _assert_is_valid_pixel_size
 from .geoprocessing import align_and_resize_raster_stack
@@ -42,16 +49,11 @@ from .geoprocessing_core import calculate_slope
 from .geoprocessing_core import raster_band_percentile
 
 try:
-    __version__ = pkg_resources.get_distribution(__name__).version
-except (pkg_resources.extern.packaging.version.InvalidVersion,
-        DeprecationWarning):
-    # InvalidVersion is raised when our version string isn't PEP440.
-    # If there was an error, just skip the version string.
-    # Not having a version string shouldn't change how pygeoprocessing behaves
-    # or whether it imports.
-    # DeprecationWarning sometimes happens when we have an invalid version
-    # string as well.
-    __version__ = 'unknown'
+    __version__ = version('pygeoprocessing')
+except PackageNotFoundError:
+    # package is not installed
+    pass
+
 
 # Programmatically defining __all__ based on what's been imported.
 # Thus, the imports are the source of truth for __all__.
