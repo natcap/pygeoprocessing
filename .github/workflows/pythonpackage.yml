@@ -61,8 +61,8 @@ jobs:
           # version string.
           fetch-depth: 0
 
-      - name: setup-miniconda
-        uses: conda-incubator/setup-miniconda@v2
+      - name: setup-micromamba
+        uses: mamba-org/provision-with-micromamba@main
         with:
           activate-environment: pyenv
           auto-update-conda: true
@@ -88,7 +88,7 @@ jobs:
             # conflicts.
             #
             # Using single-equals to get whatever bugfix version satisfies the resolver.
-            conda install --file requirements.txt gdal=${{ matrix.gdal }} setuptools build
+            mamba install --file requirements.txt gdal=${{ matrix.gdal }} setuptools python-build
             python -m build --wheel
             python -m pip install $(find dist -name "*.whl")
 
