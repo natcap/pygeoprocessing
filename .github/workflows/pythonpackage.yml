@@ -71,11 +71,10 @@ jobs:
               gdal=${{ matrix.gdal }}
               setuptools
               python-build
+              flake8
+              pytest
           environment-name: pyenv
           channels: conda-forge
-
-      - name: Install dependencies
-        run: conda install flake8 pytest
 
       - name: Lint with flake8
         run: |
