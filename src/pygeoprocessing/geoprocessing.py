@@ -589,13 +589,14 @@ def raster_calculator(
                     LOGGER.error("stats_worker_thread.join() timed out")
                     raise RuntimeError(
                         "stats_worker_thread.join() timed out")
-                if sys.version_info >= (3, 8) and use_shared_memory:
-                    LOGGER.debug(
-                        f'unlink shared memory for process {os.getpid()}')
-                    shared_memory.close()
-                    shared_memory.unlink()
-                    LOGGER.debug(
-                        f'unlinked shared memory for process {os.getpid()}')
+
+            if sys.version_info >= (3, 8) and use_shared_memory:
+                LOGGER.debug(
+                    f'unlink shared memory for process {os.getpid()}')
+                shared_memory.close()
+                shared_memory.unlink()
+                LOGGER.debug(
+                    f'unlinked shared memory for process {os.getpid()}')
 
             # check for an exception in the workers, otherwise get result
             # and pass to writer
