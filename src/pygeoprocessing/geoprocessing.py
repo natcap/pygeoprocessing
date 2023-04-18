@@ -3130,9 +3130,9 @@ def convolve_2d(
 
             mask_pixels_processed += target_block.size
             timed_logger.info(
-                "convolution nodata normalizer approximately %.1f%% "
-                "complete on %s", 100.0 * float(mask_pixels_processed) / (
-                    n_cols_signal * n_rows_signal))
+                f"""convolution nodata normalizer approximately {
+                100 * mask_pixels_processed / (n_cols_signal * n_rows_signal)
+                :.1f}% complete on {os.path.basename(target_path)}""")
 
         mask_raster = None
         mask_band = None
