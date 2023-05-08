@@ -1372,34 +1372,16 @@ def zonal_statistics(
     that are not aggregated use their bounding box to intersect with the
     raster for overlap statistics.
 
-    Process:
+    Statistics are calculated on the set of pixels that fall within each
+    feature polygon. If `ignore_nodata` is false, nodata pixels are considered
+    valid when calculating the statistics:
 
-    If polygons might overlap, divide them into disjoint sets.
-
-    For each pixel size,
-
-        For each disjoint polygon set:
-            rasterize(polygons, pixel_size)
-
-            For each raster:
-                align_and_resize(rasters, pixel_size)
-                1. Align and clip rasters. All rasters are warped to match the projection
-                   of the aggregate vector. All rasters are clipped/padded to have the
-                   same bounding box, which is the union of all their bounding boxes.
-                calculate stats
-
-
-    For each raster:
-
-        pixel_size = get_raster_info(raster)['pixel_size']
-
-        @cache
-        rasterize(polygons, pixel_size)
-
-        align_and_resize(raster, vector projection)
-
-        calculate
-
+    'min': minimum valid pixel value
+    'max': maximum valid pixel value
+    'sum': sum of valid pixel values
+    'count': number of valid pixels
+    'nodata_count': number of nodata pixels
+    'value_counts': number of pixels having each unique value
 
     Note:
         There may be some degenerate cases where the bounding box vs. actual
@@ -1481,7 +1463,7 @@ def zonal_statistics(
     for base_raster_path_band in base_raster_path_bands:
         if not _is_raster_path_band_formatted(base_raster_path_band):
             raise ValueError(
-                '`base_raster_path_band` not formatted as expected.  Expects '
+                '`base_raster_path_band` not formatted as expected.  Expected '
                 f'(path, band_index), received {repr(base_raster_path_band)}')
 
     # Check that all input rasters are aligned. This should hold true if they
@@ -1610,8 +1592,9 @@ def zonal_statistics(
     if polygons_might_overlap:
         LOGGER.info('calculating disjoint polygon sets')
         # Only consider polygons that overlap the rasters
+        # Use the original vector to be sure that the correct FIDs are returned
         disjoint_fid_sets = calculate_disjoint_polygon_set(
-            target_vector_path, bounding_box=bbox_intersection)
+            aggregate_vector_path, bounding_box=bbox_intersection)
     else:
         disjoint_fid_sets = [valid_fid_set]
 
