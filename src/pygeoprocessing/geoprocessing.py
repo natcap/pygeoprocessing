@@ -1586,8 +1586,6 @@ def zonal_statistics(
             outputBounds=bbox_intersection,
             callback=_make_logger_callback("Warp %.1f%% complete %s"))
 
-    timed_logger = TimedLoggingAdapter(_LOGGING_PERIOD)
-
     # Calculate disjoint polygon sets
     if polygons_might_overlap:
         LOGGER.info('calculating disjoint polygon sets')
@@ -1625,6 +1623,8 @@ def zonal_statistics(
     # Calculate statistics for each raster and each feature
     # working block-wise through the rasters
     for i, (raster_path, band) in enumerate(target_raster_path_band_list):
+        LOGGER.info('calculating stats on raster '
+                    f'{i} of {len(target_raster_path_band_list)}')
         # fetch the block offsets before the raster is opened for writing
         offset_list = list(iterblocks((raster_path, band), offset_only=True))
         nodata = get_raster_info(raster_path)['nodata'][band - 1]
@@ -1632,7 +1632,9 @@ def zonal_statistics(
         data_band = data_source.GetRasterBand(band)
         found_fids = set()  # track FIDs that have been found on at least one pixel
 
-        for fid_raster_path in fid_raster_paths:
+        for set_index, fid_raster_path in enumerate(fid_raster_paths):
+            LOGGER.info(
+                f'disjoint polygon set {set_index} of {len(fid_raster_paths)}')
             fid_raster = gdal.OpenEx(fid_raster_path, gdal.OF_RASTER)
             fid_band = fid_raster.GetRasterBand(1)
 
