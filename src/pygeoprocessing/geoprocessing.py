@@ -1765,6 +1765,7 @@ def zonal_statistics(
     # dereference gdal objects
     data_band, data_source, fid_raster = None, None, None
     disjoint_layer, aggregate_layer, aggregate_vector = None, None, None
+    target_layer, target_vector = None
 
     shutil.rmtree(temp_working_dir)
     if multi_raster_mode:
