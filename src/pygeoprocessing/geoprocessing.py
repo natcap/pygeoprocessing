@@ -1358,7 +1358,7 @@ def interpolate_points(
 
 
 def zonal_statistics(
-        base_raster_path_bands, aggregate_vector_path,
+        base_raster_path_band_list, aggregate_vector_path,
         aggregate_layer_name=None, ignore_nodata=True,
         polygons_might_overlap=True, include_value_counts=False,
         working_dir=None):
@@ -1421,7 +1421,7 @@ def zonal_statistics(
             should be created during this run.
 
     Return:
-        If `base_raster_path_bands` is a tuple, the return value is a nested
+        If `base_raster_path_band_list` is a tuple, the return value is a nested
         dictionary of stats for that raster band. Top-level keys are the
         aggregate feature FIDs. Each nested FID dictionary then contains
         statistics about that feature: 'min', 'max', 'sum', 'count',
@@ -1441,10 +1441,10 @@ def zonal_statistics(
                 }
             }
 
-        If `base_raster_path_bands` is a list of tuples, the return value is
+        If `base_raster_path_band_list` is a list of tuples, the return value is
         a list of the nested dictionaries described above. Each dictionary in
         the list contains the stats calculated for the corresponding raster
-        band in the `base_raster_path_bands` list.
+        band in the `base_raster_path_band_list` list.
 
 
     Raises:
@@ -1457,10 +1457,10 @@ def zonal_statistics(
 
     """
     # Check that the raster path/band input is formatted correctly
-    multi_raster_mode = isinstance(base_raster_path_bands, list)
+    multi_raster_mode = isinstance(base_raster_path_band_list, list)
     if not multi_raster_mode:
-        base_raster_path_bands = [base_raster_path_bands]
-    for base_raster_path_band in base_raster_path_bands:
+        base_raster_path_band_list = [base_raster_path_band_list]
+    for base_raster_path_band in base_raster_path_band_list:
         if not _is_raster_path_band_formatted(base_raster_path_band):
             raise ValueError(
                 '`base_raster_path_band` not formatted as expected.  Expected '
@@ -1470,7 +1470,7 @@ def zonal_statistics(
     # have the same projection, geotransform, and bounding box.
     for attr in ['geotransform', 'bounding_box', 'projection_wkt']:
         vals = set()
-        for path, _ in base_raster_path_bands:
+        for path, _ in base_raster_path_band_list:
             raster_info = get_raster_info(path)
             vals.add(str(raster_info[attr]))
         if len(vals) > 1:
@@ -1517,7 +1517,7 @@ def zonal_statistics(
     fid_field_name = 'original_fid'
     target_layer.CreateField(ogr.FieldDefn(fid_field_name, ogr.OFTInteger))
     valid_fid_set = set()
-    aggregate_stats_list = [{} for _ in base_raster_path_bands]
+    aggregate_stats_list = [{} for _ in base_raster_path_band_list]
     for feature in aggregate_layer:
         fid = feature.GetFID()
         # Initialize the output data structure:
@@ -1569,7 +1569,7 @@ def zonal_statistics(
 
     # Clip base rasters to their intersection with the aggregate vector
     target_raster_path_band_list = []
-    for i, (base_path, band) in enumerate(base_raster_path_bands):
+    for i, (base_path, band) in enumerate(base_raster_path_band_list):
         raster_info = get_raster_info(path)
         if (raster_info['datatype'] in {gdal.GDT_Float32, gdal.GDT_Float64}
                 and include_value_counts):
@@ -1582,7 +1582,7 @@ def zonal_statistics(
         gdal.Warp(
             destNameOrDestDS=target_path,
             srcDSOrSrcDSTab=base_path,
-            format='GTIFF',
+            format='VRT',
             outputBounds=bbox_intersection,
             callback=_make_logger_callback("Warp %.1f%% complete %s"))
 
@@ -1597,7 +1597,7 @@ def zonal_statistics(
         disjoint_fid_sets = [valid_fid_set]
 
     # Rasterize each disjoint polygon set onto its own raster layer
-    fid_nodata = -1
+    fid_nodata = numpy.iinfo(numpy.uint16).max
     fid_raster_paths = []
     for i, disjoint_fid_set in enumerate(disjoint_fid_sets):
         fid_raster_path = os.path.join(temp_working_dir, f'fid_set_{i}.tif')
@@ -1612,7 +1612,7 @@ def zonal_statistics(
             xRes=raster_info['pixel_size'][0],
             yRes=raster_info['pixel_size'][1],
             format='GTIFF',
-            outputType=gdal.GDT_Int32,
+            outputType=gdal.GDT_UInt16,
             creationOptions=DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS[1],
             callback=_make_logger_callback(
                 f'rasterizing disjoint polygon set {i + 1} of '
@@ -1620,6 +1620,7 @@ def zonal_statistics(
             where=(f'{fid_field_name} IN ({fid_set_str})'))
         fid_raster_paths.append(fid_raster_path)
 
+    timed_logger = TimedLoggingAdapter(_LOGGING_PERIOD)
     # Calculate statistics for each raster and each feature
     # working block-wise through the rasters
     for i, (raster_path, band) in enumerate(target_raster_path_band_list):
@@ -1638,7 +1639,10 @@ def zonal_statistics(
             fid_raster = gdal.OpenEx(fid_raster_path, gdal.OF_RASTER)
             fid_band = fid_raster.GetRasterBand(1)
 
-            for offset in offset_list:
+            for offset_index, offset in enumerate(offset_list):
+                timed_logger.info(
+                    "%.1f%% done calculating stats for polygon set %s on raster %s",
+                    offset_index / len(offset_list) * 100, set_index, i)
                 fid_block = fid_band.ReadAsArray(**offset)
                 data_block = data_band.ReadAsArray(**offset)
 
