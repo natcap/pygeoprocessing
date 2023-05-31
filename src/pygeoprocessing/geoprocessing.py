@@ -1373,7 +1373,7 @@ def zonal_statistics(
     raster for overlap statistics.
 
     Statistics are calculated on the set of pixels that fall within each
-    feature polygon. If `ignore_nodata` is false, nodata pixels are considered
+    feature polygon. If ``ignore_nodata`` is false, nodata pixels are considered
     valid when calculating the statistics:
 
     'min': minimum valid pixel value
