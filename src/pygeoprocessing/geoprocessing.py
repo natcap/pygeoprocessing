@@ -1373,7 +1373,7 @@ def zonal_statistics(
     raster for overlap statistics.
 
     Statistics are calculated on the set of pixels that fall within each
-    feature polygon. If `ignore_nodata` is false, nodata pixels are considered
+    feature polygon. If ``ignore_nodata`` is false, nodata pixels are considered
     valid when calculating the statistics:
 
     'min': minimum valid pixel value
@@ -1386,8 +1386,9 @@ def zonal_statistics(
     Note:
         There may be some degenerate cases where the bounding box vs. actual
         geometry intersection would be incorrect, but these are so unlikely as
-        to be manually constructed. If you encounter one of these please email
-        the description and dataset to jdouglass@stanford.edu.
+        to be manually constructed. If you encounter one of these please create
+        an issue at https://github.com/natcap/pygeoprocessing/issues with the
+        datasets used.
 
     Args:
         base_raster_path_band (tuple or list[tuple]): base raster
