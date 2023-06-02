@@ -1358,7 +1358,7 @@ def interpolate_points(
 
 
 def zonal_statistics(
-        base_raster_path_band_list, aggregate_vector_path,
+        base_raster_path_band, aggregate_vector_path,
         aggregate_layer_name=None, ignore_nodata=True,
         polygons_might_overlap=True, include_value_counts=False,
         working_dir=None):
@@ -1390,7 +1390,7 @@ def zonal_statistics(
         the description and dataset to jdouglass@stanford.edu.
 
     Args:
-        base_raster_path_band_list (tuple or list[tuple]): base raster
+        base_raster_path_band (tuple or list[tuple]): base raster
             (path, band) tuple(s) to analyze. If a list of multiple raster
             bands is provided, they must be aligned (all having the same
             bounding box, geotransform, and projection).
