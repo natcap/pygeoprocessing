@@ -1461,11 +1461,11 @@ def zonal_statistics(
     multi_raster_mode = isinstance(base_raster_path_band, list)
     if not multi_raster_mode:
         base_raster_path_band = [base_raster_path_band]
-    for base_raster_path_band in base_raster_path_band:
-        if not _is_raster_path_band_formatted(base_raster_path_band):
+    for path_band_tuple in base_raster_path_band:
+        if not _is_raster_path_band_formatted(path_band_tuple):
             raise ValueError(
                 '`base_raster_path_band` not formatted as expected.  Expected '
-                f'(path, band_index), received {repr(base_raster_path_band)}')
+                f'(path, band_index), received {repr(path_band_tuple)}')
 
     # Check that all input rasters are aligned. This should hold true if they
     # have the same projection, geotransform, and bounding box.
