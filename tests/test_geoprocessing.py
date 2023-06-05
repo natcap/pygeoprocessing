@@ -896,10 +896,10 @@ class TestGeoprocessing(unittest.TestCase):
         layer_defn = layer.GetLayerDefn()
 
         # make an n x n raster with 2*m x 2*m polygons inside.
-        pixel_size = 1.0
-        subpixel_size = 1./5. * pixel_size
-        origin_x = 1.0
-        origin_y = -1.0
+        pixel_size = 1
+        subpixel_size = pixel_size / 5
+        origin_x = 1
+        origin_y = -1
         n = 16
         layer.StartTransaction()
         for row_index in range(n * 2):
@@ -956,10 +956,10 @@ class TestGeoprocessing(unittest.TestCase):
         layer_defn = layer.GetLayerDefn()
 
         # make an n x n raster with 2*m x 2*m polygons inside.
-        pixel_size = 1.0
-        subpixel_size = 1./5. * pixel_size
-        origin_x = 1.0
-        origin_y = -1.0
+        pixel_size = 1
+        subpixel_size = pixel_size / 5
+        origin_x = 1
+        origin_y = -1
         n = 16
         layer.StartTransaction()
         x_pos = origin_x - n
@@ -987,7 +987,7 @@ class TestGeoprocessing(unittest.TestCase):
         zonal_stats = pygeoprocessing.zonal_statistics(
             (raster_path, 1), vector_path)
         for poly_id in zonal_stats:
-            self.assertEqual(zonal_stats[poly_id]['sum'], 0.0)
+            self.assertEqual(zonal_stats[poly_id]['sum'], 0)
 
     def test_zonal_stats_all_outside(self):
         """PGP.geoprocessing: test vector all outside raster."""
@@ -1001,10 +1001,10 @@ class TestGeoprocessing(unittest.TestCase):
         layer_defn = layer.GetLayerDefn()
 
         # make an n x n raster with 2*m x 2*m polygons inside.
-        pixel_size = 1.0
-        subpixel_size = 1./5. * pixel_size
-        origin_x = 1.0
-        origin_y = -1.0
+        pixel_size = 1
+        subpixel_size = pixel_size / 5
+        origin_x = 1
+        origin_y = -1
         n = 16
         layer.StartTransaction()
         x_pos = origin_x - n
@@ -1070,7 +1070,7 @@ class TestGeoprocessing(unittest.TestCase):
         zonal_stats = pygeoprocessing.zonal_statistics(
             (raster_path, 1), vector_path)
         for poly_id in zonal_stats:
-            self.assertEqual(zonal_stats[poly_id]['sum'], 0.0)
+            self.assertEqual(zonal_stats[poly_id]['sum'], 0)
 
         # this will catch a polygon that barely intersects the upper left
         # hand corner but is nodata.
@@ -1079,13 +1079,117 @@ class TestGeoprocessing(unittest.TestCase):
         array = numpy.fliplr(numpy.flipud(
             numpy.array(range(n*n), dtype=numpy.int32).reshape((n, n))))
         _array_to_raster(
-            array, None, raster_path, projection_epsg=4326,
-            origin=(origin_x+n, origin_y-n), pixel_size=(-1, 1))
+            array, 255, raster_path, projection_epsg=4326,
+            origin=(origin_x+n, origin_y-n), pixel_size=(1, -1))
 
         zonal_stats = pygeoprocessing.zonal_statistics(
             (raster_path, 1), vector_path)
         for poly_id in zonal_stats:
-            self.assertEqual(zonal_stats[poly_id]['sum'], 0.0)
+            self.assertEqual(zonal_stats[poly_id]['sum'], 0)
+
+    def test_zonal_stats_multiple_rasters(self):
+        """PGP.geoprocessing: test zonal stats works on a stack of rasters"""
+        pixel_size = 30
+        n_pixels = 9
+        origin = (444720, 3751320)
+        polygon_a = shapely.geometry.Polygon([
+            (origin[0], origin[1]),
+            (origin[0], -pixel_size * n_pixels+origin[1]),
+            (origin[0]+pixel_size * n_pixels,
+             -pixel_size * n_pixels+origin[1]),
+            (origin[0]+pixel_size * n_pixels, origin[1]),
+            (origin[0], origin[1])])
+        polygon_b = shapely.geometry.Polygon([
+            (origin[0], origin[1]),
+            (origin[0], -pixel_size+origin[1]),
+            (origin[0]+pixel_size, -pixel_size+origin[1]),
+            (origin[0]+pixel_size, origin[1]),
+            (origin[0], origin[1])])
+        aggregate_vector_path = os.path.join(self.workspace_dir, 'aggregate')
+        _geometry_to_vector([polygon_a, polygon_b], aggregate_vector_path)
+        target_nodata = None
+        raster_path_1 = os.path.join(self.workspace_dir, 'raster1.tif')
+        raster_path_2 = os.path.join(self.workspace_dir, 'raster2.tif')
+        _array_to_raster(
+            numpy.ones((n_pixels, n_pixels), numpy.float32),
+            target_nodata, raster_path_1)
+        _array_to_raster(
+            numpy.full((n_pixels, n_pixels), 2, numpy.float32),
+            target_nodata, raster_path_2)
+        result = pygeoprocessing.zonal_statistics(
+            [(raster_path_1, 1), (raster_path_2, 1)],
+            aggregate_vector_path,
+            aggregate_layer_name=None,
+            ignore_nodata=True,
+            polygons_might_overlap=True)
+        expected_result = [
+            {
+                0: {
+                    'count': 81,
+                    'max': 1,
+                    'min': 1,
+                    'nodata_count': 0,
+                    'sum': 81},
+                1: {
+                    'count': 1,
+                    'max': 1,
+                    'min': 1,
+                    'nodata_count': 0,
+                    'sum': 1}
+            }, {
+                0: {
+                    'count': 81,
+                    'max': 2,
+                    'min': 2,
+                    'nodata_count': 0,
+                    'sum': 162},
+                1: {
+                    'count': 1,
+                    'max': 2,
+                    'min': 2,
+                    'nodata_count': 0,
+                    'sum': 2}
+            }]
+        self.assertEqual(result, expected_result)
+
+    def test_zonal_stats_misaligned_rasters(self):
+        """PGP.geoprocessing: test zonal stats errors on misaligned rasters"""
+        pixel_size = 30
+        n_pixels = 9
+        origin = (444720, 3751320)
+        polygon_a = shapely.geometry.Polygon([
+            (origin[0], origin[1]),
+            (origin[0], -pixel_size * n_pixels+origin[1]),
+            (origin[0]+pixel_size * n_pixels,
+             -pixel_size * n_pixels+origin[1]),
+            (origin[0]+pixel_size * n_pixels, origin[1]),
+            (origin[0], origin[1])])
+        polygon_b = shapely.geometry.Polygon([
+            (origin[0], origin[1]),
+            (origin[0], -pixel_size+origin[1]),
+            (origin[0]+pixel_size, -pixel_size+origin[1]),
+            (origin[0]+pixel_size, origin[1]),
+            (origin[0], origin[1])])
+        aggregate_vector_path = os.path.join(self.workspace_dir, 'aggregate')
+        _geometry_to_vector([polygon_a, polygon_b], aggregate_vector_path)
+        target_nodata = None
+        raster_path_1 = os.path.join(self.workspace_dir, 'raster1.tif')
+        raster_path_2 = os.path.join(self.workspace_dir, 'raster2.tif')
+        _array_to_raster(
+            numpy.ones((n_pixels, n_pixels), numpy.float32),
+            target_nodata, raster_path_1)
+        _array_to_raster(
+            numpy.full((n_pixels, n_pixels + 1), 2, numpy.float32),
+            target_nodata, raster_path_2)
+        with self.assertRaises(ValueError) as cm:
+            pygeoprocessing.zonal_statistics(
+                [(raster_path_1, 1), (raster_path_2, 1)],
+                aggregate_vector_path)
+        actual_message = str(cm.exception)
+        self.assertIn(
+            ('All input rasters must be aligned. Multiple values of '
+             '"bounding_box" were found among the input rasters'),
+            actual_message, actual_message)
 
     def test_mask_raster(self):
         """PGP.geoprocessing: test mask raster."""
@@ -1338,7 +1442,8 @@ class TestGeoprocessing(unittest.TestCase):
         raster_path = os.path.join(self.workspace_dir, 'small_raster.tif')
         _array_to_raster(
             numpy.array([[1, 0], [1, 0]], dtype=numpy.int32), 0, raster_path,
-            origin=(origin_x, origin_y), pixel_size=(1.0, -1.0))
+            origin=(origin_x, origin_y), pixel_size=(1.0, -1.0),
+            projection_epsg=4326)
 
         result = pygeoprocessing.zonal_statistics(
             (raster_path, 1), vector_path,
