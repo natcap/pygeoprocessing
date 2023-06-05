@@ -1422,7 +1422,7 @@ def zonal_statistics(
             should be created during this run.
 
     Return:
-        If `base_raster_path_band_list` is a tuple, the return value is a nested
+        If `base_raster_path_band` is a tuple, the return value is a nested
         dictionary of stats for that raster band. Top-level keys are the
         aggregate feature FIDs. Each nested FID dictionary then contains
         statistics about that feature: 'min', 'max', 'sum', 'count',
@@ -1442,10 +1442,10 @@ def zonal_statistics(
                 }
             }
 
-        If `base_raster_path_band_list` is a list of tuples, the return value is
+        If `base_raster_path_band` is a list of tuples, the return value is
         a list of the nested dictionaries described above. Each dictionary in
         the list contains the stats calculated for the corresponding raster
-        band in the `base_raster_path_band_list` list.
+        band in the `base_raster_path_band` list.
 
 
     Raises:
@@ -1458,10 +1458,10 @@ def zonal_statistics(
 
     """
     # Check that the raster path/band input is formatted correctly
-    multi_raster_mode = isinstance(base_raster_path_band_list, list)
+    multi_raster_mode = isinstance(base_raster_path_band, list)
     if not multi_raster_mode:
-        base_raster_path_band_list = [base_raster_path_band_list]
-    for base_raster_path_band in base_raster_path_band_list:
+        base_raster_path_band = [base_raster_path_band]
+    for base_raster_path_band in base_raster_path_band:
         if not _is_raster_path_band_formatted(base_raster_path_band):
             raise ValueError(
                 '`base_raster_path_band` not formatted as expected.  Expected '
@@ -1471,7 +1471,7 @@ def zonal_statistics(
     # have the same projection, geotransform, and bounding box.
     for attr in ['geotransform', 'bounding_box', 'projection_wkt']:
         vals = set()
-        for path, _ in base_raster_path_band_list:
+        for path, _ in base_raster_path_band:
             raster_info = get_raster_info(path)
             vals.add(str(raster_info[attr]))
         if len(vals) > 1:
@@ -1518,7 +1518,7 @@ def zonal_statistics(
     fid_field_name = 'original_fid'
     target_layer.CreateField(ogr.FieldDefn(fid_field_name, ogr.OFTInteger))
     valid_fid_set = set()
-    aggregate_stats_list = [{} for _ in base_raster_path_band_list]
+    aggregate_stats_list = [{} for _ in base_raster_path_band]
     for feature in aggregate_layer:
         fid = feature.GetFID()
         # Initialize the output data structure:
@@ -1570,7 +1570,7 @@ def zonal_statistics(
 
     # Clip base rasters to their intersection with the aggregate vector
     target_raster_path_band_list = []
-    for i, (base_path, band) in enumerate(base_raster_path_band_list):
+    for i, (base_path, band) in enumerate(base_raster_path_band):
         raster_info = get_raster_info(path)
         if (raster_info['datatype'] in {gdal.GDT_Float32, gdal.GDT_Float64}
                 and include_value_counts):
