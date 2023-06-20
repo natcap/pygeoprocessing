@@ -15,6 +15,7 @@ except ImportError:
 from . import geoprocessing
 from .geoprocessing import _assert_is_valid_pixel_size
 from .geoprocessing import align_and_resize_raster_stack
+from .geoprocessing import array_equals_nodata
 from .geoprocessing import build_overviews
 from .geoprocessing import calculate_disjoint_polygon_set
 from .geoprocessing import convolve_2d
