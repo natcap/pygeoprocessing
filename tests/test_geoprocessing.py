@@ -5169,7 +5169,7 @@ class TestGeoprocessing(unittest.TestCase):
 
         expected_array = numpy.array([[0, 0, 1], [0, 1, 0], [1, 0, 0]])
 
-        result_array = pygeoprocessing..array_equals_nodata(array, numpy.nan)
+        result_array = pygeoprocessing.array_equals_nodata(array, numpy.nan)
         numpy.testing.assert_array_equal(result_array, expected_array)
 
     def test_none_nodata(self):
