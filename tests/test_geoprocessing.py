@@ -5151,8 +5151,6 @@ class TestGeoprocessing(unittest.TestCase):
 
     def test_integer_array(self):
         """PGP: array_equals_nodata returns integer array as expected."""
-        from natcap.invest import utils
-
         nodata_values = [9, 9.0]
 
         int_array = numpy.array(
@@ -5161,27 +5159,23 @@ class TestGeoprocessing(unittest.TestCase):
         expected_array = numpy.array([[0, 0, 1], [0, 1, 0], [1, 0, 0]])
 
         for nodata in nodata_values:
-            result_array = utils.array_equals_nodata(int_array, nodata)
+            result_array = pygeoprocessing.array_equals_nodata(int_array, nodata)
             numpy.testing.assert_array_equal(result_array, expected_array)
 
     def test_nan_nodata_array(self):
         """PGP: test array_equals_nodata with numpy.nan nodata values."""
-        from natcap.invest import utils
-
         array = numpy.array(
             [[4, 2, numpy.nan], [1, numpy.nan, 3], [numpy.nan, 6, 1]])
 
         expected_array = numpy.array([[0, 0, 1], [0, 1, 0], [1, 0, 0]])
 
-        result_array = utils.array_equals_nodata(array, numpy.nan)
+        result_array = pygeoprocessing..array_equals_nodata(array, numpy.nan)
         numpy.testing.assert_array_equal(result_array, expected_array)
 
     def test_none_nodata(self):
         """PGP: test array_equals_nodata when nodata is undefined (None)."""
-        from natcap.invest import utils
-
         array = numpy.array(
             [[4, 2, numpy.nan], [1, numpy.nan, 3], [numpy.nan, 6, 1]])
-        result_array = utils.array_equals_nodata(array, None)
+        result_array = pygeoprocessing.array_equals_nodata(array, None)
         numpy.testing.assert_array_equal(
             result_array, numpy.zeros(array.shape, dtype=bool))
