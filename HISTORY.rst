@@ -13,6 +13,9 @@ Unreleased Changes
   the end of the function, resulting in excess memory usage and a warning
   during the shutdown of the python process.
   https://github.com/natcap/pygeoprocessing/issues/247
+* Added a new function, ``pygeoprocessing.array_equals_nodata``, which returns
+  a boolean array indicating which elements have nodata. It handles integer,
+  float, and ``nan`` comparison, and the case where the nodata value is `None`.
 
 2.4.0 (2023-03-03)
 ------------------
