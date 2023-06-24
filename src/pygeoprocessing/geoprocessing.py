@@ -2196,7 +2196,7 @@ def warp_raster(
         base_raster_path, target_pixel_size, target_raster_path,
         resample_method, target_bb=None, base_projection_wkt=None,
         target_projection_wkt=None, n_threads=None, vector_mask_options=None,
-        gdal_warp_options=None, working_dir=None,
+        gdal_warp_options=None, working_dir=None, use_overview_level=0,
         raster_driver_creation_tuple=DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS,
         osr_axis_mapping_strategy=DEFAULT_OSR_AXIS_MAPPING_STRATEGY):
     f"""Resize/resample raster to desired pixel size, bbox and projection.
@@ -2380,6 +2380,7 @@ def warp_raster(
         dstSRS=target_projection_wkt,
         multithread=True if warp_options else False,
         warpOptions=warp_options,
+        overviewLevel=use_overview_level,
         creationOptions=raster_creation_options,
         callback=reproject_callback,
         callback_data=[target_raster_path])
