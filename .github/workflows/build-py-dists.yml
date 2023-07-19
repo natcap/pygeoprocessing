@@ -8,24 +8,11 @@ jobs:
             fail-fast: false
             matrix:
                 os: [windows-latest, macos-latest]
-                python-version: [3.7, 3.8, 3.9, "3.10"]
-                python-arch: [x86, x64]
-                include:
-                    - python-version: 3.7
-                      numpy: "numpy~=1.15"
-                    - python-version: 3.8
-                      numpy: "numpy~=1.17"
-                    - python-version: 3.9
-                      numpy: "numpy~=1.19"
-                    - python-version: "3.10"
-                      numpy: "numpy~=1.21"
-
-                exclude:
-                    - os: macos-latest
-                      python-arch: x86
+                python-version: [3.7, 3.8, 3.9, "3.10", "3.11"]
+                python-arch: [x64]
 
         steps:
-            - uses: actions/checkout@v2
+            - uses: actions/checkout@v3
               with:
                   # Fetch all history so that setuptools_scm can build the correct version string.
                   fetch-depth: 0
@@ -34,16 +21,16 @@ jobs:
               run: git fetch origin +refs/tags/*:refs/tags/*
 
             - name: Set up python ${{ matrix.python-version }} ${{ matrix.python-arch }}
-              uses: actions/setup-python@v1
+              uses: actions/setup-python@v4
               with:
                   python-version: ${{ matrix.python-version }}
                   architecture: ${{ matrix.python-arch }}
 
             - name: Install dependencies
-              run: python -m pip install ${{ matrix.numpy }} setuptools_scm cython wheel
+              run: python -m pip install build
 
             - name: Build wheel
-              run: python setup.py bdist_wheel
+              run: python -m build --wheel
 
             - uses: actions/upload-artifact@v1
               with:
@@ -54,7 +41,7 @@ jobs:
         name: Source Dist
         runs-on: ubuntu-latest
         steps:
-            - uses: actions/checkout@v2
+            - uses: actions/checkout@v3
               with:
                   # Fetch all history so that setuptools_scm can build the correct version string.
                   fetch-depth: 0
@@ -63,15 +50,15 @@ jobs:
               run: git fetch origin +refs/tags/*:refs/tags/*
 
             - name: Set up python
-              uses: actions/setup-python@v1
+              uses: actions/setup-python@v4
               with:
                   python-version: 3.7
 
-            - name: Install python dependencies
-              run: python -m pip install --upgrade pip numpy setuptools_scm cython
+            - name: Install dependencies
+              run: python -m pip install build
 
             - name: Build source distribution
-              run: python setup.py build_ext sdist
+              run: python -m build --sdist
 
             - uses: actions/upload-artifact@v1
               with:

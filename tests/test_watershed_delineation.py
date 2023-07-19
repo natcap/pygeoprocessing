@@ -1,19 +1,18 @@
 """pygeoprocessing.watersheds testing suite."""
+import glob
 import os
 import shutil
 import tempfile
 import unittest
-import glob
 
+import numpy
+import pygeoprocessing
+import pygeoprocessing.routing
+import shapely.geometry
 from osgeo import gdal
 from osgeo import ogr
 from osgeo import osr
-import numpy
-import shapely.geometry
-
 from pygeoprocessing.routing import watershed
-import pygeoprocessing
-import pygeoprocessing.routing
 
 
 class WatershedDelineationTests(unittest.TestCase):
@@ -40,7 +39,7 @@ class WatershedDelineationTests(unittest.TestCase):
             [2, 2, 2, 2, 2, 2, 2, 2, 2, 2],
             [2, 2, 2, 2, 2, 2, 2, 2, 2, 2],
             [2, 2, 2, 2, 2, 2, 2, 2, 2, 2]],
-            dtype=numpy.int8)
+            dtype=numpy.uint8)
 
         srs = osr.SpatialReference()
         srs.ImportFromEPSG(32731)  # WGS84 / UTM zone 31s
@@ -111,7 +110,7 @@ class WatershedDelineationTests(unittest.TestCase):
             [2, 2, 2, 2, 2, 2, 2, 2, 2, 2],
             [2, 2, 2, 2, 2, 2, 2, 2, 2, 2],
             [2, 2, 2, 2, 2, 2, 2, 2, 2, 2]],
-            dtype=numpy.int8)
+            dtype=numpy.uint8)
 
         srs = osr.SpatialReference()
         srs.ImportFromEPSG(32731)  # WGS84 / UTM zone 31s
@@ -143,14 +142,21 @@ class WatershedDelineationTests(unittest.TestCase):
             {
                 'polygon_id': ogr.OFTInteger,
                 'field_string': ogr.OFTString,
-                'other': ogr.OFTReal
+                'other': ogr.OFTReal,
+                # We use ws_id internally, so make sure that this field is
+                # copied over into the final vector since it's present in the
+                # source vector.
+                'ws_id': ogr.OFTInteger,
             },
             [
                 {'polygon_id': 1, 'field_string': 'hello world',
-                 'other': 1.111},
-                {'polygon_id': 2, 'field_string': 'hello foo', 'other': 2.222},
-                {'polygon_id': 3, 'field_string': 'hello bar', 'other': 3.333},
-                {'polygon_id': 4, 'field_string': 'hello baz', 'other': 4.444}
+                 'other': 1.111, 'ws_id': 1},
+                {'polygon_id': 2, 'field_string': 'hello foo', 'other': 2.222,
+                 'ws_id': 2},
+                {'polygon_id': 3, 'field_string': 'hello bar', 'other': 3.333,
+                 'ws_id': 3},
+                {'polygon_id': 4, 'field_string': 'hello baz', 'other': 4.444,
+                 'ws_id': 4},
             ],
             ogr_geom_type=ogr.wkbUnknown)
 
@@ -198,14 +204,17 @@ class WatershedDelineationTests(unittest.TestCase):
 
         outflow_vector = gdal.OpenEx(outflow_vector_path, gdal.OF_VECTOR)
         outflow_layer = outflow_vector.GetLayer()
+        found_ws_ids = set()  # make sure the ws_id field is copied over
         try:
             for feature in outflow_layer:
                 self.assertEqual(
                     id_to_fields[feature.GetField('polygon_id')],
                     feature.items())
+                found_ws_ids.add(feature.GetField('ws_id'))
         finally:
             outflow_layer = None
             outflow_vector = None
+        self.assertEqual(found_ws_ids, set([1, 2, 3, 4]))
 
     def test_split_geometry_into_seeds(self):
         """PGP watersheds: Test geometry-to-seed extraction."""

@@ -991,8 +991,6 @@ def delineate_watersheds_d8(
         source_feature = source_layer.GetFeature(ws_id)
         for field_name, field_value in source_feature.items().items():
             watershed_feature.SetField(field_name, field_value)
-            if field_name == 'ws_id':
-                continue
         watersheds_layer.CreateFeature(watershed_feature)
     watersheds_layer.CommitTransaction()
 
