@@ -31,6 +31,8 @@ from osgeo import osr
 
 from . import geoprocessing_core
 from .geoprocessing_core import DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS
+from .geoprocessing_core import DEFAULT_CREATION_OPTIONS
+from .geoprocessing_core import INT8_CREATION_OPTIONS
 from .geoprocessing_core import DEFAULT_OSR_AXIS_MAPPING_STRATEGY
 
 # This is used to efficiently pass data to the raster stats worker if available
@@ -4486,7 +4488,7 @@ def choose_nodata(dtype):
         return int(numpy.iinfo(dtype).max)
 
 
-def raster_op(op, *rasters, target_path='', target_nodata=None,
+def raster_map(op, *rasters, target_path='', target_nodata=None,
               target_dtype=None):
     """Apply a pixelwise function to a series of raster inputs.
 

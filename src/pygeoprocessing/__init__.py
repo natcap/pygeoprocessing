@@ -18,6 +18,7 @@ from .geoprocessing import align_and_resize_raster_stack
 from .geoprocessing import array_equals_nodata
 from .geoprocessing import build_overviews
 from .geoprocessing import calculate_disjoint_polygon_set
+from .geoprocessing import choose_dtype
 from .geoprocessing import convolve_2d
 from .geoprocessing import create_raster_from_bounding_box
 from .geoprocessing import create_raster_from_vector_extents
@@ -32,6 +33,7 @@ from .geoprocessing import merge_bounding_box_list
 from .geoprocessing import new_raster_from_base
 from .geoprocessing import numpy_array_to_raster
 from .geoprocessing import raster_calculator
+from .geoprocessing import raster_map
 from .geoprocessing import raster_reduce
 from .geoprocessing import raster_to_numpy_array
 from .geoprocessing import rasterize
