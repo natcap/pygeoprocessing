@@ -648,6 +648,120 @@ def array_equals_nodata(array, nodata):
     return numpy.isclose(array, nodata, equal_nan=True)
 
 
+def choose_dtype(*raster_paths):
+    """
+    Choose an appropriate dtype for an output derived from the given inputs.
+
+    Returns the dtype with the greatest size/precision among the inputs, so
+    that information will not be lost.
+
+    Args:
+        *raster_paths: series of raster path strings
+
+    Returns:
+        numpy dtype
+    """
+    dtypes = []
+    for path in raster_paths:
+        raster = gdal.OpenEx(path, gdal.OF_RASTER)
+        band = raster.GetRasterBand(1)
+        dtypes.append(_gdal_to_numpy_type(band))
+    return numpy.result_type(*dtypes)
+
+
+def choose_nodata(dtype):
+    """
+    Choose an appropriate nodata value for data of a given dtype.
+
+    Args:
+        dtype (numpy.dtype): data type for which to choose nodata
+
+    Returns:
+        number to use as nodata value
+    """
+    try:
+        return float(numpy.finfo(dtype).max)
+    except ValueError:
+        return int(numpy.iinfo(dtype).max)
+
+
+def raster_map(op, *rasters, target_path='', target_nodata=None,
+              target_dtype=None):
+    """Apply a pixelwise function to a series of raster inputs.
+
+    The output raster will have nodata where any input raster has nodata.
+    Raster inputs are split into aligned blocks, and the function is
+    applied individually to each stack of blocks (as numpy arrays).
+
+    Args:
+        op (function): Function to apply to the inputs. It should accept a
+            number of arguments equal to the length of ``*inputs``. It should
+           return a numpy array with the same shape as its array input(s).
+        *rasters (strs): Paths to rasters to input to ``op``, in the order that
+           they will be passed to ``op``. All rasters should be aligned and
+           have the same dimensions.
+        target_path (str): path to write out the output raster.
+        target_nodata (number): Nodata value to use for the output raster.
+            Optional. If not provided, a suitable nodata value will be chosen.
+        target_dtype (numpy.dtype): dtype to use for the output. Optional. If
+            not provided, a suitable dtype will be chosen.
+
+    Returns:
+        ``None``
+    """
+    nodatas = [get_raster_info(r)['nodata'][0] for r in rasters]
+
+    def apply_op(*arrays):
+        """Apply the function `op` to the input arrays.
+
+        Args:
+            *arrays: numpy arrays with the same shape.
+
+        Returns:
+            numpy array
+        """
+        result = numpy.full(arrays[0].shape, target_nodata, dtype=target_dtype)
+
+        # make a mask that is True where all input arrays are valid,
+        # and False where any input array is invalid.
+        valid_mask = numpy.full(arrays[0].shape, True)
+        for array, nodata in zip(arrays, nodatas):
+            valid_mask &= ~array_equals_nodata(array, nodata)
+
+        # mask all arrays to the area where they all are valid
+        masked_arrays = [array[valid_mask] for array in arrays]
+        # apply op to the masked arrays in order
+        result[valid_mask] = op(*masked_arrays)
+        return result
+
+    # choose an appropriate dtype if none was given
+    if target_dtype is None:
+        target_dtype = choose_dtype(*rasters)
+
+    # choose an appropriate nodata value if none was given
+    # if the user provides a target nodata,
+    # check that it can fit in the target dtype
+    if target_nodata is None:
+        target_nodata = choose_nodata(target_dtype)
+    else:
+        if not numpy.can_cast(target_nodata, target_dtype):
+            raise ValueError(
+                f'Target nodata value {target_nodata} is incompatible with '
+                f'the target dtype {target_dtype}')
+
+    creation_options = DEFAULT_CREATION_OPTIONS
+    if target_dtype == numpy.int8:
+        creation_options = INT8_CREATION_OPTIONS
+
+    raster_calculator(
+        [(path, 1) for path in rasters],  # assume the first band
+        apply_op,
+        target_path,
+        NUMPY_TO_GDAL_TYPE[numpy.dtype(target_dtype)],
+        target_nodata,
+        raster_driver_creation_tuple=('GTIFF', tuple(creation_options)))
+
+
 def raster_reduce(function, raster_path_band, initializer, mask_nodata=True,
                   largest_block=_LARGEST_ITERBLOCK):
     """Cumulatively apply a reducing function to each block of a raster.
@@ -4449,121 +4563,3 @@ def _create_latitude_m2_area_column(lat_min, lat_max, n_pixels):
         _m2_area_of_wg84_pixel(pixel_size, lat)
         for lat in reversed(center_lat_array)]).reshape((n_pixels, 1))
     return area_array
-
-
-def choose_dtype(*raster_paths):
-    """
-    Choose an appropriate dtype for an output derived from the given inputs.
-
-    Returns the dtype with the greatest size/precision among the inputs, so
-    that information will not be lost.
-
-    Args:
-        *raster_paths: series of raster path strings
-
-    Returns:
-        numpy dtype
-    """
-    dtypes = []
-    for path in raster_paths:
-        raster = gdal.OpenEx(path, gdal.OF_RASTER)
-        band = raster.GetRasterBand(1)
-        dtypes.append(_gdal_to_numpy_type(band))
-    return numpy.result_type(*dtypes)
-
-
-def choose_nodata(dtype):
-    """
-    Choose an appropriate nodata value for data of a given dtype.
-
-    Args:
-        dtype (numpy.dtype): data type for which to choose nodata
-
-    Returns:
-        number to use as nodata value
-    """
-    try:
-        return float(numpy.finfo(dtype).max)
-    except ValueError:
-        return int(numpy.iinfo(dtype).max)
-
-
-def raster_map(op, *rasters, target_path='', target_nodata=None,
-              target_dtype=None):
-    """Apply a pixelwise function to a series of raster inputs.
-
-    The output raster will have nodata where any input raster has nodata.
-    Raster inputs are split into aligned blocks, and the function is
-    applied individually to each stack of blocks (as numpy arrays).
-
-    Args:
-        op (function): Function to apply to the inputs. It should accept a
-            number of arguments equal to the length of ``*inputs``. It should
-           return a numpy array with the same shape as its array input(s).
-        *rasters (strs): Paths to rasters to input to ``op``, in the order that
-           they will be passed to ``op``. All rasters should be aligned and
-           have the same dimensions.
-        target_path (str): path to write out the output raster.
-        target_nodata (number): Nodata value to use for the output raster.
-            Optional. If not provided, a suitable nodata value will be chosen.
-        target_dtype (numpy.dtype): dtype to use for the output. Optional. If
-            not provided, a suitable dtype will be chosen.
-
-    Returns:
-        ``None``
-    """
-    nodatas = [get_raster_info(r)['nodata'][0] for r in rasters]
-
-    def apply_op(*arrays):
-        """Apply the function `op` to the input arrays.
-
-        Args:
-            *arrays: numpy arrays with the same shape.
-
-        Returns:
-            numpy array
-        """
-        result = numpy.full(arrays[0].shape, target_nodata, dtype=target_dtype)
-
-        # make a mask that is True where all input arrays are valid,
-        # and False where any input array is invalid.
-        valid_mask = numpy.full(arrays[0].shape, True)
-        for array, nodata in zip(arrays, nodatas):
-            if nodata is not None:
-                if numpy.issubdtype(array.dtype, numpy.integer):
-                    valid_mask &= array != nodata  # compare integers directly
-                else:  # allow tolerance for float imprecision
-                    valid_mask &= ~numpy.isclose(array, nodata, equal_nan=True)
-
-        # mask all arrays to the area where they all are valid
-        masked_arrays = [array[valid_mask] for array in arrays]
-        # apply op to the masked arrays in order
-        result[valid_mask] = op(*masked_arrays)
-        return result
-
-    # choose an appropriate dtype if none was given
-    if target_dtype is None:
-        target_dtype = choose_dtype(*rasters)
-
-    # choose an appropriate nodata value if none was given
-    # if the user provides a target nodata,
-    # check that it can fit in the target dtype
-    if target_nodata is None:
-        target_nodata = choose_nodata(target_dtype)
-    else:
-        if not numpy.can_cast(target_nodata, target_dtype):
-            raise ValueError(
-                f'Target nodata value {target_nodata} is incompatible with '
-                f'the target dtype {target_dtype}')
-
-    creation_options = DEFAULT_CREATION_OPTIONS
-    if target_dtype == numpy.int8:
-        creation_options = INT8_CREATION_OPTIONS
-
-    raster_calculator(
-        [(path, 1) for path in rasters],  # assume the first band
-        apply_op,
-        target_path,
-        NUMPY_TO_GDAL_TYPE[numpy.dtype(target_dtype)],
-        target_nodata,
-        raster_driver_creation_tuple=('GTIFF', tuple(creation_options)))
