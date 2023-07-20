@@ -685,7 +685,7 @@ def choose_nodata(dtype):
         return int(numpy.iinfo(dtype).max)
 
 
-def raster_map(op, *rasters, target_path='', target_nodata=None,
+def raster_map(op, *rasters, target_path, target_nodata=None,
               target_dtype=None):
     """Apply a pixelwise function to a series of raster inputs.
 
