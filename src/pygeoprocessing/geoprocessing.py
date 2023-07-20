@@ -712,7 +712,7 @@ def raster_map(op, *rasters, target_path, target_nodata=None,
     nodatas = [get_raster_info(r)['nodata'][0] for r in rasters]
 
     def apply_op(*arrays):
-        """Apply the function `op` to the input arrays.
+        """Apply the function ``op`` to the input arrays.
 
         Args:
             *arrays: numpy arrays with the same shape.
