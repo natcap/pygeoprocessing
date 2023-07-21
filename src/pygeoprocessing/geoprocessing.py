@@ -711,6 +711,25 @@ def raster_map(op, *rasters, target_path, target_nodata=None,
     """
     nodatas = [get_raster_info(r)['nodata'][0] for r in rasters]
 
+    # choose an appropriate dtype if none was given
+    if target_dtype is None:
+        target_dtype = choose_dtype(*rasters)
+
+    # choose an appropriate nodata value if none was given
+    # if the user provides a target nodata,
+    # check that it can fit in the target dtype
+    if target_nodata is None:
+        target_nodata = choose_nodata(target_dtype)
+    else:
+        if not numpy.can_cast(target_nodata, target_dtype):
+            raise ValueError(
+                f'Target nodata value {target_nodata} is incompatible with '
+                f'the target dtype {target_dtype}')
+
+    creation_options = DEFAULT_CREATION_OPTIONS
+    if target_dtype == numpy.int8:
+        creation_options = INT8_CREATION_OPTIONS
+
     def apply_op(*arrays):
         """Apply the function ``op`` to the input arrays.
 
@@ -733,25 +752,6 @@ def raster_map(op, *rasters, target_path, target_nodata=None,
         # apply op to the masked arrays in order
         result[valid_mask] = op(*masked_arrays)
         return result
-
-    # choose an appropriate dtype if none was given
-    if target_dtype is None:
-        target_dtype = choose_dtype(*rasters)
-
-    # choose an appropriate nodata value if none was given
-    # if the user provides a target nodata,
-    # check that it can fit in the target dtype
-    if target_nodata is None:
-        target_nodata = choose_nodata(target_dtype)
-    else:
-        if not numpy.can_cast(target_nodata, target_dtype):
-            raise ValueError(
-                f'Target nodata value {target_nodata} is incompatible with '
-                f'the target dtype {target_dtype}')
-
-    creation_options = DEFAULT_CREATION_OPTIONS
-    if target_dtype == numpy.int8:
-        creation_options = INT8_CREATION_OPTIONS
 
     raster_calculator(
         [(path, 1) for path in rasters],  # assume the first band
