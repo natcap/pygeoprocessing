@@ -686,7 +686,7 @@ def choose_nodata(dtype):
 
 
 def raster_map(op, *rasters, target_path, target_nodata=None,
-              target_dtype=None):
+               target_dtype=None, target_driver='GTIFF'):
     """Apply a pixelwise function to a series of raster inputs.
 
     The output raster will have nodata where any input raster has nodata.
@@ -705,6 +705,8 @@ def raster_map(op, *rasters, target_path, target_nodata=None,
             Optional. If not provided, a suitable nodata value will be chosen.
         target_dtype (numpy.dtype): dtype to use for the output. Optional. If
             not provided, a suitable dtype will be chosen.
+        target_driver (str): Name of the GDAL raster driver to use to write
+            out the result at ``target_path``. Defaults to GTIFF.
 
     Returns:
         ``None``
@@ -765,7 +767,7 @@ def raster_map(op, *rasters, target_path, target_nodata=None,
         target_path,
         NUMPY_TO_GDAL_TYPE[numpy.dtype(target_dtype)],
         target_nodata,
-        raster_driver_creation_tuple=('GTIFF', tuple(creation_options)))
+        raster_driver_creation_tuple=(target_driver, tuple(creation_options)))
 
 
 def raster_reduce(function, raster_path_band, initializer, mask_nodata=True,
