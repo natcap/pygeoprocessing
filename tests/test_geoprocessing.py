@@ -5255,6 +5255,40 @@ class TestGeoprocessing(unittest.TestCase):
         numpy.testing.assert_allclose(out_array, expected_array)
         self.assertEqual(out_array.dtype, expected_array.dtype)
 
+    def test_raster_map_warn_on_multiband(self):
+        """PGP: raster_map raises a warning when given a multiband raster."""
+        band_1_array = numpy.array([[1, 1], [1, 1]], dtype=numpy.float32)
+        band_2_array = numpy.array([[2, 2], [2, 2]], dtype=numpy.float32)
+        target_path = os.path.join(self.workspace_dir, 'multiband.tif')
+
+        driver = gdal.GetDriverByName('GTIFF')
+        raster = driver.Create(
+            target_path, 2, 2, 2, gdal.GDT_Float32,
+            options=DEFAULT_CREATION_OPTIONS)
+
+        projection = osr.SpatialReference()
+        projection.ImportFromEPSG(_DEFAULT_EPSG)
+        projection_wkt = projection.ExportToWkt()
+        raster.SetProjection(projection_wkt)
+        raster.SetGeoTransform(
+            [_DEFAULT_ORIGIN[0], _DEFAULT_PIXEL_SIZE[0], 0,
+             _DEFAULT_ORIGIN[1], 0, _DEFAULT_PIXEL_SIZE[1]])
+
+        band_1 = raster.GetRasterBand(1)
+        band_1.WriteArray(band_1_array)
+        band_2 = raster.GetRasterBand(1)
+        band_2.WriteArray(band_2_array)
+        band_1, band_2, raster = None, None, None
+
+        with capture_logging(
+                logging.getLogger('pygeoprocessing')) as log_messages:
+            pygeoprocessing.raster_map(
+                lambda a: a, target_path,
+                target_path=os.path.join(self.workspace_dir, 'out.tif'))
+        self.assertEqual(len(log_messages), 1)
+        self.assertEqual(log_messages[0].levelno, logging.WARNING)
+        self.assertIn('has more than one band', log_messages[0].msg)
+
     def test_choose_dtype(self):
         """PGP: choose_dtype picks smallest safe dtype for raster output."""
         uint8_raster = os.path.join(self.workspace_dir, 'uint8.tif')

@@ -709,7 +709,13 @@ def raster_map(op, *rasters, target_path, target_nodata=None,
     Returns:
         ``None``
     """
-    nodatas = [get_raster_info(r)['nodata'][0] for r in rasters]
+    nodatas = []
+    for raster in rasters:
+        raster_info = get_raster_info(raster)
+        if raster_info['n_bands'] > 1:
+            LOGGER.warning(f'{raster} has more than one band. Only the first '
+                           'band will be used.')
+        nodatas.append(raster_info['nodata'][0])
 
     # choose an appropriate dtype if none was given
     if target_dtype is None:
