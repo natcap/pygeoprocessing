@@ -685,8 +685,8 @@ def choose_nodata(dtype):
         return int(numpy.iinfo(dtype).max)
 
 
-def raster_map(op, *rasters, target_path, target_nodata=None,
-               target_dtype=None, target_driver='GTIFF'):
+def raster_map(op, *rasters, target_path, target_nodata=None, target_dtype=None,
+               raster_driver_creation_tuple=DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS):
     """Apply a pixelwise function to a series of raster inputs.
 
     The output raster will have nodata where any input raster has nodata.
@@ -705,8 +705,12 @@ def raster_map(op, *rasters, target_path, target_nodata=None,
             Optional. If not provided, a suitable nodata value will be chosen.
         target_dtype (numpy.dtype): dtype to use for the output. Optional. If
             not provided, a suitable dtype will be chosen.
-        target_driver (str): Name of the GDAL raster driver to use to write
-            out the result at ``target_path``. Defaults to GTIFF.
+        raster_driver_creation_tuple (tuple): a tuple containing a GDAL driver
+            name string as the first element and a GDAL creation options
+            tuple/list as the second. Defaults to
+            geoprocessing.DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS. If the
+            ``target_dtype`` is int8, the ``PIXELTYPE=SIGNEDBYTE`` option will
+            be added to the creation options tuple if it is not already there.
 
     Returns:
         ``None``
@@ -734,9 +738,9 @@ def raster_map(op, *rasters, target_path, target_nodata=None,
                 f'Target nodata value {target_nodata} is incompatible with '
                 f'the target dtype {target_dtype}')
 
-    creation_options = DEFAULT_CREATION_OPTIONS
-    if target_dtype == numpy.int8:
-        creation_options = INT8_CREATION_OPTIONS
+    driver, options = raster_driver_creation_tuple
+    if target_dtype == numpy.int8 and 'PIXELTYPE=SIGNEDBYTE' not in options:
+            creation_options += ('PIXELTYPE=SIGNEDBYTE',)
 
     def apply_op(*arrays):
         """Apply the function ``op`` to the input arrays.
@@ -767,7 +771,7 @@ def raster_map(op, *rasters, target_path, target_nodata=None,
         target_path,
         NUMPY_TO_GDAL_TYPE[numpy.dtype(target_dtype)],
         target_nodata,
-        raster_driver_creation_tuple=(target_driver, tuple(creation_options)))
+        raster_driver_creation_tuple=(driver, options))
 
 
 def raster_reduce(function, raster_path_band, initializer, mask_nodata=True,
