@@ -2500,10 +2500,10 @@ def warp_raster(
         warped_raster_path = target_raster_path
     base_raster = gdal.OpenEx(base_raster_path, gdal.OF_RASTER)
 
-    raster_creation_options = DEFAULT_CREATION_OPTIONS
+    raster_creation_options = list(raster_driver_creation_tuple[1])
     if (base_raster_info['numpy_type'] == numpy.int8 and
             'PIXELTYPE' not in ' '.join(raster_creation_options)):
-        raster_creation_options = INT8_CREATION_OPTIONS
+        raster_creation_options.append('PIXELTYPE=SIGNEDBYTE')
 
     if resample_method.lower() not in _GDAL_WARP_ALGORITHMS:
         raise ValueError(
