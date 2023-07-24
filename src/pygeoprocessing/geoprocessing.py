@@ -740,7 +740,7 @@ def raster_map(op, *rasters, target_path, target_nodata=None, target_dtype=None,
 
     driver, options = raster_driver_creation_tuple
     if target_dtype == numpy.int8 and 'PIXELTYPE=SIGNEDBYTE' not in options:
-            creation_options += ('PIXELTYPE=SIGNEDBYTE',)
+        options += ('PIXELTYPE=SIGNEDBYTE',)
 
     def apply_op(*arrays):
         """Apply the function ``op`` to the input arrays.
