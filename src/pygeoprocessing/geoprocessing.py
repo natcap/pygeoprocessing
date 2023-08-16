@@ -1357,6 +1357,24 @@ def interpolate_points(
         band.WriteArray(raster_out_array, offset['xoff'], offset['yoff'])
 
 
+def align_bbox(geotransform, bbox):
+    """Pad a bounding box so that it aligns with the grid of a given geotransform.
+
+    Args:
+        geotransform (list): GDAL raster geotransform to align to
+        bbox (list): bounding box in the form [minx, miny, maxx, maxy]
+
+    Returns:
+        padded bounding box in the form [minx, miny, maxx, maxy]
+    """
+    x_origin, pixel_width, _, y_origin, _, pixel_height = raster_info['geotransform']
+    projwin = [
+        x_origin + math.floor((bbox[0] - x_origin) / pixel_width) * pixel_width,
+        y_origin + math.floor((bbox[1] - y_origin) / pixel_height) * pixel_height,
+        x_origin + math.ceil((bbox[2] - x_origin) / pixel_width) * pixel_width,
+        y_origin + math.ceil((bbox[3] - y_origin) / pixel_height) * pixel_height]
+
+
 def zonal_statistics(
         base_raster_path_band, aggregate_vector_path,
         aggregate_layer_name=None, ignore_nodata=True,
@@ -1568,7 +1586,12 @@ def zonal_statistics(
             # and we didn't raise an exception, execution could get weird.
             raise
 
+    # Expand the intersection bounding box to align with the nearest pixels
+    # in the original raster
+    projwin = align_bbox(raster_info['geotransform'], bbox_intersection)
+
     # Clip base rasters to their intersection with the aggregate vector
+    LOGGER.info('Clipping rasters to their intersection with the vector')
     target_raster_path_band_list = []
     for i, (base_path, band) in enumerate(base_raster_path_band):
         raster_info = get_raster_info(path)
@@ -1580,12 +1603,15 @@ def zonal_statistics(
                 'continuous values.')
         target_path = os.path.join(temp_working_dir, f'{i}.tif')
         target_raster_path_band_list.append((target_path, band))
-        gdal.Warp(
-            destNameOrDestDS=target_path,
-            srcDSOrSrcDSTab=base_path,
-            format='VRT',
-            outputBounds=bbox_intersection,
-            callback=_make_logger_callback("Warp %.1f%% complete %s"))
+
+        gdal.Translate(
+            destName=target_path,
+            srcDS=base_path,
+            format='GTIFF',
+            projWin=projwin,
+            callback=_make_logger_callback(
+                f"Clipping raster {i + 1} of {len(base_raster_path_band)} "
+                "%.1f%% complete %s"))
 
     # Calculate disjoint polygon sets
     if polygons_might_overlap:
@@ -1600,6 +1626,12 @@ def zonal_statistics(
     # Rasterize each disjoint polygon set onto its own raster layer
     fid_nodata = numpy.iinfo(numpy.uint16).max
     fid_raster_paths = []
+    outputBounds = [
+        min(projwin[0], projwin[2]),
+        min(projwin[1], projwin[3]),
+        max(projwin[0], projwin[2]),
+        max(projwin[1], projwin[3])]
+
     for i, disjoint_fid_set in enumerate(disjoint_fid_sets):
         fid_raster_path = os.path.join(temp_working_dir, f'fid_set_{i}.tif')
         fid_set_str = ", ".join(str(fid) for fid in disjoint_fid_set)
@@ -1609,9 +1641,9 @@ def zonal_statistics(
             allTouched=False,
             attribute=fid_field_name,
             noData=fid_nodata,
-            outputBounds=bbox_intersection,
-            xRes=raster_info['pixel_size'][0],
-            yRes=raster_info['pixel_size'][1],
+            outputBounds=outputBounds,
+            xRes=abs(raster_info['pixel_size'][0]),  # resolution should always be positive
+            yRes=abs(raster_info['pixel_size'][1]),
             format='GTIFF',
             outputType=gdal.GDT_UInt16,
             creationOptions=DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS[1],
@@ -1641,6 +1673,7 @@ def zonal_statistics(
             fid_band = fid_raster.GetRasterBand(1)
 
             for offset_index, offset in enumerate(offset_list):
+
                 timed_logger.info(
                     "%.1f%% done calculating stats for polygon set %s on raster %s",
                     offset_index / len(offset_list) * 100, set_index, i)
@@ -1687,7 +1720,8 @@ def zonal_statistics(
         # subtract 1 because bands are 1-indexed
         raster_nodata = get_raster_info(raster_path)['nodata'][band - 1]
         target_layer = target_vector.GetLayerByName(target_layer_id)
-        for unset_fid in unset_fids:
+        for i, unset_fid in enumerate(unset_fids):
+
             # Look up by the FID copy field, not the FID itself, because
             # FIDs in target_layer may not be the same as in the input layer
             target_layer.SetAttributeFilter(f'{fid_field_name} = {unset_fid}')
@@ -1772,7 +1806,7 @@ def zonal_statistics(
     disjoint_layer, aggregate_layer, aggregate_vector = None, None, None
     target_layer, target_vector = None, None
 
-    shutil.rmtree(temp_working_dir)
+    # shutil.rmtree(temp_working_dir)
     if multi_raster_mode:
         return aggregate_stats_list
     else:
