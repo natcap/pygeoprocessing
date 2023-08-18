@@ -1266,7 +1266,7 @@ def create_raster_from_bounding_box(
     target_y_size = int(abs(
         float(bbox_maxy - bbox_miny) / target_pixel_size[1]))
     x_residual = (
-        abs(target_x_size[0] * target_pixel_size[0]) -
+        abs(target_x_size * target_pixel_size[0]) -
         (bbox_maxx - bbox_minx))
     if not numpy.isclose(x_residual, 0.0):
         target_x_size += 1
