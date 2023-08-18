@@ -1257,17 +1257,38 @@ def create_raster_from_bounding_box(
 
     driver = gdal.GetDriverByName(raster_driver_creation_tuple[0])
     n_bands = 1
-    n_cols = int(numpy.ceil(
-        abs((bbox_maxx - bbox_minx) / target_pixel_size[0])))
-    n_cols = max(1, n_cols)
 
-    n_rows = int(numpy.ceil(
-        abs((bbox_maxy - bbox_miny) / target_pixel_size[1])))
-    n_rows = max(1, n_rows)
+    # determine the raster size that bounds the input bounding box and then
+    # adjust the bounding box to be that size
+    target_x_size = int(abs(
+        float(bbox_maxx - bbox_minx) / target_pixel_size[0]))
+    target_y_size = int(abs(
+        float(bbox_maxy - bbox_miny) / target_pixel_size[1]))
+    x_residual = (
+        abs(target_x_size[0] * target_pixel_size[0]) -
+        (bbox_maxx - bbox_minx))
+    if not numpy.isclose(x_residual, 0.0):
+        target_x_size += 1
+    y_residual = (
+        abs(target_y_size * target_pixel_size[1]) -
+        (bbox_maxy - bbox_miny))
+    if not numpy.isclose(y_residual, 0.0):
+        target_y_size += 1
+
+    if target_x_size == 0:
+        LOGGER.warning(
+            "bounding_box is so small that x dimension rounds to 0; "
+            "clamping to 1.")
+        target_x_size = 1
+    if target_y_size == 0:
+        LOGGER.warning(
+            "bounding_box is so small that y dimension rounds to 0; "
+            "clamping to 1.")
+        target_y_size = 1
 
     raster = driver.Create(
-        target_raster_path, n_cols, n_rows, n_bands, target_pixel_type,
-        options=raster_driver_creation_tuple[1])
+        target_raster_path, target_x_size, target_y_size, n_bands,
+        target_pixel_type, options=raster_driver_creation_tuple[1])
     raster.SetProjection(target_srs_wkt)
 
     # Set the transform based on the upper left corner and given pixel
