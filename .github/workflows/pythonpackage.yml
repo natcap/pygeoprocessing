@@ -61,16 +61,20 @@ jobs:
           # version string.
           fetch-depth: 0
 
-      - name: setup-miniconda
-        uses: conda-incubator/setup-miniconda@v2
+      - name: setup-micromamba
+        uses: mamba-org/provision-with-micromamba@main
         with:
-          activate-environment: pyenv
-          auto-update-conda: true
-          python-version: ${{ matrix.python-version }}
+          # Grab requirements from pip-compatible requirements.txt
+          environment-file: requirements.txt
+          extra-specs: |
+              python=${{ matrix.python-version }}
+              gdal=${{ matrix.gdal }}
+              setuptools
+              python-build
+              flake8
+              pytest
+          environment-name: pyenv
           channels: conda-forge
-
-      - name: Install dependencies
-        run: conda install flake8 pytest
 
       - name: Lint with flake8
         run: |
@@ -81,14 +85,8 @@ jobs:
           flake8 . --count --exit-zero --max-complexity=10 \
             --max-line-length=127 --statistics
 
-      - name: Install PyGeoprocessing
+      - name: Build and Install PyGeoprocessing
         run: |
-            # Installing all of these in the same line will force conda to
-            # resolve all requirements at once, reducing the chance of DLL
-            # conflicts.
-            #
-            # Using single-equals to get whatever bugfix version satisfies the resolver.
-            conda install --file requirements.txt gdal=${{ matrix.gdal }} setuptools build
             python -m build --wheel
             python -m pip install $(find dist -name "*.whl")
 

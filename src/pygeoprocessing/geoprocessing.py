@@ -589,13 +589,14 @@ def raster_calculator(
                     LOGGER.error("stats_worker_thread.join() timed out")
                     raise RuntimeError(
                         "stats_worker_thread.join() timed out")
-                if sys.version_info >= (3, 8) and use_shared_memory:
-                    LOGGER.debug(
-                        f'unlink shared memory for process {os.getpid()}')
-                    shared_memory.close()
-                    shared_memory.unlink()
-                    LOGGER.debug(
-                        f'unlinked shared memory for process {os.getpid()}')
+
+            if sys.version_info >= (3, 8) and use_shared_memory:
+                LOGGER.debug(
+                    f'unlink shared memory for process {os.getpid()}')
+                shared_memory.close()
+                shared_memory.unlink()
+                LOGGER.debug(
+                    f'unlinked shared memory for process {os.getpid()}')
 
             # check for an exception in the workers, otherwise get result
             # and pass to writer
@@ -1392,15 +1393,29 @@ def zonal_statistics(
     that are not aggregated use their bounding box to intersect with the
     raster for overlap statistics.
 
+    Statistics are calculated on the set of pixels that fall within each
+    feature polygon. If ``ignore_nodata`` is false, nodata pixels are considered
+    valid when calculating the statistics:
+
+    'min': minimum valid pixel value
+    'max': maximum valid pixel value
+    'sum': sum of valid pixel values
+    'count': number of valid pixels
+    'nodata_count': number of nodata pixels
+    'value_counts': number of pixels having each unique value
+
     Note:
         There may be some degenerate cases where the bounding box vs. actual
         geometry intersection would be incorrect, but these are so unlikely as
-        to be manually constructed. If you encounter one of these please email
-        the description and dataset to jdouglass@stanford.edu.
+        to be manually constructed. If you encounter one of these please create
+        an issue at https://github.com/natcap/pygeoprocessing/issues with the
+        datasets used.
 
     Args:
-        base_raster_path_band (tuple): a str/int tuple indicating the path to
-            the base raster and the band index of that raster to analyze.
+        base_raster_path_band (tuple or list[tuple]): base raster
+            (path, band) tuple(s) to analyze. If a list of multiple raster
+            bands is provided, they must be aligned (all having the same
+            bounding box, geotransform, and projection).
         aggregate_vector_path (string): a path to a polygon vector whose
             geometric features indicate the areas in
             ``base_raster_path_band`` to calculate zonal statistics.
@@ -1428,373 +1443,361 @@ def zonal_statistics(
             should be created during this run.
 
     Return:
-        nested dictionary indexed by aggregating feature id, and then by one
-        of 'min' 'max' 'sum' 'count' and 'nodata_count'.  Example::
-
-            {0: {'min': 0,
-                 'max': 14,
-                 'sum': 42,
-                 'count': 8,
-                 'nodata_count': 1,
-                 'value_counts': {
-                     2: 5,
-                     4: 1,
-                     14: 2,
+        If `base_raster_path_band` is a tuple, the return value is a nested
+        dictionary of stats for that raster band. Top-level keys are the
+        aggregate feature FIDs. Each nested FID dictionary then contains
+        statistics about that feature: 'min', 'max', 'sum', 'count',
+        'nodata_count', and optionally 'value_counts'. Example::
+            {
+                0: {
+                    'min': 0,
+                    'max': 14,
+                    'sum': 42,
+                    'count': 8,
+                    'nodata_count': 1,
+                    'value_counts': {
+                        2: 5,
+                        4: 1,
+                        14: 2
                     }
-                 }
+                }
             }
+
+        If `base_raster_path_band` is a list of tuples, the return value is
+        a list of the nested dictionaries described above. Each dictionary in
+        the list contains the stats calculated for the corresponding raster
+        band in the `base_raster_path_band` list.
+
 
     Raises:
         ValueError
-            if ``base_raster_path_band`` is incorrectly formatted.
+            if ``base_raster_path_band`` is incorrectly formatted, or if
+            not all of the input raster bands are aligned with each other
+
         RuntimeError
-            if the aggregate vector or layer cannot open.
+            if the aggregate vector or layer cannot be opened
 
     """
-    if not _is_raster_path_band_formatted(base_raster_path_band):
-        raise ValueError(
-            "`base_raster_path_band` not formatted as expected.  Expects "
-            "(path, band_index), received %s" % repr(base_raster_path_band))
+    # Check that the raster path/band input is formatted correctly
+    multi_raster_mode = isinstance(base_raster_path_band, list)
+    if not multi_raster_mode:
+        base_raster_path_band = [base_raster_path_band]
+    for path_band_tuple in base_raster_path_band:
+        if not _is_raster_path_band_formatted(path_band_tuple):
+            raise ValueError(
+                '`base_raster_path_band` not formatted as expected.  Expected '
+                f'(path, band_index), received {repr(path_band_tuple)}')
+
+    # Check that all input rasters are aligned. This should hold true if they
+    # have the same projection, geotransform, and bounding box.
+    for attr in ['geotransform', 'bounding_box', 'projection_wkt']:
+        vals = set()
+        for path, _ in base_raster_path_band:
+            raster_info = get_raster_info(path)
+            vals.add(str(raster_info[attr]))
+        if len(vals) > 1:
+            raise ValueError(
+                'All input rasters must be aligned. Multiple values of '
+                f'"{attr}" were found among the input rasters: {vals}')
+
+    # Check that the aggregate vector and layer can be opened
     aggregate_vector = gdal.OpenEx(aggregate_vector_path, gdal.OF_VECTOR)
     if aggregate_vector is None:
         raise RuntimeError(
-            "Could not open aggregate vector at %s" % aggregate_vector_path)
-    if aggregate_layer_name is not None:
-        aggregate_layer = aggregate_vector.GetLayerByName(
-            aggregate_layer_name)
-    else:
+            f"Could not open aggregate vector at {aggregate_vector_path}")
+    if aggregate_layer_name is None:
         aggregate_layer = aggregate_vector.GetLayer()
+    else:
+        aggregate_layer = aggregate_vector.GetLayerByName(aggregate_layer_name)
     if aggregate_layer is None:
         raise RuntimeError(
-            "Could not open layer %s on %s" % (
-                aggregate_layer_name, aggregate_vector_path))
+            f"Could not open layer {aggregate_layer_name} of {aggregate_vector_path}")
 
-    # create a new aggregate ID field to map base vector aggregate fields to
-    # local ones that are guaranteed to be integers.
-    local_aggregate_field_name = 'original_fid'
-    rasterize_layer_args = {
-        'options': [
-            'ALL_TOUCHED=FALSE',
-            'ATTRIBUTE=%s' % local_aggregate_field_name]
-    }
-
-    # clip base raster to aggregating vector intersection
-    raster_info = get_raster_info(base_raster_path_band[0])
-
-    if (raster_info['datatype'] in {gdal.GDT_Float32, gdal.GDT_Float64}
-            and include_value_counts):
-        LOGGER.warning(
-            "Value counts requested on a floating-point raster. This can "
-            "cause excessive memory usage if the raster has continuous "
-            "values.")
-
-    # -1 here because bands are 1 indexed
-    raster_nodata = raster_info['nodata'][base_raster_path_band[1]-1]
-    temp_working_dir = tempfile.mkdtemp(dir=working_dir)
-    clipped_raster_path = os.path.join(
-        temp_working_dir, 'clipped_raster.tif')
-
-    def _new_aggregate_dict():
-        """Build a new aggregate dict for ``collections.defaultdict``.
-
-        This function is needed over a lambda because it allows us to control
-        in a single place how the initial values of an aggregate dict should be
-        defined.  These are then used in several ``collections.defaultdict``s
-        within ``zonal_statistics``.
-
-        Returns:
-            A new aggregate dict with starter values, used for a
-            ``collections.defaultdict`` when a key does not already exist.
-        """
-        aggregate_dict = {
-            'min': None, 'max': None, 'count': 0, 'nodata_count': 0,
-            'sum': 0.0}
+    # Define the default/empty statistics values
+    # These values will be returned for features that have no geometry or
+    # don't overlap any valid pixels.
+    def default_aggregate_dict():
+        default_aggregate_dict = {
+            'min': None, 'max': None, 'count': 0, 'nodata_count': 0, 'sum': 0}
         if include_value_counts:
-            aggregate_dict['value_counts'] = collections.Counter()
-        return aggregate_dict
+            default_aggregate_dict['value_counts'] = collections.Counter()
+        return default_aggregate_dict
+
+    # Create a copy of the aggregate vector with the FID copied into a
+    # persistent attribute. Do this before reprojecting because converting to
+    # GPKG can change the FIDs.
+    # If the aggregate vector already contains a field called 'original_fid',
+    # this will break and GDAL will emit a warning.
+    temp_working_dir = tempfile.mkdtemp(dir=working_dir)
+    copy_path = os.path.join(temp_working_dir, 'vector_copy.gpkg')
+    target_vector = ogr.GetDriverByName('GPKG').CreateDataSource(copy_path)
+    target_layer_id = 'disjoint_vector'
+    target_layer = target_vector.CreateLayer(
+        name=target_layer_id,
+        srs=aggregate_layer.GetSpatialRef(),
+        geom_type=ogr.wkbPolygon)
+    fid_field_name = 'original_fid'
+    target_layer.CreateField(ogr.FieldDefn(fid_field_name, ogr.OFTInteger))
+    valid_fid_set = set()
+    aggregate_stats_list = [{} for _ in base_raster_path_band]
+    for feature in aggregate_layer:
+        fid = feature.GetFID()
+        # Initialize the output data structure:
+        # a list of zonal_stats dicts, one for each raster input
+        for stats_dict in aggregate_stats_list:
+            stats_dict[fid] = default_aggregate_dict()
+        geom_ref = feature.GetGeometryRef()
+        if geom_ref is None:
+            LOGGER.warning(
+                f'Skipping feature with FID {fid} because it has no geometry')
+            continue
+        valid_fid_set.add(fid)
+        feature_copy = ogr.Feature(target_layer.GetLayerDefn())
+        feature_copy.SetGeometry(geom_ref.Clone())
+        feature_copy.SetField(fid_field_name, fid)
+        target_layer.CreateFeature(feature_copy)
+    target_layer, target_vector, feature,  = None, None, None
+    geom_ref, aggregate_layer, aggregate_vector = None, None, None
+
+    # Reproject the vector to match the raster projection
+    target_vector_path = os.path.join(temp_working_dir, 'reprojected.gpkg')
+    reproject_vector(
+        base_vector_path=copy_path,
+        target_projection_wkt=raster_info['projection_wkt'],
+        target_path=target_vector_path,
+        layer_id=target_layer_id,
+        driver_name='GPKG',
+        copy_fields=True)
+    target_vector = gdal.OpenEx(target_vector_path, gdal.OF_VECTOR)
 
     try:
-        align_and_resize_raster_stack(
-            [base_raster_path_band[0]], [clipped_raster_path], ['near'],
-            raster_info['pixel_size'], 'intersection',
-            base_vector_path_list=[aggregate_vector_path],
-            raster_align_index=0)
-        clipped_raster = gdal.OpenEx(clipped_raster_path, gdal.OF_RASTER)
-        clipped_band = clipped_raster.GetRasterBand(base_raster_path_band[1])
-    except ValueError as e:
-        if 'Bounding boxes do not intersect' in repr(e):
+        bbox_intersection = merge_bounding_box_list(
+            [raster_info['bounding_box'],
+             get_vector_info(target_vector_path)['bounding_box']
+            ], 'intersection')
+    except ValueError as err:
+        if 'Bounding boxes do not intersect' in repr(err):
             LOGGER.error(
-                "aggregate vector %s does not intersect with the raster %s",
-                aggregate_vector_path, base_raster_path_band)
-            aggregate_stats = collections.defaultdict(_new_aggregate_dict)
-            for feature in aggregate_layer:
-                _ = aggregate_stats[feature.GetFID()]
-            return dict(aggregate_stats)
+                f'Aggregate vector {aggregate_vector_path} does not intersect '
+                'the input raster(s)')
+            if multi_raster_mode:
+                return aggregate_stats_list
+            else:
+                return aggregate_stats_list[0]
         else:
             # this would be very unexpected to get here, but if it happened
             # and we didn't raise an exception, execution could get weird.
             raise
 
-    # make a shapefile that non-overlapping layers can be added to
-    driver = ogr.GetDriverByName('MEMORY')
-    disjoint_vector = driver.CreateDataSource('disjoint_vector')
-    spat_ref = aggregate_layer.GetSpatialRef()
-
-    # Initialize these dictionaries to have the shapefile fields in the
-    # original datasource even if we don't pick up a value later
-    LOGGER.info("build a lookup of aggregate field value to FID")
-
-    aggregate_layer_fid_set = set(
-        [agg_feat.GetFID() for agg_feat in aggregate_layer])
-    agg_feat = None
-    # Loop over each polygon and aggregate
-    if polygons_might_overlap:
-        LOGGER.info("creating disjoint polygon set")
-        disjoint_fid_sets = calculate_disjoint_polygon_set(
-            aggregate_vector_path, bounding_box=raster_info['bounding_box'])
-    else:
-        disjoint_fid_sets = [aggregate_layer_fid_set]
-
-    agg_fid_raster_path = os.path.join(
-        temp_working_dir, 'agg_fid.tif')
-
-    agg_fid_nodata = -1
-    new_raster_from_base(
-        clipped_raster_path, agg_fid_raster_path, gdal.GDT_Int32,
-        [agg_fid_nodata])
-    # fetch the block offsets before the raster is opened for writing
-    agg_fid_offset_list = list(
-        iterblocks((agg_fid_raster_path, 1), offset_only=True))
-    agg_fid_raster = gdal.OpenEx(
-        agg_fid_raster_path, gdal.GA_Update | gdal.OF_RASTER)
-    aggregate_stats = collections.defaultdict(_new_aggregate_dict)
-    timed_logger = TimedLoggingAdapter(_LOGGING_PERIOD)
-    LOGGER.info("processing %d disjoint polygon sets", len(disjoint_fid_sets))
-    for set_index, disjoint_fid_set in enumerate(disjoint_fid_sets):
-        timed_logger.info(
-            "zonal stats approximately %.1f%% complete on %s",
-            100.0 * float(set_index+1) / len(disjoint_fid_sets),
-            os.path.basename(aggregate_vector_path))
-        disjoint_layer = disjoint_vector.CreateLayer(
-            'disjoint_vector', spat_ref, ogr.wkbPolygon)
-        disjoint_layer.CreateField(
-            ogr.FieldDefn(local_aggregate_field_name, ogr.OFTInteger))
-        disjoint_layer_defn = disjoint_layer.GetLayerDefn()
-        # add polygons to subset_layer
-        disjoint_layer.StartTransaction()
-        for index, feature_fid in enumerate(disjoint_fid_set):
-            timed_logger.info(
-                "polygon set %d of %d approximately %.1f%% processed "
-                "on %s", set_index+1, len(disjoint_fid_sets),
-                100.0 * float(index+1) / len(disjoint_fid_set),
-                os.path.basename(aggregate_vector_path))
-            agg_feat = aggregate_layer.GetFeature(feature_fid)
-            agg_geom_ref = agg_feat.GetGeometryRef()
-            disjoint_feat = ogr.Feature(disjoint_layer_defn)
-            disjoint_feat.SetGeometry(agg_geom_ref.Clone())
-            agg_geom_ref = None
-            disjoint_feat.SetField(
-                local_aggregate_field_name, feature_fid)
-            disjoint_layer.CreateFeature(disjoint_feat)
-        agg_feat = None
-        disjoint_layer.CommitTransaction()
-
-        LOGGER.info(
-            "disjoint polygon set %d of %d 100.0%% processed on %s",
-            set_index+1, len(disjoint_fid_sets), os.path.basename(
-                aggregate_vector_path))
-
-        # nodata out the mask
-        agg_fid_band = agg_fid_raster.GetRasterBand(1)
-        agg_fid_band.Fill(agg_fid_nodata)
-        LOGGER.info(
-            "rasterizing disjoint polygon set %d of %d %s", set_index+1,
-            len(disjoint_fid_sets),
-            os.path.basename(aggregate_vector_path))
-        rasterize_callback = _make_logger_callback(
-            "rasterizing polygon " + str(set_index+1) + " of " +
-            str(len(disjoint_fid_set)) + " set %.1f%% complete %s")
-        gdal.RasterizeLayer(
-            agg_fid_raster, [1], disjoint_layer,
-            callback=rasterize_callback, **rasterize_layer_args)
-        agg_fid_raster.FlushCache()
-
-        # Delete the features we just added to the subset_layer
-        disjoint_layer = None
-        disjoint_vector.DeleteLayer(0)
-
-        # create a key array
-        # and parallel min, max, count, and nodata count arrays
-        LOGGER.info(
-            "summarizing rasterized disjoint polygon set %d of %d %s",
-            set_index+1, len(disjoint_fid_sets),
-            os.path.basename(aggregate_vector_path))
-        for agg_fid_offset in agg_fid_offset_list:
-            agg_fid_block = agg_fid_band.ReadAsArray(**agg_fid_offset)
-            clipped_block = clipped_band.ReadAsArray(**agg_fid_offset)
-            valid_mask = (agg_fid_block != agg_fid_nodata)
-            valid_agg_fids = agg_fid_block[valid_mask]
-            valid_clipped = clipped_block[valid_mask]
-            for agg_fid in numpy.unique(valid_agg_fids):
-                masked_clipped_block = valid_clipped[
-                    valid_agg_fids == agg_fid]
-                if raster_nodata is not None:
-                    clipped_nodata_mask = numpy.isclose(
-                        masked_clipped_block, raster_nodata)
-                else:
-                    clipped_nodata_mask = numpy.zeros(
-                        masked_clipped_block.shape, dtype=bool)
-                aggregate_stats[agg_fid]['nodata_count'] += (
-                    numpy.count_nonzero(clipped_nodata_mask))
-                if ignore_nodata:
-                    masked_clipped_block = (
-                        masked_clipped_block[~clipped_nodata_mask])
-                if masked_clipped_block.size == 0:
-                    continue
-
-                if aggregate_stats[agg_fid]['min'] is None:
-                    aggregate_stats[agg_fid]['min'] = (
-                        masked_clipped_block[0])
-                    aggregate_stats[agg_fid]['max'] = (
-                        masked_clipped_block[0])
-
-                aggregate_stats[agg_fid]['min'] = min(
-                    numpy.min(masked_clipped_block),
-                    aggregate_stats[agg_fid]['min'])
-                aggregate_stats[agg_fid]['max'] = max(
-                    numpy.max(masked_clipped_block),
-                    aggregate_stats[agg_fid]['max'])
-                aggregate_stats[agg_fid]['count'] += (
-                    masked_clipped_block.size)
-                aggregate_stats[agg_fid]['sum'] += numpy.sum(
-                    masked_clipped_block)
-                if include_value_counts:
-                    # .update() here is operating on a Counter, so values are
-                    # ADDED, not replaced.
-                    aggregate_stats[agg_fid]['value_counts'].update(
-                        dict(zip(*numpy.unique(
-                            masked_clipped_block, return_counts=True))))
-    unset_fids = aggregate_layer_fid_set.difference(aggregate_stats)
-    LOGGER.debug(
-        "unset_fids: %s of %s ", len(unset_fids),
-        len(aggregate_layer_fid_set))
-    clipped_gt = numpy.array(
-        clipped_raster.GetGeoTransform(), dtype=numpy.float32)
-    LOGGER.debug("gt %s for %s", clipped_gt, base_raster_path_band)
-    for unset_fid in unset_fids:
-        unset_feat = aggregate_layer.GetFeature(unset_fid)
-        unset_geom_ref = unset_feat.GetGeometryRef()
-        if unset_geom_ref is None:
+    # Clip base rasters to their intersection with the aggregate vector
+    target_raster_path_band_list = []
+    for i, (base_path, band) in enumerate(base_raster_path_band):
+        raster_info = get_raster_info(path)
+        if (raster_info['datatype'] in {gdal.GDT_Float32, gdal.GDT_Float64}
+                and include_value_counts):
             LOGGER.warning(
-                f'no geometry in {aggregate_vector_path} FID: {unset_fid}')
-            continue
+                f'Value counts requested on a floating-point raster: {path}. '
+                'This can cause excessive memory usage if the raster has '
+                'continuous values.')
+        target_path = os.path.join(temp_working_dir, f'{i}.tif')
+        target_raster_path_band_list.append((target_path, band))
+        gdal.Warp(
+            destNameOrDestDS=target_path,
+            srcDSOrSrcDSTab=base_path,
+            format='VRT',
+            outputBounds=bbox_intersection,
+            callback=_make_logger_callback("Warp %.1f%% complete %s"))
 
-        unset_geom_envelope = list(unset_geom_ref.GetEnvelope())
-        unset_geom_ref = None
-        unset_feat = None
-        if clipped_gt[1] < 0:
-            unset_geom_envelope[0], unset_geom_envelope[1] = (
-                unset_geom_envelope[1], unset_geom_envelope[0])
-        if clipped_gt[5] < 0:
-            unset_geom_envelope[2], unset_geom_envelope[3] = (
-                unset_geom_envelope[3], unset_geom_envelope[2])
+    # Calculate disjoint polygon sets
+    if polygons_might_overlap:
+        LOGGER.info('calculating disjoint polygon sets')
+        # Only consider polygons that overlap the rasters
+        # Use the original vector to be sure that the correct FIDs are returned
+        disjoint_fid_sets = calculate_disjoint_polygon_set(
+            aggregate_vector_path, bounding_box=bbox_intersection)
+    else:
+        disjoint_fid_sets = [valid_fid_set]
 
-        xoff = int((unset_geom_envelope[0] - clipped_gt[0]) / clipped_gt[1])
-        yoff = int((unset_geom_envelope[2] - clipped_gt[3]) / clipped_gt[5])
-        win_xsize = int(numpy.ceil(
-            (unset_geom_envelope[1] - clipped_gt[0]) /
-            clipped_gt[1])) - xoff
-        win_ysize = int(numpy.ceil(
-            (unset_geom_envelope[3] - clipped_gt[3]) /
-            clipped_gt[5])) - yoff
+    # Rasterize each disjoint polygon set onto its own raster layer
+    fid_nodata = numpy.iinfo(numpy.uint16).max
+    fid_raster_paths = []
+    for i, disjoint_fid_set in enumerate(disjoint_fid_sets):
+        fid_raster_path = os.path.join(temp_working_dir, f'fid_set_{i}.tif')
+        fid_set_str = ", ".join(str(fid) for fid in disjoint_fid_set)
+        gdal.Rasterize(
+            destNameOrDestDS=fid_raster_path,
+            srcDS=target_vector,
+            allTouched=False,
+            attribute=fid_field_name,
+            noData=fid_nodata,
+            outputBounds=bbox_intersection,
+            xRes=raster_info['pixel_size'][0],
+            yRes=raster_info['pixel_size'][1],
+            format='GTIFF',
+            outputType=gdal.GDT_UInt16,
+            creationOptions=DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS[1],
+            callback=_make_logger_callback(
+                f'rasterizing disjoint polygon set {i + 1} of '
+                f'{len(disjoint_fid_set)} set %.1f%% complete (%s)'),
+            where=(f'{fid_field_name} IN ({fid_set_str})'))
+        fid_raster_paths.append(fid_raster_path)
 
-        # clamp offset to the side of the raster if it's negative
-        if xoff < 0:
-            win_xsize += xoff
-            xoff = 0
-        if yoff < 0:
-            win_ysize += yoff
-            yoff = 0
+    timed_logger = TimedLoggingAdapter(_LOGGING_PERIOD)
+    # Calculate statistics for each raster and each feature
+    # working block-wise through the rasters
+    for i, (raster_path, band) in enumerate(target_raster_path_band_list):
+        LOGGER.info('calculating stats on raster '
+                    f'{i} of {len(target_raster_path_band_list)}')
+        # fetch the block offsets before the raster is opened for writing
+        offset_list = list(iterblocks((raster_path, band), offset_only=True))
+        nodata = get_raster_info(raster_path)['nodata'][band - 1]
+        data_source = gdal.OpenEx(raster_path, gdal.OF_RASTER)
+        data_band = data_source.GetRasterBand(band)
+        found_fids = set()  # track FIDs that have been found on at least one pixel
 
-        # clamp the window to the side of the raster if too big
-        if xoff+win_xsize > clipped_band.XSize:
-            win_xsize = clipped_band.XSize-xoff
-        if yoff+win_ysize > clipped_band.YSize:
-            win_ysize = clipped_band.YSize-yoff
+        for set_index, fid_raster_path in enumerate(fid_raster_paths):
+            LOGGER.info(
+                f'disjoint polygon set {set_index} of {len(fid_raster_paths)}')
+            fid_raster = gdal.OpenEx(fid_raster_path, gdal.OF_RASTER)
+            fid_band = fid_raster.GetRasterBand(1)
 
-        if win_xsize <= 0 or win_ysize <= 0:
-            continue
+            for offset_index, offset in enumerate(offset_list):
+                timed_logger.info(
+                    "%.1f%% done calculating stats for polygon set %s on raster %s",
+                    offset_index / len(offset_list) * 100, set_index, i)
+                fid_block = fid_band.ReadAsArray(**offset)
+                data_block = data_band.ReadAsArray(**offset)
 
-        # here we consider the pixels that intersect with the geometry's
-        # bounding box as being the proxy for the intersection with the
-        # polygon itself. This is not a bad approximation since the case
-        # that caused the polygon to be skipped in the first phase is that it
-        # is as small as a pixel. There could be some degenerate cases that
-        # make this estimation very wrong, but we do not know of any that
-        # would come from natural data. If you do encounter such a dataset
-        # please email the description and datset to jdouglass@stanford.edu.
-        unset_fid_block = clipped_band.ReadAsArray(
-            xoff=xoff, yoff=yoff, win_xsize=win_xsize, win_ysize=win_ysize)
+                # Update stats for each FID found in this block of data
+                for fid in numpy.unique(fid_block):
+                    if fid == fid_nodata:
+                        continue
+                    found_fids.add(fid)
+                    # get the pixels that fall within the feature
+                    feature_data = data_block[fid_block == fid]
+                    nodata_mask = array_equals_nodata(feature_data, nodata)
+                    aggregate_stats_list[i][fid]['nodata_count'] += nodata_mask.sum()
+                    if ignore_nodata:
+                        feature_data = feature_data[~nodata_mask]
+                    if feature_data.size == 0:
+                        continue
 
-        if raster_nodata is not None:
-            unset_fid_nodata_mask = numpy.isclose(
+                    # compute stats
+                    if aggregate_stats_list[i][fid]['min'] is None:
+                        # initialize min/max to an arbitrary data value
+                        aggregate_stats_list[i][fid]['min'] = feature_data[0]
+                        aggregate_stats_list[i][fid]['max'] = feature_data[0]
+                    aggregate_stats_list[i][fid]['min'] = min(
+                        feature_data.min(), aggregate_stats_list[i][fid]['min'])
+                    aggregate_stats_list[i][fid]['max'] = max(
+                        feature_data.max(), aggregate_stats_list[i][fid]['max'])
+                    aggregate_stats_list[i][fid]['sum'] += feature_data.sum()
+                    aggregate_stats_list[i][fid]['count'] += feature_data.size
+                    if include_value_counts:
+                        # .update() here is operating on a Counter, so values are
+                        # ADDED, not replaced.
+                        aggregate_stats_list[i][fid]['value_counts'].update(
+                            dict(zip(*numpy.unique(
+                                feature_data, return_counts=True))))
+
+        # Handle edge cases: features that have a geometry but do not
+        # overlap the center point of any pixel will not be captured by the
+        # method above.
+        unset_fids = valid_fid_set.difference(found_fids)
+        x_origin, pixel_width, _, y_origin, _, pixel_height = data_source.GetGeoTransform()
+        # subtract 1 because bands are 1-indexed
+        raster_nodata = get_raster_info(raster_path)['nodata'][band - 1]
+        target_layer = target_vector.GetLayerByName(target_layer_id)
+        for unset_fid in unset_fids:
+            # Look up by the FID copy field, not the FID itself, because
+            # FIDs in target_layer may not be the same as in the input layer
+            target_layer.SetAttributeFilter(f'{fid_field_name} = {unset_fid}')
+            unset_feat = target_layer.GetNextFeature()
+            unset_geom_ref = unset_feat.GetGeometryRef()
+
+            geom_x_min, geom_x_max, geom_y_min, geom_y_max = unset_geom_ref.GetEnvelope()
+            unset_geom_ref, unset_feat = None, None
+            if pixel_width < 0:
+                geom_x_min, geom_x_max = geom_x_max, geom_x_min
+            if pixel_height < 0:
+                geom_y_min, geom_y_max = geom_y_max, geom_y_min
+
+            xoff = int((geom_x_min - x_origin) / pixel_width)
+            yoff = int((geom_y_min - y_origin) / pixel_height)
+            win_xsize = int(numpy.ceil(
+                (geom_x_max - x_origin) / pixel_width)) - xoff
+            win_ysize = int(numpy.ceil(
+                (geom_y_max - y_origin) / pixel_height)) - yoff
+
+            # clamp offset to the side of the raster if it's negative
+            if xoff < 0:
+                win_xsize += xoff
+                xoff = 0
+            if yoff < 0:
+                win_ysize += yoff
+                yoff = 0
+
+            # clamp the window to the side of the raster if too big
+            if xoff + win_xsize > data_band.XSize:
+                win_xsize = data_band.XSize - xoff
+            if yoff + win_ysize > data_band.YSize:
+                win_ysize = data_band.YSize - yoff
+
+            if win_xsize <= 0 or win_ysize <= 0:
+                continue
+
+            # here we consider the pixels that intersect with the geometry's
+            # bounding box as being the proxy for the intersection with the
+            # polygon itself. This is not a bad approximation since the case
+            # that caused the polygon to be skipped in the first phase is that it
+            # is as small as a pixel. There could be some degenerate cases that
+            # make this estimation very wrong, but we do not know of any that
+            # would come from natural data. If you do encounter such a dataset
+            # please email the description and datset to jdouglass@stanford.edu.
+            unset_fid_block = data_band.ReadAsArray(
+                xoff=xoff, yoff=yoff, win_xsize=win_xsize, win_ysize=win_ysize)
+            unset_fid_nodata_mask = array_equals_nodata(
                 unset_fid_block, raster_nodata)
-        else:
-            unset_fid_nodata_mask = numpy.zeros(
-                unset_fid_block.shape, dtype=bool)
+            if ignore_nodata:
+                unset_fid_block = unset_fid_block[~unset_fid_nodata_mask]
+            if unset_fid_block.size == 0:
+                aggregate_stats_list[i][unset_fid]['min'] = 0
+                aggregate_stats_list[i][unset_fid]['max'] = 0
+                aggregate_stats_list[i][unset_fid]['sum'] = 0
+            else:
+                aggregate_stats_list[i][unset_fid]['min'] = numpy.min(
+                    unset_fid_block)
+                aggregate_stats_list[i][unset_fid]['max'] = numpy.max(
+                    unset_fid_block)
+                aggregate_stats_list[i][unset_fid]['sum'] = numpy.sum(
+                    unset_fid_block)
+            aggregate_stats_list[i][unset_fid]['count'] = unset_fid_block.size
+            aggregate_stats_list[i][unset_fid]['nodata_count'] = numpy.sum(
+                unset_fid_nodata_mask)
+            if include_value_counts:
+                # .update() here is operating on a Counter, so values are ADDED,
+                # not replaced.
+                aggregate_stats_list[i][unset_fid]['value_counts'].update(dict(
+                    zip(*numpy.unique(unset_fid_block, return_counts=True))))
 
-        valid_unset_fid_block = unset_fid_block[~unset_fid_nodata_mask]
-        if valid_unset_fid_block.size == 0:
-            aggregate_stats[unset_fid]['min'] = 0.0
-            aggregate_stats[unset_fid]['max'] = 0.0
-            aggregate_stats[unset_fid]['sum'] = 0.0
-        else:
-            aggregate_stats[unset_fid]['min'] = numpy.min(
-                valid_unset_fid_block)
-            aggregate_stats[unset_fid]['max'] = numpy.max(
-                valid_unset_fid_block)
-            aggregate_stats[unset_fid]['sum'] = numpy.sum(
-                valid_unset_fid_block)
-        aggregate_stats[unset_fid]['count'] = valid_unset_fid_block.size
-        aggregate_stats[unset_fid]['nodata_count'] = numpy.count_nonzero(
-            unset_fid_nodata_mask)
+        # Convert counter object to dictionary
         if include_value_counts:
-            # .update() here is operating on a Counter, so values are ADDED,
-            # not replaced.
-            aggregate_stats[unset_fid]['value_counts'].update(
-                dict(zip(*numpy.unique(
-                    valid_unset_fid_block, return_counts=True))))
+            for key, value in aggregate_stats_list[i].items():
+                aggregate_stats_list[i][key]['value_counts'] = dict(
+                    aggregate_stats_list[i][key]['value_counts'])
+        LOGGER.info(
+            f'all done processing polygon sets for {os.path.basename(aggregate_vector_path)}')
 
-    unset_fids = aggregate_layer_fid_set.difference(aggregate_stats)
-    LOGGER.debug(
-        "remaining unset_fids: %s of %s ", len(unset_fids),
-        len(aggregate_layer_fid_set))
-    # fill in the missing polygon fids in the aggregate stats by invoking the
-    # accessor in the defaultdict
-    for fid in unset_fids:
-        _ = aggregate_stats[fid]
-
-    LOGGER.info(
-        "all done processing polygon sets for %s", os.path.basename(
-            aggregate_vector_path))
-
-    # clean up temporary files
-    spat_ref = None
-    clipped_band = None
-    clipped_raster = None
-    agg_fid_raster = None
-    disjoint_layer = None
-    disjoint_vector = None
-    aggregate_layer = None
-    aggregate_vector = None
+    # dereference gdal objects
+    data_band, data_source, fid_raster = None, None, None
+    disjoint_layer, aggregate_layer, aggregate_vector = None, None, None
+    target_layer, target_vector = None, None
 
     shutil.rmtree(temp_working_dir)
-    aggregate_stats = dict(aggregate_stats)
-    if include_value_counts:
-        for key, value in aggregate_stats.items():
-            aggregate_stats[key]['value_counts'] = dict(
-                aggregate_stats[key]['value_counts'])
-    return aggregate_stats
+    if multi_raster_mode:
+        return aggregate_stats_list
+    else:
+        return aggregate_stats_list[0]
 
 
 def get_vector_info(vector_path, layer_id=0):
@@ -3150,9 +3153,9 @@ def convolve_2d(
 
             mask_pixels_processed += target_block.size
             timed_logger.info(
-                "convolution nodata normalizer approximately %.1f%% "
-                "complete on %s", 100.0 * float(mask_pixels_processed) / (
-                    n_cols_signal * n_rows_signal))
+                f"""convolution nodata normalizer approximately {
+                100 * mask_pixels_processed / (n_cols_signal * n_rows_signal)
+                :.1f}% complete on {os.path.basename(target_path)}""")
 
         mask_raster = None
         mask_band = None
