@@ -133,15 +133,14 @@ class TestGeoprocessing(unittest.TestCase):
         # raises a SyntaxWarning.  Instead, I'll just ensure that every
         # attribute in pygeoprocessing.__all__ is a function that is available
         # at the pygeoprocessing level.
-        import inspect
         for attrname in pygeoprocessing.__all__:
             try:
                 func = getattr(pygeoprocessing, attrname)
-                self.assertTrue(
-                    isinstance(func, (
-                        types.FunctionType, types.BuiltinFunctionType)) or
-                    issubclass(func, Exception) or
-                    inspect.isroutine(func))
+                try:
+                    _ = getattr(func, '__call__')
+                except AttributeError:
+                    self.fail(('Function %s is in pygeoprocessing.__all__ but '
+                               'is not a callable') % attrname)
             except AttributeError:
                 self.fail(('Function %s is in pygeoprocessing.__all__ but '
                            'is not exposed at the package level') % attrname)
