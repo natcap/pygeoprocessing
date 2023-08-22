@@ -661,11 +661,7 @@ def choose_dtype(*raster_paths):
     Returns:
         numpy dtype
     """
-    dtypes = []
-    for path in raster_paths:
-        raster = gdal.OpenEx(path, gdal.OF_RASTER)
-        band = raster.GetRasterBand(1)
-        dtypes.append(_gdal_to_numpy_type(band))
+    dtypes = [get_raster_info(path)['numpy_type'] for path in raster_paths]
     return numpy.result_type(*dtypes)
 
 
