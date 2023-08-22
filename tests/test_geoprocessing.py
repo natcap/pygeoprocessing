@@ -5053,8 +5053,7 @@ class TestGeoprocessing(unittest.TestCase):
         out_path = os.path.join(self.workspace_dir, 'out.tif')
         _array_to_raster(array, -1, path)
 
-        pygeoprocessing.raster_map(
-            lambda a: a * 2, path, target_path=out_path)
+        pygeoprocessing.raster_map(lambda a: a * 2, [path], out_path)
 
         out_array = pygeoprocessing.raster_to_numpy_array(out_path)
         numpy.testing.assert_allclose(out_array, array * 2)
@@ -5077,7 +5076,7 @@ class TestGeoprocessing(unittest.TestCase):
 
         pygeoprocessing.raster_map(
             lambda *xs: numpy.sum(xs, axis=0),
-            a_path, b_path, c_path, target_path=out_path)
+            [a_path, b_path, c_path], out_path)
 
         out_array = pygeoprocessing.raster_to_numpy_array(out_path)
         expected_array = a_array + b_array + c_array
@@ -5102,8 +5101,7 @@ class TestGeoprocessing(unittest.TestCase):
         def ndr(eff, ic):
             return (1 - eff) / (1 + numpy.exp((0.5 - ic) / 2))
 
-        pygeoprocessing.raster_map(
-            ndr, eff_path, ic_path, target_path=out_path)
+        pygeoprocessing.raster_map(ndr, [eff_path, ic_path], out_path)
 
         out_array = pygeoprocessing.raster_to_numpy_array(out_path)
         expected_array = ndr(eff_array, ic_array)
@@ -5130,7 +5128,7 @@ class TestGeoprocessing(unittest.TestCase):
         _array_to_raster(b_array, -1, b_path)
 
         pygeoprocessing.raster_map(
-            lambda a, b: a + b, a_path, b_path, target_path=out_path,
+            lambda a, b: a + b, [a_path, b_path], out_path,
             target_nodata=-1)
 
         out_array = pygeoprocessing.raster_to_numpy_array(out_path)
@@ -5148,8 +5146,7 @@ class TestGeoprocessing(unittest.TestCase):
         # output raster should have that nodata value
         target_nodata = 5
         pygeoprocessing.raster_map(
-            lambda a: a, path, target_path=out_path,
-            target_nodata=target_nodata)
+            lambda a: a, [path], out_path, target_nodata=target_nodata)
         out_array = pygeoprocessing.raster_to_numpy_array(out_path)
         expected_array = numpy.array(
             [[1, 1], [1, target_nodata]], dtype=numpy.uint8)
@@ -5159,13 +5156,11 @@ class TestGeoprocessing(unittest.TestCase):
         # output raster should have that nodata value
         with self.assertRaises(ValueError):
             pygeoprocessing.raster_map(
-                lambda a: a, path, target_path=out_path,
-                target_nodata=-5)
+                lambda a: a, [path], out_path, target_nodata=-5)
 
         # don't set target nodata
         # an appropriate value should be chosen automatically
-        pygeoprocessing.raster_map(
-            lambda a: a, path, target_path=out_path)
+        pygeoprocessing.raster_map(lambda a: a, [path], out_path)
         out_array = pygeoprocessing.raster_to_numpy_array(out_path)
         expected_nodata = numpy.iinfo(numpy.uint8).max
         expected_array = numpy.array(
@@ -5183,8 +5178,7 @@ class TestGeoprocessing(unittest.TestCase):
         # output dtype should be uint8
         # nodata should automatically be selected: max uint8 value
         pygeoprocessing.raster_map(
-            lambda a: a, path, target_path=out_path,
-            target_dtype=numpy.uint8)
+            lambda a: a, [path], out_path, target_dtype=numpy.uint8)
         out_array = pygeoprocessing.raster_to_numpy_array(out_path)
         expected_nodata = numpy.iinfo(numpy.uint8).max
         expected_array = numpy.array(
@@ -5195,7 +5189,7 @@ class TestGeoprocessing(unittest.TestCase):
         # don't set target dtype
         # output dtype should be same as input
         # nodata should automatically be selected: max float32 value
-        pygeoprocessing.raster_map(lambda a: a, path, target_path=out_path)
+        pygeoprocessing.raster_map(lambda a: a, [path], out_path)
         out_array = pygeoprocessing.raster_to_numpy_array(out_path)
         expected_nodata = numpy.finfo(numpy.float32).max
         expected_array = numpy.array(
@@ -5215,7 +5209,7 @@ class TestGeoprocessing(unittest.TestCase):
 
         # can set a target nodata and dtype together
         pygeoprocessing.raster_map(
-            lambda a, b: a * b, a_path, b_path, target_path=out_path,
+            lambda a, b: a * b, [a_path, b_path], out_path,
             target_nodata=-5, target_dtype=numpy.float64)
         out_array = pygeoprocessing.raster_to_numpy_array(out_path)
         expected_array = numpy.array(
@@ -5225,7 +5219,7 @@ class TestGeoprocessing(unittest.TestCase):
 
         # can set a smaller target dtype, even if it loses information
         pygeoprocessing.raster_map(
-            lambda a, b: a * b, a_path, b_path, target_path=out_path,
+            lambda a, b: a * b, [a_path, b_path], out_path,
             target_nodata=-5, target_dtype=numpy.int16)
         out_array = pygeoprocessing.raster_to_numpy_array(out_path)
         expected_array = numpy.array(
@@ -5236,7 +5230,7 @@ class TestGeoprocessing(unittest.TestCase):
         # error is raised if nodata value and dtype conflict
         with self.assertRaises(ValueError):
             pygeoprocessing.raster_map(
-                lambda a, b: a * b, a_path, target_path=out_path,
+                lambda a, b: a * b, [a_path], out_path,
                 target_nodata=.1, target_dtype=numpy.int16)
 
     def test_raster_map_handles_int8(self):
@@ -5249,7 +5243,7 @@ class TestGeoprocessing(unittest.TestCase):
 
         # automatically keeps signed int8 type
         # automatically uses int8 max value for nodata
-        pygeoprocessing.raster_map(lambda a: a, a_path, target_path=out_path)
+        pygeoprocessing.raster_map(lambda a: a, [a_path], out_path)
         out_array = pygeoprocessing.raster_to_numpy_array(out_path)
         expected_array = numpy.array([[1, 1], [1, 127]], dtype=numpy.int8)
         numpy.testing.assert_allclose(out_array, expected_array)
@@ -5283,8 +5277,8 @@ class TestGeoprocessing(unittest.TestCase):
         with capture_logging(
                 logging.getLogger('pygeoprocessing')) as log_messages:
             pygeoprocessing.raster_map(
-                lambda a: a, target_path,
-                target_path=os.path.join(self.workspace_dir, 'out.tif'))
+                lambda a: a, [target_path],
+                os.path.join(self.workspace_dir, 'out.tif'))
         self.assertEqual(len(log_messages), 1)
         self.assertEqual(log_messages[0].levelno, logging.WARNING)
         self.assertIn('has more than one band', log_messages[0].msg)

@@ -685,7 +685,7 @@ def choose_nodata(dtype):
         return int(numpy.iinfo(dtype).max)
 
 
-def raster_map(op, *rasters, target_path, target_nodata=None, target_dtype=None,
+def raster_map(op, rasters, target_path, target_nodata=None, target_dtype=None,
                raster_driver_creation_tuple=DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS):
     """Apply a pixelwise function to a series of raster inputs.
 
@@ -696,10 +696,10 @@ def raster_map(op, *rasters, target_path, target_nodata=None, target_dtype=None,
     Args:
         op (function): Function to apply to the inputs. It should accept a
             number of arguments equal to the length of ``*inputs``. It should
-           return a numpy array with the same shape as its array input(s).
-        *rasters (strs): Paths to rasters to input to ``op``, in the order that
-           they will be passed to ``op``. All rasters should be aligned and
-           have the same dimensions.
+            return a numpy array with the same shape as its array input(s).
+        rasters (list[str]): Paths to rasters to input to ``op``, in the order
+            that they will be passed to ``op``. All rasters should be aligned
+            and have the same dimensions.
         target_path (str): path to write out the output raster.
         target_nodata (number): Nodata value to use for the output raster.
             Optional. If not provided, a suitable nodata value will be chosen.
