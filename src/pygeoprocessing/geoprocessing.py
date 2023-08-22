@@ -1492,6 +1492,7 @@ def zonal_statistics(
         raise RuntimeError(
             f"Could not open layer {aggregate_layer_name} of {aggregate_vector_path}")
 
+
     # Define the default/empty statistics values
     # These values will be returned for features that have no geometry or
     # don't overlap any valid pixels.
@@ -1537,7 +1538,7 @@ def zonal_statistics(
         feature_copy.SetField(fid_field_name, fid)
         target_layer.CreateFeature(feature_copy)
         original_to_new_fid_map[fid] = feature_copy.GetFID()
-    target_layer, target_vector, feature,  = None, None, None
+    target_layer, target_vector, feature, feature_copy = None, None, None, None
     geom_ref, aggregate_layer, aggregate_vector = None, None, None
 
     # Reproject the vector to match the raster projection
@@ -1680,7 +1681,7 @@ def zonal_statistics(
                         aggregate_stats_list[i][fid]['value_counts'].update(
                             dict(zip(*numpy.unique(
                                 feature_data, return_counts=True))))
-
+        fid_band, fid_raster = None, None
         # Handle edge cases: features that have a geometry but do not
         # overlap the center point of any pixel will not be captured by the
         # method above.
@@ -1769,9 +1770,8 @@ def zonal_statistics(
             f'all done processing polygon sets for {os.path.basename(aggregate_vector_path)}')
 
     # dereference gdal objects
-    data_band, data_source, fid_raster = None, None, None
-    disjoint_layer, aggregate_layer, aggregate_vector = None, None, None
-    target_layer, target_vector = None, None
+    data_band, data_source = None, None
+    disjoint_layer, target_layer, target_vector = None, None, None
 
     shutil.rmtree(temp_working_dir)
     if multi_raster_mode:
