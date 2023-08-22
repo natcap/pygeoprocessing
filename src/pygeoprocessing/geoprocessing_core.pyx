@@ -28,9 +28,13 @@ from osgeo import osr
 import numpy
 import pygeoprocessing
 
-DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS = ('GTIFF', (
-    'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
-    'BLOCKXSIZE=256', 'BLOCKYSIZE=256'))
+
+DEFAULT_CREATION_OPTIONS = ('TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
+                             'BLOCKXSIZE=256', 'BLOCKYSIZE=256')
+INT8_CREATION_OPTIONS = DEFAULT_CREATION_OPTIONS + (
+    'PIXELTYPE=SIGNEDBYTE',)
+DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS = ('GTIFF', DEFAULT_CREATION_OPTIONS)
+INT8_GTIFF_CREATION_TUPLE_OPTIONS = ('GTIFF', INT8_CREATION_OPTIONS)
 
 # In GDAL 3.0 spatial references no longer ignore Geographic CRS Axis Order
 # and conform to Lat first, Lon Second. Transforms expect (lat, lon) order

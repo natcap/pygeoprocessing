@@ -31,11 +31,27 @@ from osgeo import osr
 
 from . import geoprocessing_core
 from .geoprocessing_core import DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS
+from .geoprocessing_core import DEFAULT_CREATION_OPTIONS
+from .geoprocessing_core import INT8_CREATION_OPTIONS
 from .geoprocessing_core import DEFAULT_OSR_AXIS_MAPPING_STRATEGY
 
 # This is used to efficiently pass data to the raster stats worker if available
 if sys.version_info >= (3, 8):
     import multiprocessing.shared_memory
+
+NUMPY_TO_GDAL_TYPE = {
+    numpy.dtype(bool): gdal.GDT_Byte,
+    numpy.dtype(numpy.int8): gdal.GDT_Byte,
+    numpy.dtype(numpy.uint8): gdal.GDT_Byte,
+    numpy.dtype(numpy.int16): gdal.GDT_Int16,
+    numpy.dtype(numpy.int32): gdal.GDT_Int32,
+    numpy.dtype(numpy.uint16): gdal.GDT_UInt16,
+    numpy.dtype(numpy.uint32): gdal.GDT_UInt32,
+    numpy.dtype(numpy.float32): gdal.GDT_Float32,
+    numpy.dtype(numpy.float64): gdal.GDT_Float64,
+    numpy.dtype(numpy.csingle): gdal.GDT_CFloat32,
+    numpy.dtype(numpy.complex64): gdal.GDT_CFloat64,
+}
 
 
 class ReclassificationMissingValuesError(Exception):
@@ -630,6 +646,128 @@ def array_equals_nodata(array, nodata):
     if numpy.issubdtype(array.dtype, numpy.integer):
         return array == nodata
     return numpy.isclose(array, nodata, equal_nan=True)
+
+
+def choose_dtype(*raster_paths):
+    """
+    Choose an appropriate dtype for an output derived from the given inputs.
+
+    Returns the dtype with the greatest size/precision among the inputs, so
+    that information will not be lost.
+
+    Args:
+        *raster_paths: series of raster path strings
+
+    Returns:
+        numpy dtype
+    """
+    dtypes = [get_raster_info(path)['numpy_type'] for path in raster_paths]
+    return numpy.result_type(*dtypes)
+
+
+def choose_nodata(dtype):
+    """
+    Choose an appropriate nodata value for data of a given dtype.
+
+    Args:
+        dtype (numpy.dtype): data type for which to choose nodata
+
+    Returns:
+        number to use as nodata value
+    """
+    try:
+        return float(numpy.finfo(dtype).max)
+    except ValueError:
+        return int(numpy.iinfo(dtype).max)
+
+
+def raster_map(op, rasters, target_path, target_nodata=None, target_dtype=None,
+               raster_driver_creation_tuple=DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS):
+    """Apply a pixelwise function to a series of raster inputs.
+
+    The output raster will have nodata where any input raster has nodata.
+    Raster inputs are split into aligned blocks, and the function is
+    applied individually to each stack of blocks (as numpy arrays).
+
+    Args:
+        op (function): Function to apply to the inputs. It should accept a
+            number of arguments equal to the length of ``*inputs``. It should
+            return a numpy array with the same shape as its array input(s).
+        rasters (list[str]): Paths to rasters to input to ``op``, in the order
+            that they will be passed to ``op``. All rasters should be aligned
+            and have the same dimensions.
+        target_path (str): path to write out the output raster.
+        target_nodata (number): Nodata value to use for the output raster.
+            Optional. If not provided, a suitable nodata value will be chosen.
+        target_dtype (numpy.dtype): dtype to use for the output. Optional. If
+            not provided, a suitable dtype will be chosen.
+        raster_driver_creation_tuple (tuple): a tuple containing a GDAL driver
+            name string as the first element and a GDAL creation options
+            tuple/list as the second. Defaults to
+            geoprocessing.DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS. If the
+            ``target_dtype`` is int8, the ``PIXELTYPE=SIGNEDBYTE`` option will
+            be added to the creation options tuple if it is not already there.
+
+    Returns:
+        ``None``
+    """
+    nodatas = []
+    for raster in rasters:
+        raster_info = get_raster_info(raster)
+        if raster_info['n_bands'] > 1:
+            LOGGER.warning(f'{raster} has more than one band. Only the first '
+                           'band will be used.')
+        nodatas.append(raster_info['nodata'][0])
+
+    # choose an appropriate dtype if none was given
+    if target_dtype is None:
+        target_dtype = choose_dtype(*rasters)
+
+    # choose an appropriate nodata value if none was given
+    # if the user provides a target nodata,
+    # check that it can fit in the target dtype
+    if target_nodata is None:
+        target_nodata = choose_nodata(target_dtype)
+    else:
+        if not numpy.can_cast(target_nodata, target_dtype):
+            raise ValueError(
+                f'Target nodata value {target_nodata} is incompatible with '
+                f'the target dtype {target_dtype}')
+
+    driver, options = raster_driver_creation_tuple
+    if target_dtype == numpy.int8 and 'PIXELTYPE=SIGNEDBYTE' not in options:
+        options += ('PIXELTYPE=SIGNEDBYTE',)
+
+    def apply_op(*arrays):
+        """Apply the function ``op`` to the input arrays.
+
+        Args:
+            *arrays: numpy arrays with the same shape.
+
+        Returns:
+            numpy array
+        """
+        result = numpy.full(arrays[0].shape, target_nodata, dtype=target_dtype)
+
+        # make a mask that is True where all input arrays are valid,
+        # and False where any input array is invalid.
+        valid_mask = numpy.full(arrays[0].shape, True)
+        for array, nodata in zip(arrays, nodatas):
+            valid_mask &= ~array_equals_nodata(array, nodata)
+
+        # mask all arrays to the area where they all are valid
+        masked_arrays = [array[valid_mask] for array in arrays]
+        # apply op to the masked arrays in order
+        result[valid_mask] = op(*masked_arrays)
+        return result
+
+    raster_calculator(
+        [(path, 1) for path in rasters],  # assume the first band
+        apply_op,
+        target_path,
+        NUMPY_TO_GDAL_TYPE[numpy.dtype(target_dtype)],
+        target_nodata,
+        raster_driver_creation_tuple=(driver, options))
 
 
 def raster_reduce(function, raster_path_band, initializer, mask_nodata=True,
@@ -3935,23 +4073,11 @@ def numpy_array_to_raster(
     Return:
         None
     """
-    numpy_to_gdal_type = {
-        numpy.dtype(bool): gdal.GDT_Byte,
-        numpy.dtype(numpy.int8): gdal.GDT_Byte,
-        numpy.dtype(numpy.uint8): gdal.GDT_Byte,
-        numpy.dtype(numpy.int16): gdal.GDT_Int16,
-        numpy.dtype(numpy.int32): gdal.GDT_Int32,
-        numpy.dtype(numpy.uint16): gdal.GDT_UInt16,
-        numpy.dtype(numpy.uint32): gdal.GDT_UInt32,
-        numpy.dtype(numpy.float32): gdal.GDT_Float32,
-        numpy.dtype(numpy.float64): gdal.GDT_Float64,
-        numpy.dtype(numpy.csingle): gdal.GDT_CFloat32,
-        numpy.dtype(numpy.complex64): gdal.GDT_CFloat64,
-    }
+
     raster_driver = gdal.GetDriverByName(raster_driver_creation_tuple[0])
     ny, nx = base_array.shape
     new_raster = raster_driver.Create(
-        target_path, nx, ny, 1, numpy_to_gdal_type[base_array.dtype],
+        target_path, nx, ny, 1, NUMPY_TO_GDAL_TYPE[base_array.dtype],
         options=raster_driver_creation_tuple[1])
     if projection_wkt is not None:
         new_raster.SetProjection(projection_wkt)
