@@ -19,6 +19,7 @@ from .geoprocessing import array_equals_nodata
 from .geoprocessing import build_overviews
 from .geoprocessing import calculate_disjoint_polygon_set
 from .geoprocessing import choose_dtype
+from .geoprocessing import choose_nodata
 from .geoprocessing import convolve_2d
 from .geoprocessing import create_raster_from_bounding_box
 from .geoprocessing import create_raster_from_vector_extents
