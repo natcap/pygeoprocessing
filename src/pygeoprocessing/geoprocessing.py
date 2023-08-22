@@ -1519,6 +1519,7 @@ def zonal_statistics(
     target_layer.CreateField(ogr.FieldDefn(fid_field_name, ogr.OFTInteger))
     valid_fid_set = set()
     aggregate_stats_list = [{} for _ in base_raster_path_band]
+    original_to_new_fid_map = {}
     for feature in aggregate_layer:
         fid = feature.GetFID()
         # Initialize the output data structure:
@@ -1535,6 +1536,7 @@ def zonal_statistics(
         feature_copy.SetGeometry(geom_ref.Clone())
         feature_copy.SetField(fid_field_name, fid)
         target_layer.CreateFeature(feature_copy)
+        original_to_new_fid_map[fid] = feature_copy.GetFID()
     target_layer, target_vector, feature,  = None, None, None
     geom_ref, aggregate_layer, aggregate_vector = None, None, None
 
@@ -1688,10 +1690,9 @@ def zonal_statistics(
         raster_nodata = get_raster_info(raster_path)['nodata'][band - 1]
         target_layer = target_vector.GetLayerByName(target_layer_id)
         for unset_fid in unset_fids:
-            # Look up by the FID copy field, not the FID itself, because
+            # Look up by the new FID
             # FIDs in target_layer may not be the same as in the input layer
-            target_layer.SetAttributeFilter(f'{fid_field_name} = {unset_fid}')
-            unset_feat = target_layer.GetNextFeature()
+            unset_feat = target_layer.GetFeature(original_to_new_fid_map[unset_fid])
             unset_geom_ref = unset_feat.GetGeometryRef()
 
             geom_x_min, geom_x_max, geom_y_min, geom_y_max = unset_geom_ref.GetEnvelope()
