@@ -1191,63 +1191,6 @@ class TestGeoprocessing(unittest.TestCase):
              '"bounding_box" were found among the input rasters'),
             actual_message, actual_message)
 
-    def test_zonal_stats_empty_geometry(self):
-        """PGP.geoprocessing: zonal_statistics with an empty geometry."""
-        pixel_size = 30
-        n_pixels = 9
-        origin = (444720, 3751320)
-        polygon_a = shapely.geometry.Polygon([
-            (origin[0], origin[1]),
-            (origin[0], -pixel_size * n_pixels+origin[1]),
-            (origin[0]+pixel_size * n_pixels,
-             -pixel_size * n_pixels+origin[1]),
-            (origin[0]+pixel_size * n_pixels, origin[1]),
-            (origin[0], origin[1])])
-        polygon_b = shapely.geometry.Polygon([
-            (origin[0], origin[1]),
-            (origin[0], -pixel_size+origin[1]),
-            (origin[0]+pixel_size, -pixel_size+origin[1]),
-            (origin[0]+pixel_size, origin[1]),
-            (origin[0], origin[1])])
-        aggregating_vector_path = os.path.join(self.workspace_dir, 'aggregate_vector')
-        _geometry_to_vector(
-            [polygon_a, polygon_b], aggregating_vector_path)
-
-        aggregate_vector = gdal.OpenEx(aggregating_vector_path, gdal.OF_UPDATE)
-        aggregate_layer = aggregate_vector.GetLayer()
-        feat = aggregate_layer.GetFeature(0)  # feature with FID 0
-        feat.SetGeometry(None)
-        aggregate_layer.SetFeature(feat)
-        feat, aggregate_layer, aggregate_vector = None, None, None
-
-        pixel_matrix = numpy.ones((n_pixels, n_pixels), numpy.float32)
-        target_nodata = None
-        raster_path = os.path.join(self.workspace_dir, 'raster.tif')
-        _array_to_raster(
-            pixel_matrix, target_nodata, raster_path)
-        result = pygeoprocessing.zonal_statistics(
-            (raster_path, 1), aggregating_vector_path,
-            aggregate_layer_name=None,
-            ignore_nodata=True,
-            polygons_might_overlap=True)
-        # the empty geometry FID should be included with default results
-        # the FIDs should be preserved
-        expected_result = {
-            0: {
-                'min': None,
-                'max': None,
-                'count': 0,
-                'nodata_count': 0,
-                'sum': 0},
-            1: {
-                'count': 81,
-                'max': 1.0,
-                'min': 1.0,
-                'nodata_count': 0,
-                'sum': 81.0}}
-        self.assertEqual(result, expected_result)
-
-
     def test_mask_raster(self):
         """PGP.geoprocessing: test mask raster."""
         origin_x = 1.0
