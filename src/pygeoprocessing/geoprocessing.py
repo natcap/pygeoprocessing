@@ -7,6 +7,7 @@ import math
 import os
 import pprint
 import queue
+import re
 import shutil
 import sys
 import tempfile
@@ -81,17 +82,46 @@ _GDAL_TYPE_TO_NUMPY_LOOKUP = {
     gdal.GDT_CFloat64: numpy.complex64,
 }
 
-# GDAL's python API recognizes certain strings but the only way to retrieve
-# those strings is to do this conversion of gdalconst.GRA_* types to the
-# human-readable labels via gdal.WarpOptions like so.
 _GDAL_WARP_ALGORITHMS = []
 for _warp_algo in (_attrname for _attrname in dir(gdalconst)
                    if _attrname.startswith('GRA_')):
-    # Appends ['-r', 'near'] to _GDAL_WARP_ALGORITHMS if _warp_algo is
-    # gdalconst.GRA_NearestNeighbor.  See gdal.WarpOptions for the dict
-    # defining this mapping.
-    gdal.WarpOptions(options=_GDAL_WARP_ALGORITHMS,
-                     resampleAlg=getattr(gdalconst, _warp_algo))
+    # In GDAL < 3.4, the options used were actually gdal.GRIORA_*
+    # instead of gdal.GRA_*, and gdal.WarpOptions would:
+    #   * return an integer for any gdal.GRIORA options it didn't recognize
+    #   * Return an abbreviated string (e.g. -rb instead of 'bilinear') for
+    #     several warp algorithms
+    # This behavior was changed in GDAL 3.4, where the correct name is
+    # returned in all cases.
+    #
+    # In GDAL < 3.4, an error would be logged if GDAL couldn't recognize the
+    # option.  Pushing a null error handler avoids this and cleans up the
+    # logging.
+    gdal.PushErrorHandler(lambda *args: None)
+    _options = []
+    # GDAL's python bindings only offer this one way of translating gdal.GRA_*
+    # options to their string names (but compatibility is limited in different
+    # GDAL versions, see notes above)
+    warp_opts = gdal.WarpOptions(
+        options=_options,  # Add rendered flags to this list.
+        resampleAlg=getattr(gdalconst, _warp_algo),  # use GRA_* name.
+        overviewLevel=None)  # Don't add overview parameters.
+    gdal.PopErrorHandler()
+
+    for _item in _options:
+        is_int = False
+        try:
+            int(_item)
+            is_int = True
+        except ValueError:
+            pass
+
+        if _item == '-r':
+            continue
+        elif (_item.startswith('-r') and len(_item) > 2) or is_int:
+            # (GDAL < 3.4) Translate shorthand params to name.
+            # (GDAL < 3.4) Translate unrecognized (int) codes to name.
+            _item = re.sub('^gra_', '', _warp_algo.lower())
+
 _GDAL_WARP_ALGORITHMS = set(_GDAL_WARP_ALGORITHMS)
 _GDAL_WARP_ALGORITHMS.discard('-r')
 _GDAL_WARP_ALGOS_FOR_HUMAN_EYES = "|".join(_GDAL_WARP_ALGORITHMS)
