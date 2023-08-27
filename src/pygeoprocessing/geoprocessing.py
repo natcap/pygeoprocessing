@@ -2242,6 +2242,10 @@ def warp_raster(
         working_dir (string): if defined uses this directory to make
             temporary working files for calculation. Otherwise uses system's
             temp directory.
+        use_overview_level=0 (int): The overview level to use for warping.
+            A value of ``0`` (the default) indicates that the base raster
+            should be used.
+            # TODO: what about other overview levels?
         raster_driver_creation_tuple (tuple): a tuple containing a GDAL driver
             name string as the first element and a GDAL creation options
             tuple/list as the second. Defaults to a GTiff driver tuple
