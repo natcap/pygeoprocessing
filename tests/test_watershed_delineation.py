@@ -171,47 +171,56 @@ class WatershedDelineationTests(unittest.TestCase):
                 target_watersheds_path,
                 target_layer_name='watersheds_something')
 
-            watersheds_vector = gdal.OpenEx(target_watersheds_path,
-                                            gdal.OF_VECTOR)
-            watersheds_layer = watersheds_vector.GetLayer(
-                'watersheds_something')
-            self.assertEqual(watersheds_layer.GetFeatureCount(), 4)
-
-            # All features should have the same watersheds, both in area and
-            # geometry.
-            flow_dir_bbox = pygeoprocessing.get_raster_info(
-                flow_dir_path)['bounding_box']
-            expected_watershed_geometry = shapely.geometry.box(*flow_dir_bbox)
-            expected_watershed_geometry = expected_watershed_geometry.difference(
-                shapely.geometry.box(20, -2, 22, -10))
-            expected_watershed_geometry = expected_watershed_geometry.difference(
-                shapely.geometry.box(20, -12, 22, -22))
-            pygeoprocessing.shapely_geometry_to_vector(
-                [expected_watershed_geometry],
-                os.path.join(self.workspace_dir, 'foo.gpkg'), srs_wkt,
-                'GPKG', ogr_geom_type=ogr.wkbGeometryCollection)
-
-            id_to_fields = {}
-            for feature in watersheds_layer:
-                geometry = feature.GetGeometryRef()
-                shapely_geom = shapely.wkb.loads(bytes(geometry.ExportToWkb()))
-                self.assertEqual(
-                    shapely_geom.area, expected_watershed_geometry.area)
-                self.assertEqual(
-                    shapely_geom.intersection(
-                        expected_watershed_geometry).area,
-                    expected_watershed_geometry.area)
-                self.assertEqual(
-                    shapely_geom.difference(
-                        expected_watershed_geometry).area, 0)
-
-                field_values = feature.items()
-                id_to_fields[field_values['polygon_id']] = field_values
-
-            outflow_vector = gdal.OpenEx(outflow_vector_path, gdal.OF_VECTOR)
-            outflow_layer = outflow_vector.GetLayer()
-            found_ws_ids = set()  # make sure the ws_id field is copied over
             try:
+                watersheds_vector = gdal.OpenEx(target_watersheds_path,
+                                                gdal.OF_VECTOR)
+                watersheds_layer = watersheds_vector.GetLayer(
+                    'watersheds_something')
+                self.assertEqual(watersheds_layer.GetFeatureCount(), 4)
+
+                # All features should have the same watersheds, both in area
+                # and geometry.
+                flow_dir_bbox = pygeoprocessing.get_raster_info(
+                    flow_dir_path)['bounding_box']
+                expected_watershed_geometry = shapely.geometry.box(
+                    *flow_dir_bbox)
+                expected_watershed_geometry = (
+                    expected_watershed_geometry.difference(
+                        shapely.geometry.box(20, -2, 22, -10)))
+                expected_watershed_geometry = (
+                    expected_watershed_geometry.difference(
+                        shapely.geometry.box(20, -12, 22, -22)))
+                pygeoprocessing.shapely_geometry_to_vector(
+                    [expected_watershed_geometry],
+                    os.path.join(self.workspace_dir, 'foo.gpkg'), srs_wkt,
+                    'GPKG', ogr_geom_type=ogr.wkbGeometryCollection)
+
+                id_to_fields = {}
+                for feature in watersheds_layer:
+                    geometry = feature.GetGeometryRef()
+                    shapely_geom = shapely.wkb.loads(
+                        bytes(geometry.ExportToWkb()))
+                    self.assertEqual(
+                        shapely_geom.area, expected_watershed_geometry.area)
+                    self.assertEqual(
+                        shapely_geom.intersection(
+                            expected_watershed_geometry).area,
+                        expected_watershed_geometry.area)
+                    self.assertEqual(
+                        shapely_geom.difference(
+                            expected_watershed_geometry).area, 0)
+
+                    field_values = feature.items()
+                    id_to_fields[field_values['polygon_id']] = field_values
+            finally:
+                watersheds_vector = None
+                watersheds_layer = None
+
+            try:
+                outflow_vector = gdal.OpenEx(
+                    outflow_vector_path, gdal.OF_VECTOR)
+                outflow_layer = outflow_vector.GetLayer()
+                found_ws_ids = set()  # make sure the ws_id field is copied
                 for feature in outflow_layer:
                     self.assertEqual(
                         id_to_fields[feature.GetField('polygon_id')],
