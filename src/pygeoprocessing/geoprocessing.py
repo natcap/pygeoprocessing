@@ -2196,7 +2196,7 @@ def warp_raster(
         base_raster_path, target_pixel_size, target_raster_path,
         resample_method, target_bb=None, base_projection_wkt=None,
         target_projection_wkt=None, n_threads=None, vector_mask_options=None,
-        gdal_warp_options=None, working_dir=None, use_overview_level=0,
+        gdal_warp_options=None, working_dir=None, use_overview_level=-1,
         raster_driver_creation_tuple=DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS,
         osr_axis_mapping_strategy=DEFAULT_OSR_AXIS_MAPPING_STRATEGY):
     f"""Resize/resample raster to desired pixel size, bbox and projection.
@@ -2242,10 +2242,15 @@ def warp_raster(
         working_dir (string): if defined uses this directory to make
             temporary working files for calculation. Otherwise uses system's
             temp directory.
-        use_overview_level=0 (int): The overview level to use for warping.
-            A value of ``0`` (the default) indicates that the base raster
-            should be used.
-            # TODO: what about other overview levels?
+        use_overview_level=-1 (int/str): The overview level to use for warping.
+            A value of ``-1`` (the default) indicates that the base raster
+            should be used for the source pixels. A value of ``'AUTO'``
+            will make GDAL select the overview with the resolution that is
+            closest to the target pixel size and warp using that overview's
+            pixel values.  Any other integer indicates that that overview index
+            should be used.  For example, suppose the raster has overviews at
+            levels 2, 4 and 8.  To use level 2, set ``use_overview_level=0``.
+            To use level 8, set ``use_overview_level=2``.
         raster_driver_creation_tuple (tuple): a tuple containing a GDAL driver
             name string as the first element and a GDAL creation options
             tuple/list as the second. Defaults to a GTiff driver tuple
