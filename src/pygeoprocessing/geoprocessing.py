@@ -121,9 +121,9 @@ for _warp_algo in (_attrname for _attrname in dir(gdalconst)
             # (GDAL < 3.4) Translate shorthand params to name.
             # (GDAL < 3.4) Translate unrecognized (int) codes to name.
             _item = re.sub('^gra_', '', _warp_algo.lower())
+        _GDAL_WARP_ALGORITHMS.append(_item)
 
 _GDAL_WARP_ALGORITHMS = set(_GDAL_WARP_ALGORITHMS)
-_GDAL_WARP_ALGORITHMS.discard('-r')
 _GDAL_WARP_ALGOS_FOR_HUMAN_EYES = "|".join(_GDAL_WARP_ALGORITHMS)
 LOGGER.debug(
     f'Detected warp algorithms: {", ".join(_GDAL_WARP_ALGOS_FOR_HUMAN_EYES)}')
