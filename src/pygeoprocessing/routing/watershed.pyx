@@ -701,7 +701,8 @@ def delineate_watersheds_d8(
 
     gtiff_driver = gdal.GetDriverByName('GTiff')
     flow_dir_srs = osr.SpatialReference()
-    flow_dir_srs.ImportFromWkt(flow_dir_info['projection_wkt'])
+    if flow_dir_info['projection_wkt']:
+        flow_dir_srs.ImportFromWkt(flow_dir_info['projection_wkt'])
 
     outflow_vector = gdal.OpenEx(outflow_vector_path, gdal.OF_VECTOR)
     if outflow_vector is None:
@@ -709,7 +710,8 @@ def delineate_watersheds_d8(
 
     driver = ogr.GetDriverByName('GPKG')
     watersheds_srs = osr.SpatialReference()
-    watersheds_srs.ImportFromWkt(flow_dir_info['projection_wkt'])
+    if flow_dir_info['projection_wkt']:
+        watersheds_srs.ImportFromWkt(flow_dir_info['projection_wkt'])
     watersheds_vector = driver.CreateDataSource(target_watersheds_vector_path)
     polygonized_watersheds_layer = watersheds_vector.CreateLayer(
         'polygonized_watersheds', watersheds_srs, ogr.wkbPolygon)
@@ -743,8 +745,6 @@ def delineate_watersheds_d8(
     LOGGER.info('Delineating watersheds')
     outflow_layer = outflow_vector.GetLayer()
     outflow_feature_count = outflow_layer.GetFeatureCount()
-    flow_dir_srs = osr.SpatialReference()
-    flow_dir_srs.ImportFromWkt(flow_dir_info['projection_wkt'])
     for feature in outflow_layer:
         # Some vectors start indexing their FIDs at 0.
         # The mask raster input to polygonization, however, only regards pixels
@@ -818,7 +818,8 @@ def delineate_watersheds_d8(
             gdal.GDT_UInt32,
             options=GTIFF_CREATION_OPTIONS)
         scratch_raster.SetGeoTransform(source_gt)
-        scratch_raster.SetProjection(flow_dir_info['projection_wkt'])
+        if flow_dir_info['projection_wkt']:
+            scratch_raster.SetProjection(flow_dir_info['projection_wkt'])
         # strictly speaking, there's no need to set the nodata value on the band.
         scratch_raster = None
 
