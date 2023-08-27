@@ -16,10 +16,14 @@ Unreleased Changes
 * Added a new function, ``pygeoprocessing.array_equals_nodata``, which returns
   a boolean array indicating which elements have nodata. It handles integer,
   float, and ``nan`` comparison, and the case where the nodata value is `None`.
-* Standardized the approach used in ``warp_raster`` and 
+* Standardized the approach used in ``warp_raster`` and
   ``create_raster_from_bounding_box`` for determining the dimensions of the
   target raster given a target bounding box and pixel sizes.
   https://github.com/natcap/pygeoprocessing/issues/321
+* Updating internal documentation describing TauDEM flow directions, and adding
+  for how to convert from a flow direction raster from what TauDEM expects to
+  what pygeoprocessing expects.
+  https://github.com/natcap/pygeoprocessing/issues/255
 
 2.4.0 (2023-03-03)
 ------------------
