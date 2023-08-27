@@ -16,6 +16,10 @@ Unreleased Changes
 * Added a new function, ``pygeoprocessing.array_equals_nodata``, which returns
   a boolean array indicating which elements have nodata. It handles integer,
   float, and ``nan`` comparison, and the case where the nodata value is `None`.
+* Standardized the approach used in ``warp_raster`` and
+  ``create_raster_from_bounding_box`` for determining the dimensions of the
+  target raster given a target bounding box and pixel sizes.
+  https://github.com/natcap/pygeoprocessing/issues/321
 * Users may now specify the overview level to use when calling ``warp_raster``.
   By default, ``pygeoprocessing`` will use the base layer.
   https://github.com/natcap/pygeoprocessing/issues/326
