@@ -66,7 +66,7 @@ jobs:
         with:
           # Grab requirements from pip-compatible requirements.txt
           environment-file: requirements.txt
-          extra-specs: |
+          create-args: |
               python=${{ matrix.python-version }}
               gdal=${{ matrix.gdal }}
               setuptools
