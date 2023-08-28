@@ -31,10 +31,10 @@ from osgeo import ogr
 from osgeo import osr
 
 from . import geoprocessing_core
-from .geoprocessing_core import DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS
 from .geoprocessing_core import DEFAULT_CREATION_OPTIONS
-from .geoprocessing_core import INT8_CREATION_OPTIONS
+from .geoprocessing_core import DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS
 from .geoprocessing_core import DEFAULT_OSR_AXIS_MAPPING_STRATEGY
+from .geoprocessing_core import INT8_CREATION_OPTIONS
 
 # This is used to efficiently pass data to the raster stats worker if available
 if sys.version_info >= (3, 8):
@@ -118,11 +118,12 @@ for _warp_algo in (_attrname for _attrname in dir(gdalconst)
     # options to their string names (but compatibility is limited in different
     # GDAL versions, see notes above)
     warp_opts = gdal.WarpOptions(
-        options=_options,  # Add rendered flags to this list.
+        options=_options,  # SIDE EFFECT: Adds flags to this list.
         resampleAlg=getattr(gdalconst, _warp_algo),  # use GRA_* name.
         overviewLevel=None)  # Don't add overview parameters.
     gdal.PopErrorHandler()
 
+    # _options is populated during the WarpOptions call above.
     for _item in _options:
         is_int = False
         try:
