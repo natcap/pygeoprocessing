@@ -20,6 +20,12 @@ Unreleased Changes
   ``create_raster_from_bounding_box`` for determining the dimensions of the
   target raster given a target bounding box and pixel sizes.
   https://github.com/natcap/pygeoprocessing/issues/321
+* Users may now specify the overview level to use when calling ``warp_raster``.
+  By default, ``pygeoprocessing`` will use the base layer.
+  https://github.com/natcap/pygeoprocessing/issues/326
+* Fixed a bug across ``pygeoprocessing`` where some valid resampling methods
+  would throw an exception because they were not recognized.  This was only
+  happening when ``pygeoprocessing`` was installed alongside GDAL < 3.4.
 * Fixing an issue with ``pygeoprocessing.multiprocessing.raster_calculator``
   where the function would raise an Exception when the target raster path was
   provided as a filename only, not within a directory, even though the parent
