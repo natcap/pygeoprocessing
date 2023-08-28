@@ -7,6 +7,7 @@ import math
 import os
 import pprint
 import queue
+import re
 import shutil
 import sys
 import tempfile
@@ -30,10 +31,10 @@ from osgeo import ogr
 from osgeo import osr
 
 from . import geoprocessing_core
-from .geoprocessing_core import DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS
 from .geoprocessing_core import DEFAULT_CREATION_OPTIONS
-from .geoprocessing_core import INT8_CREATION_OPTIONS
+from .geoprocessing_core import DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS
 from .geoprocessing_core import DEFAULT_OSR_AXIS_MAPPING_STRATEGY
+from .geoprocessing_core import INT8_CREATION_OPTIONS
 
 # This is used to efficiently pass data to the raster stats worker if available
 if sys.version_info >= (3, 8):
@@ -97,19 +98,49 @@ _GDAL_TYPE_TO_NUMPY_LOOKUP = {
     gdal.GDT_CFloat64: numpy.complex64,
 }
 
-# GDAL's python API recognizes certain strings but the only way to retrieve
-# those strings is to do this conversion of gdalconst.GRA_* types to the
-# human-readable labels via gdal.WarpOptions like so.
 _GDAL_WARP_ALGORITHMS = []
 for _warp_algo in (_attrname for _attrname in dir(gdalconst)
                    if _attrname.startswith('GRA_')):
-    # Appends ['-r', 'near'] to _GDAL_WARP_ALGORITHMS if _warp_algo is
-    # gdalconst.GRA_NearestNeighbor.  See gdal.WarpOptions for the dict
-    # defining this mapping.
-    gdal.WarpOptions(options=_GDAL_WARP_ALGORITHMS,
-                     resampleAlg=getattr(gdalconst, _warp_algo))
+    # In GDAL < 3.4, the options used were actually gdal.GRIORA_*
+    # instead of gdal.GRA_*, and gdal.WarpOptions would:
+    #   * return an integer for any gdal.GRIORA options it didn't recognize
+    #   * Return an abbreviated string (e.g. -rb instead of 'bilinear') for
+    #     several warp algorithms
+    # This behavior was changed in GDAL 3.4, where the correct name is
+    # returned in all cases.
+    #
+    # In GDAL < 3.4, an error would be logged if GDAL couldn't recognize the
+    # option.  Pushing a null error handler avoids this and cleans up the
+    # logging.
+    gdal.PushErrorHandler(lambda *args: None)
+    _options = []
+    # GDAL's python bindings only offer this one way of translating gdal.GRA_*
+    # options to their string names (but compatibility is limited in different
+    # GDAL versions, see notes above)
+    warp_opts = gdal.WarpOptions(
+        options=_options,  # SIDE EFFECT: Adds flags to this list.
+        resampleAlg=getattr(gdalconst, _warp_algo),  # use GRA_* name.
+        overviewLevel=None)  # Don't add overview parameters.
+    gdal.PopErrorHandler()
+
+    # _options is populated during the WarpOptions call above.
+    for _item in _options:
+        is_int = False
+        try:
+            int(_item)
+            is_int = True
+        except ValueError:
+            pass
+
+        if _item == '-r':
+            continue
+        elif (_item.startswith('-r') and len(_item) > 2) or is_int:
+            # (GDAL < 3.4) Translate shorthand params to name.
+            # (GDAL < 3.4) Translate unrecognized (int) codes to name.
+            _item = re.sub('^gra_', '', _warp_algo.lower())
+        _GDAL_WARP_ALGORITHMS.append(_item)
+
 _GDAL_WARP_ALGORITHMS = set(_GDAL_WARP_ALGORITHMS)
-_GDAL_WARP_ALGORITHMS.discard('-r')
 _GDAL_WARP_ALGOS_FOR_HUMAN_EYES = "|".join(_GDAL_WARP_ALGORITHMS)
 LOGGER.debug(
     f'Detected warp algorithms: {", ".join(_GDAL_WARP_ALGOS_FOR_HUMAN_EYES)}')
@@ -2356,7 +2387,7 @@ def warp_raster(
         base_raster_path, target_pixel_size, target_raster_path,
         resample_method, target_bb=None, base_projection_wkt=None,
         target_projection_wkt=None, n_threads=None, vector_mask_options=None,
-        gdal_warp_options=None, working_dir=None,
+        gdal_warp_options=None, working_dir=None, use_overview_level=-1,
         raster_driver_creation_tuple=DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS,
         osr_axis_mapping_strategy=DEFAULT_OSR_AXIS_MAPPING_STRATEGY):
     f"""Resize/resample raster to desired pixel size, bbox and projection.
@@ -2402,6 +2433,15 @@ def warp_raster(
         working_dir (string): if defined uses this directory to make
             temporary working files for calculation. Otherwise uses system's
             temp directory.
+        use_overview_level=-1 (int/str): The overview level to use for warping.
+            A value of ``-1`` (the default) indicates that the base raster
+            should be used for the source pixels. A value of ``'AUTO'``
+            will make GDAL select the overview with the resolution that is
+            closest to the target pixel size and warp using that overview's
+            pixel values.  Any other integer indicates that that overview index
+            should be used.  For example, suppose the raster has overviews at
+            levels 2, 4 and 8.  To use level 2, set ``use_overview_level=0``.
+            To use level 8, set ``use_overview_level=2``.
         raster_driver_creation_tuple (tuple): a tuple containing a GDAL driver
             name string as the first element and a GDAL creation options
             tuple/list as the second. Defaults to a GTiff driver tuple
@@ -2540,6 +2580,7 @@ def warp_raster(
         dstSRS=target_projection_wkt,
         multithread=True if warp_options else False,
         warpOptions=warp_options,
+        overviewLevel=use_overview_level,
         creationOptions=raster_creation_options,
         callback=reproject_callback,
         callback_data=[target_raster_path])
