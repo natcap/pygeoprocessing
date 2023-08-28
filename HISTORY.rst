@@ -23,6 +23,10 @@ Unreleased Changes
 * ``pygeoprocessing.routing.delineate_watersheds_d8`` now handles the case
   where the input flow direction raster does not have a defined spatial
   reference. https://github.com/natcap/pygeoprocessing/issues/254
+* Fixing an issue with ``pygeoprocessing.multiprocessing.raster_calculator``
+  where the function would raise an Exception when the target raster path was
+  provided as a filename only, not within a directory, even though the parent
+  directory could be inferred. https://github.com/natcap/pygeoprocessing/issues/313
 
 2.4.0 (2023-03-03)
 ------------------
