@@ -20,6 +20,10 @@ Unreleased Changes
   ``create_raster_from_bounding_box`` for determining the dimensions of the
   target raster given a target bounding box and pixel sizes.
   https://github.com/natcap/pygeoprocessing/issues/321
+* Updating internal documentation describing TauDEM flow directions, and adding
+  for how to convert from a flow direction raster from what TauDEM expects to
+  what pygeoprocessing expects.
+  https://github.com/natcap/pygeoprocessing/issues/255
 * Users may now specify the overview level to use when calling ``warp_raster``.
   By default, ``pygeoprocessing`` will use the base layer.
   https://github.com/natcap/pygeoprocessing/issues/326

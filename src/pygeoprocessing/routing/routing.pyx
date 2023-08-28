@@ -10,12 +10,24 @@ incoming DEM type is an int64 type and values in that dem exceed 2^52 but GDAL
 does not support int64 rasters so no precision loss is possible with a
 float64.
 
-D8 float direction conventions follow TauDEM where each flow direction
-is encoded as::
+D8 flow direction conventions encode the flow direction as::
 
      3 2 1
      4 x 0
      5 6 7
+
+This is slightly different from how TauDEM encodes flow direction, which is as::
+    4 3 2
+    5 x 1
+    6 7 8
+
+To convert a TauDEM flow direction raster to a pygeoprocessing-compatible flow
+direction raster, the following ``raster_map`` call may be used::
+
+    taudem_flow_dir_path = 'taudem_d8_flow_dir.tif'
+    pygeoprocessing.raster_map(
+        lambda d: d+1, [taudem_flow_dir_path],
+        'pygeoprocessing_d8_flow_dir.tif')
 """
 import collections
 import logging
