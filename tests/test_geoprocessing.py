@@ -29,10 +29,11 @@ from numpy.random import SeedSequence
 from osgeo import gdal
 from osgeo import ogr
 from osgeo import osr
+from pygeoprocessing.geoprocessing_core import DEFAULT_CREATION_OPTIONS
 from pygeoprocessing.geoprocessing_core import \
-    DEFAULT_CREATION_OPTIONS, \
-    INT8_CREATION_OPTIONS, \
-    DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS, \
+    DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS
+from pygeoprocessing.geoprocessing_core import INT8_CREATION_OPTIONS
+from pygeoprocessing.geoprocessing_core import \
     INT8_GTIFF_CREATION_TUPLE_OPTIONS
 
 _DEFAULT_ORIGIN = (444720, 3751320)
@@ -2281,6 +2282,29 @@ class TestGeoprocessing(unittest.TestCase):
             numpy.isclose(
                 arithmetic_wrangle(pixel_matrix),
                 pygeoprocessing.raster_to_numpy_array(target_path)).all())
+
+    def test_raster_calculator_mutiprocessing_cwd(self):
+        """PGP.geoprocessing: raster_calculator identity test in cwd."""
+        pixel_matrix = numpy.ones((1024, 1024), numpy.int16)
+        target_nodata = -1
+        try:
+            cwd = os.getcwd()
+            os.chdir(self.workspace_dir)
+            base_path = 'base.tif'
+            _array_to_raster(pixel_matrix, target_nodata, base_path)
+
+            target_path = 'target.tif'
+            pygeoprocessing.multiprocessing.raster_calculator(
+                [(base_path, 1)], arithmetic_wrangle, target_path,
+                gdal.GDT_Int32, target_nodata, calc_raster_stats=True,
+                use_shared_memory=True)
+
+            self.assertTrue(
+                numpy.isclose(
+                    arithmetic_wrangle(pixel_matrix),
+                    pygeoprocessing.raster_to_numpy_array(target_path)).all())
+        finally:
+            os.chdir(cwd)
 
     def test_raster_calculator_bad_target_type(self):
         """PGP.geoprocessing: raster_calculator bad target type value."""
