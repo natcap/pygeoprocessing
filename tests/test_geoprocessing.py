@@ -1694,6 +1694,54 @@ class TestGeoprocessing(unittest.TestCase):
                 pygeoprocessing.raster_to_numpy_array(
                     target_raster_path)).all())
 
+    def test_warp_raster_overview_level(self):
+        """PGP.geoprocessing: warp raster overview test."""
+        # This array is big enough that build_overviews will render several
+        # overview levels.
+        pixel_a_matrix = numpy.array([
+            [1, 2, 3, 4],
+            [1, 2, 3, 4],
+            [1, 2, 3, 4],
+            [1, 2, 3, 4],
+        ], dtype=numpy.float32)
+
+        # Using overview level 0 (the base raster), we should have the same
+        # output when we warp the array that has and does not have overviews
+        # present.
+        target_nodata = -1
+        base_a_path = os.path.join(self.workspace_dir, 'base_a.tif')
+        _array_to_raster(
+            pixel_a_matrix, target_nodata, base_a_path)
+        base_a_raster_info = pygeoprocessing.get_raster_info(base_a_path)
+        warped_a_path = os.path.join(self.workspace_dir, 'warped_a.tif')
+        pygeoprocessing.warp_raster(
+            base_a_path, base_a_raster_info['pixel_size'], warped_a_path,
+            'bilinear', use_overview_level=-1)
+
+        base_b_path = os.path.join(self.workspace_dir, 'base_b.tif')
+        _array_to_raster(
+            pixel_a_matrix, target_nodata, base_b_path)
+        warped_b_path = os.path.join(self.workspace_dir, 'warped_b.tif')
+        pygeoprocessing.build_overviews(
+            base_b_path, levels=[2, 4], resample_method='bilinear')
+        pygeoprocessing.warp_raster(
+            base_b_path, base_a_raster_info['pixel_size'], warped_b_path,
+            'bilinear', use_overview_level=-1)
+
+        warped_a_array = pygeoprocessing.raster_to_numpy_array(warped_a_path)
+        warped_b_array = pygeoprocessing.raster_to_numpy_array(warped_b_path)
+        numpy.testing.assert_allclose(warped_a_array, warped_b_array)
+
+        # Force warping using a higher overview level.
+        # Overview level 2 really means the 2nd overview in the stack, which is
+        # where 4 pixels are aggregated into 1 value.
+        target_raster_path = os.path.join(self.workspace_dir, 'target_c.tif')
+        pygeoprocessing.warp_raster(
+            base_b_path, base_a_raster_info['pixel_size'], target_raster_path,
+            'bilinear', n_threads=1, use_overview_level=1)
+        array = pygeoprocessing.raster_to_numpy_array(target_raster_path)
+        numpy.testing.assert_allclose(array, 2.5)
+
     def test_warp_raster_invalid_resample_alg(self):
         """PGP.geoprocessing: error on invalid resample algorithm."""
         pixel_a_matrix = numpy.ones((5, 5), numpy.int16)

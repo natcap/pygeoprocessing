@@ -23,6 +23,16 @@ Unreleased Changes
 * ``pygeoprocessing.routing.delineate_watersheds_d8`` now handles the case
   where the input flow direction raster does not have a defined spatial
   reference. https://github.com/natcap/pygeoprocessing/issues/254
+* Updating internal documentation describing TauDEM flow directions, and adding
+  for how to convert from a flow direction raster from what TauDEM expects to
+  what pygeoprocessing expects.
+  https://github.com/natcap/pygeoprocessing/issues/255
+* Users may now specify the overview level to use when calling ``warp_raster``.
+  By default, ``pygeoprocessing`` will use the base layer.
+  https://github.com/natcap/pygeoprocessing/issues/326
+* Fixed a bug across ``pygeoprocessing`` where some valid resampling methods
+  would throw an exception because they were not recognized.  This was only
+  happening when ``pygeoprocessing`` was installed alongside GDAL < 3.4.
 * Fixing an issue with ``pygeoprocessing.multiprocessing.raster_calculator``
   where the function would raise an Exception when the target raster path was
   provided as a filename only, not within a directory, even though the parent
