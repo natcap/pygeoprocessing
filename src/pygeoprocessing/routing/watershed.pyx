@@ -628,7 +628,7 @@ def delineate_watersheds_d8(
         target_layer_name='watersheds'):
     """Delineate watersheds for a vector of geometries using D8 flow dir.
 
-    Note:
+    Note:
         The ``d8_flow_dir_raster_path_band`` and ``outflow_vector_path`` files
         must have the same spatial reference system.  The output watersheds
         vector will use this same spatial reference system.
