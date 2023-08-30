@@ -20,6 +20,9 @@ Unreleased Changes
   ``create_raster_from_bounding_box`` for determining the dimensions of the
   target raster given a target bounding box and pixel sizes.
   https://github.com/natcap/pygeoprocessing/issues/321
+* ``pygeoprocessing.routing.delineate_watersheds_d8`` now handles the case
+  where the input flow direction raster does not have a defined spatial
+  reference. https://github.com/natcap/pygeoprocessing/issues/254
 * Updating internal documentation describing TauDEM flow directions, and adding
   for how to convert from a flow direction raster from what TauDEM expects to
   what pygeoprocessing expects.

@@ -116,105 +116,120 @@ class WatershedDelineationTests(unittest.TestCase):
         srs.ImportFromEPSG(32731)  # WGS84 / UTM zone 31s
         srs_wkt = srs.ExportToWkt()
 
-        flow_dir_path = os.path.join(self.workspace_dir, 'flow_dir.tif')
-        pygeoprocessing.numpy_array_to_raster(
-            base_array=flow_dir_array,
-            target_nodata=255,
-            pixel_size=(2, -2),
-            origin=(2, -2),
-            projection_wkt=srs_wkt,
-            target_path=flow_dir_path)
+        for srs in (srs_wkt, None):
+            flow_dir_path = os.path.join(self.workspace_dir, 'flow_dir.tif')
+            pygeoprocessing.numpy_array_to_raster(
+                base_array=flow_dir_array,
+                target_nodata=255,
+                pixel_size=(2, -2),
+                origin=(2, -2),
+                projection_wkt=srs,
+                target_path=flow_dir_path)
 
-        # These geometries test:
-        #  * Delineation works with varying geometry types
-        #  * That we exclude seed pixels that are over nodata
-        #  * That we exclude seed pixels off the bounds of the raster
-        horizontal_line = shapely.geometry.LineString([(19, -11), (25, -11)])
-        vertical_line = shapely.geometry.LineString([(21, -9), (21, -13)])
-        square = shapely.geometry.box(17, -13, 21, -9)
-        point = shapely.geometry.Point(21, -11)
+            # These geometries test:
+            #  * Delineation works with varying geometry types
+            #  * That we exclude seed pixels that are over nodata
+            #  * That we exclude seed pixels off the bounds of the raster
+            horizontal_line = shapely.geometry.LineString(
+                [(19, -11), (25, -11)])
+            vertical_line = shapely.geometry.LineString([(21, -9), (21, -13)])
+            square = shapely.geometry.box(17, -13, 21, -9)
+            point = shapely.geometry.Point(21, -11)
 
-        outflow_vector_path = os.path.join(self.workspace_dir, 'outflow.gpkg')
-        pygeoprocessing.shapely_geometry_to_vector(
-            [horizontal_line, vertical_line, square, point],
-            outflow_vector_path, srs_wkt,
-            'GPKG',
-            {
-                'polygon_id': ogr.OFTInteger,
-                'field_string': ogr.OFTString,
-                'other': ogr.OFTReal,
-                # We use ws_id internally, so make sure that this field is
-                # copied over into the final vector since it's present in the
-                # source vector.
-                'ws_id': ogr.OFTInteger,
-            },
-            [
-                {'polygon_id': 1, 'field_string': 'hello world',
-                 'other': 1.111, 'ws_id': 1},
-                {'polygon_id': 2, 'field_string': 'hello foo', 'other': 2.222,
-                 'ws_id': 2},
-                {'polygon_id': 3, 'field_string': 'hello bar', 'other': 3.333,
-                 'ws_id': 3},
-                {'polygon_id': 4, 'field_string': 'hello baz', 'other': 4.444,
-                 'ws_id': 4},
-            ],
-            ogr_geom_type=ogr.wkbUnknown)
+            outflow_vector_path = os.path.join(
+                self.workspace_dir, 'outflow.gpkg')
+            pygeoprocessing.shapely_geometry_to_vector(
+                [horizontal_line, vertical_line, square, point],
+                outflow_vector_path, srs_wkt,
+                'GPKG',
+                {
+                    'polygon_id': ogr.OFTInteger,
+                    'field_string': ogr.OFTString,
+                    'other': ogr.OFTReal,
+                    # We use ws_id internally, so make sure that this field is
+                    # copied over into the final vector since it's present in
+                    # the source vector.
+                    'ws_id': ogr.OFTInteger,
+                },
+                [
+                    {'polygon_id': 1, 'field_string': 'hello world',
+                     'other': 1.111, 'ws_id': 1},
+                    {'polygon_id': 2, 'field_string': 'hello foo',
+                     'other': 2.222, 'ws_id': 2},
+                    {'polygon_id': 3, 'field_string': 'hello bar',
+                     'other': 3.333, 'ws_id': 3},
+                    {'polygon_id': 4, 'field_string': 'hello baz',
+                     'other': 4.444, 'ws_id': 4},
+                ],
+                ogr_geom_type=ogr.wkbUnknown)
 
-        target_watersheds_path = os.path.join(
-            self.workspace_dir, 'watersheds.gpkg')
+            target_watersheds_path = os.path.join(
+                self.workspace_dir, 'watersheds.gpkg')
 
-        pygeoprocessing.routing.delineate_watersheds_d8(
-            (flow_dir_path, 1), outflow_vector_path, target_watersheds_path,
-            target_layer_name='watersheds_something')
+            pygeoprocessing.routing.delineate_watersheds_d8(
+                (flow_dir_path, 1), outflow_vector_path,
+                target_watersheds_path,
+                target_layer_name='watersheds_something')
 
-        watersheds_vector = gdal.OpenEx(target_watersheds_path, gdal.OF_VECTOR)
-        watersheds_layer = watersheds_vector.GetLayer('watersheds_something')
-        self.assertEqual(watersheds_layer.GetFeatureCount(), 4)
+            try:
+                watersheds_vector = gdal.OpenEx(target_watersheds_path,
+                                                gdal.OF_VECTOR)
+                watersheds_layer = watersheds_vector.GetLayer(
+                    'watersheds_something')
+                self.assertEqual(watersheds_layer.GetFeatureCount(), 4)
 
-        # All features should have the same watersheds, both in area and
-        # geometry.
-        flow_dir_bbox = pygeoprocessing.get_raster_info(
-            flow_dir_path)['bounding_box']
-        expected_watershed_geometry = shapely.geometry.box(*flow_dir_bbox)
-        expected_watershed_geometry = expected_watershed_geometry.difference(
-            shapely.geometry.box(20, -2, 22, -10))
-        expected_watershed_geometry = expected_watershed_geometry.difference(
-            shapely.geometry.box(20, -12, 22, -22))
-        pygeoprocessing.shapely_geometry_to_vector(
-            [expected_watershed_geometry],
-            os.path.join(self.workspace_dir, 'foo.gpkg'), srs_wkt,
-            'GPKG', ogr_geom_type=ogr.wkbGeometryCollection)
+                # All features should have the same watersheds, both in area
+                # and geometry.
+                flow_dir_bbox = pygeoprocessing.get_raster_info(
+                    flow_dir_path)['bounding_box']
+                expected_watershed_geometry = shapely.geometry.box(
+                    *flow_dir_bbox)
+                expected_watershed_geometry = (
+                    expected_watershed_geometry.difference(
+                        shapely.geometry.box(20, -2, 22, -10)))
+                expected_watershed_geometry = (
+                    expected_watershed_geometry.difference(
+                        shapely.geometry.box(20, -12, 22, -22)))
+                pygeoprocessing.shapely_geometry_to_vector(
+                    [expected_watershed_geometry],
+                    os.path.join(self.workspace_dir, 'foo.gpkg'), srs_wkt,
+                    'GPKG', ogr_geom_type=ogr.wkbGeometryCollection)
 
-        id_to_fields = {}
-        for feature in watersheds_layer:
-            geometry = feature.GetGeometryRef()
-            shapely_geom = shapely.wkb.loads(bytes(geometry.ExportToWkb()))
-            self.assertEqual(
-                shapely_geom.area, expected_watershed_geometry.area)
-            self.assertEqual(
-                shapely_geom.intersection(
-                    expected_watershed_geometry).area,
-                expected_watershed_geometry.area)
-            self.assertEqual(
-                shapely_geom.difference(
-                    expected_watershed_geometry).area, 0)
+                id_to_fields = {}
+                for feature in watersheds_layer:
+                    geometry = feature.GetGeometryRef()
+                    shapely_geom = shapely.wkb.loads(
+                        bytes(geometry.ExportToWkb()))
+                    self.assertEqual(
+                        shapely_geom.area, expected_watershed_geometry.area)
+                    self.assertEqual(
+                        shapely_geom.intersection(
+                            expected_watershed_geometry).area,
+                        expected_watershed_geometry.area)
+                    self.assertEqual(
+                        shapely_geom.difference(
+                            expected_watershed_geometry).area, 0)
 
-            field_values = feature.items()
-            id_to_fields[field_values['polygon_id']] = field_values
+                    field_values = feature.items()
+                    id_to_fields[field_values['polygon_id']] = field_values
+            finally:
+                watersheds_vector = None
+                watersheds_layer = None
 
-        outflow_vector = gdal.OpenEx(outflow_vector_path, gdal.OF_VECTOR)
-        outflow_layer = outflow_vector.GetLayer()
-        found_ws_ids = set()  # make sure the ws_id field is copied over
-        try:
-            for feature in outflow_layer:
-                self.assertEqual(
-                    id_to_fields[feature.GetField('polygon_id')],
-                    feature.items())
-                found_ws_ids.add(feature.GetField('ws_id'))
-        finally:
-            outflow_layer = None
-            outflow_vector = None
-        self.assertEqual(found_ws_ids, set([1, 2, 3, 4]))
+            try:
+                outflow_vector = gdal.OpenEx(
+                    outflow_vector_path, gdal.OF_VECTOR)
+                outflow_layer = outflow_vector.GetLayer()
+                found_ws_ids = set()  # make sure the ws_id field is copied
+                for feature in outflow_layer:
+                    self.assertEqual(
+                        id_to_fields[feature.GetField('polygon_id')],
+                        feature.items())
+                    found_ws_ids.add(feature.GetField('ws_id'))
+            finally:
+                outflow_layer = None
+                outflow_vector = None
+            self.assertEqual(found_ws_ids, set([1, 2, 3, 4]))
 
     def test_split_geometry_into_seeds(self):
         """PGP watersheds: Test geometry-to-seed extraction."""
