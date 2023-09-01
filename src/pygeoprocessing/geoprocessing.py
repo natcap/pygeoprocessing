@@ -610,6 +610,11 @@ def raster_calculator(
             payload = stats_worker_queue.get(True, max_timeout)
             if payload is not None:
                 target_min, target_max, target_mean, target_stddev = payload
+                # In Cython 3.0.0+, taking a square root may return a complex.
+                # Using only the real component of the complex value mimics the
+                # C behavior that we expect from our stats worker.
+                if isinstance(target_stddev, complex):
+                    target_stddev = target_stddev.real
                 target_band.SetStatistics(
                     float(target_min), float(target_max), float(target_mean),
                     float(target_stddev))
