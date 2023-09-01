@@ -37,6 +37,10 @@ Unreleased Changes
   where the function would raise an Exception when the target raster path was
   provided as a filename only, not within a directory, even though the parent
   directory could be inferred. https://github.com/natcap/pygeoprocessing/issues/313
+* Fixing a bug where the statistics worker in
+  ``pygeoprocessing.raster_calculator`` may return a complex value. This is
+  only an issue when pygeoprocessing is compiled against Cython 3.0.0 and
+  later. https://github.com/natcap/pygeoprocessing/issues/342
 
 2.4.0 (2023-03-03)
 ------------------
