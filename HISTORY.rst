@@ -1,7 +1,7 @@
 Release History
 ===============
 
-Unreleased Changes
+2.4.1 (2023-09-05)
 ------------------
 * The ``pygeoprocessing`` package metadata has been updated to use
   ``importlib.metadata`` (python >= 3.8) or ``importlib_metadata``
