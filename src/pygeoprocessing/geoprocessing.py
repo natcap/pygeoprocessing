@@ -1643,7 +1643,6 @@ def zonal_statistics(
     # Rasterize each disjoint polygon set onto its own raster layer
     fid_nodata = numpy.iinfo(numpy.uint16).max
     fid_raster_paths = []
-
     for i, disjoint_fid_set in enumerate(disjoint_fid_sets):
         fid_raster_path = os.path.join(temp_working_dir, f'fid_set_{i}.tif')
         fid_set_str = ", ".join(str(fid) for fid in disjoint_fid_set)
@@ -1685,7 +1684,6 @@ def zonal_statistics(
             fid_band = fid_raster.GetRasterBand(1)
 
             for offset_index, offset in enumerate(offset_list):
-
                 timed_logger.info(
                     "%.1f%% done calculating stats for polygon set %s on raster %s",
                     offset_index / len(offset_list) * 100, set_index, i)
@@ -1732,7 +1730,7 @@ def zonal_statistics(
         # subtract 1 because bands are 1-indexed
         raster_nodata = get_raster_info(raster_path)['nodata'][band - 1]
         target_layer = target_vector.GetLayerByName(target_layer_id)
-        for unset_fid in enumerate(unset_fids):
+        for unset_fid in unset_fids:
             # Look up by the FID copy field, not the FID itself, because
             # FIDs in target_layer may not be the same as in the input layer
             target_layer.SetAttributeFilter(f'{fid_field_name} = {unset_fid}')
