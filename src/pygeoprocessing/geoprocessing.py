@@ -1384,19 +1384,15 @@ def align_bbox(geotransform, bbox):
         (pixel_width < 0 and bbox[0] > x_origin) or
         (pixel_height < 0 and bbox[1] > y_origin)):
         raise ValueError('bbox must fall within geotransform grid')
-
-    # floor always subtracts: floor(3.1) = 3, floor(-3.1) = -4
-    padded_bbox = [
-        # the floor() term represents the number of pixels offset from the origin
-        x_origin + math.floor((bbox[0] - x_origin) / pixel_width * numpy.sign(pixel_width)) * abs(pixel_width),
-        y_origin + math.floor((bbox[1] - y_origin) / pixel_height * numpy.sign(pixel_height)) * abs(pixel_height),
-        x_origin + math.ceil((bbox[2] - x_origin) / pixel_width * numpy.sign(pixel_width)) * abs(pixel_width),
-        y_origin + math.ceil((bbox[3] - y_origin) / pixel_height * numpy.sign(pixel_height)) * abs(pixel_height)]
-    # if pixel_width < 0:
-    #     padded_bbox[0], padded_bbox[2] = padded_bbox[2], padded_bbox[0]
-    # if pixel_height < 0:
-    #     padded_bbox[1], padded_bbox[3] = padded_bbox[3], padded_bbox[1]
-    return padded_bbox
+    return [
+        x_origin + abs(pixel_width) * math.floor(
+            (bbox[0] - x_origin) / pixel_width * numpy.sign(pixel_width)),
+        y_origin + abs(pixel_height) * math.floor(
+            (bbox[1] - y_origin) / pixel_height * numpy.sign(pixel_height)),
+        x_origin + abs(pixel_width) * math.ceil(
+            (bbox[2] - x_origin) / pixel_width * numpy.sign(pixel_width)),
+        y_origin + abs(pixel_height) * math.ceil(
+            (bbox[3] - y_origin) / pixel_height * numpy.sign(pixel_height))]
 
 
 def zonal_statistics(
@@ -1612,7 +1608,7 @@ def zonal_statistics(
 
     # Expand the intersection bounding box to align with the nearest pixels
     # in the original raster
-    projwin = align_bbox(raster_info['geotransform'], bbox_intersection)
+    aligned_bbox = align_bbox(raster_info['geotransform'], bbox_intersection)
 
     # Clip base rasters to their intersection with the aggregate vector
     LOGGER.info('Clipping rasters to their intersection with the vector')
@@ -1627,15 +1623,12 @@ def zonal_statistics(
                 'continuous values.')
         target_path = os.path.join(temp_working_dir, f'{i}.tif')
         target_raster_path_band_list.append((target_path, band))
-
-        gdal.Translate(
-            destName=target_path,
-            srcDS=base_path,
-            format='GTIFF',
-            projWin=projwin,
-            callback=_make_logger_callback(
-                f"Clipping raster {i + 1} of {len(base_raster_path_band)} "
-                "%.1f%% complete %s"))
+        gdal.Warp(
+            destNameOrDestDS=target_path,
+            srcDSOrSrcDSTab=base_path,
+            format='VRT',
+            outputBounds=aligned_bbox,
+            callback=_make_logger_callback("Warp %.1f%% complete %s"))
 
     # Calculate disjoint polygon sets
     if polygons_might_overlap:
@@ -1650,11 +1643,6 @@ def zonal_statistics(
     # Rasterize each disjoint polygon set onto its own raster layer
     fid_nodata = numpy.iinfo(numpy.uint16).max
     fid_raster_paths = []
-    outputBounds = [
-        min(projwin[0], projwin[2]),
-        min(projwin[1], projwin[3]),
-        max(projwin[0], projwin[2]),
-        max(projwin[1], projwin[3])]
 
     for i, disjoint_fid_set in enumerate(disjoint_fid_sets):
         fid_raster_path = os.path.join(temp_working_dir, f'fid_set_{i}.tif')
@@ -1665,7 +1653,7 @@ def zonal_statistics(
             allTouched=False,
             attribute=fid_field_name,
             noData=fid_nodata,
-            outputBounds=outputBounds,
+            outputBounds=aligned_bbox,
             xRes=abs(raster_info['pixel_size'][0]),  # resolution should always be positive
             yRes=abs(raster_info['pixel_size'][1]),
             format='GTIFF',
@@ -1744,8 +1732,7 @@ def zonal_statistics(
         # subtract 1 because bands are 1-indexed
         raster_nodata = get_raster_info(raster_path)['nodata'][band - 1]
         target_layer = target_vector.GetLayerByName(target_layer_id)
-        for i, unset_fid in enumerate(unset_fids):
-
+        for unset_fid in enumerate(unset_fids):
             # Look up by the FID copy field, not the FID itself, because
             # FIDs in target_layer may not be the same as in the input layer
             target_layer.SetAttributeFilter(f'{fid_field_name} = {unset_fid}')
@@ -1830,7 +1817,7 @@ def zonal_statistics(
     disjoint_layer, aggregate_layer, aggregate_vector = None, None, None
     target_layer, target_vector = None, None
 
-    # shutil.rmtree(temp_working_dir)
+    shutil.rmtree(temp_working_dir)
     if multi_raster_mode:
         return aggregate_stats_list
     else:
