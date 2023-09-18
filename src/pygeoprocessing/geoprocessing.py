@@ -1360,6 +1360,8 @@ def interpolate_points(
 def align_bbox(geotransform, bbox):
     """Pad a bounding box so that it aligns with the grid of a given geotransform.
 
+    Ignores row and column rotation.
+
     Args:
         geotransform (list): GDAL raster geotransform to align to
         bbox (list): bounding box in the form [minx, miny, maxx, maxy]
@@ -1367,12 +1369,34 @@ def align_bbox(geotransform, bbox):
     Returns:
         padded bounding box in the form [minx, miny, maxx, maxy]
     """
-    x_origin, pixel_width, _, y_origin, _, pixel_height = raster_info['geotransform']
-    projwin = [
-        x_origin + math.floor((bbox[0] - x_origin) / pixel_width) * pixel_width,
-        y_origin + math.floor((bbox[1] - y_origin) / pixel_height) * pixel_height,
-        x_origin + math.ceil((bbox[2] - x_origin) / pixel_width) * pixel_width,
-        y_origin + math.ceil((bbox[3] - y_origin) / pixel_height) * pixel_height]
+    # NOTE: x_origin and y_origin do not necessarily equal minx and miny.
+    # If pixel_width is positive, x_origin = minx
+    # If pixel_width is negative, x_origin = maxx
+    # If pixel height is positive, y_origin = miny
+    # If pixel height is negative, y_origin = maxy
+    x_origin, pixel_width, _, y_origin, _, pixel_height = geotransform
+    if pixel_width == 0 or pixel_height == 0:
+        raise ValueError('Pixel width and height must not be 0')
+    if bbox[2] < bbox[0] or bbox[3] < bbox[1]:
+        raise ValueError('bbox must be in order [minX, minY, maxX, maxY]')
+    if ((pixel_width > 0 and bbox[0] < x_origin) or
+        (pixel_height > 0 and bbox[1] < y_origin) or
+        (pixel_width < 0 and bbox[0] > x_origin) or
+        (pixel_height < 0 and bbox[1] > y_origin)):
+        raise ValueError('bbox must fall within geotransform grid')
+
+    # floor always subtracts: floor(3.1) = 3, floor(-3.1) = -4
+    padded_bbox = [
+        # the floor() term represents the number of pixels offset from the origin
+        x_origin + math.floor((bbox[0] - x_origin) / pixel_width * numpy.sign(pixel_width)) * abs(pixel_width),
+        y_origin + math.floor((bbox[1] - y_origin) / pixel_height * numpy.sign(pixel_height)) * abs(pixel_height),
+        x_origin + math.ceil((bbox[2] - x_origin) / pixel_width * numpy.sign(pixel_width)) * abs(pixel_width),
+        y_origin + math.ceil((bbox[3] - y_origin) / pixel_height * numpy.sign(pixel_height)) * abs(pixel_height)]
+    # if pixel_width < 0:
+    #     padded_bbox[0], padded_bbox[2] = padded_bbox[2], padded_bbox[0]
+    # if pixel_height < 0:
+    #     padded_bbox[1], padded_bbox[3] = padded_bbox[3], padded_bbox[1]
+    return padded_bbox
 
 
 def zonal_statistics(

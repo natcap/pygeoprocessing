@@ -5179,3 +5179,32 @@ class TestGeoprocessing(unittest.TestCase):
         result_array = pygeoprocessing.array_equals_nodata(array, None)
         numpy.testing.assert_array_equal(
             result_array, numpy.zeros(array.shape, dtype=bool))
+
+    def test_align_bbox(self):
+        """PGP: test align_bbox expands bbox to align with grid."""
+        self.assertEqual(
+            pygeoprocessing.align_bbox(
+                [0, 1, 0, 0, 0, 1],  # origin (0, 0), pixel width 1, pixel height 1
+                [0.5, 1.7, 2.1, 3.4]),
+            [0, 1, 3, 4])
+
+        self.assertEqual(
+            pygeoprocessing.align_bbox(
+                [0, -1, 0, 0, 0, -1],  # origin (0, 0), pixel width -1, pixel height -1
+                [-2.1, -3.4, -0.5, -1.7]),
+            [-3, -4, 0, -1])
+
+        self.assertEqual(
+            pygeoprocessing.align_bbox(
+                [460633.493, 30, 0, 4932268.39, 0, -30],
+                [464935, 4928100, 465000, 4928139]),
+            [464923.493, 4928098.39, 465013.493, 4928158.39])
+
+        self.assertEqual(
+            pygeoprocessing.align_bbox(
+                [500000, -50, 0, 5000000, 0, 50],
+                [499999, 5000001, 499999, 5000001]),
+            [499950, 5000000, 500000, 5000050])
+
+
+
