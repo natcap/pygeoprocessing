@@ -14,3 +14,6 @@ build:
   os: ubuntu-22.04
   tools:
     python: "mambaforge-22.9"
+  jobs:
+    post_install:
+      - pip install .
