@@ -40,9 +40,8 @@ Getting Started
 .. toctree::
    :maxdepth: 1
    :caption: API Reference
-   :glob:
 
-   api/*
+   api/pygeoprocessing.rst
 
 
 Indices and tables
