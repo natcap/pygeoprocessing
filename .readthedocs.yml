@@ -10,8 +10,7 @@ sphinx:
 conda:
     environment: docs/environment-rtd.yml
 
-python:
-    version: 3.8
-    install:
-        - method: setuptools
-          path: .
+build:
+  os: ubuntu-22.04
+  tools:
+    python: "mambaforge-22.9"
