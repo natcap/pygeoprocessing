@@ -125,7 +125,7 @@ class TestGeoprocessing(unittest.TestCase):
 
     def tearDown(self):
         """Clean up remaining files."""
-        shutil.rmtree(self.workspace_dir)
+        # shutil.rmtree(self.workspace_dir)
 
     def test_star_import(self):
         """PGP: verify we can use *-import statement."""
@@ -991,8 +991,9 @@ class TestGeoprocessing(unittest.TestCase):
 
     def test_zonal_stats_all_outside(self):
         """PGP.geoprocessing: test vector all outside raster."""
+        self.workspace_dir = '/Users/emily/Documents/testzstats'
         gpkg_driver = ogr.GetDriverByName('GPKG')
-        vector_path = os.path.join(self.workspace_dir, 'vector.gpkg')
+        vector_path = os.path.join(self.workspace_dir, 'vector2.gpkg')
         vector = gpkg_driver.CreateDataSource(vector_path)
 
         srs = osr.SpatialReference()
@@ -1044,8 +1045,8 @@ class TestGeoprocessing(unittest.TestCase):
         new_feature.SetGeometry(new_geometry)
         layer.CreateFeature(new_feature)
 
-        x_pos = origin_x + (n+.99)
-        y_pos = origin_y - (n+.99)
+        x_pos = origin_x + (n-.01)
+        y_pos = origin_y - (n-.01)
         shapely_feature = shapely.geometry.Polygon([
             (x_pos, y_pos),
             (x_pos+subpixel_size, y_pos),
