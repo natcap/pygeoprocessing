@@ -1,7 +1,7 @@
 Release History
 ===============
 
-Unreleased Changes
+2.4.1 (2023-09-05)
 ------------------
 * The ``pygeoprocessing`` package metadata has been updated to use
   ``importlib.metadata`` (python >= 3.8) or ``importlib_metadata``
@@ -16,6 +16,31 @@ Unreleased Changes
 * Added a new function, ``pygeoprocessing.array_equals_nodata``, which returns
   a boolean array indicating which elements have nodata. It handles integer,
   float, and ``nan`` comparison, and the case where the nodata value is `None`.
+* Standardized the approach used in ``warp_raster`` and
+  ``create_raster_from_bounding_box`` for determining the dimensions of the
+  target raster given a target bounding box and pixel sizes.
+  https://github.com/natcap/pygeoprocessing/issues/321
+* ``pygeoprocessing.routing.delineate_watersheds_d8`` now handles the case
+  where the input flow direction raster does not have a defined spatial
+  reference. https://github.com/natcap/pygeoprocessing/issues/254
+* Updating internal documentation describing TauDEM flow directions, and adding
+  for how to convert from a flow direction raster from what TauDEM expects to
+  what pygeoprocessing expects.
+  https://github.com/natcap/pygeoprocessing/issues/255
+* Users may now specify the overview level to use when calling ``warp_raster``.
+  By default, ``pygeoprocessing`` will use the base layer.
+  https://github.com/natcap/pygeoprocessing/issues/326
+* Fixed a bug across ``pygeoprocessing`` where some valid resampling methods
+  would throw an exception because they were not recognized.  This was only
+  happening when ``pygeoprocessing`` was installed alongside GDAL < 3.4.
+* Fixing an issue with ``pygeoprocessing.multiprocessing.raster_calculator``
+  where the function would raise an Exception when the target raster path was
+  provided as a filename only, not within a directory, even though the parent
+  directory could be inferred. https://github.com/natcap/pygeoprocessing/issues/313
+* Fixing a bug where the statistics worker in
+  ``pygeoprocessing.raster_calculator`` may return a complex value. This is
+  only an issue when pygeoprocessing is compiled against Cython 3.0.0 and
+  later. https://github.com/natcap/pygeoprocessing/issues/342
 
 2.4.0 (2023-03-03)
 ------------------

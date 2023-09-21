@@ -9,6 +9,9 @@ import signal
 import sys
 import time
 
+import numpy
+from osgeo import gdal
+
 from ..geoprocessing import _is_raster_path_band_formatted
 from ..geoprocessing import _LARGEST_ITERBLOCK
 from ..geoprocessing import _LOGGING_PERIOD
@@ -19,8 +22,6 @@ from ..geoprocessing import get_raster_info
 from ..geoprocessing import iterblocks
 from ..geoprocessing import LOGGER
 from ..geoprocessing_core import DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS
-from osgeo import gdal
-import numpy
 
 if sys.version_info >= (3, 8):
     import multiprocessing.shared_memory
@@ -451,6 +452,7 @@ def raster_calculator(
         for path_band in base_raster_path_band_const_list
         if _is_raster_path_band_formatted(path_band)]
 
+    target_raster_path = os.path.abspath(target_raster_path)
     _validate_raster_input(
         base_raster_path_band_const_list, raster_info_list, target_raster_path)
 

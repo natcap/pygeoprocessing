@@ -7,6 +7,7 @@ import math
 import os
 import pprint
 import queue
+import re
 import shutil
 import sys
 import tempfile
@@ -30,12 +31,28 @@ from osgeo import ogr
 from osgeo import osr
 
 from . import geoprocessing_core
+from .geoprocessing_core import DEFAULT_CREATION_OPTIONS
 from .geoprocessing_core import DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS
 from .geoprocessing_core import DEFAULT_OSR_AXIS_MAPPING_STRATEGY
+from .geoprocessing_core import INT8_CREATION_OPTIONS
 
 # This is used to efficiently pass data to the raster stats worker if available
 if sys.version_info >= (3, 8):
     import multiprocessing.shared_memory
+
+NUMPY_TO_GDAL_TYPE = {
+    numpy.dtype(bool): gdal.GDT_Byte,
+    numpy.dtype(numpy.int8): gdal.GDT_Byte,
+    numpy.dtype(numpy.uint8): gdal.GDT_Byte,
+    numpy.dtype(numpy.int16): gdal.GDT_Int16,
+    numpy.dtype(numpy.int32): gdal.GDT_Int32,
+    numpy.dtype(numpy.uint16): gdal.GDT_UInt16,
+    numpy.dtype(numpy.uint32): gdal.GDT_UInt32,
+    numpy.dtype(numpy.float32): gdal.GDT_Float32,
+    numpy.dtype(numpy.float64): gdal.GDT_Float64,
+    numpy.dtype(numpy.csingle): gdal.GDT_CFloat32,
+    numpy.dtype(numpy.complex64): gdal.GDT_CFloat64,
+}
 
 
 class ReclassificationMissingValuesError(Exception):
@@ -81,19 +98,49 @@ _GDAL_TYPE_TO_NUMPY_LOOKUP = {
     gdal.GDT_CFloat64: numpy.complex64,
 }
 
-# GDAL's python API recognizes certain strings but the only way to retrieve
-# those strings is to do this conversion of gdalconst.GRA_* types to the
-# human-readable labels via gdal.WarpOptions like so.
 _GDAL_WARP_ALGORITHMS = []
 for _warp_algo in (_attrname for _attrname in dir(gdalconst)
                    if _attrname.startswith('GRA_')):
-    # Appends ['-r', 'near'] to _GDAL_WARP_ALGORITHMS if _warp_algo is
-    # gdalconst.GRA_NearestNeighbor.  See gdal.WarpOptions for the dict
-    # defining this mapping.
-    gdal.WarpOptions(options=_GDAL_WARP_ALGORITHMS,
-                     resampleAlg=getattr(gdalconst, _warp_algo))
+    # In GDAL < 3.4, the options used were actually gdal.GRIORA_*
+    # instead of gdal.GRA_*, and gdal.WarpOptions would:
+    #   * return an integer for any gdal.GRIORA options it didn't recognize
+    #   * Return an abbreviated string (e.g. -rb instead of 'bilinear') for
+    #     several warp algorithms
+    # This behavior was changed in GDAL 3.4, where the correct name is
+    # returned in all cases.
+    #
+    # In GDAL < 3.4, an error would be logged if GDAL couldn't recognize the
+    # option.  Pushing a null error handler avoids this and cleans up the
+    # logging.
+    gdal.PushErrorHandler(lambda *args: None)
+    _options = []
+    # GDAL's python bindings only offer this one way of translating gdal.GRA_*
+    # options to their string names (but compatibility is limited in different
+    # GDAL versions, see notes above)
+    warp_opts = gdal.WarpOptions(
+        options=_options,  # SIDE EFFECT: Adds flags to this list.
+        resampleAlg=getattr(gdalconst, _warp_algo),  # use GRA_* name.
+        overviewLevel=None)  # Don't add overview parameters.
+    gdal.PopErrorHandler()
+
+    # _options is populated during the WarpOptions call above.
+    for _item in _options:
+        is_int = False
+        try:
+            int(_item)
+            is_int = True
+        except ValueError:
+            pass
+
+        if _item == '-r':
+            continue
+        elif (_item.startswith('-r') and len(_item) > 2) or is_int:
+            # (GDAL < 3.4) Translate shorthand params to name.
+            # (GDAL < 3.4) Translate unrecognized (int) codes to name.
+            _item = re.sub('^gra_', '', _warp_algo.lower())
+        _GDAL_WARP_ALGORITHMS.append(_item)
+
 _GDAL_WARP_ALGORITHMS = set(_GDAL_WARP_ALGORITHMS)
-_GDAL_WARP_ALGORITHMS.discard('-r')
 _GDAL_WARP_ALGOS_FOR_HUMAN_EYES = "|".join(_GDAL_WARP_ALGORITHMS)
 LOGGER.debug(
     f'Detected warp algorithms: {", ".join(_GDAL_WARP_ALGOS_FOR_HUMAN_EYES)}')
@@ -109,6 +156,7 @@ class TimedLoggingAdapter(logging.LoggerAdapter):
     This object is helpful for creating consistency in logging callbacks and is
     derived from the python stdlib ``logging.LoggerAdapter``.
     """
+
     def __init__(self, interval_s=_LOGGING_PERIOD):
         """Initialize the timed logging adapter.
 
@@ -563,6 +611,11 @@ def raster_calculator(
             payload = stats_worker_queue.get(True, max_timeout)
             if payload is not None:
                 target_min, target_max, target_mean, target_stddev = payload
+                # In Cython 3.0.0+, taking a square root may return a complex.
+                # Using only the real component of the complex value mimics the
+                # C behavior that we expect from our stats worker.
+                if isinstance(target_stddev, complex):
+                    target_stddev = target_stddev.real
                 target_band.SetStatistics(
                     float(target_min), float(target_max), float(target_mean),
                     float(target_stddev))
@@ -630,6 +683,128 @@ def array_equals_nodata(array, nodata):
     if numpy.issubdtype(array.dtype, numpy.integer):
         return array == nodata
     return numpy.isclose(array, nodata, equal_nan=True)
+
+
+def choose_dtype(*raster_paths):
+    """
+    Choose an appropriate dtype for an output derived from the given inputs.
+
+    Returns the dtype with the greatest size/precision among the inputs, so
+    that information will not be lost.
+
+    Args:
+        *raster_paths: series of raster path strings
+
+    Returns:
+        numpy dtype
+    """
+    dtypes = [get_raster_info(path)['numpy_type'] for path in raster_paths]
+    return numpy.result_type(*dtypes)
+
+
+def choose_nodata(dtype):
+    """
+    Choose an appropriate nodata value for data of a given dtype.
+
+    Args:
+        dtype (numpy.dtype): data type for which to choose nodata
+
+    Returns:
+        number to use as nodata value
+    """
+    try:
+        return float(numpy.finfo(dtype).max)
+    except ValueError:
+        return int(numpy.iinfo(dtype).max)
+
+
+def raster_map(op, rasters, target_path, target_nodata=None, target_dtype=None,
+               raster_driver_creation_tuple=DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS):
+    """Apply a pixelwise function to a series of raster inputs.
+
+    The output raster will have nodata where any input raster has nodata.
+    Raster inputs are split into aligned blocks, and the function is
+    applied individually to each stack of blocks (as numpy arrays).
+
+    Args:
+        op (function): Function to apply to the inputs. It should accept a
+            number of arguments equal to the length of ``*inputs``. It should
+            return a numpy array with the same shape as its array input(s).
+        rasters (list[str]): Paths to rasters to input to ``op``, in the order
+            that they will be passed to ``op``. All rasters should be aligned
+            and have the same dimensions.
+        target_path (str): path to write out the output raster.
+        target_nodata (number): Nodata value to use for the output raster.
+            Optional. If not provided, a suitable nodata value will be chosen.
+        target_dtype (numpy.dtype): dtype to use for the output. Optional. If
+            not provided, a suitable dtype will be chosen.
+        raster_driver_creation_tuple (tuple): a tuple containing a GDAL driver
+            name string as the first element and a GDAL creation options
+            tuple/list as the second. Defaults to
+            geoprocessing.DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS. If the
+            ``target_dtype`` is int8, the ``PIXELTYPE=SIGNEDBYTE`` option will
+            be added to the creation options tuple if it is not already there.
+
+    Returns:
+        ``None``
+    """
+    nodatas = []
+    for raster in rasters:
+        raster_info = get_raster_info(raster)
+        if raster_info['n_bands'] > 1:
+            LOGGER.warning(f'{raster} has more than one band. Only the first '
+                           'band will be used.')
+        nodatas.append(raster_info['nodata'][0])
+
+    # choose an appropriate dtype if none was given
+    if target_dtype is None:
+        target_dtype = choose_dtype(*rasters)
+
+    # choose an appropriate nodata value if none was given
+    # if the user provides a target nodata,
+    # check that it can fit in the target dtype
+    if target_nodata is None:
+        target_nodata = choose_nodata(target_dtype)
+    else:
+        if not numpy.can_cast(target_nodata, target_dtype):
+            raise ValueError(
+                f'Target nodata value {target_nodata} is incompatible with '
+                f'the target dtype {target_dtype}')
+
+    driver, options = raster_driver_creation_tuple
+    if target_dtype == numpy.int8 and 'PIXELTYPE=SIGNEDBYTE' not in options:
+        options += ('PIXELTYPE=SIGNEDBYTE',)
+
+    def apply_op(*arrays):
+        """Apply the function ``op`` to the input arrays.
+
+        Args:
+            *arrays: numpy arrays with the same shape.
+
+        Returns:
+            numpy array
+        """
+        result = numpy.full(arrays[0].shape, target_nodata, dtype=target_dtype)
+
+        # make a mask that is True where all input arrays are valid,
+        # and False where any input array is invalid.
+        valid_mask = numpy.full(arrays[0].shape, True)
+        for array, nodata in zip(arrays, nodatas):
+            valid_mask &= ~array_equals_nodata(array, nodata)
+
+        # mask all arrays to the area where they all are valid
+        masked_arrays = [array[valid_mask] for array in arrays]
+        # apply op to the masked arrays in order
+        result[valid_mask] = op(*masked_arrays)
+        return result
+
+    raster_calculator(
+        [(path, 1) for path in rasters],  # assume the first band
+        apply_op,
+        target_path,
+        NUMPY_TO_GDAL_TYPE[numpy.dtype(target_dtype)],
+        target_nodata,
+        raster_driver_creation_tuple=(driver, options))
 
 
 def raster_reduce(function, raster_path_band, initializer, mask_nodata=True,
@@ -1258,17 +1433,38 @@ def create_raster_from_bounding_box(
 
     driver = gdal.GetDriverByName(raster_driver_creation_tuple[0])
     n_bands = 1
-    n_cols = int(numpy.ceil(
-        abs((bbox_maxx - bbox_minx) / target_pixel_size[0])))
-    n_cols = max(1, n_cols)
 
-    n_rows = int(numpy.ceil(
-        abs((bbox_maxy - bbox_miny) / target_pixel_size[1])))
-    n_rows = max(1, n_rows)
+    # determine the raster size that bounds the input bounding box and then
+    # adjust the bounding box to be that size
+    target_x_size = int(abs(
+        float(bbox_maxx - bbox_minx) / target_pixel_size[0]))
+    target_y_size = int(abs(
+        float(bbox_maxy - bbox_miny) / target_pixel_size[1]))
+    x_residual = (
+        abs(target_x_size * target_pixel_size[0]) -
+        (bbox_maxx - bbox_minx))
+    if not numpy.isclose(x_residual, 0.0):
+        target_x_size += 1
+    y_residual = (
+        abs(target_y_size * target_pixel_size[1]) -
+        (bbox_maxy - bbox_miny))
+    if not numpy.isclose(y_residual, 0.0):
+        target_y_size += 1
+
+    if target_x_size == 0:
+        LOGGER.warning(
+            "bounding_box is so small that x dimension rounds to 0; "
+            "clamping to 1.")
+        target_x_size = 1
+    if target_y_size == 0:
+        LOGGER.warning(
+            "bounding_box is so small that y dimension rounds to 0; "
+            "clamping to 1.")
+        target_y_size = 1
 
     raster = driver.Create(
-        target_raster_path, n_cols, n_rows, n_bands, target_pixel_type,
-        options=raster_driver_creation_tuple[1])
+        target_raster_path, target_x_size, target_y_size, n_bands,
+        target_pixel_type, options=raster_driver_creation_tuple[1])
     raster.SetProjection(target_srs_wkt)
 
     # Set the transform based on the upper left corner and given pixel
@@ -1420,12 +1616,12 @@ def zonal_statistics(
     feature polygon. If ``ignore_nodata`` is false, nodata pixels are considered
     valid when calculating the statistics:
 
-    'min': minimum valid pixel value
-    'max': maximum valid pixel value
-    'sum': sum of valid pixel values
-    'count': number of valid pixels
-    'nodata_count': number of nodata pixels
-    'value_counts': number of pixels having each unique value
+    - 'min': minimum valid pixel value
+    - 'max': maximum valid pixel value
+    - 'sum': sum of valid pixel values
+    - 'count': number of valid pixels
+    - 'nodata_count': number of nodata pixels
+    - 'value_counts': number of pixels having each unique value
 
     Note:
         There may be some degenerate cases where the bounding box vs. actual
@@ -1536,6 +1732,7 @@ def zonal_statistics(
         raise RuntimeError(
             f"Could not open layer {aggregate_layer_name} of {aggregate_vector_path}")
 
+
     # Define the default/empty statistics values
     # These values will be returned for features that have no geometry or
     # don't overlap any valid pixels.
@@ -1563,6 +1760,7 @@ def zonal_statistics(
     target_layer.CreateField(ogr.FieldDefn(fid_field_name, ogr.OFTInteger))
     valid_fid_set = set()
     aggregate_stats_list = [{} for _ in base_raster_path_band]
+    original_to_new_fid_map = {}
     for feature in aggregate_layer:
         fid = feature.GetFID()
         # Initialize the output data structure:
@@ -1579,7 +1777,8 @@ def zonal_statistics(
         feature_copy.SetGeometry(geom_ref.Clone())
         feature_copy.SetField(fid_field_name, fid)
         target_layer.CreateFeature(feature_copy)
-    target_layer, target_vector, feature,  = None, None, None
+        original_to_new_fid_map[fid] = feature_copy.GetFID()
+    target_layer, target_vector, feature, feature_copy = None, None, None, None
     geom_ref, aggregate_layer, aggregate_vector = None, None, None
 
     # Reproject the vector to match the raster projection
@@ -1731,7 +1930,7 @@ def zonal_statistics(
                         aggregate_stats_list[i][fid]['value_counts'].update(
                             dict(zip(*numpy.unique(
                                 feature_data, return_counts=True))))
-
+        fid_band, fid_raster = None, None
         # Handle edge cases: features that have a geometry but do not
         # overlap the center point of any pixel will not be captured by the
         # method above.
@@ -1741,10 +1940,9 @@ def zonal_statistics(
         raster_nodata = get_raster_info(raster_path)['nodata'][band - 1]
         target_layer = target_vector.GetLayerByName(target_layer_id)
         for unset_fid in unset_fids:
-            # Look up by the FID copy field, not the FID itself, because
+            # Look up by the new FID
             # FIDs in target_layer may not be the same as in the input layer
-            target_layer.SetAttributeFilter(f'{fid_field_name} = {unset_fid}')
-            unset_feat = target_layer.GetNextFeature()
+            unset_feat = target_layer.GetFeature(original_to_new_fid_map[unset_fid])
             unset_geom_ref = unset_feat.GetGeometryRef()
 
             geom_x_min, geom_x_max, geom_y_min, geom_y_max = unset_geom_ref.GetEnvelope()
@@ -1821,9 +2019,8 @@ def zonal_statistics(
             f'all done processing polygon sets for {os.path.basename(aggregate_vector_path)}')
 
     # dereference gdal objects
-    data_band, data_source, fid_raster = None, None, None
-    disjoint_layer, aggregate_layer, aggregate_vector = None, None, None
-    target_layer, target_vector = None, None
+    data_band, data_source = None, None
+    disjoint_layer, target_layer, target_vector = None, None, None
 
     shutil.rmtree(temp_working_dir)
     if multi_raster_mode:
@@ -2249,10 +2446,10 @@ def warp_raster(
         base_raster_path, target_pixel_size, target_raster_path,
         resample_method, target_bb=None, base_projection_wkt=None,
         target_projection_wkt=None, n_threads=None, vector_mask_options=None,
-        gdal_warp_options=None, working_dir=None,
+        gdal_warp_options=None, working_dir=None, use_overview_level=-1,
         raster_driver_creation_tuple=DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS,
         osr_axis_mapping_strategy=DEFAULT_OSR_AXIS_MAPPING_STRATEGY):
-    f"""Resize/resample raster to desired pixel size, bbox and projection.
+    """Resize/resample raster to desired pixel size, bbox and projection.
 
     Args:
         base_raster_path (string): path to base raster.
@@ -2260,8 +2457,9 @@ def warp_raster(
             the x and y pixel size in projected units.
         target_raster_path (string): the location of the resized and
             resampled raster.
-        resample_method (string): the resampling technique, one of
-            ``{_GDAL_WARP_ALGOS_FOR_HUMAN_EYES}``
+        resample_method (string): the resampling technique, one of,
+            'rms | mode | sum | q1 | near | q3 | average | cubicspline |
+            bilinear | max | med | min | cubic | lanczos'
         target_bb (sequence): if None, target bounding box is the same as the
             source bounding box.  Otherwise it's a sequence of float
             describing target bounding box in target coordinate system as
@@ -2295,6 +2493,15 @@ def warp_raster(
         working_dir (string): if defined uses this directory to make
             temporary working files for calculation. Otherwise uses system's
             temp directory.
+        use_overview_level=-1 (int/str): The overview level to use for warping.
+            A value of ``-1`` (the default) indicates that the base raster
+            should be used for the source pixels. A value of ``'AUTO'``
+            will make GDAL select the overview with the resolution that is
+            closest to the target pixel size and warp using that overview's
+            pixel values.  Any other integer indicates that that overview index
+            should be used.  For example, suppose the raster has overviews at
+            levels 2, 4 and 8.  To use level 2, set ``use_overview_level=0``.
+            To use level 8, set ``use_overview_level=2``.
         raster_driver_creation_tuple (tuple): a tuple containing a GDAL driver
             name string as the first element and a GDAL creation options
             tuple/list as the second. Defaults to a GTiff driver tuple
@@ -2433,6 +2640,7 @@ def warp_raster(
         dstSRS=target_projection_wkt,
         multithread=True if warp_options else False,
         warpOptions=warp_options,
+        overviewLevel=use_overview_level,
         creationOptions=raster_creation_options,
         callback=reproject_callback,
         callback_data=[target_raster_path])
@@ -2908,11 +3116,10 @@ def convolve_2d(
             bounds of the raster are 0s. If set to false this tends to "pull"
             the signal away from nodata holes or raster edges. Set this value
             to ``True`` to avoid distortions signal values near edges for
-            large integrating kernels.
-                It can be useful to set this value to ``True`` to fill
-            nodata holes through distance weighted averaging. In this case
-            ``mask_nodata`` must be set to ``False`` so the result does not
-            mask out these areas which are filled in. When using this
+            large integrating kernels. It can be useful to set this value to
+            ``True`` to fill nodata holes through distance weighted averaging.
+            In this case ``mask_nodata`` must be set to ``False`` so the result
+            does not mask out these areas which are filled in. When using this
             technique be careful of cases where the kernel does not extend
             over any areas except nodata holes, in this case the resulting
             values in these areas will be nonsensical numbers, perhaps
@@ -3988,23 +4195,11 @@ def numpy_array_to_raster(
     Return:
         None
     """
-    numpy_to_gdal_type = {
-        numpy.dtype(bool): gdal.GDT_Byte,
-        numpy.dtype(numpy.int8): gdal.GDT_Byte,
-        numpy.dtype(numpy.uint8): gdal.GDT_Byte,
-        numpy.dtype(numpy.int16): gdal.GDT_Int16,
-        numpy.dtype(numpy.int32): gdal.GDT_Int32,
-        numpy.dtype(numpy.uint16): gdal.GDT_UInt16,
-        numpy.dtype(numpy.uint32): gdal.GDT_UInt32,
-        numpy.dtype(numpy.float32): gdal.GDT_Float32,
-        numpy.dtype(numpy.float64): gdal.GDT_Float64,
-        numpy.dtype(numpy.csingle): gdal.GDT_CFloat32,
-        numpy.dtype(numpy.complex64): gdal.GDT_CFloat64,
-    }
+
     raster_driver = gdal.GetDriverByName(raster_driver_creation_tuple[0])
     ny, nx = base_array.shape
     new_raster = raster_driver.Create(
-        target_path, nx, ny, 1, numpy_to_gdal_type[base_array.dtype],
+        target_path, nx, ny, 1, NUMPY_TO_GDAL_TYPE[base_array.dtype],
         options=raster_driver_creation_tuple[1])
     if projection_wkt is not None:
         new_raster.SetProjection(projection_wkt)
@@ -4048,15 +4243,16 @@ def stitch_rasters(
         overlap_algorithm='etch',
         area_weight_m2_to_wgs84=False,
         osr_axis_mapping_strategy=DEFAULT_OSR_AXIS_MAPPING_STRATEGY):
-    f"""Stitch the raster in the base list into the existing target.
+    """Stitch the raster in the base list into the existing target.
 
     Args:
         base_raster_path_band_list (sequence): sequence of raster path/band
             tuples to stitch into target.
         resample_method_list (sequence): a sequence of resampling methods
             which one to one map each path in ``base_raster_path_band_list``
-            during resizing.  Each element must be one of
-            ``{_GDAL_WARP_ALGOS_FOR_HUMAN_EYES}``
+            during resizing.  Each element must be one of,
+            'rms | mode | sum | q1 | near | q3 | average | cubicspline |
+            bilinear | max | med | min | cubic | lanczos'
         target_stitch_raster_path_band (tuple): raster path/band tuple to an
             existing raster, values in ``base_raster_path_band_list`` will
             be stitched into this raster/band in the order they are in the
@@ -4072,14 +4268,15 @@ def stitch_rasters(
         overlap_algorithm (str): this value indicates which algorithm to use
             when a raster is stitched on non-nodata values in the target
             stitch raster. It can be one of the following:
-                'etch': write a value to the target raster only if the target
-                    raster pixel is nodata. If the target pixel is non-nodata
-                    ignore any additional values to write on that pixel.
-                'replace': write a value to the target raster irrespective
-                    of the value of the target raster
-                'add': add the value to be written to the target raster to
-                    any existing value that is there. If the existing value
-                    is nodata, treat it as 0.0.
+
+            - 'etch': write a value to the target raster only if the target
+              raster pixel is nodata. If the target pixel is non-nodata
+              ignore any additional values to write on that pixel.
+            - 'replace': write a value to the target raster irrespective
+              of the value of the target raster
+            - 'add': add the value to be written to the target raster to
+              any existing value that is there. If the existing value
+              is nodata, treat it as 0.0.
         area_weight_m2_to_wgs84 (bool): If ``True`` the stitched raster will
             be converted to a per-area value before reprojection to wgs84,
             then multiplied by the m^2 area per pixel in the wgs84 coordinate
@@ -4345,7 +4542,7 @@ def stitch_rasters(
 def build_overviews(
         raster_path, internal=False, resample_method='near',
         overwrite=False, levels='auto'):
-    f"""Build overviews for a raster dataset.
+    """Build overviews for a raster dataset.
 
     Args:
         raster_path (str): A path to a raster on disk for which overviews
@@ -4354,8 +4551,9 @@ def build_overviews(
             overviews. In GeoTiffs, this builds internal overviews when
             ``internal=True``, and external overviews when ``internal=False``.
         resample_method='near' (str): The resample method to use when
-            building overviews.  Must be one of
-            ``{_GDAL_WARP_ALGOS_FOR_HUMAN_EYES}``.
+            building overviews.  Must be one of,
+            'rms | mode | sum | q1 | near | q3 | average | cubicspline |
+            bilinear | max | med | min | cubic | lanczos'.
         overwrite=False (bool): Whether to overwrite existing overviews, if
             any exist.
         levels='auto' (sequence): A sequence of integer overview levels. If

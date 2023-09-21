@@ -58,6 +58,7 @@ html_theme = 'sphinx_rtd_theme'
 html_static_path = ['_static']
 html_logo = os.path.join(os.path.dirname(__file__), '_static',
                          'pygeoprocessing_logo.jpg')
+html_css_files = ['custom.css']
 
 
 # -- Extension configuration -------------------------------------------------

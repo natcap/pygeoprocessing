@@ -29,8 +29,12 @@ from numpy.random import SeedSequence
 from osgeo import gdal
 from osgeo import ogr
 from osgeo import osr
+from pygeoprocessing.geoprocessing_core import DEFAULT_CREATION_OPTIONS
 from pygeoprocessing.geoprocessing_core import \
     DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS
+from pygeoprocessing.geoprocessing_core import INT8_CREATION_OPTIONS
+from pygeoprocessing.geoprocessing_core import \
+    INT8_GTIFF_CREATION_TUPLE_OPTIONS
 
 _DEFAULT_ORIGIN = (444720, 3751320)
 _DEFAULT_PIXEL_SIZE = (30, -30)
@@ -72,7 +76,7 @@ def _geometry_to_vector(
 
 def _array_to_raster(
         base_array, target_nodata, target_path,
-        creation_options=DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS[1],
+        creation_options=DEFAULT_CREATION_OPTIONS,
         pixel_size=_DEFAULT_PIXEL_SIZE, projection_epsg=_DEFAULT_EPSG,
         origin=_DEFAULT_ORIGIN):
     """Passthrough to pygeoprocessing.array_to_raster."""
@@ -133,15 +137,14 @@ class TestGeoprocessing(unittest.TestCase):
         # raises a SyntaxWarning.  Instead, I'll just ensure that every
         # attribute in pygeoprocessing.__all__ is a function that is available
         # at the pygeoprocessing level.
-        import inspect
         for attrname in pygeoprocessing.__all__:
             try:
                 func = getattr(pygeoprocessing, attrname)
-                self.assertTrue(
-                    isinstance(func, (
-                        types.FunctionType, types.BuiltinFunctionType)) or
-                    issubclass(func, Exception) or
-                    inspect.isroutine(func))
+                try:
+                    _ = getattr(func, '__call__')
+                except AttributeError:
+                    self.fail(('Function %s is in pygeoprocessing.__all__ but '
+                               'is not a callable') % attrname)
             except AttributeError:
                 self.fail(('Function %s is in pygeoprocessing.__all__ but '
                            'is not exposed at the package level') % attrname)
@@ -1691,6 +1694,54 @@ class TestGeoprocessing(unittest.TestCase):
                 pygeoprocessing.raster_to_numpy_array(
                     target_raster_path)).all())
 
+    def test_warp_raster_overview_level(self):
+        """PGP.geoprocessing: warp raster overview test."""
+        # This array is big enough that build_overviews will render several
+        # overview levels.
+        pixel_a_matrix = numpy.array([
+            [1, 2, 3, 4],
+            [1, 2, 3, 4],
+            [1, 2, 3, 4],
+            [1, 2, 3, 4],
+        ], dtype=numpy.float32)
+
+        # Using overview level 0 (the base raster), we should have the same
+        # output when we warp the array that has and does not have overviews
+        # present.
+        target_nodata = -1
+        base_a_path = os.path.join(self.workspace_dir, 'base_a.tif')
+        _array_to_raster(
+            pixel_a_matrix, target_nodata, base_a_path)
+        base_a_raster_info = pygeoprocessing.get_raster_info(base_a_path)
+        warped_a_path = os.path.join(self.workspace_dir, 'warped_a.tif')
+        pygeoprocessing.warp_raster(
+            base_a_path, base_a_raster_info['pixel_size'], warped_a_path,
+            'bilinear', use_overview_level=-1)
+
+        base_b_path = os.path.join(self.workspace_dir, 'base_b.tif')
+        _array_to_raster(
+            pixel_a_matrix, target_nodata, base_b_path)
+        warped_b_path = os.path.join(self.workspace_dir, 'warped_b.tif')
+        pygeoprocessing.build_overviews(
+            base_b_path, levels=[2, 4], resample_method='bilinear')
+        pygeoprocessing.warp_raster(
+            base_b_path, base_a_raster_info['pixel_size'], warped_b_path,
+            'bilinear', use_overview_level=-1)
+
+        warped_a_array = pygeoprocessing.raster_to_numpy_array(warped_a_path)
+        warped_b_array = pygeoprocessing.raster_to_numpy_array(warped_b_path)
+        numpy.testing.assert_allclose(warped_a_array, warped_b_array)
+
+        # Force warping using a higher overview level.
+        # Overview level 2 really means the 2nd overview in the stack, which is
+        # where 4 pixels are aggregated into 1 value.
+        target_raster_path = os.path.join(self.workspace_dir, 'target_c.tif')
+        pygeoprocessing.warp_raster(
+            base_b_path, base_a_raster_info['pixel_size'], target_raster_path,
+            'bilinear', n_threads=1, use_overview_level=1)
+        array = pygeoprocessing.raster_to_numpy_array(target_raster_path)
+        numpy.testing.assert_allclose(array, 2.5)
+
     def test_warp_raster_invalid_resample_alg(self):
         """PGP.geoprocessing: error on invalid resample algorithm."""
         pixel_a_matrix = numpy.ones((5, 5), numpy.int16)
@@ -1716,7 +1767,7 @@ class TestGeoprocessing(unittest.TestCase):
         base_a_path = os.path.join(self.workspace_dir, 'base_a.tif')
         _array_to_raster(
             pixel_a_matrix, target_nodata, base_a_path,
-            creation_options=['PIXELTYPE=SIGNEDBYTE'], pixel_size=(20, -20),
+            creation_options=INT8_CREATION_OPTIONS, pixel_size=(20, -20),
             projection_epsg=4326)
 
         target_raster_path = os.path.join(self.workspace_dir, 'target_a.tif')
@@ -1732,7 +1783,7 @@ class TestGeoprocessing(unittest.TestCase):
             self.workspace_dir, 'expected.tif')
         _array_to_raster(
             pixel_a_matrix, target_nodata, expected_raster_path,
-            creation_options=['PIXELTYPE=SIGNEDBYTE'], pixel_size=(30, -30),
+            creation_options=INT8_CREATION_OPTIONS, pixel_size=(30, -30),
             projection_epsg=4326)
 
         self.assertTrue(
@@ -2232,6 +2283,29 @@ class TestGeoprocessing(unittest.TestCase):
                 arithmetic_wrangle(pixel_matrix),
                 pygeoprocessing.raster_to_numpy_array(target_path)).all())
 
+    def test_raster_calculator_mutiprocessing_cwd(self):
+        """PGP.geoprocessing: raster_calculator identity test in cwd."""
+        pixel_matrix = numpy.ones((1024, 1024), numpy.int16)
+        target_nodata = -1
+        try:
+            cwd = os.getcwd()
+            os.chdir(self.workspace_dir)
+            base_path = 'base.tif'
+            _array_to_raster(pixel_matrix, target_nodata, base_path)
+
+            target_path = 'target.tif'
+            pygeoprocessing.multiprocessing.raster_calculator(
+                [(base_path, 1)], arithmetic_wrangle, target_path,
+                gdal.GDT_Int32, target_nodata, calc_raster_stats=True,
+                use_shared_memory=True)
+
+            self.assertTrue(
+                numpy.isclose(
+                    arithmetic_wrangle(pixel_matrix),
+                    pygeoprocessing.raster_to_numpy_array(target_path)).all())
+        finally:
+            os.chdir(cwd)
+
     def test_raster_calculator_bad_target_type(self):
         """PGP.geoprocessing: raster_calculator bad target type value."""
         pixel_matrix = numpy.ones((5, 5), numpy.int16)
@@ -2575,7 +2649,7 @@ class TestGeoprocessing(unittest.TestCase):
         base_path = os.path.join(self.workspace_dir, 'base.tif')
         _array_to_raster(
             pixel_array, nodata_base, base_path,
-            creation_options=['PIXELTYPE=SIGNEDBYTE'])
+            creation_options=INT8_CREATION_OPTIONS)
 
         # The local_op should receive at least one value less than 0
         def local_op(byte_values):
@@ -2611,7 +2685,7 @@ class TestGeoprocessing(unittest.TestCase):
         base_path = os.path.join(self.workspace_dir, 'base.tif')
         _array_to_raster(
             pixel_array, nodata_base, base_path,
-            creation_options=['PIXELTYPE=SIGNEDBYTE'])
+            creation_options=INT8_CREATION_OPTIONS)
 
         target_path = os.path.join(self.workspace_dir, 'target.tif')
         # 255 should convert to -1 with signed bytes
@@ -2636,9 +2710,7 @@ class TestGeoprocessing(unittest.TestCase):
         pygeoprocessing.new_raster_from_base(
             base_path, target_path, gdal.GDT_Byte, [None],
             fill_value_list=[None],
-            raster_driver_creation_tuple=('GTiff', [
-                'PIXELTYPE=SIGNEDBYTE',
-            ]))
+            raster_driver_creation_tuple=INT8_GTIFF_CREATION_TUPLE_OPTIONS)
 
         raster_properties = pygeoprocessing.get_raster_info(target_path)
         self.assertEqual(raster_properties['nodata'], [None])
@@ -4523,7 +4595,7 @@ class TestGeoprocessing(unittest.TestCase):
         bytes_path = os.path.join(self.workspace_dir, 'bytes.tif')
         _array_to_raster(
             bytes_array, nodata_val, bytes_path,
-            creation_options=['PIXELTYPE=SIGNEDBYTE'])
+            creation_options=INT8_CREATION_OPTIONS)
 
         # test regular addition
         sum_expression = 'a+b'
@@ -4801,7 +4873,7 @@ class TestGeoprocessing(unittest.TestCase):
         base_a_path = os.path.join(self.workspace_dir, 'base_a.tif')
         _array_to_raster(
             pixel_a_matrix, target_nodata, base_a_path,
-            creation_options=['PIXELTYPE=SIGNEDBYTE'], projection_epsg=4326,
+            creation_options=INT8_CREATION_OPTIONS, projection_epsg=4326,
             pixel_size=(1, -1), origin=(1, 1))
 
         wgs84_sr = osr.SpatialReference()
@@ -5041,6 +5113,281 @@ class TestGeoprocessing(unittest.TestCase):
 
         self.assertIn(
             "The fields and attributes for feature 0", str(cm.exception))
+
+    def test_raster_map_multiply_by_scalar(self):
+        """PGP: raster_map can multiply raster by scalar."""
+        array = numpy.array([
+            [1, 2, 3],
+            [4, 5, 6],
+            [7, 8, 9]], dtype=numpy.float32)
+        path = os.path.join(self.workspace_dir, 'a.tif')
+        out_path = os.path.join(self.workspace_dir, 'out.tif')
+        _array_to_raster(array, -1, path)
+
+        pygeoprocessing.raster_map(lambda a: a * 2, [path], out_path)
+
+        out_array = pygeoprocessing.raster_to_numpy_array(out_path)
+        numpy.testing.assert_allclose(out_array, array * 2)
+
+    def test_raster_map_sum_series(self):
+        """PGP: raster_map can sum a series of rasters."""
+        a_array = numpy.array([
+            [1, 2, 3],
+            [4, 5, 6],
+            [7, 8, 9]], dtype=numpy.float32)
+        b_array = a_array * 10
+        c_array = b_array * 10
+        a_path = os.path.join(self.workspace_dir, 'a.tif')
+        b_path = os.path.join(self.workspace_dir, 'b.tif')
+        c_path = os.path.join(self.workspace_dir, 'c.tif')
+        out_path = os.path.join(self.workspace_dir, 'out.tif')
+        _array_to_raster(a_array, -1, a_path)
+        _array_to_raster(b_array, -1, b_path)
+        _array_to_raster(c_array, -1, c_path)
+
+        pygeoprocessing.raster_map(
+            lambda *xs: numpy.sum(xs, axis=0),
+            [a_path, b_path, c_path], out_path)
+
+        out_array = pygeoprocessing.raster_to_numpy_array(out_path)
+        expected_array = a_array + b_array + c_array
+        numpy.testing.assert_allclose(out_array, expected_array)
+
+    def test_raster_map_multi_part_arithmetic(self):
+        """PGP: raster_map can do raster arithmetic and numpy functions."""
+        eff_array = numpy.array([
+            [0.5, 0.5, 0.5],
+            [0.5, 0.5, 0.5],
+            [0.5, 0.5, 0.5]], dtype=numpy.float32)
+        ic_array = numpy.array([
+            [0.1, 0.1, 0.3],
+            [0.3, 0.3, 0.4],
+            [0.6, 0.9, 1]], dtype=numpy.float32)
+        eff_path = os.path.join(self.workspace_dir, 'eff.tif')
+        ic_path = os.path.join(self.workspace_dir, 'ic.tif')
+        out_path = os.path.join(self.workspace_dir, 'out.tif')
+        _array_to_raster(eff_array, -1, eff_path)
+        _array_to_raster(ic_array, -1, ic_path)
+
+        def ndr(eff, ic):
+            return (1 - eff) / (1 + numpy.exp((0.5 - ic) / 2))
+
+        pygeoprocessing.raster_map(ndr, [eff_path, ic_path], out_path)
+
+        out_array = pygeoprocessing.raster_to_numpy_array(out_path)
+        expected_array = ndr(eff_array, ic_array)
+        numpy.testing.assert_allclose(out_array, expected_array)
+
+    def test_raster_map_nodata_propagates(self):
+        """PGP: raster_map result is valid where all inputs are valid."""
+        a_array = numpy.array([
+            [1, 1, 255],
+            [1, 255, 1],
+            [1, 1, 1]], dtype=numpy.uint8)
+        b_array = numpy.array([
+            [10, 10, 10],
+            [10, -1, -1],
+            [10, 10, 10]], dtype=numpy.float32)
+        expected_array = numpy.array([
+            [11, 11, -1],
+            [11, -1, -1],
+            [11, 11, 11]])
+        a_path = os.path.join(self.workspace_dir, 'a.tif')
+        b_path = os.path.join(self.workspace_dir, 'b.tif')
+        out_path = os.path.join(self.workspace_dir, 'out.tif')
+        _array_to_raster(a_array, 255, a_path)
+        _array_to_raster(b_array, -1, b_path)
+
+        pygeoprocessing.raster_map(
+            lambda a, b: a + b, [a_path, b_path], out_path,
+            target_nodata=-1)
+
+        out_array = pygeoprocessing.raster_to_numpy_array(out_path)
+        numpy.testing.assert_allclose(out_array, expected_array)
+
+    def test_raster_map_nodata(self):
+        """PGP: raster_map uses target nodata value or chooses one for you."""
+        nodata = 21
+        array = numpy.array([[1, 1], [1, nodata]], dtype=numpy.uint8)
+        path = os.path.join(self.workspace_dir, 'a.tif')
+        out_path = os.path.join(self.workspace_dir, 'out.tif')
+        _array_to_raster(array, nodata, path)
+
+        # set target nodata
+        # output raster should have that nodata value
+        target_nodata = 5
+        pygeoprocessing.raster_map(
+            lambda a: a, [path], out_path, target_nodata=target_nodata)
+        out_array = pygeoprocessing.raster_to_numpy_array(out_path)
+        expected_array = numpy.array(
+            [[1, 1], [1, target_nodata]], dtype=numpy.uint8)
+        numpy.testing.assert_allclose(out_array, expected_array)
+
+        # set target nodata value that can't fit in the dtype
+        # output raster should have that nodata value
+        with self.assertRaises(ValueError):
+            pygeoprocessing.raster_map(
+                lambda a: a, [path], out_path, target_nodata=-5)
+
+        # don't set target nodata
+        # an appropriate value should be chosen automatically
+        pygeoprocessing.raster_map(lambda a: a, [path], out_path)
+        out_array = pygeoprocessing.raster_to_numpy_array(out_path)
+        expected_nodata = numpy.iinfo(numpy.uint8).max
+        expected_array = numpy.array(
+            [[1, 1], [1, expected_nodata]], dtype=numpy.uint8)
+        numpy.testing.assert_allclose(out_array, expected_array)
+
+    def test_raster_map_dtype(self):
+        """PGP: raster_map uses target dtype value or chooses one for you."""
+        array = numpy.array([[1, 1], [1, -1]], dtype=numpy.float32)
+        path = os.path.join(self.workspace_dir, 'a.tif')
+        out_path = os.path.join(self.workspace_dir, 'out.tif')
+        _array_to_raster(array, -1, path)
+
+        # set target dtype to uint8
+        # output dtype should be uint8
+        # nodata should automatically be selected: max uint8 value
+        pygeoprocessing.raster_map(
+            lambda a: a, [path], out_path, target_dtype=numpy.uint8)
+        out_array = pygeoprocessing.raster_to_numpy_array(out_path)
+        expected_nodata = numpy.iinfo(numpy.uint8).max
+        expected_array = numpy.array(
+            [[1, 1], [1, expected_nodata]], dtype=numpy.uint8)
+        numpy.testing.assert_allclose(out_array, expected_array)
+        self.assertEqual(out_array.dtype, expected_array.dtype)
+
+        # don't set target dtype
+        # output dtype should be same as input
+        # nodata should automatically be selected: max float32 value
+        pygeoprocessing.raster_map(lambda a: a, [path], out_path)
+        out_array = pygeoprocessing.raster_to_numpy_array(out_path)
+        expected_nodata = numpy.finfo(numpy.float32).max
+        expected_array = numpy.array(
+            [[1, 1], [1, expected_nodata]], dtype=numpy.float32)
+        numpy.testing.assert_allclose(out_array, expected_array)
+        self.assertEqual(out_array.dtype, expected_array.dtype)
+
+    def test_raster_map_nodata_and_dtype(self):
+        """PGP: raster_map uses nodata, dtype values or chooses for you."""
+        a_array = numpy.array([[1, 1], [1, 255]], dtype=numpy.uint8)
+        b_array = numpy.array([[.5, .5], [.5, -1]], dtype=numpy.float32)
+        a_path = os.path.join(self.workspace_dir, 'a.tif')
+        b_path = os.path.join(self.workspace_dir, 'b.tif')
+        out_path = os.path.join(self.workspace_dir, 'out.tif')
+        _array_to_raster(a_array, 255, a_path)
+        _array_to_raster(b_array, -1, b_path)
+
+        # can set a target nodata and dtype together
+        pygeoprocessing.raster_map(
+            lambda a, b: a * b, [a_path, b_path], out_path,
+            target_nodata=-5, target_dtype=numpy.float64)
+        out_array = pygeoprocessing.raster_to_numpy_array(out_path)
+        expected_array = numpy.array(
+            [[.5, .5], [.5, -5]], dtype=numpy.float64)
+        numpy.testing.assert_allclose(out_array, expected_array)
+        self.assertEqual(out_array.dtype, expected_array.dtype)
+
+        # can set a smaller target dtype, even if it loses information
+        pygeoprocessing.raster_map(
+            lambda a, b: a * b, [a_path, b_path], out_path,
+            target_nodata=-5, target_dtype=numpy.int16)
+        out_array = pygeoprocessing.raster_to_numpy_array(out_path)
+        expected_array = numpy.array(
+            [[0, 0], [0, -5]], dtype=numpy.int16)
+        numpy.testing.assert_allclose(out_array, expected_array)
+        self.assertEqual(out_array.dtype, expected_array.dtype)
+
+        # error is raised if nodata value and dtype conflict
+        with self.assertRaises(ValueError):
+            pygeoprocessing.raster_map(
+                lambda a, b: a * b, [a_path], out_path,
+                target_nodata=.1, target_dtype=numpy.int16)
+
+    def test_raster_map_handles_int8(self):
+        """PGP: raster_map can accept and output signed int8 raster."""
+        a_array = numpy.array([[1, 1], [1, -1]], dtype=numpy.int8)
+        a_path = os.path.join(self.workspace_dir, 'a.tif')
+        out_path = os.path.join(self.workspace_dir, 'out.tif')
+        _array_to_raster(
+            a_array, -1, a_path, creation_options=INT8_CREATION_OPTIONS)
+
+        # automatically keeps signed int8 type
+        # automatically uses int8 max value for nodata
+        pygeoprocessing.raster_map(lambda a: a, [a_path], out_path)
+        out_array = pygeoprocessing.raster_to_numpy_array(out_path)
+        expected_array = numpy.array([[1, 1], [1, 127]], dtype=numpy.int8)
+        numpy.testing.assert_allclose(out_array, expected_array)
+        self.assertEqual(out_array.dtype, expected_array.dtype)
+
+    def test_raster_map_warn_on_multiband(self):
+        """PGP: raster_map raises a warning when given a multiband raster."""
+        band_1_array = numpy.array([[1, 1], [1, 1]], dtype=numpy.float32)
+        band_2_array = numpy.array([[2, 2], [2, 2]], dtype=numpy.float32)
+        target_path = os.path.join(self.workspace_dir, 'multiband.tif')
+
+        driver = gdal.GetDriverByName('GTIFF')
+        raster = driver.Create(
+            target_path, 2, 2, 2, gdal.GDT_Float32,
+            options=DEFAULT_CREATION_OPTIONS)
+
+        projection = osr.SpatialReference()
+        projection.ImportFromEPSG(_DEFAULT_EPSG)
+        projection_wkt = projection.ExportToWkt()
+        raster.SetProjection(projection_wkt)
+        raster.SetGeoTransform(
+            [_DEFAULT_ORIGIN[0], _DEFAULT_PIXEL_SIZE[0], 0,
+             _DEFAULT_ORIGIN[1], 0, _DEFAULT_PIXEL_SIZE[1]])
+
+        band_1 = raster.GetRasterBand(1)
+        band_1.WriteArray(band_1_array)
+        band_2 = raster.GetRasterBand(1)
+        band_2.WriteArray(band_2_array)
+        band_1, band_2, raster = None, None, None
+
+        with capture_logging(
+                logging.getLogger('pygeoprocessing')) as log_messages:
+            pygeoprocessing.raster_map(
+                lambda a: a, [target_path],
+                os.path.join(self.workspace_dir, 'out.tif'))
+        self.assertEqual(len(log_messages), 1)
+        self.assertEqual(log_messages[0].levelno, logging.WARNING)
+        self.assertIn('has more than one band', log_messages[0].msg)
+
+    def test_choose_dtype(self):
+        """PGP: choose_dtype picks smallest safe dtype for raster output."""
+        uint8_raster = os.path.join(self.workspace_dir, 'uint8.tif')
+        int16_raster = os.path.join(self.workspace_dir, 'int16.tif')
+        int32_raster = os.path.join(self.workspace_dir, 'int32.tif')
+        float32_raster = os.path.join(self.workspace_dir, 'float32.tif')
+        float64_raster = os.path.join(self.workspace_dir, 'float64.tif')
+        for path, array in [
+                (uint8_raster, numpy.array([[1]], dtype=numpy.uint8)),
+                (int16_raster, numpy.array([[1]], dtype=numpy.int16)),
+                (int32_raster, numpy.array([[1]], dtype=numpy.int32)),
+                (float32_raster, numpy.array([[1]], dtype=numpy.float32)),
+                (float64_raster, numpy.array([[1]], dtype=numpy.float64))]:
+            _array_to_raster(array, -1, path)
+
+        self.assertEqual(
+            pygeoprocessing.choose_dtype(uint8_raster, uint8_raster),
+            numpy.uint8)
+        self.assertEqual(
+            pygeoprocessing.choose_dtype(uint8_raster, int16_raster),
+            numpy.int16)
+        self.assertEqual(
+            pygeoprocessing.choose_dtype(float32_raster, float32_raster),
+            numpy.float32)
+        self.assertEqual(
+            pygeoprocessing.choose_dtype(float64_raster, float32_raster),
+            numpy.float64)
+        self.assertEqual(
+            pygeoprocessing.choose_dtype(int32_raster, float32_raster),
+            numpy.float64)
+        self.assertEqual(
+            pygeoprocessing.choose_dtype(
+                uint8_raster, float32_raster, int16_raster),
+            numpy.float32)
 
     def test_raster_reduce(self):
         """PGP: test raster_reduce can calculate a sum."""
