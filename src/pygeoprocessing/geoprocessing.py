@@ -1626,7 +1626,11 @@ def zonal_statistics(
         gdal.Warp(
             destNameOrDestDS=target_path,
             srcDSOrSrcDSTab=base_path,
-            format='VRT',
+            format='GTIFF',
+            # specify the original pixel size because warp doesn't necessarily
+            # preserve it by default. resolution should always be positive
+            xRes=abs(raster_info['pixel_size'][0]),
+            yRes=abs(raster_info['pixel_size'][1]),
             outputBounds=aligned_bbox,
             callback=_make_logger_callback("Warp %.1f%% complete %s"))
 
