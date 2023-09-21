@@ -1368,13 +1368,19 @@ def align_bbox(geotransform, bbox):
 
     Returns:
         padded bounding box in the form [minx, miny, maxx, maxy]
+
+    Raises:
+        ValueError if invalid geotransform or bounding box are provided
     """
     # NOTE: x_origin and y_origin do not necessarily equal minx and miny.
     # If pixel_width is positive, x_origin = minx
     # If pixel_width is negative, x_origin = maxx
     # If pixel height is positive, y_origin = miny
     # If pixel height is negative, y_origin = maxy
-    x_origin, pixel_width, _, y_origin, _, pixel_height = geotransform
+    x_origin, pixel_width, r_x, y_origin, r_y, pixel_height = geotransform
+    if r_x != 0 or r_y != 0:
+        LOGGER.warning('Row and/or column rotation supplied to align_bbox '
+                       'will be ignored')
     if pixel_width == 0 or pixel_height == 0:
         raise ValueError('Pixel width and height must not be 0')
     if bbox[2] < bbox[0] or bbox[3] < bbox[1]:
