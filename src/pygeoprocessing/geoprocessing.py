@@ -1553,6 +1553,50 @@ def interpolate_points(
         band.WriteArray(raster_out_array, offset['xoff'], offset['yoff'])
 
 
+def align_bbox(geotransform, bbox):
+    """Pad a bounding box so that it aligns with the grid of a given geotransform.
+
+    Ignores row and column rotation.
+
+    Args:
+        geotransform (list): GDAL raster geotransform to align to
+        bbox (list): bounding box in the form [minx, miny, maxx, maxy]
+
+    Returns:
+        padded bounding box in the form [minx, miny, maxx, maxy]
+
+    Raises:
+        ValueError if invalid geotransform or bounding box are provided
+    """
+    # NOTE: x_origin and y_origin do not necessarily equal minx and miny.
+    # If pixel_width is positive, x_origin = minx
+    # If pixel_width is negative, x_origin = maxx
+    # If pixel height is positive, y_origin = miny
+    # If pixel height is negative, y_origin = maxy
+    x_origin, pixel_width, r_x, y_origin, r_y, pixel_height = geotransform
+    if r_x != 0 or r_y != 0:
+        LOGGER.warning('Row and/or column rotation supplied to align_bbox '
+                       'will be ignored')
+    if pixel_width == 0 or pixel_height == 0:
+        raise ValueError('Pixel width and height must not be 0')
+    if bbox[2] < bbox[0] or bbox[3] < bbox[1]:
+        raise ValueError('bbox must be in order [minX, minY, maxX, maxY]')
+    if ((pixel_width > 0 and bbox[0] < x_origin) or
+        (pixel_height > 0 and bbox[1] < y_origin) or
+        (pixel_width < 0 and bbox[0] > x_origin) or
+        (pixel_height < 0 and bbox[1] > y_origin)):
+        raise ValueError('bbox must fall within geotransform grid')
+    return [
+        x_origin + abs(pixel_width) * math.floor(
+            (bbox[0] - x_origin) / pixel_width * numpy.sign(pixel_width)),
+        y_origin + abs(pixel_height) * math.floor(
+            (bbox[1] - y_origin) / pixel_height * numpy.sign(pixel_height)),
+        x_origin + abs(pixel_width) * math.ceil(
+            (bbox[2] - x_origin) / pixel_width * numpy.sign(pixel_width)),
+        y_origin + abs(pixel_height) * math.ceil(
+            (bbox[3] - y_origin) / pixel_height * numpy.sign(pixel_height))]
+
+
 def zonal_statistics(
         base_raster_path_band, aggregate_vector_path,
         aggregate_layer_name=None, ignore_nodata=True,
@@ -1767,7 +1811,12 @@ def zonal_statistics(
             # and we didn't raise an exception, execution could get weird.
             raise
 
+    # Expand the intersection bounding box to align with the nearest pixels
+    # in the original raster
+    aligned_bbox = align_bbox(raster_info['geotransform'], bbox_intersection)
+
     # Clip base rasters to their intersection with the aggregate vector
+    LOGGER.info('Clipping rasters to their intersection with the vector')
     target_raster_path_band_list = []
     for i, (base_path, band) in enumerate(base_raster_path_band):
         raster_info = get_raster_info(path)
@@ -1782,8 +1831,12 @@ def zonal_statistics(
         gdal.Warp(
             destNameOrDestDS=target_path,
             srcDSOrSrcDSTab=base_path,
-            format='VRT',
-            outputBounds=bbox_intersection,
+            format='GTIFF',
+            # specify the original pixel size because warp doesn't necessarily
+            # preserve it by default. resolution should always be positive
+            xRes=abs(raster_info['pixel_size'][0]),
+            yRes=abs(raster_info['pixel_size'][1]),
+            outputBounds=aligned_bbox,
             callback=_make_logger_callback("Warp %.1f%% complete %s"))
 
     # Calculate disjoint polygon sets
@@ -1808,9 +1861,9 @@ def zonal_statistics(
             allTouched=False,
             attribute=fid_field_name,
             noData=fid_nodata,
-            outputBounds=bbox_intersection,
-            xRes=raster_info['pixel_size'][0],
-            yRes=raster_info['pixel_size'][1],
+            outputBounds=aligned_bbox,
+            xRes=abs(raster_info['pixel_size'][0]),  # resolution should always be positive
+            yRes=abs(raster_info['pixel_size'][1]),
             format='GTIFF',
             outputType=gdal.GDT_UInt16,
             creationOptions=DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS[1],

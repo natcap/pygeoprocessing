@@ -1,6 +1,14 @@
 Release History
 ===============
 
+Unreleased Changes
+------------------
+* Fixed an issue introduced in 2.4.1 where ``zonal_statistics`` results could
+  vary depending on the bounding boxes of the disjoint polygon sets calculated
+  from the input vector.
+* Added a new function, ``pygeoprocessing.align_bbox``, which pads a bounding
+  box to align with the grid of a given geotransform.
+
 2.4.1 (2023-09-05)
 ------------------
 * The ``pygeoprocessing`` package metadata has been updated to use
