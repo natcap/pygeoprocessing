@@ -9,20 +9,19 @@ metadata into a dictionary. These values can be used as parameters for a
 variety of ``pygeoprocessing`` functions where properties like pixel sizes,
 bounding boxes, and nodata values need to be defined.
 
-.. code:: ipython3
+.. code::
 
-    import pprint
     import pygeoprocessing
 
-.. code:: ipython3
+.. code::
 
     raster_a_path = 'dem_utm.tif'
     raster_b_path = 'mswep.tif'
     raster_info = pygeoprocessing.get_raster_info(raster_a_path)
-    pprint.pprint(raster_info)
+    raster_info
 
 
-.. parsed-literal::
+.. code-block:: console
 
     {'block_size': [256, 256],
      'bounding_box': [364636.41313796316,
@@ -55,12 +54,12 @@ Aligning rasters
   :func:`raster_map <pygeoprocessing.raster_map>` or
   :func:`raster_calculator <pygeoprocessing.raster_calculator>`.
 
-.. code:: ipython3
+.. code::
 
     base_raster_list = [raster_a_path, raster_b_path]
     target_raster_list = [x.replace('.tif', '_aligned.tif') for x in base_raster_list]
 
-.. code:: ipython3
+.. code::
 
     pygeoprocessing.align_and_resize_raster_stack(
         base_raster_path_list=base_raster_list,
@@ -85,11 +84,11 @@ function requires the user to specify which band of the raster from which to
 calculate statistics. This is done using a ``tuple``, or ``list``, where the
 first element is the filepath, and the second is the band index:
 
-.. code:: ipython3
+.. code::
 
     path_band_tuple = (raster_b_path, 1)  # band indices start at 1 (not 0), by GDAL convention
 
-.. code:: ipython3
+.. code::
 
     stats_dict = pygeoprocessing.zonal_statistics(
         base_raster_path_band=path_band_tuple,
@@ -101,7 +100,7 @@ first element is the filepath, and the second is the band index:
   rasters, such as for
   :func:`raster_calculator <pygeoprocessing.raster_calculator>`:
 
-.. code:: ipython3
+.. code::
 
     raster_path_band_list = [(raster_a_path, 1), (raster_b_path, 1)]
 
