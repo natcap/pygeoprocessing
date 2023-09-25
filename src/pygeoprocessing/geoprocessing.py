@@ -156,6 +156,7 @@ class TimedLoggingAdapter(logging.LoggerAdapter):
     This object is helpful for creating consistency in logging callbacks and is
     derived from the python stdlib ``logging.LoggerAdapter``.
     """
+
     def __init__(self, interval_s=_LOGGING_PERIOD):
         """Initialize the timed logging adapter.
 
@@ -1552,6 +1553,50 @@ def interpolate_points(
         band.WriteArray(raster_out_array, offset['xoff'], offset['yoff'])
 
 
+def align_bbox(geotransform, bbox):
+    """Pad a bounding box so that it aligns with the grid of a given geotransform.
+
+    Ignores row and column rotation.
+
+    Args:
+        geotransform (list): GDAL raster geotransform to align to
+        bbox (list): bounding box in the form [minx, miny, maxx, maxy]
+
+    Returns:
+        padded bounding box in the form [minx, miny, maxx, maxy]
+
+    Raises:
+        ValueError if invalid geotransform or bounding box are provided
+    """
+    # NOTE: x_origin and y_origin do not necessarily equal minx and miny.
+    # If pixel_width is positive, x_origin = minx
+    # If pixel_width is negative, x_origin = maxx
+    # If pixel height is positive, y_origin = miny
+    # If pixel height is negative, y_origin = maxy
+    x_origin, pixel_width, r_x, y_origin, r_y, pixel_height = geotransform
+    if r_x != 0 or r_y != 0:
+        LOGGER.warning('Row and/or column rotation supplied to align_bbox '
+                       'will be ignored')
+    if pixel_width == 0 or pixel_height == 0:
+        raise ValueError('Pixel width and height must not be 0')
+    if bbox[2] < bbox[0] or bbox[3] < bbox[1]:
+        raise ValueError('bbox must be in order [minX, minY, maxX, maxY]')
+    if ((pixel_width > 0 and bbox[0] < x_origin) or
+        (pixel_height > 0 and bbox[1] < y_origin) or
+        (pixel_width < 0 and bbox[0] > x_origin) or
+        (pixel_height < 0 and bbox[1] > y_origin)):
+        raise ValueError('bbox must fall within geotransform grid')
+    return [
+        x_origin + abs(pixel_width) * math.floor(
+            (bbox[0] - x_origin) / pixel_width * numpy.sign(pixel_width)),
+        y_origin + abs(pixel_height) * math.floor(
+            (bbox[1] - y_origin) / pixel_height * numpy.sign(pixel_height)),
+        x_origin + abs(pixel_width) * math.ceil(
+            (bbox[2] - x_origin) / pixel_width * numpy.sign(pixel_width)),
+        y_origin + abs(pixel_height) * math.ceil(
+            (bbox[3] - y_origin) / pixel_height * numpy.sign(pixel_height))]
+
+
 def zonal_statistics(
         base_raster_path_band, aggregate_vector_path,
         aggregate_layer_name=None, ignore_nodata=True,
@@ -1571,12 +1616,12 @@ def zonal_statistics(
     feature polygon. If ``ignore_nodata`` is false, nodata pixels are considered
     valid when calculating the statistics:
 
-    'min': minimum valid pixel value
-    'max': maximum valid pixel value
-    'sum': sum of valid pixel values
-    'count': number of valid pixels
-    'nodata_count': number of nodata pixels
-    'value_counts': number of pixels having each unique value
+    - 'min': minimum valid pixel value
+    - 'max': maximum valid pixel value
+    - 'sum': sum of valid pixel values
+    - 'count': number of valid pixels
+    - 'nodata_count': number of nodata pixels
+    - 'value_counts': number of pixels having each unique value
 
     Note:
         There may be some degenerate cases where the bounding box vs. actual
@@ -1766,7 +1811,12 @@ def zonal_statistics(
             # and we didn't raise an exception, execution could get weird.
             raise
 
+    # Expand the intersection bounding box to align with the nearest pixels
+    # in the original raster
+    aligned_bbox = align_bbox(raster_info['geotransform'], bbox_intersection)
+
     # Clip base rasters to their intersection with the aggregate vector
+    LOGGER.info('Clipping rasters to their intersection with the vector')
     target_raster_path_band_list = []
     for i, (base_path, band) in enumerate(base_raster_path_band):
         raster_info = get_raster_info(path)
@@ -1781,8 +1831,12 @@ def zonal_statistics(
         gdal.Warp(
             destNameOrDestDS=target_path,
             srcDSOrSrcDSTab=base_path,
-            format='VRT',
-            outputBounds=bbox_intersection,
+            format='GTIFF',
+            # specify the original pixel size because warp doesn't necessarily
+            # preserve it by default. resolution should always be positive
+            xRes=abs(raster_info['pixel_size'][0]),
+            yRes=abs(raster_info['pixel_size'][1]),
+            outputBounds=aligned_bbox,
             callback=_make_logger_callback("Warp %.1f%% complete %s"))
 
     # Calculate disjoint polygon sets
@@ -1807,9 +1861,9 @@ def zonal_statistics(
             allTouched=False,
             attribute=fid_field_name,
             noData=fid_nodata,
-            outputBounds=bbox_intersection,
-            xRes=raster_info['pixel_size'][0],
-            yRes=raster_info['pixel_size'][1],
+            outputBounds=aligned_bbox,
+            xRes=abs(raster_info['pixel_size'][0]),  # resolution should always be positive
+            yRes=abs(raster_info['pixel_size'][1]),
             format='GTIFF',
             outputType=gdal.GDT_UInt16,
             creationOptions=DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS[1],
@@ -2395,7 +2449,7 @@ def warp_raster(
         gdal_warp_options=None, working_dir=None, use_overview_level=-1,
         raster_driver_creation_tuple=DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS,
         osr_axis_mapping_strategy=DEFAULT_OSR_AXIS_MAPPING_STRATEGY):
-    f"""Resize/resample raster to desired pixel size, bbox and projection.
+    """Resize/resample raster to desired pixel size, bbox and projection.
 
     Args:
         base_raster_path (string): path to base raster.
@@ -2403,8 +2457,9 @@ def warp_raster(
             the x and y pixel size in projected units.
         target_raster_path (string): the location of the resized and
             resampled raster.
-        resample_method (string): the resampling technique, one of
-            ``{_GDAL_WARP_ALGOS_FOR_HUMAN_EYES}``
+        resample_method (string): the resampling technique, one of,
+            'rms | mode | sum | q1 | near | q3 | average | cubicspline |
+            bilinear | max | med | min | cubic | lanczos'
         target_bb (sequence): if None, target bounding box is the same as the
             source bounding box.  Otherwise it's a sequence of float
             describing target bounding box in target coordinate system as
@@ -3061,11 +3116,10 @@ def convolve_2d(
             bounds of the raster are 0s. If set to false this tends to "pull"
             the signal away from nodata holes or raster edges. Set this value
             to ``True`` to avoid distortions signal values near edges for
-            large integrating kernels.
-                It can be useful to set this value to ``True`` to fill
-            nodata holes through distance weighted averaging. In this case
-            ``mask_nodata`` must be set to ``False`` so the result does not
-            mask out these areas which are filled in. When using this
+            large integrating kernels. It can be useful to set this value to
+            ``True`` to fill nodata holes through distance weighted averaging.
+            In this case ``mask_nodata`` must be set to ``False`` so the result
+            does not mask out these areas which are filled in. When using this
             technique be careful of cases where the kernel does not extend
             over any areas except nodata holes, in this case the resulting
             values in these areas will be nonsensical numbers, perhaps
@@ -4189,15 +4243,16 @@ def stitch_rasters(
         overlap_algorithm='etch',
         area_weight_m2_to_wgs84=False,
         osr_axis_mapping_strategy=DEFAULT_OSR_AXIS_MAPPING_STRATEGY):
-    f"""Stitch the raster in the base list into the existing target.
+    """Stitch the raster in the base list into the existing target.
 
     Args:
         base_raster_path_band_list (sequence): sequence of raster path/band
             tuples to stitch into target.
         resample_method_list (sequence): a sequence of resampling methods
             which one to one map each path in ``base_raster_path_band_list``
-            during resizing.  Each element must be one of
-            ``{_GDAL_WARP_ALGOS_FOR_HUMAN_EYES}``
+            during resizing.  Each element must be one of,
+            'rms | mode | sum | q1 | near | q3 | average | cubicspline |
+            bilinear | max | med | min | cubic | lanczos'
         target_stitch_raster_path_band (tuple): raster path/band tuple to an
             existing raster, values in ``base_raster_path_band_list`` will
             be stitched into this raster/band in the order they are in the
@@ -4213,14 +4268,15 @@ def stitch_rasters(
         overlap_algorithm (str): this value indicates which algorithm to use
             when a raster is stitched on non-nodata values in the target
             stitch raster. It can be one of the following:
-                'etch': write a value to the target raster only if the target
-                    raster pixel is nodata. If the target pixel is non-nodata
-                    ignore any additional values to write on that pixel.
-                'replace': write a value to the target raster irrespective
-                    of the value of the target raster
-                'add': add the value to be written to the target raster to
-                    any existing value that is there. If the existing value
-                    is nodata, treat it as 0.0.
+
+            - 'etch': write a value to the target raster only if the target
+              raster pixel is nodata. If the target pixel is non-nodata
+              ignore any additional values to write on that pixel.
+            - 'replace': write a value to the target raster irrespective
+              of the value of the target raster
+            - 'add': add the value to be written to the target raster to
+              any existing value that is there. If the existing value
+              is nodata, treat it as 0.0.
         area_weight_m2_to_wgs84 (bool): If ``True`` the stitched raster will
             be converted to a per-area value before reprojection to wgs84,
             then multiplied by the m^2 area per pixel in the wgs84 coordinate
@@ -4486,7 +4542,7 @@ def stitch_rasters(
 def build_overviews(
         raster_path, internal=False, resample_method='near',
         overwrite=False, levels='auto'):
-    f"""Build overviews for a raster dataset.
+    """Build overviews for a raster dataset.
 
     Args:
         raster_path (str): A path to a raster on disk for which overviews
@@ -4495,8 +4551,9 @@ def build_overviews(
             overviews. In GeoTiffs, this builds internal overviews when
             ``internal=True``, and external overviews when ``internal=False``.
         resample_method='near' (str): The resample method to use when
-            building overviews.  Must be one of
-            ``{_GDAL_WARP_ALGOS_FOR_HUMAN_EYES}``.
+            building overviews.  Must be one of,
+            'rms | mode | sum | q1 | near | q3 | average | cubicspline |
+            bilinear | max | med | min | cubic | lanczos'.
         overwrite=False (bool): Whether to overwrite existing overviews, if
             any exist.
         levels='auto' (sequence): A sequence of integer overview levels. If

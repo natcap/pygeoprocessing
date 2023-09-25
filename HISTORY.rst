@@ -10,6 +10,11 @@ Unreleased Changes
 * Improved progress logging in MFD flow direction, MFD flow accumulation, MFD
   stream extraction to prevent integer overflows in percentages and improve
   the readability of log messages. https://github.com/natcap/pygeoprocessing/issues/246
+* Fixed an issue introduced in 2.4.1 where ``zonal_statistics`` results could
+  vary depending on the bounding boxes of the disjoint polygon sets calculated
+  from the input vector.
+* Added a new function, ``pygeoprocessing.align_bbox``, which pads a bounding
+  box to align with the grid of a given geotransform.
 
 2.4.1 (2023-09-05)
 ------------------
