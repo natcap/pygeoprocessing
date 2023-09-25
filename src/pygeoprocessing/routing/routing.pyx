@@ -676,15 +676,15 @@ def fill_pits(
     """
     # These variables are used to iterate over the DEM using `iterblock`
     # indexes
-    cdef int win_ysize, win_xsize, xoff, yoff
+    cdef unsigned int win_ysize, win_xsize, xoff, yoff
 
     # the _root variables remembers the pixel index where the plateau/pit
     # region was first detected when iterating over the DEM.
-    cdef int xi_root, yi_root
+    cdef unsigned int xi_root, yi_root
 
     # these variables are used as pixel or neighbor indexes. where _q
     # represents a value out of a queue, and _n is related to a neighbor pixel
-    cdef int i_n, xi, yi, xi_q, yi_q, xi_n, yi_n
+    cdef unsigned int i_n, xi, yi, xi_q, yi_q, xi_n, yi_n
 
     # these are booleans used to remember the condition that caused a loop
     # to terminate, though downhill and nodata are equivalent for draining,
@@ -1110,11 +1110,11 @@ def flow_dir_d8(
     # data loss for any lower type that might be used in
     # `dem_raster_path_band[0]`.
     cdef numpy.ndarray[numpy.float64_t, ndim=2] dem_buffer_array
-    cdef int win_ysize, win_xsize, xoff, yoff
+    cdef unsigned int win_ysize, win_xsize, xoff, yoff
 
     # the _root variables remembers the pixel index where the plateau/pit
     # region was first detected when iterating over the DEM.
-    cdef int xi_root, yi_root
+    cdef unsigned int xi_root, yi_root
 
     # these variables are used as pixel or neighbor indexes. where _q
     # represents a value out of a queue, and _n is related to a neighbor pixel
@@ -1145,7 +1145,9 @@ def flow_dir_d8(
     cdef queue[int] nodata_flow_dir_queue
 
     # properties of the parallel rasters
-    cdef int raster_x_size, raster_y_size
+    cdef unsigned int raster_x_size, raster_y_size
+
+    cdef unsigned long current_pixel
 
     # used for time-delayed logging
     cdef time_t last_log_time
@@ -1488,7 +1490,7 @@ def flow_accumulation_d8(
 
     # these variables are used as pixel or neighbor indexes.
     # _n is related to a neighbor pixel
-    cdef int i_n, xi, yi, xi_n, yi_n
+    cdef unsigned int i_n, xi, yi, xi_n, yi_n
 
     # used to hold flow direction values
     cdef int flow_dir, upstream_flow_dir, flow_dir_nodata
@@ -1507,7 +1509,9 @@ def flow_accumulation_d8(
     cdef FlowPixelType flow_pixel
 
     # properties of the parallel rasters
-    cdef int raster_x_size, raster_y_size
+    cdef unsigned int raster_x_size, raster_y_size
+
+    cdef unsigned long current_pixel
 
     # used for time-delayed logging
     cdef time_t last_log_time
@@ -1658,7 +1662,7 @@ def flow_accumulation_d8(
     flow_dir_managed_raster.close()
     if weight_raster is not None:
         weight_raster.close()
-    LOGGER.info('%.1f%% complete', 100.0)
+    LOGGER.info('Flow accumulation D8 %.1f%% complete', 100.0)
 
 
 def flow_dir_mfd(
@@ -2480,23 +2484,25 @@ def distance_to_channel_d8(
     # These variables are used to iterate over the DEM using `iterblock`
     # indexes
     cdef numpy.ndarray[numpy.uint8_t, ndim=2] channel_buffer_array
-    cdef int win_ysize, win_xsize, xoff, yoff
+    cdef unsigned int win_ysize, win_xsize, xoff, yoff
 
     # these variables are used as pixel or neighbor indexes.
     # _n is related to a neighbor pixel
-    cdef int i_n, xi, yi, xi_q, yi_q, xi_n, yi_n
+    cdef unsigned int i_n, xi, yi, xi_q, yi_q, xi_n, yi_n
 
     # `distance_to_channel_stack` is the datastructure that walks upstream
     # from a defined flow distance pixel
     cdef stack[PixelType] distance_to_channel_stack
 
     # properties of the parallel rasters
-    cdef int raster_x_size, raster_y_size
+    cdef unsigned int raster_x_size, raster_y_size
 
     # these area used to store custom per-pixel weights and per-pixel values
     # for distance updates
     cdef double weight_val, pixel_val
     cdef double weight_nodata = IMPROBABLE_FLOAT_NODATA
+
+    cdef unsigned long current_pixel
 
     # used for time-delayed logging
     cdef time_t last_log_time
@@ -2701,11 +2707,11 @@ def distance_to_channel_mfd(
     # indexes
     cdef numpy.ndarray[numpy.uint8_t, ndim=2] channel_buffer_array
     cdef numpy.ndarray[numpy.int32_t, ndim=2] flow_dir_buffer_array
-    cdef int win_ysize, win_xsize, xoff, yoff
+    cdef unsigned int win_ysize, win_xsize, xoff, yoff
 
     # these variables are used as pixel or neighbor indexes.
     # _n is related to a neighbor pixel
-    cdef int i_n, xi, yi, xi_n, yi_n
+    cdef unsigned int i_n, xi, yi, xi_n, yi_n
     cdef int flow_dir_weight, mfd_value
 
     # used to remember if the current pixel is a channel for routing
@@ -2716,7 +2722,7 @@ def distance_to_channel_mfd(
     cdef stack[MFDFlowPixelType] distance_to_channel_stack
 
     # properties of the parallel rasters
-    cdef int raster_x_size, raster_y_size
+    cdef unsigned int raster_x_size, raster_y_size
 
     # this value is used to store the current weight which might be 1 or
     # come from a predefined flow accumulation weight raster
@@ -2726,6 +2732,8 @@ def distance_to_channel_mfd(
     # used for time-delayed logging
     cdef time_t last_log_time
     last_log_time = ctime(NULL)
+
+    cdef unsigned long current_pixel
 
     for path in (
             flow_dir_mfd_raster_path_band, channel_raster_path_band,
@@ -3288,31 +3296,31 @@ def extract_strahler_streams_d8(
     # 321
     # 4x0
     # 567
-    cdef int xoff, yoff, i, j, d, d_n, n_cols, n_rows
-    cdef int win_xsize, win_ysize
+    cdef unsigned int xoff, yoff, i, j, d, d_n, n_cols, n_rows
+    cdef unsigned int win_xsize, win_ysize
 
     n_cols, n_rows = flow_dir_info['raster_size']
 
     LOGGER.info('(extract_strahler_streams_d8): seed the drains')
-    cdef long n_pixels = n_cols * n_rows
+    cdef unsigned long n_pixels = n_cols * n_rows
     cdef long n_processed = 0
     cdef time_t last_log_time
     last_log_time = ctime(NULL)
     cdef stack[StreamConnectivityPoint] source_point_stack
     cdef StreamConnectivityPoint source_stream_point
 
-    cdef int x_l=-1, y_l=-1  # the _l is for "local" aka "current" pixel
+    cdef unsigned int x_l=-1, y_l=-1  # the _l is for "local" aka "current" pixel
 
     # D8 backflow directions encoded as
     # 765
     # 0x4
     # 123
-    cdef int x_n, y_n  # the _n is for "neighbor"
-    cdef int upstream_count=0, upstream_index
+    cdef unsigned int x_n, y_n  # the _n is for "neighbor"
+    cdef unsigned int upstream_count=0, upstream_index
     # this array is filled out as upstream directions are calculated and
     # indexed by `upstream_count`
     cdef int *upstream_dirs = [0, 0, 0, 0, 0, 0, 0, 0]
-    cdef long local_flow_accum
+    cdef unsigned long local_flow_accum
     # used to determine if source is a drain and should be tracked
     cdef int is_drain
 
@@ -4042,7 +4050,7 @@ def calculate_subwatershed_boundary(
         discovery_time_raster_path)
     cdef long discovery_nodata = discovery_info['nodata'][0]
 
-    cdef int n_cols, n_rows
+    cdef unsigned int n_cols, n_rows
     n_cols, n_rows = discovery_info['raster_size']
 
     geotransform = discovery_info['geotransform']
@@ -4074,7 +4082,8 @@ def calculate_subwatershed_boundary(
     watershed_layer.CreateField(ogr.FieldDefn('outlet_y', ogr.OFTInteger))
     watershed_layer.StartTransaction()
 
-    cdef int x_l, y_l, outflow_dir
+    cdef unsigned int x_l, y_l
+    cdef int outflow_dir
     cdef double x_f, y_f
     cdef double x_p, y_p
     cdef long discovery, finish
@@ -4460,8 +4469,8 @@ def detect_outlets(
             f'{flow_dir_type}')
     cdef int d8_flow_dir_mode = (flow_dir_type == 'd8')
 
-    cdef int xoff, yoff, win_xsize, win_ysize, xi, yi
-    cdef int xi_root, yi_root, raster_x_size, raster_y_size
+    cdef unsigned int xoff, yoff, win_xsize, win_ysize, xi, yi
+    cdef unsigned int xi_root, yi_root, raster_x_size, raster_y_size
     cdef int flow_dir, flow_dir_n
     cdef int next_id=0, n_dir, is_outlet
     cdef char x_off_border, y_off_border, win_xsize_border, win_ysize_border
