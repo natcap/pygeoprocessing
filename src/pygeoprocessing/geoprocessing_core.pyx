@@ -660,7 +660,7 @@ def raster_band_percentile(
         base_raster_path_band[0])['datatype']
     if raster_type in (
             gdal.GDT_Byte, gdal.GDT_Int16, gdal.GDT_UInt16, gdal.GDT_Int32,
-            gdal.GDT_UInt32):
+            gdal.GDT_UInt32, gdal.GDT_Int64, gdal.GDT_UInt64):
         return _raster_band_percentile_int(
             base_raster_path_band, working_sort_directory, percentile_list,
             heap_buffer_size, ffi_buffer_size)

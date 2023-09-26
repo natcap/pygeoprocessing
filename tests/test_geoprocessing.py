@@ -4804,6 +4804,8 @@ class TestGeoprocessing(unittest.TestCase):
             ('uint16.tif', gdal.GDT_UInt16, numpy.uint16),
             ('int32.tif', gdal.GDT_Int32, numpy.int32),
             ('uint32.tif', gdal.GDT_UInt32, numpy.uint32),
+            ('int64.tif', gdal.GDT_Int64, numpy.int64),
+            ('uint64.tif', gdal.GDT_UInt64, numpy.uint64),
             ('float32.tif', gdal.GDT_Float32, numpy.float32),
             ('float64.tif', gdal.GDT_Float64, numpy.float64),
             ('cfloat32.tif', gdal.GDT_CFloat32, numpy.csingle),
@@ -5359,12 +5361,14 @@ class TestGeoprocessing(unittest.TestCase):
         uint8_raster = os.path.join(self.workspace_dir, 'uint8.tif')
         int16_raster = os.path.join(self.workspace_dir, 'int16.tif')
         int32_raster = os.path.join(self.workspace_dir, 'int32.tif')
+        int64_raster = os.path.join(self.workspace_dir, 'int64.tif')
         float32_raster = os.path.join(self.workspace_dir, 'float32.tif')
         float64_raster = os.path.join(self.workspace_dir, 'float64.tif')
         for path, array in [
                 (uint8_raster, numpy.array([[1]], dtype=numpy.uint8)),
                 (int16_raster, numpy.array([[1]], dtype=numpy.int16)),
                 (int32_raster, numpy.array([[1]], dtype=numpy.int32)),
+                (int64_raster, numpy.array([[1]], dtype=numpy.int64)),
                 (float32_raster, numpy.array([[1]], dtype=numpy.float32)),
                 (float64_raster, numpy.array([[1]], dtype=numpy.float64))]:
             _array_to_raster(array, -1, path)
@@ -5383,6 +5387,9 @@ class TestGeoprocessing(unittest.TestCase):
             numpy.float64)
         self.assertEqual(
             pygeoprocessing.choose_dtype(int32_raster, float32_raster),
+            numpy.float64)
+        self.assertEqual(
+            pygeoprocessing.choose_dtype(int64_raster, float64_raster),
             numpy.float64)
         self.assertEqual(
             pygeoprocessing.choose_dtype(
