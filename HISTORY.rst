@@ -3,6 +3,13 @@ Release History
 
 Unreleased Changes
 ------------------
+* Fixed an issue where MFD flow direction was producing many nodata holes given
+  a large-enough DEM.  These nodata holes would then propagate to flow
+  accumulation and stream extraction, producing very disjointed stream
+  networks. https://github.com/natcap/pygeoprocessing/issues/350
+* Improved progress logging in MFD flow direction, MFD flow accumulation, MFD
+  stream extraction to prevent integer overflows in percentages and improve
+  the readability of log messages. https://github.com/natcap/pygeoprocessing/issues/246
 * Fixed an issue introduced in 2.4.1 where ``zonal_statistics`` results could
   vary depending on the bounding boxes of the disjoint polygon sets calculated
   from the input vector.
