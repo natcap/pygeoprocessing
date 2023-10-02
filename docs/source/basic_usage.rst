@@ -1,10 +1,11 @@
 Basic Usage
 ===========
 
-``pygeoprocessing`` uses GDAL to read and write all GDAL-supported file
-formats. The utility functions
-:func:`get_raster_info <pygeoprocessing.get_raster_info>` and
-:func:`get_vector_info <pygeoprocessing.get_vector_info>` read a file’s
+``pygeoprocessing`` uses GDAL to read and write all GDAL-supported
+`raster <https://gdal.org/user/raster_data_model.html>`_ and
+`vector <https://gdal.org/user/vector_data_model.html>`_ file formats.
+The utility functions :func:`get_raster_info <pygeoprocessing.get_raster_info>`
+and :func:`get_vector_info <pygeoprocessing.get_vector_info>` read a file’s
 metadata into a dictionary. These values can be used as parameters for a
 variety of ``pygeoprocessing`` functions where properties like pixel sizes,
 bounding boxes, and nodata values need to be defined.
