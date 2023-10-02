@@ -931,14 +931,15 @@ def align_and_resize_raster_stack(
             grid layout.  If ``None`` then the bounding box of the target
             rasters is calculated as the precise intersection, union, or
             bounding box.
-        base_projection_wkt_list (sequence): if not None, this is a sequence of
-            base projections of the rasters in ``base_raster_path_list``. If a
-            value is ``None`` the ``base_sr`` is assumed to be whatever is
-            defined in that raster. This value is useful if there are rasters
-            with no projection defined, but otherwise known.
-        target_projection_wkt (string): if not None, this is the desired
-            projection of all target rasters in Well Known Text format. If
-            None, the base SRS will be passed to the target.
+        base_projection_wkt_list (sequence): if not ``None``, this is a
+            sequence of base projections of the rasters in
+            ``base_raster_path_list``. If a value is ``None``, the projection
+            is read directly from the raster. Use this argument if there are
+            rasters with no projection defined, but the projections are known.
+        target_projection_wkt (string): if not ``None``, this is the desired
+            projection of all target rasters in Well Known Text format, and
+            target rasters will be warped to this projection. If ``None``,
+            the base SRS will be passed to the target.
         vector_mask_options (dict): optional, if not None, this is a
             dictionary of options to use an existing vector's geometry to
             mask out pixels in the target raster that do not overlap the
@@ -1638,12 +1639,12 @@ def zonal_statistics(
         aggregate_vector_path (string): a path to a polygon vector whose
             geometric features indicate the areas in
             ``base_raster_path_band`` to calculate zonal statistics.
-        aggregate_layer_name (string): name of shapefile layer that will be
+        aggregate_layer_name (string): name of vector layer that will be
             used to aggregate results over.  If set to None, the first layer
             in the DataSource will be used as retrieved by ``.GetLayer()``.
             Note: it is normal and expected to set this field at None if the
-            aggregating shapefile is a single layer as many shapefiles,
-            including the common 'ESRI Shapefile', are.
+            aggregating vector dataset has a single layer as many do,
+            including the common 'ESRI Shapefile'.
         ignore_nodata: if true, then nodata pixels are not accounted for when
             calculating min, max, count, or mean.  However, the value of
             ``nodata_count`` will always be the number of nodata pixels
