@@ -11,14 +11,14 @@ bounding boxes, and nodata values need to be defined.
 
 .. code::
 
-    import pygeoprocessing
+    >>> import pygeoprocessing
 
 .. code::
 
-    raster_a_path = 'dem_utm.tif'
-    raster_b_path = 'mswep.tif'
-    raster_info = pygeoprocessing.get_raster_info(raster_a_path)
-    raster_info
+    >>> raster_a_path = 'dem_utm.tif'
+    >>> raster_b_path = 'mswep.tif'
+    >>> raster_info = pygeoprocessing.get_raster_info(raster_a_path)
+    >>> raster_info
 
 
 .. code-block:: console
@@ -56,19 +56,19 @@ Aligning rasters
 
 .. code::
 
-    base_raster_list = [raster_a_path, raster_b_path]
-    target_raster_list = [x.replace('.tif', '_aligned.tif') for x in base_raster_list]
+    >>> base_raster_list = [raster_a_path, raster_b_path]
+    >>> target_raster_list = [x.replace('.tif', '_aligned.tif') for x in base_raster_list]
 
 .. code::
 
-    pygeoprocessing.align_and_resize_raster_stack(
-        base_raster_path_list=base_raster_list,
-        target_raster_path_list=target_raster_list,
-        resample_method_list=['bilinear', 'bilinear'],
-        target_pixel_size=raster_info['pixel_size'],
-        bounding_box_mode='intersection',
-        target_projection_wkt=raster_info['projection_wkt']
-    )
+    >>> pygeoprocessing.align_and_resize_raster_stack(
+            base_raster_path_list=base_raster_list,
+            target_raster_path_list=target_raster_list,
+            resample_method_list=['bilinear', 'bilinear'],
+            target_pixel_size=raster_info['pixel_size'],
+            bounding_box_mode='intersection',
+            target_projection_wkt=raster_info['projection_wkt']
+        )
 
 Interfacing with files
 **********************
@@ -86,15 +86,15 @@ first element is the filepath, and the second is the band index:
 
 .. code::
 
-    path_band_tuple = (raster_b_path, 1)  # band indices start at 1 (not 0), by GDAL convention
+    >>> path_band_tuple = (raster_b_path, 1)  # band indices start at 1 (not 0), by GDAL convention
 
 .. code::
 
-    stats_dict = pygeoprocessing.zonal_statistics(
-        base_raster_path_band=path_band_tuple,
-        aggregate_vector_path='watersheds.gpkg',
-        aggregate_layer_name='watersheds'  # if the vector only contains 1 layer, this can be `None`, or ommitted
-    )
+    >>> stats_dict = pygeoprocessing.zonal_statistics(
+            base_raster_path_band=path_band_tuple,
+            aggregate_vector_path='watersheds.gpkg',
+            aggregate_layer_name='watersheds'  # if the vector only contains 1 layer, this can be `None`, or ommitted
+        )
 
 | An example of the path-band object when a function operates on multiple
   rasters, such as for
@@ -102,5 +102,5 @@ first element is the filepath, and the second is the band index:
 
 .. code::
 
-    raster_path_band_list = [(raster_a_path, 1), (raster_b_path, 1)]
+    >>> raster_path_band_list = [(raster_a_path, 1), (raster_b_path, 1)]
 
