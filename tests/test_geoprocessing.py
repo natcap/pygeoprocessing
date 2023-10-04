@@ -2638,6 +2638,8 @@ class TestGeoprocessing(unittest.TestCase):
         expected_result[127, 127] = nodata
         numpy.testing.assert_allclose(result, expected_result)
 
+    @unittest.skipIf(pygeoprocessing.geoprocessing.GDAL_VERSION >= (3, 7, 0),
+                     "not supported in this library version")
     def test_raster_calculator_signed_byte(self):
         """PGP.geoprocessing: test that signed byte pixels interpreted."""
         pixel_array = numpy.ones((128, 128), numpy.uint8)
@@ -2677,6 +2679,8 @@ class TestGeoprocessing(unittest.TestCase):
             target_band = None
             target_raster = None
 
+    @unittest.skipIf(pygeoprocessing.geoprocessing.GDAL_VERSION >= (3, 7, 0),
+                     "not supported in this library version")
     def test_new_raster_from_base_unsigned_byte(self):
         """PGP.geoprocessing: test that signed byte rasters copy over."""
         pixel_array = numpy.ones((128, 128), numpy.uint8)
@@ -4800,7 +4804,7 @@ class TestGeoprocessing(unittest.TestCase):
 
     def test_get_raster_info_type(self):
         """PGP: test get_raster_info's type."""
-        gdal_type_numpy_pairs = (
+        gdal_type_numpy_pairs = [
             ('int16.tif', gdal.GDT_Int16, numpy.int16),
             ('uint16.tif', gdal.GDT_UInt16, numpy.uint16),
             ('int32.tif', gdal.GDT_Int32, numpy.int32),
@@ -4808,7 +4812,7 @@ class TestGeoprocessing(unittest.TestCase):
             ('float32.tif', gdal.GDT_Float32, numpy.float32),
             ('float64.tif', gdal.GDT_Float64, numpy.float64),
             ('cfloat32.tif', gdal.GDT_CFloat32, numpy.csingle),
-            ('cfloat64.tif', gdal.GDT_CFloat64, numpy.complex64))
+            ('cfloat64.tif', gdal.GDT_CFloat64, numpy.complex64)]
 
         if pygeoprocessing.geoprocessing.GDAL_VERSION >= (3, 7, 0):
             gdal_type_numpy_pairs.append(
