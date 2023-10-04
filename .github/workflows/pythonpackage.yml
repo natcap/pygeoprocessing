@@ -17,6 +17,22 @@ jobs:
         gdal: ["3.2.2", "3.3.0", "3.4.3", "3.5", "3.6", "3.7"]
         os: [ubuntu-latest, windows-latest, macos-latest]
 
+      exclude:
+        - gdal: "3.2.2"
+          python-version: 3.10
+
+        - gdal: "3.2.2"
+          python-version: 3.11
+
+        - gdal: "3.3.0"
+          python-version: 3.10
+
+        - gdal: "3.3.0"
+          python-version: 3.11
+
+        - gdal: "3.4.3"
+          python-version: 3.11
+
     steps:
       - uses: actions/checkout@v3
         with:
