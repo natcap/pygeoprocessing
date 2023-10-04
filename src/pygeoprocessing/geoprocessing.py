@@ -13,6 +13,7 @@ import sys
 import tempfile
 import threading
 import time
+import warnings
 
 import numpy
 import numpy.ma
@@ -40,21 +41,7 @@ from .geoprocessing_core import INT8_CREATION_OPTIONS
 if sys.version_info >= (3, 8):
     import multiprocessing.shared_memory
 
-NUMPY_TO_GDAL_TYPE = {
-    numpy.dtype(bool): gdal.GDT_Byte,
-    numpy.dtype(numpy.int8): gdal.GDT_Byte,
-    numpy.dtype(numpy.uint8): gdal.GDT_Byte,
-    numpy.dtype(numpy.int16): gdal.GDT_Int16,
-    numpy.dtype(numpy.int32): gdal.GDT_Int32,
-    numpy.dtype(numpy.int64): gdal.GDT_Int64,
-    numpy.dtype(numpy.uint16): gdal.GDT_UInt16,
-    numpy.dtype(numpy.uint32): gdal.GDT_UInt32,
-    numpy.dtype(numpy.uint64): gdal.GDT_UInt64,
-    numpy.dtype(numpy.float32): gdal.GDT_Float32,
-    numpy.dtype(numpy.float64): gdal.GDT_Float64,
-    numpy.dtype(numpy.csingle): gdal.GDT_CFloat32,
-    numpy.dtype(numpy.complex64): gdal.GDT_CFloat64,
-}
+GDAL_VERSION = tuple(int(_) for _ in gdal.__version__.split('.'))
 
 
 class ReclassificationMissingValuesError(Exception):
@@ -87,20 +74,6 @@ _VALID_GDAL_TYPES = (
 
 _LOGGING_PERIOD = 5.0  # min 5.0 seconds per update log message for the module
 _LARGEST_ITERBLOCK = 2**16  # largest block for iterblocks to read in cells
-
-_GDAL_TYPE_TO_NUMPY_LOOKUP = {
-    gdal.GDT_Byte: numpy.uint8,
-    gdal.GDT_Int16: numpy.int16,
-    gdal.GDT_Int32: numpy.int32,
-    gdal.GDT_Int64: numpy.int64,
-    gdal.GDT_UInt16: numpy.uint16,
-    gdal.GDT_UInt32: numpy.uint32,
-    gdal.GDT_UInt64: numpy.uint64,
-    gdal.GDT_Float32: numpy.float32,
-    gdal.GDT_Float64: numpy.float64,
-    gdal.GDT_CFloat32: numpy.csingle,
-    gdal.GDT_CFloat64: numpy.complex64,
-}
 
 _GDAL_WARP_ALGORITHMS = []
 for _warp_algo in (_attrname for _attrname in dir(gdalconst)
@@ -776,8 +749,8 @@ def raster_map(op, rasters, target_path, target_nodata=None, target_dtype=None,
                 f'the target dtype {target_dtype}')
 
     driver, options = raster_driver_creation_tuple
-    if target_dtype == numpy.int8 and 'PIXELTYPE=SIGNEDBYTE' not in options:
-        options += ('PIXELTYPE=SIGNEDBYTE',)
+    gdal_type, type_creation_options = _numpy_to_gdal_type(target_dtype)
+    options = list(options) + type_creation_options
 
     def apply_op(*arrays):
         """Apply the function ``op`` to the input arrays.
@@ -806,7 +779,7 @@ def raster_map(op, rasters, target_path, target_nodata=None, target_dtype=None,
         [(path, 1) for path in rasters],  # assume the first band
         apply_op,
         target_path,
-        NUMPY_TO_GDAL_TYPE[numpy.dtype(target_dtype)],
+        gdal_type,
         target_nodata,
         raster_driver_creation_tuple=(driver, options))
 
@@ -1225,18 +1198,7 @@ def new_raster_from_base(
     driver = gdal.GetDriverByName(raster_driver_creation_tuple[0])
 
     local_raster_creation_options = list(raster_driver_creation_tuple[1])
-    # PIXELTYPE is sometimes used to define signed vs. unsigned bytes and
-    # the only place that is stored is in the IMAGE_STRUCTURE metadata
-    # copy it over if it exists and it not already defined by the input
-    # creation options. It's okay to get this info from the first band since
-    # all bands have the same datatype
-    base_band = base_raster.GetRasterBand(1)
-    metadata = base_band.GetMetadata('IMAGE_STRUCTURE')
-    if 'PIXELTYPE' in metadata and not any(
-            ['PIXELTYPE' in option for option in
-             local_raster_creation_options]):
-        local_raster_creation_options.append(
-            'PIXELTYPE=' + metadata['PIXELTYPE'])
+    numpy_dtype = _gdal_to_numpy_type(datatype, local_raster_creation_options)
 
     block_size = base_band.GetBlockSize()
     # It's not clear how or IF we can determine if the output should be
@@ -1287,7 +1249,6 @@ def new_raster_from_base(
     timed_logger = TimedLoggingAdapter(_LOGGING_PERIOD)
     pixels_processed = 0
     n_pixels = n_cols * n_rows
-    numpy_dtype = _GDAL_TYPE_TO_NUMPY_LOOKUP[datatype]
     if fill_value_list is not None:
         for index, fill_value in enumerate(fill_value_list):
             if fill_value is None:
@@ -2171,15 +2132,9 @@ def get_raster_info(raster_path):
 
     # datatype is the same for the whole raster, but is associated with band
     band = raster.GetRasterBand(1)
-    band_datatype = band.DataType
-    raster_properties['datatype'] = band_datatype
-    raster_properties['numpy_type'] = (
-        _GDAL_TYPE_TO_NUMPY_LOOKUP[band_datatype])
-    # this part checks to see if the byte is signed or not
-    if band_datatype == gdal.GDT_Byte:
-        metadata = band.GetMetadata('IMAGE_STRUCTURE')
-        if 'PIXELTYPE' in metadata and metadata['PIXELTYPE'] == 'SIGNEDBYTE':
-            raster_properties['numpy_type'] = numpy.int8
+    raster_properties['datatype'] = band.DataType
+    raster_properties['numpy_type'] = _gdal_to_numpy_type(
+        band.DataType, band.GetMetadata('IMAGE_STRUCTURE'))
     band = None
     raster = None
     return raster_properties
@@ -2417,11 +2372,14 @@ def reclassify_raster(
     keys = sorted(numpy.array(list(value_map_copy.keys())))
     values = numpy.array([value_map_copy[x] for x in keys])
 
+    numpy_dtype = _gdal_to_numpy_type(
+        target_datatype, raster_driver_creation_tuple[1])
+
     def _map_dataset_to_value_op(original_values):
         """Convert a block of original values to the lookup values."""
         out_array = numpy.full(
             original_values.shape, target_nodata,
-            dtype=_GDAL_TYPE_TO_NUMPY_LOOKUP[target_datatype])
+            dtype=numpy_dtype)
         if nodata is None:
             valid_mask = numpy.full(original_values.shape, True)
         else:
@@ -2623,9 +2581,9 @@ def warp_raster(
     base_raster = gdal.OpenEx(base_raster_path, gdal.OF_RASTER)
 
     raster_creation_options = list(raster_driver_creation_tuple[1])
-    if (base_raster_info['numpy_type'] == numpy.int8 and
-            'PIXELTYPE' not in ' '.join(raster_creation_options)):
-        raster_creation_options.append('PIXELTYPE=SIGNEDBYTE')
+    _, type_creation_options = _numpy_to_gdal_type(
+        base_raster_info['numpy_type'])
+    raster_creation_options += type_creation_options
 
     if resample_method.lower() not in _GDAL_WARP_ALGORITHMS:
         raise ValueError(
@@ -3707,7 +3665,7 @@ def mask_raster(
     os.remove(mask_raster_path)
 
 
-def _gdal_to_numpy_type(band):
+def _gdal_to_numpy_type(gdal_type, metadata):
     """Calculate the equivalent numpy datatype from a GDAL raster band type.
 
     This function doesn't handle complex or unknown types.  If they are
@@ -3720,29 +3678,64 @@ def _gdal_to_numpy_type(band):
         numpy_datatype (numpy.dtype): equivalent of band.DataType
 
     """
-    # doesn't include GDT_Byte because that's a special case
-    base_gdal_type_to_numpy = {
+    if gdal_type == gdal.GDT_Byte:
+        # check if it is signed/unsigned
+        if ('PIXELTYPE=SIGNEDBYTE' in metadata) or
+           ('PIXELTYPE' in metadata and metadata['PIXELTYPE'] == 'SIGNEDBYTE'):
+                warnings.warn(
+                    ("The PIXELTYPE=SIGNEDBYTE flag will be ignored in the future."
+                     "Use the gdal.GDT_Int8 type instead (new in GDAL 3.7)."),
+                    DeprecationWarning,
+                    stacklevel=2)
+                return numpy.int8
+    return numpy.uint8
+
+    # for GDT_Byte, you cannot know if it should be int8 or uint8
+    # without seeing the raster metadata.
+    type_map = {
         gdal.GDT_Int16: numpy.int16,
         gdal.GDT_Int32: numpy.int32,
-        gdal.GDT_Int64: numpy.int64,
         gdal.GDT_UInt16: numpy.uint16,
         gdal.GDT_UInt32: numpy.uint32,
-        gdal.GDT_UInt64: numpy.uint64,
         gdal.GDT_Float32: numpy.float32,
         gdal.GDT_Float64: numpy.float64,
+        gdal.GDT_CFloat32: numpy.csingle,
+        gdal.GDT_CFloat64: numpy.complex64,
+    }   # complex integer types excluded because there is no numpy equivalent
+    if GDAL_VERSION >= (3, 5, 0):
+        type_map[gdal.GDT_Int64] = numpy.int64
+        type_map[gdal.GDT_UInt64] = numpy.uint64
+
+    if gdal_type not in type_map:
+        raise ValueError(f"Unsupported DataType: {band.DataType}")
+    return type_map[band.DataType]
+
+
+def _numpy_to_gdal_type(numpy_type):
+    if numpy_type == numpy.int8:
+        if GDAL_VERSION >= (3, 7, 0):
+            return gdal.GDT_Int8, None
+        return gdal.GDT_Byte, 'PIXELTYPE=SIGNEDBYTE'
+
+    type_map = {
+        numpy.dtype(bool): gdal.GDT_Byte,
+        numpy.dtype(numpy.uint8): gdal.GDT_Byte,
+        numpy.dtype(numpy.int16): gdal.GDT_Int16,
+        numpy.dtype(numpy.int32): gdal.GDT_Int32,
+        numpy.dtype(numpy.uint16): gdal.GDT_UInt16,
+        numpy.dtype(numpy.uint32): gdal.GDT_UInt32,
+        numpy.dtype(numpy.float32): gdal.GDT_Float32,
+        numpy.dtype(numpy.float64): gdal.GDT_Float64,
+        numpy.dtype(numpy.csingle): gdal.GDT_CFloat32,
+        numpy.dtype(numpy.complex64): gdal.GDT_CFloat64,
     }
+    if GDAL_VERSION >= (3, 5, 0):
+        type_map[numpy.dtype(numpy.int64)] = gdal.GDT_Int64
+        type_map[numpy.dtype(numpy.uint64)] = gdal.GDT_UInt64
 
-    if band.DataType in base_gdal_type_to_numpy:
-        return base_gdal_type_to_numpy[band.DataType]
-
-    if band.DataType != gdal.GDT_Byte:
-        raise ValueError("Unsupported DataType: %s" % str(band.DataType))
-
-    # band must be GDT_Byte type, check if it is signed/unsigned
-    metadata = band.GetMetadata('IMAGE_STRUCTURE')
-    if 'PIXELTYPE' in metadata and metadata['PIXELTYPE'] == 'SIGNEDBYTE':
-        return numpy.int8
-    return numpy.uint8
+    if numpy_type not in type_map:
+        raise ValueError(f"Unsupported DataType: {numpy_type}")
+    return type_map[numpy_type], None
 
 
 def merge_bounding_box_list(bounding_box_list, bounding_box_mode):
@@ -4201,12 +4194,13 @@ def numpy_array_to_raster(
     Return:
         None
     """
-
-    raster_driver = gdal.GetDriverByName(raster_driver_creation_tuple[0])
+    driver_name, creation_options = raster_driver_creation_tuple
+    raster_driver = gdal.GetDriverByName(driver_name)
     ny, nx = base_array.shape
+    gdal_type, type_creation_options = _numpy_to_gdal_type(base_array.dtype)
     new_raster = raster_driver.Create(
-        target_path, nx, ny, 1, NUMPY_TO_GDAL_TYPE[base_array.dtype],
-        options=raster_driver_creation_tuple[1])
+        target_path, nx, ny, 1, gdal_type,
+        options=list(creation_options) + type_creation_options)
     if projection_wkt is not None:
         new_raster.SetProjection(projection_wkt)
     if origin is not None and pixel_size is not None:
@@ -4426,14 +4420,16 @@ def stitch_rasters(
             scaled_raster_path = os.path.join(
                 workspace_dir,
                 f'scaled_{os.path.basename(base_stitch_raster_path)}')
+            gdal_type = _gdal_to_numpy_type(
+                target_band.DataType,
+                target_band.GetMetadata('IMAGE_STRUCTURE'))
             # multiply the pixels in the resampled raster by the ratio of
             # the pixel area in the wgs84 units divided by the area of the
             # original pixel
             raster_calculator(
                 [(base_stitch_raster_path, 1), (base_stitch_nodata, 'raw'),
                  m2_area_per_lat/base_pixel_area_m2,
-                 (_GDAL_TYPE_TO_NUMPY_LOOKUP[
-                     target_raster_info['datatype']], 'raw')], _mult_op,
+                 (gdal_type, 'raw')], _mult_op,
                 scaled_raster_path,
                 target_raster_info['datatype'], base_stitch_nodata)
 
