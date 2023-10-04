@@ -27,6 +27,7 @@ import shapely.ops
 import shapely.prepared
 import shapely.wkb
 from osgeo import gdal
+from osgeo import gdal_array
 from osgeo import gdalconst
 from osgeo import ogr
 from osgeo import osr
@@ -1199,7 +1200,7 @@ def new_raster_from_base(
 
     local_raster_creation_options = list(raster_driver_creation_tuple[1])
     numpy_dtype = _gdal_to_numpy_type(datatype, local_raster_creation_options)
-
+    base_band = base_raster.GetRasterBand(1)
     block_size = base_band.GetBlockSize()
     # It's not clear how or IF we can determine if the output should be
     # striped or tiled.  Here we leave it up to the default inputs or if its
@@ -3678,64 +3679,27 @@ def _gdal_to_numpy_type(gdal_type, metadata):
         numpy_datatype (numpy.dtype): equivalent of band.DataType
 
     """
-    if gdal_type == gdal.GDT_Byte:
-        # check if it is signed/unsigned
-        if ('PIXELTYPE=SIGNEDBYTE' in metadata) or
-           ('PIXELTYPE' in metadata and metadata['PIXELTYPE'] == 'SIGNEDBYTE'):
-                warnings.warn(
-                    ("The PIXELTYPE=SIGNEDBYTE flag will be ignored in the future."
-                     "Use the gdal.GDT_Int8 type instead (new in GDAL 3.7)."),
-                    DeprecationWarning,
-                    stacklevel=2)
-                return numpy.int8
-    return numpy.uint8
+    if (GDAL_VERSION < (3, 7, 0) and gdal_type == gdal.GDT_Byte and
+        (('PIXELTYPE=SIGNEDBYTE' in metadata) or
+         ('PIXELTYPE' in metadata and metadata['PIXELTYPE'] == 'SIGNEDBYTE'))):
+            return numpy.int8
 
-    # for GDT_Byte, you cannot know if it should be int8 or uint8
-    # without seeing the raster metadata.
-    type_map = {
-        gdal.GDT_Int16: numpy.int16,
-        gdal.GDT_Int32: numpy.int32,
-        gdal.GDT_UInt16: numpy.uint16,
-        gdal.GDT_UInt32: numpy.uint32,
-        gdal.GDT_Float32: numpy.float32,
-        gdal.GDT_Float64: numpy.float64,
-        gdal.GDT_CFloat32: numpy.csingle,
-        gdal.GDT_CFloat64: numpy.complex64,
-    }   # complex integer types excluded because there is no numpy equivalent
-    if GDAL_VERSION >= (3, 5, 0):
-        type_map[gdal.GDT_Int64] = numpy.int64
-        type_map[gdal.GDT_UInt64] = numpy.uint64
-
-    if gdal_type not in type_map:
-        raise ValueError(f"Unsupported DataType: {band.DataType}")
-    return type_map[band.DataType]
+    numpy_type = gdal_array.GDALTypeCodeToNumericTypeCode(gdal_type)
+    if numpy_type is None:
+        raise ValueError(f"Unsupported DataType: {gdal_type}")
+    return numpy_type
 
 
 def _numpy_to_gdal_type(numpy_type):
-    if numpy_type == numpy.int8:
-        if GDAL_VERSION >= (3, 7, 0):
-            return gdal.GDT_Int8, None
-        return gdal.GDT_Byte, 'PIXELTYPE=SIGNEDBYTE'
+    numpy_dtype = numpy.dtype(numpy_type)
 
-    type_map = {
-        numpy.dtype(bool): gdal.GDT_Byte,
-        numpy.dtype(numpy.uint8): gdal.GDT_Byte,
-        numpy.dtype(numpy.int16): gdal.GDT_Int16,
-        numpy.dtype(numpy.int32): gdal.GDT_Int32,
-        numpy.dtype(numpy.uint16): gdal.GDT_UInt16,
-        numpy.dtype(numpy.uint32): gdal.GDT_UInt32,
-        numpy.dtype(numpy.float32): gdal.GDT_Float32,
-        numpy.dtype(numpy.float64): gdal.GDT_Float64,
-        numpy.dtype(numpy.csingle): gdal.GDT_CFloat32,
-        numpy.dtype(numpy.complex64): gdal.GDT_CFloat64,
-    }
-    if GDAL_VERSION >= (3, 5, 0):
-        type_map[numpy.dtype(numpy.int64)] = gdal.GDT_Int64
-        type_map[numpy.dtype(numpy.uint64)] = gdal.GDT_UInt64
+    if GDAL_VERSION < (3, 7, 0) and numpy_dtype == numpy.dtype(numpy.int8):
+        return gdal.GDT_Byte, ['PIXELTYPE=SIGNEDBYTE']
 
-    if numpy_type not in type_map:
+    gdal_type = gdal_array.NumericTypeCodeToGDALTypeCode(numpy_dtype)
+    if gdal_type is None:
         raise ValueError(f"Unsupported DataType: {numpy_type}")
-    return type_map[numpy_type], None
+    return gdal_type, []
 
 
 def merge_bounding_box_list(bounding_box_list, bounding_box_mode):

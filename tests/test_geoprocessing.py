@@ -2691,7 +2691,8 @@ class TestGeoprocessing(unittest.TestCase):
         # 255 should convert to -1 with signed bytes
         pygeoprocessing.new_raster_from_base(
             base_path, target_path, gdal.GDT_Byte, [0],
-            fill_value_list=[255])
+            fill_value_list=[255],
+            raster_driver_creation_tuple=INT8_GTIFF_CREATION_TUPLE_OPTIONS)
 
         target_array = pygeoprocessing.raster_to_numpy_array(target_path)
         # we expect a negative result even though we put in a positive because

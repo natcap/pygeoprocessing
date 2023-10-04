@@ -658,18 +658,18 @@ def raster_band_percentile(
     """
     numpy_type = pygeoprocessing.get_raster_info(
         base_raster_path_band[0])['numpy_type']
-    if numpy.issubdtype(numpy_type, np.integer):
+    if numpy.issubdtype(numpy_type, numpy.integer):
         return _raster_band_percentile_int(
             base_raster_path_band, working_sort_directory, percentile_list,
             heap_buffer_size, ffi_buffer_size)
-    elif numpy.issubdtype(numpy_type, np.floating):
+    elif numpy.issubdtype(numpy_type, numpy.floating):
         return _raster_band_percentile_double(
             base_raster_path_band, working_sort_directory, percentile_list,
             heap_buffer_size, ffi_buffer_size)
     else:
         raise ValueError(
             'Cannot process raster type %s (not a known integer nor float '
-            'type)', raster_type)
+            'type)', numpy_type)
 
 
 def _raster_band_percentile_int(
