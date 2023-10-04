@@ -105,37 +105,16 @@ def evaluate_raster_calculator_expression(
         for path, band_id in raster_path_band_const_list
         if isinstance(band_id, int)])
 
-    dtype_to_gdal_type = {
-        numpy.dtype('uint8'): gdal.GDT_Byte,
-        numpy.dtype('int16'): gdal.GDT_Int16,
-        numpy.dtype('int32'): gdal.GDT_Int32,
-        numpy.dtype('int64'): gdal.GDT_Int64,
-        numpy.dtype('uint16'): gdal.GDT_UInt16,
-        numpy.dtype('uint32'): gdal.GDT_UInt32,
-        numpy.dtype('uint64'): gdal.GDT_UInt64,
-        numpy.dtype('float32'): gdal.GDT_Float32,
-        numpy.dtype('float64'): gdal.GDT_Float64,
-        numpy.dtype('csingle'): gdal.GDT_CFloat32,
-        numpy.dtype('complex64'): gdal.GDT_CFloat64,
-    }
+    target_gdal_type, type_creation_options = (
+        geoprocessing._numpy_to_gdal_type(target_numpy_type))
 
-    # most numpy types map directly to a GDAL type except for numpy.int8 in
-    # this case we need to add an additional 'PIXELTYPE=SIGNEDBYTE' to the
-    # creation options
-    if target_numpy_type != numpy.int8:
-        target_gdal_type = dtype_to_gdal_type[
-            target_numpy_type]
-        target_raster_driver_creation_tuple = raster_driver_creation_tuple
-    else:
-        # it's a signed byte
-        target_gdal_type = gdal.GDT_Byte
-        target_raster_driver_creation_tuple = (
-            raster_driver_creation_tuple[0],
-            tuple(raster_driver_creation_tuple[1])+('PIXELTYPE=SIGNEDBYTE',))
+    driver, creation_options = raster_driver_creation_tuple
+    creation_options = list(creation_options) + type_creation_options
+
     geoprocessing.raster_calculator(
         raster_path_band_const_list, _generic_raster_op, target_raster_path,
         target_gdal_type, target_nodata,
-        raster_driver_creation_tuple=target_raster_driver_creation_tuple)
+        raster_driver_creation_tuple=(driver, creation_options))
 
 
 def _generic_raster_op(*arg_list):

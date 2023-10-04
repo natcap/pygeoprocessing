@@ -13,7 +13,6 @@ import sys
 import tempfile
 import threading
 import time
-import warnings
 
 import numpy
 import numpy.ma
