@@ -4814,11 +4814,16 @@ class TestGeoprocessing(unittest.TestCase):
             ('cfloat32.tif', gdal.GDT_CFloat32, numpy.csingle),
             ('cfloat64.tif', gdal.GDT_CFloat64, numpy.complex64)]
 
-        if pygeoprocessing.geoprocessing.GDAL_VERSION >= (3, 7, 0):
+        if pygeoprocessing.geoprocessing.GDAL_VERSION >= (3, 5, 0):
             gdal_type_numpy_pairs.append(
                 ('int64.tif', gdal.GDT_Int64, numpy.int64))
             gdal_type_numpy_pairs.append(
                 ('uint64.tif', gdal.GDT_UInt64, numpy.uint64))
+        if pygeoprocessing.geoprocessing.GDAL_VERSION >= (3, 7, 0):
+            gdal_type_numpy_pairs.append(
+                ('int8.tif', gdal.GDT_Int8, numpy.int8))
+            gdal_type_numpy_pairs.append(
+                ('uint8.tif', gdal.GDT_Byte, numpy.uint8))
 
         for raster_filename, gdal_type, numpy_type in gdal_type_numpy_pairs:
             raster_path = os.path.join(self.workspace_dir, raster_filename)
