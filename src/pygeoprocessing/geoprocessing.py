@@ -3666,17 +3666,18 @@ def mask_raster(
 
 
 def _gdal_to_numpy_type(gdal_type, metadata):
-    """Calculate the equivalent numpy datatype from a GDAL raster band type.
-
-    This function doesn't handle complex or unknown types.  If they are
-    passed in, this function will raise a ValueError.
+    """Calculate the equivalent numpy datatype from a GDAL type and metadata.
 
     Args:
-        band (gdal.Band): GDAL Band
+        gdal_type: GDAL.GDT_* data type code
+        metadata: mapping or list of strings to check for the existence of
+            the 'PIXELTYPE=SIGNEDBYTE' flag
 
-    Return:
-        numpy_datatype (numpy.dtype): equivalent of band.DataType
+    Returns:
+        numpy.dtype that is the equivalent of the input gdal type
 
+    Raises:
+        ValueError if an unsupported data type is entered
     """
     if (GDAL_VERSION < (3, 7, 0) and gdal_type == gdal.GDT_Byte and
         (('PIXELTYPE=SIGNEDBYTE' in metadata) or
@@ -3690,6 +3691,19 @@ def _gdal_to_numpy_type(gdal_type, metadata):
 
 
 def _numpy_to_gdal_type(numpy_type):
+    """Calculate the equivalent GDAL type and metadata from a numpy type.
+
+    Args:
+        numpy_type: numpy data type
+
+    Returns:
+        (gdal type, metadata) tuple. gdal type is a gdal.GDT_* type code.
+        metadata is an empty list in most cases, or ['PIXELTYPE=SIGNEDBYTE']
+        if needed to indicate a signed byte type.
+
+    Raises:
+        ValueError if an unsupported data type is entered
+    """
     numpy_dtype = numpy.dtype(numpy_type)
 
     if GDAL_VERSION < (3, 7, 0) and numpy_dtype == numpy.dtype(numpy.int8):
