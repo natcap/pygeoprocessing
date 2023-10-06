@@ -2638,6 +2638,8 @@ class TestGeoprocessing(unittest.TestCase):
         expected_result[127, 127] = nodata
         numpy.testing.assert_allclose(result, expected_result)
 
+    @unittest.skipIf(pygeoprocessing.geoprocessing.GDAL_VERSION >= (3, 7, 0),
+                     "not supported in this library version")
     def test_raster_calculator_signed_byte(self):
         """PGP.geoprocessing: test that signed byte pixels interpreted."""
         pixel_array = numpy.ones((128, 128), numpy.uint8)
@@ -2677,6 +2679,8 @@ class TestGeoprocessing(unittest.TestCase):
             target_band = None
             target_raster = None
 
+    @unittest.skipIf(pygeoprocessing.geoprocessing.GDAL_VERSION >= (3, 7, 0),
+                     "not supported in this library version")
     def test_new_raster_from_base_unsigned_byte(self):
         """PGP.geoprocessing: test that signed byte rasters copy over."""
         pixel_array = numpy.ones((128, 128), numpy.uint8)
@@ -2691,7 +2695,8 @@ class TestGeoprocessing(unittest.TestCase):
         # 255 should convert to -1 with signed bytes
         pygeoprocessing.new_raster_from_base(
             base_path, target_path, gdal.GDT_Byte, [0],
-            fill_value_list=[255])
+            fill_value_list=[255],
+            raster_driver_creation_tuple=INT8_GTIFF_CREATION_TUPLE_OPTIONS)
 
         target_array = pygeoprocessing.raster_to_numpy_array(target_path)
         # we expect a negative result even though we put in a positive because
@@ -4799,7 +4804,7 @@ class TestGeoprocessing(unittest.TestCase):
 
     def test_get_raster_info_type(self):
         """PGP: test get_raster_info's type."""
-        gdal_type_numpy_pairs = (
+        gdal_type_numpy_pairs = [
             ('int16.tif', gdal.GDT_Int16, numpy.int16),
             ('uint16.tif', gdal.GDT_UInt16, numpy.uint16),
             ('int32.tif', gdal.GDT_Int32, numpy.int32),
@@ -4807,7 +4812,18 @@ class TestGeoprocessing(unittest.TestCase):
             ('float32.tif', gdal.GDT_Float32, numpy.float32),
             ('float64.tif', gdal.GDT_Float64, numpy.float64),
             ('cfloat32.tif', gdal.GDT_CFloat32, numpy.csingle),
-            ('cfloat64.tif', gdal.GDT_CFloat64, numpy.complex64))
+            ('cfloat64.tif', gdal.GDT_CFloat64, numpy.complex64)]
+
+        if pygeoprocessing.geoprocessing.GDAL_VERSION >= (3, 5, 0):
+            gdal_type_numpy_pairs.append(
+                ('int64.tif', gdal.GDT_Int64, numpy.int64))
+            gdal_type_numpy_pairs.append(
+                ('uint64.tif', gdal.GDT_UInt64, numpy.uint64))
+        if pygeoprocessing.geoprocessing.GDAL_VERSION >= (3, 7, 0):
+            gdal_type_numpy_pairs.append(
+                ('int8.tif', gdal.GDT_Int8, numpy.int8))
+            gdal_type_numpy_pairs.append(
+                ('uint8.tif', gdal.GDT_Byte, numpy.uint8))
 
         for raster_filename, gdal_type, numpy_type in gdal_type_numpy_pairs:
             raster_path = os.path.join(self.workspace_dir, raster_filename)
@@ -5388,6 +5404,13 @@ class TestGeoprocessing(unittest.TestCase):
             pygeoprocessing.choose_dtype(
                 uint8_raster, float32_raster, int16_raster),
             numpy.float32)
+        if pygeoprocessing.geoprocessing.GDAL_VERSION >= (3, 7, 0):
+            int64_raster = os.path.join(self.workspace_dir, 'int64.tif')
+            _array_to_raster(
+                numpy.array([[1]], dtype=numpy.int64), -1, int64_raster)
+            self.assertEqual(
+                pygeoprocessing.choose_dtype(int64_raster, float64_raster),
+                numpy.float64)
 
     def test_raster_reduce(self):
         """PGP: test raster_reduce can calculate a sum."""

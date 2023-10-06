@@ -15,6 +15,10 @@ Unreleased Changes
   from the input vector.
 * Added a new function, ``pygeoprocessing.align_bbox``, which pads a bounding
   box to align with the grid of a given geotransform.
+* Added support for int64 and uint64 (GDAL 3.5+)
+  https://github.com/natcap/pygeoprocessing/issues/352
+* Added support for signed bytes (GDAL 3.7+)
+  https://github.com/natcap/pygeoprocessing/issues/329
 
 2.4.1 (2023-09-05)
 ------------------

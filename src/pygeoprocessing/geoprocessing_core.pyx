@@ -656,22 +656,20 @@ def raster_band_percentile(
         will select the next element higher than the percentile cutoff).
 
     """
-    raster_type = pygeoprocessing.get_raster_info(
-        base_raster_path_band[0])['datatype']
-    if raster_type in (
-            gdal.GDT_Byte, gdal.GDT_Int16, gdal.GDT_UInt16, gdal.GDT_Int32,
-            gdal.GDT_UInt32):
+    numpy_type = pygeoprocessing.get_raster_info(
+        base_raster_path_band[0])['numpy_type']
+    if numpy.issubdtype(numpy_type, numpy.integer):
         return _raster_band_percentile_int(
             base_raster_path_band, working_sort_directory, percentile_list,
             heap_buffer_size, ffi_buffer_size)
-    elif raster_type in (gdal.GDT_Float32, gdal.GDT_Float64):
+    elif numpy.issubdtype(numpy_type, numpy.floating):
         return _raster_band_percentile_double(
             base_raster_path_band, working_sort_directory, percentile_list,
             heap_buffer_size, ffi_buffer_size)
     else:
         raise ValueError(
             'Cannot process raster type %s (not a known integer nor float '
-            'type)', raster_type)
+            'type)', numpy_type)
 
 
 def _raster_band_percentile_int(

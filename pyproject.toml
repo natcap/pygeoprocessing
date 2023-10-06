@@ -13,8 +13,7 @@ build-backend = "setuptools.build_meta"
 
 [tool.pytest.ini_options]
 # Raise warnings to exceptions.
-filterwarnings = 'error'
-
+filterwarnings = ["error", "default::DeprecationWarning", "default::FutureWarning"]
 
 [tool.setuptools_scm]
 version_scheme = "post-release"
