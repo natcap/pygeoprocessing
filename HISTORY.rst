@@ -19,6 +19,8 @@ Unreleased Changes
   https://github.com/natcap/pygeoprocessing/issues/352
 * Added support for signed bytes (GDAL 3.7+)
   https://github.com/natcap/pygeoprocessing/issues/329
+* Fixed a bug where ``calculate_slope`` did not work as expected when the DEM
+  raster's nodata value is NaN (https://github.com/natcap/pygeoprocessing/issues/352)
 
 2.4.1 (2023-09-05)
 ------------------
