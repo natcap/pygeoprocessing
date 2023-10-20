@@ -3447,6 +3447,25 @@ class TestGeoprocessing(unittest.TestCase):
         expected_slope = numpy.zeros((n_pixels, n_pixels), numpy.float32)
         numpy.testing.assert_almost_equal(expected_slope, actual_slope)
 
+    def test_calculate_slope_nan_nodata(self):
+        """PGP.geoprocessing: test calculate slope with NaN nodata."""
+        n_pixels = 9
+        dem_array = numpy.ones((n_pixels, n_pixels), numpy.float32)
+        dem_array[0, 0] = numpy.nan
+        dem_path = os.path.join(self.workspace_dir, 'dem.tif')
+        target_slope_path = os.path.join(self.workspace_dir, 'slope.tif')
+        _array_to_raster(
+            dem_array, numpy.nan, dem_path, projection_epsg=4326,
+            pixel_size=(1, -1), origin=(0.1, 0))
+
+        pygeoprocessing.calculate_slope((dem_path, 1), target_slope_path)
+
+        actual_slope = pygeoprocessing.raster_to_numpy_array(target_slope_path)
+        expected_slope = numpy.zeros((n_pixels, n_pixels), numpy.float32)
+        expected_slope[0, 0] = pygeoprocessing.get_raster_info(
+            target_slope_path)['nodata'][0]
+        numpy.testing.assert_almost_equal(expected_slope, actual_slope)
+
     def test_rasterize(self):
         """PGP.geoprocessing: test rasterize."""
         n_pixels = 3
