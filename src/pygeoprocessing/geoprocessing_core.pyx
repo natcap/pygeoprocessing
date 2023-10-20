@@ -13,6 +13,7 @@ import traceback
 import zlib
 
 cimport cython
+cimport libc.math as cmath
 cimport libcpp.algorithm
 cimport numpy
 from cython.operator cimport dereference as deref
@@ -284,6 +285,14 @@ def _distance_transform_edt(
     mask_raster = None
     g_raster = None
 
+
+cdef inline bint _eq(double value, double nodata):
+    """Compare value against nodata, handling NaN"""
+    if cmath.isnan(nodata):
+        return cmath.isnan(value)
+    return value == nodata
+
+
 @cython.boundscheck(False)
 @cython.wraparound(False)
 @cython.nonecheck(False)
@@ -402,12 +411,6 @@ def calculate_slope(
         dem_band.ReadAsArray(
             buf_obj=dem_array[y_start:y_end, x_start:x_end],
             **block_offset_copy)
-
-        def _eq(value, nodata):
-            """Compare value against nodata, handling NaN"""
-            if numpy.isnan(nodata):
-                return numpy.isnan(value)
-            return value == nodata
 
         for row_index in range(1, win_ysize+1):
             for col_index in range(1, win_xsize+1):
