@@ -1,7 +1,7 @@
 Release History
 ===============
 
-Unreleased Changes
+2.4.2 (2023-10-24)
 ------------------
 * Fixed an issue where MFD flow direction was producing many nodata holes given
   a large-enough DEM.  These nodata holes would then propagate to flow
@@ -62,6 +62,8 @@ Unreleased Changes
   ``pygeoprocessing.raster_calculator`` may return a complex value. This is
   only an issue when pygeoprocessing is compiled against Cython 3.0.0 and
   later. https://github.com/natcap/pygeoprocessing/issues/342
+* Added the new function ``pygeoprocessing.raster_map``, a higher-level version
+  of ``raster_calculator``. https://github.com/natcap/pygeoprocessing/issues/235
 
 2.4.0 (2023-03-03)
 ------------------
