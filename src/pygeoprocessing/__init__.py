@@ -49,6 +49,7 @@ from .geoprocessing import warp_raster
 from .geoprocessing import zonal_statistics
 from .geoprocessing_core import calculate_slope
 from .geoprocessing_core import raster_band_percentile
+from .slurm_utils import log_warning_if_gdal_will_exhaust_slurm_memory
 
 try:
     __version__ = version('pygeoprocessing')
@@ -61,9 +62,11 @@ except PackageNotFoundError:
 # Thus, the imports are the source of truth for __all__.
 __all__ = ('calculate_slope', 'raster_band_percentile',
            'ReclassificationMissingValuesError')
+exclude_set = {'log_warning_if_gdal_will_exhaust_slurm_memory'}
 for attrname in [k for k in locals().keys()]:
     try:
-        if isinstance(getattr(geoprocessing, attrname), types.FunctionType):
+        if (isinstance(getattr(geoprocessing, attrname), types.FunctionType)
+                and attrname not in exclude_set):
             __all__ += (attrname,)
     except AttributeError:
         pass
@@ -75,3 +78,6 @@ LOGGER.addHandler(logging.NullHandler())  # silence logging by default
 UNKNOWN_TYPE = 0
 RASTER_TYPE = 1
 VECTOR_TYPE = 2
+
+# Check GDAL's cache max vs SLURM memory if we're on slurm.
+log_warning_if_gdal_will_exhaust_slurm_memory()
