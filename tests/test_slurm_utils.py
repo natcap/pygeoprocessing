@@ -30,11 +30,11 @@ class SLURMUtilsTest(unittest.TestCase):
                                256]:        # megabytes, exceeds slurm
             with unittest.mock.patch('osgeo.gdal.GetCacheMax',
                                      lambda: gdal_cachesize):
-                with warnings.catch_warnings(record=True) as caught_warnings:
+                with unittest.mock.patch('warnings.warn') as warn_mock:
                     slurm_utils.log_warning_if_gdal_will_exhaust_slurm_memory()
 
-                self.assertEqual(len(caught_warnings), 1)
-                caught_message = caught_warnings[0].message.args[0]
+                warn_mock.assert_called_once()
+                caught_message = warn_mock.call_args[0][0]
                 self.assertIn("exceeds the memory SLURM has", caught_message)
                 self.assertIn(f"GDAL_CACHEMAX={gdal_cachesize}",
                               caught_message)
@@ -81,10 +81,10 @@ class SLURMUtilsTest(unittest.TestCase):
         """PGP.slurm_utils: verify no warnings when not on slurm."""
         with unittest.mock.patch('osgeo.gdal.GetCacheMax',
                                  lambda: 123456789):  # big memory value
-            with warnings.catch_warnings(record=True) as caught_warnings:
+            with unittest.mock.patch('warnings.warn') as warn_mock:
                 slurm_utils.log_warning_if_gdal_will_exhaust_slurm_memory()
 
-            self.assertEqual(caught_warnings, [])
+            warn_mock.assert_not_called()
 
     @unittest.mock.patch.dict(os.environ, {}, clear=True)  # clear all env vars
     def test_not_on_slurm_no_logging(self):
