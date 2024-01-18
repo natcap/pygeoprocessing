@@ -8,6 +8,23 @@ LOGGER = logging.getLogger(__name__)
 
 
 def log_warning_if_gdal_will_exhaust_slurm_memory():
+    """Warn if GDAL's cache max size exceeds SLURM's allocated memory.
+
+    This function checks GDAL's max cache (set by the ``GDAL_CACHEMAX``
+    environment variable or ``gdal.SetCacheMax()`` function) against the amount
+    of memory available to the current SLURM node, identified by the
+    ``SLURM_MEM_PER_NODE`` environment variable.
+
+    This function uses a primitive check of environment variables to verify
+    whether this function is operating on a SLURM node.  If any environment
+    variables have the prefix ``SLURM``, we assume we are running within a
+    SLURM environment.
+
+    If the GDAL cache size may exceed the SLURM available memory, then a
+    warning is issued.  If ``logging.captureWarnings(True)`` is in effect, a
+    warning is logged with the logging system.  Otherwise, the warnings system
+    is used directly.
+    """
     slurm_env_vars = set(k for k in os.environ.keys() if k.startswith('SLURM'))
     if slurm_env_vars:
         gdal_cache_size = gdal.GetCacheMax()
