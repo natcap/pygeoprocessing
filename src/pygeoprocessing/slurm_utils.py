@@ -17,7 +17,8 @@ def log_warning_if_gdal_will_exhaust_slurm_memory():
             # See gcore/gdalrasterblock.cpp for reference.
             gdal_cache_size_mb = gdal_cache_size
         else:
-            gdal_cache_size_mb = gdal_cache_size * 1024 * 1024
+            # Convert from bytes to megabytes
+            gdal_cache_size_mb = gdal_cache_size / 1024 / 1024
 
         slurm_mem_per_node = os.environ['SLURM_MEM_PER_NODE']
         if gdal_cache_size_mb > int(os.environ['SLURM_MEM_PER_NODE']):

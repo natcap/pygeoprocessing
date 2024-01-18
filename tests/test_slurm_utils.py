@@ -26,8 +26,8 @@ class SLURMUtilsTest(unittest.TestCase):
     @unittest.mock.patch.dict(os.environ, {"SLURM_MEM_PER_NODE": "128"})
     def test_warning_gdal_cachemax_unset_on_slurm(self):
         """PGP.slurm_utils: test warning when GDAL cache not set on slurm."""
-        for gdal_cachesize in [123456789,  # big number of bytes
-                               256]:       # megabytes, exceeds slurm
+        for gdal_cachesize in [1234567890,  # big number of bytes
+                               256]:        # megabytes, exceeds slurm
             with unittest.mock.patch('osgeo.gdal.GetCacheMax',
                                      lambda: gdal_cachesize):
                 with warnings.catch_warnings(record=True) as caught_warnings:
@@ -48,8 +48,8 @@ class SLURMUtilsTest(unittest.TestCase):
         slurm_logger = logging.getLogger('pygeoprocessing.slurm_utils')
         slurm_logger.addHandler(queuehandler)
 
-        for gdal_cachesize in [123456789,  # big number of bytes
-                               256]:       # megabytes, exceeds slurm
+        for gdal_cachesize in [1234567890,  # big number of bytes
+                               256]:        # megabytes, exceeds slurm
             with unittest.mock.patch('osgeo.gdal.GetCacheMax',
                                      lambda: gdal_cachesize):
                 try:
