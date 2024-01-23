@@ -25,8 +25,7 @@ def log_warning_if_gdal_will_exhaust_slurm_memory():
     warning is logged with the logging system.  Otherwise, the warnings system
     is used directly.
     """
-    slurm_env_vars = set(k for k in os.environ.keys() if k.startswith('SLURM'))
-    if slurm_env_vars:
+    if {'SLURM_MEM_PER_NODE'}.issubset(set(os.environ.keys())):
         gdal_cache_size = gdal.GetCacheMax()
         if gdal_cache_size < 100000:
             # If the cache size is 100,000 or greater, it's assumed to be in
@@ -38,7 +37,7 @@ def log_warning_if_gdal_will_exhaust_slurm_memory():
             gdal_cache_size_mb = gdal_cache_size / 1024 / 1024
 
         slurm_mem_per_node = os.environ['SLURM_MEM_PER_NODE']
-        if gdal_cache_size_mb > int(os.environ['SLURM_MEM_PER_NODE']):
+        if gdal_cache_size_mb > int(slurm_mem_per_node):
             message = (
                 "GDAL's cache max exceeds the memory SLURM has "
                 "allocated for this node. The process will probably be "
