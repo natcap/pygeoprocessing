@@ -1,6 +1,13 @@
 Release History
 ===============
 
+Unreleased Changes
+------------------
+* If running on a SLURM system (identified by the presence of ``SLURM*``
+  environment variables), the GDAL cache max is checked against the amount of
+  memory available on the compute node.  If GDAL may exceed the available slurm
+  memory, a warning is issued or logged. https://github.com/natcap/pygeoprocessing/issues/361
+
 2.4.2 (2023-10-24)
 ------------------
 * Fixed an issue where MFD flow direction was producing many nodata holes given
