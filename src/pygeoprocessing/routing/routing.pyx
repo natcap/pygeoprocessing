@@ -148,7 +148,7 @@ cdef struct MFDFlowPixelType:
     double sum_of_weights
 
 # used when constructing geometric streams, the x/y coordinates represent
-# a seed point to walk upstream from, the upstream_flow_dir indicates the
+# a seed point to walk upstream from, the upstream_d8_dir indicates the
 # d8 flow direction to walk and the source_id indicates the source stream it
 # spawned from
 cdef struct StreamConnectivityPoint:
@@ -3197,8 +3197,6 @@ def extract_strahler_streams_d8(
             from the upstream to downstream component of this stream
             segment.
         * "outlet" (int): 1 if this segment is an outlet, 0 if not.
-        * "river_id": unique ID among all stream segments which are
-            hydrologically connected.
         * "us_fa" (int): flow accumulation value at the upstream end of
             the stream segment.
         * "ds_fa" (int): flow accumulation value at the downstream end of

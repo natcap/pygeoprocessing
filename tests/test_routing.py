@@ -1135,7 +1135,7 @@ class TestRouting(unittest.TestCase):
         """PGP.routing: test Strahler stream and subwatershed creation."""
         # make a long canyon herringbone style DEM that will have a main
         # central river and single pixel tributaries every other pixel to
-        # the west and east as one steps south the canyon
+        # the west and east as one steps south through the canyon
         n = 53
         dem_array = numpy.zeros((n, 3))
         dem_array[0, 1] = -0.5
