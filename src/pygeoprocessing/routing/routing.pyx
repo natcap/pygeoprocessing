@@ -3289,6 +3289,9 @@ def extract_strahler_streams_d8(
     cdef int flow_nodata = pygeoprocessing.get_raster_info(
         flow_dir_d8_raster_path_band[0])['nodata'][
             flow_dir_d8_raster_path_band[1]-1]
+    cdef double flow_accum_nodata = pygeoprocessing.get_raster_info(
+        flow_accum_raster_path_band[0])['nodata'][
+        flow_accum_raster_path_band[1]-1]
 
     # D8 flow directions encoded as
     # 321
@@ -3318,7 +3321,7 @@ def extract_strahler_streams_d8(
     # this array is filled out as upstream directions are calculated and
     # indexed by `upstream_count`
     cdef int *upstream_dirs = [0, 0, 0, 0, 0, 0, 0, 0]
-    cdef unsigned long local_flow_accum
+    cdef double local_flow_accum
     # used to determine if source is a drain and should be tracked
     cdef int is_drain
 
@@ -3352,15 +3355,16 @@ def extract_strahler_streams_d8(
                 is_drain = 0
                 x_l = xoff + i
                 y_l = yoff + j
-                local_flow_accum = <long>flow_accum_managed_raster.get(
+                local_flow_accum = <double>flow_accum_managed_raster.get(
                     x_l, y_l)
-                if local_flow_accum < min_flow_accum_threshold:
+                if (local_flow_accum < min_flow_accum_threshold or
+                        _is_close(local_flow_accum,
+                            flow_accum_nodata, 1e-8, 1e-5)):
                     continue
                 # check to see if it's a drain
                 d_n = <int>flow_dir_managed_raster.get(x_l, y_l)
                 x_n = x_l + D8_XOFFSET[d_n]
                 y_n = y_l + D8_YOFFSET[d_n]
-
                 if (x_n < 0 or y_n < 0 or x_n >= n_cols or y_n >= n_cols or
                         <int>flow_dir_managed_raster.get(
                             x_n, y_n) == flow_nodata):
@@ -3383,7 +3387,7 @@ def extract_strahler_streams_d8(
                     if d_n == flow_nodata:
                         continue
                     if (D8_REVERSE_DIRECTION[d] == d_n and
-                            <long>flow_accum_managed_raster.get(
+                            <double>flow_accum_managed_raster.get(
                                 x_n, y_n) >= min_flow_accum_threshold):
                         upstream_dirs[upstream_count] = d
                         upstream_count += 1
@@ -3432,6 +3436,10 @@ def extract_strahler_streams_d8(
             flow_accum_managed_raster, flow_dir_managed_raster, flow_nodata,
             min_flow_accum_threshold, coord_to_stream_ids)
         if payload is None:
+            LOGGER.debug(
+                f'no geometry for source point at '
+                f'{source_stream_point.xi}, {source_stream_point.yi} '
+                f'upstream direction: {source_stream_point.upstream_d8_dir}')
             continue
         x_u, y_u, ds_x_1, ds_y_1, upstream_id_list, stream_line = payload
 
