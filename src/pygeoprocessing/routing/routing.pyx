@@ -4877,7 +4877,7 @@ cdef _calculate_stream_geometry(
 def _delete_feature(
         stream_feature, stream_layer, upstream_to_downstream_id,
         downstream_to_upstream_ids):
-    """Helper for Mahler extraction to delete all references to a stream.
+    """Helper for Strahler extraction to delete all references to a stream.
 
     Args:
         stream_feature (ogr.Feature): feature to delete
