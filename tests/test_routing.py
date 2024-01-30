@@ -23,7 +23,7 @@ class TestRouting(unittest.TestCase):
 
     def tearDown(self):
         """Clean up remaining files."""
-        # shutil.rmtree(self.workspace_dir)
+        shutil.rmtree(self.workspace_dir)
 
     def test_pit_filling(self):
         """PGP.routing: test pitfilling."""
