@@ -867,7 +867,8 @@ def align_and_resize_raster_stack(
         target_projection_wkt=None, vector_mask_options=None,
         gdal_warp_options=None,
         raster_driver_creation_tuple=DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS,
-        osr_axis_mapping_strategy=DEFAULT_OSR_AXIS_MAPPING_STRATEGY):
+        osr_axis_mapping_strategy=DEFAULT_OSR_AXIS_MAPPING_STRATEGY,
+        working_dir=None):
     """Generate rasters from a base such that they align geospatially.
 
     This function resizes base rasters that are in the same geospatial
@@ -933,6 +934,9 @@ def align_and_resize_raster_stack(
               This will be used to filter the geometry in the mask. Ex: ``'id
               > 10'`` would use all features whose field value of 'id' is >
               10.
+            * ``'mask_raster_path'`` (str): Optional. the string path to where
+              the mask raster should be written on disk.  If not provided, a
+              temporary file will be created within ``working_dir``.
 
         gdal_warp_options (sequence): if present, the contents of this list
             are passed to the ``warpOptions`` parameter of ``gdal.Warp``. See
@@ -947,6 +951,10 @@ def align_and_resize_raster_stack(
             ``SpatialReference`` objects. Defaults to
             ``geoprocessing.DEFAULT_OSR_AXIS_MAPPING_STRATEGY``. This parameter
             should not be changed unless you know what you are doing.
+        working_dir=None (str): if present, the path to a directory within
+           which a temporary directory will be created.  If not provided, the
+           new directory will be created within the system's temporary
+           directory.
 
     Returns:
         None
@@ -1134,6 +1142,40 @@ def align_and_resize_raster_stack(
                 n_pixels * align_pixel_size[index] +
                 align_bounding_box[index])
 
+    if vector_mask_options:
+        # create a warped VRT
+        temp_working_dir = tempfile.mkdtemp(dir=working_dir, prefix='mask-')
+        warped_vrt = os.path.join(temp_working_dir, 'warped.vrt')
+        warp_raster(
+            base_raster_path=base_raster_path_list[0],
+            target_pixel_size=target_pixel_size,
+            target_raster_path=warped_vrt,
+            resample_method='near',
+            target_bb=target_bounding_box,
+            raster_driver_creation_tuple=('VRT', []),
+            target_projection_wkt=target_projection_wkt,
+            base_projection_wkt=(
+                None if not base_projection_wkt_list else
+                base_projection_wkt_list[0]),
+            gdal_warp_options=gdal_warp_options)
+
+        if 'mask_raster_path' in vector_mask_options:
+            mask_raster_path = vector_mask_options['mask_raster_path']
+        else:
+            mask_raster_path = os.path.join(temp_working_dir, 'mask.tif')
+        new_raster_from_base(
+            warped_vrt, mask_raster_path, gdal.GDT_Byte, [0], [0])
+
+        rasterize(vector_mask_options['mask_vector_path'],
+                  mask_raster_path, burn_values=[1],
+                  where_clause=(
+                      vector_mask_options['mask_vector_where_filter']
+                      if 'mask_vector_where_filter' in vector_mask_options
+                      else None))
+    else:
+        # No masking, set to None
+        mask_raster_path = None
+
     for index, (base_path, target_path, resample_method) in enumerate(zip(
             base_raster_path_list, target_raster_path_list,
             resample_method_list)):
@@ -1145,13 +1187,16 @@ def align_and_resize_raster_stack(
             base_projection_wkt=(
                 None if not base_projection_wkt_list else
                 base_projection_wkt_list[index]),
-            vector_mask_options=vector_mask_options,
+            vector_mask_options=mask_raster_path,
             gdal_warp_options=gdal_warp_options)
         LOGGER.info(
             '%d of %d aligned: %s', index+1, n_rasters,
             os.path.basename(target_path))
 
     LOGGER.info("aligned all %d rasters.", n_rasters)
+
+    if vector_mask_options:
+        shutil.rmtree(temp_working_dir, ignore_errors=True)
 
 
 def new_raster_from_base(
@@ -2433,10 +2478,13 @@ def warp_raster(
             in Well Known Text format.
         n_threads (int): optional, if not None this sets the ``N_THREADS``
             option for ``gdal.Warp``.
-        vector_mask_options (dict): optional, if not None, this is a
-            dictionary of options to use an existing vector's geometry to
-            mask out pixels in the target raster that do not overlap the
-            vector's geometry. Keys to this dictionary are:
+        vector_mask_options (dict or str): optional. If None, no masking will
+            be done.  If a string, it must be a path to a raster that is in the
+            target projection and also has the same dimensions and bounding box
+            as the target warped raster.  If a dict, it is a dictionary of
+            options to use an existing vector's geometry to mask out pixels in
+            the target raster that do not overlap the vector's geometry. Keys
+            to this dictionary are:
 
             * ``'mask_vector_path'``: (str) path to the mask vector file. This
               vector will be automatically projected to the target
@@ -2555,7 +2603,7 @@ def warp_raster(
     mask_vector_path = None
     mask_layer_id = 0
     mask_vector_where_filter = None
-    if vector_mask_options:
+    if vector_mask_options and isinstance(vector_mask_options, dict):
         # translate pygeoprocessing terminology into GDAL warp options.
         if 'mask_vector_path' not in vector_mask_options:
             raise ValueError(
@@ -2608,7 +2656,7 @@ def warp_raster(
         callback=reproject_callback,
         callback_data=[target_raster_path])
 
-    if vector_mask_options:
+    if vector_mask_options and isinstance(vector_mask_options, dict):
         # Make sure the raster creation options passed to ``mask_raster``
         # reflect any metadata updates
         updated_raster_driver_creation_tuple = (
@@ -2623,6 +2671,23 @@ def warp_raster(
             target_mask_value=None, working_dir=temp_working_dir,
             all_touched=False,
             raster_driver_creation_tuple=updated_raster_driver_creation_tuple)
+    elif vector_mask_options and isinstance(vector_mask_options, str):
+        source_raster_info = get_raster_info(warped_raster_path)
+        source_nodata = source_raster_info['nodata'][0]
+
+        def _mask_values(array, mask):
+            output = numpy.full(array.shape, source_nodata)
+            valid_mask = (
+                mask == 1 & ~array_equals_nodata(array, source_nodata))
+            output[valid_mask] = array[valid_mask]
+            return output
+
+        raster_calculator(
+            [(warped_raster_path, 1), (vector_mask_options, 1)],
+            _mask_values, target_raster_path, source_raster_info['datatype'],
+            source_nodata)
+
+    if vector_mask_options:
         shutil.rmtree(temp_working_dir)
 
 
