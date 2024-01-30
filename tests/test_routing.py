@@ -23,7 +23,7 @@ class TestRouting(unittest.TestCase):
 
     def tearDown(self):
         """Clean up remaining files."""
-        shutil.rmtree(self.workspace_dir)
+        # shutil.rmtree(self.workspace_dir)
 
     def test_pit_filling(self):
         """PGP.routing: test pitfilling."""
@@ -1131,19 +1131,26 @@ class TestRouting(unittest.TestCase):
             flow_dir_array[1:-1, 1: -1], flow_dir_nodata).any(),
             'all flow directions should be defined')
 
-    def test_extract_straher_streams_watersheds_d8(self):
+    def test_extract_strahler_streams_watersheds_d8(self):
         """PGP.routing: test Strahler stream and subwatershed creation."""
         # make a long canyon herringbone style DEM that will have a main
         # central river and single pixel tributaries every other pixel to
-        # the west and east as one steps south through the canyon
+        # the west and east as one steps north/south through the canyon
+        target_nodata = -1
         n = 53
         dem_array = numpy.zeros((n, 3))
-        dem_array[0, 1] = -0.5
         # make notches every other row for both columns
         dem_array[1::2, 0::2] = 1
+        # near the downstream end, set values in such a way that a nodata
+        # pixel would otherwise be treated as a stream seed point if nodata
+        # is not properly masked.
+        dem_array[1, 1] = -0.5  # a drain
+        dem_array[0, :] = 1  # two high points that drain into nodata pixel
+        dem_array[0, 1] = target_nodata
+
         dem_path = os.path.join(self.workspace_dir, 'dem.tif')
         pygeoprocessing.numpy_array_to_raster(
-            dem_array, -1, (1, -1), (0, 0), None, dem_path)
+            dem_array, target_nodata, (1, -1), (0, 0), None, dem_path)
 
         filled_pits_path = os.path.join(self.workspace_dir, 'filled_pits.tif')
         pygeoprocessing.routing.fill_pits(
@@ -1168,11 +1175,10 @@ class TestRouting(unittest.TestCase):
             autotune_flow_accumulation=False,
             min_flow_accum_threshold=1)
 
-        # every pixel is a stream
         stream_vector = gdal.OpenEx(
             no_autotune_stream_vector_path, gdal.OF_VECTOR)
         stream_layer = stream_vector.GetLayer()
-        self.assertEqual(stream_layer.GetFeatureCount(), n*2+2)
+        self.assertEqual(stream_layer.GetFeatureCount(), n*2+1)
         stream_layer = None
         stream_vector = None
 
@@ -1186,11 +1192,10 @@ class TestRouting(unittest.TestCase):
             autotune_flow_accumulation=True,
             min_flow_accum_threshold=2)
 
-        # n-1 streams
         stream_vector = gdal.OpenEx(
             autotune_stream_vector_path, gdal.OF_VECTOR)
         stream_layer = stream_vector.GetLayer()
-        self.assertEqual(stream_layer.GetFeatureCount(), n-2)
+        self.assertEqual(stream_layer.GetFeatureCount(), n-3)
 
         # this gets just the single outlet feature
         stream_layer.SetAttributeFilter(f'"outlet"=1')
@@ -1212,8 +1217,9 @@ class TestRouting(unittest.TestCase):
             watershed_confluence_vector_path, gdal.OF_VECTOR)
         watershed_layer = watershed_vector.GetLayer()
         # there should be exactly an integer half number of watersheds as
-        # the length of the canyon
-        self.assertEqual(watershed_layer.GetFeatureCount(), n//2)
+        # the length of the canyon; -1 for the special configuration
+        # around the nodata pixel.
+        self.assertEqual(watershed_layer.GetFeatureCount(), n//2 - 1)
         watershed_vector = None
         watershed_layer = None
 
@@ -1226,8 +1232,7 @@ class TestRouting(unittest.TestCase):
         watershed_vector = gdal.OpenEx(
             watershed_confluence_vector_path, gdal.OF_VECTOR)
         watershed_layer = watershed_vector.GetLayer()
-        # every stream should have a watershed
-        self.assertEqual(watershed_layer.GetFeatureCount(), n-2)
+        self.assertEqual(watershed_layer.GetFeatureCount(), n-4)
         watershed_vector = None
         watershed_layer = None
 
