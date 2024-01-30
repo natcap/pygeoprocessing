@@ -7,6 +7,10 @@ Unreleased Changes
   environment variables), the GDAL cache max is checked against the amount of
   memory available on the compute node.  If GDAL may exceed the available slurm
   memory, a warning is issued or logged. https://github.com/natcap/pygeoprocessing/issues/361
+* Fixed an issue in ``extract_strahler_streams_d8`` where a nodata pixel
+  could be mistakenly treated as a stream seed point, ultimately creating
+  a stream feature with no geometry. 
+  https://github.com/natcap/pygeoprocessing/issues/361
 
 2.4.2 (2023-10-24)
 ------------------
