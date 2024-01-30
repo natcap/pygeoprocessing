@@ -3359,13 +3359,13 @@ def extract_strahler_streams_d8(
                     x_l, y_l)
                 if (local_flow_accum < min_flow_accum_threshold or
                         _is_close(local_flow_accum,
-                            flow_accum_nodata, 1e-8, 1e-5)):
+                                  flow_accum_nodata, 1e-8, 1e-5)):
                     continue
                 # check to see if it's a drain
                 d_n = <int>flow_dir_managed_raster.get(x_l, y_l)
                 x_n = x_l + D8_XOFFSET[d_n]
                 y_n = y_l + D8_YOFFSET[d_n]
-                if (x_n < 0 or y_n < 0 or x_n >= n_cols or y_n >= n_cols or
+                if (x_n < 0 or y_n < 0 or x_n >= n_cols or y_n >= n_rows or
                         <int>flow_dir_managed_raster.get(
                             x_n, y_n) == flow_nodata):
                     is_drain = 1
