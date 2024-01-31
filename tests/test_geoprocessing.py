@@ -4158,6 +4158,7 @@ class TestGeoprocessing(unittest.TestCase):
             numpy.count_nonzero(target_array[target_array == 1]), 2)
 
         # now test where only one of the polygons match
+        mask_raster_path = os.path.join(self.workspace_dir, 'mask.tif')
         pygeoprocessing.align_and_resize_raster_stack(
             [base_a_path], [target_path],
             resample_method_list,
@@ -4166,13 +4167,21 @@ class TestGeoprocessing(unittest.TestCase):
             vector_mask_options={
                 'mask_vector_path': dual_poly_path,
                 'mask_layer_name': 'dual_poly',
-                'mask_vector_where_filter': 'value=1'
+                'mask_vector_where_filter': 'value=1',
+                'mask_raster_path': mask_raster_path,
             })
 
         target_array = pygeoprocessing.raster_to_numpy_array(target_path)
         # we should have only one pixel left
         self.assertEqual(
             numpy.count_nonzero(target_array[target_array == 1]), 1)
+
+        # There should also now be a mask raster with a mask pixel where we
+        # have valid data.
+        self.assertTrue(os.path.exists(mask_raster_path))
+        mask_array = pygeoprocessing.raster_to_numpy_array(mask_raster_path)
+        self.assertEquals(mask_array.sum(), 1)
+        numpy.testing.assert_allclose(target_array[mask_array.astype(bool)], 1)
 
     def test_align_and_resize_raster_stack_int_with_vector_mask_bb(self):
         """PGP.geoprocessing: align/resize raster w/ vector mask."""
