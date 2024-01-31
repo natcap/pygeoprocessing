@@ -1144,7 +1144,10 @@ def align_and_resize_raster_stack(
                 align_bounding_box[index])
 
     if vector_mask_options:
-        # create a warped VRT
+        # Create a warped VRT.
+        # This allows us to cheaply figure out the dimensions, projection, etc.
+        # of the target raster without actually warping the entire raster to a
+        # GTiff.
         temp_working_dir = tempfile.mkdtemp(dir=working_dir, prefix='mask-')
         warped_vrt = os.path.join(temp_working_dir, 'warped.vrt')
         warp_raster(
@@ -1160,6 +1163,7 @@ def align_and_resize_raster_stack(
                 base_projection_wkt_list[0]),
             gdal_warp_options=gdal_warp_options)
 
+        # Convert the warped VRT to a GTiff for rasterization.
         if 'mask_raster_path' in vector_mask_options:
             mask_raster_path = vector_mask_options['mask_raster_path']
         else:
@@ -1167,6 +1171,7 @@ def align_and_resize_raster_stack(
         new_raster_from_base(
             warped_vrt, mask_raster_path, gdal.GDT_Byte, [0], [0])
 
+        # Rasterize the vector onto the new GTiff.
         rasterize(vector_mask_options['mask_vector_path'],
                   mask_raster_path, burn_values=[1],
                   where_clause=(
@@ -2664,6 +2669,8 @@ def warp_raster(
 
     if vector_mask_options:
         if 'mask_raster_path' in vector_mask_options:
+            # If the user provided a mask raster, use that directly; assume
+            # it's been rasterized correctly.
             source_raster_info = get_raster_info(warped_raster_path)
             source_nodata = source_raster_info['nodata'][0]
 
@@ -2680,13 +2687,14 @@ def warp_raster(
                 _mask_values, target_raster_path,
                 source_raster_info['datatype'], source_nodata)
         else:
+            # If the user did not provide a mask raster, we need to create one.
+            # mask_raster() does the rasterization for us.
+            #
             # Make sure the raster creation options passed to ``mask_raster``
             # reflect any metadata updates
             updated_raster_driver_creation_tuple = (
                 raster_driver_creation_tuple[0],
                 tuple(raster_creation_options))
-            # there was a cutline vector, so mask it out now, otherwise target
-            # is already the result.
             mask_raster(
                 (warped_raster_path, 1),
                 vector_mask_options['mask_vector_path'],
