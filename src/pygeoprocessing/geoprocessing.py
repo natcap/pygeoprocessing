@@ -1167,7 +1167,10 @@ def align_and_resize_raster_stack(
         if 'mask_raster_path' in vector_mask_options:
             mask_raster_path = vector_mask_options['mask_raster_path']
         else:
+            # Add the mask raster path ot the vector mask options to force
+            # warp_raster to use the existing raster mask.
             mask_raster_path = os.path.join(temp_working_dir, 'mask.tif')
+            vector_mask_options['mask_raster_path'] = mask_raster_path
         new_raster_from_base(
             warped_vrt, mask_raster_path, gdal.GDT_Byte, [0], [0])
 
