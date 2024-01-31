@@ -9,8 +9,11 @@ Unreleased Changes
   memory, a warning is issued or logged. https://github.com/natcap/pygeoprocessing/issues/361
 * Fixed an issue in ``extract_strahler_streams_d8`` where a nodata pixel
   could be mistakenly treated as a stream seed point, ultimately creating
-  a stream feature with no geometry. 
+  a stream feature with no geometry.
   https://github.com/natcap/pygeoprocessing/issues/361
+* Improved ``align_and_resize_raster_stack`` so that rasterization of a vector
+  mask only happens once, regardless of the number of rasters in the stack.
+  https://github.com/natcap/pygeoprocessing/issues/366
 
 2.4.2 (2023-10-24)
 ------------------
