@@ -2607,22 +2607,22 @@ def warp_raster(
     mask_vector_path = None
     mask_layer_id = 0
     mask_vector_where_filter = None
-    if vector_mask_options and not hasattr(
-            vector_mask_options, 'mask_raster_path'):
-        # translate pygeoprocessing terminology into GDAL warp options.
-        if 'mask_vector_path' not in vector_mask_options:
-            raise ValueError(
-                'vector_mask_options passed, but no value for '
-                '"mask_vector_path": %s', vector_mask_options)
-        mask_vector_path = vector_mask_options['mask_vector_path']
-        if not os.path.exists(mask_vector_path):
-            raise ValueError(
-                'The mask vector at %s was not found.', mask_vector_path)
-        if 'mask_layer_id' in vector_mask_options:
-            mask_layer_id = vector_mask_options['mask_layer_id']
-        if 'mask_vector_where_filter' in vector_mask_options:
-            mask_vector_where_filter = (
-                vector_mask_options['mask_vector_where_filter'])
+    if vector_mask_options:
+        if 'mask_raster_path' not in vector_mask_options:
+            # translate pygeoprocessing terminology into GDAL warp options.
+            if 'mask_vector_path' not in vector_mask_options:
+                raise ValueError(
+                    'vector_mask_options passed, but no value for '
+                    '"mask_vector_path": %s', vector_mask_options)
+            mask_vector_path = vector_mask_options['mask_vector_path']
+            if not os.path.exists(mask_vector_path):
+                raise ValueError(
+                    'The mask vector at %s was not found.', mask_vector_path)
+            if 'mask_layer_id' in vector_mask_options:
+                mask_layer_id = vector_mask_options['mask_layer_id']
+            if 'mask_vector_where_filter' in vector_mask_options:
+                mask_vector_where_filter = (
+                    vector_mask_options['mask_vector_where_filter'])
 
     if vector_mask_options:
         temp_working_dir = tempfile.mkdtemp(dir=working_dir)
@@ -2661,41 +2661,42 @@ def warp_raster(
         callback=reproject_callback,
         callback_data=[target_raster_path])
 
-    if vector_mask_options and not hasattr(
-            vector_mask_options, 'mask_raster_path'):
-        # Make sure the raster creation options passed to ``mask_raster``
-        # reflect any metadata updates
-        updated_raster_driver_creation_tuple = (
-            raster_driver_creation_tuple[0], tuple(raster_creation_options))
-        # there was a cutline vector, so mask it out now, otherwise target
-        # is already the result.
-        mask_raster(
-            (warped_raster_path, 1), vector_mask_options['mask_vector_path'],
-            target_raster_path,
-            mask_layer_id=mask_layer_id,
-            where_clause=mask_vector_where_filter,
-            target_mask_value=None, working_dir=temp_working_dir,
-            all_touched=False,
-            raster_driver_creation_tuple=updated_raster_driver_creation_tuple)
-    elif vector_mask_options and hasattr(
-            vector_mask_options, 'mask_raster_path'):
-        source_raster_info = get_raster_info(warped_raster_path)
-        source_nodata = source_raster_info['nodata'][0]
-
-        def _mask_values(array, mask):
-            output = numpy.full(array.shape, source_nodata)
-            valid_mask = (
-                mask == 1 & ~array_equals_nodata(array, source_nodata))
-            output[valid_mask] = array[valid_mask]
-            return output
-
-        raster_calculator(
-            [(warped_raster_path, 1),
-             (vector_mask_options['mask_raster_path'], 1)],
-            _mask_values, target_raster_path, source_raster_info['datatype'],
-            source_nodata)
-
     if vector_mask_options:
+        if 'mask_raster_path' in vector_mask_options:
+            source_raster_info = get_raster_info(warped_raster_path)
+            source_nodata = source_raster_info['nodata'][0]
+
+            def _mask_values(array, mask):
+                output = numpy.full(array.shape, source_nodata)
+                valid_mask = (
+                    mask == 1 & ~array_equals_nodata(array, source_nodata))
+                output[valid_mask] = array[valid_mask]
+                return output
+
+            raster_calculator(
+                [(warped_raster_path, 1),
+                 (vector_mask_options['mask_raster_path'], 1)],
+                _mask_values, target_raster_path,
+                source_raster_info['datatype'], source_nodata)
+        else:
+            # Make sure the raster creation options passed to ``mask_raster``
+            # reflect any metadata updates
+            updated_raster_driver_creation_tuple = (
+                raster_driver_creation_tuple[0],
+                tuple(raster_creation_options))
+            # there was a cutline vector, so mask it out now, otherwise target
+            # is already the result.
+            mask_raster(
+                (warped_raster_path, 1),
+                vector_mask_options['mask_vector_path'],
+                target_raster_path,
+                mask_layer_id=mask_layer_id,
+                where_clause=mask_vector_where_filter,
+                target_mask_value=None, working_dir=temp_working_dir,
+                all_touched=False,
+                raster_driver_creation_tuple=(
+                    updated_raster_driver_creation_tuple))
+
         shutil.rmtree(temp_working_dir)
 
 
