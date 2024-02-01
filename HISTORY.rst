@@ -14,6 +14,10 @@ Unreleased Changes
 * Improved ``align_and_resize_raster_stack`` so that rasterization of a vector
   mask only happens once, regardless of the number of rasters in the stack.
   https://github.com/natcap/pygeoprocessing/issues/366
+* Improved ``warp_raster`` to allow for a pre-defined mask raster to be
+  provided instead of a vector.  If both are provided, the mask raster alone is
+  used.  The new mask raster must have the same dimensions and geotransform as
+  the output warped raster. https://github.com/natcap/pygeoprocessing/issues/366
 
 2.4.2 (2023-10-24)
 ------------------
