@@ -2687,11 +2687,9 @@ def warp_raster(
                 _mask_values, target_raster_path,
                 source_raster_info['datatype'], source_nodata)
         else:
-            # If the user did not provide a mask raster, we need to create one.
-            # mask_raster() does the rasterization for us.
-            #
-            # Make sure the raster creation options passed to ``mask_raster``
-            # reflect any metadata updates
+            # If the user did not provide a mask in raster form, we can just
+            # call down to ``mask_raster``, which will rasterize the vector and
+            # then mask out pixels in ``warped_raster_path`` for us.
             updated_raster_driver_creation_tuple = (
                 raster_driver_creation_tuple[0],
                 tuple(raster_creation_options))
