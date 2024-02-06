@@ -1897,7 +1897,7 @@ def zonal_statistics(
             creationOptions=DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS[1],
             callback=_make_logger_callback(
                 f'rasterizing disjoint polygon set {i + 1} of '
-                f'{len(disjoint_fid_set)} set %.1f%% complete (%s)'),
+                f'{len(disjoint_fid_sets)} set %.1f%% complete (%s)'),
             where=(f'{fid_field_name} IN ({fid_set_str})'))
         fid_raster_paths.append(fid_raster_path)
 
