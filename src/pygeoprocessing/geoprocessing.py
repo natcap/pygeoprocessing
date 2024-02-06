@@ -2484,25 +2484,22 @@ def warp_raster(
             in Well Known Text format.
         n_threads (int): optional, if not None this sets the ``N_THREADS``
             option for ``gdal.Warp``.
-        vector_mask_options (dict or str): optional. If None, no masking will
-            be done.  If a string, it must be a path to a raster that is in the
-            target projection and also has the same dimensions and bounding box
-            as the target warped raster.  If a dict, it is a dictionary of
-            options to use an existing vector's geometry to mask out pixels in
-            the target raster that do not overlap the vector's geometry. Keys
-            to this dictionary are:
+        vector_mask_options (dict or None): optional. If None, no masking will
+            be done.  If a dict, it is a dictionary of options relating to the
+            dataset mask. Keys to this dictionary are:
 
             * ``'mask_vector_path'``: (str) path to the mask vector file. This
               vector will be automatically projected to the target
               projection if its base coordinate system does not match
-              the target.
+              the target.  Where there are geometries in this vector, pixels in
+              ``base_raster_path`` will propagate to ``target_raster_path``.
             * ``'mask_layer_id'``: (int/str) the layer index or name to use
               for masking, if this key is not in the dictionary the default
               is to use the layer at index 0.
-            * ``'mask_vector_where_filter'``: (str) an SQL WHERE string that
-              can be used to filter the geometry in the mask. Ex:
-              'id > 10' would use all features whose field value of
-              'id' is > 10.
+            * ``'mask_vector_where_filter'``: (str) an SQL ``WHERE`` string
+              that can be used to filter the geometry in the mask.
+              Ex: 'id > 10' would use all features whose field value of 'id' is
+              > 10.
             * ``'mask_raster_path'``: (str).  If present in the dict, all other
               keys in ``vector_mask_options`` are ignored.  This string must be
               a path to a raster representing a validity mask, where pixel
