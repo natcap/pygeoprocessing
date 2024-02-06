@@ -2796,7 +2796,7 @@ def rasterize(
             "%s doesn't exist, but needed to rasterize." % target_raster_path)
 
     rasterize_callback = _make_logger_callback(
-        "RasterizeLayer %.1f%% complete %s")
+        "pygeoprocessing.rasterize RasterizeLayer %.1f%% complete %s")
 
     if burn_values is None:
         burn_values = []
