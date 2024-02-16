@@ -13,23 +13,31 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: [3.8, 3.9, "3.10", "3.11"]
-        gdal: ["3.2.2", "3.3.0", "3.4.3", "3.5", "3.6", "3.7"]
+        python-version: ["3.8", "3.9", "3.10", "3.11", "3.12"]
+        gdal: ["3.2.2", "3.3.0", "3.4.3", "3.5", "3.6", "3.7", "3.8"]
         os: [ubuntu-latest, windows-latest, macos-latest]
         exclude:
           - gdal: "3.2.2"
             python-version: 3.10
           - gdal: "3.2.2"
             python-version: 3.11
+          - gdal: "3.2.2"
+            python-version: 3.12
           - gdal: "3.3.0"
             python-version: 3.10
           - gdal: "3.3.0"
             python-version: 3.11
+          - gdal: "3.3.0"
+            python-version: 3.12
           - gdal: "3.4.3"
             python-version: 3.11
+          - gdal: "3.4.3"
+            python-version: 3.12
+          - gdal: "3.5"
+            python-version: 3.12
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           # Fetch all history so that setuptool_scm can build the correct
           # version string.

@@ -23,6 +23,8 @@ Unreleased Changes
 * Fixed a bug in ``zonal_statistics`` where the wrong number of disjoint
   polygon sets were being reported in the logs.
   https://github.com/natcap/pygeoprocessing/issues/368
+* Pygeoprocessing is now tested against python 3.12.
+  https://github.com/natcap/pygeoprocessing/issues/355
 
 2.4.2 (2023-10-24)
 ------------------
