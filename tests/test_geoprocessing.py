@@ -4180,7 +4180,7 @@ class TestGeoprocessing(unittest.TestCase):
         # have valid data.
         self.assertTrue(os.path.exists(mask_raster_path))
         mask_array = pygeoprocessing.raster_to_numpy_array(mask_raster_path)
-        self.assertEquals(mask_array.sum(), 1)
+        self.assertEqual(mask_array.sum(), 1)
         numpy.testing.assert_allclose(target_array[mask_array.astype(bool)], 1)
 
     def test_align_and_resize_raster_stack_int_with_vector_mask_bb(self):
