@@ -12,7 +12,7 @@ jobs:
                 python-arch: [x64]
 
         steps:
-            - uses: actions/checkout@v3
+            - uses: actions/checkout@v4
               with:
                   # Fetch all history so that setuptools_scm can build the correct version string.
                   fetch-depth: 0
@@ -41,7 +41,7 @@ jobs:
         name: Source Dist
         runs-on: ubuntu-latest
         steps:
-            - uses: actions/checkout@v3
+            - uses: actions/checkout@v4
               with:
                   # Fetch all history so that setuptools_scm can build the correct version string.
                   fetch-depth: 0
