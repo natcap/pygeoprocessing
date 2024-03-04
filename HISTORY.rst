@@ -3,10 +3,14 @@ Release History
 
 Unreleased Changes
 ------------------
+* ``get_gis_type`` can accept a path to a remote file, allowing the GDAL driver
+  to open it if the driver supports the protocol.
+  https://github.com/natcap/pygeoprocessing/issues/375
 * If running on a SLURM system (identified by the presence of ``SLURM*``
   environment variables), the GDAL cache max is checked against the amount of
   memory available on the compute node.  If GDAL may exceed the available slurm
-  memory, a warning is issued or logged. https://github.com/natcap/pygeoprocessing/issues/361
+  memory, a warning is issued or logged.
+  https://github.com/natcap/pygeoprocessing/issues/361
 * Fixed an issue in ``extract_strahler_streams_d8`` where a nodata pixel
   could be mistakenly treated as a stream seed point, ultimately creating
   a stream feature with no geometry.

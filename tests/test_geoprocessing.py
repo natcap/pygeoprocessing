@@ -4855,7 +4855,7 @@ class TestGeoprocessing(unittest.TestCase):
         with self.assertRaises(ValueError) as cm:
             pygeoprocessing.get_gis_type('totally_fake_file')
         actual_message = str(cm.exception)
-        self.assertTrue('does not exist' in actual_message, actual_message)
+        self.assertTrue('Could not open' in actual_message, actual_message)
 
     def test_get_raster_info_type(self):
         """PGP: test get_raster_info's type."""
