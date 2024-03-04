@@ -3882,7 +3882,7 @@ def get_gis_type(path):
     """Calculate the GIS type of the file located at ``path``.
 
     Args:
-        path (str): path to a file on disk.
+        path (str): path to a file on disk or network.
 
     Raises:
         ValueError
