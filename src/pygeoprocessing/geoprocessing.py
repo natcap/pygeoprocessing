@@ -3895,8 +3895,6 @@ def get_gis_type(path):
         ``pygeoprocessing.RASTER_TYPE``, or ``pygeoprocessing.VECTOR_TYPE``.
 
     """
-    if not os.path.exists(path):
-        raise ValueError(f"{path} does not exist.")
     from pygeoprocessing import UNKNOWN_TYPE
     gis_type = UNKNOWN_TYPE
     gis_raster = gdal.OpenEx(path, gdal.OF_RASTER)
