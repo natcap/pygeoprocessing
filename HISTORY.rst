@@ -1,6 +1,11 @@
 Release History
 ===============
 
+Unreleased Changes
+------------------
+* Wheels for python 3.12 are now built during our github actions runs.
+  https://github.com/natcap/pygeoprocessing/issues/381
+
 2.4.3 (2024-03-06)
 ------------------
 * ``get_gis_type`` can accept a path to a remote file, allowing the GDAL driver
