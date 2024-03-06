@@ -1,7 +1,7 @@
 Release History
 ===============
 
-Unreleased Changes
+2.4.3 (2024-03-06)
 ------------------
 * ``get_gis_type`` can accept a path to a remote file, allowing the GDAL driver
   to open it if the driver supports the protocol.
