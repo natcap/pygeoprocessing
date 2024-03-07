@@ -32,6 +32,9 @@ Unreleased Changes
   provided instead of a vector.  If both are provided, the mask raster alone is
   used.  The new mask raster must have the same dimensions and geotransform as
   the output warped raster. https://github.com/natcap/pygeoprocessing/issues/366
+* Fixed a bug in ``zonal_statistics`` where the wrong number of disjoint
+  polygon sets were being reported in the logs.
+  https://github.com/natcap/pygeoprocessing/issues/368
 * Pygeoprocessing is now tested against python 3.12.
   https://github.com/natcap/pygeoprocessing/issues/355
 

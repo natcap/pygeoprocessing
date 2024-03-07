@@ -1890,14 +1890,14 @@ def zonal_statistics(
             attribute=fid_field_name,
             noData=fid_nodata,
             outputBounds=aligned_bbox,
-            xRes=abs(raster_info['pixel_size'][0]),  # resolution should always be positive
+            xRes=abs(raster_info['pixel_size'][0]),  # resolution must be > 0
             yRes=abs(raster_info['pixel_size'][1]),
             format='GTIFF',
             outputType=gdal.GDT_UInt16,
             creationOptions=DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS[1],
             callback=_make_logger_callback(
                 f'rasterizing disjoint polygon set {i + 1} of '
-                f'{len(disjoint_fid_set)} set %.1f%% complete (%s)'),
+                f'{len(disjoint_fid_sets)} set %.1f%% complete (%s)'),
             where=(f'{fid_field_name} IN ({fid_set_str})'))
         fid_raster_paths.append(fid_raster_path)
 
@@ -1912,11 +1912,12 @@ def zonal_statistics(
         nodata = get_raster_info(raster_path)['nodata'][band - 1]
         data_source = gdal.OpenEx(raster_path, gdal.OF_RASTER)
         data_band = data_source.GetRasterBand(band)
-        found_fids = set()  # track FIDs that have been found on at least one pixel
+        found_fids = set()  # track FIDs found on at least one pixel
 
         for set_index, fid_raster_path in enumerate(fid_raster_paths):
             LOGGER.info(
-                f'disjoint polygon set {set_index} of {len(fid_raster_paths)}')
+                f'disjoint polygon set {set_index + 1} of '
+                f'{len(fid_raster_paths)}')
             fid_raster = gdal.OpenEx(fid_raster_path, gdal.OF_RASTER)
             fid_band = fid_raster.GetRasterBand(1)
 
@@ -2796,7 +2797,7 @@ def rasterize(
             "%s doesn't exist, but needed to rasterize." % target_raster_path)
 
     rasterize_callback = _make_logger_callback(
-        "RasterizeLayer %.1f%% complete %s")
+        "pygeoprocessing.rasterize RasterizeLayer %.1f%% complete %s")
 
     if burn_values is None:
         burn_values = []
