@@ -2435,7 +2435,8 @@ def warp_raster(
             the x and y pixel size in projected units.
         target_raster_path (string): the location of the resized and
             resampled raster.
-        resample_method (string): the resampling technique, one of,
+        resample_method (string): the resampling algorithm. Must be a valid
+            resampling algorithm for `gdal.WarpRaster`, one of:
             'rms | mode | sum | q1 | near | q3 | average | cubicspline |
             bilinear | max | med | min | cubic | lanczos'
         target_bb (sequence): if None, target bounding box is the same as the
@@ -4579,7 +4580,8 @@ def build_overviews(
             overviews. In GeoTiffs, this builds internal overviews when
             ``internal=True``, and external overviews when ``internal=False``.
         resample_method='near' (str): The resample method to use when
-            building overviews.  Must be one of,
+            building overviews.  Must be a valid resampling method for
+            ``gdal.GDALDataset.BuildOverviews``, one of
             'rms | mode | sum | q1 | near | q3 | average | cubicspline |
             bilinear | max | med | min | cubic | lanczos'.
         overwrite=False (bool): Whether to overwrite existing overviews, if
@@ -4603,7 +4605,6 @@ def build_overviews(
     Returns:
         ``None``
     """
-    gdal.UseExceptions()
     def overviews_progress(*args, **kwargs):
         pct_complete, name, other = args
         percent = round(pct_complete * 100, 2)
