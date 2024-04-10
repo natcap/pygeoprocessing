@@ -1484,7 +1484,11 @@ def flow_accumulation_d8(
         custom_decay_factor=None (float or tuple): a custom decay factor, either
             represented as a float (where the same decay factor is applied to
             all valid pixels) or a path/band tuple for a raster where pixel
-            values represent spatially-explicit decay values.
+            values represent spatially-explicit decay values. As the on-pixel
+            load passes through a pixel, the decay factor is applied, so you
+            could think of this layer as representing the proportion of a
+            pollutant that is absorbed by the landscape as it passes through
+            along the flowpath.
         min_decay_proportion=0.001 (float): A value representing the minimum
             decayed value that should continue to be tracked along the flow
             path when using a custom decay factor.  If the upstream decayed
