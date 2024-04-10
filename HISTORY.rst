@@ -6,6 +6,8 @@ Unreleased Changes
 * Our github actions for building python distributions now use
   `actions/setup-python@v5`, which uses node 20.
   https://github.com/natcap/pygeoprocessing/issues/384
+* Implementing decaying flow accumulation for D8 routing.
+  https://github.com/natcap/pygeoprocessing/issues/386
 
 2.4.3 (2024-03-06)
 ------------------
