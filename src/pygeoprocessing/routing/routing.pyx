@@ -1481,10 +1481,10 @@ def flow_accumulation_d8(
             weight. If ``None``, 1 is the default flow accumulation weight.
             This raster must be the same dimensions as
             ``flow_dir_mfd_raster_path_band``.
-        custom_decay_factor=None (float or str): a custom decay factor, either
+        custom_decay_factor=None (float or tuple): a custom decay factor, either
             represented as a float (where the same decay factor is applied to
-            all valid pixels) or a raster where pixel values represent
-            spatially-explicit decay values.
+            all valid pixels) or a path/band tuple for a raster where pixel
+            values represent spatially-explicit decay values.
         min_decay_proportion=0.001 (float): A value representing the minimum
             decayed value that should continue to be tracked along the flow
             path when using a custom decay factor.  If the upstream decayed
@@ -1576,8 +1576,6 @@ def flow_accumulation_d8(
     cdef short do_decayed_accumulation = False
     cdef short use_const_decay_factor = False
     cdef float decay_factor = 1.0
-    cdef double min_allowed_decayed_load, local_decay_factor
-    cdef double on_pixel_load
     if custom_decay_factor is not None:
         do_decayed_accumulation = True
         if isinstance(custom_decay_factor, (int, float)):
@@ -1737,6 +1735,7 @@ def flow_accumulation_d8(
                                 flow_pixel.decaying_values.pop()
                                 decayed_value.decayed_value *= upstream_transport_factor
                                 flow_pixel.value += decayed_value.decayed_value
+
                                 decay_from_upstream.push(decayed_value)
 
                         flow_accum_managed_raster.set(
