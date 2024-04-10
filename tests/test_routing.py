@@ -1438,3 +1438,23 @@ class TestRouting(unittest.TestCase):
 
             numpy.testing.assert_almost_equal(
                 flow_accum_array, expected_result)
+
+    def test_flow_accum_with_decay_merging_flow(self):
+        """PGP.routing: test d8 flow accum with decay and merged flowpath."""
+        flow_dir_path = os.path.join(self.workspace_dir, 'flow_dir.tif')
+        _array_to_raster(
+            numpy.array([
+                [255, 0, 0, 0, 0],
+                [255, 0, 0, 0, 2]], dtype=numpy.uint8), 255, flow_dir_path)
+
+        flow_accum_path = os.path.join(self.workspace_dir, 'flow_accum.tif')
+        pygeoprocessing.routing.flow_accumulation_d8(
+            (flow_dir_path, 1), flow_accum_path, custom_decay_factor=0.5)
+
+        fnodata = -1.23789789e29  # copied from routing.pyx
+        expected_array = numpy.array([
+            [fnodata, 1, 1.5, 1.75, 2.8125],
+            [fnodata, 1, 1.5, 1.75, 1.875]], dtype=numpy.float64)
+        numpy.testing.assert_allclose(
+            pygeoprocessing.raster_to_numpy_array(flow_accum_path),
+            expected_array)
