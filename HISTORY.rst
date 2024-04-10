@@ -6,6 +6,10 @@ Unreleased Changes
 * Our github actions for building python distributions now use
   `actions/setup-python@v5`, which uses node 20.
   https://github.com/natcap/pygeoprocessing/issues/384
+* ``warp_raster`` and ``build_overviews`` no longer raise ``ValueError``s if
+  called with an invalid resampling algorithm. We now fall back to the
+  underlying GDAL functions' error messages.
+  https://github.com/natcap/pygeoprocessing/issues/387
 * Implementing decaying flow accumulation for D8 routing.
   https://github.com/natcap/pygeoprocessing/issues/386
 

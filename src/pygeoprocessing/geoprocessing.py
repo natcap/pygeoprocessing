@@ -76,55 +76,6 @@ _VALID_GDAL_TYPES = (
 _LOGGING_PERIOD = 5.0  # min 5.0 seconds per update log message for the module
 _LARGEST_ITERBLOCK = 2**16  # largest block for iterblocks to read in cells
 
-_GDAL_WARP_ALGORITHMS = []
-for _warp_algo in (_attrname for _attrname in dir(gdalconst)
-                   if _attrname.startswith('GRA_')):
-    # In GDAL < 3.4, the options used were actually gdal.GRIORA_*
-    # instead of gdal.GRA_*, and gdal.WarpOptions would:
-    #   * return an integer for any gdal.GRIORA options it didn't recognize
-    #   * Return an abbreviated string (e.g. -rb instead of 'bilinear') for
-    #     several warp algorithms
-    # This behavior was changed in GDAL 3.4, where the correct name is
-    # returned in all cases.
-    #
-    # In GDAL < 3.4, an error would be logged if GDAL couldn't recognize the
-    # option.  Pushing a null error handler avoids this and cleans up the
-    # logging.
-    gdal.PushErrorHandler(lambda *args: None)
-    _options = []
-    # GDAL's python bindings only offer this one way of translating gdal.GRA_*
-    # options to their string names (but compatibility is limited in different
-    # GDAL versions, see notes above)
-    warp_opts = gdal.WarpOptions(
-        options=_options,  # SIDE EFFECT: Adds flags to this list.
-        resampleAlg=getattr(gdalconst, _warp_algo),  # use GRA_* name.
-        overviewLevel=None)  # Don't add overview parameters.
-    gdal.PopErrorHandler()
-
-    # _options is populated during the WarpOptions call above.
-    for _item in _options:
-        is_int = False
-        try:
-            int(_item)
-            is_int = True
-        except ValueError:
-            pass
-
-        if _item == '-r':
-            continue
-        elif (_item.startswith('-r') and len(_item) > 2) or is_int:
-            # (GDAL < 3.4) Translate shorthand params to name.
-            # (GDAL < 3.4) Translate unrecognized (int) codes to name.
-            _item = re.sub('^gra_', '', _warp_algo.lower())
-        _GDAL_WARP_ALGORITHMS.append(_item)
-
-_GDAL_WARP_ALGORITHMS = set(_GDAL_WARP_ALGORITHMS)
-_GDAL_WARP_ALGOS_FOR_HUMAN_EYES = "|".join(_GDAL_WARP_ALGORITHMS)
-LOGGER.debug(
-    'Detected warp algorithms: '
-    f'{_GDAL_WARP_ALGOS_FOR_HUMAN_EYES.replace("|", ", ")}')
-
-
 class TimedLoggingAdapter(logging.LoggerAdapter):
     """A logging adapter to restrict logging based on a timer.
 
@@ -2484,7 +2435,8 @@ def warp_raster(
             the x and y pixel size in projected units.
         target_raster_path (string): the location of the resized and
             resampled raster.
-        resample_method (string): the resampling technique, one of,
+        resample_method (string): the resampling algorithm. Must be a valid
+            resampling algorithm for `gdal.WarpRaster`, one of:
             'rms | mode | sum | q1 | near | q3 | average | cubicspline |
             bilinear | max | med | min | cubic | lanczos'
         target_bb (sequence): if None, target bounding box is the same as the
@@ -2667,11 +2619,6 @@ def warp_raster(
     _, type_creation_options = _numpy_to_gdal_type(
         base_raster_info['numpy_type'])
     raster_creation_options += type_creation_options
-
-    if resample_method.lower() not in _GDAL_WARP_ALGORITHMS:
-        raise ValueError(
-            f'Invalid resample method: "{resample_method}". '
-            f'Must be one of {_GDAL_WARP_ALGOS_FOR_HUMAN_EYES}')
 
     gdal.Warp(
         warped_raster_path, base_raster,
@@ -4633,7 +4580,8 @@ def build_overviews(
             overviews. In GeoTiffs, this builds internal overviews when
             ``internal=True``, and external overviews when ``internal=False``.
         resample_method='near' (str): The resample method to use when
-            building overviews.  Must be one of,
+            building overviews.  Must be a valid resampling method for
+            ``gdal.GDALDataset.BuildOverviews``, one of
             'rms | mode | sum | q1 | near | q3 | average | cubicspline |
             bilinear | max | med | min | cubic | lanczos'.
         overwrite=False (bool): Whether to overwrite existing overviews, if
@@ -4657,11 +4605,6 @@ def build_overviews(
     Returns:
         ``None``
     """
-    if resample_method.lower() not in _GDAL_WARP_ALGORITHMS:
-        raise ValueError(
-            f'Invalid overview resample method: "{resample_method}". '
-            f'Must be one of {_GDAL_WARP_ALGOS_FOR_HUMAN_EYES}')
-
     def overviews_progress(*args, **kwargs):
         pct_complete, name, other = args
         percent = round(pct_complete * 100, 2)

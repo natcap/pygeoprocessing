@@ -1753,12 +1753,12 @@ class TestGeoprocessing(unittest.TestCase):
         target_raster_path = os.path.join(self.workspace_dir, 'target_a.tif')
         base_a_raster_info = pygeoprocessing.get_raster_info(base_a_path)
 
-        with self.assertRaises(ValueError) as context:
+        with self.assertRaises(TypeError) as context:
             pygeoprocessing.warp_raster(
                 base_a_path, base_a_raster_info['pixel_size'],
                 target_raster_path, 'not_an_algorithm', n_threads=1)
 
-        self.assertIn('Invalid resample method', str(context.exception))
+        self.assertIn('GDALWarpAppOptions', str(context.exception))
 
     def test_warp_raster_unusual_pixel_size(self):
         """PGP.geoprocessing: warp on unusual pixel types and sizes."""
@@ -5553,12 +5553,11 @@ class TestGeoprocessing(unittest.TestCase):
         pygeoprocessing.build_overviews(raster_path, overwrite=True)
 
         # Check that we can catch invalid resample methods
-        with self.assertRaises(ValueError) as cm:
+        with self.assertRaises(RuntimeError) as cm:
             pygeoprocessing.build_overviews(
                 raster_path, overwrite=True,
                 resample_method='invalid choice')
-        self.assertIn('Invalid overview resample method: "invalid choice"',
-                      str(cm.exception))
+        self.assertIn('Building overviews failed', str(cm.exception))
 
     def test_get_raster_info_overviews(self):
         """PGP: raster info about overviews."""
