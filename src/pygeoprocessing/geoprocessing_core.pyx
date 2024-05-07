@@ -1,6 +1,3 @@
-# coding=UTF-8
-# distutils: language=c++
-# cython: language_level=3
 import logging
 import multiprocessing
 import os
