@@ -10,6 +10,8 @@ Unreleased Changes
   called with an invalid resampling algorithm. We now fall back to the
   underlying GDAL functions' error messages.
   https://github.com/natcap/pygeoprocessing/issues/387
+* Updated to Cython 3.
+* Dropped support for Python 3.7.
 
 2.4.3 (2024-03-06)
 ------------------
