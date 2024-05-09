@@ -4,8 +4,10 @@ from osgeo import gdal
 from ..geoprocessing import get_raster_info
 from ..geoprocessing import raster_calculator
 from ..geoprocessing_core import DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS
+from ..geoprocessing_core import gdal_use_exceptions
 
 
+@gdal_use_exceptions
 def extract_streams_d8(
         flow_accum_raster_path_band, flow_threshold, target_stream_raster_path,
         raster_driver_creation_tuple=DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS):

@@ -45,6 +45,15 @@ DEFAULT_OSR_AXIS_MAPPING_STRATEGY = osr.OAMS_TRADITIONAL_GIS_ORDER
 
 LOGGER = logging.getLogger('pygeoprocessing.geoprocessing_core')
 
+
+def gdal_use_exceptions(func):
+    def wrapper(*args, **kwargs):
+        with gdal.ExceptionMgr(useExceptions=True):
+            return func(*args, **kwargs)
+    return wrapper
+
+
+
 cdef float _NODATA = -1.0
 
 cdef extern from "FastFileIterator.h" nogil:
@@ -70,6 +79,7 @@ cdef extern from "<algorithm>" namespace "std":
 @cython.boundscheck(False)
 @cython.wraparound(False)
 @cython.cdivision(True)
+@gdal_use_exceptions
 def _distance_transform_edt(
         region_raster_path, g_raster_path, float sample_d_x,
         float sample_d_y, target_distance_raster_path,
@@ -294,6 +304,7 @@ cdef inline bint _eq(double value, double nodata):
 @cython.wraparound(False)
 @cython.nonecheck(False)
 @cython.cdivision(True)
+@gdal_use_exceptions
 def calculate_slope(
         base_elevation_raster_path_band, target_slope_path,
         raster_driver_creation_tuple=DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS):
@@ -640,7 +651,6 @@ def stats_worker(stats_work_queue, expected_blocks):
 ctypedef long long int64t
 ctypedef FastFileIterator[long long]* FastFileIteratorLongLongIntPtr
 ctypedef FastFileIterator[double]* FastFileIteratorDoublePtr
-
 
 def raster_band_percentile(
         base_raster_path_band, working_sort_directory, percentile_list,

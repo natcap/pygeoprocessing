@@ -121,11 +121,11 @@ class TestRouting(unittest.TestCase):
 
     def test_pit_filling_path_band_checking(self):
         """PGP.routing: test pitfilling catches path-band formatting errors."""
-        with self.assertRaises(ValueError):
+        with self.assertRaises(RuntimeError):
             pygeoprocessing.routing.fill_pits(
                 ('invalid path', 1), 'foo')
 
-        with self.assertRaises(ValueError):
+        with self.assertRaises(RuntimeError):
             pygeoprocessing.routing.fill_pits(
                 'invalid path', 'foo')
 

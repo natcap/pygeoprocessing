@@ -1515,9 +1515,7 @@ class TestGeoprocessing(unittest.TestCase):
                 (raster_path, 1), missing_aggregating_vector_path,
                 ignore_nodata=True,
                 polygons_might_overlap=True)
-        expected_message = 'Could not open aggregate vector'
-        actual_message = str(cm.exception)
-        self.assertTrue(expected_message in actual_message, actual_message)
+        self.assertIn('No such file or directory', str(cm.exception))
 
         pixel_size = 30.0
         origin = (444720, 3751320)
@@ -2291,7 +2289,7 @@ class TestGeoprocessing(unittest.TestCase):
                 pygeoprocessing.raster_to_numpy_array(base_path),
                 pygeoprocessing.raster_to_numpy_array(target_path)).all())
 
-    def test_raster_calculator_mutiprocessing(self):
+    def test_raster_calculator_multiprocessing(self):
         """PGP.geoprocessing: raster_calculator identity test."""
         pixel_matrix = numpy.ones((1024, 1024), numpy.int16)
         target_nodata = -1
@@ -2310,7 +2308,7 @@ class TestGeoprocessing(unittest.TestCase):
                 arithmetic_wrangle(pixel_matrix),
                 pygeoprocessing.raster_to_numpy_array(target_path)).all())
 
-    def test_raster_calculator_mutiprocessing_cwd(self):
+    def test_raster_calculator_multiprocessing_cwd(self):
         """PGP.geoprocessing: raster_calculator identity test in cwd."""
         pixel_matrix = numpy.ones((1024, 1024), numpy.int16)
         target_nodata = -1
@@ -2378,14 +2376,11 @@ class TestGeoprocessing(unittest.TestCase):
         nonexistant_path = os.path.join(self.workspace_dir, 'nofile.tif')
         target_path = os.path.join(
             self.workspace_dir, 'target.tif')
-        with self.assertRaises(ValueError) as cm:
+        with self.assertRaises(RuntimeError) as cm:
             pygeoprocessing.raster_calculator(
                 [(nonexistant_path, 1)], passthrough, target_path,
                 gdal.GDT_Int32, target_nodata, calc_raster_stats=True)
-        expected_message = (
-            "The following files were expected but do not exist on the ")
-        actual_message = str(cm.exception)
-        self.assertTrue(expected_message in actual_message, actual_message)
+        self.assertIn('No such file or directory', str(cm.exception))
 
     def test_raster_calculator_nodata(self):
         """PGP.geoprocessing: raster_calculator test with all nodata."""
@@ -2480,23 +2475,19 @@ class TestGeoprocessing(unittest.TestCase):
         new_raster = None
 
         target_path = os.path.join(self.workspace_dir, 'target.tif')
-        with self.assertRaises(ValueError) as cm:
+        with self.assertRaises(RuntimeError) as cm:
             # no input args should cause a ValueError
             pygeoprocessing.raster_calculator(
                 [(base_path, 2)], lambda: None, target_path,
                 gdal.GDT_Float32, None)
-        expected_message = "do not contain requested band "
-        actual_message = str(cm.exception)
-        self.assertTrue(expected_message in actual_message)
+        self.assertIn("Illegal band #", str(cm.exception))
 
-        with self.assertRaises(ValueError) as cm:
+        with self.assertRaises(RuntimeError) as cm:
             # no input args should cause a ValueError
             pygeoprocessing.raster_calculator(
                 [(base_path, 0)], lambda: None, target_path,
                 gdal.GDT_Float32, None)
-        expected_message = "do not contain requested band "
-        actual_message = str(cm.exception)
-        self.assertTrue(expected_message in actual_message)
+        self.assertIn("Illegal band #", str(cm.exception))
 
     def test_raster_calculator_unbroadcastable_array(self):
         """PGP.geoprocessing: incompatable array sizes raise error."""
@@ -4059,43 +4050,35 @@ class TestGeoprocessing(unittest.TestCase):
     def test_get_raster_info_error_handling(self):
         """PGP: test that bad data raise good errors in get_raster_info."""
         # check for missing file
-        with self.assertRaises(ValueError) as cm:
+        with self.assertRaises(RuntimeError) as cm:
             pygeoprocessing.get_raster_info(
                 os.path.join(self.workspace_dir, 'not_a_file.tif'))
-        expected_message = 'Could not open'
-        actual_message = str(cm.exception)
-        self.assertTrue(expected_message in actual_message, actual_message)
+        self.assertIn('No such file or directory', str(cm.exception))
 
         # check that file exists but is not a raster.
         not_a_raster_path = os.path.join(
             self.workspace_dir, 'not_a_raster.tif')
         with open(not_a_raster_path, 'w') as not_a_raster_file:
             not_a_raster_file.write("this is not a raster.\n")
-        with self.assertRaises(ValueError) as cm:
+        with self.assertRaises(RuntimeError) as cm:
             pygeoprocessing.get_raster_info(not_a_raster_path)
-        expected_message = 'Could not open'
-        actual_message = str(cm.exception)
-        self.assertTrue(expected_message in actual_message, actual_message)
+        self.assertIn('not recognized as a supported file format', str(cm.exception))
 
     def test_get_vector_info_error_handling(self):
         """PGP: test that bad data raise good errors in get_vector_info."""
         # check for missing file
-        with self.assertRaises(ValueError) as cm:
+        with self.assertRaises(RuntimeError) as cm:
             pygeoprocessing.get_vector_info(
                 os.path.join(self.workspace_dir, 'not_a_file.tif'))
-        expected_message = 'Could not open'
-        actual_message = str(cm.exception)
-        self.assertTrue(expected_message in actual_message, actual_message)
+        self.assertIn('No such file or directory', str(cm.exception))
 
         # check that file exists but is not a vector
         not_a_vector_path = os.path.join(
             self.workspace_dir, 'not_a_vector')
         os.makedirs(not_a_vector_path)
-        with self.assertRaises(ValueError) as cm:
+        with self.assertRaises(RuntimeError) as cm:
             pygeoprocessing.get_raster_info(not_a_vector_path)
-        expected_message = 'Could not open'
-        actual_message = str(cm.exception)
-        self.assertTrue(expected_message in actual_message, actual_message)
+        self.assertIn('not recognized as a supported file format', str(cm.exception))
 
     def test_merge_bounding_box_list(self):
         """PGP: test merge_bounding_box_list."""

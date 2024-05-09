@@ -111,20 +111,21 @@ def _raster_calculator_worker(
         data_blocks = []
         for value in base_canonical_arg_list:
             if isinstance(value, RasterPathBand):
-                raster = gdal.OpenEx(value.path, gdal.OF_RASTER)
-                band = raster.GetRasterBand(value.band_id)
-                data_blocks.append(band.ReadAsArray(**block_offset))
-                # I've encountered the following error when a gdal raster
-                # is corrupt, often from multiple threads writing to the
-                # same file. This helps to catch the error early rather
-                # than lead to confusing values of ``data_blocks`` later.
-                if not isinstance(data_blocks[-1], numpy.ndarray):
-                    raise ValueError(
-                        f"got a {data_blocks[-1]} when trying to read "
-                        f"{band.GetDataset().GetFileList()} at "
-                        f"{block_offset}, expected numpy.ndarray.")
-                raster = None
-                band = None
+                with gdal.ExceptionMgr(useExceptions=True):
+                    raster = gdal.OpenEx(value.path, gdal.OF_RASTER)
+                    band = raster.GetRasterBand(value.band_id)
+                    data_blocks.append(band.ReadAsArray(**block_offset))
+                    # I've encountered the following error when a gdal raster
+                    # is corrupt, often from multiple threads writing to the
+                    # same file. This helps to catch the error early rather
+                    # than lead to confusing values of ``data_blocks`` later.
+                    if not isinstance(data_blocks[-1], numpy.ndarray):
+                        raise ValueError(
+                            f"got a {data_blocks[-1]} when trying to read "
+                            f"{band.GetDataset().GetFileList()} at "
+                            f"{block_offset}, expected numpy.ndarray.")
+                    raster = None
+                    band = None
             elif isinstance(value, numpy.ndarray):
                 # must be numpy array and all have been conditioned to be
                 # 2d, so start with 0:1 slices and expand if possible
@@ -153,15 +154,16 @@ def _raster_calculator_worker(
                     blocksize, target_block))
 
         with write_lock:
-            target_raster = gdal.OpenEx(
-                target_raster_path, gdal.OF_RASTER | gdal.GA_Update)
-            target_band = target_raster.GetRasterBand(1)
-            target_band.WriteArray(
-                target_block, yoff=block_offset['yoff'],
-                xoff=block_offset['xoff'])
-            _block_success_handler(processing_state)
-            target_band = None
-            target_raster = None
+            with gdal.ExceptionMgr(useExceptions=True):
+                target_raster = gdal.OpenEx(
+                    target_raster_path, gdal.OF_RASTER | gdal.GA_Update)
+                target_band = target_raster.GetRasterBand(1)
+                target_band.WriteArray(
+                    target_block, yoff=block_offset['yoff'],
+                    xoff=block_offset['xoff'])
+                _block_success_handler(processing_state)
+                target_band = None
+                target_raster = None
 
         # send result to stats calculator
         if not stats_worker_queue:
@@ -325,32 +327,33 @@ def _validate_raster_input(
             "`base_raster_path_band_const_list`, instead got: "
             "%s" % pprint.pformat(base_raster_path_band_const_list))
 
-    # check that any rasters exist on disk and have enough bands
-    not_found_paths = []
-    gdal.PushErrorHandler('CPLQuietErrorHandler')
-    base_raster_path_band_list = [
-        path_band for path_band in base_raster_path_band_const_list
-        if _is_raster_path_band_formatted(path_band)]
-    for value in base_raster_path_band_list:
-        if gdal.OpenEx(value[0], gdal.OF_RASTER) is None:
-            not_found_paths.append(value[0])
-    gdal.PopErrorHandler()
-    if not_found_paths:
-        raise ValueError(
-            "The following files were expected but do not exist on the "
-            "filesystem: " + str(not_found_paths))
+    with gdal.ExceptionMgr(useExceptions=True):
+        # check that any rasters exist on disk and have enough bands
+        not_found_paths = []
+        gdal.PushErrorHandler('CPLQuietErrorHandler')
+        base_raster_path_band_list = [
+            path_band for path_band in base_raster_path_band_const_list
+            if _is_raster_path_band_formatted(path_band)]
+        for value in base_raster_path_band_list:
+            if gdal.OpenEx(value[0], gdal.OF_RASTER) is None:
+                not_found_paths.append(value[0])
+        gdal.PopErrorHandler()
+        if not_found_paths:
+            raise ValueError(
+                "The following files were expected but do not exist on the "
+                "filesystem: " + str(not_found_paths))
 
-    # check that band index exists in raster
-    invalid_band_index_list = []
-    for value in base_raster_path_band_list:
-        raster = gdal.OpenEx(value[0], gdal.OF_RASTER)
-        if not (1 <= value[1] <= raster.RasterCount):
-            invalid_band_index_list.append(value)
-        raster = None
-    if invalid_band_index_list:
-        raise ValueError(
-            "The following rasters do not contain requested band "
-            "indexes: %s" % invalid_band_index_list)
+        # check that band index exists in raster
+        invalid_band_index_list = []
+        for value in base_raster_path_band_list:
+            raster = gdal.OpenEx(value[0], gdal.OF_RASTER)
+            if not (1 <= value[1] <= raster.RasterCount):
+                invalid_band_index_list.append(value)
+            raster = None
+        if invalid_band_index_list:
+            raise ValueError(
+                "The following rasters do not contain requested band "
+                "indexes: %s" % invalid_band_index_list)
 
     # check that the target raster is not also an input raster
     if target_raster_path in [x[0] for x in base_raster_path_band_list]:
@@ -486,29 +489,30 @@ def raster_calculator(
             'Invalid target type, should be a gdal.GDT_* type, received '
             '"%s"' % datatype_target)
 
-    # create target raster
-    raster_driver = gdal.GetDriverByName(raster_driver_creation_tuple[0])
-    try:
-        os.makedirs(os.path.dirname(target_raster_path))
-    except OSError as exception:
-        # it's fine if the directory already exists, otherwise there's a big
-        # error!
-        if exception.errno != errno.EEXIST:
-            raise
+    with gdal.ExceptionMgr(useExceptions=True):
+        # create target raster
+        raster_driver = gdal.GetDriverByName(raster_driver_creation_tuple[0])
+        try:
+            os.makedirs(os.path.dirname(target_raster_path))
+        except OSError as exception:
+            # it's fine if the directory already exists, otherwise there's a big
+            # error!
+            if exception.errno != errno.EEXIST:
+                raise
 
-    target_raster = raster_driver.Create(
-        target_raster_path, n_cols, n_rows, 1, datatype_target,
-        options=raster_driver_creation_tuple[1])
+        target_raster = raster_driver.Create(
+            target_raster_path, n_cols, n_rows, 1, datatype_target,
+            options=raster_driver_creation_tuple[1])
 
-    target_band = target_raster.GetRasterBand(1)
-    if nodata_target is not None:
-        target_band.SetNoDataValue(nodata_target)
-    if raster_info_list:
-        # use the first raster in the list for the projection and geotransform
-        target_raster.SetProjection(raster_info_list[0]['projection_wkt'])
-        target_raster.SetGeoTransform(raster_info_list[0]['geotransform'])
-    target_band = None
-    target_raster = None
+        target_band = target_raster.GetRasterBand(1)
+        if nodata_target is not None:
+            target_band.SetNoDataValue(nodata_target)
+        if raster_info_list:
+            # use the first raster in the list for the projection and geotransform
+            target_raster.SetProjection(raster_info_list[0]['projection_wkt'])
+            target_raster.SetGeoTransform(raster_info_list[0]['geotransform'])
+        target_band = None
+        target_raster = None
 
     manager = multiprocessing.Manager()
     stats_worker_queue = None
@@ -592,12 +596,13 @@ def raster_calculator(
         payload = stats_worker_queue.get(True, _MAX_TIMEOUT)
         if payload is not None:
             target_min, target_max, target_mean, target_stddev = payload
-            target_raster = gdal.OpenEx(
-                target_raster_path, gdal.OF_RASTER | gdal.GA_Update)
-            target_band = target_raster.GetRasterBand(1)
-            target_band.SetStatistics(
-                float(target_min), float(target_max), float(target_mean),
-                float(target_stddev))
-            target_band = None
-            target_raster = None
+            with gdal.ExceptionMgr(useExceptions=True):
+                target_raster = gdal.OpenEx(
+                    target_raster_path, gdal.OF_RASTER | gdal.GA_Update)
+                target_band = target_raster.GetRasterBand(1)
+                target_band.SetStatistics(
+                    float(target_min), float(target_max), float(target_mean),
+                    float(target_stddev))
+                target_band = None
+                target_raster = None
     LOGGER.info('raster_calculator 100.0%% complete')
