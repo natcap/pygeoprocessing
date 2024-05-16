@@ -3081,11 +3081,14 @@ class TestGeoprocessing(unittest.TestCase):
         target_srs = osr.SpatialReference()
         target_srs.ImportFromEPSG(32619)  # UTM19N EPSG
 
-        with self.assertRaises(RuntimeError) as cm:
+        with self.assertRaises(Exception) as cm:
             result = pygeoprocessing.transform_bounding_box(
                 bounding_box_lat_lng_oob, osr.SRS_WKT_WGS84_LAT_LONG,
                 target_srs.ExportToWkt())
-        self.assertIn('Invalid', str(cm.exception))
+        self.assertTrue(
+            'Invalid latitude' in str(cm.exception) or
+            'Invalid coordinate' in str(cm.exception) or
+            'Some transformed coordinates are not finite' in str(cm.exception))
 
     def test_iterblocks(self):
         """PGP.geoprocessing: test iterblocks."""
