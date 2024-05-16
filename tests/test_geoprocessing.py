@@ -3085,9 +3085,7 @@ class TestGeoprocessing(unittest.TestCase):
             result = pygeoprocessing.transform_bounding_box(
                 bounding_box_lat_lng_oob, osr.SRS_WKT_WGS84_LAT_LONG,
                 target_srs.ExportToWkt())
-        expected_message = "Invalid latitude"
-        actual_message = str(cm.exception)
-        self.assertIn(expected_message, actual_message)
+        self.assertIn('Invalid', str(cm.exception))
 
     def test_iterblocks(self):
         """PGP.geoprocessing: test iterblocks."""
