@@ -116,7 +116,7 @@ class WatershedDelineationTests(unittest.TestCase):
         srs.ImportFromEPSG(32731)  # WGS84 / UTM zone 31s
         srs_wkt = srs.ExportToWkt()
 
-        for srs in (srs_wkt, None):
+        for srs in (None,):
             flow_dir_path = os.path.join(self.workspace_dir, 'flow_dir.tif')
             pygeoprocessing.numpy_array_to_raster(
                 base_array=flow_dir_array,

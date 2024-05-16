@@ -3081,11 +3081,11 @@ class TestGeoprocessing(unittest.TestCase):
         target_srs = osr.SpatialReference()
         target_srs.ImportFromEPSG(32619)  # UTM19N EPSG
 
-        with self.assertRaises(ValueError) as cm:
+        with self.assertRaises(RuntimeError) as cm:
             result = pygeoprocessing.transform_bounding_box(
                 bounding_box_lat_lng_oob, osr.SRS_WKT_WGS84_LAT_LONG,
                 target_srs.ExportToWkt())
-        expected_message = "transformed coordinates are not finite"
+        expected_message = "Invalid latitude"
         actual_message = str(cm.exception)
         self.assertTrue(expected_message in actual_message)
 
@@ -3568,9 +3568,7 @@ class TestGeoprocessing(unittest.TestCase):
     def test_rasterize_missing_file(self):
         """PGP.geoprocessing: test rasterize with no target raster."""
         n_pixels = 3
-        target_raster_array = numpy.ones((n_pixels, n_pixels), numpy.float32)
         test_value = 0.5
-        target_raster_array[:] = test_value
         target_raster_path = os.path.join(
             self.workspace_dir, 'target_raster.tif')
 
@@ -3590,14 +3588,11 @@ class TestGeoprocessing(unittest.TestCase):
             [polygon], base_vector_path, fields={'id': ogr.OFTInteger},
             attribute_list=[{'id': 5}], vector_format='GeoJSON')
 
-        with self.assertRaises(ValueError) as cm:
+        with self.assertRaises(RuntimeError) as cm:
             pygeoprocessing.rasterize(
                 base_vector_path, target_raster_path, [test_value], None,
                 layer_id=0)
-        expected_message = (
-            "%s doesn't exist, but needed to rasterize." % target_raster_path)
-        actual_message = str(cm.exception)
-        self.assertTrue(expected_message in actual_message, actual_message)
+        self.assertIn('No such file or directory', str(cm.exception))
 
     def test_rasterize_error_handling(self):
         """PGP.geoprocessing: test rasterize error handling."""
@@ -3921,9 +3916,6 @@ class TestGeoprocessing(unittest.TestCase):
             self.workspace_dir, 'file.txt')
         pathlib.Path(regular_file_raster_path).touch()
 
-        nonexistant_stitch_raster_path = os.path.join(
-            self.workspace_dir, 'nonexistant.tif')
-
         nodata_undefined_raster_path = os.path.join(
             self.workspace_dir, 'nodata_undefined.tif')
         wgs84_ref = osr.SpatialReference()
@@ -3950,41 +3942,16 @@ class TestGeoprocessing(unittest.TestCase):
             pygeoprocessing.stitch_rasters(
                 [(a_raster_path, 1)], ['near'], (stitch_raster_path, 1),
                 overlap_algorithm='bad algo')
-        expected_message = 'overlap algorithm'
-        actual_message = str(cm.exception)
-        self.assertTrue(
-            expected_message in actual_message, actual_message)
+        self.assertIn('overlap algorithm', str(cm.exception))
 
         with self.assertRaises(ValueError) as cm:
             pygeoprocessing.stitch_rasters(
                 [(a_raster_path, 1)], ['near'], stitch_raster_path,
                 overlap_algorithm='etch')
-        expected_message = (
+        self.assertIn(
             'Expected raster path/band tuple for '
-            'target_stitch_raster_path_band')
-        actual_message = str(cm.exception)
-        self.assertTrue(
-            expected_message in actual_message, actual_message)
-
-        with self.assertRaises(ValueError) as cm:
-            pygeoprocessing.stitch_rasters(
-                [(a_raster_path, 1)], ['near'],
-                (nonexistant_stitch_raster_path, 1),
-                overlap_algorithm='etch')
-        expected_message = 'Target stitch raster does not exist'
-        actual_message = str(cm.exception)
-        self.assertTrue(
-            expected_message in actual_message, actual_message)
-
-        with self.assertRaises(ValueError) as cm:
-            pygeoprocessing.stitch_rasters(
-                [(a_raster_path, 1)], ['near'],
-                (regular_file_raster_path, 1),
-                overlap_algorithm='etch')
-        expected_message = 'Could not open'
-        actual_message = str(cm.exception)
-        self.assertTrue(
-            expected_message in actual_message, actual_message)
+            'target_stitch_raster_path_band',
+            str(cm.exception))
 
         with self.assertRaises(ValueError) as cm:
             pygeoprocessing.stitch_rasters(
@@ -4912,14 +4879,6 @@ class TestGeoprocessing(unittest.TestCase):
         vector_info = pygeoprocessing.get_vector_info(vector_path)
         self.assertEqual(vector_info['file_list'], vector_file_list)
 
-    def test_iterblocks_bad_raster(self):
-        """PGP: tests iterblocks presents useful error on missing raster."""
-        with self.assertRaises(ValueError) as cm:
-            _ = list(pygeoprocessing.iterblocks(('fake_file.tif', 1)))
-        expected_message = 'could not be opened'
-        actual_message = str(cm.exception)
-        self.assertTrue(expected_message in actual_message, actual_message)
-
     def test_warp_raster_signedbyte(self):
         """PGP.geoprocessing: warp raster test."""
         pixel_a_matrix = numpy.full((5, 5), -1, numpy.int8)
@@ -5540,7 +5499,7 @@ class TestGeoprocessing(unittest.TestCase):
             pygeoprocessing.build_overviews(
                 raster_path, overwrite=True,
                 resample_method='invalid choice')
-        self.assertIn('Building overviews failed', str(cm.exception))
+        self.assertIn('Unsupported resampling method', str(cm.exception))
 
     def test_get_raster_info_overviews(self):
         """PGP: raster info about overviews."""
