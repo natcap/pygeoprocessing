@@ -37,7 +37,7 @@ from .geoprocessing_core import DEFAULT_CREATION_OPTIONS
 from .geoprocessing_core import DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS
 from .geoprocessing_core import DEFAULT_OSR_AXIS_MAPPING_STRATEGY
 from .geoprocessing_core import INT8_CREATION_OPTIONS
-from .geoprocessing_core import gdal_use_exceptions
+from .geoprocessing_core import gdal_use_exceptions, GDALUseExceptions
 
 # This is used to efficiently pass data to the raster stats worker if available
 if sys.version_info >= (3, 8):
@@ -315,7 +315,7 @@ def raster_calculator(
                 "Raster size %s cannot be broadcast to numpy shape %s" % (
                     raster_shape, numpy_broadcast_size))
 
-    with gdal.ExceptionMgr(useExceptions=True):
+    with GDALUseExceptions():
         # create a "canonical" argument list that's bands, 2d numpy arrays, or
         # raw values only
         base_canonical_arg_list = []
@@ -1269,7 +1269,6 @@ def new_raster_from_base(
     target_raster = None
 
 
-@gdal_use_exceptions
 def create_raster_from_vector_extents(
         base_vector_path, target_raster_path, target_pixel_size,
         target_pixel_type, target_nodata, fill_value=None,
@@ -1304,10 +1303,6 @@ def create_raster_from_vector_extents(
     Return:
         None
     """
-    if target_pixel_type not in _VALID_GDAL_TYPES:
-        raise ValueError(
-            f'Invalid target type, should be a gdal.GDT_* type, received '
-            f'"{target_pixel_type}"')
     # Determine the width and height of the tiff in pixels based on the
     # maximum size of the combined envelope of all the features
     vector = gdal.OpenEx(base_vector_path, gdal.OF_VECTOR)
@@ -1355,7 +1350,6 @@ def create_raster_from_vector_extents(
         raster_driver_creation_tuple=raster_driver_creation_tuple
     )
 
-
 @gdal_use_exceptions
 def create_raster_from_bounding_box(
         target_bounding_box, target_raster_path, target_pixel_size,
@@ -1386,11 +1380,6 @@ def create_raster_from_bounding_box(
     Returns:
         ``None``
     """
-    if target_pixel_type not in _VALID_GDAL_TYPES:
-        raise ValueError(
-            f'Invalid target type, should be a gdal.GDT_* type, received '
-            f'"{target_pixel_type}"')
-
     bbox_minx, bbox_miny, bbox_maxx, bbox_maxy = target_bounding_box
 
     driver = gdal.GetDriverByName(raster_driver_creation_tuple[0])
@@ -2402,6 +2391,7 @@ def reclassify_raster(
         raster_driver_creation_tuple=raster_driver_creation_tuple)
 
 
+@gdal_use_exceptions
 def warp_raster(
         base_raster_path, target_pixel_size, target_raster_path,
         resample_method, target_bb=None, base_projection_wkt=None,
@@ -2660,6 +2650,7 @@ def warp_raster(
         shutil.rmtree(temp_working_dir)
 
 
+@gdal_use_exceptions
 def rasterize(
         vector_path, target_raster_path, burn_values=None, option_list=None,
         layer_id=0, where_clause=None):
@@ -2719,9 +2710,7 @@ def rasterize(
     Return:
         None
     """
-    gdal.PushErrorHandler('CPLQuietErrorHandler')
     raster = gdal.OpenEx(target_raster_path, gdal.GA_Update | gdal.OF_RASTER)
-    gdal.PopErrorHandler()
     if raster is None:
         raise ValueError(
             "%s doesn't exist, but needed to rasterize." % target_raster_path)
@@ -3457,60 +3446,59 @@ def iterblocks(
         raise ValueError(
             "`raster_path_band` not formatted as expected.  Expects "
             "(path, band_index), received %s" % repr(raster_path_band))
-    raster = gdal.OpenEx(raster_path_band[0], gdal.OF_RASTER)
-    if raster is None:
-        raise ValueError(
-            "Raster at %s could not be opened." % raster_path_band[0])
-    band = raster.GetRasterBand(raster_path_band[1])
-    block = band.GetBlockSize()
-    cols_per_block = block[0]
-    rows_per_block = block[1]
 
-    n_cols = raster.RasterXSize
-    n_rows = raster.RasterYSize
+    with GDALUseExceptions():
+        raster = gdal.OpenEx(raster_path_band[0], gdal.OF_RASTER)
+        band = raster.GetRasterBand(raster_path_band[1])
+        block = band.GetBlockSize()
+        cols_per_block = block[0]
+        rows_per_block = block[1]
 
-    block_area = cols_per_block * rows_per_block
-    # try to make block wider
-    if int(largest_block / block_area) > 0:
-        width_factor = int(largest_block / block_area)
-        cols_per_block *= width_factor
-        if cols_per_block > n_cols:
-            cols_per_block = n_cols
+        n_cols = raster.RasterXSize
+        n_rows = raster.RasterYSize
+
         block_area = cols_per_block * rows_per_block
-    # try to make block taller
-    if int(largest_block / block_area) > 0:
-        height_factor = int(largest_block / block_area)
-        rows_per_block *= height_factor
-        if rows_per_block > n_rows:
-            rows_per_block = n_rows
+        # try to make block wider
+        if int(largest_block / block_area) > 0:
+            width_factor = int(largest_block / block_area)
+            cols_per_block *= width_factor
+            if cols_per_block > n_cols:
+                cols_per_block = n_cols
+            block_area = cols_per_block * rows_per_block
+        # try to make block taller
+        if int(largest_block / block_area) > 0:
+            height_factor = int(largest_block / block_area)
+            rows_per_block *= height_factor
+            if rows_per_block > n_rows:
+                rows_per_block = n_rows
 
-    n_col_blocks = int(math.ceil(n_cols / float(cols_per_block)))
-    n_row_blocks = int(math.ceil(n_rows / float(rows_per_block)))
+        n_col_blocks = int(math.ceil(n_cols / float(cols_per_block)))
+        n_row_blocks = int(math.ceil(n_rows / float(rows_per_block)))
 
-    for row_block_index in range(n_row_blocks):
-        row_offset = row_block_index * rows_per_block
-        row_block_width = n_rows - row_offset
-        if row_block_width > rows_per_block:
-            row_block_width = rows_per_block
-        for col_block_index in range(n_col_blocks):
-            col_offset = col_block_index * cols_per_block
-            col_block_width = n_cols - col_offset
-            if col_block_width > cols_per_block:
-                col_block_width = cols_per_block
+        for row_block_index in range(n_row_blocks):
+            row_offset = row_block_index * rows_per_block
+            row_block_width = n_rows - row_offset
+            if row_block_width > rows_per_block:
+                row_block_width = rows_per_block
+            for col_block_index in range(n_col_blocks):
+                col_offset = col_block_index * cols_per_block
+                col_block_width = n_cols - col_offset
+                if col_block_width > cols_per_block:
+                    col_block_width = cols_per_block
 
-            offset_dict = {
-                'xoff': col_offset,
-                'yoff': row_offset,
-                'win_xsize': col_block_width,
-                'win_ysize': row_block_width,
-            }
-            if offset_only:
-                yield offset_dict
-            else:
-                yield (offset_dict, band.ReadAsArray(**offset_dict))
+                offset_dict = {
+                    'xoff': col_offset,
+                    'yoff': row_offset,
+                    'win_xsize': col_block_width,
+                    'win_ysize': row_block_width,
+                }
+                if offset_only:
+                    yield offset_dict
+                else:
+                    yield (offset_dict, band.ReadAsArray(**offset_dict))
 
-    band = None
-    raster = None
+        band = None
+        raster = None
 
 
 def transform_bounding_box(
@@ -3554,66 +3542,67 @@ def transform_bounding_box(
         should address.
 
     """
-    base_ref = osr.SpatialReference()
-    base_ref.ImportFromWkt(base_projection_wkt)
+    with GDALUseExceptions():
+        base_ref = osr.SpatialReference()
+        base_ref.ImportFromWkt(base_projection_wkt)
 
-    target_ref = osr.SpatialReference()
-    target_ref.ImportFromWkt(target_projection_wkt)
+        target_ref = osr.SpatialReference()
+        target_ref.ImportFromWkt(target_projection_wkt)
 
-    base_ref.SetAxisMappingStrategy(osr_axis_mapping_strategy)
-    target_ref.SetAxisMappingStrategy(osr_axis_mapping_strategy)
+        base_ref.SetAxisMappingStrategy(osr_axis_mapping_strategy)
+        target_ref.SetAxisMappingStrategy(osr_axis_mapping_strategy)
 
-    # Create a coordinate transformation
-    transformer = osr.CreateCoordinateTransformation(base_ref, target_ref)
+        # Create a coordinate transformation
+        transformer = osr.CreateCoordinateTransformation(base_ref, target_ref)
 
-    def _transform_point(point):
-        """Transform an (x,y) point tuple from base_ref to target_ref."""
-        trans_x, trans_y, _ = (transformer.TransformPoint(*point))
-        return (trans_x, trans_y)
+        def _transform_point(point):
+            """Transform an (x,y) point tuple from base_ref to target_ref."""
+            trans_x, trans_y, _ = (transformer.TransformPoint(*point))
+            return (trans_x, trans_y)
 
-    # The following list comprehension iterates over each edge of the bounding
-    # box, divides each edge into ``edge_samples`` number of points, then
-    # reduces that list to an appropriate ``bounding_fn`` given the edge.
-    # For example the left edge needs to be the minimum x coordinate so
-    # we generate ``edge_samples` number of points between the upper left and
-    # lower left point, transform them all to the new coordinate system
-    # then get the minimum x coordinate "min(p[0] ...)" of the batch.
-    # points are numbered from 0 starting upper right as follows:
-    # 0--3
-    # |  |
-    # 1--2
-    p_0 = numpy.array((bounding_box[0], bounding_box[3]))
-    p_1 = numpy.array((bounding_box[0], bounding_box[1]))
-    p_2 = numpy.array((bounding_box[2], bounding_box[1]))
-    p_3 = numpy.array((bounding_box[2], bounding_box[3]))
-    raw_bounding_box = [
-        bounding_fn(
-            [_transform_point(
-                p_a * v + p_b * (1 - v)) for v in numpy.linspace(
-                    0, 1, edge_samples)])
-        for p_a, p_b, bounding_fn in [
-            (p_0, p_1, lambda p_list: min([p[0] for p in p_list])),
-            (p_1, p_2, lambda p_list: min([p[1] for p in p_list])),
-            (p_2, p_3, lambda p_list: max([p[0] for p in p_list])),
-            (p_3, p_0, lambda p_list: max([p[1] for p in p_list]))]]
+        # The following list comprehension iterates over each edge of the bounding
+        # box, divides each edge into ``edge_samples`` number of points, then
+        # reduces that list to an appropriate ``bounding_fn`` given the edge.
+        # For example the left edge needs to be the minimum x coordinate so
+        # we generate ``edge_samples` number of points between the upper left and
+        # lower left point, transform them all to the new coordinate system
+        # then get the minimum x coordinate "min(p[0] ...)" of the batch.
+        # points are numbered from 0 starting upper right as follows:
+        # 0--3
+        # |  |
+        # 1--2
+        p_0 = numpy.array((bounding_box[0], bounding_box[3]))
+        p_1 = numpy.array((bounding_box[0], bounding_box[1]))
+        p_2 = numpy.array((bounding_box[2], bounding_box[1]))
+        p_3 = numpy.array((bounding_box[2], bounding_box[3]))
+        raw_bounding_box = [
+            bounding_fn(
+                [_transform_point(
+                    p_a * v + p_b * (1 - v)) for v in numpy.linspace(
+                        0, 1, edge_samples)])
+            for p_a, p_b, bounding_fn in [
+                (p_0, p_1, lambda p_list: min([p[0] for p in p_list])),
+                (p_1, p_2, lambda p_list: min([p[1] for p in p_list])),
+                (p_2, p_3, lambda p_list: max([p[0] for p in p_list])),
+                (p_3, p_0, lambda p_list: max([p[1] for p in p_list]))]]
 
-    # sometimes a transform will be so tight that a sampling around it may
-    # flip the coordinate system. This flips it back. I found this when
-    # transforming the bounding box of Gibraltar in a utm coordinate system
-    # to lat/lng.
-    minx, maxx = sorted([raw_bounding_box[0], raw_bounding_box[2]])
-    miny, maxy = sorted([raw_bounding_box[1], raw_bounding_box[3]])
-    transformed_bounding_box = [minx, miny, maxx, maxy]
-    if not all(numpy.isfinite(numpy.array(transformed_bounding_box))):
-        raise ValueError(
-            f'Could not transform bounding box from base to target projection.'
-            f'Some transformed coordinates are not finite: '
-            f'{transformed_bounding_box}, base bounding box may not fit into '
-            f'target coordinate projection system.\n'
-            f'Original bounding box: {bounding_box}\n'
-            f'Base projection: {base_projection_wkt}\n'
-            f'Target projection: {target_projection_wkt}\n')
-    return transformed_bounding_box
+        # sometimes a transform will be so tight that a sampling around it may
+        # flip the coordinate system. This flips it back. I found this when
+        # transforming the bounding box of Gibraltar in a utm coordinate system
+        # to lat/lng.
+        minx, maxx = sorted([raw_bounding_box[0], raw_bounding_box[2]])
+        miny, maxy = sorted([raw_bounding_box[1], raw_bounding_box[3]])
+        transformed_bounding_box = [minx, miny, maxx, maxy]
+        if not all(numpy.isfinite(numpy.array(transformed_bounding_box))):
+            raise ValueError(
+                f'Could not transform bounding box from base to target projection.'
+                f'Some transformed coordinates are not finite: '
+                f'{transformed_bounding_box}, base bounding box may not fit into '
+                f'target coordinate projection system.\n'
+                f'Original bounding box: {bounding_box}\n'
+                f'Base projection: {base_projection_wkt}\n'
+                f'Target projection: {target_projection_wkt}\n')
+        return transformed_bounding_box
 
 
 def mask_raster(
@@ -3700,6 +3689,7 @@ def mask_raster(
     os.remove(mask_raster_path)
 
 
+@gdal_use_exceptions
 def _gdal_to_numpy_type(gdal_type, metadata):
     """Calculate the equivalent numpy datatype from a GDAL type and metadata.
 
@@ -3725,6 +3715,7 @@ def _gdal_to_numpy_type(gdal_type, metadata):
     return numpy_type
 
 
+@gdal_use_exceptions
 def _numpy_to_gdal_type(numpy_type):
     """Calculate the equivalent GDAL type and metadata from a numpy type.
 
@@ -3809,6 +3800,7 @@ def merge_bounding_box_list(bounding_box_list, bounding_box_mode):
     return result_bb
 
 
+@gdal_use_exceptions
 def get_gis_type(path):
     """Calculate the GIS type of the file located at ``path``.
 
@@ -3826,18 +3818,20 @@ def get_gis_type(path):
         ``pygeoprocessing.RASTER_TYPE``, or ``pygeoprocessing.VECTOR_TYPE``.
 
     """
-    from pygeoprocessing import UNKNOWN_TYPE
+    from pygeoprocessing import UNKNOWN_TYPE, RASTER_TYPE, VECTOR_TYPE
     gis_type = UNKNOWN_TYPE
-    gis_raster = gdal.OpenEx(path, gdal.OF_RASTER)
-    if gis_raster is not None:
-        from pygeoprocessing import RASTER_TYPE
+    try:
+        gis_raster = gdal.OpenEx(path, gdal.OF_RASTER)
         gis_type |= RASTER_TYPE
         gis_raster = None
-    gis_vector = gdal.OpenEx(path, gdal.OF_VECTOR)
-    if gis_vector is not None:
-        from pygeoprocessing import VECTOR_TYPE
+    except RuntimeError:
+        pass
+    try:
+        gis_vector = gdal.OpenEx(path, gdal.OF_VECTOR)
         gis_type |= VECTOR_TYPE
         gis_vector = None
+    except RuntimeError:
+        pass
     if gis_type == UNKNOWN_TYPE:
         raise ValueError(
             f"Could not open {path} as a gdal.OF_RASTER or gdal.OF_VECTOR.")
@@ -3900,6 +3894,7 @@ def _is_raster_path_band_formatted(raster_path_band):
         return True
 
 
+@gdal_use_exceptions
 def _convolve_2d_worker(
         signal_path_band, kernel_path_band,
         ignore_nodata, normalize_kernel, set_tol_to_zero,
@@ -4104,6 +4099,7 @@ def _assert_is_valid_pixel_size(target_pixel_size):
     return True
 
 
+@gdal_use_exceptions
 def shapely_geometry_to_vector(
         shapely_geometry_list, target_vector_path, projection_wkt,
         vector_format, fields=None, attribute_list=None,
@@ -4171,6 +4167,7 @@ def shapely_geometry_to_vector(
     target_vector = None
 
 
+@gdal_use_exceptions
 def numpy_array_to_raster(
         base_array, target_nodata, pixel_size, origin, projection_wkt,
         target_path,
@@ -4227,6 +4224,7 @@ def numpy_array_to_raster(
     new_raster = None
 
 
+@gdal_use_exceptions
 def raster_to_numpy_array(raster_path, band_id=1):
     """Read the entire contents of the raster band to a numpy array.
 
@@ -4246,6 +4244,7 @@ def raster_to_numpy_array(raster_path, band_id=1):
     return array
 
 
+@gdal_use_exceptions
 def stitch_rasters(
         base_raster_path_band_list,
         resample_method_list,
@@ -4322,10 +4321,6 @@ def stitch_rasters(
             f'got {len(base_raster_path_band_list)} != '
             f'{len(resample_method_list)} respectively')
 
-    if not os.path.exists(target_stitch_raster_path_band[0]):
-        raise ValueError(
-            f'Target stitch raster does not exist: '
-            f'"{target_stitch_raster_path_band[0]}"')
     gis_type = get_gis_type(target_stitch_raster_path_band[0])
     from pygeoprocessing import RASTER_TYPE
     if gis_type != RASTER_TYPE:
@@ -4341,7 +4336,6 @@ def stitch_rasters(
             f'target_stitch_raster_path_band[1]: '
             f'{target_stitch_raster_path_band[1]} '
             f'n bands: {len(target_raster_info["nodata"])}')
-
     target_nodata = target_raster_info['nodata'][
         target_stitch_raster_path_band[1]-1]
     if target_nodata is None:
@@ -4551,6 +4545,7 @@ def stitch_rasters(
     target_band = None
 
 
+@gdal_use_exceptions
 def build_overviews(
         raster_path, internal=False, resample_method='near',
         overwrite=False, levels='auto'):

@@ -46,12 +46,25 @@ DEFAULT_OSR_AXIS_MAPPING_STRATEGY = osr.OAMS_TRADITIONAL_GIS_ORDER
 LOGGER = logging.getLogger('pygeoprocessing.geoprocessing_core')
 
 
+class GDALUseExceptions(object):
+
+    def __init__(self):
+        pass
+
+    def __enter__(self):
+        self.currentUseExceptions = gdal.GetUseExceptions()
+        gdal.UseExceptions()
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self.currentUseExceptions == 0:
+            gdal.DontUseExceptions()
+
+
 def gdal_use_exceptions(func):
     def wrapper(*args, **kwargs):
-        with gdal.ExceptionMgr(useExceptions=True):
+        with GDALUseExceptions():
             return func(*args, **kwargs)
     return wrapper
-
 
 
 cdef float _NODATA = -1.0
@@ -651,6 +664,7 @@ def stats_worker(stats_work_queue, expected_blocks):
 ctypedef long long int64t
 ctypedef FastFileIterator[long long]* FastFileIteratorLongLongIntPtr
 ctypedef FastFileIterator[double]* FastFileIteratorDoublePtr
+
 
 def raster_band_percentile(
         base_raster_path_band, working_sort_directory, percentile_list,

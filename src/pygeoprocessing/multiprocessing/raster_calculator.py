@@ -22,6 +22,7 @@ from ..geoprocessing import get_raster_info
 from ..geoprocessing import iterblocks
 from ..geoprocessing import LOGGER
 from ..geoprocessing_core import DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS
+from ..geoprocessing_core import GDALUseExceptions
 
 if sys.version_info >= (3, 8):
     import multiprocessing.shared_memory
@@ -111,7 +112,7 @@ def _raster_calculator_worker(
         data_blocks = []
         for value in base_canonical_arg_list:
             if isinstance(value, RasterPathBand):
-                with gdal.ExceptionMgr(useExceptions=True):
+                with GDALUseExceptions():
                     raster = gdal.OpenEx(value.path, gdal.OF_RASTER)
                     band = raster.GetRasterBand(value.band_id)
                     data_blocks.append(band.ReadAsArray(**block_offset))
@@ -154,7 +155,7 @@ def _raster_calculator_worker(
                     blocksize, target_block))
 
         with write_lock:
-            with gdal.ExceptionMgr(useExceptions=True):
+            with GDALUseExceptions():
                 target_raster = gdal.OpenEx(
                     target_raster_path, gdal.OF_RASTER | gdal.GA_Update)
                 target_band = target_raster.GetRasterBand(1)
@@ -327,7 +328,7 @@ def _validate_raster_input(
             "`base_raster_path_band_const_list`, instead got: "
             "%s" % pprint.pformat(base_raster_path_band_const_list))
 
-    with gdal.ExceptionMgr(useExceptions=True):
+    with GDALUseExceptions():
         # check that any rasters exist on disk and have enough bands
         not_found_paths = []
         gdal.PushErrorHandler('CPLQuietErrorHandler')
@@ -489,7 +490,7 @@ def raster_calculator(
             'Invalid target type, should be a gdal.GDT_* type, received '
             '"%s"' % datatype_target)
 
-    with gdal.ExceptionMgr(useExceptions=True):
+    with GDALUseExceptions():
         # create target raster
         raster_driver = gdal.GetDriverByName(raster_driver_creation_tuple[0])
         try:
@@ -596,7 +597,7 @@ def raster_calculator(
         payload = stats_worker_queue.get(True, _MAX_TIMEOUT)
         if payload is not None:
             target_min, target_max, target_mean, target_stddev = payload
-            with gdal.ExceptionMgr(useExceptions=True):
+            with GDALUseExceptions():
                 target_raster = gdal.OpenEx(
                     target_raster_path, gdal.OF_RASTER | gdal.GA_Update)
                 target_band = target_raster.GetRasterBand(1)

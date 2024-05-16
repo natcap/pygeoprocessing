@@ -60,7 +60,7 @@ import shapely.ops
 import scipy.stats
 
 from ..geoprocessing_core import DEFAULT_OSR_AXIS_MAPPING_STRATEGY
-from ..geoprocessing_core import gdal_use_exceptions
+from ..geoprocessing_core import gdal_use_exceptions, GDALUseExceptions
 import pygeoprocessing
 
 LOGGER = logging.getLogger(__name__)
@@ -437,7 +437,7 @@ cdef class _ManagedRaster:
         if yoff+win_ysize > self.raster_y_size:
             win_ysize = win_ysize - (yoff+win_ysize - self.raster_y_size)
 
-        with gdal.ExceptionMgr(useExceptions=True):
+        with GDALUseExceptions():
             raster = gdal.OpenEx(self.raster_path, gdal.OF_RASTER)
             raster_band = raster.GetRasterBand(self.band_id)
             block_array = raster_band.ReadAsArray(
@@ -524,7 +524,7 @@ cdef class _ManagedRaster:
 
         self.lru_cache.clean(removed_value_list, self.lru_cache.size())
 
-        with gdal.ExceptionMgr(useExceptions=True):
+        with GDALUseExceptions():
             raster_band = None
             if self.write_mode:
                 max_retries = 5
@@ -4818,7 +4818,7 @@ cdef _calculate_stream_geometry(
     cdef int next_dir
     cdef int last_dir
 
-    with gdal.ExceptionMgr(useExceptions=True):
+    with GDALUseExceptions():
 
         if flow_accum_managed_raster.get(x_l, y_l) < flow_accum_threshold:
             return None

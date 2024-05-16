@@ -25,7 +25,7 @@ import shapely.prepared
 import shapely.wkb
 
 import pygeoprocessing
-from ..geoprocessing_core import gdal_use_exceptions
+from ..geoprocessing_core import gdal_use_exceptions, GDALUseExceptions
 
 LOGGER = logging.getLogger(__name__)
 
@@ -311,7 +311,7 @@ cdef class _ManagedRaster:
         if yoff+win_ysize > self.raster_y_size:
             win_ysize = win_ysize - (yoff+win_ysize - self.raster_y_size)
 
-        with gdal.ExceptionMgr(useExceptions=True):
+        with GDALUseExceptions():
             raster = gdal.OpenEx(self.raster_path, gdal.OF_RASTER)
             raster_band = raster.GetRasterBand(self.band_id)
             block_array = raster_band.ReadAsArray(
@@ -512,7 +512,8 @@ cdef cset[CoordinatePair] _c_split_geometry_into_seeds(
         raster = gtiff_driver.Create(
             target_raster_path, int(local_n_cols), int(local_n_rows), 1,
             gdal.GDT_Byte, options=GTIFF_CREATION_OPTIONS)
-        raster.SetProjection(flow_dir_srs.ExportToWkt())
+
+        raster.SetSpatialRef(flow_dir_srs)
         raster.SetGeoTransform(local_geotransform)
 
         gdal.RasterizeLayer(
@@ -710,7 +711,6 @@ def delineate_watersheds_d8(
     LOGGER.debug('Creating flow dir managed raster')
     flow_dir_managed_raster = _ManagedRaster(d8_flow_dir_raster_path_band[0],
                                              d8_flow_dir_raster_path_band[1], 0)
-
     gtiff_driver = gdal.GetDriverByName('GTiff')
     flow_dir_srs = osr.SpatialReference()
     if flow_dir_info['projection_wkt']:
