@@ -220,7 +220,7 @@ class TestRouting(unittest.TestCase):
         expected_message = (
             'expected flow dir type of either d8 or mfd but got bad_mode')
         actual_message = str(cm.exception)
-        self.assertTrue(expected_message in actual_message, actual_message)
+        self.assertIn(expected_message, actual_message)
 
     def test_detect_outlets_d8(self):
         """PGP.routing: test detect outlets for D8."""
