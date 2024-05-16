@@ -489,7 +489,7 @@ cdef cset[CoordinatePair] _c_split_geometry_into_seeds(
     local_n_cols = max(abs(maxx_aligned - minx_aligned) // abs(x_pixelwidth), 1)
     local_n_rows = max(abs(maxy_aligned - miny_aligned) // abs(y_pixelwidth), 1)
 
-    with gdal.ExceptionMgr(useExceptions=True):
+    with GDALUseExceptions():
         # The geometry does not fit into a single pixel, so let's create a new
         # raster onto which to rasterize it.
         memory_driver = gdal.GetDriverByName('Memory')
