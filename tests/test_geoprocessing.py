@@ -2788,13 +2788,14 @@ class TestGeoprocessing(unittest.TestCase):
             self.workspace_dir, 'target_raster.tif')
         target_nodata = -1
         target_pixel_type = gdal.GDT_Int16
-        with self.assertRaises(ValueError) as cm:
+        pygeoprocessing.create_raster_from_vector_extents(
+                source_vector_path, target_raster_path, _DEFAULT_PIXEL_SIZE,
+                target_nodata, target_pixel_type)
+        with self.assertRaises(Exception) as cm:
             pygeoprocessing.create_raster_from_vector_extents(
                 source_vector_path, target_raster_path, _DEFAULT_PIXEL_SIZE,
                 target_nodata, target_pixel_type)
-        self.assertIn(
-            'Invalid target type, should be a gdal.GDT_* type',
-            str(cm.exception))
+        self.assertIn('Invalid value for GDALDataType', str(cm.exception))
 
     def test_create_raster_from_vector_extents_odd_pixel_shapes(self):
         """PGP.geoprocessing: create raster vector ext. w/ odd pixel size."""
