@@ -1269,6 +1269,7 @@ def new_raster_from_base(
     target_raster = None
 
 
+@gdal_use_exceptions
 def create_raster_from_vector_extents(
         base_vector_path, target_raster_path, target_pixel_size,
         target_pixel_type, target_nodata, fill_value=None,
