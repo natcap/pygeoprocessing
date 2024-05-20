@@ -5,7 +5,6 @@ import logging
 
 from . import geoprocessing
 from .geoprocessing import DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS
-from osgeo import gdal
 import numpy
 
 LOGGER = logging.getLogger(__name__)

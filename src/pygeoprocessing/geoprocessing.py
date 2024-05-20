@@ -2768,6 +2768,7 @@ def rasterize(
     raster = None
 
 
+@gdal_use_exceptions
 def calculate_disjoint_polygon_set(
         vector_path, layer_id=0, bounding_box=None,
         geometries_may_touch=False):
@@ -3057,6 +3058,7 @@ def _next_regular(base):
     return match
 
 
+@gdal_use_exceptions
 def convolve_2d(
         signal_path_band, kernel_path_band, target_path,
         ignore_nodata_and_edges=False, mask_nodata=True,
@@ -3397,6 +3399,7 @@ def convolve_2d(
     target_raster = None
 
 
+@gdal_use_exceptions
 def iterblocks(
         raster_path_band, largest_block=_LARGEST_ITERBLOCK,
         offset_only=False):
@@ -3448,60 +3451,60 @@ def iterblocks(
             "`raster_path_band` not formatted as expected.  Expects "
             "(path, band_index), received %s" % repr(raster_path_band))
 
-    with GDALUseExceptions():
-        raster = gdal.OpenEx(raster_path_band[0], gdal.OF_RASTER)
-        band = raster.GetRasterBand(raster_path_band[1])
-        block = band.GetBlockSize()
-        cols_per_block = block[0]
-        rows_per_block = block[1]
+    raster = gdal.OpenEx(raster_path_band[0], gdal.OF_RASTER)
+    band = raster.GetRasterBand(raster_path_band[1])
+    block = band.GetBlockSize()
+    cols_per_block = block[0]
+    rows_per_block = block[1]
 
-        n_cols = raster.RasterXSize
-        n_rows = raster.RasterYSize
+    n_cols = raster.RasterXSize
+    n_rows = raster.RasterYSize
 
+    block_area = cols_per_block * rows_per_block
+    # try to make block wider
+    if int(largest_block / block_area) > 0:
+        width_factor = int(largest_block / block_area)
+        cols_per_block *= width_factor
+        if cols_per_block > n_cols:
+            cols_per_block = n_cols
         block_area = cols_per_block * rows_per_block
-        # try to make block wider
-        if int(largest_block / block_area) > 0:
-            width_factor = int(largest_block / block_area)
-            cols_per_block *= width_factor
-            if cols_per_block > n_cols:
-                cols_per_block = n_cols
-            block_area = cols_per_block * rows_per_block
-        # try to make block taller
-        if int(largest_block / block_area) > 0:
-            height_factor = int(largest_block / block_area)
-            rows_per_block *= height_factor
-            if rows_per_block > n_rows:
-                rows_per_block = n_rows
+    # try to make block taller
+    if int(largest_block / block_area) > 0:
+        height_factor = int(largest_block / block_area)
+        rows_per_block *= height_factor
+        if rows_per_block > n_rows:
+            rows_per_block = n_rows
 
-        n_col_blocks = int(math.ceil(n_cols / float(cols_per_block)))
-        n_row_blocks = int(math.ceil(n_rows / float(rows_per_block)))
+    n_col_blocks = int(math.ceil(n_cols / float(cols_per_block)))
+    n_row_blocks = int(math.ceil(n_rows / float(rows_per_block)))
 
-        for row_block_index in range(n_row_blocks):
-            row_offset = row_block_index * rows_per_block
-            row_block_width = n_rows - row_offset
-            if row_block_width > rows_per_block:
-                row_block_width = rows_per_block
-            for col_block_index in range(n_col_blocks):
-                col_offset = col_block_index * cols_per_block
-                col_block_width = n_cols - col_offset
-                if col_block_width > cols_per_block:
-                    col_block_width = cols_per_block
+    for row_block_index in range(n_row_blocks):
+        row_offset = row_block_index * rows_per_block
+        row_block_width = n_rows - row_offset
+        if row_block_width > rows_per_block:
+            row_block_width = rows_per_block
+        for col_block_index in range(n_col_blocks):
+            col_offset = col_block_index * cols_per_block
+            col_block_width = n_cols - col_offset
+            if col_block_width > cols_per_block:
+                col_block_width = cols_per_block
 
-                offset_dict = {
-                    'xoff': col_offset,
-                    'yoff': row_offset,
-                    'win_xsize': col_block_width,
-                    'win_ysize': row_block_width,
-                }
-                if offset_only:
-                    yield offset_dict
-                else:
-                    yield (offset_dict, band.ReadAsArray(**offset_dict))
+            offset_dict = {
+                'xoff': col_offset,
+                'yoff': row_offset,
+                'win_xsize': col_block_width,
+                'win_ysize': row_block_width,
+            }
+            if offset_only:
+                yield offset_dict
+            else:
+                yield (offset_dict, band.ReadAsArray(**offset_dict))
 
-        band = None
-        raster = None
+    band = None
+    raster = None
 
 
+@gdal_use_exceptions
 def transform_bounding_box(
         bounding_box, base_projection_wkt, target_projection_wkt,
         edge_samples=11,
@@ -3543,69 +3546,69 @@ def transform_bounding_box(
         should address.
 
     """
-    with GDALUseExceptions():
-        base_ref = osr.SpatialReference()
-        base_ref.ImportFromWkt(base_projection_wkt)
+    base_ref = osr.SpatialReference()
+    base_ref.ImportFromWkt(base_projection_wkt)
 
-        target_ref = osr.SpatialReference()
-        target_ref.ImportFromWkt(target_projection_wkt)
+    target_ref = osr.SpatialReference()
+    target_ref.ImportFromWkt(target_projection_wkt)
 
-        base_ref.SetAxisMappingStrategy(osr_axis_mapping_strategy)
-        target_ref.SetAxisMappingStrategy(osr_axis_mapping_strategy)
+    base_ref.SetAxisMappingStrategy(osr_axis_mapping_strategy)
+    target_ref.SetAxisMappingStrategy(osr_axis_mapping_strategy)
 
-        # Create a coordinate transformation
-        transformer = osr.CreateCoordinateTransformation(base_ref, target_ref)
+    # Create a coordinate transformation
+    transformer = osr.CreateCoordinateTransformation(base_ref, target_ref)
 
-        def _transform_point(point):
-            """Transform an (x,y) point tuple from base_ref to target_ref."""
-            trans_x, trans_y, _ = (transformer.TransformPoint(*point))
-            return (trans_x, trans_y)
+    def _transform_point(point):
+        """Transform an (x,y) point tuple from base_ref to target_ref."""
+        trans_x, trans_y, _ = (transformer.TransformPoint(*point))
+        return (trans_x, trans_y)
 
-        # The following list comprehension iterates over each edge of the bounding
-        # box, divides each edge into ``edge_samples`` number of points, then
-        # reduces that list to an appropriate ``bounding_fn`` given the edge.
-        # For example the left edge needs to be the minimum x coordinate so
-        # we generate ``edge_samples` number of points between the upper left and
-        # lower left point, transform them all to the new coordinate system
-        # then get the minimum x coordinate "min(p[0] ...)" of the batch.
-        # points are numbered from 0 starting upper right as follows:
-        # 0--3
-        # |  |
-        # 1--2
-        p_0 = numpy.array((bounding_box[0], bounding_box[3]))
-        p_1 = numpy.array((bounding_box[0], bounding_box[1]))
-        p_2 = numpy.array((bounding_box[2], bounding_box[1]))
-        p_3 = numpy.array((bounding_box[2], bounding_box[3]))
-        raw_bounding_box = [
-            bounding_fn(
-                [_transform_point(
-                    p_a * v + p_b * (1 - v)) for v in numpy.linspace(
-                        0, 1, edge_samples)])
-            for p_a, p_b, bounding_fn in [
-                (p_0, p_1, lambda p_list: min([p[0] for p in p_list])),
-                (p_1, p_2, lambda p_list: min([p[1] for p in p_list])),
-                (p_2, p_3, lambda p_list: max([p[0] for p in p_list])),
-                (p_3, p_0, lambda p_list: max([p[1] for p in p_list]))]]
+    # The following list comprehension iterates over each edge of the bounding
+    # box, divides each edge into ``edge_samples`` number of points, then
+    # reduces that list to an appropriate ``bounding_fn`` given the edge.
+    # For example the left edge needs to be the minimum x coordinate so
+    # we generate ``edge_samples` number of points between the upper left and
+    # lower left point, transform them all to the new coordinate system
+    # then get the minimum x coordinate "min(p[0] ...)" of the batch.
+    # points are numbered from 0 starting upper right as follows:
+    # 0--3
+    # |  |
+    # 1--2
+    p_0 = numpy.array((bounding_box[0], bounding_box[3]))
+    p_1 = numpy.array((bounding_box[0], bounding_box[1]))
+    p_2 = numpy.array((bounding_box[2], bounding_box[1]))
+    p_3 = numpy.array((bounding_box[2], bounding_box[3]))
+    raw_bounding_box = [
+        bounding_fn(
+            [_transform_point(
+                p_a * v + p_b * (1 - v)) for v in numpy.linspace(
+                    0, 1, edge_samples)])
+        for p_a, p_b, bounding_fn in [
+            (p_0, p_1, lambda p_list: min([p[0] for p in p_list])),
+            (p_1, p_2, lambda p_list: min([p[1] for p in p_list])),
+            (p_2, p_3, lambda p_list: max([p[0] for p in p_list])),
+            (p_3, p_0, lambda p_list: max([p[1] for p in p_list]))]]
 
-        # sometimes a transform will be so tight that a sampling around it may
-        # flip the coordinate system. This flips it back. I found this when
-        # transforming the bounding box of Gibraltar in a utm coordinate system
-        # to lat/lng.
-        minx, maxx = sorted([raw_bounding_box[0], raw_bounding_box[2]])
-        miny, maxy = sorted([raw_bounding_box[1], raw_bounding_box[3]])
-        transformed_bounding_box = [minx, miny, maxx, maxy]
-        if not all(numpy.isfinite(numpy.array(transformed_bounding_box))):
-            raise ValueError(
-                f'Could not transform bounding box from base to target projection. '
-                f'Some transformed coordinates are not finite: '
-                f'{transformed_bounding_box}, base bounding box may not fit into '
-                f'target coordinate projection system.\n'
-                f'Original bounding box: {bounding_box}\n'
-                f'Base projection: {base_projection_wkt}\n'
-                f'Target projection: {target_projection_wkt}\n')
-        return transformed_bounding_box
+    # sometimes a transform will be so tight that a sampling around it may
+    # flip the coordinate system. This flips it back. I found this when
+    # transforming the bounding box of Gibraltar in a utm coordinate system
+    # to lat/lng.
+    minx, maxx = sorted([raw_bounding_box[0], raw_bounding_box[2]])
+    miny, maxy = sorted([raw_bounding_box[1], raw_bounding_box[3]])
+    transformed_bounding_box = [minx, miny, maxx, maxy]
+    if not all(numpy.isfinite(numpy.array(transformed_bounding_box))):
+        raise ValueError(
+            f'Could not transform bounding box from base to target projection. '
+            f'Some transformed coordinates are not finite: '
+            f'{transformed_bounding_box}, base bounding box may not fit into '
+            f'target coordinate projection system.\n'
+            f'Original bounding box: {bounding_box}\n'
+            f'Base projection: {base_projection_wkt}\n'
+            f'Target projection: {target_projection_wkt}\n')
+    return transformed_bounding_box
 
 
+@gdal_use_exceptions
 def mask_raster(
         base_raster_path_band, mask_vector_path, target_mask_raster_path,
         mask_layer_id=0, target_mask_value=None, working_dir=None,

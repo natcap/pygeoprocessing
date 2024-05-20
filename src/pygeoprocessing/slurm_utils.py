@@ -4,9 +4,12 @@ import warnings
 
 from osgeo import gdal
 
+from .geoprocessing_core import gdal_use_exceptions
+
 LOGGER = logging.getLogger(__name__)
 
 
+@gdal_use_exceptions
 def log_warning_if_gdal_will_exhaust_slurm_memory():
     """Warn if GDAL's cache max size exceeds SLURM's allocated memory.
 

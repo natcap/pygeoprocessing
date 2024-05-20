@@ -41,6 +41,8 @@ import pygeoprocessing
 from numpy.typing import ArrayLike
 from osgeo import gdal
 
+from .geoprocessing_core import gdal_use_exceptions
+
 FLOAT32_NODATA = float(numpy.finfo(numpy.float32).min)
 LOGGER = logging.getLogger(__name__)
 
@@ -207,6 +209,7 @@ def normal_distribution_kernel(
     )
 
 
+@gdal_use_exceptions
 def create_distance_decay_kernel(
         target_kernel_path: str,
         distance_decay_function: Union[str, Callable],
