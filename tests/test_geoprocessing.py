@@ -4043,7 +4043,7 @@ class TestGeoprocessing(unittest.TestCase):
             self.workspace_dir, 'not_a_vector')
         os.makedirs(not_a_vector_path)
         with self.assertRaises(RuntimeError) as cm:
-            pygeoprocessing.get_raster_info(not_a_vector_path)
+            pygeoprocessing.get_vector_info(not_a_vector_path)
         self.assertIn('not recognized as a supported file format', str(cm.exception))
 
     def test_merge_bounding_box_list(self):
