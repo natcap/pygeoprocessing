@@ -4041,7 +4041,8 @@ class TestGeoprocessing(unittest.TestCase):
         # check that file exists but is not a vector
         not_a_vector_path = os.path.join(
             self.workspace_dir, 'not_a_vector')
-        os.makedirs(not_a_vector_path)
+        with open(not_a_vector_path, 'w') as not_a_vector_file:
+            not_a_vector_file.write("this is not a vector.\n")
         with self.assertRaises(RuntimeError) as cm:
             pygeoprocessing.get_vector_info(not_a_vector_path)
         self.assertIn('not recognized as a supported file format', str(cm.exception))
