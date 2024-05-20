@@ -2788,10 +2788,7 @@ class TestGeoprocessing(unittest.TestCase):
             self.workspace_dir, 'target_raster.tif')
         target_nodata = -1
         target_pixel_type = gdal.GDT_Int16
-        pygeoprocessing.create_raster_from_vector_extents(
-                source_vector_path, target_raster_path, _DEFAULT_PIXEL_SIZE,
-                target_nodata, target_pixel_type)
-        with self.assertRaises(Exception) as cm:
+        with self.assertRaises(ValueError) as cm:
             pygeoprocessing.create_raster_from_vector_extents(
                 source_vector_path, target_raster_path, _DEFAULT_PIXEL_SIZE,
                 target_nodata, target_pixel_type)
