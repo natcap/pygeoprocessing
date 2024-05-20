@@ -1979,22 +1979,22 @@ class TestGeoprocessing(unittest.TestCase):
         _array_to_raster(
             pixel_a_matrix, target_nodata, base_a_path)
 
-        # base_raster_path_list = [base_a_path]
-        # target_raster_path_list = [
-        #     os.path.join(self.workspace_dir, 'target_a.tif')]
+        base_raster_path_list = [base_a_path]
+        target_raster_path_list = [
+            os.path.join(self.workspace_dir, 'target_a.tif')]
 
-        # resample_method_list = ['near']
-        # bounding_box_mode = 'intersection'
+        resample_method_list = ['near']
+        bounding_box_mode = 'intersection'
 
-        # base_a_raster_info = pygeoprocessing.get_raster_info(base_a_path)
+        base_a_raster_info = pygeoprocessing.get_raster_info(base_a_path)
 
-        # with self.assertRaises(ValueError):
-        #     # here align index is -1 which is invalid
-        #     pygeoprocessing.align_and_resize_raster_stack(
-        #         base_raster_path_list, target_raster_path_list,
-        #         resample_method_list,
-        #         base_a_raster_info['pixel_size'], bounding_box_mode,
-        #         base_vector_path_list=None, raster_align_index=-1)
+        with self.assertRaises(ValueError):
+            # here align index is -1 which is invalid
+            pygeoprocessing.align_and_resize_raster_stack(
+                base_raster_path_list, target_raster_path_list,
+                resample_method_list,
+                base_a_raster_info['pixel_size'], bounding_box_mode,
+                base_vector_path_list=None, raster_align_index=-1)
 
     def test_align_and_resize_raster_stack_int(self):
         """PGP.geoprocessing: align/resize raster test intersection."""
@@ -4877,6 +4877,12 @@ class TestGeoprocessing(unittest.TestCase):
         vector = None
         vector_info = pygeoprocessing.get_vector_info(vector_path)
         self.assertEqual(vector_info['file_list'], vector_file_list)
+
+    def test_iterblocks_bad_raster(self):
+        """PGP: tests iterblocks presents useful error on missing raster."""
+        with self.assertRaises(RuntimeError) as cm:
+            _ = list(pygeoprocessing.iterblocks(('fake_file.tif', 1)))
+        self.assertIn('No such file or directory', str(cm.exception))
 
     def test_warp_raster_signedbyte(self):
         """PGP.geoprocessing: warp raster test."""
