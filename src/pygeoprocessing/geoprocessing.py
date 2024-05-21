@@ -134,6 +134,7 @@ class TimedLoggingAdapter(logging.LoggerAdapter):
             self.logger.log(level, msg, *args, **kwargs)
 
 
+@gdal_use_exceptions
 def raster_calculator(
         base_raster_path_band_const_list, local_op, target_raster_path,
         datatype_target, nodata_target,
@@ -3399,7 +3400,6 @@ def convolve_2d(
     target_raster = None
 
 
-@gdal_use_exceptions
 def iterblocks(
         raster_path_band, largest_block=_LARGEST_ITERBLOCK,
         offset_only=False):
@@ -3446,62 +3446,64 @@ def iterblocks(
         data and does not attempt to read binary data from the raster.
 
     """
-    if not _is_raster_path_band_formatted(raster_path_band):
-        raise ValueError(
-            "`raster_path_band` not formatted as expected.  Expects "
-            "(path, band_index), received %s" % repr(raster_path_band))
+    # need to use context manager rather than decorator here because
+    # the decorator doesn't work on generators
+    with GDALUseExceptions():
+        if not _is_raster_path_band_formatted(raster_path_band):
+            raise ValueError(
+                "`raster_path_band` not formatted as expected.  Expects "
+                "(path, band_index), received %s" % repr(raster_path_band))
+        raster = gdal.OpenEx(raster_path_band[0], gdal.OF_RASTER)
+        band = raster.GetRasterBand(raster_path_band[1])
+        block = band.GetBlockSize()
+        cols_per_block = block[0]
+        rows_per_block = block[1]
 
-    raster = gdal.OpenEx(raster_path_band[0], gdal.OF_RASTER)
-    band = raster.GetRasterBand(raster_path_band[1])
-    block = band.GetBlockSize()
-    cols_per_block = block[0]
-    rows_per_block = block[1]
+        n_cols = raster.RasterXSize
+        n_rows = raster.RasterYSize
 
-    n_cols = raster.RasterXSize
-    n_rows = raster.RasterYSize
-
-    block_area = cols_per_block * rows_per_block
-    # try to make block wider
-    if int(largest_block / block_area) > 0:
-        width_factor = int(largest_block / block_area)
-        cols_per_block *= width_factor
-        if cols_per_block > n_cols:
-            cols_per_block = n_cols
         block_area = cols_per_block * rows_per_block
-    # try to make block taller
-    if int(largest_block / block_area) > 0:
-        height_factor = int(largest_block / block_area)
-        rows_per_block *= height_factor
-        if rows_per_block > n_rows:
-            rows_per_block = n_rows
+        # try to make block wider
+        if int(largest_block / block_area) > 0:
+            width_factor = int(largest_block / block_area)
+            cols_per_block *= width_factor
+            if cols_per_block > n_cols:
+                cols_per_block = n_cols
+            block_area = cols_per_block * rows_per_block
+        # try to make block taller
+        if int(largest_block / block_area) > 0:
+            height_factor = int(largest_block / block_area)
+            rows_per_block *= height_factor
+            if rows_per_block > n_rows:
+                rows_per_block = n_rows
 
-    n_col_blocks = int(math.ceil(n_cols / float(cols_per_block)))
-    n_row_blocks = int(math.ceil(n_rows / float(rows_per_block)))
+        n_col_blocks = int(math.ceil(n_cols / float(cols_per_block)))
+        n_row_blocks = int(math.ceil(n_rows / float(rows_per_block)))
 
-    for row_block_index in range(n_row_blocks):
-        row_offset = row_block_index * rows_per_block
-        row_block_width = n_rows - row_offset
-        if row_block_width > rows_per_block:
-            row_block_width = rows_per_block
-        for col_block_index in range(n_col_blocks):
-            col_offset = col_block_index * cols_per_block
-            col_block_width = n_cols - col_offset
-            if col_block_width > cols_per_block:
-                col_block_width = cols_per_block
+        for row_block_index in range(n_row_blocks):
+            row_offset = row_block_index * rows_per_block
+            row_block_width = n_rows - row_offset
+            if row_block_width > rows_per_block:
+                row_block_width = rows_per_block
+            for col_block_index in range(n_col_blocks):
+                col_offset = col_block_index * cols_per_block
+                col_block_width = n_cols - col_offset
+                if col_block_width > cols_per_block:
+                    col_block_width = cols_per_block
 
-            offset_dict = {
-                'xoff': col_offset,
-                'yoff': row_offset,
-                'win_xsize': col_block_width,
-                'win_ysize': row_block_width,
-            }
-            if offset_only:
-                yield offset_dict
-            else:
-                yield (offset_dict, band.ReadAsArray(**offset_dict))
+                offset_dict = {
+                    'xoff': col_offset,
+                    'yoff': row_offset,
+                    'win_xsize': col_block_width,
+                    'win_ysize': row_block_width,
+                }
+                if offset_only:
+                    yield offset_dict
+                else:
+                    yield (offset_dict, band.ReadAsArray(**offset_dict))
 
-    band = None
-    raster = None
+        band = None
+        raster = None
 
 
 @gdal_use_exceptions
