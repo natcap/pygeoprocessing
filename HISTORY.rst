@@ -6,7 +6,7 @@ Release History
 * Our github actions for building python distributions now use
   `actions/setup-python@v5`, which uses node 20.
   https://github.com/natcap/pygeoprocessing/issues/384
-* ``warp_raster`` and ``build_overviews`` no longer raise ``ValueError``s if
+* ``warp_raster`` and ``build_overviews`` no longer raise a ``ValueError`` if
   called with an invalid resampling algorithm. We now fall back to the
   underlying GDAL functions' error messages.
   https://github.com/natcap/pygeoprocessing/issues/387
