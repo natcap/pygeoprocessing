@@ -1,7 +1,7 @@
 Release History
 ===============
 
-Unreleased Changes
+2.4.4 (2024-05-21)
 ------------------
 * Our github actions for building python distributions now use
   `actions/setup-python@v5`, which uses node 20.
