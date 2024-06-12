@@ -1,7 +1,7 @@
 [project]
 name = "pygeoprocessing"
 description = "PyGeoprocessing: Geoprocessing routines for GIS"
-reuqires-python = ">=3.6"
+requires-python = ">=3.6"
 license = {file = "LICENSE.txt"}
 maintainers = [
     {name = "Natural Capital Project Software Team"}
