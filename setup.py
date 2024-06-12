@@ -42,24 +42,6 @@ setup(
     install_requires=_REQUIREMENTS,
     license='BSD',
     zip_safe=False,
-    keywords='gis pygeoprocessing',
-    classifiers=[
-        'Intended Audience :: Developers',
-        'Development Status :: 5 - Production/Stable',
-        'Intended Audience :: Science/Research',
-        'Natural Language :: English',
-        'Operating System :: MacOS :: MacOS X',
-        'Operating System :: Microsoft',
-        'Operating System :: POSIX',
-        'Programming Language :: Python :: 3.8',
-        'Programming Language :: Python :: 3.9',
-        'Programming Language :: Python :: 3.10',
-        'Programming Language :: Python :: 3.11',
-        'Programming Language :: Python :: 3.12',
-        'Programming Language :: Python :: Implementation :: CPython',
-        'Topic :: Scientific/Engineering :: GIS',
-        'License :: OSI Approved :: BSD License'
-    ],
     ext_modules=cythonize([
         Extension(
             name="pygeoprocessing.routing.routing",
