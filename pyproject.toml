@@ -6,7 +6,7 @@ license = {file = "LICENSE.txt"}
 maintainers = [
     {name = "Natural Capital Project Software Team"}
 ]
-keywords = ['gis', 'geoprocessing', 'pygeoprocessing'],
+keywords = ['gis', 'geoprocessing', 'pygeoprocessing']
 classifiers = [
     'Intended Audience :: Developers',
     'Development Status :: 5 - Production/Stable',
