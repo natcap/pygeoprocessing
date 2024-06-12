@@ -1,3 +1,9 @@
+[project]
+maintainers = [
+    {name = "Natural Capital Project Software Team"}
+]
+
+
 [build-system]
 # these are the minimum packages needed in order to execute the pygeoprocessing build.
 # Setuptools, wheel are from pep508.

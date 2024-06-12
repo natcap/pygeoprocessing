@@ -1,8 +1,8 @@
 """setup.py module for PyGeoprocessing."""
 import platform
 
-from Cython.Build import cythonize
 import numpy
+from Cython.Build import cythonize
 from setuptools import setup
 from setuptools.extension import Extension
 
@@ -28,8 +28,6 @@ setup(
     description="PyGeoprocessing: Geoprocessing routines for GIS",
     long_description=LONG_DESCRIPTION,
     long_description_content_type='text/x-rst',
-    maintainer='James Douglass',
-    maintainer_email='jdouglass@stanford.edu',
     url='https://github.com/natcap/pygeoprocessing',
     packages=[
         'pygeoprocessing',
