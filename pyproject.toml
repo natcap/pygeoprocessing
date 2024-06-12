@@ -24,6 +24,10 @@ classifiers = [
     'Topic :: Scientific/Engineering :: GIS',
     'License :: OSI Approved :: BSD License'
 ]
+# the version is provided dynamically by setuptools_scm
+# `dependencies` and `optional-dependencies` are provided by setuptools
+# using the corresponding setup args `install_requires` and `extras_require`
+dynamic = ["version", "dependencies", "optional-dependencies"]
 
 
 [build-system]
