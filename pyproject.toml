@@ -27,7 +27,8 @@ classifiers = [
 # the version is provided dynamically by setuptools_scm
 # `dependencies` and `optional-dependencies` are provided by setuptools
 # using the corresponding setup args `install_requires` and `extras_require`
-dynamic = ["version", "dependencies", "optional-dependencies"]
+# `readme` is provided by setuptools using the corresponding setup arg `long_description`
+dynamic = ["version", "dependencies", "optional-dependencies", "readme"]
 
 
 [build-system]
