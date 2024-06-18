@@ -38,6 +38,7 @@ import time
 
 cimport cython
 cimport numpy
+numpy.import_array()
 from cpython.mem cimport PyMem_Malloc, PyMem_Free
 from cython.operator cimport dereference as deref
 from cython.operator cimport preincrement as inc

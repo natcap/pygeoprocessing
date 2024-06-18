@@ -13,6 +13,7 @@ cimport cython
 cimport libc.math as cmath
 cimport libcpp.algorithm
 cimport numpy
+numpy.import_array()
 from cython.operator cimport dereference as deref
 from cython.operator cimport preincrement as inc
 from libc.stdio cimport fclose
