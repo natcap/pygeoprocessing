@@ -4239,6 +4239,12 @@ def numpy_array_to_raster(
             "Origin and pixel size must both be defined or both be None")
     new_band = new_raster.GetRasterBand(1)
     if target_nodata is not None:
+        if numpy.issubdtype(type(target_nodata), numpy.floating):
+            target_nodata = float(target_nodata)
+        elif numpy.issubdtype(type(target_nodata), numpy.integer):
+            target_nodata = int(target_nodata)
+        # Explicitly leaving off an else clause in case there's an edge case we
+        # don't know about.  If so, we should wait for GDAL to raise an error.
         new_band.SetNoDataValue(target_nodata)
     new_band.WriteArray(base_array)
     new_band = None
