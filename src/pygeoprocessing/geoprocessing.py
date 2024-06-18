@@ -696,7 +696,7 @@ def raster_map(op, rasters, target_path, target_nodata=None, target_dtype=None,
     if target_nodata is None:
         target_nodata = choose_nodata(target_dtype)
     else:
-        if not numpy.can_cast(target_nodata, target_dtype):
+        if numpy.result_type(target_nodata, target_dtype) != target_dtype:
             raise ValueError(
                 f'Target nodata value {target_nodata} is incompatible with '
                 f'the target dtype {target_dtype}')
