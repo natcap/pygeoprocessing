@@ -1,3 +1,36 @@
+[project]
+name = "pygeoprocessing"
+description = "PyGeoprocessing: Geoprocessing routines for GIS"
+requires-python = ">=3.6"
+license = {file = "LICENSE.txt"}
+maintainers = [
+    {name = "Natural Capital Project Software Team"}
+]
+keywords = ['gis', 'geoprocessing', 'pygeoprocessing']
+classifiers = [
+    'Intended Audience :: Developers',
+    'Development Status :: 5 - Production/Stable',
+    'Intended Audience :: Science/Research',
+    'Natural Language :: English',
+    'Operating System :: MacOS :: MacOS X',
+    'Operating System :: Microsoft',
+    'Operating System :: POSIX',
+    'Programming Language :: Python :: 3.8',
+    'Programming Language :: Python :: 3.9',
+    'Programming Language :: Python :: 3.10',
+    'Programming Language :: Python :: 3.11',
+    'Programming Language :: Python :: 3.12',
+    'Programming Language :: Python :: Implementation :: CPython',
+    'Topic :: Scientific/Engineering :: GIS',
+    'License :: OSI Approved :: BSD License'
+]
+# the version is provided dynamically by setuptools_scm
+# `dependencies` and `optional-dependencies` are provided by setuptools
+# using the corresponding setup args `install_requires` and `extras_require`
+# `readme` is provided by setuptools using the corresponding setup arg `long_description`
+dynamic = ["version", "dependencies", "optional-dependencies", "readme"]
+
+
 [build-system]
 # these are the minimum packages needed in order to execute the pygeoprocessing build.
 # Setuptools, wheel are from pep508.
