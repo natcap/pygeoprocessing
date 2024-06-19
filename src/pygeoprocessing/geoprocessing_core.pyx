@@ -56,7 +56,7 @@ class GDALUseExceptions:
         self.currentUseExceptions = gdal.GetUseExceptions()
         gdal.UseExceptions()
 
-    def __exit__(self, _, _, _):
+    def __exit__(self, exc_type, exc_val, exc_tb):
         if self.currentUseExceptions == 0:
             gdal.DontUseExceptions()
 
