@@ -14,7 +14,6 @@ import types
 import unittest
 import unittest.mock
 import warnings
-from pkg_resources import packaging
 
 import numpy
 import packaging.version
