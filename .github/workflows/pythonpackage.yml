@@ -71,7 +71,7 @@ jobs:
 
       - name: Build and Install PyGeoprocessing
         run: |
-            python -m build --wheel --verbose
+            python -m build --wheel --verbose --no-isolation
             python -m pip install $(find dist -name "*.whl")
 
       - name: Test with pytest
