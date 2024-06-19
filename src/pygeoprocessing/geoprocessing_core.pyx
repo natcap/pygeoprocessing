@@ -46,7 +46,8 @@ DEFAULT_OSR_AXIS_MAPPING_STRATEGY = osr.OAMS_TRADITIONAL_GIS_ORDER
 LOGGER = logging.getLogger('pygeoprocessing.geoprocessing_core')
 
 
-class GDALUseExceptions(object):
+class GDALUseExceptions:
+    """Context manager that enables GDAL exceptions and restores state after."""
 
     def __init__(self):
         pass
@@ -55,12 +56,20 @@ class GDALUseExceptions(object):
         self.currentUseExceptions = gdal.GetUseExceptions()
         gdal.UseExceptions()
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(self, _, _, _):
         if self.currentUseExceptions == 0:
             gdal.DontUseExceptions()
 
 
 def gdal_use_exceptions(func):
+    """Decorator that enables GDAL exceptions and restores state after.
+
+    Args:
+        func (callable): function to call with GDAL exceptions enabled
+
+    Returns:
+        Wrapper function that calls ``func`` with GDAL exceptions enabled
+    """
     def wrapper(*args, **kwargs):
         with GDALUseExceptions():
             return func(*args, **kwargs)
