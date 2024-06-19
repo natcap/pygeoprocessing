@@ -58,6 +58,10 @@ jobs:
               python-build
               flake8
               pytest
+              cython>=3
+              setuptools_scm
+              wheel
+              numpy
           environment-name: pyenv
 
       - name: Lint with flake8
