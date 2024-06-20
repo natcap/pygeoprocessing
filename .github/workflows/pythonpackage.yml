@@ -58,10 +58,7 @@ jobs:
               python-build
               flake8
               pytest
-              cython>=3
-              setuptools_scm
-              wheel
-              numpy
+              numpy<2
           environment-name: pyenv
 
       - name: Lint with flake8
@@ -75,7 +72,7 @@ jobs:
 
       - name: Build and Install PyGeoprocessing
         run: |
-            python -m build --wheel --verbose --no-isolation
+            python -m build --wheel --verbose
             python -m pip install $(find dist -name "*.whl")
 
       - name: Test with pytest
