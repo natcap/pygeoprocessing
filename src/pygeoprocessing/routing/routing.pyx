@@ -138,17 +138,23 @@ cdef struct FlowPixelType:
     int last_flow_dir
     double value
 
+# This struct is used to track a value as it decays.  The intent is to have the
+# ``decayed_value`` updated in-place as we walk the flow graph until the value
+# is less than the ``min_value``.
 cdef struct DecayingValue:
     double decayed_value  # The value, which will be progressively updated as it decays
     double min_value  # The minimum value before the Decaying Value should be ignored.
 
+# This struct is used to track an intermediate flow pixel's last calculated
+# direction and flow accumulation value so far (just like with FlowPixelType).
+# Additionally, we track all of the decaying values from upstream that
+# influence the load on this pixel.  Used during decaying flow accumulation.
 cdef struct WeightedFlowPixelType:
-    int xi
-    int yi
-    int last_flow_dir
-    double value
-    queue[DecayingValue] decaying_values
-
+    int xi  # The pixel's x coordinate in pixel space
+    int yi  # The pixel's y coordinate in pixel space
+    int last_flow_dir  # The last flow direction processed on this pixel
+    double value  # The flow accumulation value at this pixel
+    queue[DecayingValue] decaying_values  # A queue of upstream decaying values that affect the accumulation on this pixel.
 
 # this struct is used in distance_to_channel_mfd to add up each pixel's
 # weighted distances and flow weights
