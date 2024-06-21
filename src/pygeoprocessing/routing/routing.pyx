@@ -150,8 +150,8 @@ cdef struct DecayingValue:
 # Additionally, we track all of the decaying values from upstream that
 # influence the load on this pixel.  Used during decaying flow accumulation.
 cdef struct WeightedFlowPixelType:
-    int xi  # The pixel's x coordinate in pixel space
-    int yi  # The pixel's y coordinate in pixel space
+    unsigned int xi  # The pixel's x coordinate in pixel space
+    unsigned int yi  # The pixel's y coordinate in pixel space
     int last_flow_dir  # The last flow direction processed on this pixel
     double value  # The flow accumulation value at this pixel
     queue[DecayingValue] decaying_values  # A queue of upstream decaying values that affect the accumulation on this pixel.
