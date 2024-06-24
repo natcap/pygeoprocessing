@@ -300,8 +300,9 @@ def calculate_slope(
     """Create a percent slope raster from DEM raster.
 
     Base algorithm is from Zevenbergen & Thorne "Quantitative Analysis of Land
-    Surface Topography" 1987 although it has been modified to include the
-    diagonal pixels by classic finite difference analysis.
+    Surface Topography" 1987 (https://doi.org/10.1002/esp.3290120107) although
+    it has been modified to include the diagonal pixels by classic finite
+    difference analysis.
 
     For the following notation, we define each pixel's DEM value by a letter
     with this spatial scheme::
