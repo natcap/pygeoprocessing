@@ -1378,3 +1378,83 @@ class TestRouting(unittest.TestCase):
         numpy.testing.assert_array_equal(
             pygeoprocessing.raster_to_numpy_array(target_streams_path),
             expected_array)
+
+    def test_flow_accum_d8_with_decay(self):
+        """PGP.routing: test d8 flow accumulation with decay."""
+        # this was generated from a pre-calculated plateau drain dem
+        flow_dir_array = numpy.array([
+            [2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 0],
+            [4, 2, 2, 2, 2, 2, 2, 2, 2, 2, 0],
+            [4, 4, 2, 2, 2, 2, 2, 2, 2, 0, 0],
+            [4, 4, 4, 2, 2, 2, 2, 2, 0, 0, 0],
+            [4, 4, 4, 4, 2, 2, 2, 0, 0, 0, 0],
+            [4, 4, 4, 4, 4, 2, 0, 0, 0, 0, 0],
+            [4, 4, 4, 4, 4, 6, 0, 0, 0, 0, 0],
+            [4, 4, 4, 4, 6, 6, 6, 0, 0, 0, 0],
+            [4, 4, 4, 6, 6, 6, 6, 6, 0, 0, 0],
+            [4, 4, 6, 6, 6, 6, 6, 6, 6, 0, 0],
+            [4, 6, 6, 6, 6, 6, 6, 6, 6, 6, 0]], dtype=numpy.uint8)
+
+        flow_dir_path = os.path.join(self.workspace_dir, 'flow_dir.tif')
+        _array_to_raster(flow_dir_array, None, flow_dir_path)
+
+        target_flow_accum_path = os.path.join(
+            self.workspace_dir, 'flow_accum.tif')
+
+        # Test with scalar decay factor and also with a raster of scalar values
+        const_decay_factor = 0.5
+        decay_factor_path = os.path.join(
+            self.workspace_dir, 'decay_factor.tif')
+        decay_array = numpy.full(flow_dir_array.shape, const_decay_factor,
+                                 dtype=numpy.float32)
+        _array_to_raster(decay_array, None, decay_factor_path)
+
+        for decay_factor in (const_decay_factor, (decay_factor_path, 1)):
+            pygeoprocessing.routing.flow_accumulation_d8(
+                (flow_dir_path, 1), target_flow_accum_path,
+                custom_decay_factor=decay_factor)
+
+            flow_accum_array = pygeoprocessing.raster_to_numpy_array(
+                target_flow_accum_path)
+            self.assertEqual(flow_accum_array.dtype, numpy.float64)
+
+            # This array is a regression result saved by hand, but
+            # because this flow accumulation doesn't have any joining flow
+            # paths we can calculate weighted flow accumulation with the
+            # closed form of the summation:
+            #   decayed_accum = 2 - decay_factor ** (flow_accum - 1)
+            expected_result = 2 - const_decay_factor ** (numpy.array(
+                [[1, 2, 3, 4, 5, 6, 5, 4, 3, 2, 1],
+                 [1, 1, 2, 3, 4, 5, 4, 3, 2, 1, 1],
+                 [2, 1, 1, 2, 3, 4, 3, 2, 1, 1, 2],
+                 [3, 2, 1, 1, 2, 3, 2, 1, 1, 2, 3],
+                 [4, 3, 2, 1, 1, 2, 1, 1, 2, 3, 4],
+                 [5, 4, 3, 2, 1, 1, 1, 2, 3, 4, 5],
+                 [5, 4, 3, 2, 1, 1, 1, 2, 3, 4, 5],
+                 [4, 3, 2, 1, 1, 2, 1, 1, 2, 3, 4],
+                 [3, 2, 1, 1, 2, 3, 2, 1, 1, 2, 3],
+                 [2, 1, 1, 2, 3, 4, 3, 2, 1, 1, 2],
+                 [1, 1, 2, 3, 4, 5, 4, 3, 2, 1, 1]]) - 1)
+
+            numpy.testing.assert_almost_equal(
+                flow_accum_array, expected_result)
+
+    def test_flow_accum_with_decay_merging_flow(self):
+        """PGP.routing: test d8 flow accum with decay and merged flowpath."""
+        flow_dir_path = os.path.join(self.workspace_dir, 'flow_dir.tif')
+        _array_to_raster(
+            numpy.array([
+                [255, 0, 0, 0, 0],
+                [255, 0, 0, 0, 2]], dtype=numpy.uint8), 255, flow_dir_path)
+
+        flow_accum_path = os.path.join(self.workspace_dir, 'flow_accum.tif')
+        pygeoprocessing.routing.flow_accumulation_d8(
+            (flow_dir_path, 1), flow_accum_path, custom_decay_factor=0.5)
+
+        fnodata = -1.23789789e29  # copied from routing.pyx
+        expected_array = numpy.array([
+            [fnodata, 1, 1.5, 1.75, 2.8125],
+            [fnodata, 1, 1.5, 1.75, 1.875]], dtype=numpy.float64)
+        numpy.testing.assert_allclose(
+            pygeoprocessing.raster_to_numpy_array(flow_accum_path),
+            expected_array)

@@ -10,6 +10,8 @@ Release History
   called with an invalid resampling algorithm. We now fall back to the
   underlying GDAL functions' error messages.
   https://github.com/natcap/pygeoprocessing/issues/387
+* Implementing decaying flow accumulation for D8 routing.
+  https://github.com/natcap/pygeoprocessing/issues/386
 * Updated to Cython 3.
 * Dropped support for Python 3.7.
 
