@@ -121,11 +121,11 @@ class TestRouting(unittest.TestCase):
 
     def test_pit_filling_path_band_checking(self):
         """PGP.routing: test pitfilling catches path-band formatting errors."""
-        with self.assertRaises(ValueError):
+        with self.assertRaises(RuntimeError):
             pygeoprocessing.routing.fill_pits(
                 ('invalid path', 1), 'foo')
 
-        with self.assertRaises(ValueError):
+        with self.assertRaises(RuntimeError):
             pygeoprocessing.routing.fill_pits(
                 'invalid path', 'foo')
 
@@ -220,7 +220,7 @@ class TestRouting(unittest.TestCase):
         expected_message = (
             'expected flow dir type of either d8 or mfd but got bad_mode')
         actual_message = str(cm.exception)
-        self.assertTrue(expected_message in actual_message, actual_message)
+        self.assertIn(expected_message, actual_message)
 
     def test_detect_outlets_d8(self):
         """PGP.routing: test detect outlets for D8."""

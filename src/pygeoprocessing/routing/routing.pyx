@@ -61,6 +61,7 @@ import shapely.ops
 import scipy.stats
 
 from ..geoprocessing_core import DEFAULT_OSR_AXIS_MAPPING_STRATEGY
+from ..geoprocessing_core import gdal_use_exceptions, GDALUseExceptions
 import pygeoprocessing
 
 LOGGER = logging.getLogger(__name__)
@@ -307,6 +308,7 @@ cdef class _ManagedRaster:
         """
         self.close()
 
+    @gdal_use_exceptions
     def close(self):
         """Close the _ManagedRaster and free up resources.
 
@@ -454,82 +456,83 @@ cdef class _ManagedRaster:
         if yoff+win_ysize > self.raster_y_size:
             win_ysize = win_ysize - (yoff+win_ysize - self.raster_y_size)
 
-        raster = gdal.OpenEx(self.raster_path, gdal.OF_RASTER)
-        raster_band = raster.GetRasterBand(self.band_id)
-        block_array = raster_band.ReadAsArray(
-            xoff=xoff, yoff=yoff, win_xsize=win_xsize,
-            win_ysize=win_ysize).astype(numpy.float64)
-        raster_band = None
-        raster = None
-        double_buffer = <double*>PyMem_Malloc(
-            (sizeof(double) << self.block_xbits) * win_ysize)
-        for xi_copy in range(win_xsize):
-            for yi_copy in range(win_ysize):
-                double_buffer[(yi_copy << self.block_xbits)+xi_copy] = (
-                    block_array[yi_copy, xi_copy])
-        self.lru_cache.put(
-            <int>block_index, <double*>double_buffer, removed_value_list)
-
-        if self.write_mode:
-            n_attempts = 5
-            while True:
-                raster = gdal.OpenEx(
-                    self.raster_path, gdal.GA_Update | gdal.OF_RASTER)
-                if raster is None:
-                    if n_attempts == 0:
-                        raise RuntimeError(
-                            f'could not open {self.raster_path} for writing')
-                    LOGGER.warning(
-                        f'opening {self.raster_path} resulted in null, '
-                        f'trying {n_attempts} more times.')
-                    n_attempts -= 1
-                    time.sleep(0.5)
-                raster_band = raster.GetRasterBand(self.band_id)
-                break
-
-        block_array = numpy.empty(
-            (self.block_ysize, self.block_xsize), dtype=numpy.double)
-        while not removed_value_list.empty():
-            # write the changed value back if desired
-            double_buffer = removed_value_list.front().second
-
-            if self.write_mode:
-                block_index = removed_value_list.front().first
-
-                # write back the block if it's dirty
-                dirty_itr = self.dirty_blocks.find(block_index)
-                if dirty_itr != self.dirty_blocks.end():
-                    self.dirty_blocks.erase(dirty_itr)
-
-                    block_xi = block_index % self.block_nx
-                    block_yi = block_index // self.block_nx
-
-                    xoff = block_xi << self.block_xbits
-                    yoff = block_yi << self.block_ybits
-
-                    win_xsize = self.block_xsize
-                    win_ysize = self.block_ysize
-
-                    if xoff+win_xsize > self.raster_x_size:
-                        win_xsize = win_xsize - (
-                            xoff+win_xsize - self.raster_x_size)
-                    if yoff+win_ysize > self.raster_y_size:
-                        win_ysize = win_ysize - (
-                            yoff+win_ysize - self.raster_y_size)
-
-                    for xi_copy in range(win_xsize):
-                        for yi_copy in range(win_ysize):
-                            block_array[yi_copy, xi_copy] = double_buffer[
-                                (yi_copy << self.block_xbits) + xi_copy]
-                    raster_band.WriteArray(
-                        block_array[0:win_ysize, 0:win_xsize],
-                        xoff=xoff, yoff=yoff)
-            PyMem_Free(double_buffer)
-            removed_value_list.pop_front()
-
-        if self.write_mode:
+        with GDALUseExceptions():
+            raster = gdal.OpenEx(self.raster_path, gdal.OF_RASTER)
+            raster_band = raster.GetRasterBand(self.band_id)
+            block_array = raster_band.ReadAsArray(
+                xoff=xoff, yoff=yoff, win_xsize=win_xsize,
+                win_ysize=win_ysize).astype(numpy.float64)
             raster_band = None
             raster = None
+            double_buffer = <double*>PyMem_Malloc(
+                (sizeof(double) << self.block_xbits) * win_ysize)
+            for xi_copy in range(win_xsize):
+                for yi_copy in range(win_ysize):
+                    double_buffer[(yi_copy << self.block_xbits)+xi_copy] = (
+                        block_array[yi_copy, xi_copy])
+            self.lru_cache.put(
+                <int>block_index, <double*>double_buffer, removed_value_list)
+
+            if self.write_mode:
+                n_attempts = 5
+                while True:
+                    raster = gdal.OpenEx(
+                        self.raster_path, gdal.GA_Update | gdal.OF_RASTER)
+                    if raster is None:
+                        if n_attempts == 0:
+                            raise RuntimeError(
+                                f'could not open {self.raster_path} for writing')
+                        LOGGER.warning(
+                            f'opening {self.raster_path} resulted in null, '
+                            f'trying {n_attempts} more times.')
+                        n_attempts -= 1
+                        time.sleep(0.5)
+                    raster_band = raster.GetRasterBand(self.band_id)
+                    break
+
+            block_array = numpy.empty(
+                (self.block_ysize, self.block_xsize), dtype=numpy.double)
+            while not removed_value_list.empty():
+                # write the changed value back if desired
+                double_buffer = removed_value_list.front().second
+
+                if self.write_mode:
+                    block_index = removed_value_list.front().first
+
+                    # write back the block if it's dirty
+                    dirty_itr = self.dirty_blocks.find(block_index)
+                    if dirty_itr != self.dirty_blocks.end():
+                        self.dirty_blocks.erase(dirty_itr)
+
+                        block_xi = block_index % self.block_nx
+                        block_yi = block_index // self.block_nx
+
+                        xoff = block_xi << self.block_xbits
+                        yoff = block_yi << self.block_ybits
+
+                        win_xsize = self.block_xsize
+                        win_ysize = self.block_ysize
+
+                        if xoff+win_xsize > self.raster_x_size:
+                            win_xsize = win_xsize - (
+                                xoff+win_xsize - self.raster_x_size)
+                        if yoff+win_ysize > self.raster_y_size:
+                            win_ysize = win_ysize - (
+                                yoff+win_ysize - self.raster_y_size)
+
+                        for xi_copy in range(win_xsize):
+                            for yi_copy in range(win_ysize):
+                                block_array[yi_copy, xi_copy] = double_buffer[
+                                    (yi_copy << self.block_xbits) + xi_copy]
+                        raster_band.WriteArray(
+                            block_array[0:win_ysize, 0:win_xsize],
+                            xoff=xoff, yoff=yoff)
+                PyMem_Free(double_buffer)
+                removed_value_list.pop_front()
+
+            if self.write_mode:
+                raster_band = None
+                raster = None
 
     cdef void flush(self) except *:
         cdef clist[BlockBufferPair] removed_value_list
@@ -540,68 +543,69 @@ cdef class _ManagedRaster:
 
         self.lru_cache.clean(removed_value_list, self.lru_cache.size())
 
-        raster_band = None
-        if self.write_mode:
-            max_retries = 5
-            while max_retries > 0:
-                raster = gdal.OpenEx(
-                    self.raster_path, gdal.GA_Update | gdal.OF_RASTER)
-                if raster is None:
-                    max_retries -= 1
-                    LOGGER.error(
-                        f'unable to open {self.raster_path}, retrying...')
-                    time.sleep(0.2)
-                    continue
-                break
-            if max_retries == 0:
-                raise ValueError(
-                    f'unable to open {self.raster_path} in '
-                    'ManagedRaster.flush')
-            raster_band = raster.GetRasterBand(self.band_id)
+        with GDALUseExceptions():
+            raster_band = None
+            if self.write_mode:
+                max_retries = 5
+                while max_retries > 0:
+                    raster = gdal.OpenEx(
+                        self.raster_path, gdal.GA_Update | gdal.OF_RASTER)
+                    if raster is None:
+                        max_retries -= 1
+                        LOGGER.error(
+                            f'unable to open {self.raster_path}, retrying...')
+                        time.sleep(0.2)
+                        continue
+                    break
+                if max_retries == 0:
+                    raise ValueError(
+                        f'unable to open {self.raster_path} in '
+                        'ManagedRaster.flush')
+                raster_band = raster.GetRasterBand(self.band_id)
 
-        block_array = numpy.empty(
-            (self.block_ysize, self.block_xsize), dtype=numpy.double)
-        while not removed_value_list.empty():
-            # write the changed value back if desired
-            double_buffer = removed_value_list.front().second
+            block_array = numpy.empty(
+                (self.block_ysize, self.block_xsize), dtype=numpy.double)
+            while not removed_value_list.empty():
+                # write the changed value back if desired
+                double_buffer = removed_value_list.front().second
+
+                if self.write_mode:
+                    block_index = removed_value_list.front().first
+
+                    # write back the block if it's dirty
+                    dirty_itr = self.dirty_blocks.find(block_index)
+                    if dirty_itr != self.dirty_blocks.end():
+                        self.dirty_blocks.erase(dirty_itr)
+
+                        block_xi = block_index % self.block_nx
+                        block_yi = block_index // self.block_nx
+
+                        xoff = block_xi << self.block_xbits
+                        yoff = block_yi << self.block_ybits
+
+                        win_xsize = self.block_xsize
+                        win_ysize = self.block_ysize
+
+                        if xoff+win_xsize > self.raster_x_size:
+                            win_xsize = win_xsize - (
+                                xoff+win_xsize - self.raster_x_size)
+                        if yoff+win_ysize > self.raster_y_size:
+                            win_ysize = win_ysize - (
+                                yoff+win_ysize - self.raster_y_size)
+
+                        for xi_copy in range(win_xsize):
+                            for yi_copy in range(win_ysize):
+                                block_array[yi_copy, xi_copy] = double_buffer[
+                                    (yi_copy << self.block_xbits) + xi_copy]
+                        raster_band.WriteArray(
+                            block_array[0:win_ysize, 0:win_xsize],
+                            xoff=xoff, yoff=yoff)
+                PyMem_Free(double_buffer)
+                removed_value_list.pop_front()
 
             if self.write_mode:
-                block_index = removed_value_list.front().first
-
-                # write back the block if it's dirty
-                dirty_itr = self.dirty_blocks.find(block_index)
-                if dirty_itr != self.dirty_blocks.end():
-                    self.dirty_blocks.erase(dirty_itr)
-
-                    block_xi = block_index % self.block_nx
-                    block_yi = block_index // self.block_nx
-
-                    xoff = block_xi << self.block_xbits
-                    yoff = block_yi << self.block_ybits
-
-                    win_xsize = self.block_xsize
-                    win_ysize = self.block_ysize
-
-                    if xoff+win_xsize > self.raster_x_size:
-                        win_xsize = win_xsize - (
-                            xoff+win_xsize - self.raster_x_size)
-                    if yoff+win_ysize > self.raster_y_size:
-                        win_ysize = win_ysize - (
-                            yoff+win_ysize - self.raster_y_size)
-
-                    for xi_copy in range(win_xsize):
-                        for yi_copy in range(win_ysize):
-                            block_array[yi_copy, xi_copy] = double_buffer[
-                                (yi_copy << self.block_xbits) + xi_copy]
-                    raster_band.WriteArray(
-                        block_array[0:win_ysize, 0:win_xsize],
-                        xoff=xoff, yoff=yoff)
-            PyMem_Free(double_buffer)
-            removed_value_list.pop_front()
-
-        if self.write_mode:
-            raster_band = None
-            raster = None
+                raster_band = None
+                raster = None
 
 
 def _generate_read_bounds(offset_dict, raster_x_size, raster_y_size):
@@ -648,6 +652,7 @@ def _generate_read_bounds(offset_dict, raster_x_size, raster_y_size):
     return (xa, xb, ya, yb), target_offset_dict
 
 
+@gdal_use_exceptions
 def fill_pits(
         dem_raster_path_band, target_filled_dem_raster_path,
         working_dir=None,
@@ -1092,6 +1097,7 @@ def fill_pits(
     LOGGER.info('(fill pits): complete')
 
 
+@gdal_use_exceptions
 def flow_dir_d8(
         dem_raster_path_band, target_flow_dir_path,
         working_dir=None,
@@ -1459,6 +1465,7 @@ def flow_dir_d8(
     LOGGER.info('(flow dir d8): complete')
 
 
+@gdal_use_exceptions
 def flow_accumulation_d8(
         flow_dir_raster_path_band, target_flow_accum_raster_path,
         weight_raster_path_band=None, custom_decay_factor=None,
@@ -1771,6 +1778,7 @@ def flow_accumulation_d8(
     LOGGER.info('Flow accumulation D8 %.1f%% complete', 100.0)
 
 
+@gdal_use_exceptions
 def flow_dir_mfd(
         dem_raster_path_band, target_flow_dir_path, working_dir=None,
         raster_driver_creation_tuple=DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS):
@@ -2266,6 +2274,7 @@ def flow_dir_mfd(
     LOGGER.info('Flow dir MFD %.1f%% complete', 100.0)
 
 
+@gdal_use_exceptions
 def flow_accumulation_mfd(
         flow_dir_mfd_raster_path_band, target_flow_accum_raster_path,
         weight_raster_path_band=None,
@@ -2549,6 +2558,7 @@ def flow_accumulation_mfd(
     LOGGER.info('Flow accum MFD %.1f%% complete', 100.0)
 
 
+@gdal_use_exceptions
 def distance_to_channel_d8(
         flow_dir_d8_raster_path_band, channel_raster_path_band,
         target_distance_to_channel_raster_path,
@@ -2741,6 +2751,7 @@ def distance_to_channel_d8(
         weight_raster.close()
 
 
+@gdal_use_exceptions
 def distance_to_channel_mfd(
         flow_dir_mfd_raster_path_band, channel_raster_path_band,
         target_distance_to_channel_raster_path, weight_raster_path_band=None,
@@ -3066,6 +3077,7 @@ def distance_to_channel_mfd(
     LOGGER.info('Dist to channel MFD %.1f%% complete', 100.0)
 
 
+@gdal_use_exceptions
 def extract_streams_mfd(
         flow_accum_raster_path_band, flow_dir_mfd_path_band,
         double flow_threshold, target_stream_raster_path,
@@ -3281,6 +3293,7 @@ def _is_raster_path_band_formatted(raster_path_band):
         return True
 
 
+@gdal_use_exceptions
 def extract_strahler_streams_d8(
         flow_dir_d8_raster_path_band, flow_accum_raster_path_band,
         dem_raster_path_band,
@@ -3962,6 +3975,7 @@ def extract_strahler_streams_d8(
     LOGGER.info('(extract_strahler_streams_d8): all done')
 
 
+@gdal_use_exceptions
 def _build_discovery_finish_rasters(
         flow_dir_d8_raster_path_band, target_discovery_raster_path,
         target_finish_raster_path):
@@ -4092,6 +4106,7 @@ def _build_discovery_finish_rasters(
                             finish_stack.push(finish_coordinate)
 
 
+@gdal_use_exceptions
 def calculate_subwatershed_boundary(
         d8_flow_dir_raster_path_band,
         strahler_stream_vector_path, target_watershed_boundary_vector_path,
@@ -4425,6 +4440,7 @@ def calculate_subwatershed_boundary(
         '(calculate_subwatershed_boundary): watershed building 100% complete')
 
 
+@gdal_use_exceptions
 def detect_lowest_drain_and_sink(dem_raster_path_band):
     """Find the lowest drain and sink pixel in the DEM.
 
@@ -4547,6 +4563,7 @@ def detect_lowest_drain_and_sink(dem_raster_path_band):
         sink_pixel, lowest_sink_height)
 
 
+@gdal_use_exceptions
 def detect_outlets(
         flow_dir_raster_path_band, flow_dir_type, target_outlet_vector_path):
     """Create point vector indicating flow raster outlets.
@@ -4904,82 +4921,87 @@ cdef _calculate_stream_geometry(
 
     """
     cdef int x_1, y_1, x_n, y_n, d, d_n, stream_end=0, pixel_length
+    cdef int next_dir
+    cdef int last_dir
 
-    if flow_accum_managed_raster.get(x_l, y_l) < flow_accum_threshold:
-        return None
-    upstream_id_list = []
-    # anchor the line at the downstream end
-    stream_line = ogr.Geometry(ogr.wkbLineString)
-    x_p, y_p = gdal.ApplyGeoTransform(geotransform, x_l+0.5, y_l+0.5)
-    stream_line.AddPoint(x_p, y_p)
+    with GDALUseExceptions():
 
-    # initialize next_dir and last_dir so we only drop new points when
-    # the line changes direction
-    cdef int next_dir = upstream_d8_dir
-    cdef int last_dir = next_dir
+        if flow_accum_managed_raster.get(x_l, y_l) < flow_accum_threshold:
+            return None
+        upstream_id_list = []
+        # anchor the line at the downstream end
+        stream_line = ogr.Geometry(ogr.wkbLineString)
+        x_p, y_p = gdal.ApplyGeoTransform(geotransform, x_l+0.5, y_l+0.5)
+        stream_line.AddPoint(x_p, y_p)
 
-    stream_end = 0
-    pixel_length = 0
-    # initialize these for the compiler warniing
-    x_1 = -1
-    y_1 = -1
-    while not stream_end:
-        # walk upstream
-        x_l += D8_XOFFSET[next_dir]
-        y_l += D8_YOFFSET[next_dir]
+        # initialize next_dir and last_dir so we only drop new points when
+        # the line changes direction
+        next_dir = upstream_d8_dir
+        last_dir = next_dir
 
-        stream_end = 1
-        pixel_length += 1
-        # do <= 1 in case there's a degenerate single point stream
-        if pixel_length <= 1:
-            x_1 = x_l
-            y_1 = y_l
+        stream_end = 0
+        pixel_length = 0
+        # initialize these for the compiler warniing
+        x_1 = -1
+        y_1 = -1
+        while not stream_end:
+            # walk upstream
+            x_l += D8_XOFFSET[next_dir]
+            y_l += D8_YOFFSET[next_dir]
 
-        # check if we reached an upstream junction
-        if (x_l, y_l) in coord_to_stream_ids:
-            upstream_id_list = coord_to_stream_ids[(x_l, y_l)]
-            del coord_to_stream_ids[(x_l, y_l)]
-        elif <int>flow_accum_managed_raster.get(x_l, y_l) >= \
-                flow_accum_threshold:
-            # check to see if we can take a step upstream
-            for d in range(8):
-                x_n = x_l + D8_XOFFSET[d]
-                y_n = y_l + D8_YOFFSET[d]
+            stream_end = 1
+            pixel_length += 1
+            # do <= 1 in case there's a degenerate single point stream
+            if pixel_length <= 1:
+                x_1 = x_l
+                y_1 = y_l
 
-                # check out of bounds
-                if x_n < 0 or y_n < 0 or x_n >= n_cols or y_n >= n_rows:
-                    continue
+            # check if we reached an upstream junction
+            if (x_l, y_l) in coord_to_stream_ids:
+                upstream_id_list = coord_to_stream_ids[(x_l, y_l)]
+                del coord_to_stream_ids[(x_l, y_l)]
+            elif <int>flow_accum_managed_raster.get(x_l, y_l) >= \
+                    flow_accum_threshold:
+                # check to see if we can take a step upstream
+                for d in range(8):
+                    x_n = x_l + D8_XOFFSET[d]
+                    y_n = y_l + D8_YOFFSET[d]
 
-                # check for nodata
-                d_n = <int>flow_dir_managed_raster.get(x_n, y_n)
-                if d_n == flow_dir_nodata:
-                    continue
+                    # check out of bounds
+                    if x_n < 0 or y_n < 0 or x_n >= n_cols or y_n >= n_rows:
+                        continue
 
-                # check if there's an upstream inflow pixel with flow accum
-                # greater than the threshold
-                if D8_REVERSE_DIRECTION[d] == d_n and (
-                        <int>flow_accum_managed_raster.get(
-                         x_n, y_n) > flow_accum_threshold):
-                    stream_end = 0
-                    next_dir = d
-                    break
-        else:
-            # terminated because of flow accumulation too small, so back up
-            # one pixel
-            pixel_length -= 1
+                    # check for nodata
+                    d_n = <int>flow_dir_managed_raster.get(x_n, y_n)
+                    if d_n == flow_dir_nodata:
+                        continue
 
-        # drop a point on the line if direction changed or last point
-        if last_dir != next_dir or stream_end:
-            x_p, y_p = gdal.ApplyGeoTransform(
-                geotransform, x_l+0.5, y_l+0.5)
-            stream_line.AddPoint(x_p, y_p)
-            last_dir = next_dir
+                    # check if there's an upstream inflow pixel with flow accum
+                    # greater than the threshold
+                    if D8_REVERSE_DIRECTION[d] == d_n and (
+                            <int>flow_accum_managed_raster.get(
+                             x_n, y_n) > flow_accum_threshold):
+                        stream_end = 0
+                        next_dir = d
+                        break
+            else:
+                # terminated because of flow accumulation too small, so back up
+                # one pixel
+                pixel_length -= 1
 
-    if pixel_length == 0:
-        return None
-    return x_l, y_l, x_1, y_1, upstream_id_list, stream_line
+            # drop a point on the line if direction changed or last point
+            if last_dir != next_dir or stream_end:
+                x_p, y_p = gdal.ApplyGeoTransform(
+                    geotransform, x_l+0.5, y_l+0.5)
+                stream_line.AddPoint(x_p, y_p)
+                last_dir = next_dir
+
+        if pixel_length == 0:
+            return None
+        return x_l, y_l, x_1, y_1, upstream_id_list, stream_line
 
 
+@gdal_use_exceptions
 def _delete_feature(
         stream_feature, stream_layer, upstream_to_downstream_id,
         downstream_to_upstream_ids):

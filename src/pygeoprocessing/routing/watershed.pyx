@@ -26,6 +26,7 @@ import shapely.prepared
 import shapely.wkb
 
 import pygeoprocessing
+from ..geoprocessing_core import gdal_use_exceptions, GDALUseExceptions
 
 LOGGER = logging.getLogger(__name__)
 
@@ -171,6 +172,7 @@ cdef class _ManagedRaster:
         """
         self.close()
 
+    @gdal_use_exceptions
     def close(self):
         """Close the _ManagedRaster and free up resources.
 
@@ -310,71 +312,72 @@ cdef class _ManagedRaster:
         if yoff+win_ysize > self.raster_y_size:
             win_ysize = win_ysize - (yoff+win_ysize - self.raster_y_size)
 
-        raster = gdal.OpenEx(self.raster_path, gdal.OF_RASTER)
-        raster_band = raster.GetRasterBand(self.band_id)
-        block_array = raster_band.ReadAsArray(
-            xoff=xoff, yoff=yoff, win_xsize=win_xsize,
-            win_ysize=win_ysize).astype(
-            numpy.int32)
-        raster_band = None
-        raster = None
-        int_buffer = <int*>PyMem_Malloc(
-            (sizeof(int) << self.block_xbits) * win_ysize)
-        for xi_copy in xrange(win_xsize):
-            for yi_copy in xrange(win_ysize):
-                int_buffer[(yi_copy<<self.block_xbits)+xi_copy] = (
-                    block_array[yi_copy, xi_copy])
-        self.lru_cache.put(
-            <int>block_index, <int*>int_buffer, removed_value_list)
-
-        if self.write_mode:
-            raster = gdal.OpenEx(
-                self.raster_path, gdal.GA_Update | gdal.OF_RASTER)
+        with GDALUseExceptions():
+            raster = gdal.OpenEx(self.raster_path, gdal.OF_RASTER)
             raster_band = raster.GetRasterBand(self.band_id)
-
-        block_array = numpy.empty(
-            (self.block_ysize, self.block_xsize), dtype=numpy.int32)
-        while not removed_value_list.empty():
-            # write the changed value back if desired
-            int_buffer = removed_value_list.front().second
-
-            if self.write_mode:
-                block_index = removed_value_list.front().first
-
-                # write back the block if it's dirty
-                dirty_itr = self.dirty_blocks.find(block_index)
-                if dirty_itr != self.dirty_blocks.end():
-                    self.dirty_blocks.erase(dirty_itr)
-
-                    block_xi = block_index % self.block_nx
-                    block_yi = block_index // self.block_nx
-
-                    xoff = block_xi << self.block_xbits
-                    yoff = block_yi << self.block_ybits
-
-                    win_xsize = self.block_xsize
-                    win_ysize = self.block_ysize
-
-                    if xoff+win_xsize > self.raster_x_size:
-                        win_xsize = win_xsize - (
-                            xoff+win_xsize - self.raster_x_size)
-                    if yoff+win_ysize > self.raster_y_size:
-                        win_ysize = win_ysize - (
-                            yoff+win_ysize - self.raster_y_size)
-
-                    for xi_copy in xrange(win_xsize):
-                        for yi_copy in xrange(win_ysize):
-                            block_array[yi_copy, xi_copy] = int_buffer[
-                                (yi_copy << self.block_xbits) + xi_copy]
-                    raster_band.WriteArray(
-                        block_array[0:win_ysize, 0:win_xsize],
-                        xoff=xoff, yoff=yoff)
-            PyMem_Free(int_buffer)
-            removed_value_list.pop_front()
-
-        if self.write_mode:
+            block_array = raster_band.ReadAsArray(
+                xoff=xoff, yoff=yoff, win_xsize=win_xsize,
+                win_ysize=win_ysize).astype(
+                numpy.int32)
             raster_band = None
             raster = None
+            int_buffer = <int*>PyMem_Malloc(
+                (sizeof(int) << self.block_xbits) * win_ysize)
+            for xi_copy in xrange(win_xsize):
+                for yi_copy in xrange(win_ysize):
+                    int_buffer[(yi_copy<<self.block_xbits)+xi_copy] = (
+                        block_array[yi_copy, xi_copy])
+            self.lru_cache.put(
+                <int>block_index, <int*>int_buffer, removed_value_list)
+
+            if self.write_mode:
+                raster = gdal.OpenEx(
+                    self.raster_path, gdal.GA_Update | gdal.OF_RASTER)
+                raster_band = raster.GetRasterBand(self.band_id)
+
+            block_array = numpy.empty(
+                (self.block_ysize, self.block_xsize), dtype=numpy.int32)
+            while not removed_value_list.empty():
+                # write the changed value back if desired
+                int_buffer = removed_value_list.front().second
+
+                if self.write_mode:
+                    block_index = removed_value_list.front().first
+
+                    # write back the block if it's dirty
+                    dirty_itr = self.dirty_blocks.find(block_index)
+                    if dirty_itr != self.dirty_blocks.end():
+                        self.dirty_blocks.erase(dirty_itr)
+
+                        block_xi = block_index % self.block_nx
+                        block_yi = block_index // self.block_nx
+
+                        xoff = block_xi << self.block_xbits
+                        yoff = block_yi << self.block_ybits
+
+                        win_xsize = self.block_xsize
+                        win_ysize = self.block_ysize
+
+                        if xoff+win_xsize > self.raster_x_size:
+                            win_xsize = win_xsize - (
+                                xoff+win_xsize - self.raster_x_size)
+                        if yoff+win_ysize > self.raster_y_size:
+                            win_ysize = win_ysize - (
+                                yoff+win_ysize - self.raster_y_size)
+
+                        for xi_copy in xrange(win_xsize):
+                            for yi_copy in xrange(win_ysize):
+                                block_array[yi_copy, xi_copy] = int_buffer[
+                                    (yi_copy << self.block_xbits) + xi_copy]
+                        raster_band.WriteArray(
+                            block_array[0:win_ysize, 0:win_xsize],
+                            xoff=xoff, yoff=yoff)
+                PyMem_Free(int_buffer)
+                removed_value_list.pop_front()
+
+            if self.write_mode:
+                raster_band = None
+                raster = None
 
 
 # It's convenient to define a C++ pair here as a pair of longs to represent the
@@ -471,100 +474,105 @@ cdef cset[CoordinatePair] _c_split_geometry_into_seeds(
     cdef double maxy_aligned = min(
         y_origin + (maxy_pixelcoord * y_pixelwidth),
         y_origin)
+    cdef int write_diagnostic_vector = 0
+
+    cdef int row, col
+    cdef int global_row, global_col
+    cdef int seed_raster_origin_col
+    cdef int seed_raster_origin_row
+    cdef dict block_info
+    cdef int block_xoff
+    cdef int block_yoff
+    cdef numpy.ndarray[numpy.npy_uint8, ndim=2] seed_array
 
     # It's possible for a perfectly vertical or horizontal line to cover 0 rows
     # or columns, so defaulting to row/col count of 1 in these cases.
     local_n_cols = max(abs(maxx_aligned - minx_aligned) // abs(x_pixelwidth), 1)
     local_n_rows = max(abs(maxy_aligned - miny_aligned) // abs(y_pixelwidth), 1)
 
-    # The geometry does not fit into a single pixel, so let's create a new
-    # raster onto which to rasterize it.
-    memory_driver = gdal.GetDriverByName('Memory')
-    new_vector = memory_driver.Create('mem', 0, 0, 0, gdal.GDT_Unknown)
-    new_layer = new_vector.CreateLayer('user_geometry', flow_dir_srs, ogr.wkbUnknown)
-    new_layer.StartTransaction()
-    new_feature = ogr.Feature(new_layer.GetLayerDefn())
-    new_feature.SetGeometry(ogr.CreateGeometryFromWkb(source_geom_wkb))
-    new_layer.CreateFeature(new_feature)
-    new_layer.CommitTransaction()
+    with GDALUseExceptions():
+        # The geometry does not fit into a single pixel, so let's create a new
+        # raster onto which to rasterize it.
+        memory_driver = gdal.GetDriverByName('Memory')
+        new_vector = memory_driver.Create('mem', 0, 0, 0, gdal.GDT_Unknown)
+        new_layer = new_vector.CreateLayer('user_geometry', flow_dir_srs, ogr.wkbUnknown)
+        new_layer.StartTransaction()
+        new_feature = ogr.Feature(new_layer.GetLayerDefn())
+        new_feature.SetGeometry(ogr.CreateGeometryFromWkb(source_geom_wkb))
+        new_layer.CreateFeature(new_feature)
+        new_layer.CommitTransaction()
 
-    local_origin_x = max(minx_aligned, x_origin)
-    local_origin_y = min(maxy_aligned, y_origin)
+        local_origin_x = max(minx_aligned, x_origin)
+        local_origin_y = min(maxy_aligned, y_origin)
 
-    local_geotransform = [
-        local_origin_x, flow_dir_geotransform[1], flow_dir_geotransform[2],
-        local_origin_y, flow_dir_geotransform[4], flow_dir_geotransform[5]]
-    gtiff_driver = gdal.GetDriverByName('GTiff')
-    # Raster is sparse, no need to fill.
-    raster = gtiff_driver.Create(
-        target_raster_path, int(local_n_cols), int(local_n_rows), 1,
-        gdal.GDT_Byte, options=GTIFF_CREATION_OPTIONS)
-    raster.SetProjection(flow_dir_srs.ExportToWkt())
-    raster.SetGeoTransform(local_geotransform)
+        local_geotransform = [
+            local_origin_x, flow_dir_geotransform[1], flow_dir_geotransform[2],
+            local_origin_y, flow_dir_geotransform[4], flow_dir_geotransform[5]]
+        gtiff_driver = gdal.GetDriverByName('GTiff')
+        # Raster is sparse, no need to fill.
+        raster = gtiff_driver.Create(
+            target_raster_path, int(local_n_cols), int(local_n_rows), 1,
+            gdal.GDT_Byte, options=GTIFF_CREATION_OPTIONS)
 
-    gdal.RasterizeLayer(
-        raster, [1], new_layer, burn_values=[1], options=['ALL_TOUCHED=True'])
-    raster = None
+        raster.SetSpatialRef(flow_dir_srs)
+        raster.SetGeoTransform(local_geotransform)
 
-    cdef int write_diagnostic_vector = 0
-    diagnostic_vector = None
-    diagnostic_layer = None
-    if diagnostic_vector_path is not None:
-        write_diagnostic_vector = 1
+        gdal.RasterizeLayer(
+            raster, [1], new_layer, burn_values=[1], options=['ALL_TOUCHED=True'])
+        raster = None
 
-        gpkg_driver = gdal.GetDriverByName('GPKG')
-        diagnostic_vector = gpkg_driver.Create(
-            diagnostic_vector_path, 0, 0, 0, gdal.GDT_Unknown)
-        diagnostic_layer = diagnostic_vector.CreateLayer(
-            'seeds', flow_dir_srs, ogr.wkbPoint)
-        user_geometry_layer = diagnostic_vector.CreateLayer(
-            'user_geometry', flow_dir_srs, ogr.wkbUnknown)
-        user_geometry_layer.StartTransaction()
-        user_feature = ogr.Feature(user_geometry_layer.GetLayerDefn())
-        user_feature.SetGeometry(ogr.CreateGeometryFromWkb(source_geom_wkb))
-        user_geometry_layer.CreateFeature(user_feature)
-        user_geometry_layer.CommitTransaction()
+        diagnostic_vector = None
+        diagnostic_layer = None
+        if diagnostic_vector_path is not None:
+            write_diagnostic_vector = 1
 
-    cdef int row, col
-    cdef int global_row, global_col
-    cdef int seed_raster_origin_col = <int>((local_origin_x - x_origin) // x_pixelwidth)
-    cdef int seed_raster_origin_row = <int>((local_origin_y - y_origin) // y_pixelwidth)
-    cdef dict block_info
-    cdef int block_xoff
-    cdef int block_yoff
-    cdef numpy.ndarray[numpy.npy_uint8, ndim=2] seed_array
-    for block_info, seed_array in pygeoprocessing.iterblocks(
-            (target_raster_path, 1)):
-        block_xoff = block_info['xoff']
-        block_yoff = block_info['yoff']
-        n_rows = seed_array.shape[0]
-        n_cols = seed_array.shape[1]
+            gpkg_driver = gdal.GetDriverByName('GPKG')
+            diagnostic_vector = gpkg_driver.Create(
+                diagnostic_vector_path, 0, 0, 0, gdal.GDT_Unknown)
+            diagnostic_layer = diagnostic_vector.CreateLayer(
+                'seeds', flow_dir_srs, ogr.wkbPoint)
+            user_geometry_layer = diagnostic_vector.CreateLayer(
+                'user_geometry', flow_dir_srs, ogr.wkbUnknown)
+            user_geometry_layer.StartTransaction()
+            user_feature = ogr.Feature(user_geometry_layer.GetLayerDefn())
+            user_feature.SetGeometry(ogr.CreateGeometryFromWkb(source_geom_wkb))
+            user_geometry_layer.CreateFeature(user_feature)
+            user_geometry_layer.CommitTransaction()
 
-        for row in range(n_rows):
-            for col in range(n_cols):
-                with cython.boundscheck(False):
-                    # Check if the pixel does not overlap the geometry.
-                    if seed_array[row, col] == 0:
-                        continue
+        seed_raster_origin_col = <int>((local_origin_x - x_origin) // x_pixelwidth)
+        seed_raster_origin_row = <int>((local_origin_y - y_origin) // y_pixelwidth)
+        for block_info, seed_array in pygeoprocessing.iterblocks(
+                (target_raster_path, 1)):
+            block_xoff = block_info['xoff']
+            block_yoff = block_info['yoff']
+            n_rows = seed_array.shape[0]
+            n_cols = seed_array.shape[1]
 
-                global_row = seed_raster_origin_row + block_yoff + row
-                global_col = seed_raster_origin_col + block_xoff + col
+            for row in range(n_rows):
+                for col in range(n_cols):
+                    with cython.boundscheck(False):
+                        # Check if the pixel does not overlap the geometry.
+                        if seed_array[row, col] == 0:
+                            continue
 
-                if write_diagnostic_vector == 1:
-                    diagnostic_layer.StartTransaction()
-                    new_feature = ogr.Feature(diagnostic_layer.GetLayerDefn())
-                    new_feature.SetGeometry(ogr.CreateGeometryFromWkb(
-                        shapely.geometry.Point(
-                            x_origin + ((global_col*x_pixelwidth) +
-                                        (x_pixelwidth / 2.)),
-                            y_origin + ((global_row*y_pixelwidth) +
-                                        (y_pixelwidth / 2.))).wkb))
-                    diagnostic_layer.CreateFeature(new_feature)
-                    diagnostic_layer.CommitTransaction()
+                    global_row = seed_raster_origin_row + block_yoff + row
+                    global_col = seed_raster_origin_col + block_xoff + col
 
-                seed_set.insert(CoordinatePair(global_col, global_row))
+                    if write_diagnostic_vector == 1:
+                        diagnostic_layer.StartTransaction()
+                        new_feature = ogr.Feature(diagnostic_layer.GetLayerDefn())
+                        new_feature.SetGeometry(ogr.CreateGeometryFromWkb(
+                            shapely.geometry.Point(
+                                x_origin + ((global_col*x_pixelwidth) +
+                                            (x_pixelwidth / 2.)),
+                                y_origin + ((global_row*y_pixelwidth) +
+                                            (y_pixelwidth / 2.))).wkb))
+                        diagnostic_layer.CreateFeature(new_feature)
+                        diagnostic_layer.CommitTransaction()
 
-    return seed_set
+                    seed_set.insert(CoordinatePair(global_col, global_row))
+
+        return seed_set
 
 
 def _split_geometry_into_seeds(
@@ -620,6 +628,7 @@ def _split_geometry_into_seeds(
 
 
 @cython.boundscheck(False)
+@gdal_use_exceptions
 def delineate_watersheds_d8(
         d8_flow_dir_raster_path_band, outflow_vector_path,
         target_watersheds_vector_path, working_dir=None,
@@ -703,7 +712,6 @@ def delineate_watersheds_d8(
     LOGGER.debug('Creating flow dir managed raster')
     flow_dir_managed_raster = _ManagedRaster(d8_flow_dir_raster_path_band[0],
                                              d8_flow_dir_raster_path_band[1], 0)
-
     gtiff_driver = gdal.GetDriverByName('GTiff')
     flow_dir_srs = osr.SpatialReference()
     if flow_dir_info['projection_wkt']:

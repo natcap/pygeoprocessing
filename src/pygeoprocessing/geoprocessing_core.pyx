@@ -46,6 +46,37 @@ DEFAULT_OSR_AXIS_MAPPING_STRATEGY = osr.OAMS_TRADITIONAL_GIS_ORDER
 
 LOGGER = logging.getLogger('pygeoprocessing.geoprocessing_core')
 
+
+class GDALUseExceptions:
+    """Context manager that enables GDAL exceptions and restores state after."""
+
+    def __init__(self):
+        pass
+
+    def __enter__(self):
+        self.currentUseExceptions = gdal.GetUseExceptions()
+        gdal.UseExceptions()
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self.currentUseExceptions == 0:
+            gdal.DontUseExceptions()
+
+
+def gdal_use_exceptions(func):
+    """Decorator that enables GDAL exceptions and restores state after.
+
+    Args:
+        func (callable): function to call with GDAL exceptions enabled
+
+    Returns:
+        Wrapper function that calls ``func`` with GDAL exceptions enabled
+    """
+    def wrapper(*args, **kwargs):
+        with GDALUseExceptions():
+            return func(*args, **kwargs)
+    return wrapper
+
+
 cdef float _NODATA = -1.0
 
 cdef extern from "FastFileIterator.h" nogil:
@@ -71,6 +102,7 @@ cdef extern from "<algorithm>" namespace "std":
 @cython.boundscheck(False)
 @cython.wraparound(False)
 @cython.cdivision(True)
+@gdal_use_exceptions
 def _distance_transform_edt(
         region_raster_path, g_raster_path, float sample_d_x,
         float sample_d_y, target_distance_raster_path,
@@ -295,6 +327,7 @@ cdef inline bint _eq(double value, double nodata):
 @cython.wraparound(False)
 @cython.nonecheck(False)
 @cython.cdivision(True)
+@gdal_use_exceptions
 def calculate_slope(
         base_elevation_raster_path_band, target_slope_path,
         raster_driver_creation_tuple=DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS):

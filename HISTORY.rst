@@ -19,6 +19,9 @@ Unreleased Changes
   https://github.com/natcap/pygeoprocessing/issues/386
 * Updated to Cython 3.
 * Dropped support for Python 3.7.
+* Enabled GDAL exceptions (``gdal.UseExceptions``) throughout pygeoprocessing.
+  This is done with a context manager so should not affect other code or
+  libraries. https://github.com/natcap/pygeoprocessing/issues/391
 
 2.4.3 (2024-03-06)
 ------------------
