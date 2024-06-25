@@ -51,6 +51,7 @@ setup(
                 'src/pygeoprocessing/routing'],
             extra_compile_args=compiler_and_linker_args,
             extra_link_args=compiler_and_linker_args,
+            define_macros=[('NPY_NO_DEPRECATED_API', 'NPY_1_7_API_VERSION')],
             language="c++",
         ),
         Extension(
@@ -61,6 +62,7 @@ setup(
                 'src/pygeoprocessing/routing'],
             extra_compile_args=compiler_and_linker_args,
             extra_link_args=compiler_and_linker_args,
+            define_macros=[('NPY_NO_DEPRECATED_API', 'NPY_1_7_API_VERSION')],
             language="c++",
         ),
         Extension(
@@ -70,6 +72,7 @@ setup(
             include_dirs=[numpy.get_include()],
             extra_compile_args=compiler_and_linker_args,
             extra_link_args=compiler_and_linker_args,
+            define_macros=[('NPY_NO_DEPRECATED_API', 'NPY_1_7_API_VERSION')],
             language="c++"
         ),
     ])

@@ -309,8 +309,8 @@ class TestGeoprocessing(unittest.TestCase):
         test_value = 0.5
         pixel_matrix[:] = test_value
         nodata = numpy.finfo(numpy.float32).max - 1
-        pixel_matrix[0,0] = nodata
-        pixel_matrix[5,7] = nodata
+        pixel_matrix[0, 0] = nodata
+        pixel_matrix[5, 7] = nodata
         raster_path = os.path.join(self.workspace_dir, 'raster.tif')
         target_path = os.path.join(self.workspace_dir, 'target.tif')
         _array_to_raster(

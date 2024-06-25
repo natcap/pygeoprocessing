@@ -51,6 +51,7 @@ jobs:
           condarc: |
               channels:
                 - conda-forge
+          # temporarily capping numpy<2 until we figure out build issues with gdal>=3.8
           create-args: >-
               python=${{ matrix.python-version }}
               gdal=${{ matrix.gdal }}
@@ -58,6 +59,7 @@ jobs:
               python-build
               flake8
               pytest
+              numpy<2
           environment-name: pyenv
 
       - name: Lint with flake8
@@ -71,7 +73,7 @@ jobs:
 
       - name: Build and Install PyGeoprocessing
         run: |
-            python -m build --wheel
+            python -m build --wheel --verbose
             python -m pip install $(find dist -name "*.whl")
 
       - name: Test with pytest

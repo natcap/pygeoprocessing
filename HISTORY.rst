@@ -1,6 +1,11 @@
 Release History
 ===============
 
+Unreleased Changes
+------------------
+* Updating for numpy 2.0 API changes.  Pygeoprocessing is now compatible with
+  numpy 2.0 and later.  https://github.com/natcap/pygeoprocessing/issues/396
+
 2.4.4 (2024-05-21)
 ------------------
 * Our github actions for building python distributions now use
