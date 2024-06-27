@@ -48,7 +48,16 @@ LOGGER = logging.getLogger('pygeoprocessing.geoprocessing_core')
 
 
 class GDALUseExceptions:
-    """Context manager that enables GDAL exceptions and restores state after."""
+    """Context manager that enables GDAL exceptions and restores state after.
+
+    NOTE: I originally wrote a decorator that would call functions with this
+    context manager as a way to avoid indenting so much. However, I ran into
+    multiple issues with the decorator - the decorated function cannot be
+    pickled or used with multiprocessing, and the docstring isn't inherited,
+    so the docs didn't build. Rather than address all those problems I decided
+    to use the context manager everywhere, knowing that it eventually won't be
+    necessary when GDAL 4 comes out.
+    """
 
     def __init__(self):
         pass
@@ -60,21 +69,6 @@ class GDALUseExceptions:
     def __exit__(self, exc_type, exc_val, exc_tb):
         if self.currentUseExceptions == 0:
             gdal.DontUseExceptions()
-
-
-def gdal_use_exceptions(func):
-    """Decorator that enables GDAL exceptions and restores state after.
-
-    Args:
-        func (callable): function to call with GDAL exceptions enabled
-
-    Returns:
-        Wrapper function that calls ``func`` with GDAL exceptions enabled
-    """
-    def wrapper(*args, **kwargs):
-        with GDALUseExceptions():
-            return func(*args, **kwargs)
-    return wrapper
 
 
 cdef float _NODATA = -1.0
@@ -102,7 +96,6 @@ cdef extern from "<algorithm>" namespace "std":
 @cython.boundscheck(False)
 @cython.wraparound(False)
 @cython.cdivision(True)
-@gdal_use_exceptions
 def _distance_transform_edt(
         region_raster_path, g_raster_path, float sample_d_x,
         float sample_d_y, target_distance_raster_path,
@@ -158,162 +151,163 @@ def _distance_transform_edt(
     cdef numpy.ndarray[numpy.float32_t, ndim=2] dt
     cdef numpy.ndarray[numpy.int8_t, ndim=2] mask_block
 
-    mask_raster = gdal.OpenEx(region_raster_path, gdal.OF_RASTER)
-    mask_band = mask_raster.GetRasterBand(1)
+    with GDALUseExceptions():
+        mask_raster = gdal.OpenEx(region_raster_path, gdal.OF_RASTER)
+        mask_band = mask_raster.GetRasterBand(1)
 
-    n_cols = mask_raster.RasterXSize
-    n_rows = mask_raster.RasterYSize
+        n_cols = mask_raster.RasterXSize
+        n_rows = mask_raster.RasterYSize
 
-    raster_info = pygeoprocessing.get_raster_info(region_raster_path)
-    pygeoprocessing.new_raster_from_base(
-        region_raster_path, g_raster_path, gdal.GDT_Float32, [_NODATA],
-        raster_driver_creation_tuple=raster_driver_creation_tuple)
-    g_raster = gdal.OpenEx(g_raster_path, gdal.OF_RASTER | gdal.GA_Update)
-    g_band = g_raster.GetRasterBand(1)
-    g_band_blocksize = g_band.GetBlockSize()
+        raster_info = pygeoprocessing.get_raster_info(region_raster_path)
+        pygeoprocessing.new_raster_from_base(
+            region_raster_path, g_raster_path, gdal.GDT_Float32, [_NODATA],
+            raster_driver_creation_tuple=raster_driver_creation_tuple)
+        g_raster = gdal.OpenEx(g_raster_path, gdal.OF_RASTER | gdal.GA_Update)
+        g_band = g_raster.GetRasterBand(1)
+        g_band_blocksize = g_band.GetBlockSize()
 
-    # normalize the sample distances so we don't get a strange numerical
-    # overflow
-    max_sample = max(sample_d_x, sample_d_y)
-    sample_d_x /= max_sample
-    sample_d_y /= max_sample
+        # normalize the sample distances so we don't get a strange numerical
+        # overflow
+        max_sample = max(sample_d_x, sample_d_y)
+        sample_d_x /= max_sample
+        sample_d_y /= max_sample
 
-    # distances can't be larger than half the perimeter of the raster.
-    cdef float numerical_inf = max(sample_d_x, 1.0) * max(sample_d_y, 1.0) * (
-        raster_info['raster_size'][0] + raster_info['raster_size'][1])
-    # scan 1
-    done = False
-    block_xsize = raster_info['block_size'][0]
-    mask_block = numpy.empty((n_rows, block_xsize), dtype=numpy.int8)
-    g_block = numpy.empty((n_rows, block_xsize), dtype=numpy.float32)
-    for xoff in numpy.arange(0, n_cols, block_xsize):
-        win_xsize = block_xsize
-        if xoff + win_xsize > n_cols:
-            win_xsize = n_cols - xoff
-            mask_block = numpy.empty((n_rows, win_xsize), dtype=numpy.int8)
-            g_block = numpy.empty((n_rows, win_xsize), dtype=numpy.float32)
-            done = True
-        mask_band.ReadAsArray(
-            xoff=xoff, yoff=0, win_xsize=win_xsize, win_ysize=n_rows,
-            buf_obj=mask_block)
-        # base case
-        g_block[0, :] = (mask_block[0, :] == 0) * numerical_inf
-        for row_index in range(1, n_rows):
-            for local_x_index in range(win_xsize):
-                if mask_block[row_index, local_x_index] == 1:
-                    g_block[row_index, local_x_index] = 0
-                else:
-                    g_block[row_index, local_x_index] = (
-                        g_block[row_index-1, local_x_index] + sample_d_y)
-        for row_index in range(n_rows-2, -1, -1):
-            for local_x_index in range(win_xsize):
-                if (g_block[row_index+1, local_x_index] <
-                        g_block[row_index, local_x_index]):
-                    g_block[row_index, local_x_index] = (
-                        sample_d_y + g_block[row_index+1, local_x_index])
-        g_band.WriteArray(g_block, xoff=xoff, yoff=0)
-        if done:
-            break
-    g_band.FlushCache()
+        # distances can't be larger than half the perimeter of the raster.
+        cdef float numerical_inf = max(sample_d_x, 1.0) * max(sample_d_y, 1.0) * (
+            raster_info['raster_size'][0] + raster_info['raster_size'][1])
+        # scan 1
+        done = False
+        block_xsize = raster_info['block_size'][0]
+        mask_block = numpy.empty((n_rows, block_xsize), dtype=numpy.int8)
+        g_block = numpy.empty((n_rows, block_xsize), dtype=numpy.float32)
+        for xoff in numpy.arange(0, n_cols, block_xsize):
+            win_xsize = block_xsize
+            if xoff + win_xsize > n_cols:
+                win_xsize = n_cols - xoff
+                mask_block = numpy.empty((n_rows, win_xsize), dtype=numpy.int8)
+                g_block = numpy.empty((n_rows, win_xsize), dtype=numpy.float32)
+                done = True
+            mask_band.ReadAsArray(
+                xoff=xoff, yoff=0, win_xsize=win_xsize, win_ysize=n_rows,
+                buf_obj=mask_block)
+            # base case
+            g_block[0, :] = (mask_block[0, :] == 0) * numerical_inf
+            for row_index in range(1, n_rows):
+                for local_x_index in range(win_xsize):
+                    if mask_block[row_index, local_x_index] == 1:
+                        g_block[row_index, local_x_index] = 0
+                    else:
+                        g_block[row_index, local_x_index] = (
+                            g_block[row_index-1, local_x_index] + sample_d_y)
+            for row_index in range(n_rows-2, -1, -1):
+                for local_x_index in range(win_xsize):
+                    if (g_block[row_index+1, local_x_index] <
+                            g_block[row_index, local_x_index]):
+                        g_block[row_index, local_x_index] = (
+                            sample_d_y + g_block[row_index+1, local_x_index])
+            g_band.WriteArray(g_block, xoff=xoff, yoff=0)
+            if done:
+                break
+        g_band.FlushCache()
 
-    cdef float distance_nodata = -1.0
+        cdef float distance_nodata = -1.0
 
-    pygeoprocessing.new_raster_from_base(
-        region_raster_path, target_distance_raster_path.encode('utf-8'),
-        gdal.GDT_Float32, [distance_nodata],
-        raster_driver_creation_tuple=raster_driver_creation_tuple)
-    target_distance_raster = gdal.OpenEx(
-        target_distance_raster_path, gdal.OF_RASTER | gdal.GA_Update)
-    target_distance_band = target_distance_raster.GetRasterBand(1)
+        pygeoprocessing.new_raster_from_base(
+            region_raster_path, target_distance_raster_path.encode('utf-8'),
+            gdal.GDT_Float32, [distance_nodata],
+            raster_driver_creation_tuple=raster_driver_creation_tuple)
+        target_distance_raster = gdal.OpenEx(
+            target_distance_raster_path, gdal.OF_RASTER | gdal.GA_Update)
+        target_distance_band = target_distance_raster.GetRasterBand(1)
 
-    LOGGER.info('Distance Transform Phase 2')
-    s_array = numpy.empty(n_cols, dtype=numpy.int32)
-    t_array = numpy.empty(n_cols, dtype=numpy.int32)
+        LOGGER.info('Distance Transform Phase 2')
+        s_array = numpy.empty(n_cols, dtype=numpy.int32)
+        t_array = numpy.empty(n_cols, dtype=numpy.int32)
 
-    done = False
-    block_ysize = g_band_blocksize[1]
-    g_block = numpy.empty((block_ysize, n_cols), dtype=numpy.float32)
-    dt = numpy.empty((block_ysize, n_cols), dtype=numpy.float32)
-    mask_block = numpy.empty((block_ysize, n_cols), dtype=numpy.int8)
-    sq = 0  # initialize so compiler doesn't complain
-    gsq = 0
-    for yoff in numpy.arange(0, n_rows, block_ysize):
-        win_ysize = block_ysize
-        if yoff + win_ysize >= n_rows:
-            win_ysize = n_rows - yoff
-            g_block = numpy.empty((win_ysize, n_cols), dtype=numpy.float32)
-            mask_block = numpy.empty((win_ysize, n_cols), dtype=numpy.int8)
-            dt = numpy.empty((win_ysize, n_cols), dtype=numpy.float32)
-            done = True
-        g_band.ReadAsArray(
-            xoff=0, yoff=yoff, win_xsize=n_cols, win_ysize=win_ysize,
-            buf_obj=g_block)
-        mask_band.ReadAsArray(
-            xoff=0, yoff=yoff, win_xsize=n_cols, win_ysize=win_ysize,
-            buf_obj=mask_block)
-        for local_y_index in range(win_ysize):
-            q_index = 0
-            s_array[0] = 0
-            t_array[0] = 0
-            for u_index in range(1, n_cols):
-                gu = g_block[local_y_index, u_index]**2
-                while (q_index >= 0):
-                    tq = t_array[q_index]
-                    sq = s_array[q_index]
-                    gsq = g_block[local_y_index, sq]**2
-                    if ((sample_d_x*(tq-sq))**2 + gsq <= (
-                            sample_d_x*(tq-u_index))**2 + gu):
-                        break
-                    q_index -= 1
-                if q_index < 0:
-                    q_index = 0
-                    s_array[0] = u_index
-                    sq = u_index
-                    gsq = g_block[local_y_index, sq]**2
-                else:
-                    w = (float)(sample_d_x + ((
-                        (sample_d_x*u_index)**2 - (sample_d_x*sq)**2 +
-                        gu - gsq) / (2*sample_d_x*(u_index-sq))))
-                    if w < n_cols*sample_d_x:
-                        q_index += 1
-                        s_array[q_index] = u_index
-                        t_array[q_index] = <int>(w / sample_d_x)
-
-            sq = s_array[q_index]
-            gsq = g_block[local_y_index, sq]**2
-            tq = t_array[q_index]
-            for u_index in range(n_cols-1, -1, -1):
-                if mask_block[local_y_index, u_index] != 1:
-                    dt[local_y_index, u_index] = (
-                        sample_d_x*(u_index-sq))**2+gsq
-                else:
-                    dt[local_y_index, u_index] = 0
-                if u_index <= tq:
-                    q_index -= 1
-                    if q_index >= 0:
+        done = False
+        block_ysize = g_band_blocksize[1]
+        g_block = numpy.empty((block_ysize, n_cols), dtype=numpy.float32)
+        dt = numpy.empty((block_ysize, n_cols), dtype=numpy.float32)
+        mask_block = numpy.empty((block_ysize, n_cols), dtype=numpy.int8)
+        sq = 0  # initialize so compiler doesn't complain
+        gsq = 0
+        for yoff in numpy.arange(0, n_rows, block_ysize):
+            win_ysize = block_ysize
+            if yoff + win_ysize >= n_rows:
+                win_ysize = n_rows - yoff
+                g_block = numpy.empty((win_ysize, n_cols), dtype=numpy.float32)
+                mask_block = numpy.empty((win_ysize, n_cols), dtype=numpy.int8)
+                dt = numpy.empty((win_ysize, n_cols), dtype=numpy.float32)
+                done = True
+            g_band.ReadAsArray(
+                xoff=0, yoff=yoff, win_xsize=n_cols, win_ysize=win_ysize,
+                buf_obj=g_block)
+            mask_band.ReadAsArray(
+                xoff=0, yoff=yoff, win_xsize=n_cols, win_ysize=win_ysize,
+                buf_obj=mask_block)
+            for local_y_index in range(win_ysize):
+                q_index = 0
+                s_array[0] = 0
+                t_array[0] = 0
+                for u_index in range(1, n_cols):
+                    gu = g_block[local_y_index, u_index]**2
+                    while (q_index >= 0):
+                        tq = t_array[q_index]
                         sq = s_array[q_index]
                         gsq = g_block[local_y_index, sq]**2
-                        tq = t_array[q_index]
+                        if ((sample_d_x*(tq-sq))**2 + gsq <= (
+                                sample_d_x*(tq-u_index))**2 + gu):
+                            break
+                        q_index -= 1
+                    if q_index < 0:
+                        q_index = 0
+                        s_array[0] = u_index
+                        sq = u_index
+                        gsq = g_block[local_y_index, sq]**2
+                    else:
+                        w = (float)(sample_d_x + ((
+                            (sample_d_x*u_index)**2 - (sample_d_x*sq)**2 +
+                            gu - gsq) / (2*sample_d_x*(u_index-sq))))
+                        if w < n_cols*sample_d_x:
+                            q_index += 1
+                            s_array[q_index] = u_index
+                            t_array[q_index] = <int>(w / sample_d_x)
 
-        valid_mask = g_block != _NODATA
-        # "unnormalize" distances along with square root
-        dt[valid_mask] = numpy.sqrt(dt[valid_mask]) * max_sample
-        dt[~valid_mask] = _NODATA
-        target_distance_band.WriteArray(dt, xoff=0, yoff=yoff)
+                sq = s_array[q_index]
+                gsq = g_block[local_y_index, sq]**2
+                tq = t_array[q_index]
+                for u_index in range(n_cols-1, -1, -1):
+                    if mask_block[local_y_index, u_index] != 1:
+                        dt[local_y_index, u_index] = (
+                            sample_d_x*(u_index-sq))**2+gsq
+                    else:
+                        dt[local_y_index, u_index] = 0
+                    if u_index <= tq:
+                        q_index -= 1
+                        if q_index >= 0:
+                            sq = s_array[q_index]
+                            gsq = g_block[local_y_index, sq]**2
+                            tq = t_array[q_index]
 
-        # we do this in the case where the blocksize is many times larger than
-        # the raster size so we don't re-loop through the only block
-        if done:
-            break
+            valid_mask = g_block != _NODATA
+            # "unnormalize" distances along with square root
+            dt[valid_mask] = numpy.sqrt(dt[valid_mask]) * max_sample
+            dt[~valid_mask] = _NODATA
+            target_distance_band.WriteArray(dt, xoff=0, yoff=yoff)
 
-    target_distance_band.ComputeStatistics(0)
-    target_distance_band.FlushCache()
-    target_distance_band = None
-    mask_band = None
-    g_band = None
-    target_distance_raster = None
-    mask_raster = None
-    g_raster = None
+            # we do this in the case where the blocksize is many times larger than
+            # the raster size so we don't re-loop through the only block
+            if done:
+                break
+
+        target_distance_band.ComputeStatistics(0)
+        target_distance_band.FlushCache()
+        target_distance_band = None
+        mask_band = None
+        g_band = None
+        target_distance_raster = None
+        mask_raster = None
+        g_raster = None
 
 
 cdef inline bint _eq(double value, double nodata):
@@ -327,7 +321,6 @@ cdef inline bint _eq(double value, double nodata):
 @cython.wraparound(False)
 @cython.nonecheck(False)
 @cython.cdivision(True)
-@gdal_use_exceptions
 def calculate_slope(
         base_elevation_raster_path_band, target_slope_path,
         raster_driver_creation_tuple=DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS):
@@ -381,216 +374,217 @@ def calculate_slope(
     cdef numpy.ndarray[numpy.npy_float64, ndim=2] dzdx_array
     cdef numpy.ndarray[numpy.npy_float64, ndim=2] dzdy_array
 
-    dem_raster = gdal.OpenEx(base_elevation_raster_path_band[0])
-    dem_band = dem_raster.GetRasterBand(base_elevation_raster_path_band[1])
-    dem_info = pygeoprocessing.get_raster_info(
-        base_elevation_raster_path_band[0])
-    raw_nodata = dem_info['nodata'][0]
-    if raw_nodata is None:
-        # if nodata is undefined, choose most negative 32 bit float
-        raw_nodata = numpy.finfo(numpy.float32).min
-    dem_nodata = raw_nodata
-    x_cell_size, y_cell_size = dem_info['pixel_size']
-    n_cols, n_rows = dem_info['raster_size']
-    cdef numpy.npy_float64 slope_nodata = numpy.finfo(numpy.float32).min
-    pygeoprocessing.new_raster_from_base(
-        base_elevation_raster_path_band[0], target_slope_path,
-        gdal.GDT_Float32, [slope_nodata],
-        raster_driver_creation_tuple=raster_driver_creation_tuple)
-    target_slope_raster = gdal.OpenEx(target_slope_path, gdal.GA_Update)
-    target_slope_band = target_slope_raster.GetRasterBand(1)
+    with GDALUseExceptions():
+        dem_raster = gdal.OpenEx(base_elevation_raster_path_band[0])
+        dem_band = dem_raster.GetRasterBand(base_elevation_raster_path_band[1])
+        dem_info = pygeoprocessing.get_raster_info(
+            base_elevation_raster_path_band[0])
+        raw_nodata = dem_info['nodata'][0]
+        if raw_nodata is None:
+            # if nodata is undefined, choose most negative 32 bit float
+            raw_nodata = numpy.finfo(numpy.float32).min
+        dem_nodata = raw_nodata
+        x_cell_size, y_cell_size = dem_info['pixel_size']
+        n_cols, n_rows = dem_info['raster_size']
+        cdef numpy.npy_float64 slope_nodata = numpy.finfo(numpy.float32).min
+        pygeoprocessing.new_raster_from_base(
+            base_elevation_raster_path_band[0], target_slope_path,
+            gdal.GDT_Float32, [slope_nodata],
+            raster_driver_creation_tuple=raster_driver_creation_tuple)
+        target_slope_raster = gdal.OpenEx(target_slope_path, gdal.GA_Update)
+        target_slope_band = target_slope_raster.GetRasterBand(1)
 
-    for block_offset in pygeoprocessing.iterblocks(
-            base_elevation_raster_path_band, offset_only=True):
-        block_offset_copy = block_offset.copy()
-        # try to expand the block around the edges if it fits
-        x_start = 1
-        win_xsize = block_offset['win_xsize']
-        x_end = win_xsize+1
-        y_start = 1
-        win_ysize = block_offset['win_ysize']
-        y_end = win_ysize+1
+        for block_offset in pygeoprocessing.iterblocks(
+                base_elevation_raster_path_band, offset_only=True):
+            block_offset_copy = block_offset.copy()
+            # try to expand the block around the edges if it fits
+            x_start = 1
+            win_xsize = block_offset['win_xsize']
+            x_end = win_xsize+1
+            y_start = 1
+            win_ysize = block_offset['win_ysize']
+            y_end = win_ysize+1
 
-        if block_offset['xoff'] > 0:
-            block_offset_copy['xoff'] -= 1
-            block_offset_copy['win_xsize'] += 1
-            x_start -= 1
-        if block_offset['xoff']+win_xsize < n_cols:
-            block_offset_copy['win_xsize'] += 1
-            x_end += 1
-        if block_offset['yoff'] > 0:
-            block_offset_copy['yoff'] -= 1
-            block_offset_copy['win_ysize'] += 1
-            y_start -= 1
-        if block_offset['yoff']+win_ysize < n_rows:
-            block_offset_copy['win_ysize'] += 1
-            y_end += 1
+            if block_offset['xoff'] > 0:
+                block_offset_copy['xoff'] -= 1
+                block_offset_copy['win_xsize'] += 1
+                x_start -= 1
+            if block_offset['xoff']+win_xsize < n_cols:
+                block_offset_copy['win_xsize'] += 1
+                x_end += 1
+            if block_offset['yoff'] > 0:
+                block_offset_copy['yoff'] -= 1
+                block_offset_copy['win_ysize'] += 1
+                y_start -= 1
+            if block_offset['yoff']+win_ysize < n_rows:
+                block_offset_copy['win_ysize'] += 1
+                y_end += 1
 
-        dem_array = numpy.empty(
-            (win_ysize+2, win_xsize+2),
-            dtype=numpy.float64)
-        dem_array[:] = dem_nodata
-        slope_array = numpy.empty(
-            (win_ysize, win_xsize),
-            dtype=numpy.float64)
-        dzdx_array = numpy.empty(
-            (win_ysize, win_xsize),
-            dtype=numpy.float64)
-        dzdy_array = numpy.empty(
-            (win_ysize, win_xsize),
-            dtype=numpy.float64)
+            dem_array = numpy.empty(
+                (win_ysize+2, win_xsize+2),
+                dtype=numpy.float64)
+            dem_array[:] = dem_nodata
+            slope_array = numpy.empty(
+                (win_ysize, win_xsize),
+                dtype=numpy.float64)
+            dzdx_array = numpy.empty(
+                (win_ysize, win_xsize),
+                dtype=numpy.float64)
+            dzdy_array = numpy.empty(
+                (win_ysize, win_xsize),
+                dtype=numpy.float64)
 
-        dem_band.ReadAsArray(
-            buf_obj=dem_array[y_start:y_end, x_start:x_end],
-            **block_offset_copy)
+            dem_band.ReadAsArray(
+                buf_obj=dem_array[y_start:y_end, x_start:x_end],
+                **block_offset_copy)
 
-        for row_index in range(1, win_ysize+1):
-            for col_index in range(1, win_xsize+1):
-                # Notation of the cell below comes from the algorithm
-                # description, cells are arraged as follows:
-                # abc
-                # def
-                # ghi
-                e = dem_array[row_index, col_index]
-                if _eq(e, dem_nodata):
-                    # we use dzdx as a guard below, no need to set dzdy
-                    dzdx_array[row_index-1, col_index-1] = slope_nodata
-                    continue
-                dzdx_accumulator = 0
-                dzdy_accumulator = 0
-                x_denom_factor = 0
-                y_denom_factor = 0
-                a = dem_array[row_index-1, col_index-1]
-                b = dem_array[row_index-1, col_index]
-                c = dem_array[row_index-1, col_index+1]
-                d = dem_array[row_index, col_index-1]
-                f = dem_array[row_index, col_index+1]
-                g = dem_array[row_index+1, col_index-1]
-                h = dem_array[row_index+1, col_index]
-                i = dem_array[row_index+1, col_index+1]
+            for row_index in range(1, win_ysize+1):
+                for col_index in range(1, win_xsize+1):
+                    # Notation of the cell below comes from the algorithm
+                    # description, cells are arraged as follows:
+                    # abc
+                    # def
+                    # ghi
+                    e = dem_array[row_index, col_index]
+                    if _eq(e, dem_nodata):
+                        # we use dzdx as a guard below, no need to set dzdy
+                        dzdx_array[row_index-1, col_index-1] = slope_nodata
+                        continue
+                    dzdx_accumulator = 0
+                    dzdy_accumulator = 0
+                    x_denom_factor = 0
+                    y_denom_factor = 0
+                    a = dem_array[row_index-1, col_index-1]
+                    b = dem_array[row_index-1, col_index]
+                    c = dem_array[row_index-1, col_index+1]
+                    d = dem_array[row_index, col_index-1]
+                    f = dem_array[row_index, col_index+1]
+                    g = dem_array[row_index+1, col_index-1]
+                    h = dem_array[row_index+1, col_index]
+                    i = dem_array[row_index+1, col_index+1]
 
-                a_is_valid = not _eq(a, dem_nodata)
-                b_is_valid = not _eq(b, dem_nodata)
-                c_is_valid = not _eq(c, dem_nodata)
-                d_is_valid = not _eq(d, dem_nodata)
-                f_is_valid = not _eq(f, dem_nodata)
-                g_is_valid = not _eq(g, dem_nodata)
-                h_is_valid = not _eq(h, dem_nodata)
-                i_is_valid = not _eq(i, dem_nodata)
+                    a_is_valid = not _eq(a, dem_nodata)
+                    b_is_valid = not _eq(b, dem_nodata)
+                    c_is_valid = not _eq(c, dem_nodata)
+                    d_is_valid = not _eq(d, dem_nodata)
+                    f_is_valid = not _eq(f, dem_nodata)
+                    g_is_valid = not _eq(g, dem_nodata)
+                    h_is_valid = not _eq(h, dem_nodata)
+                    i_is_valid = not _eq(i, dem_nodata)
 
-                # a - c direction
-                if a_is_valid and c_is_valid:
-                    dzdx_accumulator += a - c
-                    x_denom_factor += 2
-                elif a_is_valid and b_is_valid:
-                    dzdx_accumulator += a - b
-                    x_denom_factor += 1
-                elif b_is_valid and c_is_valid:
-                    dzdx_accumulator += b - c
-                    x_denom_factor += 1
-                elif a_is_valid:
-                    dzdx_accumulator += (a - e) * 2**0.5
-                    x_denom_factor += 1
-                elif c_is_valid:
-                    dzdx_accumulator += (e - c) * 2**0.5
-                    x_denom_factor += 1
+                    # a - c direction
+                    if a_is_valid and c_is_valid:
+                        dzdx_accumulator += a - c
+                        x_denom_factor += 2
+                    elif a_is_valid and b_is_valid:
+                        dzdx_accumulator += a - b
+                        x_denom_factor += 1
+                    elif b_is_valid and c_is_valid:
+                        dzdx_accumulator += b - c
+                        x_denom_factor += 1
+                    elif a_is_valid:
+                        dzdx_accumulator += (a - e) * 2**0.5
+                        x_denom_factor += 1
+                    elif c_is_valid:
+                        dzdx_accumulator += (e - c) * 2**0.5
+                        x_denom_factor += 1
 
-                # d - f direction
-                if d_is_valid and f_is_valid:
-                    dzdx_accumulator += 2 * (d - f)
-                    x_denom_factor += 4
-                elif d_is_valid:
-                    dzdx_accumulator += 2 * (d - e)
-                    x_denom_factor += 2
-                elif f_is_valid:
-                    dzdx_accumulator += 2 * (e - f)
-                    x_denom_factor += 2
+                    # d - f direction
+                    if d_is_valid and f_is_valid:
+                        dzdx_accumulator += 2 * (d - f)
+                        x_denom_factor += 4
+                    elif d_is_valid:
+                        dzdx_accumulator += 2 * (d - e)
+                        x_denom_factor += 2
+                    elif f_is_valid:
+                        dzdx_accumulator += 2 * (e - f)
+                        x_denom_factor += 2
 
-                # g - i direction
-                if g_is_valid and i_is_valid:
-                    dzdx_accumulator += g - i
-                    x_denom_factor += 2
-                elif g_is_valid and h_is_valid:
-                    dzdx_accumulator += g - h
-                    x_denom_factor += 1
-                elif h_is_valid and i_is_valid:
-                    dzdx_accumulator += h - i
-                    x_denom_factor += 1
-                elif g_is_valid:
-                    dzdx_accumulator += (g - e) * 2**0.5
-                    x_denom_factor += 1
-                elif i_is_valid:
-                    dzdx_accumulator += (e - i) * 2**0.5
-                    x_denom_factor += 1
+                    # g - i direction
+                    if g_is_valid and i_is_valid:
+                        dzdx_accumulator += g - i
+                        x_denom_factor += 2
+                    elif g_is_valid and h_is_valid:
+                        dzdx_accumulator += g - h
+                        x_denom_factor += 1
+                    elif h_is_valid and i_is_valid:
+                        dzdx_accumulator += h - i
+                        x_denom_factor += 1
+                    elif g_is_valid:
+                        dzdx_accumulator += (g - e) * 2**0.5
+                        x_denom_factor += 1
+                    elif i_is_valid:
+                        dzdx_accumulator += (e - i) * 2**0.5
+                        x_denom_factor += 1
 
-                # a - g direction
-                if a_is_valid and g_is_valid:
-                    dzdy_accumulator += a - g
-                    y_denom_factor += 2
-                elif a_is_valid and d_is_valid:
-                    dzdy_accumulator += a - d
-                    y_denom_factor += 1
-                elif d_is_valid and g_is_valid:
-                    dzdy_accumulator += d - g
-                    y_denom_factor += 1
-                elif a_is_valid:
-                    dzdy_accumulator += (a - e) * 2**0.5
-                    y_denom_factor += 1
-                elif g_is_valid:
-                    dzdy_accumulator += (e - g) * 2**0.5
-                    y_denom_factor += 1
+                    # a - g direction
+                    if a_is_valid and g_is_valid:
+                        dzdy_accumulator += a - g
+                        y_denom_factor += 2
+                    elif a_is_valid and d_is_valid:
+                        dzdy_accumulator += a - d
+                        y_denom_factor += 1
+                    elif d_is_valid and g_is_valid:
+                        dzdy_accumulator += d - g
+                        y_denom_factor += 1
+                    elif a_is_valid:
+                        dzdy_accumulator += (a - e) * 2**0.5
+                        y_denom_factor += 1
+                    elif g_is_valid:
+                        dzdy_accumulator += (e - g) * 2**0.5
+                        y_denom_factor += 1
 
-                # b - h direction
-                if b_is_valid and h_is_valid:
-                    dzdy_accumulator += 2 * (b - h)
-                    y_denom_factor += 4
-                elif b_is_valid:
-                    dzdy_accumulator += 2 * (b - e)
-                    y_denom_factor += 2
-                elif h_is_valid:
-                    dzdy_accumulator += 2 * (e - h)
-                    y_denom_factor += 2
+                    # b - h direction
+                    if b_is_valid and h_is_valid:
+                        dzdy_accumulator += 2 * (b - h)
+                        y_denom_factor += 4
+                    elif b_is_valid:
+                        dzdy_accumulator += 2 * (b - e)
+                        y_denom_factor += 2
+                    elif h_is_valid:
+                        dzdy_accumulator += 2 * (e - h)
+                        y_denom_factor += 2
 
-                # c - i direction
-                if c_is_valid and i_is_valid:
-                    dzdy_accumulator += c - i
-                    y_denom_factor += 2
-                elif c_is_valid and f_is_valid:
-                    dzdy_accumulator += c - f
-                    y_denom_factor += 1
-                elif f_is_valid and i_is_valid:
-                    dzdy_accumulator += f - i
-                    y_denom_factor += 1
-                elif c_is_valid:
-                    dzdy_accumulator += (c - e) * 2**0.5
-                    y_denom_factor += 1
-                elif i_is_valid:
-                    dzdy_accumulator += (e - i) * 2**0.5
-                    y_denom_factor += 1
+                    # c - i direction
+                    if c_is_valid and i_is_valid:
+                        dzdy_accumulator += c - i
+                        y_denom_factor += 2
+                    elif c_is_valid and f_is_valid:
+                        dzdy_accumulator += c - f
+                        y_denom_factor += 1
+                    elif f_is_valid and i_is_valid:
+                        dzdy_accumulator += f - i
+                        y_denom_factor += 1
+                    elif c_is_valid:
+                        dzdy_accumulator += (c - e) * 2**0.5
+                        y_denom_factor += 1
+                    elif i_is_valid:
+                        dzdy_accumulator += (e - i) * 2**0.5
+                        y_denom_factor += 1
 
-                if x_denom_factor != 0:
-                    dzdx_array[row_index-1, col_index-1] = (
-                        dzdx_accumulator / (x_denom_factor * x_cell_size))
-                else:
-                    dzdx_array[row_index-1, col_index-1] = 0
-                if y_denom_factor != 0:
-                    dzdy_array[row_index-1, col_index-1] = (
-                        dzdy_accumulator / (y_denom_factor * y_cell_size))
-                else:
-                    dzdy_array[row_index-1, col_index-1] = 0
-        valid_mask = dzdx_array != slope_nodata
-        slope_array[:] = slope_nodata
-        # multiply by 100 for percent output
-        slope_array[valid_mask] = 100 * numpy.sqrt(
-            dzdx_array[valid_mask]**2 + dzdy_array[valid_mask]**2)
-        target_slope_band.WriteArray(
-            slope_array, xoff=block_offset['xoff'],
-            yoff=block_offset['yoff'])
+                    if x_denom_factor != 0:
+                        dzdx_array[row_index-1, col_index-1] = (
+                            dzdx_accumulator / (x_denom_factor * x_cell_size))
+                    else:
+                        dzdx_array[row_index-1, col_index-1] = 0
+                    if y_denom_factor != 0:
+                        dzdy_array[row_index-1, col_index-1] = (
+                            dzdy_accumulator / (y_denom_factor * y_cell_size))
+                    else:
+                        dzdy_array[row_index-1, col_index-1] = 0
+            valid_mask = dzdx_array != slope_nodata
+            slope_array[:] = slope_nodata
+            # multiply by 100 for percent output
+            slope_array[valid_mask] = 100 * numpy.sqrt(
+                dzdx_array[valid_mask]**2 + dzdy_array[valid_mask]**2)
+            target_slope_band.WriteArray(
+                slope_array, xoff=block_offset['xoff'],
+                yoff=block_offset['yoff'])
 
-    dem_band = None
-    target_slope_band = None
-    dem_raster = None
-    target_slope_raster = None
+        dem_band = None
+        target_slope_band = None
+        dem_raster = None
+        target_slope_raster = None
 
 
 @cython.boundscheck(False)

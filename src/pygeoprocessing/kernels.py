@@ -41,7 +41,7 @@ import pygeoprocessing
 from numpy.typing import ArrayLike
 from osgeo import gdal
 
-from .geoprocessing_core import gdal_use_exceptions
+from .geoprocessing_core import GDALUseExceptions
 
 FLOAT32_NODATA = float(numpy.finfo(numpy.float32).min)
 LOGGER = logging.getLogger(__name__)
@@ -209,7 +209,6 @@ def normal_distribution_kernel(
     )
 
 
-@gdal_use_exceptions
 def create_distance_decay_kernel(
         target_kernel_path: str,
         distance_decay_function: Union[str, Callable],
@@ -240,92 +239,93 @@ def create_distance_decay_kernel(
     Returns:
         ``None``
     """
-    apothem = math.floor(max_distance)
-    kernel_size = apothem * 2 + 1  # allow for a center pixel
-    assert kernel_size % 2 == 1
-    driver = gdal.GetDriverByName('GTiff')
-    kernel_dataset = driver.Create(
-        target_kernel_path.encode('utf-8'), kernel_size, kernel_size, 1,
-        gdal.GDT_Float32, options=[
-            'BIGTIFF=IF_SAFER', 'TILED=YES', 'BLOCKXSIZE=256',
-            'BLOCKYSIZE=256'])
+    with GDALUseExceptions():
+        apothem = math.floor(max_distance)
+        kernel_size = apothem * 2 + 1  # allow for a center pixel
+        assert kernel_size % 2 == 1
+        driver = gdal.GetDriverByName('GTiff')
+        kernel_dataset = driver.Create(
+            target_kernel_path.encode('utf-8'), kernel_size, kernel_size, 1,
+            gdal.GDT_Float32, options=[
+                'BIGTIFF=IF_SAFER', 'TILED=YES', 'BLOCKXSIZE=256',
+                'BLOCKYSIZE=256'])
 
-    # NOTE: We are deliberately NOT setting a coordinate system because it
-    # isn't needed.  By omitting this, we're telling GDAL to just create a
-    # TIFF.
+        # NOTE: We are deliberately NOT setting a coordinate system because it
+        # isn't needed.  By omitting this, we're telling GDAL to just create a
+        # TIFF.
 
-    kernel_band = kernel_dataset.GetRasterBand(1)
-    kernel_nodata = FLOAT32_NODATA
-    kernel_band.SetNoDataValue(kernel_nodata)
+        kernel_band = kernel_dataset.GetRasterBand(1)
+        kernel_nodata = FLOAT32_NODATA
+        kernel_band.SetNoDataValue(kernel_nodata)
 
-    kernel_band = None
-    kernel_dataset = None
+        kernel_band = None
+        kernel_dataset = None
 
-    kernel_raster = gdal.OpenEx(target_kernel_path, gdal.GA_Update)
-    kernel_band = kernel_raster.GetRasterBand(1)
-    band_x_size = kernel_band.XSize
-    band_y_size = kernel_band.YSize
-    running_sum = 0
-
-    # If the user provided a string rather than a callable, assume it's a
-    # python expression appropriate for evaling.
-    if isinstance(distance_decay_function, str):
-        # Avoid recompiling on each iteration.
-        code = compile(distance_decay_function, '<string>', 'eval')
-        numpy_namespace = {name: getattr(numpy, name) for name in dir(numpy)}
-
-        def distance_decay_function(d):
-            result = eval(
-                code,
-                numpy_namespace,  # globals
-                {'dist': d, 'max_dist': max_distance})  # locals
-            return result
-
-    for block_data in pygeoprocessing.iterblocks(
-            (target_kernel_path, 1), offset_only=True):
-        array_xmin = block_data['xoff'] - apothem
-        array_xmax = min(
-            array_xmin + block_data['win_xsize'],
-            band_x_size - apothem)
-        array_ymin = block_data['yoff'] - apothem
-        array_ymax = min(
-            array_ymin + block_data['win_ysize'],
-            band_y_size - apothem)
-
-        pixel_dist_from_center = numpy.hypot(
-            *numpy.mgrid[
-                array_ymin:array_ymax,
-                array_xmin:array_xmax])
-
-        valid_pixels = (pixel_dist_from_center <= max_distance)
-
-        kernel = numpy.zeros(pixel_dist_from_center.shape,
-                             dtype=numpy.float32)
-        kernel[valid_pixels] = distance_decay_function(
-            pixel_dist_from_center[valid_pixels])
-
-        if normalize:
-            running_sum += kernel.sum()
-
-        kernel_band.WriteArray(
-            kernel,
-            yoff=block_data['yoff'],
-            xoff=block_data['xoff'])
-
-    kernel_raster.FlushCache()
-    kernel_band = None
-    kernel_raster = None
-
-    if normalize:
         kernel_raster = gdal.OpenEx(target_kernel_path, gdal.GA_Update)
         kernel_band = kernel_raster.GetRasterBand(1)
-        for block_data, kernel_block in pygeoprocessing.iterblocks(
-                (target_kernel_path, 1)):
-            # divide by sum to normalize
-            kernel_block /= running_sum
+        band_x_size = kernel_band.XSize
+        band_y_size = kernel_band.YSize
+        running_sum = 0
+
+        # If the user provided a string rather than a callable, assume it's a
+        # python expression appropriate for evaling.
+        if isinstance(distance_decay_function, str):
+            # Avoid recompiling on each iteration.
+            code = compile(distance_decay_function, '<string>', 'eval')
+            numpy_namespace = {name: getattr(numpy, name) for name in dir(numpy)}
+
+            def distance_decay_function(d):
+                result = eval(
+                    code,
+                    numpy_namespace,  # globals
+                    {'dist': d, 'max_dist': max_distance})  # locals
+                return result
+
+        for block_data in pygeoprocessing.iterblocks(
+                (target_kernel_path, 1), offset_only=True):
+            array_xmin = block_data['xoff'] - apothem
+            array_xmax = min(
+                array_xmin + block_data['win_xsize'],
+                band_x_size - apothem)
+            array_ymin = block_data['yoff'] - apothem
+            array_ymax = min(
+                array_ymin + block_data['win_ysize'],
+                band_y_size - apothem)
+
+            pixel_dist_from_center = numpy.hypot(
+                *numpy.mgrid[
+                    array_ymin:array_ymax,
+                    array_xmin:array_xmax])
+
+            valid_pixels = (pixel_dist_from_center <= max_distance)
+
+            kernel = numpy.zeros(pixel_dist_from_center.shape,
+                                 dtype=numpy.float32)
+            kernel[valid_pixels] = distance_decay_function(
+                pixel_dist_from_center[valid_pixels])
+
+            if normalize:
+                running_sum += kernel.sum()
+
             kernel_band.WriteArray(
-                kernel_block, xoff=block_data['xoff'], yoff=block_data['yoff'])
+                kernel,
+                yoff=block_data['yoff'],
+                xoff=block_data['xoff'])
 
         kernel_raster.FlushCache()
         kernel_band = None
         kernel_raster = None
+
+        if normalize:
+            kernel_raster = gdal.OpenEx(target_kernel_path, gdal.GA_Update)
+            kernel_band = kernel_raster.GetRasterBand(1)
+            for block_data, kernel_block in pygeoprocessing.iterblocks(
+                    (target_kernel_path, 1)):
+                # divide by sum to normalize
+                kernel_block /= running_sum
+                kernel_band.WriteArray(
+                    kernel_block, xoff=block_data['xoff'], yoff=block_data['yoff'])
+
+            kernel_raster.FlushCache()
+            kernel_band = None
+            kernel_raster = None
