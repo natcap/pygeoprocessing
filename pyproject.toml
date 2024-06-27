@@ -39,7 +39,9 @@ dynamic = ["version", "dependencies", "optional-dependencies", "readme"]
 # that we can provide a much easier build experience so long as GDAL is
 # available at runtime.
 requires = [
-    'setuptools', 'wheel', 'setuptools_scm', 'cython>=3.0.0', 'numpy>=2'
+    'setuptools', 'wheel', 'setuptools_scm', 'cython>=3.0.0',
+    'oldest-supported-numpy; python_version<="3.8"',
+    'numpy>=2; python_version>="3.9"',  # Numpy 2 only available for 3.9+
 ]
 build-backend = "setuptools.build_meta"
 
