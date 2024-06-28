@@ -1,3 +1,4 @@
+import functools
 import logging
 import multiprocessing
 import os
@@ -71,6 +72,7 @@ def gdal_use_exceptions(func):
     Returns:
         Wrapper function that calls ``func`` with GDAL exceptions enabled
     """
+    @functools.wraps(func)
     def wrapper(*args, **kwargs):
         with GDALUseExceptions():
             return func(*args, **kwargs)
