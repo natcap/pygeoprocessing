@@ -3290,6 +3290,9 @@ def convolve_2d(
         try:
             write_payload = write_queue.get(timeout=max_timeout)
         except queue.Empty:
+            signal_raster = signal_band = None
+            target_raster = target_band = None
+            mask_raster = mask_band = None
             raise RuntimeError(
                 f"The convolution worker timed out after {max_timeout} "
                 "seconds. Either the timeout is too low for the "
