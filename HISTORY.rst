@@ -7,6 +7,11 @@ Release History
 ------------------
 * Updating for numpy 2.0 API changes.  Pygeoprocessing is now compatible with
   numpy 2.0 and later.  https://github.com/natcap/pygeoprocessing/issues/396
+* Fixed an issue in ``convolve_2d`` where a long-running convolution would
+  raise a cryptic exception involving ``queue.Empty``.  This will instead now
+  raise ``RuntimeError`` with a more helpful exception message.  We also fixed
+  an issue where the ``max_timeout`` parameter of ``convolve_2d`` was unused,
+  so it is now used correctly. https://github.com/natcap/pygeoprocessing/issues/360
 
 2.4.4 (2024-05-21)
 ------------------
