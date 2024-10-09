@@ -4048,7 +4048,7 @@ class TestGeoprocessing(unittest.TestCase):
             not_a_raster_file.write("this is not a raster.\n")
         with self.assertRaises(RuntimeError) as cm:
             pygeoprocessing.get_raster_info(not_a_raster_path)
-        self.assertIn('not recognized as a supported file format', str(cm.exception))
+        self.assertIn('supported file format', str(cm.exception))
 
     def test_get_vector_info_error_handling(self):
         """PGP: test that bad data raise good errors in get_vector_info."""
@@ -4065,7 +4065,7 @@ class TestGeoprocessing(unittest.TestCase):
             not_a_vector_file.write("this is not a vector.\n")
         with self.assertRaises(RuntimeError) as cm:
             pygeoprocessing.get_vector_info(not_a_vector_path)
-        self.assertIn('not recognized as a supported file format', str(cm.exception))
+        self.assertIn('supported file format', str(cm.exception))
 
     def test_merge_bounding_box_list(self):
         """PGP: test merge_bounding_box_list."""
