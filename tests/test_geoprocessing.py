@@ -3437,6 +3437,10 @@ class TestGeoprocessing(unittest.TestCase):
                 (signal_path, 1), (kernel_path, 1), target_path,
                 max_timeout=0.5)
 
+        # Wait for the worker thread to catch up
+        # Hacky, but should be enough to avoid test failures.
+        time.sleep(2)
+
     def test_calculate_slope(self):
         """PGP.geoprocessing: test calculate slope."""
         n_pixels = 9
