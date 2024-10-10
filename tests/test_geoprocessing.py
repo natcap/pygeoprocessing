@@ -3439,7 +3439,7 @@ class TestGeoprocessing(unittest.TestCase):
 
         # Wait for the worker thread to catch up
         # Hacky, but should be enough to avoid test failures.
-        time.sleep(2)
+        time.sleep(0.5)
 
     def test_calculate_slope(self):
         """PGP.geoprocessing: test calculate slope."""
