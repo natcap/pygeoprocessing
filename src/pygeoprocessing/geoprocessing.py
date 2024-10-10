@@ -36,8 +36,9 @@ from . import geoprocessing_core
 from .geoprocessing_core import DEFAULT_CREATION_OPTIONS
 from .geoprocessing_core import DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS
 from .geoprocessing_core import DEFAULT_OSR_AXIS_MAPPING_STRATEGY
+from .geoprocessing_core import gdal_use_exceptions
+from .geoprocessing_core import GDALUseExceptions
 from .geoprocessing_core import INT8_CREATION_OPTIONS
-from .geoprocessing_core import gdal_use_exceptions, GDALUseExceptions
 
 # This is used to efficiently pass data to the raster stats worker if available
 if sys.version_info >= (3, 8):
@@ -677,7 +678,7 @@ def raster_map(op, rasters, target_path, target_nodata=None, target_dtype=None,
         target_nodata = choose_nodata(target_dtype)
     else:
         if not numpy.can_cast(numpy.min_scalar_type(target_nodata),
-                              target_dtype):
+                              target_dtype, casting='same_kind'):
             raise ValueError(
                 f'Target nodata value {target_nodata} is incompatible with '
                 f'the target dtype {target_dtype}')
@@ -3825,7 +3826,9 @@ def get_gis_type(path):
         ``pygeoprocessing.RASTER_TYPE``, or ``pygeoprocessing.VECTOR_TYPE``.
 
     """
-    from pygeoprocessing import UNKNOWN_TYPE, RASTER_TYPE, VECTOR_TYPE
+    from pygeoprocessing import RASTER_TYPE
+    from pygeoprocessing import UNKNOWN_TYPE
+    from pygeoprocessing import VECTOR_TYPE
     gis_type = UNKNOWN_TYPE
     try:
         gis_raster = gdal.OpenEx(path, gdal.OF_RASTER)
