@@ -3299,6 +3299,13 @@ def convolve_2d(
                 worker.join(max_timeout)
                 break
         except queue.Empty:
+            # Shut down the worker thread.
+            # The work queue only has 10 items in it at a time, so it's pretty
+            # likely that we can preemptively shut it down by adding a ``None``
+            # here and then have the queue not take too much longer to quit.
+            work_queue.put(None)
+
+            # Close thread-local raster objects
             signal_raster = signal_band = None
             target_raster = target_band = None
             mask_raster = mask_band = None
