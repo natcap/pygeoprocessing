@@ -3289,23 +3289,24 @@ def convolve_2d(
         # ``_convolve_2d_worker`` has crashed.
         try:
             write_payload = write_queue.get(timeout=max_timeout)
+            if write_payload:
+                (index_dict, result, mask_result,
+                 left_index_raster, right_index_raster,
+                 top_index_raster, bottom_index_raster,
+                 left_index_result, right_index_result,
+                 top_index_result, bottom_index_result) = write_payload
+            else:
+                worker.join(max_timeout)
+                break
         except queue.Empty:
             signal_raster = signal_band = None
             target_raster = target_band = None
             mask_raster = mask_band = None
+            LOGGER.exception("Worker timeout")
             raise RuntimeError(
                 f"The convolution worker timed out after {max_timeout} "
                 "seconds. Either the timeout is too low for the "
-                "size of your data, or the worker has crashed.")
-        if write_payload:
-            (index_dict, result, mask_result,
-             left_index_raster, right_index_raster,
-             top_index_raster, bottom_index_raster,
-             left_index_result, right_index_result,
-             top_index_result, bottom_index_result) = write_payload
-        else:
-            worker.join(max_timeout)
-            break
+                "size of your data, or the worker has crashed")
 
         output_array = numpy.empty(
             (index_dict['win_ysize'], index_dict['win_xsize']),
