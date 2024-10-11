@@ -36,8 +36,9 @@ from . import geoprocessing_core
 from .geoprocessing_core import DEFAULT_CREATION_OPTIONS
 from .geoprocessing_core import DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS
 from .geoprocessing_core import DEFAULT_OSR_AXIS_MAPPING_STRATEGY
+from .geoprocessing_core import gdal_use_exceptions
+from .geoprocessing_core import GDALUseExceptions
 from .geoprocessing_core import INT8_CREATION_OPTIONS
-from .geoprocessing_core import gdal_use_exceptions, GDALUseExceptions
 
 # This is used to efficiently pass data to the raster stats worker if available
 if sys.version_info >= (3, 8):
@@ -3825,7 +3826,9 @@ def get_gis_type(path):
         ``pygeoprocessing.RASTER_TYPE``, or ``pygeoprocessing.VECTOR_TYPE``.
 
     """
-    from pygeoprocessing import UNKNOWN_TYPE, RASTER_TYPE, VECTOR_TYPE
+    from pygeoprocessing import RASTER_TYPE
+    from pygeoprocessing import UNKNOWN_TYPE
+    from pygeoprocessing import VECTOR_TYPE
     gis_type = UNKNOWN_TYPE
     try:
         gis_raster = gdal.OpenEx(path, gdal.OF_RASTER)
@@ -3956,6 +3959,14 @@ def _convolve_2d_worker(
             kernel_block[numpy.isclose(kernel_block, kernel_nodata)] = 0.0
         kernel_sum += numpy.sum(kernel_block)
 
+    @functools.lru_cache
+    def _read_kernel_array(**offset):
+        return kernel_band.ReadAsArray(**offset).astype(numpy.float64)
+
+    @functools.lru_cache
+    def _read_signal_array(**offset):
+        return signal_band.ReadAsArray(**offset).astype(numpy.float64)
+
     while True:
         payload = work_queue.get()
         if payload is None:
@@ -3965,10 +3976,8 @@ def _convolve_2d_worker(
 
         # ensure signal and kernel are internally float64 precision
         # irrespective of their base type
-        signal_block = signal_band.ReadAsArray(**signal_offset).astype(
-            numpy.float64)
-        kernel_block = kernel_band.ReadAsArray(**kernel_offset).astype(
-            numpy.float64)
+        signal_block = _read_signal_array(**signal_offset)
+        kernel_block = _read_kernel_array(**kernel_offset)
 
         # don't ever convolve the nodata value
         if signal_nodata is not None:
