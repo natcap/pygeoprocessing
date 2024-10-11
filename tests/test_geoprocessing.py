@@ -498,7 +498,6 @@ class TestGeoprocessing(unittest.TestCase):
             layer = None
             vector = None
 
-
     def test_reproject_vector_partial_fields(self):
         """PGP.geoprocessing: reproject vector with partial field copy."""
         # Create polygon shapefile to reproject
@@ -797,6 +796,49 @@ class TestGeoprocessing(unittest.TestCase):
         self.assertTrue(
             osr.SpatialReference(result_reference.ExportToWkt()).IsSame(
                 osr.SpatialReference(target_reference.ExportToWkt())))
+
+    def test_reproject_vector_handles_bad_data(self):
+        """PGP.geoprocessing: reproject vector with bad data."""
+        vector_path = os.path.join(self.workspace_dir, 'bad_vector.shp')
+        driver = ogr.GetDriverByName('ESRI Shapefile')
+        vector = driver.CreateDataSource(vector_path)
+        srs = osr.SpatialReference()
+        srs.ImportFromEPSG(26710)  # NAD27 / UTM zone 10N
+        layer = vector.CreateLayer(
+            'bad_layer', srs=srs, geom_type=ogr.wkbPoint)
+
+        # No/empty geometry
+        feature = ogr.Feature(layer.GetLayerDefn())
+        layer.CreateFeature(feature)
+
+        # Create a point at the centroid of the UTM zone 10N bounding box
+        feature = ogr.Feature(layer.GetLayerDefn())
+        feature.SetGeometry(
+            ogr.CreateGeometryFromWkt('POINT (2074757.82 7209331.79)'))
+
+        layer = None
+        vector = None
+
+        # Our target UTM zone is 59S (in NZ), so the points should not be
+        # usable.
+        target_srs = osr.SpatialReference()
+        target_srs.ImportFromEPSG(2134)  # NZGD2000 / UTM zone 59S
+        target_srs_wkt = target_srs.ExportToWkt()
+
+        target_path = os.path.join(self.workspace_dir, 'target_vector.shp')
+        pygeoprocessing.reproject_vector(
+            base_vector_path=vector_path,
+            target_projection_wkt=target_srs_wkt,
+            target_path=target_path,
+        )
+
+        # verify that both fields were skipped.
+        try:
+            target_vector = gdal.OpenEx(target_path)
+            target_layer = target_vector.GetLayer()
+            self.assertEqual(target_layer.GetFeatureCount(), 0)
+        finally:
+            target_vector = target_layer = None
 
     def test_calculate_disjoint_polygon_set(self):
         """PGP.geoprocessing: test calc_disjoint_poly no/intersection."""
