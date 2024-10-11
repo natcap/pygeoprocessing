@@ -2242,21 +2242,29 @@ def reproject_vector(
             100.0 * float(feature_index+1) / (layer.GetFeatureCount()),
             os.path.basename(target_path))
 
-        geom = base_feature.GetGeometryRef()
-        if geom is None:
-            # we encountered this error occasionally when transforming clipped
-            # global polygons.  Not clear what is happening but perhaps a
-            # feature was retained that otherwise wouldn't have been included
-            # in the clip
-            error_count += 1
-            continue
+        try:
+            geom = base_feature.GetGeometryRef()
+            if geom is None:
+                # we encountered this error occasionally when transforming
+                # clipped global polygons.  Not clear what is happening but
+                # perhaps a feature was retained that otherwise wouldn't have
+                # been included in the clip
+                error_count += 1
+                continue
 
-        # Transform geometry into format desired for the new projection
-        error_code = geom.Transform(coord_trans)
-        if error_code != 0:  # error
-            # this could be caused by an out of range transformation
-            # whatever the case, don't put the transformed poly into the
-            # output set
+            # Transform geometry into format desired for the new projection
+            error_code = geom.Transform(coord_trans)
+            if error_code != 0:  # error
+                # this could be caused by an out of range transformation
+                # whatever the case, don't put the transformed poly into the
+                # output set
+                error_count += 1
+                continue
+        except RuntimeError as error:
+            # RuntimeError: GDAL's base error when geometries cannot be
+            # returned or transformed.
+            LOGGER.debug("Skipping feature %s due to %s",
+                         feature_index, str(error))
             error_count += 1
             continue
 
