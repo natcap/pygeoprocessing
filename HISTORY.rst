@@ -5,6 +5,8 @@ Unreleased Changes
 ------------------
 * Removing the ``numpy<2`` constraint for requirements.txt that should have
   been included in the 2.4.5 release. https://github.com/natcap/pygeoprocessing/issues/396
+* Handling GDAL-based ``RuntimeError``s raised during ``pygeoprocessing.reproject_vector``.
+  https://github.com/natcap/pygeoprocessing/issues/409
 
 2.4.5 (2024-10-08)
 ------------------
