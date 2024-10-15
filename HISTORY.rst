@@ -1,7 +1,9 @@
 Release History
 ===============
 
-Unreleased Changes
+.. Unreleased Changes
+
+2.4.6 (2024-10-15)
 ------------------
 * Removing the ``numpy<2`` constraint for requirements.txt that should have
   been included in the 2.4.5 release. https://github.com/natcap/pygeoprocessing/issues/396
