@@ -9,6 +9,8 @@ Release History
   been included in the 2.4.5 release. https://github.com/natcap/pygeoprocessing/issues/396
 * Handling GDAL-based ``RuntimeError``s raised during ``pygeoprocessing.reproject_vector``.
   https://github.com/natcap/pygeoprocessing/issues/409
+* An LRU Cache has been added to ``convolve_2d`` which should reduce runtimes
+  on large rasters by approximately 10%. https://github.com/natcap/pygeoprocessing/issues/373
 
 2.4.5 (2024-10-08)
 ------------------
