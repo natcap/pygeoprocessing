@@ -3,6 +3,9 @@ Release History
 
 .. Unreleased Changes
 
+* Dropped support for Python 3.8. Added support for Python 3.13 and GDAL 3.9.
+  https://github.com/natcap/pygeoprocessing/issues/415
+
 2.4.6 (2024-10-15)
 ------------------
 * Removing the ``numpy<2`` constraint for requirements.txt that should have
