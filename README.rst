@@ -54,3 +54,18 @@ API Documentation
 =================
 
 API documentation is available at https://pygeoprocessing.readthedocs.io/en/latest/
+
+Test Matrix Policy
+==================
+
+Python
+------
+We test against all currently supported (security & bugfix) 
+Python versions.
+https://devguide.python.org/versions/  
+
+GDAL
+----
+We test against the latest GDAL release of each minor version starting 
+with the version included in Debian Stable.
+https://packages.debian.org/stable/science/gdal-bin

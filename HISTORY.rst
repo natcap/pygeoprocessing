@@ -1,7 +1,12 @@
 Release History
 ===============
 
-Unreleased Changes
+.. Unreleased Changes
+
+* Dropped support for Python 3.8. Added support for Python 3.13 and GDAL 3.9.
+  https://github.com/natcap/pygeoprocessing/issues/415
+
+2.4.6 (2024-10-15)
 ------------------
 * Removing the ``numpy<2`` constraint for requirements.txt that should have
   been included in the 2.4.5 release. https://github.com/natcap/pygeoprocessing/issues/396
@@ -10,6 +15,8 @@ Unreleased Changes
   raise ``RuntimeError`` with a more helpful exception message.  We also fixed
   an issue where the ``max_timeout`` parameter of ``convolve_2d`` was unused,
   so it is now used correctly. https://github.com/natcap/pygeoprocessing/issues/360
+* Handling GDAL-based ``RuntimeError`` raised during ``pygeoprocessing.reproject_vector``.
+  https://github.com/natcap/pygeoprocessing/issues/409
 
 2.4.5 (2024-10-08)
 ------------------
