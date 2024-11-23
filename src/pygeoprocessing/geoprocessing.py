@@ -36,8 +36,9 @@ from . import geoprocessing_core
 from .geoprocessing_core import DEFAULT_CREATION_OPTIONS
 from .geoprocessing_core import DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS
 from .geoprocessing_core import DEFAULT_OSR_AXIS_MAPPING_STRATEGY
+from .geoprocessing_core import gdal_use_exceptions
+from .geoprocessing_core import GDALUseExceptions
 from .geoprocessing_core import INT8_CREATION_OPTIONS
-from .geoprocessing_core import gdal_use_exceptions, GDALUseExceptions
 
 # This is used to efficiently pass data to the raster stats worker if available
 if sys.version_info >= (3, 8):
@@ -3294,16 +3295,33 @@ def convolve_2d(
     while True:
         # the timeout guards against a worst case scenario where the
         # ``_convolve_2d_worker`` has crashed.
-        write_payload = write_queue.get(timeout=_MAX_TIMEOUT)
-        if write_payload:
-            (index_dict, result, mask_result,
-             left_index_raster, right_index_raster,
-             top_index_raster, bottom_index_raster,
-             left_index_result, right_index_result,
-             top_index_result, bottom_index_result) = write_payload
-        else:
-            worker.join(max_timeout)
-            break
+        try:
+            write_payload = write_queue.get(timeout=max_timeout)
+            if write_payload:
+                (index_dict, result, mask_result,
+                 left_index_raster, right_index_raster,
+                 top_index_raster, bottom_index_raster,
+                 left_index_result, right_index_result,
+                 top_index_result, bottom_index_result) = write_payload
+            else:
+                worker.join(max_timeout)
+                break
+        except queue.Empty:
+            # Shut down the worker thread.
+            # The work queue only has 10 items in it at a time, so it's pretty
+            # likely that we can preemptively shut it down by adding a ``None``
+            # here and then have the queue not take too much longer to quit.
+            work_queue.put(None)
+
+            # Close thread-local raster objects
+            signal_raster = signal_band = None
+            target_raster = target_band = None
+            mask_raster = mask_band = None
+            LOGGER.exception("Worker timeout")
+            raise RuntimeError(
+                f"The convolution worker timed out after {max_timeout} "
+                "seconds. Either the timeout is too low for the "
+                "size of your data, or the worker has crashed")
 
         output_array = numpy.empty(
             (index_dict['win_ysize'], index_dict['win_xsize']),
@@ -3833,7 +3851,9 @@ def get_gis_type(path):
         ``pygeoprocessing.RASTER_TYPE``, or ``pygeoprocessing.VECTOR_TYPE``.
 
     """
-    from pygeoprocessing import UNKNOWN_TYPE, RASTER_TYPE, VECTOR_TYPE
+    from pygeoprocessing import RASTER_TYPE
+    from pygeoprocessing import UNKNOWN_TYPE
+    from pygeoprocessing import VECTOR_TYPE
     gis_type = UNKNOWN_TYPE
     try:
         gis_raster = gdal.OpenEx(path, gdal.OF_RASTER)

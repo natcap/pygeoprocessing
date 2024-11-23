@@ -32,10 +32,10 @@ from osgeo import osr
 from pygeoprocessing.geoprocessing_core import DEFAULT_CREATION_OPTIONS
 from pygeoprocessing.geoprocessing_core import \
     DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS
+from pygeoprocessing.geoprocessing_core import gdal_use_exceptions
 from pygeoprocessing.geoprocessing_core import INT8_CREATION_OPTIONS
 from pygeoprocessing.geoprocessing_core import \
     INT8_GTIFF_CREATION_TUPLE_OPTIONS
-from pygeoprocessing.geoprocessing_core import gdal_use_exceptions
 
 _DEFAULT_ORIGIN = (444720, 3751320)
 _DEFAULT_PIXEL_SIZE = (30, -30)
@@ -3457,6 +3457,31 @@ class TestGeoprocessing(unittest.TestCase):
         self.assertTrue(
             numpy.isclose(signal_nodata_array, signal_nodata_none_array).all(),
             'signal with nodata should be the same as signal with none')
+
+    def test_convolve_2d_error_on_worker_timeout(self):
+        """PGP.geoprocessing: test convolve 2d error when worker times out."""
+        n_pixels = 10000
+        n_kernel_pixels = 17500
+        signal_array = numpy.ones((n_pixels, n_pixels), numpy.float32)
+        test_value = 0.5
+        signal_array[:] = test_value
+        target_nodata = -1
+        signal_path = os.path.join(self.workspace_dir, 'signal.tif')
+        _array_to_raster(signal_array, target_nodata, signal_path)
+        kernel_path = os.path.join(self.workspace_dir, 'kernel.tif')
+        kernel_array = numpy.zeros(
+            (n_kernel_pixels, n_kernel_pixels), numpy.float32)
+        kernel_array[int(n_kernel_pixels/2), int(n_kernel_pixels/2)] = 1
+        _array_to_raster(kernel_array, target_nodata, kernel_path)
+        target_path = os.path.join(self.workspace_dir, 'target.tif')
+        with self.assertRaises(RuntimeError):
+            pygeoprocessing.convolve_2d(
+                (signal_path, 1), (kernel_path, 1), target_path,
+                max_timeout=0.5)
+
+        # Wait for the worker thread to catch up
+        # Hacky, but should be enough to avoid test failures.
+        time.sleep(0.5)
 
     def test_calculate_slope(self):
         """PGP.geoprocessing: test calculate slope."""
