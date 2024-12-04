@@ -40,6 +40,7 @@ from .geoprocessing import raster_reduce
 from .geoprocessing import raster_to_numpy_array
 from .geoprocessing import rasterize
 from .geoprocessing import ReclassificationMissingValuesError
+from .geoprocessing import InvalidKeyError
 from .geoprocessing import reclassify_raster
 from .geoprocessing import reproject_vector
 from .geoprocessing import shapely_geometry_to_vector

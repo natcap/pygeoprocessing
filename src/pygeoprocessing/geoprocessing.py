@@ -15,6 +15,7 @@ import threading
 import time
 import warnings
 
+import pandas
 import numpy
 import numpy.ma
 import rtree
@@ -64,6 +65,19 @@ class ReclassificationMissingValuesError(Exception):
             f'{missing_values} from "{raster_path}" do not have corresponding '
             f'entries in the value map: {value_map}.')
         self.missing_values = missing_values
+        super().__init__(self.msg)
+
+
+class InvalidKeyError(Exception):
+    """Raised when a dictionary contains NA or NaN as a key
+
+    Attributes:
+        msg (str): error message
+        keys (): all keys in dictionary
+    """
+
+    def __init__(self, keys):
+        self.msg = f"NA key found in value map: {keys}"
         super().__init__(self.msg)
 
 
@@ -2346,6 +2360,8 @@ def reclassify_raster(
         raise ValueError(
             "Expected a (path, band_id) tuple, instead got '%s'" %
             base_raster_path_band)
+    if any(pandas.isna(key) for key in value_map.keys()):
+        raise InvalidKeyError(value_map.keys())
     raster_info = get_raster_info(base_raster_path_band[0])
     nodata = raster_info['nodata'][base_raster_path_band[1]-1]
     # If nodata was included in the value_map pop it from our lists
