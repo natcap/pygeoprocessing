@@ -2352,6 +2352,9 @@ def reclassify_raster(
             if ``values_required`` is ``True``
             and a pixel value from ``base_raster_path_band`` is not a key in
             ``value_map``.
+        InvalidKeyError
+            if there is an "empty" or invalid key in ``value_map``, such as 
+            `NA` or other values that represent missing data.
 
     """
     if len(value_map) == 0:
