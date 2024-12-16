@@ -187,6 +187,27 @@ class TestGeoprocessing(unittest.TestCase):
         actual_message = str(cm.exception)
         self.assertIn(expected_message, actual_message)
 
+    def test_reclassify_raster_nonnumeric_key(self):
+        """PGP.geoprocessing: test reclassify raster with non-numeric key
+        in value_map."""
+        n_pixels = 9
+        pixel_matrix = numpy.ones((n_pixels, n_pixels), numpy.float32)
+        target_nodata = -1
+        raster_path = os.path.join(self.workspace_dir, 'raster.tif')
+        target_path = os.path.join(self.workspace_dir, 'target.tif')
+        _array_to_raster(
+            pixel_matrix, target_nodata, raster_path)
+
+        value_map = {1: 2, None: 3, "s": 4, numpy.nan: 5, numpy.float32(99): 6}
+        target_nodata = -1
+        with self.assertRaises(TypeError) as e:
+            pygeoprocessing.reclassify_raster(
+                (raster_path, 1), value_map, target_path, gdal.GDT_Float32,
+                target_nodata, values_required=False)
+        expected_message = "Non-numeric key(s) in value map: [None, 's']"
+        actual_message = str(e.exception)
+        self.assertIn(expected_message, actual_message)
+
     def test_reclassify_raster(self):
         """PGP.geoprocessing: test reclassify raster."""
         n_pixels = 9
