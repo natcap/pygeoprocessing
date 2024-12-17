@@ -177,7 +177,6 @@ class TestGeoprocessing(unittest.TestCase):
         value_map = {
             test_value: 100,
         }
-        target_nodata = -1
         with self.assertRaises(
                 pygeoprocessing.ReclassificationMissingValuesError) as cm:
             pygeoprocessing.reclassify_raster(
@@ -222,7 +221,6 @@ class TestGeoprocessing(unittest.TestCase):
         value_map = {
             test_value: 100,
         }
-        target_nodata = -1
         pygeoprocessing.reclassify_raster(
             (raster_path, 1), value_map, target_path, gdal.GDT_Float32,
             target_nodata, values_required=True)
@@ -245,7 +243,6 @@ class TestGeoprocessing(unittest.TestCase):
         value_map = {
             test_value: 100,
         }
-        target_nodata = -1
         # we expect a value error because we didn't pass a (path, band)
         # for the first argument
         with self.assertRaises(ValueError):
@@ -267,7 +264,6 @@ class TestGeoprocessing(unittest.TestCase):
 
         empty_value_map = {
         }
-        target_nodata = -1
         with self.assertRaises(ValueError):
             pygeoprocessing.reclassify_raster(
                 (raster_path, 1), empty_value_map, target_path,
@@ -2118,7 +2114,6 @@ class TestGeoprocessing(unittest.TestCase):
             pixel_a_matrix, target_nodata, base_a_path)
 
         pixel_b_matrix = numpy.ones((15, 15), numpy.int16)
-        target_nodata = -1
         base_b_path = os.path.join(self.workspace_dir, 'base_b.tif')
         _array_to_raster(
             pixel_b_matrix, target_nodata, base_b_path)
@@ -2225,7 +2220,6 @@ class TestGeoprocessing(unittest.TestCase):
             pixel_a_matrix, target_nodata, base_a_path, origin=[-10*30, 10*30])
 
         pixel_b_matrix = numpy.ones((15, 15), numpy.int16)
-        target_nodata = -1
         base_b_path = os.path.join(self.workspace_dir, 'base_b.tif')
         _array_to_raster(pixel_b_matrix, target_nodata, base_b_path)
 
@@ -2268,7 +2262,6 @@ class TestGeoprocessing(unittest.TestCase):
             pixel_a_matrix, target_nodata, base_a_path, pixel_size=(30, -30))
 
         pixel_b_matrix = numpy.ones((10, 10), numpy.int16)
-        target_nodata = -1
         base_b_path = os.path.join(self.workspace_dir, 'base_b.tif')
         _array_to_raster(
             pixel_b_matrix, target_nodata, base_b_path, pixel_size=(60, -60))
@@ -2308,7 +2301,6 @@ class TestGeoprocessing(unittest.TestCase):
             pixel_a_matrix, target_nodata, base_a_path, pixel_size=(30, -30))
 
         pixel_b_matrix = numpy.ones((10, 10), numpy.int16)
-        target_nodata = -1
         base_b_path = os.path.join(self.workspace_dir, 'base_b.tif')
         _array_to_raster(
             pixel_b_matrix, target_nodata, base_b_path, pixel_size=(30, -30))
