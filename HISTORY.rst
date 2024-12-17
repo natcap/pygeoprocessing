@@ -5,6 +5,8 @@ Release History
 
 * Dropped support for Python 3.8. Added support for Python 3.13 and GDAL 3.9.
   https://github.com/natcap/pygeoprocessing/issues/415
+* Added validation to ``reclassify_raster`` to raise an error with a descriptive
+  message if ``value_map`` contains non-numeric keys.
 
 2.4.6 (2024-10-15)
 ------------------

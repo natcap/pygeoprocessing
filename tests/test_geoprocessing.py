@@ -197,9 +197,8 @@ class TestGeoprocessing(unittest.TestCase):
         target_path = os.path.join(self.workspace_dir, 'target.tif')
         _array_to_raster(
             pixel_matrix, target_nodata, raster_path)
-
+        
         value_map = {1: 2, None: 3, "s": 4, numpy.nan: 5, numpy.float32(99): 6}
-        target_nodata = -1
         with self.assertRaises(TypeError) as e:
             pygeoprocessing.reclassify_raster(
                 (raster_path, 1), value_map, target_path, gdal.GDT_Float32,
