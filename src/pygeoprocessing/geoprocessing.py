@@ -2338,6 +2338,12 @@ def reclassify_raster(
             if ``values_required`` is ``True``
             and a pixel value from ``base_raster_path_band`` is not a key in
             ``value_map``.
+        ValueError
+            - if ``value_map`` is empty
+            - if ``base_raster_path_band`` is formatted incorrectly
+            - if nodata value not set
+        TypeError
+            if there are non-numeric keys in ``value_map``
 
     """
     if len(value_map) == 0:
@@ -2346,6 +2352,12 @@ def reclassify_raster(
         raise ValueError(
             "Expected a (path, band_id) tuple, instead got '%s'" %
             base_raster_path_band)
+    # raise error if there are any non-numeric keys in value_map
+    nonnumeric = [key for key in value_map
+                  if not isinstance(key, (int, float, numpy.number))]
+    if nonnumeric:
+        raise TypeError(f"Non-numeric key(s) in value map: {nonnumeric}")
+
     raster_info = get_raster_info(base_raster_path_band[0])
     nodata = raster_info['nodata'][base_raster_path_band[1]-1]
     # If nodata was included in the value_map pop it from our lists

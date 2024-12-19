@@ -177,7 +177,6 @@ class TestGeoprocessing(unittest.TestCase):
         value_map = {
             test_value: 100,
         }
-        target_nodata = -1
         with self.assertRaises(
                 pygeoprocessing.ReclassificationMissingValuesError) as cm:
             pygeoprocessing.reclassify_raster(
@@ -185,6 +184,26 @@ class TestGeoprocessing(unittest.TestCase):
                 target_nodata, values_required=True)
         expected_message = 'The following 1 raster values [-0.5]'
         actual_message = str(cm.exception)
+        self.assertIn(expected_message, actual_message)
+
+    def test_reclassify_raster_nonnumeric_key(self):
+        """PGP.geoprocessing: test reclassify raster with non-numeric key
+        in value_map."""
+        n_pixels = 9
+        pixel_matrix = numpy.ones((n_pixels, n_pixels), numpy.float32)
+        target_nodata = -1
+        raster_path = os.path.join(self.workspace_dir, 'raster.tif')
+        target_path = os.path.join(self.workspace_dir, 'target.tif')
+        _array_to_raster(
+            pixel_matrix, target_nodata, raster_path)
+        
+        value_map = {1: 2, None: 3, "s": 4, numpy.nan: 5, numpy.float32(99): 6}
+        with self.assertRaises(TypeError) as e:
+            pygeoprocessing.reclassify_raster(
+                (raster_path, 1), value_map, target_path, gdal.GDT_Float32,
+                target_nodata, values_required=False)
+        expected_message = "Non-numeric key(s) in value map: [None, 's']"
+        actual_message = str(e.exception)
         self.assertIn(expected_message, actual_message)
 
     def test_reclassify_raster(self):
@@ -202,7 +221,6 @@ class TestGeoprocessing(unittest.TestCase):
         value_map = {
             test_value: 100,
         }
-        target_nodata = -1
         pygeoprocessing.reclassify_raster(
             (raster_path, 1), value_map, target_path, gdal.GDT_Float32,
             target_nodata, values_required=True)
@@ -225,7 +243,6 @@ class TestGeoprocessing(unittest.TestCase):
         value_map = {
             test_value: 100,
         }
-        target_nodata = -1
         # we expect a value error because we didn't pass a (path, band)
         # for the first argument
         with self.assertRaises(ValueError):
@@ -247,7 +264,6 @@ class TestGeoprocessing(unittest.TestCase):
 
         empty_value_map = {
         }
-        target_nodata = -1
         with self.assertRaises(ValueError):
             pygeoprocessing.reclassify_raster(
                 (raster_path, 1), empty_value_map, target_path,
@@ -2098,7 +2114,6 @@ class TestGeoprocessing(unittest.TestCase):
             pixel_a_matrix, target_nodata, base_a_path)
 
         pixel_b_matrix = numpy.ones((15, 15), numpy.int16)
-        target_nodata = -1
         base_b_path = os.path.join(self.workspace_dir, 'base_b.tif')
         _array_to_raster(
             pixel_b_matrix, target_nodata, base_b_path)
@@ -2205,7 +2220,6 @@ class TestGeoprocessing(unittest.TestCase):
             pixel_a_matrix, target_nodata, base_a_path, origin=[-10*30, 10*30])
 
         pixel_b_matrix = numpy.ones((15, 15), numpy.int16)
-        target_nodata = -1
         base_b_path = os.path.join(self.workspace_dir, 'base_b.tif')
         _array_to_raster(pixel_b_matrix, target_nodata, base_b_path)
 
@@ -2248,7 +2262,6 @@ class TestGeoprocessing(unittest.TestCase):
             pixel_a_matrix, target_nodata, base_a_path, pixel_size=(30, -30))
 
         pixel_b_matrix = numpy.ones((10, 10), numpy.int16)
-        target_nodata = -1
         base_b_path = os.path.join(self.workspace_dir, 'base_b.tif')
         _array_to_raster(
             pixel_b_matrix, target_nodata, base_b_path, pixel_size=(60, -60))
@@ -2288,7 +2301,6 @@ class TestGeoprocessing(unittest.TestCase):
             pixel_a_matrix, target_nodata, base_a_path, pixel_size=(30, -30))
 
         pixel_b_matrix = numpy.ones((10, 10), numpy.int16)
-        target_nodata = -1
         base_b_path = os.path.join(self.workspace_dir, 'base_b.tif')
         _array_to_raster(
             pixel_b_matrix, target_nodata, base_b_path, pixel_size=(30, -30))
