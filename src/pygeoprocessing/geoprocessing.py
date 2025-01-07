@@ -2507,8 +2507,14 @@ def warp_raster(
             if ``mask_options`` is not None but the
             ``mask_vector_path`` is undefined or doesn't point to a valid
             file.
-
+        ValueError
+            if either ``base_raster_path`` or ``target_raster_path`` are
+            not strings.
     """
+    for path_key in ['base_raster_path', 'target_raster_path']:
+        if not isinstance(locals()[path_key], str):
+            raise ValueError('%s must be a string', path_key)
+
     _assert_is_valid_pixel_size(target_pixel_size)
 
     base_raster_info = get_raster_info(base_raster_path)
