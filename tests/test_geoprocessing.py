@@ -196,7 +196,7 @@ class TestGeoprocessing(unittest.TestCase):
         target_path = os.path.join(self.workspace_dir, 'target.tif')
         _array_to_raster(
             pixel_matrix, target_nodata, raster_path)
-        
+
         value_map = {1: 2, None: 3, "s": 4, numpy.nan: 5, numpy.float32(99): 6}
         with self.assertRaises(TypeError) as e:
             pygeoprocessing.reclassify_raster(
@@ -1753,6 +1753,30 @@ class TestGeoprocessing(unittest.TestCase):
                 pygeoprocessing.raster_to_numpy_array(base_a_path),
                 pygeoprocessing.raster_to_numpy_array(
                     target_raster_path)).all())
+
+    def test_warp_raster_invalid_paths(self):
+        """PGP.geoprocessing: error on invalid raster paths."""
+        pixel_a_matrix = numpy.ones((5, 5), numpy.int16)
+        target_nodata = -1
+        base_a_path = os.path.join(self.workspace_dir, 'base_a.tif')
+        _array_to_raster(
+            pixel_a_matrix, target_nodata, base_a_path)
+
+        target_raster_path = os.path.join(self.workspace_dir, 'target_a.tif')
+        base_a_raster_info = pygeoprocessing.get_raster_info(base_a_path)
+
+        for invalid_source_path in [(base_a_path,), (base_a_path, 1)]:
+            with self.assertRaises(ValueError):
+                pygeoprocessing.warp_raster(
+                    invalid_source_path, base_a_raster_info['pixel_size'],
+                    target_raster_path, 'near', n_threads=1)
+
+        for invalid_target_path in [(target_raster_path,),
+                                    (target_raster_path, 1)]:
+            with self.assertRaises(ValueError):
+                pygeoprocessing.warp_raster(
+                    base_a_path, base_a_raster_info['pixel_size'],
+                    invalid_target_path, 'near', n_threads=1)
 
     def test_warp_raster_overview_level(self):
         """PGP.geoprocessing: warp raster overview test."""

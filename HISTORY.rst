@@ -7,6 +7,9 @@ Release History
   https://github.com/natcap/pygeoprocessing/issues/415
 * Added validation to ``reclassify_raster`` to raise a ``TypeError`` with a
   descriptive message if ``value_map`` contains non-numeric keys.
+* If either ``base_raster_path`` or ``target_raster_path`` are not strings, a
+  ``ValueError`` is now raised with a more helpful error message.
+  https://github.com/natcap/pygeoprocessing/issues/421
 
 2.4.6 (2024-10-15)
 ------------------
