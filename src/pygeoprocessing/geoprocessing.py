@@ -2277,8 +2277,14 @@ def reproject_vector(
         # source field
         for target_index, base_index in (
                 target_to_base_field_id_map.items()):
-            target_feature.SetField(
-                target_index, base_feature.GetField(base_index))
+            try:
+                target_feature.SetField(
+                    target_index, base_feature.GetField(base_index))
+            except RuntimeError as runtime_error:
+                LOGGER.debug(
+                    f"Skipping copy field value for feature {feature_index}, "
+                    f"field {layer_dfn.GetFieldDefn(base_index).GetName()} "
+                    f"due to: {runtime_error}")
 
         target_layer.CreateFeature(target_feature)
         target_feature = None
