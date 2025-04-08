@@ -1559,7 +1559,7 @@ def zonal_statistics(
         aggregate_layer_name=None, ignore_nodata=True,
         polygons_might_overlap=True, include_value_counts=False,
         working_dir=None):
-    """Collect stats on pixel values which lie within polygons.
+    """Collect stats on pixel values which lie within polygons or multipolygons.
 
     This function summarizes raster statistics including min, max,
     mean, and pixel count over the regions on the raster that are
@@ -1649,6 +1649,10 @@ def zonal_statistics(
         ValueError
             if ``base_raster_path_band`` is incorrectly formatted, or if
             not all of the input raster bands are aligned with each other
+
+        ValueError
+            if ``aggregate_vector_path`` has a geometry type other than
+            Polygon or MultiPolygon
 
         RuntimeError
             if the aggregate vector or layer cannot be opened
