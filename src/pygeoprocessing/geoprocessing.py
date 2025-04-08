@@ -2281,10 +2281,15 @@ def reproject_vector(
                 target_feature.SetField(
                     target_index, base_feature.GetField(base_index))
             except RuntimeError as runtime_error:
-                LOGGER.debug(
-                    f"Skipping copy field value for feature {feature_index}, "
-                    f"field {layer_dfn.GetFieldDefn(base_index).GetName()} "
-                    f"due to: {runtime_error}")
+                try:
+                    target_feature.SetFieldBinary(
+                        target_index,
+                        base_feature.GetFieldAsBinary(base_index))
+                except RuntimeError as runtime_error:
+                    LOGGER.debug(
+                        f"Skipping copy field value for feature {feature_index}, "
+                        f"field {layer_dfn.GetFieldDefn(base_index).GetName()} "
+                        f"due to: {runtime_error}")
 
         target_layer.CreateFeature(target_feature)
         target_feature = None
