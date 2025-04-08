@@ -1333,7 +1333,6 @@ class TestGeoprocessing(unittest.TestCase):
                 'sum': 0.0}}
         self.assertEqual(result, expected_result)
 
-
     def test_zonal_statistics_multipolygon(self):
         """PGP.geoprocessing: test zonal stats function with multipolygons."""
         # create aggregating polygon
