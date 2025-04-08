@@ -1689,6 +1689,9 @@ def zonal_statistics(
         raise RuntimeError(
             f"Could not open layer {aggregate_layer_name} of {aggregate_vector_path}")
 
+    # Check that the vector geometry type is polygon or multipolygon
+    if aggregate_layer.GetGeomType() not in [ogr.wkbPolygon, ogr.wkbMultiPolygon]:
+        raise ValueError('Vector geometry type must be Polygon or MultiPolygon')
 
     # Define the default/empty statistics values
     # These values will be returned for features that have no geometry or
@@ -1712,7 +1715,7 @@ def zonal_statistics(
     target_layer = target_vector.CreateLayer(
         name=target_layer_id,
         srs=aggregate_layer.GetSpatialRef(),
-        geom_type=ogr.wkbPolygon)
+        geom_type=aggregate_layer.GetGeomType())
     fid_field_name = 'original_fid'
     target_layer.CreateField(ogr.FieldDefn(fid_field_name, ogr.OFTInteger))
     valid_fid_set = set()

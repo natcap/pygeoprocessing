@@ -956,7 +956,7 @@ class TestGeoprocessing(unittest.TestCase):
 
         srs = osr.SpatialReference()
         srs.ImportFromEPSG(4326)
-        layer = vector.CreateLayer('small_vector', srs=srs)
+        layer = vector.CreateLayer('small_vector', srs=srs, geom_type=ogr.wkbPolygon)
         layer.CreateField(ogr.FieldDefn('expected_value', ogr.OFTInteger))
         layer_defn = layer.GetLayerDefn()
 
@@ -1011,38 +1011,22 @@ class TestGeoprocessing(unittest.TestCase):
 
     def test_zonal_stats_no_bb_overlap(self):
         """PGP.geoprocessing: test no vector bb raster overlap."""
-        gpkg_driver = ogr.GetDriverByName('GPKG')
         vector_path = os.path.join(self.workspace_dir, 'vector.gpkg')
-        vector = gpkg_driver.CreateDataSource(vector_path)
-
-        srs = osr.SpatialReference()
-        srs.ImportFromEPSG(4326)
-        layer = vector.CreateLayer('small_vector', srs=srs)
-        layer_defn = layer.GetLayerDefn()
-
         # make an n x n raster with 2*m x 2*m polygons inside.
         pixel_size = 1
         subpixel_size = pixel_size / 5
         origin_x = 1
         origin_y = -1
         n = 16
-        layer.StartTransaction()
         x_pos = origin_x - n
         y_pos = origin_y + n
-        shapely_feature = shapely.geometry.Polygon([
+        geom = shapely.geometry.Polygon([
             (x_pos, y_pos),
             (x_pos+subpixel_size, y_pos),
             (x_pos+subpixel_size, y_pos-subpixel_size),
             (x_pos, y_pos-subpixel_size),
             (x_pos, y_pos)])
-        new_feature = ogr.Feature(layer_defn)
-        new_geometry = ogr.CreateGeometryFromWkb(shapely_feature.wkb)
-        new_feature.SetGeometry(new_geometry)
-        layer.CreateFeature(new_feature)
-        layer.CommitTransaction()
-        layer.SyncToDisk()
-        layer = None
-        vector = None
+        _geometry_to_vector([geom], vector_path, projection_epsg=4326)
 
         raster_path = os.path.join(self.workspace_dir, 'small_raster.tif')
         _array_to_raster(
@@ -1056,14 +1040,7 @@ class TestGeoprocessing(unittest.TestCase):
 
     def test_zonal_stats_all_outside(self):
         """PGP.geoprocessing: test vector all outside raster."""
-        gpkg_driver = ogr.GetDriverByName('GPKG')
         vector_path = os.path.join(self.workspace_dir, 'vector.gpkg')
-        vector = gpkg_driver.CreateDataSource(vector_path)
-
-        srs = osr.SpatialReference()
-        srs.ImportFromEPSG(4326)
-        layer = vector.CreateLayer('small_vector', srs=srs)
-        layer_defn = layer.GetLayerDefn()
 
         # make an n x n raster with 2*m x 2*m polygons inside.
         pixel_size = 1
@@ -1071,59 +1048,44 @@ class TestGeoprocessing(unittest.TestCase):
         origin_x = 1
         origin_y = -1
         n = 16
-        layer.StartTransaction()
         x_pos = origin_x - n
         y_pos = origin_y + n
-        shapely_feature = shapely.geometry.Polygon([
+        polygon_a = shapely.geometry.Polygon([
             (x_pos, y_pos),
             (x_pos+subpixel_size, y_pos),
             (x_pos+subpixel_size, y_pos-subpixel_size),
             (x_pos, y_pos-subpixel_size),
             (x_pos, y_pos)])
-        new_feature = ogr.Feature(layer_defn)
-        new_geometry = ogr.CreateGeometryFromWkb(shapely_feature.wkb)
-        new_feature.SetGeometry(new_geometry)
-        layer.CreateFeature(new_feature)
 
         x_pos = origin_x + n*2
         y_pos = origin_y - n*2
-        shapely_feature = shapely.geometry.Polygon([
+        polygon_b = shapely.geometry.Polygon([
             (x_pos, y_pos),
             (x_pos+subpixel_size, y_pos),
             (x_pos+subpixel_size, y_pos-subpixel_size),
             (x_pos, y_pos-subpixel_size),
             (x_pos, y_pos)])
-        new_feature = ogr.Feature(layer_defn)
-        new_geometry = ogr.CreateGeometryFromWkb(shapely_feature.wkb)
 
         x_pos = origin_x - subpixel_size*.99
         y_pos = origin_y + subpixel_size*.99
-        shapely_feature = shapely.geometry.Polygon([
+        polygon_c = shapely.geometry.Polygon([
             (x_pos, y_pos),
             (x_pos+subpixel_size, y_pos),
             (x_pos+subpixel_size, y_pos-subpixel_size),
             (x_pos, y_pos-subpixel_size),
             (x_pos, y_pos)])
-        new_feature = ogr.Feature(layer_defn)
-        new_geometry = ogr.CreateGeometryFromWkb(shapely_feature.wkb)
-        new_feature.SetGeometry(new_geometry)
-        layer.CreateFeature(new_feature)
 
         x_pos = origin_x + (n-.01)
         y_pos = origin_y - (n-.01)
-        shapely_feature = shapely.geometry.Polygon([
+        polygon_d = shapely.geometry.Polygon([
             (x_pos, y_pos),
             (x_pos+subpixel_size, y_pos),
             (x_pos+subpixel_size, y_pos-subpixel_size),
             (x_pos, y_pos-subpixel_size),
             (x_pos, y_pos)])
-        new_feature = ogr.Feature(layer_defn)
-        new_geometry = ogr.CreateGeometryFromWkb(shapely_feature.wkb)
-        new_feature.SetGeometry(new_geometry)
-        layer.CreateFeature(new_feature)
 
-        layer.CommitTransaction()
-        layer.SyncToDisk()
+        _geometry_to_vector([polygon_a, polygon_b, polygon_c, polygon_d],
+                            vector_path, projection_epsg=4326)
 
         # this will catch a polygon that barely intersects the upper left
         # hand corner but is nodata.
@@ -1323,7 +1285,6 @@ class TestGeoprocessing(unittest.TestCase):
              -pixel_size * n_pixels+origin[1]),
             (origin[0]+pixel_size * n_pixels, origin[1]),
             (origin[0], origin[1])])
-        origin = (444720, 3751320)
         polygon_b = shapely.geometry.Polygon([
             (origin[0], origin[1]),
             (origin[0], -pixel_size+origin[1]),
@@ -1371,6 +1332,49 @@ class TestGeoprocessing(unittest.TestCase):
                 'nodata_count': 0,
                 'sum': 0.0}}
         self.assertEqual(result, expected_result)
+
+
+    def test_zonal_statistics_multipolygon(self):
+        """PGP.geoprocessing: test zonal stats function with multipolygons."""
+        # create aggregating polygon
+        pixel_size = 30.0
+        n_pixels = 9
+        origin = (444720, 3751320)
+        polygon_a = shapely.geometry.Polygon([
+            (origin[0], origin[1]),
+            (origin[0], -pixel_size + origin[1]),
+            (origin[0] + pixel_size, -pixel_size + origin[1]),
+            (origin[0] + pixel_size, origin[1]),
+            (origin[0], origin[1])])
+        origin = (origin[0] + pixel_size, origin[1] - pixel_size)
+        polygon_b = shapely.geometry.Polygon([
+            (origin[0], origin[1]),
+            (origin[0], -pixel_size + origin[1]),
+            (origin[0] + pixel_size, -pixel_size + origin[1]),
+            (origin[0] + pixel_size, origin[1]),
+            (origin[0], origin[1])])
+        multipolygon = shapely.geometry.MultiPolygon([polygon_a, polygon_b])
+        aggregating_vector_path = os.path.join(
+            self.workspace_dir, 'aggregate_vector')
+        _geometry_to_vector([multipolygon], aggregating_vector_path)
+        pixel_matrix = numpy.ones((n_pixels, n_pixels), numpy.float32)
+        target_nodata = None
+        raster_path = os.path.join(self.workspace_dir, 'raster.tif')
+        _array_to_raster(
+            pixel_matrix, target_nodata, raster_path)
+        result = pygeoprocessing.zonal_statistics(
+            (raster_path, 1), aggregating_vector_path,
+            aggregate_layer_name=None,
+            ignore_nodata=True,
+            polygons_might_overlap=True)
+        self.assertEqual(result, {
+            0: {
+                'count': 2,
+                'max': 1.0,
+                'min': 1.0,
+                'nodata_count': 0,
+                'sum': 2
+        }})
 
     def test_zonal_statistics_value_counts(self):
         """PGP.geoprocessing: test zonal stats function (value counts)."""
