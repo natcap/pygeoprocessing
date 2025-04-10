@@ -4441,6 +4441,40 @@ class TestGeoprocessing(unittest.TestCase):
         actual_message = str(cm.exception)
         self.assertIn(expected_message, actual_message)
 
+    def test_raster_band_percentile_warning(self):
+        """PGP: test raster_band_percentile geographic CRS warning."""
+        geo_raster_path = os.path.join(self.workspace_dir, 'geo_raster.tif')
+        _array_to_raster(
+            numpy.ones((10,10)), 0, geo_raster_path,
+            projection_epsg=4326) # Geographic CRS
+        proj_raster_path = os.path.join(self.workspace_dir, 'proj_raster.tif')
+        _array_to_raster(
+            numpy.ones((10,10)), 0, proj_raster_path,
+            projection_epsg=3116) # Projected CRS
+
+        percentile_cutoffs = [0.0]*5
+        working_dir = os.path.join(
+            self.workspace_dir, 'percentile_working_dir')
+
+        with capture_logging(
+                logging.getLogger('pygeoprocessing')) as log_messages:
+            pygeoprocessing.raster_band_percentile(
+                (geo_raster_path, 1), working_dir, percentile_cutoffs,
+                heap_buffer_size=8, ffi_buffer_size=4)
+        self.assertEqual(len(log_messages), 1)
+        self.assertEqual(log_messages[0].levelno, logging.WARNING)
+        self.assertIn('geographic CRS', log_messages[0].msg)
+
+        with capture_logging(
+                logging.getLogger('pygeoprocessing')) as log_messages:
+            pygeoprocessing.raster_band_percentile(
+                (proj_raster_path, 1), working_dir, percentile_cutoffs,
+                heap_buffer_size=8, ffi_buffer_size=4)
+        self.assertEqual(len(log_messages), 0)
+
+        self.assertTrue(
+            not os.path.exists(working_dir), 'working dir was not deleted')
+
     def test_percentile_int_type(self):
         """PGP: test percentile with int type."""
         srs = osr.SpatialReference()

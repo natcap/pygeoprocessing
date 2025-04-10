@@ -682,7 +682,7 @@ ctypedef FastFileIterator[double]* FastFileIteratorDoublePtr
 def raster_band_percentile(
         base_raster_path_band, working_sort_directory, percentile_list,
         heap_buffer_size=2**28, ffi_buffer_size=2**10):
-    """Calculate percentiles of a raster band.
+    """Calculate percentiles of a raster band based on pixel values.
 
     Parameters:
         base_raster_path_band (tuple): raster path band tuple to a raster
@@ -708,6 +708,15 @@ def raster_band_percentile(
         will select the next element higher than the percentile cutoff).
 
     """
+    g_raster = gdal.OpenEx(base_raster_path_band[0], gdal.OF_RASTER)
+    srs = g_raster.GetSpatialRef()
+    if srs.IsGeographic():
+        LOGGER.warning(
+            f'Raster {base_raster_path_band[0]} has a geographic CRS (pixels '
+            'do not have equal area). Because `raster_band_percentile` calculates '
+            'percentiles of pixel values, percentile results will be skewed.')
+    g_raster = None
+
     numpy_type = pygeoprocessing.get_raster_info(
         base_raster_path_band[0])['numpy_type']
     if numpy.issubdtype(numpy_type, numpy.integer):

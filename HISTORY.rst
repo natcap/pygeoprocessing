@@ -2,6 +2,8 @@ Release History
 ===============
 
 .. Unreleased Changes
+* ``raster_band_percentile`` now logs a warning if the raster isn't projected.
+  https://github.com/natcap/pygeoprocessing/issues/299
 
 2.4.7 (2025-01-23)
 ------------------
