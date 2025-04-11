@@ -708,14 +708,14 @@ def raster_band_percentile(
         will select the next element higher than the percentile cutoff).
 
     """
-    g_raster = gdal.OpenEx(base_raster_path_band[0], gdal.OF_RASTER)
-    srs = g_raster.GetSpatialRef()
+    base_raster = gdal.OpenEx(base_raster_path_band[0], gdal.OF_RASTER)
+    srs = base_raster.GetSpatialRef()
     if srs.IsGeographic():
         LOGGER.warning(
             f'Raster {base_raster_path_band[0]} has a geographic CRS (pixels '
             'do not have equal area). Because `raster_band_percentile` calculates '
             'percentiles of pixel values, percentile results will be skewed.')
-    g_raster = None
+    base_raster = None
 
     numpy_type = pygeoprocessing.get_raster_info(
         base_raster_path_band[0])['numpy_type']
