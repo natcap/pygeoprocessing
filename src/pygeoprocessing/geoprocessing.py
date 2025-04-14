@@ -2180,7 +2180,7 @@ def reproject_vector(
 
     target_sr = osr.SpatialReference(target_projection_wkt)
 
-    # create a new shapefile from the orginal_datasource
+    # create a new vector from the orginal_datasource
     target_driver = ogr.GetDriverByName(driver_name)
     target_vector = target_driver.CreateDataSource(target_path)
 
@@ -2280,7 +2280,7 @@ def reproject_vector(
             try:
                 target_feature.SetField(
                     target_index, base_feature.GetField(base_index))
-            except RuntimeError as runtime_error:
+            except RuntimeError:
                 try:
                     target_feature.SetFieldBinary(
                         target_index,
