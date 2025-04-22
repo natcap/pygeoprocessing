@@ -1558,7 +1558,7 @@ def zonal_statistics(
         aggregate_layer_name=None, ignore_nodata=True,
         polygons_might_overlap=True, include_value_counts=False,
         working_dir=None):
-    """Collect stats on pixel values which lie within polygons.
+    """Collect stats on pixel values which lie within polygons or multipolygons.
 
     This function summarizes raster statistics including min, max,
     mean, and pixel count over the regions on the raster that are
@@ -1649,6 +1649,10 @@ def zonal_statistics(
             if ``base_raster_path_band`` is incorrectly formatted, or if
             not all of the input raster bands are aligned with each other
 
+        ValueError
+            if ``aggregate_vector_path`` has a geometry type other than
+            Polygon or MultiPolygon
+
         RuntimeError
             if the aggregate vector or layer cannot be opened
 
@@ -1688,6 +1692,9 @@ def zonal_statistics(
         raise RuntimeError(
             f"Could not open layer {aggregate_layer_name} of {aggregate_vector_path}")
 
+    # Check that the vector geometry type is polygon or multipolygon
+    if aggregate_layer.GetGeomType() not in [ogr.wkbPolygon, ogr.wkbMultiPolygon]:
+        raise ValueError('Vector geometry type must be Polygon or MultiPolygon')
 
     # Define the default/empty statistics values
     # These values will be returned for features that have no geometry or
@@ -1711,7 +1718,7 @@ def zonal_statistics(
     target_layer = target_vector.CreateLayer(
         name=target_layer_id,
         srs=aggregate_layer.GetSpatialRef(),
-        geom_type=ogr.wkbPolygon)
+        geom_type=aggregate_layer.GetGeomType())
     fid_field_name = 'original_fid'
     target_layer.CreateField(ogr.FieldDefn(fid_field_name, ogr.OFTInteger))
     valid_fid_set = set()
