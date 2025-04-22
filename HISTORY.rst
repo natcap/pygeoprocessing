@@ -1,15 +1,16 @@
 Release History
 ===============
 
-.. Unreleased Changes
+Unreleased Changes
+------------------
+* Handling a case in ``raster_map`` where an exception would be raised when a
+  float32 array was passed along with a float64 nodata value.
+  https://github.com/natcap/pygeoprocessing/issues/358
 
 2.4.5 (2024-10-08)
 ------------------
 * Updating for numpy 2.0 API changes.  Pygeoprocessing is now compatible with
   numpy 2.0 and later.  https://github.com/natcap/pygeoprocessing/issues/396
-* Handling a case in ``raster_map`` where an exception would be raised when a
-  float32 array was passed along with a float64 nodata value.
-  https://github.com/natcap/pygeoprocessing/issues/358
 
 2.4.4 (2024-05-21)
 ------------------
