@@ -4460,7 +4460,8 @@ class TestGeoprocessing(unittest.TestCase):
                 logging.getLogger('pygeoprocessing')) as log_messages:
             pygeoprocessing.raster_band_percentile(
                 (geo_raster_path, 1), working_dir, percentile_cutoffs,
-                heap_buffer_size=8, ffi_buffer_size=4)
+                heap_buffer_size=8, ffi_buffer_size=4,
+                geographic_crs_warn=True)
         self.assertEqual(len(log_messages), 1)
         self.assertEqual(log_messages[0].levelno, logging.WARNING)
         self.assertIn('geographic CRS', log_messages[0].msg)
@@ -4469,7 +4470,8 @@ class TestGeoprocessing(unittest.TestCase):
                 logging.getLogger('pygeoprocessing')) as log_messages:
             pygeoprocessing.raster_band_percentile(
                 (proj_raster_path, 1), working_dir, percentile_cutoffs,
-                heap_buffer_size=8, ffi_buffer_size=4)
+                heap_buffer_size=8, ffi_buffer_size=4,
+                geographic_crs_warn=True)
         self.assertEqual(len(log_messages), 0)
 
         self.assertTrue(
