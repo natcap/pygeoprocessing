@@ -2,6 +2,10 @@ Release History
 ===============
 
 .. Unreleased Changes
+* ``reproject_vector`` will skip copying field values from the base layer
+  to the target if doing so would raise a RuntimeError,
+  such as when a string value cannot be represented by UTF-8.
+  https://github.com/natcap/pygeoprocessing/issues/418
 * ``raster_band_percentile`` can now optionally log a warning if the raster
   has a geographic CRS.
   https://github.com/natcap/pygeoprocessing/issues/299
