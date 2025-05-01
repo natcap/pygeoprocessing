@@ -1929,7 +1929,7 @@ class TestGeoprocessing(unittest.TestCase):
         base_a_raster_info = pygeoprocessing.get_raster_info(base_a_path)
         pygeoprocessing.warp_raster(
             base_a_path, base_a_raster_info['pixel_size'], target_raster_path,
-            'near', vector_mask_options={'mask_raster_path': mask_raster_path})
+            'near', mask_options={'mask_raster_path': mask_raster_path})
 
         expected_matrix = numpy.ones((5, 5), numpy.int16)
         expected_matrix[0, 0] = target_nodata
@@ -4205,7 +4205,7 @@ class TestGeoprocessing(unittest.TestCase):
             resample_method_list,
             base_a_raster_info['pixel_size'], bounding_box_mode,
             raster_align_index=0,
-            vector_mask_options={
+            mask_options={
                 'mask_vector_path': dual_poly_path,
                 'mask_layer_name': 'dual_poly',
             },
@@ -4223,7 +4223,7 @@ class TestGeoprocessing(unittest.TestCase):
             resample_method_list,
             base_a_raster_info['pixel_size'], bounding_box_mode,
             raster_align_index=0,
-            vector_mask_options={
+            mask_options={
                 'mask_vector_path': dual_poly_path,
                 'mask_layer_name': 'dual_poly',
                 'mask_vector_where_filter': 'value=1',
@@ -4279,7 +4279,7 @@ class TestGeoprocessing(unittest.TestCase):
             (111000/2, -111000/2), poly_bb_transform,
             raster_align_index=0,
             target_projection_wkt=utm_31w_srs.ExportToWkt(),
-            vector_mask_options={
+            mask_options={
                 'mask_vector_path': poly_path,
                 'mask_layer_name': 'poly',
                 'mask_vector_where_filter': 'value=100'
@@ -4335,7 +4335,7 @@ class TestGeoprocessing(unittest.TestCase):
                 resample_method_list,
                 base_a_raster_info['pixel_size'], bounding_box_mode,
                 raster_align_index=0,
-                vector_mask_options={
+                mask_options={
                     'mask_vector_path': dual_poly_path,
                     'mask_layer_name': 'dual_poly',
                 })
@@ -4349,7 +4349,7 @@ class TestGeoprocessing(unittest.TestCase):
                 resample_method_list,
                 base_a_raster_info['pixel_size'], bounding_box_mode,
                 raster_align_index=0,
-                vector_mask_options={
+                mask_options={
                     'bad_mask_vector_path': dual_poly_path,
                     'mask_layer_name': 'dual_poly',
                 })
@@ -4361,7 +4361,7 @@ class TestGeoprocessing(unittest.TestCase):
             pygeoprocessing.warp_raster(
                 base_a_path, base_a_raster_info['pixel_size'],
                 target_path, 'near',
-                vector_mask_options={
+                mask_options={
                     'bad_mask_vector_path': dual_poly_path,
                     'mask_layer_name': 'dual_poly',
                 })
@@ -4373,7 +4373,7 @@ class TestGeoprocessing(unittest.TestCase):
             pygeoprocessing.warp_raster(
                 base_a_path, base_a_raster_info['pixel_size'],
                 target_path, 'near',
-                vector_mask_options={
+                mask_options={
                     'mask_vector_path': 'not_a_file.shp',
                     'mask_layer_name': 'dual_poly',
                 })
