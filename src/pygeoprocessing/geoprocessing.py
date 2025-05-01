@@ -4079,15 +4079,17 @@ def _convolve_2d_worker(
 
         # add zero padding so FFT is fast
         fshape = [_next_regular(int(d)) for d in shape]
+        f_axes_seq = range(len(fshape))
 
-        signal_fft = numpy.fft.rfftn(signal_block, fshape)
-        kernel_fft = numpy.fft.rfftn(kernel_block, fshape)
+        signal_fft = numpy.fft.rfftn(signal_block, fshape, f_axes_seq)
+        kernel_fft = numpy.fft.rfftn(kernel_block, fshape, f_axes_seq)
 
         # this variable determines the output slice that doesn't include
         # the padded array region made for fast FFTs.
         fslice = tuple([slice(0, int(sz)) for sz in shape])
         # classic FFT convolution
-        result = numpy.fft.irfftn(signal_fft * kernel_fft, fshape)[fslice]
+        result = numpy.fft.irfftn(
+            signal_fft * kernel_fft, fshape, f_axes_seq)[fslice]
         # nix any roundoff error
         if set_tol_to_zero is not None:
             result[numpy.isclose(result, set_tol_to_zero)] = 0.0
@@ -4096,9 +4098,9 @@ def _convolve_2d_worker(
         # nodata mask too
         if ignore_nodata:
             mask_fft = numpy.fft.rfftn(
-                numpy.where(signal_nodata_mask, 0.0, 1.0), fshape)
+                numpy.where(signal_nodata_mask, 0.0, 1.0), fshape, f_axes_seq)
             mask_result = numpy.fft.irfftn(
-                mask_fft * kernel_fft, fshape)[fslice]
+                mask_fft * kernel_fft, fshape, f_axes_seq)[fslice]
 
         left_index_result = 0
         right_index_result = result.shape[1]
