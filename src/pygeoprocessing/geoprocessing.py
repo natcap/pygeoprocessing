@@ -254,16 +254,15 @@ def raster_calculator(
     # check that raster inputs are all the same dimensions
     raster_info_list = [
         get_raster_info(path_band[0])
-        for path_band in base_raster_path_band_const_list
-        if _is_raster_path_band_formatted(path_band)]
-    geospatial_info_set = set()
-    for raster_info in raster_info_list:
-        geospatial_info_set.add(raster_info['raster_size'])
-    if len(geospatial_info_set) > 1:
+        for path_band in base_raster_path_band_list]
+    geospatial_info = [
+        raster_info['raster_size'] for raster_info in raster_info_list]
+    if len(set(geospatial_info)) > 1:
         raise ValueError(
             "Input Rasters are not the same dimensions. The "
-            "following raster are not identical %s" % str(
-                geospatial_info_set))
+            "following raster are not identical: %s" % pprint.pformat(
+                [(path_band[0], dimensions) for (path_band, dimensions) in
+                zip(base_raster_path_band_list, geospatial_info)]))
 
     numpy_broadcast_list = [
         x for x in base_raster_path_band_const_list
@@ -1559,7 +1558,7 @@ def zonal_statistics(
         aggregate_layer_name=None, ignore_nodata=True,
         polygons_might_overlap=True, include_value_counts=False,
         working_dir=None):
-    """Collect stats on pixel values which lie within polygons.
+    """Collect stats on pixel values which lie within polygons or multipolygons.
 
     This function summarizes raster statistics including min, max,
     mean, and pixel count over the regions on the raster that are
@@ -1650,6 +1649,10 @@ def zonal_statistics(
             if ``base_raster_path_band`` is incorrectly formatted, or if
             not all of the input raster bands are aligned with each other
 
+        ValueError
+            if ``aggregate_vector_path`` has a geometry type other than
+            Polygon or MultiPolygon
+
         RuntimeError
             if the aggregate vector or layer cannot be opened
 
@@ -1689,6 +1692,9 @@ def zonal_statistics(
         raise RuntimeError(
             f"Could not open layer {aggregate_layer_name} of {aggregate_vector_path}")
 
+    # Check that the vector geometry type is polygon or multipolygon
+    if aggregate_layer.GetGeomType() not in [ogr.wkbPolygon, ogr.wkbMultiPolygon]:
+        raise ValueError('Vector geometry type must be Polygon or MultiPolygon')
 
     # Define the default/empty statistics values
     # These values will be returned for features that have no geometry or
@@ -1712,7 +1718,7 @@ def zonal_statistics(
     target_layer = target_vector.CreateLayer(
         name=target_layer_id,
         srs=aggregate_layer.GetSpatialRef(),
-        geom_type=ogr.wkbPolygon)
+        geom_type=aggregate_layer.GetGeomType())
     fid_field_name = 'original_fid'
     target_layer.CreateField(ogr.FieldDefn(fid_field_name, ogr.OFTInteger))
     valid_fid_set = set()
@@ -2180,7 +2186,7 @@ def reproject_vector(
 
     target_sr = osr.SpatialReference(target_projection_wkt)
 
-    # create a new shapefile from the orginal_datasource
+    # create a new vector from the orginal_datasource
     target_driver = ogr.GetDriverByName(driver_name)
     target_vector = target_driver.CreateDataSource(target_path)
 
@@ -2243,21 +2249,29 @@ def reproject_vector(
             100.0 * float(feature_index+1) / (layer.GetFeatureCount()),
             os.path.basename(target_path))
 
-        geom = base_feature.GetGeometryRef()
-        if geom is None:
-            # we encountered this error occasionally when transforming clipped
-            # global polygons.  Not clear what is happening but perhaps a
-            # feature was retained that otherwise wouldn't have been included
-            # in the clip
-            error_count += 1
-            continue
+        try:
+            geom = base_feature.GetGeometryRef()
+            if geom is None:
+                # we encountered this error occasionally when transforming
+                # clipped global polygons.  Not clear what is happening but
+                # perhaps a feature was retained that otherwise wouldn't have
+                # been included in the clip
+                error_count += 1
+                continue
 
-        # Transform geometry into format desired for the new projection
-        error_code = geom.Transform(coord_trans)
-        if error_code != 0:  # error
-            # this could be caused by an out of range transformation
-            # whatever the case, don't put the transformed poly into the
-            # output set
+            # Transform geometry into format desired for the new projection
+            error_code = geom.Transform(coord_trans)
+            if error_code != 0:  # error
+                # this could be caused by an out of range transformation
+                # whatever the case, don't put the transformed poly into the
+                # output set
+                error_count += 1
+                continue
+        except RuntimeError as error:
+            # RuntimeError: GDAL's base error when geometries cannot be
+            # returned or transformed.
+            LOGGER.debug("Skipping feature %s due to %s",
+                         feature_index, str(error))
             error_count += 1
             continue
 
@@ -2269,8 +2283,19 @@ def reproject_vector(
         # source field
         for target_index, base_index in (
                 target_to_base_field_id_map.items()):
-            target_feature.SetField(
-                target_index, base_feature.GetField(base_index))
+            try:
+                target_feature.SetField(
+                    target_index, base_feature.GetField(base_index))
+            except RuntimeError:
+                try:
+                    target_feature.SetFieldBinary(
+                        target_index,
+                        base_feature.GetFieldAsBinary(base_index))
+                except RuntimeError as runtime_error:
+                    LOGGER.debug(
+                        f"Skipping copy field value for feature {feature_index}, "
+                        f"field {layer_dfn.GetFieldDefn(base_index).GetName()} "
+                        f"due to: {runtime_error}")
 
         target_layer.CreateFeature(target_feature)
         target_feature = None
@@ -2330,6 +2355,12 @@ def reclassify_raster(
             if ``values_required`` is ``True``
             and a pixel value from ``base_raster_path_band`` is not a key in
             ``value_map``.
+        ValueError
+            - if ``value_map`` is empty
+            - if ``base_raster_path_band`` is formatted incorrectly
+            - if nodata value not set
+        TypeError
+            if there are non-numeric keys in ``value_map``
 
     """
     if len(value_map) == 0:
@@ -2338,6 +2369,12 @@ def reclassify_raster(
         raise ValueError(
             "Expected a (path, band_id) tuple, instead got '%s'" %
             base_raster_path_band)
+    # raise error if there are any non-numeric keys in value_map
+    nonnumeric = [key for key in value_map
+                  if not isinstance(key, (int, float, numpy.number))]
+    if nonnumeric:
+        raise TypeError(f"Non-numeric key(s) in value map: {nonnumeric}")
+
     raster_info = get_raster_info(base_raster_path_band[0])
     nodata = raster_info['nodata'][base_raster_path_band[1]-1]
     # If nodata was included in the value_map pop it from our lists
@@ -2487,8 +2524,14 @@ def warp_raster(
             if ``mask_options`` is not None but the
             ``mask_vector_path`` is undefined or doesn't point to a valid
             file.
-
+        ValueError
+            if either ``base_raster_path`` or ``target_raster_path`` are
+            not strings.
     """
+    for path_key in ['base_raster_path', 'target_raster_path']:
+        if not isinstance(locals()[path_key], str):
+            raise ValueError('%s must be a string', path_key)
+
     _assert_is_valid_pixel_size(target_pixel_size)
 
     base_raster_info = get_raster_info(base_raster_path)
@@ -3287,16 +3330,33 @@ def convolve_2d(
     while True:
         # the timeout guards against a worst case scenario where the
         # ``_convolve_2d_worker`` has crashed.
-        write_payload = write_queue.get(timeout=_MAX_TIMEOUT)
-        if write_payload:
-            (index_dict, result, mask_result,
-             left_index_raster, right_index_raster,
-             top_index_raster, bottom_index_raster,
-             left_index_result, right_index_result,
-             top_index_result, bottom_index_result) = write_payload
-        else:
-            worker.join(max_timeout)
-            break
+        try:
+            write_payload = write_queue.get(timeout=max_timeout)
+            if write_payload:
+                (index_dict, result, mask_result,
+                 left_index_raster, right_index_raster,
+                 top_index_raster, bottom_index_raster,
+                 left_index_result, right_index_result,
+                 top_index_result, bottom_index_result) = write_payload
+            else:
+                worker.join(max_timeout)
+                break
+        except queue.Empty:
+            # Shut down the worker thread.
+            # The work queue only has 10 items in it at a time, so it's pretty
+            # likely that we can preemptively shut it down by adding a ``None``
+            # here and then have the queue not take too much longer to quit.
+            work_queue.put(None)
+
+            # Close thread-local raster objects
+            signal_raster = signal_band = None
+            target_raster = target_band = None
+            mask_raster = mask_band = None
+            LOGGER.exception("Worker timeout")
+            raise RuntimeError(
+                f"The convolution worker timed out after {max_timeout} "
+                "seconds. Either the timeout is too low for the "
+                "size of your data, or the worker has crashed")
 
         output_array = numpy.empty(
             (index_dict['win_ysize'], index_dict['win_xsize']),

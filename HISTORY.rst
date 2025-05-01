@@ -6,6 +6,35 @@ Unreleased Changes
 * Handling a case in ``raster_map`` where an exception would be raised when a
   float32 array was passed along with a float64 nodata value.
   https://github.com/natcap/pygeoprocessing/issues/358
+* ``reproject_vector`` will skip copying field values from the base layer
+  to the target if doing so would raise a RuntimeError,
+  such as when a string value cannot be represented by UTF-8.
+  https://github.com/natcap/pygeoprocessing/issues/418
+* ``raster_band_percentile`` can now optionally log a warning if the raster
+  has a geographic CRS.
+  https://github.com/natcap/pygeoprocessing/issues/299
+
+2.4.7 (2025-01-23)
+------------------
+* Dropped support for Python 3.8. Added support for Python 3.13 and GDAL 3.9.
+  https://github.com/natcap/pygeoprocessing/issues/415
+* Added validation to ``reclassify_raster`` to raise a ``TypeError`` with a
+  descriptive message if ``value_map`` contains non-numeric keys.
+* In ``warp_raster``, if either ``base_raster_path`` or ``target_raster_path``
+  are not strings, a ``ValueError`` is now raised with a more helpful error
+  message.  https://github.com/natcap/pygeoprocessing/issues/421
+
+2.4.6 (2024-10-15)
+------------------
+* Removing the ``numpy<2`` constraint for requirements.txt that should have
+  been included in the 2.4.5 release. https://github.com/natcap/pygeoprocessing/issues/396
+* Fixed an issue in ``convolve_2d`` where a long-running convolution would
+  raise a cryptic exception involving ``queue.Empty``.  This will instead now
+  raise ``RuntimeError`` with a more helpful exception message.  We also fixed
+  an issue where the ``max_timeout`` parameter of ``convolve_2d`` was unused,
+  so it is now used correctly. https://github.com/natcap/pygeoprocessing/issues/360
+* Handling GDAL-based ``RuntimeError`` raised during ``pygeoprocessing.reproject_vector``.
+  https://github.com/natcap/pygeoprocessing/issues/409
 
 2.4.5 (2024-10-08)
 ------------------

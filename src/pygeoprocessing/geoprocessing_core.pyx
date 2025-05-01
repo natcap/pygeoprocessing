@@ -681,8 +681,8 @@ ctypedef FastFileIterator[double]* FastFileIteratorDoublePtr
 
 def raster_band_percentile(
         base_raster_path_band, working_sort_directory, percentile_list,
-        heap_buffer_size=2**28, ffi_buffer_size=2**10):
-    """Calculate percentiles of a raster band.
+        heap_buffer_size=2**28, ffi_buffer_size=2**10, geographic_crs_warn=False):
+    """Calculate percentiles of a raster band based on pixel values.
 
     Parameters:
         base_raster_path_band (tuple): raster path band tuple to a raster
@@ -700,6 +700,8 @@ def raster_band_percentile(
             disk.
         ffi_buffer_size (int): defines how many elements will be stored per
             heap file buffer for iteration.
+        geographic_crs_warn (boolean): defaults to False. If True, a warning will
+            be issued if the base raster has a geographic CRS.
 
     Returns:
         A list of len(percentile_list) elements long containing the
@@ -708,6 +710,18 @@ def raster_band_percentile(
         will select the next element higher than the percentile cutoff).
 
     """
+    if geographic_crs_warn:
+        try:
+            base_raster = gdal.OpenEx(base_raster_path_band[0], gdal.OF_RASTER)
+            srs = base_raster.GetSpatialRef()
+            if srs.IsGeographic():
+                LOGGER.warning(
+                    f'Raster {base_raster_path_band[0]} has a geographic CRS. '
+                    'Because `raster_band_percentile` calculates percentiles '
+                    'of pixel values, percentile results may be skewed.')
+        finally:
+            base_raster = None
+
     numpy_type = pygeoprocessing.get_raster_info(
         base_raster_path_band[0])['numpy_type']
     if numpy.issubdtype(numpy_type, numpy.integer):
