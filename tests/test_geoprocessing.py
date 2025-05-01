@@ -5517,6 +5517,21 @@ class TestGeoprocessing(unittest.TestCase):
         self.assertEqual(log_messages[0].levelno, logging.WARNING)
         self.assertIn('has more than one band', log_messages[0].msg)
 
+    def test_raster_map_different_nodata_and_array_dtypes(self):
+        """PGP: raster_map can handle similar dtypes for nodata and arrays."""
+        band_1_array = numpy.array([[1, 1], [1, 1]], dtype=numpy.float32)
+        nodata = float(numpy.finfo(numpy.float32).min)  # this is a float64
+        source_path = os.path.join(self.workspace_dir, 'float32.tif')
+        _array_to_raster(band_1_array, nodata, source_path)
+
+        target_path = os.path.join(self.workspace_dir, 'target.tif')
+        pygeoprocessing.raster_map(lambda a: a, [source_path], target_path,
+                                   target_nodata=nodata)
+
+        expected_array = numpy.array(band_1_array, dtype=numpy.float32)
+        numpy.testing.assert_allclose(
+            expected_array, pygeoprocessing.raster_to_numpy_array(target_path))
+
     def test_choose_dtype(self):
         """PGP: choose_dtype picks smallest safe dtype for raster output."""
         uint8_raster = os.path.join(self.workspace_dir, 'uint8.tif')

@@ -1,7 +1,11 @@
 Release History
 ===============
 
-.. Unreleased Changes
+Unreleased Changes
+------------------
+* Handling a case in ``raster_map`` where an exception would be raised when a
+  float32 array was passed along with a float64 nodata value.
+  https://github.com/natcap/pygeoprocessing/issues/358
 * ``reproject_vector`` will skip copying field values from the base layer
   to the target if doing so would raise a RuntimeError,
   such as when a string value cannot be represented by UTF-8.
