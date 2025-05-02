@@ -1,8 +1,11 @@
 Release History
 ===============
 
-Unreleased Changes
+2.4.8 (2025-05-02)
 ------------------
+* ``zonal_statistics`` raises an error if the vector is not a Polygon
+  or MultiPolygon geometry.
+  https://github.com/natcap/pygeoprocessing/issues/322
 * Handling a case in ``raster_map`` where an exception would be raised when a
   float32 array was passed along with a float64 nodata value.
   https://github.com/natcap/pygeoprocessing/issues/358
