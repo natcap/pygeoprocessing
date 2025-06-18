@@ -535,9 +535,6 @@ def raster_calculator(
                     target_band.SetMetadataItem(
                         'STATISTICS_VALID_PERCENT',
                         f'{(valid_pixel_count / n_pixels * 100):.2f}')
-                    # If you ask GDAL to compute stats, you can choose to
-                    # approximate or not. We do not approximate here.
-                    target_band.SetMetadataItem('STATISTICS_APPROXIMATE', 'NO')
                     target_band.FlushCache()
         except Exception:
             LOGGER.exception('exception encountered in raster_calculator')

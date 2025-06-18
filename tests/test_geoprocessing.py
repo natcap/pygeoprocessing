@@ -2397,8 +2397,7 @@ class TestGeoprocessing(unittest.TestCase):
             'STATISTICS_MAXIMUM': '1',
             'STATISTICS_MEAN': '1',
             'STATISTICS_STDDEV': '0',
-            'STATISTICS_VALID_PERCENT': '80.00',
-            'STATISTICS_APPROXIMATE': 'NO'}
+            'STATISTICS_VALID_PERCENT': '80.00'}
         for key, value in expected_metadata.items():
             self.assertIn(key, metadata)
             self.assertEqual(metadata[key], value)
