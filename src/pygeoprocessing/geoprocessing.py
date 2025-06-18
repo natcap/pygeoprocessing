@@ -435,6 +435,7 @@ def raster_calculator(
 
             pixels_processed = 0
             n_pixels = n_cols * n_rows
+            valid_pixel_count = 0
 
             # iterate over each block and calculate local_op
             for block_offset in block_offset_list:
@@ -489,7 +490,9 @@ def raster_calculator(
                 if stats_worker_queue:
                     # guard against an undefined nodata target
                     if nodata_target is not None:
-                        target_block = target_block[target_block != nodata_target]
+                        valid_mask = ~array_equals_nodata(target_block, nodata_target)
+                        valid_pixel_count += valid_mask.sum()
+                        target_block = target_block[valid_mask]
                     target_block = target_block.astype(numpy.float64).flatten()
 
                     if sys.version_info >= (3, 8) and use_shared_memory:
@@ -529,6 +532,12 @@ def raster_calculator(
                     target_band.SetStatistics(
                         float(target_min), float(target_max), float(target_mean),
                         float(target_stddev))
+                    target_band.SetMetadataItem(
+                        'STATISTICS_VALID_PERCENT',
+                        f'{(valid_pixel_count / n_pixels * 100):.2f}')
+                    # If you ask GDAL to compute stats, you can choose to
+                    # approximate or not. We do not approximate here.
+                    target_band.SetMetadataItem('STATISTICS_APPROXIMATE', 'NO')
                     target_band.FlushCache()
         except Exception:
             LOGGER.exception('exception encountered in raster_calculator')
