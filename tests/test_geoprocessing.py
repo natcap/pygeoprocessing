@@ -2373,6 +2373,36 @@ class TestGeoprocessing(unittest.TestCase):
                 pygeoprocessing.raster_to_numpy_array(base_path),
                 pygeoprocessing.raster_to_numpy_array(target_path)).all())
 
+    def test_raster_calculator_stats(self):
+        """PGP.geoprocessing: raster_calculator test stats are saved."""
+        blocksize = 5
+        pixel_matrix = numpy.ones((blocksize*2, blocksize*2), numpy.int16)
+        target_nodata = -1
+        pixel_matrix[:1] = target_nodata
+        base_path = os.path.join(self.workspace_dir, 'base.tif')
+        _array_to_raster(pixel_matrix, target_nodata, base_path)
+
+        target_path = os.path.join(self.workspace_dir, 'subdir', 'target.tif')
+        # Test with multiple blocks by limiting largest_block
+        pygeoprocessing.raster_calculator(
+            [(base_path, 1)], passthrough, target_path,
+            gdal.GDT_Int32, target_nodata, calc_raster_stats=True,
+            use_shared_memory=True, largest_block=blocksize)
+
+        raster = gdal.OpenEx(target_path)
+        band = raster.GetRasterBand(1)
+        metadata = band.GetMetadata()
+        raster = band = None
+        expected_metadata = {  # gdal metadata are represented as strings
+            'STATISTICS_MINIMUM': '1',
+            'STATISTICS_MAXIMUM': '1',
+            'STATISTICS_MEAN': '1',
+            'STATISTICS_STDDEV': '0',
+            'STATISTICS_VALID_PERCENT': '90.00'}
+        for key, value in expected_metadata.items():
+            self.assertIn(key, metadata)
+            self.assertEqual(metadata[key], value)
+
     def test_raster_calculator_multiprocessing(self):
         """PGP.geoprocessing: raster_calculator identity test."""
         pixel_matrix = numpy.ones((1024, 1024), numpy.int16)

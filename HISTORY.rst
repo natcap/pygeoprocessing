@@ -1,6 +1,12 @@
 Release History
 ===============
 
+.. Unreleased Changes
+* ``raster_calculator`` ``calc_raster_stats=True`` will count the number
+  of non-nodata pixels in the target raster and write
+  'STATISTICS_VALID_PERCENT' metadata along with other stats.
+  https://github.com/natcap/pygeoprocessing/issues/431
+
 2.4.8 (2025-05-02)
 ------------------
 * ``zonal_statistics`` raises an error if the vector is not a Polygon
