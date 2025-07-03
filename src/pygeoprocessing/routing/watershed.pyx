@@ -734,8 +734,9 @@ def delineate_watersheds_d8(
     # Polygon geometry into a MultiPolygon layer (or vice versa) is
     # technically not supported by the GPKG standard although GDAL
     # allows it for the time being.
+    temp_layer_name = f'{target_layer_name}_TEMP'
     watersheds_layer = watersheds_vector.CreateLayer(
-        target_layer_name, watersheds_srs, ogr.wkbUnknown)
+        temp_layer_name, watersheds_srs, ogr.wkbUnknown)
     index_field = ogr.FieldDefn('ws_id', ogr.OFTInteger)
     index_field.SetWidth(24)
     polygonized_watersheds_layer.CreateField(index_field)
@@ -1008,12 +1009,59 @@ def delineate_watersheds_d8(
         watersheds_layer.CreateFeature(watershed_feature)
     watersheds_layer.CommitTransaction()
 
+    # Polygonization may create Polygon and/or MultiPolygon features, so we
+    # need to go back through and make sure that we have only 1 geometry type
+    # and that this is reflected in the layer's geometry type.
+    detected_watershed_types = set()
+    for feature in watersheds_layer:
+        geometry = feature.GetGeometryRef()
+        detected_watershed_types.add(geometry.GetGeometryType())
+
+    LOGGER.debug(f'Detected watershed geometry types (bitwise-or): {detected_watershed_types}')
+
+    if len(detected_watershed_types) == 1:
+        # we only have 1 type to deal with, so we can just create the vector
+        # using this geometry type and copy features over.
+        new_layer_type = detected_watershed_types.next()
+        cast_to_multipolygon = False
+    else:
+        # If we have more than 1 type to deal with, log the types and convert
+        # all features to multipolygon.
+        new_layer_type = ogr.wkbMultiPolygon
+        cast_to_multipolygon = True
+
+    # This created layer is the final output layer.
+    final_watersheds_layer = watersheds_vector.createLayer(
+        target_layer_name, watersheds_srs, new_layer_type)
+    index_field = ogr.FieldDefn('ws_id', ogr.OFTInteger)
+    index_field.setWidth(24)
+    final_watersheds_layer.CreateField(index_field)
+
+    for feature in watersheds_layer:
+        geometry = feature.GetGeometryRef()
+        new_feature = ogr.Feature(final_watersheds_layer.GetLayerDefn())
+        new_feature.SetField('ws_id', feature.GetField('ws_id'))
+        if cast_to_multipolygon:
+            geometry = ogr.ForceToMultiPolygon(geometry)
+        new_feature.SetGeometry(geometry)
+        final_watersheds_layer.CreateFeature(new_feature)
+
+    LOGGER.info(
+        'Consolidating %s fragments and copying field values to '
+        'watersheds layer.', polygonized_watersheds_layer.GetFeatureCount())
+    source_vector = gdal.OpenEx(outflow_vector_path, gdal.OF_VECTOR)
+    source_layer = source_vector.GetLayer()
+    watersheds_layer.CreateFields(source_layer.schema)
+
+
     polygonized_watersheds_layer = None
+    watersheds_layer = None
+    final_watersheds_layer = None
     if remove_temp_files:
         watersheds_vector.DeleteLayer('polygonized_watersheds')
+        watersheds_vector.DeleteLayer(temp_layer_name)
     LOGGER.info('Finished vector consolidation')
 
-    watersheds_layer = None
     watersheds_vector = None
     source_layer = None
     source_vector = None
