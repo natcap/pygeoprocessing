@@ -176,9 +176,6 @@ class WatershedDelineationTests(unittest.TestCase):
                                                 gdal.OF_VECTOR)
                 watersheds_layer = watersheds_vector.GetLayer(
                     'watersheds_something')
-                for feature in watersheds_layer:
-                    geom = feature.GetGeometryRef()
-                    print(geom.ExportToWkt())
                 self.assertEqual(watersheds_layer.GetFeatureCount(), 4)
                 self.assertEqual(watersheds_layer.GetGeomType(),
                                  ogr.wkbMultiPolygon)
@@ -203,6 +200,8 @@ class WatershedDelineationTests(unittest.TestCase):
                 id_to_fields = {}
                 for feature in watersheds_layer:
                     geometry = feature.GetGeometryRef()
+                    self.assertEqual(geometry.GetGeometryType(),
+                                     ogr.wkbMultiPolygon)
                     shapely_geom = shapely.wkb.loads(
                         bytes(geometry.ExportToWkb()))
                     self.assertEqual(
