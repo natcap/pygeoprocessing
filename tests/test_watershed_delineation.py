@@ -176,7 +176,12 @@ class WatershedDelineationTests(unittest.TestCase):
                                                 gdal.OF_VECTOR)
                 watersheds_layer = watersheds_vector.GetLayer(
                     'watersheds_something')
+                for feature in watersheds_layer:
+                    geom = feature.GetGeometryRef()
+                    print(geom.ExportToWkt())
                 self.assertEqual(watersheds_layer.GetFeatureCount(), 4)
+                self.assertEqual(watersheds_layer.GetGeomType(),
+                                 ogr.wkbMultiPolygon)
 
                 # All features should have the same watersheds, both in area
                 # and geometry.
