@@ -1,7 +1,11 @@
 Release History
 ===============
 
-.. Unreleased Changes
+Unreleased Changes
+------------------
+* Watershed delineation will now always create a layer of type MultiPolygon.
+  All features contained in this layer will subsequently be MultiPolygons.
+  https://github.com/natcap/pygeoprocessing/issues/435
 
 2.4.7 (2025-01-23)
 ------------------
