@@ -195,7 +195,7 @@ class WatershedDelineationTests(unittest.TestCase):
                 pygeoprocessing.shapely_geometry_to_vector(
                     [expected_watershed_geometry],
                     os.path.join(self.workspace_dir, 'foo.gpkg'), srs_wkt,
-                    'GPKG', ogr_geom_type=ogr.wkbGeometryCollection)
+                    'GPKG', ogr_geom_type=ogr.wkbPolygon)
 
                 id_to_fields = {}
                 for feature in watersheds_layer:
