@@ -254,16 +254,15 @@ def raster_calculator(
     # check that raster inputs are all the same dimensions
     raster_info_list = [
         get_raster_info(path_band[0])
-        for path_band in base_raster_path_band_const_list
-        if _is_raster_path_band_formatted(path_band)]
-    geospatial_info_set = set()
-    for raster_info in raster_info_list:
-        geospatial_info_set.add(raster_info['raster_size'])
-    if len(geospatial_info_set) > 1:
+        for path_band in base_raster_path_band_list]
+    geospatial_info = [
+        raster_info['raster_size'] for raster_info in raster_info_list]
+    if len(set(geospatial_info)) > 1:
         raise ValueError(
             "Input Rasters are not the same dimensions. The "
-            "following raster are not identical %s" % str(
-                geospatial_info_set))
+            "following raster are not identical: %s" % pprint.pformat(
+                [(path_band[0], dimensions) for (path_band, dimensions) in
+                zip(base_raster_path_band_list, geospatial_info)]))
 
     numpy_broadcast_list = [
         x for x in base_raster_path_band_const_list
@@ -436,6 +435,7 @@ def raster_calculator(
 
             pixels_processed = 0
             n_pixels = n_cols * n_rows
+            valid_pixel_count = 0
 
             # iterate over each block and calculate local_op
             for block_offset in block_offset_list:
@@ -490,7 +490,9 @@ def raster_calculator(
                 if stats_worker_queue:
                     # guard against an undefined nodata target
                     if nodata_target is not None:
-                        target_block = target_block[target_block != nodata_target]
+                        valid_mask = ~array_equals_nodata(target_block, nodata_target)
+                        valid_pixel_count += valid_mask.sum()
+                        target_block = target_block[valid_mask]
                     target_block = target_block.astype(numpy.float64).flatten()
 
                     if sys.version_info >= (3, 8) and use_shared_memory:
@@ -530,6 +532,9 @@ def raster_calculator(
                     target_band.SetStatistics(
                         float(target_min), float(target_max), float(target_mean),
                         float(target_stddev))
+                    target_band.SetMetadataItem(
+                        'STATISTICS_VALID_PERCENT',
+                        f'{(valid_pixel_count / n_pixels * 100):.2f}')
                     target_band.FlushCache()
         except Exception:
             LOGGER.exception('exception encountered in raster_calculator')
@@ -678,7 +683,7 @@ def raster_map(op, rasters, target_path, target_nodata=None, target_dtype=None,
         target_nodata = choose_nodata(target_dtype)
     else:
         if not numpy.can_cast(numpy.min_scalar_type(target_nodata),
-                              target_dtype):
+                              target_dtype, casting='same_kind'):
             raise ValueError(
                 f'Target nodata value {target_nodata} is incompatible with '
                 f'the target dtype {target_dtype}')
@@ -1559,7 +1564,7 @@ def zonal_statistics(
         aggregate_layer_name=None, ignore_nodata=True,
         polygons_might_overlap=True, include_value_counts=False,
         working_dir=None):
-    """Collect stats on pixel values which lie within polygons.
+    """Collect stats on pixel values which lie within polygons or multipolygons.
 
     This function summarizes raster statistics including min, max,
     mean, and pixel count over the regions on the raster that are
@@ -1650,6 +1655,10 @@ def zonal_statistics(
             if ``base_raster_path_band`` is incorrectly formatted, or if
             not all of the input raster bands are aligned with each other
 
+        ValueError
+            if ``aggregate_vector_path`` has a geometry type other than
+            Polygon or MultiPolygon
+
         RuntimeError
             if the aggregate vector or layer cannot be opened
 
@@ -1689,6 +1698,9 @@ def zonal_statistics(
         raise RuntimeError(
             f"Could not open layer {aggregate_layer_name} of {aggregate_vector_path}")
 
+    # Check that the vector geometry type is polygon or multipolygon
+    if aggregate_layer.GetGeomType() not in [ogr.wkbPolygon, ogr.wkbMultiPolygon]:
+        raise ValueError('Vector geometry type must be Polygon or MultiPolygon')
 
     # Define the default/empty statistics values
     # These values will be returned for features that have no geometry or
@@ -1712,7 +1724,7 @@ def zonal_statistics(
     target_layer = target_vector.CreateLayer(
         name=target_layer_id,
         srs=aggregate_layer.GetSpatialRef(),
-        geom_type=ogr.wkbPolygon)
+        geom_type=aggregate_layer.GetGeomType())
     fid_field_name = 'original_fid'
     target_layer.CreateField(ogr.FieldDefn(fid_field_name, ogr.OFTInteger))
     valid_fid_set = set()
@@ -2180,7 +2192,7 @@ def reproject_vector(
 
     target_sr = osr.SpatialReference(target_projection_wkt)
 
-    # create a new shapefile from the orginal_datasource
+    # create a new vector from the orginal_datasource
     target_driver = ogr.GetDriverByName(driver_name)
     target_vector = target_driver.CreateDataSource(target_path)
 
@@ -2277,8 +2289,19 @@ def reproject_vector(
         # source field
         for target_index, base_index in (
                 target_to_base_field_id_map.items()):
-            target_feature.SetField(
-                target_index, base_feature.GetField(base_index))
+            try:
+                target_feature.SetField(
+                    target_index, base_feature.GetField(base_index))
+            except RuntimeError:
+                try:
+                    target_feature.SetFieldBinary(
+                        target_index,
+                        base_feature.GetFieldAsBinary(base_index))
+                except RuntimeError as runtime_error:
+                    LOGGER.debug(
+                        f"Skipping copy field value for feature {feature_index}, "
+                        f"field {layer_dfn.GetFieldDefn(base_index).GetName()} "
+                        f"due to: {runtime_error}")
 
         target_layer.CreateFeature(target_feature)
         target_feature = None
@@ -4062,15 +4085,17 @@ def _convolve_2d_worker(
 
         # add zero padding so FFT is fast
         fshape = [_next_regular(int(d)) for d in shape]
+        f_axes_seq = range(len(fshape))
 
-        signal_fft = numpy.fft.rfftn(signal_block, fshape)
-        kernel_fft = numpy.fft.rfftn(kernel_block, fshape)
+        signal_fft = numpy.fft.rfftn(signal_block, fshape, f_axes_seq)
+        kernel_fft = numpy.fft.rfftn(kernel_block, fshape, f_axes_seq)
 
         # this variable determines the output slice that doesn't include
         # the padded array region made for fast FFTs.
         fslice = tuple([slice(0, int(sz)) for sz in shape])
         # classic FFT convolution
-        result = numpy.fft.irfftn(signal_fft * kernel_fft, fshape)[fslice]
+        result = numpy.fft.irfftn(
+            signal_fft * kernel_fft, fshape, f_axes_seq)[fslice]
         # nix any roundoff error
         if set_tol_to_zero is not None:
             result[numpy.isclose(result, set_tol_to_zero)] = 0.0
@@ -4079,9 +4104,9 @@ def _convolve_2d_worker(
         # nodata mask too
         if ignore_nodata:
             mask_fft = numpy.fft.rfftn(
-                numpy.where(signal_nodata_mask, 0.0, 1.0), fshape)
+                numpy.where(signal_nodata_mask, 0.0, 1.0), fshape, f_axes_seq)
             mask_result = numpy.fft.irfftn(
-                mask_fft * kernel_fft, fshape)[fslice]
+                mask_fft * kernel_fft, fshape, f_axes_seq)[fslice]
 
         left_index_result = 0
         right_index_result = result.shape[1]

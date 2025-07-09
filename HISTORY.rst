@@ -6,6 +6,26 @@ Unreleased Changes
 * Watershed delineation will now always create a layer of type MultiPolygon.
   All features contained in this layer will subsequently be MultiPolygons.
   https://github.com/natcap/pygeoprocessing/issues/435
+* ``raster_calculator`` ``calc_raster_stats=True`` will count the number
+  of non-nodata pixels in the target raster and write
+  'STATISTICS_VALID_PERCENT' metadata along with other stats.
+  https://github.com/natcap/pygeoprocessing/issues/431
+
+2.4.8 (2025-05-02)
+------------------
+* ``zonal_statistics`` raises an error if the vector is not a Polygon
+  or MultiPolygon geometry.
+  https://github.com/natcap/pygeoprocessing/issues/322
+* Handling a case in ``raster_map`` where an exception would be raised when a
+  float32 array was passed along with a float64 nodata value.
+  https://github.com/natcap/pygeoprocessing/issues/358
+* ``reproject_vector`` will skip copying field values from the base layer
+  to the target if doing so would raise a RuntimeError,
+  such as when a string value cannot be represented by UTF-8.
+  https://github.com/natcap/pygeoprocessing/issues/418
+* ``raster_band_percentile`` can now optionally log a warning if the raster
+  has a geographic CRS.
+  https://github.com/natcap/pygeoprocessing/issues/299
 
 2.4.7 (2025-01-23)
 ------------------

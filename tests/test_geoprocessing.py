@@ -956,7 +956,7 @@ class TestGeoprocessing(unittest.TestCase):
 
         srs = osr.SpatialReference()
         srs.ImportFromEPSG(4326)
-        layer = vector.CreateLayer('small_vector', srs=srs)
+        layer = vector.CreateLayer('small_vector', srs=srs, geom_type=ogr.wkbPolygon)
         layer.CreateField(ogr.FieldDefn('expected_value', ogr.OFTInteger))
         layer_defn = layer.GetLayerDefn()
 
@@ -1011,38 +1011,22 @@ class TestGeoprocessing(unittest.TestCase):
 
     def test_zonal_stats_no_bb_overlap(self):
         """PGP.geoprocessing: test no vector bb raster overlap."""
-        gpkg_driver = ogr.GetDriverByName('GPKG')
         vector_path = os.path.join(self.workspace_dir, 'vector.gpkg')
-        vector = gpkg_driver.CreateDataSource(vector_path)
-
-        srs = osr.SpatialReference()
-        srs.ImportFromEPSG(4326)
-        layer = vector.CreateLayer('small_vector', srs=srs)
-        layer_defn = layer.GetLayerDefn()
-
         # make an n x n raster with 2*m x 2*m polygons inside.
         pixel_size = 1
         subpixel_size = pixel_size / 5
         origin_x = 1
         origin_y = -1
         n = 16
-        layer.StartTransaction()
         x_pos = origin_x - n
         y_pos = origin_y + n
-        shapely_feature = shapely.geometry.Polygon([
+        geom = shapely.geometry.Polygon([
             (x_pos, y_pos),
             (x_pos+subpixel_size, y_pos),
             (x_pos+subpixel_size, y_pos-subpixel_size),
             (x_pos, y_pos-subpixel_size),
             (x_pos, y_pos)])
-        new_feature = ogr.Feature(layer_defn)
-        new_geometry = ogr.CreateGeometryFromWkb(shapely_feature.wkb)
-        new_feature.SetGeometry(new_geometry)
-        layer.CreateFeature(new_feature)
-        layer.CommitTransaction()
-        layer.SyncToDisk()
-        layer = None
-        vector = None
+        _geometry_to_vector([geom], vector_path, projection_epsg=4326)
 
         raster_path = os.path.join(self.workspace_dir, 'small_raster.tif')
         _array_to_raster(
@@ -1056,14 +1040,7 @@ class TestGeoprocessing(unittest.TestCase):
 
     def test_zonal_stats_all_outside(self):
         """PGP.geoprocessing: test vector all outside raster."""
-        gpkg_driver = ogr.GetDriverByName('GPKG')
         vector_path = os.path.join(self.workspace_dir, 'vector.gpkg')
-        vector = gpkg_driver.CreateDataSource(vector_path)
-
-        srs = osr.SpatialReference()
-        srs.ImportFromEPSG(4326)
-        layer = vector.CreateLayer('small_vector', srs=srs)
-        layer_defn = layer.GetLayerDefn()
 
         # make an n x n raster with 2*m x 2*m polygons inside.
         pixel_size = 1
@@ -1071,59 +1048,44 @@ class TestGeoprocessing(unittest.TestCase):
         origin_x = 1
         origin_y = -1
         n = 16
-        layer.StartTransaction()
         x_pos = origin_x - n
         y_pos = origin_y + n
-        shapely_feature = shapely.geometry.Polygon([
+        polygon_a = shapely.geometry.Polygon([
             (x_pos, y_pos),
             (x_pos+subpixel_size, y_pos),
             (x_pos+subpixel_size, y_pos-subpixel_size),
             (x_pos, y_pos-subpixel_size),
             (x_pos, y_pos)])
-        new_feature = ogr.Feature(layer_defn)
-        new_geometry = ogr.CreateGeometryFromWkb(shapely_feature.wkb)
-        new_feature.SetGeometry(new_geometry)
-        layer.CreateFeature(new_feature)
 
         x_pos = origin_x + n*2
         y_pos = origin_y - n*2
-        shapely_feature = shapely.geometry.Polygon([
+        polygon_b = shapely.geometry.Polygon([
             (x_pos, y_pos),
             (x_pos+subpixel_size, y_pos),
             (x_pos+subpixel_size, y_pos-subpixel_size),
             (x_pos, y_pos-subpixel_size),
             (x_pos, y_pos)])
-        new_feature = ogr.Feature(layer_defn)
-        new_geometry = ogr.CreateGeometryFromWkb(shapely_feature.wkb)
 
         x_pos = origin_x - subpixel_size*.99
         y_pos = origin_y + subpixel_size*.99
-        shapely_feature = shapely.geometry.Polygon([
+        polygon_c = shapely.geometry.Polygon([
             (x_pos, y_pos),
             (x_pos+subpixel_size, y_pos),
             (x_pos+subpixel_size, y_pos-subpixel_size),
             (x_pos, y_pos-subpixel_size),
             (x_pos, y_pos)])
-        new_feature = ogr.Feature(layer_defn)
-        new_geometry = ogr.CreateGeometryFromWkb(shapely_feature.wkb)
-        new_feature.SetGeometry(new_geometry)
-        layer.CreateFeature(new_feature)
 
         x_pos = origin_x + (n-.01)
         y_pos = origin_y - (n-.01)
-        shapely_feature = shapely.geometry.Polygon([
+        polygon_d = shapely.geometry.Polygon([
             (x_pos, y_pos),
             (x_pos+subpixel_size, y_pos),
             (x_pos+subpixel_size, y_pos-subpixel_size),
             (x_pos, y_pos-subpixel_size),
             (x_pos, y_pos)])
-        new_feature = ogr.Feature(layer_defn)
-        new_geometry = ogr.CreateGeometryFromWkb(shapely_feature.wkb)
-        new_feature.SetGeometry(new_geometry)
-        layer.CreateFeature(new_feature)
 
-        layer.CommitTransaction()
-        layer.SyncToDisk()
+        _geometry_to_vector([polygon_a, polygon_b, polygon_c, polygon_d],
+                            vector_path, projection_epsg=4326)
 
         # this will catch a polygon that barely intersects the upper left
         # hand corner but is nodata.
@@ -1323,7 +1285,6 @@ class TestGeoprocessing(unittest.TestCase):
              -pixel_size * n_pixels+origin[1]),
             (origin[0]+pixel_size * n_pixels, origin[1]),
             (origin[0], origin[1])])
-        origin = (444720, 3751320)
         polygon_b = shapely.geometry.Polygon([
             (origin[0], origin[1]),
             (origin[0], -pixel_size+origin[1]),
@@ -1371,6 +1332,48 @@ class TestGeoprocessing(unittest.TestCase):
                 'nodata_count': 0,
                 'sum': 0.0}}
         self.assertEqual(result, expected_result)
+
+    def test_zonal_statistics_multipolygon(self):
+        """PGP.geoprocessing: test zonal stats function with multipolygons."""
+        # create aggregating polygon
+        pixel_size = 30.0
+        n_pixels = 9
+        origin = (444720, 3751320)
+        polygon_a = shapely.geometry.Polygon([
+            (origin[0], origin[1]),
+            (origin[0], -pixel_size + origin[1]),
+            (origin[0] + pixel_size, -pixel_size + origin[1]),
+            (origin[0] + pixel_size, origin[1]),
+            (origin[0], origin[1])])
+        origin = (origin[0] + pixel_size, origin[1] - pixel_size)
+        polygon_b = shapely.geometry.Polygon([
+            (origin[0], origin[1]),
+            (origin[0], -pixel_size + origin[1]),
+            (origin[0] + pixel_size, -pixel_size + origin[1]),
+            (origin[0] + pixel_size, origin[1]),
+            (origin[0], origin[1])])
+        multipolygon = shapely.geometry.MultiPolygon([polygon_a, polygon_b])
+        aggregating_vector_path = os.path.join(
+            self.workspace_dir, 'aggregate_vector')
+        _geometry_to_vector([multipolygon], aggregating_vector_path)
+        pixel_matrix = numpy.ones((n_pixels, n_pixels), numpy.float32)
+        target_nodata = None
+        raster_path = os.path.join(self.workspace_dir, 'raster.tif')
+        _array_to_raster(
+            pixel_matrix, target_nodata, raster_path)
+        result = pygeoprocessing.zonal_statistics(
+            (raster_path, 1), aggregating_vector_path,
+            aggregate_layer_name=None,
+            ignore_nodata=True,
+            polygons_might_overlap=True)
+        self.assertEqual(result, {
+            0: {
+                'count': 2,
+                'max': 1.0,
+                'min': 1.0,
+                'nodata_count': 0,
+                'sum': 2
+        }})
 
     def test_zonal_statistics_value_counts(self):
         """PGP.geoprocessing: test zonal stats function (value counts)."""
@@ -1926,7 +1929,7 @@ class TestGeoprocessing(unittest.TestCase):
         base_a_raster_info = pygeoprocessing.get_raster_info(base_a_path)
         pygeoprocessing.warp_raster(
             base_a_path, base_a_raster_info['pixel_size'], target_raster_path,
-            'near', vector_mask_options={'mask_raster_path': mask_raster_path})
+            'near', mask_options={'mask_raster_path': mask_raster_path})
 
         expected_matrix = numpy.ones((5, 5), numpy.int16)
         expected_matrix[0, 0] = target_nodata
@@ -2369,6 +2372,36 @@ class TestGeoprocessing(unittest.TestCase):
             numpy.isclose(
                 pygeoprocessing.raster_to_numpy_array(base_path),
                 pygeoprocessing.raster_to_numpy_array(target_path)).all())
+
+    def test_raster_calculator_stats(self):
+        """PGP.geoprocessing: raster_calculator test stats are saved."""
+        blocksize = 5
+        pixel_matrix = numpy.ones((blocksize*2, blocksize*2), numpy.int16)
+        target_nodata = -1
+        pixel_matrix[:1] = target_nodata
+        base_path = os.path.join(self.workspace_dir, 'base.tif')
+        _array_to_raster(pixel_matrix, target_nodata, base_path)
+
+        target_path = os.path.join(self.workspace_dir, 'subdir', 'target.tif')
+        # Test with multiple blocks by limiting largest_block
+        pygeoprocessing.raster_calculator(
+            [(base_path, 1)], passthrough, target_path,
+            gdal.GDT_Int32, target_nodata, calc_raster_stats=True,
+            use_shared_memory=True, largest_block=blocksize)
+
+        raster = gdal.OpenEx(target_path)
+        band = raster.GetRasterBand(1)
+        metadata = band.GetMetadata()
+        raster = band = None
+        expected_metadata = {  # gdal metadata are represented as strings
+            'STATISTICS_MINIMUM': '1',
+            'STATISTICS_MAXIMUM': '1',
+            'STATISTICS_MEAN': '1',
+            'STATISTICS_STDDEV': '0',
+            'STATISTICS_VALID_PERCENT': '90.00'}
+        for key, value in expected_metadata.items():
+            self.assertIn(key, metadata)
+            self.assertEqual(metadata[key], value)
 
     def test_raster_calculator_multiprocessing(self):
         """PGP.geoprocessing: raster_calculator identity test."""
@@ -4202,7 +4235,7 @@ class TestGeoprocessing(unittest.TestCase):
             resample_method_list,
             base_a_raster_info['pixel_size'], bounding_box_mode,
             raster_align_index=0,
-            vector_mask_options={
+            mask_options={
                 'mask_vector_path': dual_poly_path,
                 'mask_layer_name': 'dual_poly',
             },
@@ -4220,7 +4253,7 @@ class TestGeoprocessing(unittest.TestCase):
             resample_method_list,
             base_a_raster_info['pixel_size'], bounding_box_mode,
             raster_align_index=0,
-            vector_mask_options={
+            mask_options={
                 'mask_vector_path': dual_poly_path,
                 'mask_layer_name': 'dual_poly',
                 'mask_vector_where_filter': 'value=1',
@@ -4276,7 +4309,7 @@ class TestGeoprocessing(unittest.TestCase):
             (111000/2, -111000/2), poly_bb_transform,
             raster_align_index=0,
             target_projection_wkt=utm_31w_srs.ExportToWkt(),
-            vector_mask_options={
+            mask_options={
                 'mask_vector_path': poly_path,
                 'mask_layer_name': 'poly',
                 'mask_vector_where_filter': 'value=100'
@@ -4332,7 +4365,7 @@ class TestGeoprocessing(unittest.TestCase):
                 resample_method_list,
                 base_a_raster_info['pixel_size'], bounding_box_mode,
                 raster_align_index=0,
-                vector_mask_options={
+                mask_options={
                     'mask_vector_path': dual_poly_path,
                     'mask_layer_name': 'dual_poly',
                 })
@@ -4346,7 +4379,7 @@ class TestGeoprocessing(unittest.TestCase):
                 resample_method_list,
                 base_a_raster_info['pixel_size'], bounding_box_mode,
                 raster_align_index=0,
-                vector_mask_options={
+                mask_options={
                     'bad_mask_vector_path': dual_poly_path,
                     'mask_layer_name': 'dual_poly',
                 })
@@ -4358,7 +4391,7 @@ class TestGeoprocessing(unittest.TestCase):
             pygeoprocessing.warp_raster(
                 base_a_path, base_a_raster_info['pixel_size'],
                 target_path, 'near',
-                vector_mask_options={
+                mask_options={
                     'bad_mask_vector_path': dual_poly_path,
                     'mask_layer_name': 'dual_poly',
                 })
@@ -4370,7 +4403,7 @@ class TestGeoprocessing(unittest.TestCase):
             pygeoprocessing.warp_raster(
                 base_a_path, base_a_raster_info['pixel_size'],
                 target_path, 'near',
-                vector_mask_options={
+                mask_options={
                     'mask_vector_path': 'not_a_file.shp',
                     'mask_layer_name': 'dual_poly',
                 })
@@ -4440,6 +4473,42 @@ class TestGeoprocessing(unittest.TestCase):
         expected_message = 'Invalid value for'
         actual_message = str(cm.exception)
         self.assertIn(expected_message, actual_message)
+
+    def test_raster_band_percentile_warning(self):
+        """PGP: test raster_band_percentile geographic CRS warning."""
+        geo_raster_path = os.path.join(self.workspace_dir, 'geo_raster.tif')
+        _array_to_raster(
+            numpy.ones((10,10)), 0, geo_raster_path,
+            projection_epsg=4326) # Geographic CRS
+        proj_raster_path = os.path.join(self.workspace_dir, 'proj_raster.tif')
+        _array_to_raster(
+            numpy.ones((10,10)), 0, proj_raster_path,
+            projection_epsg=3116) # Projected CRS
+
+        percentile_cutoffs = [0.0]*5
+        working_dir = os.path.join(
+            self.workspace_dir, 'percentile_working_dir')
+
+        with capture_logging(
+                logging.getLogger('pygeoprocessing')) as log_messages:
+            pygeoprocessing.raster_band_percentile(
+                (geo_raster_path, 1), working_dir, percentile_cutoffs,
+                heap_buffer_size=8, ffi_buffer_size=4,
+                geographic_crs_warn=True)
+        self.assertEqual(len(log_messages), 1)
+        self.assertEqual(log_messages[0].levelno, logging.WARNING)
+        self.assertIn('geographic CRS', log_messages[0].msg)
+
+        with capture_logging(
+                logging.getLogger('pygeoprocessing')) as log_messages:
+            pygeoprocessing.raster_band_percentile(
+                (proj_raster_path, 1), working_dir, percentile_cutoffs,
+                heap_buffer_size=8, ffi_buffer_size=4,
+                geographic_crs_warn=True)
+        self.assertEqual(len(log_messages), 0)
+
+        self.assertTrue(
+            not os.path.exists(working_dir), 'working dir was not deleted')
 
     def test_percentile_int_type(self):
         """PGP: test percentile with int type."""
@@ -5477,6 +5546,21 @@ class TestGeoprocessing(unittest.TestCase):
         self.assertEqual(len(log_messages), 1)
         self.assertEqual(log_messages[0].levelno, logging.WARNING)
         self.assertIn('has more than one band', log_messages[0].msg)
+
+    def test_raster_map_different_nodata_and_array_dtypes(self):
+        """PGP: raster_map can handle similar dtypes for nodata and arrays."""
+        band_1_array = numpy.array([[1, 1], [1, 1]], dtype=numpy.float32)
+        nodata = float(numpy.finfo(numpy.float32).min)  # this is a float64
+        source_path = os.path.join(self.workspace_dir, 'float32.tif')
+        _array_to_raster(band_1_array, nodata, source_path)
+
+        target_path = os.path.join(self.workspace_dir, 'target.tif')
+        pygeoprocessing.raster_map(lambda a: a, [source_path], target_path,
+                                   target_nodata=nodata)
+
+        expected_array = numpy.array(band_1_array, dtype=numpy.float32)
+        numpy.testing.assert_allclose(
+            expected_array, pygeoprocessing.raster_to_numpy_array(target_path))
 
     def test_choose_dtype(self):
         """PGP: choose_dtype picks smallest safe dtype for raster output."""
