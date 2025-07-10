@@ -177,6 +177,8 @@ class WatershedDelineationTests(unittest.TestCase):
                 watersheds_layer = watersheds_vector.GetLayer(
                     'watersheds_something')
                 self.assertEqual(watersheds_layer.GetFeatureCount(), 4)
+                self.assertEqual(watersheds_layer.GetGeomType(),
+                                 ogr.wkbMultiPolygon)
 
                 # All features should have the same watersheds, both in area
                 # and geometry.
@@ -193,11 +195,13 @@ class WatershedDelineationTests(unittest.TestCase):
                 pygeoprocessing.shapely_geometry_to_vector(
                     [expected_watershed_geometry],
                     os.path.join(self.workspace_dir, 'foo.gpkg'), srs_wkt,
-                    'GPKG', ogr_geom_type=ogr.wkbGeometryCollection)
+                    'GPKG', ogr_geom_type=ogr.wkbPolygon)
 
                 id_to_fields = {}
                 for feature in watersheds_layer:
                     geometry = feature.GetGeometryRef()
+                    self.assertEqual(geometry.GetGeometryType(),
+                                     ogr.wkbMultiPolygon)
                     shapely_geom = shapely.wkb.loads(
                         bytes(geometry.ExportToWkb()))
                     self.assertEqual(

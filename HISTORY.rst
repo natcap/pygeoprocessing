@@ -1,7 +1,11 @@
 Release History
 ===============
 
-.. Unreleased Changes
+Unreleased Changes
+------------------
+* Watershed delineation will now always create a layer of type MultiPolygon.
+  All features contained in this layer will subsequently be MultiPolygons.
+  https://github.com/natcap/pygeoprocessing/issues/435
 * ``raster_calculator`` ``calc_raster_stats=True`` will count the number
   of non-nodata pixels in the target raster and write
   'STATISTICS_VALID_PERCENT' metadata along with other stats.

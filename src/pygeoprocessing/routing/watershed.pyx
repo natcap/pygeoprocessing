@@ -729,13 +729,12 @@ def delineate_watersheds_d8(
     polygonized_watersheds_layer = watersheds_vector.CreateLayer(
         'polygonized_watersheds', watersheds_srs, ogr.wkbPolygon)
 
-    # Using wkbUnknown layer data type because it's possible for a single
-    # watershed to have several disjoint components, and inserting a
-    # Polygon geometry into a MultiPolygon layer (or vice versa) is
-    # technically not supported by the GPKG standard although GDAL
-    # allows it for the time being.
+    # Using wkbMultiPolygon for this layer because GDAL's polygonize function
+    # may create multiple polygons for a single watershed feature, and we want
+    # all geometries for a single watershed to be represented in a single
+    # feature.
     watersheds_layer = watersheds_vector.CreateLayer(
-        target_layer_name, watersheds_srs, ogr.wkbUnknown)
+        target_layer_name, watersheds_srs, ogr.wkbMultiPolygon)
     index_field = ogr.FieldDefn('ws_id', ogr.OFTInteger)
     index_field.SetWidth(24)
     polygonized_watersheds_layer.CreateField(index_field)
@@ -1000,7 +999,7 @@ def delineate_watersheds_d8(
                 new_geometry.AddGeometry(duplicate_geometry)
 
         watershed_feature = ogr.Feature(watersheds_layer.GetLayerDefn())
-        watershed_feature.SetGeometry(new_geometry)
+        watershed_feature.SetGeometry(ogr.ForceToMultiPolygon(new_geometry))
 
         source_feature = source_layer.GetFeature(ws_id)
         for field_name, field_value in source_feature.items().items():
@@ -1009,11 +1008,11 @@ def delineate_watersheds_d8(
     watersheds_layer.CommitTransaction()
 
     polygonized_watersheds_layer = None
+    watersheds_layer = None
     if remove_temp_files:
         watersheds_vector.DeleteLayer('polygonized_watersheds')
     LOGGER.info('Finished vector consolidation')
 
-    watersheds_layer = None
     watersheds_vector = None
     source_layer = None
     source_vector = None
