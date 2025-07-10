@@ -1,7 +1,7 @@
 Release History
 ===============
 
-Unreleased Changes
+2.4.9 (2025-07-10)
 ------------------
 * Watershed delineation will now always create a layer of type MultiPolygon.
   All features contained in this layer will subsequently be MultiPolygons.
