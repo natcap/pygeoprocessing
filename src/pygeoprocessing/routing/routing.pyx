@@ -62,7 +62,7 @@ import scipy.stats
 
 from ..geoprocessing_core import DEFAULT_OSR_AXIS_MAPPING_STRATEGY
 from ..geoprocessing_core import gdal_use_exceptions, GDALUseExceptions
-from ..managed_raster.managed_raster cimport ManagedRaster, is_close
+from ..extensions.extensions cimport ManagedRaster, is_close
 import pygeoprocessing
 
 LOGGER = logging.getLogger(__name__)
