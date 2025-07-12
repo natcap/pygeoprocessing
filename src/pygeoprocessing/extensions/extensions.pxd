@@ -8,6 +8,14 @@ from libcpp.string cimport string
 from libcpp.vector cimport vector
 from libc.math cimport isnan
 
+cdef extern from "FastFileIterator.h" nogil:
+    cdef cppclass FastFileIterator[DATA_T]:
+        FastFileIterator(const char*, size_t)
+        DATA_T next()
+        size_t size()
+    int FastFileIteratorCompare[DATA_T](FastFileIterator[DATA_T]*,
+                                        FastFileIterator[DATA_T]*)
+
 # this is a least recently used cache written in C++ in an external file,
 # exposing here so ManagedRaster can use it
 cdef extern from "LRUCache.h" nogil:

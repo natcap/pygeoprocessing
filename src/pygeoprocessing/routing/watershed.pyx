@@ -27,7 +27,7 @@ import shapely.wkb
 
 import pygeoprocessing
 from ..geoprocessing_core import gdal_use_exceptions, GDALUseExceptions
-from ..extensions.extensions cimport ManagedRaster
+from ..extensions cimport ManagedRaster
 
 LOGGER = logging.getLogger(__name__)
 

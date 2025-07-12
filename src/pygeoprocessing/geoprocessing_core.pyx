@@ -27,6 +27,7 @@ from osgeo import gdal
 from osgeo import osr
 import numpy
 import pygeoprocessing
+from .extensions cimport FastFileIterator, FastFileIteratorCompare
 
 
 DEFAULT_CREATION_OPTIONS = ('TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
@@ -80,14 +81,6 @@ def gdal_use_exceptions(func):
 
 
 cdef float _NODATA = -1.0
-
-cdef extern from "FastFileIterator.h" nogil:
-    cdef cppclass FastFileIterator[DATA_T]:
-        FastFileIterator(const char*, size_t)
-        DATA_T next()
-        size_t size()
-    int FastFileIteratorCompare[DATA_T](FastFileIterator[DATA_T]*,
-                                        FastFileIterator[DATA_T]*)
 
 # This resolves an issue on Mac OS X Catalina where cimporting ``push_heap``
 # and ``pop_heap`` from the Standard Library would cause compilation to fail
