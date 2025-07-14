@@ -1,5 +1,6 @@
 """setup.py module for PyGeoprocessing."""
 import platform
+import subprocess
 
 import numpy
 from Cython.Build import cythonize
