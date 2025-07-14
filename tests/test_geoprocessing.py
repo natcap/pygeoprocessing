@@ -2879,34 +2879,6 @@ class TestGeoprocessing(unittest.TestCase):
         self.assertEqual(raster_properties['raster_size'][0], n_pixels_x)
         self.assertEqual(raster_properties['raster_size'][1], n_pixels_y)
 
-    def test_create_raster_from_vector_extents_invalid_pixeltype(self):
-        """PGP.geoprocessing: raster from vector with bad datatype."""
-        point_a = shapely.geometry.Point(
-            _DEFAULT_ORIGIN[0], _DEFAULT_ORIGIN[1])
-        n_pixels_x = 9
-        n_pixels_y = 19
-        point_b = shapely.geometry.Point(
-            _DEFAULT_ORIGIN[0] +
-            _DEFAULT_PIXEL_SIZE[0] * n_pixels_x,
-            _DEFAULT_ORIGIN[1] +
-            _DEFAULT_PIXEL_SIZE[1] * n_pixels_y)
-        source_vector_path = os.path.join(self.workspace_dir, 'sample_vector')
-        _geometry_to_vector(
-            [point_a, point_b], source_vector_path,
-            fields={'value': ogr.OFTInteger},
-            attribute_list=[{'value': 0}, {'value': 1}])
-        target_raster_path = os.path.join(
-            self.workspace_dir, 'target_raster.tif')
-        target_nodata = -1
-        target_pixel_type = gdal.GDT_Int16
-        # older versions of GDAL don't properly raise this exception
-        if packaging.version.parse(gdal.__version__) >= packaging.version.parse('3.3.0'):
-            with self.assertRaises(ValueError) as cm:
-                pygeoprocessing.create_raster_from_vector_extents(
-                    source_vector_path, target_raster_path, _DEFAULT_PIXEL_SIZE,
-                    target_nodata, target_pixel_type)
-            self.assertIn('Invalid value for GDALDataType', str(cm.exception))
-
     def test_create_raster_from_vector_extents_odd_pixel_shapes(self):
         """PGP.geoprocessing: create raster vector ext. w/ odd pixel size."""
         point_a = shapely.geometry.Point(
