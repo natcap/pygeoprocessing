@@ -55,6 +55,7 @@ setup(
         'pygeoprocessing',
         'pygeoprocessing.routing',
         'pygeoprocessing.multiprocessing',
+        'pygeoprocessing.extensions'
     ],
     package_dir={
         'pygeoprocessing': 'src/pygeoprocessing'
