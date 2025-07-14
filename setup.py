@@ -17,27 +17,33 @@ LONG_DESCRIPTION = open('README.rst').read().format(
     requirements='\n'.join(['    ' + r for r in _REQUIREMENTS]))
 LONG_DESCRIPTION += '\n' + open('HISTORY.rst').read() + '\n'
 
+include_dirs = [
+    numpy.get_include(),
+    'src/pygeoprocessing/routing',
+    'src/pygeoprocessing/extensions']
 if platform.system() == 'Windows':
     compiler_args = ['/std:c++20']
     compiler_and_linker_args = []
-    if 'NATCAP_INVEST_GDAL_LIB_PATH' not in os.environ:
+    if 'PYGEOPROCESSING_GDAL_LIB_PATH' not in os.environ:
         raise RuntimeError(
-            'env variable NATCAP_INVEST_GDAL_LIB_PATH is not defined. '
+            'env variable PYGEOPROCESSING_GDAL_LIB_PATH is not defined. '
             'This env variable is required when building on Windows. If '
             'using conda to manage your gdal installation, you may set '
-            'NATCAP_INVEST_GDAL_LIB_PATH=%CONDA_PREFIX%/Library".')
+            'PYGEOPROCESSING_GDAL_LIB_PATH=%CONDA_PREFIX%/Library".')
     library_dirs = [os.path.join(
-        os.environ["NATCAP_INVEST_GDAL_LIB_PATH"].rstrip(), "lib")]
-    # include_dirs.append(os.path.join(
-    #     os.environ["NATCAP_INVEST_GDAL_LIB_PATH"].rstrip(), "include"))
+        os.environ["PYGEOPROCESSING_GDAL_LIB_PATH"].rstrip(), "lib")]
+    include_dirs.append(os.path.join(
+        os.environ["PYGEOPROCESSING_GDAL_LIB_PATH"].rstrip(), "include"))
 else:
     compiler_args = [subprocess.run(
         ['gdal-config', '--cflags'], capture_output=True, text=True
     ).stdout.strip()]
+    print(compiler_args)
     compiler_and_linker_args = ['-std=c++20']
     library_dirs = [subprocess.run(
         ['gdal-config', '--libs'], capture_output=True, text=True
     ).stdout.split()[0][2:]] # get the first argument which is the library path
+    print(library_dirs)
 
 setup(
     name='pygeoprocessing',
@@ -62,10 +68,7 @@ setup(
         Extension(
             name="pygeoprocessing.routing.routing",
             sources=["src/pygeoprocessing/routing/routing.pyx"],
-            include_dirs=[
-                numpy.get_include(),
-                'src/pygeoprocessing/routing',
-                'src/pygeoprocessing/extensions'],
+            include_dirs=include_dirs,
             library_dirs=library_dirs,
             extra_compile_args=compiler_args + compiler_and_linker_args,
             extra_link_args=compiler_and_linker_args,
@@ -75,10 +78,7 @@ setup(
         Extension(
             "pygeoprocessing.routing.watershed",
             sources=["src/pygeoprocessing/routing/watershed.pyx"],
-            include_dirs=[
-                numpy.get_include(),
-                'src/pygeoprocessing/routing',
-                'src/pygeoprocessing/extensions'],
+            include_dirs=include_dirs,
             library_dirs=library_dirs,
             extra_compile_args=compiler_args + compiler_and_linker_args,
             extra_link_args=compiler_and_linker_args,
@@ -89,7 +89,7 @@ setup(
             "pygeoprocessing.geoprocessing_core",
             sources=[
                 'src/pygeoprocessing/geoprocessing_core.pyx'],
-            include_dirs=[numpy.get_include(), 'src/pygeoprocessing/extensions'],
+            include_dirs=include_dirs,
             library_dirs=library_dirs,
             extra_compile_args=compiler_args + compiler_and_linker_args,
             extra_link_args=compiler_and_linker_args,
