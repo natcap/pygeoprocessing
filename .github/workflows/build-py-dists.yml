@@ -45,6 +45,7 @@ jobs:
                   gdal
                   setuptools
                   python-build
+                environment-name: env
 
             - name: Build wheel
               run: PYGEOPROCESSING_GDAL_LIB_PATH="$CONDA_PREFIX/Library" python -m build --wheel
@@ -77,6 +78,7 @@ jobs:
                   gdal
                   setuptools
                   python-build
+                environment-name: env
 
             - name: Build source distribution
               run: python -m build --sdist
