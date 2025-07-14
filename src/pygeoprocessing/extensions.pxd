@@ -8,7 +8,7 @@ from libcpp.string cimport string
 from libcpp.vector cimport vector
 from libc.math cimport isnan
 
-cdef extern from "FastFileIterator.h" nogil:
+cdef extern from "extensions/FastFileIterator.h" nogil:
     cdef cppclass FastFileIterator[DATA_T]:
         FastFileIterator(const char*, size_t)
         DATA_T next()
@@ -18,7 +18,7 @@ cdef extern from "FastFileIterator.h" nogil:
 
 # this is a least recently used cache written in C++ in an external file,
 # exposing here so ManagedRaster can use it
-cdef extern from "LRUCache.h" nogil:
+cdef extern from "extensions/LRUCache.h" nogil:
     cdef cppclass LRUCache[KEY_T, VAL_T]:
         LRUCache(int)
         void put(KEY_T&, VAL_T&, clist[pair[KEY_T,VAL_T]]&)
@@ -27,7 +27,7 @@ cdef extern from "LRUCache.h" nogil:
         bint exist(KEY_T &)
         VAL_T get(KEY_T &)
 
-cdef extern from "ManagedRaster.h":
+cdef extern from "extensions/ManagedRaster.h":
     cdef cppclass ManagedRaster:
         LRUCache[int, double*]* lru_cache
         cset[int] dirty_blocks
