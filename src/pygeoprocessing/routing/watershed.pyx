@@ -564,6 +564,7 @@ def delineate_watersheds_d8(
                     process_queue_set.insert(neighbor_pixel)
 
         watersheds_created += 1
+        flow_dir_managed_raster.close()
         scratch_managed_raster.close()
 
         # Build a VRT from the bounds of the affected pixels before
