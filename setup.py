@@ -1,4 +1,5 @@
 """setup.py module for PyGeoprocessing."""
+import os
 import platform
 import subprocess
 
@@ -64,7 +65,7 @@ setup(
             include_dirs=[
                 numpy.get_include(),
                 'src/pygeoprocessing/routing',
-                'src/pygeoprocessing/managed_raster'],
+                'src/pygeoprocessing/extensions'],
             library_dirs=library_dirs,
             extra_compile_args=compiler_args + compiler_and_linker_args,
             extra_link_args=compiler_and_linker_args,
@@ -77,7 +78,7 @@ setup(
             include_dirs=[
                 numpy.get_include(),
                 'src/pygeoprocessing/routing',
-                'src/pygeoprocessing/managed_raster'],
+                'src/pygeoprocessing/extensions'],
             library_dirs=library_dirs,
             extra_compile_args=compiler_args + compiler_and_linker_args,
             extra_link_args=compiler_and_linker_args,
@@ -88,7 +89,7 @@ setup(
             "pygeoprocessing.geoprocessing_core",
             sources=[
                 'src/pygeoprocessing/geoprocessing_core.pyx'],
-            include_dirs=[numpy.get_include()],
+            include_dirs=[numpy.get_include(), 'src/pygeoprocessing/extensions'],
             library_dirs=library_dirs,
             extra_compile_args=compiler_args + compiler_and_linker_args,
             extra_link_args=compiler_and_linker_args,
