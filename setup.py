@@ -19,14 +19,14 @@ LONG_DESCRIPTION += '\n' + open('HISTORY.rst').read() + '\n'
 if platform.system() == 'Windows':
     compiler_args = ['/std:c++20']
     compiler_and_linker_args = []
-    # if 'NATCAP_INVEST_GDAL_LIB_PATH' not in os.environ:
-    #     raise RuntimeError(
-    #         'env variable NATCAP_INVEST_GDAL_LIB_PATH is not defined. '
-    #         'This env variable is required when building on Windows. If '
-    #         'using conda to manage your gdal installation, you may set '
-    #         'NATCAP_INVEST_GDAL_LIB_PATH=%CONDA_PREFIX%/Library".')
-    # library_dirs = [os.path.join(
-    #     os.environ["NATCAP_INVEST_GDAL_LIB_PATH"].rstrip(), "lib")]
+    if 'NATCAP_INVEST_GDAL_LIB_PATH' not in os.environ:
+        raise RuntimeError(
+            'env variable NATCAP_INVEST_GDAL_LIB_PATH is not defined. '
+            'This env variable is required when building on Windows. If '
+            'using conda to manage your gdal installation, you may set '
+            'NATCAP_INVEST_GDAL_LIB_PATH=%CONDA_PREFIX%/Library".')
+    library_dirs = [os.path.join(
+        os.environ["NATCAP_INVEST_GDAL_LIB_PATH"].rstrip(), "lib")]
     # include_dirs.append(os.path.join(
     #     os.environ["NATCAP_INVEST_GDAL_LIB_PATH"].rstrip(), "include"))
 else:
@@ -34,9 +34,9 @@ else:
         ['gdal-config', '--cflags'], capture_output=True, text=True
     ).stdout.strip()]
     compiler_and_linker_args = ['-std=c++20']
-    # library_dirs = [subprocess.run(
-    #     ['gdal-config', '--libs'], capture_output=True, text=True
-    # ).stdout.split()[0][2:]] # get the first argument which is the library path
+    library_dirs = [subprocess.run(
+        ['gdal-config', '--libs'], capture_output=True, text=True
+    ).stdout.split()[0][2:]] # get the first argument which is the library path
 
 setup(
     name='pygeoprocessing',
@@ -65,6 +65,7 @@ setup(
                 numpy.get_include(),
                 'src/pygeoprocessing/routing',
                 'src/pygeoprocessing/managed_raster'],
+            library_dirs=library_dirs,
             extra_compile_args=compiler_args + compiler_and_linker_args,
             extra_link_args=compiler_and_linker_args,
             define_macros=[('NPY_NO_DEPRECATED_API', 'NPY_1_7_API_VERSION')],
@@ -77,6 +78,7 @@ setup(
                 numpy.get_include(),
                 'src/pygeoprocessing/routing',
                 'src/pygeoprocessing/managed_raster'],
+            library_dirs=library_dirs,
             extra_compile_args=compiler_args + compiler_and_linker_args,
             extra_link_args=compiler_and_linker_args,
             define_macros=[('NPY_NO_DEPRECATED_API', 'NPY_1_7_API_VERSION')],
@@ -87,6 +89,7 @@ setup(
             sources=[
                 'src/pygeoprocessing/geoprocessing_core.pyx'],
             include_dirs=[numpy.get_include()],
+            library_dirs=library_dirs,
             extra_compile_args=compiler_args + compiler_and_linker_args,
             extra_link_args=compiler_and_linker_args,
             define_macros=[('NPY_NO_DEPRECATED_API', 'NPY_1_7_API_VERSION')],
