@@ -32,18 +32,16 @@ if platform.system() == 'Windows':
             'PYGEOPROCESSING_GDAL_LIB_PATH=%CONDA_PREFIX%/Library".')
     library_dirs = [os.path.join(
         os.environ["PYGEOPROCESSING_GDAL_LIB_PATH"].rstrip(), "lib")]
-    include_dirs.append(os.path.join(
-        os.environ["PYGEOPROCESSING_GDAL_LIB_PATH"].rstrip(), "include"))
+    # include_dirs.append(os.path.join(
+    #     os.environ["PYGEOPROCESSING_GDAL_LIB_PATH"].rstrip(), "include"))
 else:
     compiler_args = [subprocess.run(
         ['gdal-config', '--cflags'], capture_output=True, text=True
     ).stdout.strip()]
-    print(compiler_args)
     compiler_and_linker_args = ['-std=c++20']
     library_dirs = [subprocess.run(
         ['gdal-config', '--libs'], capture_output=True, text=True
     ).stdout.split()[0][2:]] # get the first argument which is the library path
-    print(library_dirs)
 
 setup(
     name='pygeoprocessing',
