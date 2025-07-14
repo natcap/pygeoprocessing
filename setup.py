@@ -32,8 +32,8 @@ if platform.system() == 'Windows':
             'PYGEOPROCESSING_GDAL_LIB_PATH=%CONDA_PREFIX%/Library".')
     library_dirs = [os.path.join(
         os.environ["PYGEOPROCESSING_GDAL_LIB_PATH"].rstrip(), "lib")]
-    # include_dirs.append(os.path.join(
-    #     os.environ["PYGEOPROCESSING_GDAL_LIB_PATH"].rstrip(), "include"))
+    include_dirs.append(os.path.join(
+        os.environ["PYGEOPROCESSING_GDAL_LIB_PATH"].rstrip(), "include"))
 else:
     compiler_args = [subprocess.run(
         ['gdal-config', '--cflags'], capture_output=True, text=True
