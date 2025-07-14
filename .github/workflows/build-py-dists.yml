@@ -28,7 +28,7 @@ jobs:
               run: python -m pip install build
 
             - name: Build wheel
-              run: python -m build --wheel
+              run: PYGEOPROCESSING_GDAL_LIB_PATH="$CONDA_PREFIX/Library" python -m build --wheel
 
             - uses: actions/upload-artifact@v4
               with:

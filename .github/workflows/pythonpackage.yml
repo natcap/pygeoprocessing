@@ -60,7 +60,7 @@ jobs:
 
       - name: Build and Install PyGeoprocessing
         run: |
-            python -m build --wheel --verbose
+            PYGEOPROCESSING_GDAL_LIB_PATH="$CONDA_PREFIX/Library" python -m build --wheel --verbose
             python -m pip install $(find dist -name "*.whl")
 
       - name: Test with pytest
