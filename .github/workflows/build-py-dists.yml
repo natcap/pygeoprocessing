@@ -11,6 +11,10 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+defaults:
+  run:
+    shell: bash -l {0}
+
 jobs:
     build-wheels:
         name: Wheel
@@ -30,13 +34,17 @@ jobs:
             - name: Fetch git tags
               run: git fetch origin +refs/tags/*:refs/tags/*
 
-            - name: Set up python ${{ matrix.python-version }}
-              uses: actions/setup-python@v5
+            - name: setup-micromamba
+              uses: mamba-org/setup-micromamba@v1
               with:
-                  python-version: ${{ matrix.python-version }}
-
-            - name: Install dependencies
-              run: python -m pip install build
+                condarc: |
+                  channels:
+                    - conda-forge
+                create-args: >-
+                  python=3.13
+                  gdal
+                  setuptools
+                  python-build
 
             - name: Build wheel
               run: PYGEOPROCESSING_GDAL_LIB_PATH="$CONDA_PREFIX/Library" python -m build --wheel
@@ -58,13 +66,17 @@ jobs:
             - name: Fetch git tags
               run: git fetch origin +refs/tags/*:refs/tags/*
 
-            - name: Set up python
-              uses: actions/setup-python@v5
+            - name: setup-micromamba
+              uses: mamba-org/setup-micromamba@v1
               with:
-                  python-version: 3.13
-
-            - name: Install dependencies
-              run: python -m pip install build
+                condarc: |
+                  channels:
+                    - conda-forge
+                create-args: >-
+                  python=3.13
+                  gdal
+                  setuptools
+                  python-build
 
             - name: Build source distribution
               run: python -m build --sdist
