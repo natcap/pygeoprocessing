@@ -26,7 +26,7 @@ import shapely.prepared
 import shapely.wkb
 
 import pygeoprocessing
-from ..geoprocessing_core import gdal_use_exceptions, GDALUseExceptions,
+from ..geoprocessing_core import gdal_use_exceptions, GDALUseExceptions
 from ..geoprocessing_core import SPARSE_CREATION_OPTIONS
 from ..extensions cimport ManagedRaster
 

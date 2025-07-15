@@ -27,7 +27,7 @@ from osgeo import gdal
 from osgeo import osr
 import numpy
 import pygeoprocessing
-from .extensions cimport FastFileIterator, FastFileIteratorCompare
+from .extensions cimport FastFileIterator, FastFileIteratorCompare, is_close
 
 
 BLOCK_BITS = 8
@@ -313,13 +313,6 @@ def _distance_transform_edt(
     g_raster = None
 
 
-cdef inline bint _eq(double value, double nodata):
-    """Compare value against nodata, handling NaN"""
-    if cmath.isnan(nodata):
-        return cmath.isnan(value)
-    return value == nodata
-
-
 @cython.boundscheck(False)
 @cython.wraparound(False)
 @cython.nonecheck(False)
@@ -449,7 +442,7 @@ def calculate_slope(
                 # def
                 # ghi
                 e = dem_array[row_index, col_index]
-                if _eq(e, dem_nodata):
+                if is_close(e, dem_nodata):
                     # we use dzdx as a guard below, no need to set dzdy
                     dzdx_array[row_index-1, col_index-1] = slope_nodata
                     continue
@@ -466,14 +459,14 @@ def calculate_slope(
                 h = dem_array[row_index+1, col_index]
                 i = dem_array[row_index+1, col_index+1]
 
-                a_is_valid = not _eq(a, dem_nodata)
-                b_is_valid = not _eq(b, dem_nodata)
-                c_is_valid = not _eq(c, dem_nodata)
-                d_is_valid = not _eq(d, dem_nodata)
-                f_is_valid = not _eq(f, dem_nodata)
-                g_is_valid = not _eq(g, dem_nodata)
-                h_is_valid = not _eq(h, dem_nodata)
-                i_is_valid = not _eq(i, dem_nodata)
+                a_is_valid = not is_close(a, dem_nodata)
+                b_is_valid = not is_close(b, dem_nodata)
+                c_is_valid = not is_close(c, dem_nodata)
+                d_is_valid = not is_close(d, dem_nodata)
+                f_is_valid = not is_close(f, dem_nodata)
+                g_is_valid = not is_close(g, dem_nodata)
+                h_is_valid = not is_close(h, dem_nodata)
+                i_is_valid = not is_close(i, dem_nodata)
 
                 # a - c direction
                 if a_is_valid and c_is_valid:
