@@ -26,20 +26,11 @@ import shapely.prepared
 import shapely.wkb
 
 import pygeoprocessing
-from ..geoprocessing_core import gdal_use_exceptions, GDALUseExceptions
+from ..geoprocessing_core import gdal_use_exceptions, GDALUseExceptions,
+from ..geoprocessing_core import SPARSE_CREATION_OPTIONS
 from ..extensions cimport ManagedRaster
 
 LOGGER = logging.getLogger(__name__)
-
-# This module creates rasters with a memory xy block size of 2**BLOCK_BITS
-cdef int BLOCK_BITS = 8
-
-# these are the creation options that'll be used for all the rasters
-GTIFF_CREATION_OPTIONS = (
-    'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
-    'SPARSE_OK=TRUE',
-    'BLOCKXSIZE=%d' % (1 << BLOCK_BITS),
-    'BLOCKYSIZE=%d' % (1 << BLOCK_BITS))
 
 # It's convenient to define a C++ pair here as a pair of longs to represent the
 # x,y coordinates of a pixel.  So, CoordinatePair().first is the x coordinate,
@@ -173,7 +164,7 @@ cdef cset[CoordinatePair] _c_split_geometry_into_seeds(
         # Raster is sparse, no need to fill.
         raster = gtiff_driver.Create(
             target_raster_path, int(local_n_cols), int(local_n_rows), 1,
-            gdal.GDT_Byte, options=GTIFF_CREATION_OPTIONS)
+            gdal.GDT_Byte, options=SPARSE_CREATION_OPTIONS)
 
         raster.SetSpatialRef(flow_dir_srs)
         raster.SetGeoTransform(local_geotransform)
@@ -490,7 +481,7 @@ def delineate_watersheds_d8(
             flow_dir_n_rows,
             1,  # n bands
             gdal.GDT_UInt32,
-            options=GTIFF_CREATION_OPTIONS)
+            options=SPARSE_CREATION_OPTIONS)
         scratch_raster.SetGeoTransform(source_gt)
         if flow_dir_info['projection_wkt']:
             scratch_raster.SetProjection(flow_dir_info['projection_wkt'])

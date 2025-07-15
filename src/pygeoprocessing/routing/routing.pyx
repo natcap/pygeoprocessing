@@ -62,24 +62,15 @@ import scipy.stats
 
 from ..geoprocessing_core import DEFAULT_OSR_AXIS_MAPPING_STRATEGY
 from ..geoprocessing_core import gdal_use_exceptions, GDALUseExceptions
+from ..geoprocessing_core import DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS
+from ..geoprocessing_core import SPARSE_CREATION_OPTIONS, BLOCK_BITS
 from ..extensions cimport ManagedRaster, is_close
+from ..extensions cimport COL_OFFSETS, ROW_OFFSETS, INFLOW_OFFSETS
 import pygeoprocessing
 
 LOGGER = logging.getLogger(__name__)
 
 cdef float _LOGGING_PERIOD = 10.0
-
-# This module creates rasters with a memory xy block size of 2**BLOCK_BITS
-cdef int BLOCK_BITS = 8
-
-# Number of raster blocks to hold in memory at once per Managed Raster
-cdef int MANAGED_RASTER_N_BLOCKS = 2**6
-
-# these are the creation options that'll be used for all the rasters
-DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS = ('GTiff', (
-    'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
-    'BLOCKXSIZE=%d' % (1 << BLOCK_BITS),
-    'BLOCKYSIZE=%d' % (1 << BLOCK_BITS)))
 
 # if nodata is not defined for a float, it's a difficult choice. this number
 # probably won't collide with anything ever created by humans
@@ -88,17 +79,6 @@ cdef double IMPROBABLE_FLOAT_NODATA = -1.23789789e29
 # a pre-computed square root of 2 constant
 cdef double SQRT2 = 1.4142135623730951
 cdef double SQRT2_INV = 1.0 / 1.4142135623730951
-
-# used to loop over neighbors and offset the x/y values as defined below
-#  321
-#  4x0
-#  567
-cdef int *D8_XOFFSET = [1, 1, 0, -1, -1, -1, 0, 1]
-cdef int *D8_YOFFSET = [0, -1, -1, -1, 0, +1, +1, +1]
-
-# this is used to calculate the opposite D8 direction interpreting the index
-# as a D8 direction
-cdef int* D8_REVERSE_DIRECTION = [4, 5, 6, 7, 0, 1, 2, 3]
 
 # exposing stl::priority_queue so we can have all 3 template arguments so
 # we can pass a different Compare functor
@@ -470,8 +450,8 @@ def fill_pits(
                 downhill_neighbor = 0
                 nodata_neighbor = 0
                 for i_n in range(8):
-                    xi_n = xi_root+D8_XOFFSET[i_n]
-                    yi_n = yi_root+D8_YOFFSET[i_n]
+                    xi_n = xi_root+COL_OFFSETS[i_n]
+                    yi_n = yi_root+ROW_OFFSETS[i_n]
 
                     if (xi_n < 0 or xi_n >= raster_x_size or
                             yi_n < 0 or yi_n >= raster_y_size):
@@ -530,8 +510,8 @@ def fill_pits(
                     search_steps += 1
 
                     for i_n in range(8):
-                        xi_n = xi_q+D8_XOFFSET[i_n]
-                        yi_n = yi_q+D8_YOFFSET[i_n]
+                        xi_n = xi_q+COL_OFFSETS[i_n]
+                        yi_n = yi_q+ROW_OFFSETS[i_n]
 
                         if (xi_n < 0 or xi_n >= raster_x_size or
                                 yi_n < 0 or yi_n >= raster_y_size):
@@ -600,8 +580,8 @@ def fill_pits(
                     fill_height = pixel.value
 
                     for i_n in range(8):
-                        xi_n = xi_q+D8_XOFFSET[i_n]
-                        yi_n = yi_q+D8_YOFFSET[i_n]
+                        xi_n = xi_q+COL_OFFSETS[i_n]
+                        yi_n = yi_q+ROW_OFFSETS[i_n]
 
                         if (xi_n < 0 or xi_n >= raster_x_size or
                                 yi_n < 0 or yi_n >= raster_y_size):
@@ -670,8 +650,8 @@ def fill_pits(
                     fill_queue.pop()
 
                     for i_n in range(8):
-                        xi_n = xi_q+D8_XOFFSET[i_n]
-                        yi_n = yi_q+D8_YOFFSET[i_n]
+                        xi_n = xi_q+COL_OFFSETS[i_n]
+                        yi_n = yi_q+ROW_OFFSETS[i_n]
                         if (xi_n < 0 or xi_n >= raster_x_size or
                                 yi_n < 0 or yi_n >= raster_y_size):
                             continue
@@ -916,8 +896,8 @@ def flow_dir_d8(
                 largest_slope = 0.0
 
                 for i_n in range(8):
-                    xi_n = xi+D8_XOFFSET[i_n]
-                    yi_n = yi+D8_YOFFSET[i_n]
+                    xi_n = xi+COL_OFFSETS[i_n]
+                    yi_n = yi+ROW_OFFSETS[i_n]
                     n_height = dem_buffer_array[yi_n, xi_n]
                     if is_close(n_height, dem_nodata):
                         continue
@@ -953,8 +933,8 @@ def flow_dir_d8(
                     largest_slope = 0.0
                     diagonal_nodata = 1
                     for i_n in range(8):
-                        xi_n = xi_q+D8_XOFFSET[i_n]
-                        yi_n = yi_q+D8_YOFFSET[i_n]
+                        xi_n = xi_q+COL_OFFSETS[i_n]
+                        yi_n = yi_q+ROW_OFFSETS[i_n]
 
                         if (xi_n < 0 or xi_n >= raster_x_size or
                                 yi_n < 0 or yi_n >= raster_y_size):
@@ -1028,8 +1008,8 @@ def flow_dir_d8(
                         xi_q, yi_q)
 
                     for i_n in range(8):
-                        xi_n = xi_q+D8_XOFFSET[i_n]
-                        yi_n = yi_q+D8_YOFFSET[i_n]
+                        xi_n = xi_q+COL_OFFSETS[i_n]
+                        yi_n = yi_q+ROW_OFFSETS[i_n]
                         if (xi_n < 0 or xi_n >= raster_x_size or
                                 yi_n < 0 or yi_n >= raster_y_size):
                             continue
@@ -1044,7 +1024,7 @@ def flow_dir_d8(
                             # neighbor is at same level and has longer drain
                             # flow path than current
                             flow_dir_managed_raster.set(
-                                xi_n, yi_n, D8_REVERSE_DIRECTION[i_n])
+                                xi_n, yi_n, INFLOW_OFFSETS[i_n])
                             plateau_distance_managed_raster.set(
                                 xi_n, yi_n, n_drain_distance)
                             drain_queue.push(CoordinateType(xi_n, yi_n))
@@ -1259,8 +1239,8 @@ def flow_accumulation_d8(
                 if flow_dir == flow_dir_nodata:
                     continue
 
-                xi_n = xi+D8_XOFFSET[flow_dir]
-                yi_n = yi+D8_YOFFSET[flow_dir]
+                xi_n = xi+COL_OFFSETS[flow_dir]
+                yi_n = yi+ROW_OFFSETS[flow_dir]
 
                 if flow_dir_buffer_array[yi_n, xi_n] == flow_dir_nodata:
                     xi_root = xi-1+xoff
@@ -1295,8 +1275,8 @@ def flow_accumulation_d8(
 
                     upstream_pixels_remain = 0
                     for i_n in range(flow_pixel.last_flow_dir, 8):
-                        xi_n = flow_pixel.xi+D8_XOFFSET[i_n]
-                        yi_n = flow_pixel.yi+D8_YOFFSET[i_n]
+                        xi_n = flow_pixel.xi+COL_OFFSETS[i_n]
+                        yi_n = flow_pixel.yi+ROW_OFFSETS[i_n]
                         if (xi_n < 0 or xi_n >= raster_x_size or
                                 yi_n < 0 or yi_n >= raster_y_size):
                             # neighbor not upstream: off edges of the raster
@@ -1304,7 +1284,7 @@ def flow_accumulation_d8(
                         upstream_flow_dir = <int>flow_dir_managed_raster.get(
                             xi_n, yi_n)
                         if upstream_flow_dir == flow_dir_nodata or (
-                                upstream_flow_dir != D8_REVERSE_DIRECTION[i_n]):
+                                upstream_flow_dir != INFLOW_OFFSETS[i_n]):
                             # neighbor not upstream: is nodata or doesn't flow in
                             continue
 
@@ -1633,8 +1613,8 @@ def flow_dir_mfd(
                 for i_n in range(8):
                     # initialize downhill slopes to 0.0
                     downhill_slope_array[i_n] = 0.0
-                    xi_n = xi+D8_XOFFSET[i_n]
-                    yi_n = yi+D8_YOFFSET[i_n]
+                    xi_n = xi+COL_OFFSETS[i_n]
+                    yi_n = yi+ROW_OFFSETS[i_n]
                     n_height = dem_buffer_array[yi_n, xi_n]
                     if is_close(n_height, dem_nodata):
                         continue
@@ -1680,8 +1660,8 @@ def flow_dir_mfd(
                         # initialize downhill slopes to 0.0
                         downhill_slope_array[i_n] = 0.0
                         nodata_downhill_slope_array[i_n] = 0.0
-                        xi_n = xi_q+D8_XOFFSET[i_n]
-                        yi_n = yi_q+D8_YOFFSET[i_n]
+                        xi_n = xi_q+COL_OFFSETS[i_n]
+                        yi_n = yi_q+ROW_OFFSETS[i_n]
 
                         if (xi_n < 0 or xi_n >= raster_x_size or
                                 yi_n < 0 or yi_n >= raster_y_size):
@@ -1788,8 +1768,8 @@ def flow_dir_mfd(
                         xi_q, yi_q)
 
                     for i_n in range(8):
-                        xi_n = xi_q+D8_XOFFSET[i_n]
-                        yi_n = yi_q+D8_YOFFSET[i_n]
+                        xi_n = xi_q+COL_OFFSETS[i_n]
+                        yi_n = yi_q+ROW_OFFSETS[i_n]
                         if (xi_n < 0 or xi_n >= raster_x_size or
                                 yi_n < 0 or yi_n >= raster_y_size):
                             continue
@@ -1820,8 +1800,8 @@ def flow_dir_mfd(
 
                     sum_of_slope_weights = 0.0
                     for i_n in range(8):
-                        xi_n = xi_q+D8_XOFFSET[i_n]
-                        yi_n = yi_q+D8_YOFFSET[i_n]
+                        xi_n = xi_q+COL_OFFSETS[i_n]
+                        yi_n = yi_q+ROW_OFFSETS[i_n]
                         downhill_slope_array[i_n] = 0.0
 
                         if (xi_n < 0 or xi_n >= raster_x_size or
@@ -1983,10 +1963,7 @@ def flow_accumulation_mfd(
     pygeoprocessing.new_raster_from_base(
         flow_dir_mfd_raster_path_band[0], visited_raster_path,
         gdal.GDT_Byte, [0],
-        raster_driver_creation_tuple=('GTiff', (
-            'SPARSE_OK=TRUE', 'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
-            'BLOCKXSIZE=%d' % (1 << BLOCK_BITS),
-            'BLOCKYSIZE=%d' % (1 << BLOCK_BITS))))
+        raster_driver_creation_tuple=('GTiff', SPARSE_CREATION_OPTIONS))
     visited_managed_raster = ManagedRaster(visited_raster_path.encode('utf-8'), 1, 1)
 
     flow_dir_managed_raster = ManagedRaster(
@@ -2057,8 +2034,8 @@ def flow_accumulation_mfd(
                     if ((flow_dir_mfd >> (i_n * 4)) & 0xF) == 0:
                         # no flow in that direction
                         continue
-                    xi_n = xi+D8_XOFFSET[i_n]
-                    yi_n = yi+D8_YOFFSET[i_n]
+                    xi_n = xi+COL_OFFSETS[i_n]
+                    yi_n = yi+ROW_OFFSETS[i_n]
 
                     if flow_dir_mfd_buffer_array[yi_n, xi_n] == 0:
                         # if the entire value is zero, it flows nowhere
@@ -2091,8 +2068,8 @@ def flow_accumulation_mfd(
 
                     preempted = 0
                     for i_n in range(flow_pixel.last_flow_dir, 8):
-                        xi_n = flow_pixel.xi+D8_XOFFSET[i_n]
-                        yi_n = flow_pixel.yi+D8_YOFFSET[i_n]
+                        xi_n = flow_pixel.xi+COL_OFFSETS[i_n]
+                        yi_n = flow_pixel.yi+ROW_OFFSETS[i_n]
                         if (xi_n < 0 or xi_n >= raster_x_size or
                                 yi_n < 0 or yi_n >= raster_y_size):
                             # no upstream here
@@ -2101,7 +2078,7 @@ def flow_accumulation_mfd(
                             <int>flow_dir_managed_raster.get(xi_n, yi_n))
                         upstream_flow_weight = (
                             compressed_upstream_flow_dir >> (
-                                D8_REVERSE_DIRECTION[i_n] * 4)) & 0xF
+                                INFLOW_OFFSETS[i_n] * 4)) & 0xF
                         if upstream_flow_weight == 0:
                             # no upstream flow to this pixel
                             continue
@@ -2307,8 +2284,8 @@ def distance_to_channel_d8(
                         xi_q, yi_q, pixel_val)
 
                     for i_n in range(8):
-                        xi_n = xi_q+D8_XOFFSET[i_n]
-                        yi_n = yi_q+D8_YOFFSET[i_n]
+                        xi_n = xi_q+COL_OFFSETS[i_n]
+                        yi_n = yi_q+ROW_OFFSETS[i_n]
 
                         if (xi_n < 0 or xi_n >= raster_x_size or
                                 yi_n < 0 or yi_n >= raster_y_size):
@@ -2320,7 +2297,7 @@ def distance_to_channel_d8(
                             continue
 
                         if (flow_dir_d8_managed_raster.get(xi_n, yi_n) ==
-                                D8_REVERSE_DIRECTION[i_n]):
+                                INFLOW_OFFSETS[i_n]):
                             # if a weight is passed we use it directly and do
                             # not consider that a diagonal pixel is further
                             # away than an adjacent one. If no weight is used
@@ -2593,8 +2570,8 @@ def distance_to_channel_mfd(
                         if flow_dir_weight == 0:
                             continue
 
-                        xi_n = pixel.xi+D8_XOFFSET[i_n]
-                        yi_n = pixel.yi+D8_YOFFSET[i_n]
+                        xi_n = pixel.xi+COL_OFFSETS[i_n]
+                        yi_n = pixel.yi+ROW_OFFSETS[i_n]
                         if (xi_n < 0 or xi_n >= raster_x_size or
                                 yi_n < 0 or yi_n >= raster_y_size):
                             continue
@@ -2788,8 +2765,8 @@ def extract_streams_mfd(
                     if ((flow_dir_mfd >> (i_n * 4)) & 0xF) == 0:
                         # no flow in that direction
                         continue
-                    xi_n = xi_root+D8_XOFFSET[i_n]
-                    yi_n = yi_root+D8_YOFFSET[i_n]
+                    xi_n = xi_root+COL_OFFSETS[i_n]
+                    yi_n = yi_root+ROW_OFFSETS[i_n]
                     if (xi_n < 0 or xi_n >= raster_x_size or
                             yi_n < 0 or yi_n >= raster_y_size):
                         # it'll drain off the edge of the raster
@@ -2809,8 +2786,8 @@ def extract_streams_mfd(
                     open_set.pop()
                     n_iterations += 1
                     for i_sn in range(8):
-                        xi_sn = xi_n+D8_XOFFSET[i_sn]
-                        yi_sn = yi_n+D8_YOFFSET[i_sn]
+                        xi_sn = xi_n+COL_OFFSETS[i_sn]
+                        yi_sn = yi_n+ROW_OFFSETS[i_sn]
                         if (xi_sn < 0 or xi_sn >= raster_x_size or
                                 yi_sn < 0 or yi_sn >= raster_y_size):
                             continue
@@ -2818,7 +2795,7 @@ def extract_streams_mfd(
                         if flow_dir_mfd == flow_dir_nodata:
                             continue
                         if ((flow_dir_mfd >>
-                                (D8_REVERSE_DIRECTION[i_sn] * 4)) & 0xF) > 0:
+                                (INFLOW_OFFSETS[i_sn] * 4)) & 0xF) > 0:
                             # upstream pixel flows into this one
                             stream_val = <int>stream_mr.get(xi_sn, yi_sn)
                             if stream_val != 1 and stream_val != 2:
@@ -2840,8 +2817,8 @@ def extract_streams_mfd(
                                             flow_dir_mfd_mr.get(xi_bn, yi_bn))
                                         for i_sn in range(8):
                                             if (flow_dir_mfd >> (i_sn*4)) & 0xF > 0:
-                                                xi_sn = xi_bn+D8_XOFFSET[i_sn]
-                                                yi_sn = yi_bn+D8_YOFFSET[i_sn]
+                                                xi_sn = xi_bn+COL_OFFSETS[i_sn]
+                                                yi_sn = yi_bn+ROW_OFFSETS[i_sn]
                                                 if (xi_sn < 0 or xi_sn >= raster_x_size or
                                                         yi_sn < 0 or yi_sn >= raster_y_size):
                                                     continue
@@ -3076,8 +3053,8 @@ def extract_strahler_streams_d8(
                     continue
                 # check to see if it's a drain
                 d_n = <int>flow_dir_managed_raster.get(x_l, y_l)
-                x_n = x_l + D8_XOFFSET[d_n]
-                y_n = y_l + D8_YOFFSET[d_n]
+                x_n = x_l + COL_OFFSETS[d_n]
+                y_n = y_l + ROW_OFFSETS[d_n]
                 if (x_n < 0 or y_n < 0 or x_n >= n_cols or y_n >= n_rows or
                         <int>flow_dir_managed_raster.get(
                             x_n, y_n) == flow_nodata):
@@ -3091,15 +3068,15 @@ def extract_strahler_streams_d8(
 
                 upstream_count = 0
                 for d in range(8):
-                    x_n = x_l + D8_XOFFSET[d]
-                    y_n = y_l + D8_YOFFSET[d]
+                    x_n = x_l + COL_OFFSETS[d]
+                    y_n = y_l + ROW_OFFSETS[d]
                     # check if on border
                     if x_n < 0 or y_n < 0 or x_n >= n_cols or y_n >= n_rows:
                         continue
                     d_n = <int>flow_dir_managed_raster.get(x_n, y_n)
                     if d_n == flow_nodata:
                         continue
-                    if (D8_REVERSE_DIRECTION[d] == d_n and
+                    if (INFLOW_OFFSETS[d] == d_n and
                             <double>flow_accum_managed_raster.get(
                                 x_n, y_n) >= min_flow_accum_threshold):
                         upstream_dirs[upstream_count] = d
@@ -3646,8 +3623,8 @@ def _build_discovery_finish_rasters(
                     continue
 
                 # check if downstream neighbor runs off raster or is nodata
-                x_n = x_l + D8_XOFFSET[d_n]
-                y_n = y_l + D8_YOFFSET[d_n]
+                x_n = x_l + COL_OFFSETS[d_n]
+                y_n = y_l + ROW_OFFSETS[d_n]
 
                 if (x_n < 0 or y_n < 0 or x_n >= n_cols or y_n >= n_rows or
                         <int>flow_dir_managed_raster.get(
@@ -3668,15 +3645,15 @@ def _build_discovery_finish_rasters(
                     # check each neighbor to see if it drains to this cell
                     # if so, it's on the traversal path
                     for test_dir in range(8):
-                        x_n = raster_coord.xi + D8_XOFFSET[test_dir % 8]
-                        y_n = raster_coord.yi + D8_YOFFSET[test_dir % 8]
+                        x_n = raster_coord.xi + COL_OFFSETS[test_dir % 8]
+                        y_n = raster_coord.yi + ROW_OFFSETS[test_dir % 8]
                         if x_n < 0 or y_n < 0 or \
                                 x_n >= n_cols or y_n >= n_rows:
                             continue
                         n_dir = <int>flow_dir_managed_raster.get(x_n, y_n)
                         if n_dir == flow_dir_nodata:
                             continue
-                        if D8_REVERSE_DIRECTION[test_dir] == n_dir:
+                        if INFLOW_OFFSETS[test_dir] == n_dir:
                             discovery_stack.push(CoordinateType(x_n, y_n))
                             n_pushed += 1
                     # this reference is for the previous top and represents
@@ -3912,12 +3889,12 @@ def calculate_subwatershed_boundary(
         x_f = x_l+0.5
         y_f = y_l+0.5
 
-        x_f += D8_XOFFSET[outflow_dir]*0.5
-        y_f += D8_YOFFSET[outflow_dir]*0.5
+        x_f += COL_OFFSETS[outflow_dir]*0.5
+        y_f += ROW_OFFSETS[outflow_dir]*0.5
         if outflow_dir % 2 == 0:
             # need to back up the point a bit
-            x_f -= D8_YOFFSET[outflow_dir]*0.5
-            y_f += D8_XOFFSET[outflow_dir]*0.5
+            x_f -= ROW_OFFSETS[outflow_dir]*0.5
+            y_f += COL_OFFSETS[outflow_dir]*0.5
 
         x_p, y_p = gdal.ApplyGeoTransform(geotransform, x_f, y_f)
         watershed_boundary.AddPoint(x_p, y_p)
@@ -3943,8 +3920,8 @@ def calculate_subwatershed_boundary(
                     discovery_managed_raster, discovery_nodata):
                 edge_side = (edge_side-2) % 8
                 edge_dir = (edge_dir-2) % 8
-                x_l += D8_XOFFSET[edge_dir]
-                y_l += D8_YOFFSET[edge_dir]
+                x_l += COL_OFFSETS[edge_dir]
+                y_l += ROW_OFFSETS[edge_dir]
                 # note the pixel moved
                 boundary_list.append((x_l, y_l))
 
@@ -3952,10 +3929,10 @@ def calculate_subwatershed_boundary(
         terminated_early = 0
         while True:
             # step the edge then determine the projected coordinates
-            x_f += D8_XOFFSET[edge_dir]
-            y_f += D8_YOFFSET[edge_dir]
-            delta_x += D8_XOFFSET[edge_dir]
-            delta_y += D8_YOFFSET[edge_dir]
+            x_f += COL_OFFSETS[edge_dir]
+            y_f += ROW_OFFSETS[edge_dir]
+            delta_x += COL_OFFSETS[edge_dir]
+            delta_y += ROW_OFFSETS[edge_dir]
             # equivalent to gdal.ApplyGeoTransform(geotransform, x_f, y_f)
             # to eliminate python function call overhead
             x_p = g0 + g1*x_f + g2*y_f
@@ -3994,8 +3971,8 @@ def calculate_subwatershed_boundary(
                 edge_side = (edge_side-out_dir_increase) % 8
                 edge_dir = out_dir
                 # pixel moves to be the right cell
-                x_l += D8_XOFFSET[right]
-                y_l += D8_YOFFSET[right]
+                x_l += COL_OFFSETS[right]
+                y_l += ROW_OFFSETS[right]
                 _diagonal_fill_step(
                     x_l, y_l, right,
                     discovery, finish, discovery_managed_raster,
@@ -4003,8 +3980,8 @@ def calculate_subwatershed_boundary(
                     boundary_list)
             elif left_in:
                 # step forward
-                x_l += D8_XOFFSET[edge_dir]
-                y_l += D8_YOFFSET[edge_dir]
+                x_l += COL_OFFSETS[edge_dir]
+                y_l += ROW_OFFSETS[edge_dir]
                 # the pixel moves forward
                 boundary_list.append((x_l, y_l))
             else:
@@ -4132,8 +4109,8 @@ def detect_lowest_drain_and_sink(dem_raster_path_band):
                 # search neighbors for downhill or nodata
                 pixel_drains = 0
                 for i_n in range(8):
-                    xi_n = xi_root+D8_XOFFSET[i_n]
-                    yi_n = yi_root+D8_YOFFSET[i_n]
+                    xi_n = xi_root+COL_OFFSETS[i_n]
+                    yi_n = yi_root+ROW_OFFSETS[i_n]
 
                     if (xi_n < 0 or xi_n >= raster_x_size or
                             yi_n < 0 or yi_n >= raster_y_size):
@@ -4322,8 +4299,8 @@ def detect_outlets(
                 if d8_flow_dir_mode:
                     # inspect the outflow pixel neighbor
                     flow_dir_n = flow_dir_block[
-                        yi+D8_YOFFSET[flow_dir],
-                        xi+D8_XOFFSET[flow_dir]]
+                        yi+ROW_OFFSETS[flow_dir],
+                        xi+COL_OFFSETS[flow_dir]]
 
                     # if the outflow pixel is outside the raster boundaries or
                     # is a nodata pixel it must mean xi,yi is an outlet
@@ -4346,8 +4323,8 @@ def detect_outlets(
                         if flow_dir&(0xF<<(n_dir*4)) == 0:
                             continue
                         flow_dir_n = flow_dir_block[
-                            yi+D8_YOFFSET[n_dir],
-                            xi+D8_XOFFSET[n_dir]]
+                            yi+ROW_OFFSETS[n_dir],
+                            xi+COL_OFFSETS[n_dir]]
                         if flow_dir_n != flow_dir_nodata:
                             is_outlet = 0
                             break
@@ -4428,8 +4405,8 @@ cdef void _diagonal_fill_step(
 
     # this section determines which back diagonal was in the watershed and
     # fills it. if none are we pick one so there's no degenerate case
-    cdef int xdelta = D8_XOFFSET[edge_dir]
-    cdef int ydelta = D8_YOFFSET[edge_dir]
+    cdef int xdelta = COL_OFFSETS[edge_dir]
+    cdef int ydelta = ROW_OFFSETS[edge_dir]
     test_list = [
         (x_l - xdelta, y_l),
         (x_l, y_l - ydelta)]
@@ -4471,8 +4448,8 @@ cdef int _in_watershed(
     Return:
         1 if in, 0 if out.
     """
-    cdef int x_n = x_l + D8_XOFFSET[direction_to_test]
-    cdef int y_n = y_l + D8_YOFFSET[direction_to_test]
+    cdef int x_n = x_l + COL_OFFSETS[direction_to_test]
+    cdef int y_n = y_l + ROW_OFFSETS[direction_to_test]
     if x_n < 0 or y_n < 0 or x_n >= n_cols or y_n >= n_rows:
         return 0
     cdef long point_discovery = <long>discovery_managed_raster.get(x_n, y_n)
@@ -4549,8 +4526,8 @@ cdef _calculate_stream_geometry(
         y_1 = -1
         while not stream_end:
             # walk upstream
-            x_l += D8_XOFFSET[next_dir]
-            y_l += D8_YOFFSET[next_dir]
+            x_l += COL_OFFSETS[next_dir]
+            y_l += ROW_OFFSETS[next_dir]
 
             stream_end = 1
             pixel_length += 1
@@ -4567,8 +4544,8 @@ cdef _calculate_stream_geometry(
                     flow_accum_threshold:
                 # check to see if we can take a step upstream
                 for d in range(8):
-                    x_n = x_l + D8_XOFFSET[d]
-                    y_n = y_l + D8_YOFFSET[d]
+                    x_n = x_l + COL_OFFSETS[d]
+                    y_n = y_l + ROW_OFFSETS[d]
 
                     # check out of bounds
                     if x_n < 0 or y_n < 0 or x_n >= n_cols or y_n >= n_rows:
@@ -4581,7 +4558,7 @@ cdef _calculate_stream_geometry(
 
                     # check if there's an upstream inflow pixel with flow accum
                     # greater than the threshold
-                    if D8_REVERSE_DIRECTION[d] == d_n and (
+                    if INFLOW_OFFSETS[d] == d_n and (
                             <int>flow_accum_managed_raster.get(
                              x_n, y_n) > flow_accum_threshold):
                         stream_end = 0
