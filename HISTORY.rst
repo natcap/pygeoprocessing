@@ -1,6 +1,13 @@
 Release History
 ===============
 
+Unreleased Changes
+------------------
+* A new module, ``pygeoprocessing.extensions``, exposes the C++ extensions
+  ``FastFileIterator`` and ``LRUCache``, as well as the new ``ManagedRaster``
+  class (which was previously implemented in Cython).
+  https://github.com/natcap/pygeoprocessing/issues/439
+
 2.4.9 (2025-07-10)
 ------------------
 * Watershed delineation will now always create a layer of type MultiPolygon.
