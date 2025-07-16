@@ -5689,6 +5689,13 @@ class TestGeoprocessing(unittest.TestCase):
         raster_info = pygeoprocessing.get_raster_info(path)
         self.assertEqual(raster_info['raster_size'], (9, 9))
 
+    def test_get_vector_info_vsicurl(self):
+        """PGP: vector info with vsicurl."""
+        # Access test data hosted on github
+        path = '/vsicurl/https://raw.githubusercontent.com/emlys/pygeoprocessing/feature/441/tests/test_data/vector.gpkg'
+        vector_info = pygeoprocessing.get_vector_info(path)
+        self.assertEqual(vector_info['bounding_box'], [-15, 14.8, -14.8, 15])
+
     def test_integer_array(self):
         """PGP: array_equals_nodata returns integer array as expected."""
         nodata_values = [9, 9.0]
