@@ -22,7 +22,8 @@ def extract_streams_d8(
     Args:
         flow_accum_raster_path_band (tuple): A (path, band) tuple indicating
             the path to a D8 flow accumulation raster and the band index to
-            use.
+            use. Paths may use any GDAL-supported scheme, including virtual
+            file system /vsi schemes.
         flow_threshold (number): The flow threshold. Flow accumulation values
             greater than this threshold are considered stream pixels, values
             less than this threshold are non-stream pixels.

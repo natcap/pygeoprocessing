@@ -398,7 +398,8 @@ def raster_calculator(
             must have the same raster size. If only arrays are input, numpy
             arrays must be broadcastable to each other and the final raster
             size will be the final broadcast array shape. A value error is
-            raised if only "raw" inputs are passed.
+            raised if only "raw" inputs are passed. Paths may use any
+            GDAL-supported scheme, including virtual file system /vsi schemes.
         local_op (function) a function that must take in as many parameters as
             there are elements in ``base_raster_path_band_const_list``. The
             parameters in ``local_op`` will map 1-to-1 in order with the values

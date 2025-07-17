@@ -142,7 +142,7 @@ def raster_calculator(
         calc_raster_stats=True, use_shared_memory=False,
         largest_block=_LARGEST_ITERBLOCK, max_timeout=_MAX_TIMEOUT,
         raster_driver_creation_tuple=DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS):
-    """Apply local a raster operation on a stack of rasters.
+    """Apply a raster operation on a stack of rasters.
 
     This function applies a user defined function across a stack of
     rasters' pixel stack. The rasters in ``base_raster_path_band_list`` must
@@ -162,7 +162,8 @@ def raster_calculator(
             All rasters must have the same raster size. If only arrays are
             input, numpy arrays must be broadcastable to each other and the
             final raster size will be the final broadcast array shape. A value
-            error is raised if only "raw" inputs are passed.
+            error is raised if only "raw" inputs are passed. Raster paths may use
+            any GDAL-supported scheme, including virtual file system /vsi schemes.
         local_op (function): a function that must take in as many parameters as
             there are elements in ``base_raster_path_band_const_list``. The
             parameters in ``local_op`` will map 1-to-1 in order with the values
@@ -609,7 +610,8 @@ def choose_dtype(*raster_paths):
     that information will not be lost.
 
     Args:
-        *raster_paths: series of raster path strings
+        *raster_paths: series of raster path strings. Raster paths may use
+        any GDAL-supported scheme, including virtual file system /vsi schemes.
 
     Returns:
         numpy dtype
@@ -648,7 +650,8 @@ def raster_map(op, rasters, target_path, target_nodata=None, target_dtype=None,
             return a numpy array with the same shape as its array input(s).
         rasters (list[str]): Paths to rasters to input to ``op``, in the order
             that they will be passed to ``op``. All rasters should be aligned
-            and have the same dimensions.
+            and have the same dimensions. Raster paths may use any
+            GDAL-supported scheme, including virtual file system /vsi schemes.
         target_path (str): path to write out the output raster.
         target_nodata (number): Nodata value to use for the output raster.
             Optional. If not provided, a suitable nodata value will be chosen.
@@ -764,7 +767,9 @@ def raster_reduce(function, raster_path_band, initializer, mask_nodata=True,
 
     Args:
         function (func): function to apply to each raster block
-        raster_path_band (tuple): (path, band) tuple of the raster to reduce
+        raster_path_band (tuple): (path, band) tuple of the raster to reduce.
+            Raster paths may use any GDAL-supported scheme, including virtual
+            file system /vsi schemes.
         initializer (obj): value to initialize the aggregator for the
             first function call
         mask_nodata (bool): if True, mask out nodata before aggregating. A
@@ -821,7 +826,8 @@ def align_and_resize_raster_stack(
     Args:
         base_raster_path_list (sequence): a sequence of base raster paths that
             will be transformed and will be used to determine the target
-            bounding box.
+            bounding box. Raster paths may use any GDAL-supported scheme,
+            including virtual file system /vsi schemes.
         target_raster_path_list (sequence): a sequence of raster paths that
             will be created to one-to-one map with ``base_raster_path_list``
             as aligned versions of those original rasters. If there are
@@ -876,8 +882,8 @@ def align_and_resize_raster_stack(
               > 10'`` would use all features whose field value of 'id' is >
               10.
             * ``'mask_raster_path'`` (str): Optional. the string path to where
-              the mask raster should be written on disk.  If not provided, a
-              temporary file will be created within ``working_dir``.
+              the mask raster should be written/  If not provided, a temporary
+              file will be created within ``working_dir``.
 
         vector_mask_options (dict): optional.  Alias for ``mask_options``.
             This parameter is deprecated and will be removed in a future
@@ -1170,7 +1176,8 @@ def new_raster_from_base(
     options.
 
     Args:
-        base_path (string): path to existing raster.
+        base_path (string): path to existing raster. Raster paths may use any
+            GDAL-supported scheme, including virtual file system /vsi schemes.
         target_path (string): path to desired target raster.
         datatype: the pixel datatype of the output raster, for example
             gdal.GDT_Float32.  See the following header file for supported
@@ -1286,7 +1293,8 @@ def create_raster_from_vector_extents(
 
     Args:
         base_vector_path (string): path to vector shapefile to base the
-            bounding box for the target raster.
+            bounding box for the target raster. Paths may use any
+            GDAL-supported scheme, including virtual file system /vsi schemes.
         target_raster_path (string): path to location of generated geotiff;
             the upper left hand corner of this raster will be aligned with the
             bounding box of the source vector and the extent will be exactly
@@ -1371,7 +1379,7 @@ def create_raster_from_bounding_box(
             maxx, maxy) in projected units matching the SRS of
             ``target_srs_wkt``.
         target_raster_path (string): The path to where the new raster should be
-            created on disk.
+            created.
         target_pixel_size (tuple): A 2-element tuple of the (x, y) pixel size
             of the target raster.  Elements are in units of the target SRS.
         target_pixel_type (int): The GDAL GDT_* type of the target raster.
@@ -1457,7 +1465,8 @@ def interpolate_points(
 
     Args:
         base_vector_path (string): path to a shapefile that contains point
-            vector layers.
+            vector layers. Paths may use any GDAL-supported scheme, including
+            virtual file system /vsi schemes.
         vector_attribute_field (field): a string in the vector referenced at
             ``base_vector_path`` that refers to a numeric value in the
             vector's attribute table.  This is the value that will be
@@ -1596,10 +1605,12 @@ def zonal_statistics(
         base_raster_path_band (tuple or list[tuple]): base raster
             (path, band) tuple(s) to analyze. If a list of multiple raster
             bands is provided, they must be aligned (all having the same
-            bounding box, geotransform, and projection).
+            bounding box, geotransform, and projection). Raster paths may use
+            any GDAL-supported scheme, including virtual file system /vsi schemes.
         aggregate_vector_path (string): a path to a polygon vector whose
             geometric features indicate the areas in
-            ``base_raster_path_band`` to calculate zonal statistics.
+            ``base_raster_path_band`` to calculate zonal statistics. Paths may
+            use any GDAL-supported scheme, including virtual file system /vsi schemes.
         aggregate_layer_name (string): name of vector layer that will be
             used to aggregate results over.  If set to None, the first layer
             in the DataSource will be used as retrieved by ``.GetLayer()``.
@@ -2004,12 +2015,13 @@ def get_vector_info(vector_path, layer_id=0):
     """Get information about an GDAL vector.
 
     Args:
-        vector_path (str): a path to a GDAL vector.
+        vector_path (str): a path to a GDAL vector. Paths may use any
+            GDAL-supported scheme, including virtual file system /vsi schemes.
         layer_id (str/int): name or index of underlying layer to analyze.
             Defaults to 0.
 
     Raises:
-        ValueError if ``vector_path`` does not exist on disk or cannot be
+        ValueError if ``vector_path`` does not exist or cannot be
         opened as a gdal.OF_VECTOR.
 
     Return:
@@ -2049,7 +2061,8 @@ def get_raster_info(raster_path):
     """Get information about a GDAL raster (dataset).
 
     Args:
-       raster_path (String): a path to a GDAL raster.
+        raster_path (String): a path to a GDAL raster. Raster paths may use any
+            GDAL-supported scheme, including virtual file system /vsi schemes.
 
     Raises:
         ValueError
@@ -2159,6 +2172,8 @@ def reproject_vector(
 
     Args:
         base_vector_path (string): Path to the base shapefile to transform.
+            Paths may use any GDAL-supported scheme, including virtual file
+            system /vsi schemes.
         target_projection_wkt (string): the desired output projection in Well
             Known Text (by layer.GetSpatialRef().ExportToWkt())
         target_path (string): the filepath to the transformed shapefile
@@ -2332,7 +2347,9 @@ def reclassify_raster(
 
     Args:
         base_raster_path_band (tuple): a tuple including file path to a raster
-            and the band index to operate over. ex: (path, band_index)
+            and the band index to operate over. ex: (path, band_index). Paths
+            may use any GDAL-supported scheme, including virtual file system
+            /vsi schemes.
         value_map (dictionary): a dictionary of values of
             {source_value: dest_value, ...} where source_value's type is the
             same as the values in ``base_raster_path`` at band ``band_index``.
@@ -2450,7 +2467,8 @@ def warp_raster(
     """Resize/resample raster to desired pixel size, bbox and projection.
 
     Args:
-        base_raster_path (string): path to base raster.
+        base_raster_path (string): path to base raster. Paths may use any
+            GDAL-supported scheme, including virtual file system /vsi schemes.
         target_pixel_size (list/tuple): a two element sequence indicating
             the x and y pixel size in projected units.
         target_raster_path (string): the location of the resized and
@@ -2713,7 +2731,8 @@ def rasterize(
     raster at ``target_raster_path_band``.
 
     Args:
-        vector_path (string): filepath to vector to rasterize.
+        vector_path (string): filepath to vector to rasterize. Paths may use any
+            GDAL-supported scheme, including virtual file system /vsi schemes.
         target_raster_path (string): path to an existing raster to burn vector
             into.  Can have multiple bands.
         burn_values (list/tuple): optional sequence of values to burn into
@@ -2830,7 +2849,8 @@ def calculate_disjoint_polygon_set(
     this is an approximation that builds up sets of maximal subsets.
 
     Args:
-        vector_path (string): a path to an OGR vector.
+        vector_path (string): a path to an OGR vector. Paths may use any
+            GDAL-supported scheme, including virtual file system /vsi schemes.
         layer_id (str/int): name or index of underlying layer in
             ``vector_path`` to calculate disjoint set. Defaults to 0.
         bounding_box (sequence): sequence of floats representing a bounding
@@ -2985,7 +3005,8 @@ def distance_transform_edt(
         base_region_raster_path_band (tuple): a tuple including file path to a
             raster and the band index to define the base region pixels. Any
             pixel  that is not 0 and nodata are considered to be part of the
-            region.
+            region. Paths may use any GDAL-supported scheme, including virtual
+            file system /vsi schemes.
         target_distance_raster_path (string): path to the target raster that
             is the exact euclidean distance transform from any pixel in the
             base raster that is not nodata and not 0. The units are in
@@ -3138,7 +3159,8 @@ def convolve_2d(
 
     Args:
         signal_path_band (tuple): a 2 tuple of the form
-            (filepath to signal raster, band index).
+            (filepath to signal raster, band index). Paths may use any
+            GDAL-supported scheme, including virtual file system /vsi schemes.
         kernel_path_band (tuple): a 2 tuple of the form
             (filepath to kernel raster, band index), all pixel values should
             be valid -- output is not well defined if the kernel raster has
@@ -3486,7 +3508,8 @@ def iterblocks(
 
     Args:
         raster_path_band (tuple): a path/band index tuple to indicate
-            which raster band iterblocks should iterate over.
+            which raster band iterblocks should iterate over. Paths may use any
+            GDAL-supported scheme, including virtual file system /vsi schemes.
         largest_block (int): Attempts to iterate over raster blocks with
             this many elements.  Useful in cases where the blocksize is
             relatively small, memory is available, and the function call
@@ -3688,11 +3711,13 @@ def mask_raster(
 
     Args:
         base_raster_path_band (tuple): a (path, band number) tuple indicating
-            the data to mask.
+            the data to mask. Paths may use any GDAL-supported scheme, including
+            virtual file system /vsi schemes.
         mask_vector_path (path): path to a vector that will be used to mask
             anything outside of the polygon that overlaps with
             ``base_raster_path_band`` to ``target_mask_value`` if defined or
-            else ``base_raster_path_band``'s nodata value.
+            else ``base_raster_path_band``'s nodata value. Paths may use any
+            GDAL-supported scheme, including virtual file system /vsi schemes.
         target_mask_raster_path (str): path to desired target raster that
             is a copy of ``base_raster_path_band`` except any pixels that do
             not intersect with ``mask_vector_path`` are set to
@@ -3879,7 +3904,8 @@ def get_gis_type(path):
     """Calculate the GIS type of the file located at ``path``.
 
     Args:
-        path (str): path to a file on disk or network.
+        path (str): path to a file. Paths may use any GDAL-supported scheme,
+            including virtual file system /vsi schemes.
 
     Raises:
         ValueError
@@ -3979,9 +4005,11 @@ def _convolve_2d_worker(
 
     Args:
         signal_path_band (tuple): a 2 tuple of the form
-            (filepath to signal raster, band index).
+            (filepath to signal raster, band index). Paths may use any
+            GDAL-supported scheme, including virtual file system /vsi schemes.
         kernel_path_band (tuple): a 2 tuple of the form
-            (filepath to kernel raster, band index).
+            (filepath to kernel raster, band index). Paths may use any
+            GDAL-supported scheme, including virtual file system /vsi schemes.
         ignore_nodata (boolean): If true, any pixels that are equal to
             ``signal_path_band``'s nodata value are not included when
             averaging the convolution filter.
@@ -4182,7 +4210,7 @@ def shapely_geometry_to_vector(
         shapely_geometry_list, target_vector_path, projection_wkt,
         vector_format, fields=None, attribute_list=None,
         ogr_geom_type=ogr.wkbPolygon):
-    """Convert list of geometry to vector on disk.
+    """Convert list of geometry to vector.
 
     Args:
         shapely_geometry_list (list): a list of Shapely objects.
@@ -4261,7 +4289,8 @@ def numpy_array_to_raster(
         A ``ValueError`` will be raised otherwise.
 
     Args:
-        base_array (numpy.array): a 2d numpy array.
+        base_array (numpy.array): a 2d numpy array. Paths may use any
+            GDAL-supported scheme, including virtual file system /vsi schemes.
         target_nodata (numeric): nodata value of target array, can be None.
         pixel_size (tuple): square dimensions (in ``(x, y)``) of pixel. Can be
             None to indicate no stated pixel size.
@@ -4313,7 +4342,8 @@ def raster_to_numpy_array(raster_path, band_id=1):
     """Read the entire contents of the raster band to a numpy array.
 
     Args:
-        raster_path (str): path to raster.
+        raster_path (str): path to raster. Paths may use any
+            GDAL-supported scheme, including virtual file system /vsi schemes.
         band_id (int): band in the raster to read.
 
     Return:
@@ -4340,7 +4370,8 @@ def stitch_rasters(
 
     Args:
         base_raster_path_band_list (sequence): sequence of raster path/band
-            tuples to stitch into target.
+            tuples to stitch into target. Paths may use any GDAL-supported
+            scheme, including virtual file system /vsi schemes.
         resample_method_list (sequence): a sequence of resampling methods
             which one to one map each path in ``base_raster_path_band_list``
             during resizing.  Each element must be one of,

@@ -126,7 +126,8 @@ def _distance_transform_edt(
 
     Parameters:
         region_raster_path (string): path to a byte raster where region pixels
-            are indicated by a 1 and 0 otherwise.
+            are indicated by a 1 and 0 otherwise. Paths may use any
+            GDAL-supported scheme, including virtual file system /vsi schemes.
         g_raster_path (string): path to a raster created by this call that
             is used as the intermediate "g" variable described in Meijster
             et. al.
@@ -361,7 +362,8 @@ def calculate_slope(
 
     Parameters:
         base_elevation_raster_path_band (string): a path/band tuple to a
-            raster of height values. (path_to_raster, band_index)
+            raster of height values. (path_to_raster, band_index) Paths may use
+            any GDAL-supported scheme, including virtual file system /vsi schemes.
         target_slope_path (string): path to target slope raster; will be a
             32 bit float GeoTIFF of same size/projection as calculate slope
             with units of percent slope.
@@ -686,7 +688,8 @@ def raster_band_percentile(
 
     Parameters:
         base_raster_path_band (tuple): raster path band tuple to a raster
-            that is of any integer or real type.
+            that is of any integer or real type. Paths may use any
+            GDAL-supported scheme, including virtual file system /vsi schemes.
         working_sort_directory (str): path to a directory that does not
             exist or is empty. This directory will be used to create heapfiles
             with sizes no larger than ``heap_buffer_size`` which are written in the
@@ -745,7 +748,8 @@ def _raster_band_percentile_int(
 
     Parameters:
         base_raster_path_band (tuple): raster path band tuple to a raster that
-            is of an integer type.
+            is of an integer type. Paths may use any GDAL-supported scheme,
+            including virtual file system /vsi schemes.
         working_sort_directory (str): path to a directory that does not
             exist or is empty. This directory will be used to create heapfiles
             with sizes no larger than ``heap_buffer_size`` which are written in the
@@ -894,7 +898,8 @@ def _raster_band_percentile_double(
 
     Parameters:
         base_raster_path_band (tuple): raster path band tuple to raster that
-            is a real/float type.
+            is a real/float type. Paths may use any GDAL-supported scheme,
+            including virtual file system /vsi schemes.
         working_sort_directory (str): path to a directory that does not
             exist or is empty. This directory will be used to create heapfiles
             with sizes no larger than ``heap_buffer_size`` which are written in the

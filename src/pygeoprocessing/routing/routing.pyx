@@ -146,7 +146,8 @@ cdef struct FlowPixelType:
 cdef struct DecayingValue:
     double decayed_value  # The value, which will be progressively updated as it decays
     double min_value  # The minimum value before the Decaying Value should be ignored.
-
+
+
 # This struct is used to track an intermediate flow pixel's last calculated
 # direction and flow accumulation value so far (just like with FlowPixelType).
 # Additionally, we track all of the decaying values from upstream that
@@ -667,7 +668,8 @@ def fill_pits(
 
     Parameters:
         dem_raster_path_band (tuple): a path, band number tuple indicating the
-            DEM calculate flow direction.
+            DEM calculate flow direction. Paths may use any GDAL-supported
+            scheme, including virtual file system /vsi schemes.
         target_filled_dem_raster_path (str): path the pit filled dem,
             that's created by a call to this function. It is functionally a
             single band copy of ``dem_raster_path_band`` with the pit pixels
@@ -1107,7 +1109,8 @@ def flow_dir_d8(
     Parameters:
         dem_raster_path_band (tuple): a path, band number tuple indicating the
             DEM calculate flow direction. This DEM must not have hydrological
-            pits or else the target flow direction is undefined.
+            pits or else the target flow direction is undefined. Paths may use
+            any GDAL-supported scheme, including virtual file system /vsi schemes.
         target_flow_dir_path (str): path to a byte raster created by this
             call of same dimensions as ``dem_raster_path_band`` that has a value
             indicating the direction of downhill flow. Values are defined as
@@ -1483,6 +1486,8 @@ def flow_accumulation_d8(
                 4 x 0
                 5 6 7
 
+            Paths may use any GDAL-supported scheme, including virtual
+            file system /vsi schemes.
         target_flow_accum_raster_path (str): path to flow
             accumulation raster created by this call. After this call, the
             value of each pixel will be 1 plus the number of upstream pixels
@@ -1787,7 +1792,8 @@ def flow_dir_mfd(
     Parameters:
         dem_raster_path_band (tuple): a path, band number tuple indicating the
             DEM calculate flow direction. This DEM must not have hydrological
-            pits or else the target flow direction will be undefined.
+            pits or else the target flow direction will be undefined. Paths may
+            use any GDAL-supported scheme, including virtual file system /vsi schemes.
         target_flow_dir_path (str): path to a raster created by this call
             of a 32 bit int raster of the same dimensions and projections as
             ``dem_raster_path_band[0]``. The value of the pixel indicates the
@@ -2285,7 +2291,8 @@ def flow_accumulation_mfd(
         flow_dir_mfd_raster_path_band (tuple): a path, band number tuple
             for a multiple flow direction raster generated from a call to
             ``flow_dir_mfd``. The format of this raster is described in the
-            docstring of that function.
+            docstring of that function. Paths may use any GDAL-supported
+            scheme, including virtual file system /vsi schemes.
         target_flow_accum_raster_path (str): a path to a raster created by
             a call to this function that is the same dimensions and projection
             as ``flow_dir_mfd_raster_path_band[0]``. The value in each pixel is
@@ -2302,7 +2309,8 @@ def flow_accumulation_mfd(
             weight. If ``None``, 1 is the default flow accumulation weight.
             This raster must be the same dimensions as
             ``flow_dir_mfd_raster_path_band``. If a weight nodata pixel is
-            encountered it will be treated as a weight value of 0.
+            encountered it will be treated as a weight value of 0. Paths may
+            use any GDAL-supported scheme, including virtual file system /vsi schemes.
         raster_driver_creation_tuple (tuple): a tuple containing a GDAL driver
             name string as the first element and a GDAL creation options
             tuple/list as the second. Defaults to a GTiff driver tuple
@@ -2576,11 +2584,14 @@ def distance_to_channel_d8(
                 4 x 0
                 5 6 7
 
+            Paths may use any GDAL-supported scheme, including virtual
+            file system /vsi schemes.
         channel_raster_path_band (tuple): a path/band tuple of the same
             dimensions and projection as ``flow_dir_d8_raster_path_band[0]``
             that indicates where the channels in the problem space lie. A
             channel is indicated if the value of the pixel is 1. Other values
-            are ignored.
+            are ignored. Paths may use any GDAL-supported scheme, including
+            virtual file system /vsi schemes.
         target_distance_to_channel_raster_path (str): path to a raster
             created by this call that has per-pixel distances from a given
             pixel to the nearest downhill channel.
@@ -2588,7 +2599,8 @@ def distance_to_channel_d8(
             raster that will be used as the per-pixel flow distance
             weight. If ``None``, 1 is the default distance between neighboring
             pixels. This raster must be the same dimensions as
-            ``flow_dir_mfd_raster_path_band``.
+            ``flow_dir_mfd_raster_path_band``. Paths may use any GDAL-supported
+            scheme, including virtual file system /vsi schemes.
         raster_driver_creation_tuple (tuple): a tuple containing a GDAL driver
             name string as the first element and a GDAL creation options
             tuple/list as the second. Defaults to a GTiff driver tuple
@@ -2798,12 +2810,14 @@ def distance_to_channel_mfd(
         flow_dir_mfd_raster_path_band (tuple): a path/band index tuple
             indicating the raster that defines the mfd flow accumulation
             raster for this call. This raster should be generated by a call
-            to ``pygeoprocessing.routing.flow_dir_mfd``.
+            to ``pygeoprocessing.routing.flow_dir_mfd``. Paths may use any
+            GDAL-supported scheme, including virtual file system /vsi schemes.
         channel_raster_path_band (tuple): a path/band tuple of the same
             dimensions and projection as ``flow_dir_mfd_raster_path_band[0]``
             that indicates where the channels in the problem space lie. A
             channel is indicated if the value of the pixel is 1. Other values
-            are ignored.
+            are ignored. Paths may use any GDAL-supported scheme, including
+            virtual file system /vsi schemes.
         target_distance_to_channel_raster_path (str): path to a raster
             created by this call that has per-pixel distances from a given
             pixel to the nearest downhill channel.
@@ -2811,7 +2825,8 @@ def distance_to_channel_mfd(
             raster that will be used as the per-pixel flow distance
             weight. If ``None``, 1 is the default distance between neighboring
             pixels. This raster must be the same dimensions as
-            ``flow_dir_mfd_raster_path_band``.
+            ``flow_dir_mfd_raster_path_band``. Paths may use any GDAL-supported
+            scheme, including virtual file system /vsi schemes.
         raster_driver_creation_tuple (tuple): a tuple containing a GDAL driver
             name string as the first element and a GDAL creation options
             tuple/list as the second. Defaults to a GTiff driver tuple
@@ -3095,9 +3110,11 @@ def extract_streams_mfd(
             a stream. Values in this raster that are >= flow_threshold will
             be classified as streams. This raster should be derived from
             ``dem_raster_path_band`` using
-            ``pygeoprocessing.routing.flow_accumulation_mfd``.
+            ``pygeoprocessing.routing.flow_accumulation_mfd``. Paths may use
+            any GDAL-supported scheme, including virtual file system /vsi schemes.
         flow_dir_mfd_path_band (str): path to multiple flow direction
-            raster, required to join divergent streams.
+            raster, required to join divergent streams. Paths may use any
+            GDAL-supported scheme, including virtual file system /vsi schemes.
         flow_threshold (float): the value in ``flow_accum_raster_path_band`` to
             indicate where a stream exists.
         target_stream_raster_path (str): path to the target stream raster.
@@ -3336,12 +3353,15 @@ def extract_strahler_streams_d8(
 
     Args:
         flow_dir_d8_raster_path_band (tuple): a path/band representing the D8
-            flow direction raster.
+            flow direction raster. Paths may use any GDAL-supported scheme,
+            including virtual file system /vsi schemes.
         flow_accum_raster_path_band (tuple): a path/band representing the D8
             flow accumulation raster represented by
-            ``flow_dir_d8_raster_path_band``.
+            ``flow_dir_d8_raster_path_band``. Paths may use any GDAL-supported
+            scheme, including virtual file system /vsi schemes.
         dem_raster_path_band (tuple): a path/band representing the DEM used to
-            derive flow dir.
+            derive flow dir. Paths may use any GDAL-supported scheme, including
+            virtual file system /vsi schemes.
         target_stream_vector_path (tuple): a single layer line vector created
             by this function representing the stream segments extracted from
             the above arguments. Contains the fields "order" and "parent" as
@@ -3982,7 +4002,9 @@ def _build_discovery_finish_rasters(
     """Generates a discovery and finish time raster for a given d8 flow path.
 
     Args:
-        flow_dir_d8_raster_path_band (tuple): a D8 flow raster path band tuple
+        flow_dir_d8_raster_path_band (tuple): a D8 flow raster path band tuple.
+            Paths may use any GDAL-supported scheme, including virtual file
+            system /vsi schemes.
         target_discovery_raster_path (str): path to a generated raster that
             creates discovery time (i.e. what count the pixel is visited in)
         target_finish_raster_path (str): path to generated raster that creates
@@ -4120,8 +4142,11 @@ def calculate_subwatershed_boundary(
 
     Args:
         d8_flow_dir_raster_path_band (tuple): raster/path band for d8 flow dir
-            raster
-        strahler_stream_vector_path (str): path to stream segment vector
+            raster. Paths may use any GDAL-supported scheme, including virtual
+            file system /vsi schemes.
+        strahler_stream_vector_path (str): path to stream segment vector. Paths
+            may use any GDAL-supported scheme, including virtual file system
+            /vsi schemes.
         target_watershed_boundary_vector_path (str): path to created vector
             of linestring for watershed boundaries. Contains the fields:
 
@@ -4138,6 +4163,8 @@ def calculate_subwatershed_boundary(
               with underlying raster data that created the streams in
               ``strahler_stream_vector_path``.
 
+            Paths may use any GDAL-supported scheme, including virtual file
+            system /vsi schemes.
         max_steps_per_watershed (int): maximum number of steps to take when
             defining a watershed boundary. Useful if the DEM is large and
             degenerate or some other user known condition to limit long large
@@ -4465,7 +4492,8 @@ def detect_lowest_drain_and_sink(dem_raster_path_band):
 
     Args:
         dem_raster_path_band (tuple): a raster/path band tuple to detect
-            sinks in.
+            sinks in. Paths may use any GDAL-supported scheme, including
+            virtual file system /vsi schemes.
 
     Return:
         (drain_pixel, drain_height, sink_pixel, sink_height) -
@@ -4575,7 +4603,8 @@ def detect_outlets(
     Args:
         flow_dir_raster_path_band (tuple): raster path/band tuple
             indicating D8 or MFD flow direction created by
-            `routing.flow_dir_d8` or `routing.flow_dir_mfd`.
+            `routing.flow_dir_d8` or `routing.flow_dir_mfd`. Paths may use
+            any GDAL-supported scheme, including virtual file system /vsi schemes.
         flow_dir_type (str): one of 'd8' or 'mfd' to indicate the
             ``flow_dir_raster_path_band`` is either a D8 or MFD flow
             direction raster.
