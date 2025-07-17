@@ -44,7 +44,8 @@ def evaluate_raster_calculator_expression(
                 }
 
             All rasters represented in this structure must have the same
-            raster size.
+            raster size. Paths may use any GDAL-supported scheme,
+            including virtual file system /vsi schemes.
         target_nodata (float): desired nodata value for
             ``target_raster_path``.
         target_raster_path (str): path to the raster that is created by

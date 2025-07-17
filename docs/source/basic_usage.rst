@@ -99,3 +99,31 @@ first element is the filepath, and the second is the band index:
 
     >>> raster_path_band_list = [(raster_a_path, 1), (raster_b_path, 1)]
 
+Using GDAL's virtual file system handlers
+*****************************************
+
+Pygeoprocessing reads all input data using GDAL. In addition to "regular" files located on
+your local file system, GDAL can read other types of files using virtual file system handlers.
+Using virtual file system handlers, you can directly access files hosted on a remote server
+over HTTP; files hosted with cloud storage services such as AWS S3 or Google Cloud Storage
+(including access-controlled files); zip archives; and more. See the
+`GDAL Virtual File Systems documentation <https://gdal.org/en/stable/user/virtual_file_systems.html>`_
+for details.
+
+To use a virtual file system handler, you must add the appropriate `/vsi/` prefix to the
+file path or URL. For example, the `/vsicurl/` prefix tells GDAL to read a file from the given
+URL over HTTP/FTP. You can pass in paths with VSI prefixes directly to ``pygeoprocessing``.
+For example:
+
+.. code::
+
+    pygeoprocessing.get_raster_info(
+        '/vsicurl/https://storage.googleapis.com/natcap-data-cache/global/nasa-srtm-v3-1s/srtm-v3-1s.tif'
+    )
+
+Note that support for virtual file systems is specific to each of GDAL's file format drivers. These will work for most but not all file formats.
+
+GDAL can also write out data to a remote location using virtual file system handlers. ``pygeoprocessing``
+does not officially support this, but it may work in some cases. Note that, even if the output is
+written to a remote location, many ``pygeoprocessing`` functions will write out temporary
+intermediate results to the local file system.
