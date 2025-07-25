@@ -5685,21 +5685,21 @@ class TestGeoprocessing(unittest.TestCase):
     def test_get_raster_info_vsicurl(self):
         """PGP: raster info with vsicurl."""
         # Access test data hosted on github
-        path = '/vsicurl/https://raw.githubusercontent.com/emlys/pygeoprocessing/feature/441/tests/test_data/raster.tif'
+        path = '/vsicurl/https://raw.githubusercontent.com/emlys/pygeoprocessing/feature/441/tests/test_data/small_raster.tif'
         raster_info = pygeoprocessing.get_raster_info(path)
         self.assertEqual(raster_info['raster_size'], (9, 9))
 
     def test_get_vector_info_vsicurl(self):
         """PGP: vector info with vsicurl."""
         # Access test data hosted on github
-        path = '/vsicurl/https://raw.githubusercontent.com/emlys/pygeoprocessing/feature/441/tests/test_data/vector.gpkg'
+        path = '/vsicurl/https://raw.githubusercontent.com/emlys/pygeoprocessing/feature/441/tests/test_data/small_vector.gpkg'
         vector_info = pygeoprocessing.get_vector_info(path)
         self.assertEqual(vector_info['bounding_box'], [-15, 14.8, -14.8, 15])
 
     def test_raster_map_vsicurl(self):
         """PGP: raster_map with vsicurl."""
         # Access test data hosted on github
-        input_path = '/vsicurl/https://raw.githubusercontent.com/emlys/pygeoprocessing/feature/441/tests/test_data/raster.tif'
+        input_path = '/vsicurl/https://raw.githubusercontent.com/emlys/pygeoprocessing/feature/441/tests/test_data/small_raster.tif'
         target_path = os.path.join(self.workspace_dir, 'out.tif')
         pygeoprocessing.raster_map(
             lambda block: block * 2, [input_path], target_path)
