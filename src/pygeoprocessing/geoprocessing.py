@@ -882,7 +882,7 @@ def align_and_resize_raster_stack(
               > 10'`` would use all features whose field value of 'id' is >
               10.
             * ``'mask_raster_path'`` (str): Optional. the string path to where
-              the mask raster should be written/  If not provided, a temporary
+              the mask raster should be written. If not provided, a temporary
               file will be created within ``working_dir``.
 
         vector_mask_options (dict): optional.  Alias for ``mask_options``.
