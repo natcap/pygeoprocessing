@@ -2496,6 +2496,8 @@ def warp_raster(
               projection if its base coordinate system does not match
               the target.  Where there are geometries in this vector, pixels in
               ``base_raster_path`` will propagate to ``target_raster_path``.
+              Paths may use any GDAL-supported scheme, including virtual file
+              system /vsi schemes.
             * ``'mask_layer_id'``: (int/str) the layer index or name to use
               for masking, if this key is not in the dictionary the default
               is to use the layer at index 0.
@@ -2509,7 +2511,8 @@ def warp_raster(
               values of 1 indicate validity.  This raster must be in the same
               projection and have the same dimensions as the target warped
               raster.  The general (and easiest) use case for ``warp_raster``
-              is to use ``'mask_vector_path'`` instead.
+              is to use ``'mask_vector_path'`` instead. Paths may use any
+              GDAL-supported scheme, including virtual file system /vsi schemes.
 
         vector_mask_options=None (dict): Alias for ``mask_options``.
             This option is deprecated and will be removed in a future release
@@ -3167,6 +3170,8 @@ def convolve_2d(
             nodata values.  To create a kernel raster, see the documentation
             and helper functions available in the
             :doc:`pygeoprocessing kernels module <pygeoprocessing.kernels>`.
+            Paths may use any GDAL-supported scheme, including virtual file
+            system /vsi schemes.
         target_path (string): filepath to target raster that's the convolution
             of signal with kernel.  Output will be a single band raster of
             same size and projection as ``signal_path_band``. Any nodata pixels
