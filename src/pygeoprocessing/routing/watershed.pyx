@@ -297,15 +297,15 @@ def delineate_watersheds_d8(
         d8_flow_dir_raster_path_band (tuple): A (path, band_id) tuple
             to a D8 flow direction raster.  This raster must be a tiled raster
             with block sizes being a power of 2.  The output watersheds vector
-            will have its spatial reference copied from this raster.
-        outflow_vector_path (str): The path to a vector on disk containing
-            features with valid geometries from which watersheds will be
-            delineated.  Only those parts of the geometry that overlap valid
-            flow direction pixels will be included in the output watersheds
-            vector.
-        target_watersheds_vector_path (str): The path to a vector on disk
-            where the target watersheds will be stored.  Must have the
-            extension ``.gpkg``.
+            will have its spatial reference copied from this raster. Paths may
+            use any GDAL-supported scheme, including virtual file system /vsi schemes.
+        outflow_vector_path (str): The path to a vector containing features
+            with valid geometries from which watersheds will be delineated.
+            Only those parts of the geometry that overlap valid flow direction
+            pixels will be included in the output watersheds vector. Paths may
+            use any GDAL-supported scheme, including virtual file system /vsi schemes.
+        target_watersheds_vector_path (str): The path to a vector where the
+            target watersheds will be stored.  Must have the extension ``.gpkg``.
         working_dir=None (str or None): The path to a directory on disk
             within which various intermediate files will be stored.  If None,
             a folder will be created within the system's temp directory.
