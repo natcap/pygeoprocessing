@@ -4058,6 +4058,14 @@ def _convolve_2d_worker(
             kernel_block[numpy.isclose(kernel_block, kernel_nodata)] = 0.0
         kernel_sum += numpy.sum(kernel_block)
 
+    @functools.lru_cache
+    def _read_kernel_array(**offset):
+        return kernel_band.ReadAsArray(**offset).astype(numpy.float64)
+
+    @functools.lru_cache
+    def _read_signal_array(**offset):
+        return signal_band.ReadAsArray(**offset).astype(numpy.float64)
+
     while True:
         payload = work_queue.get()
         if payload is None:
@@ -4067,10 +4075,8 @@ def _convolve_2d_worker(
 
         # ensure signal and kernel are internally float64 precision
         # irrespective of their base type
-        signal_block = signal_band.ReadAsArray(**signal_offset).astype(
-            numpy.float64)
-        kernel_block = kernel_band.ReadAsArray(**kernel_offset).astype(
-            numpy.float64)
+        signal_block = _read_signal_array(**signal_offset)
+        kernel_block = _read_kernel_array(**kernel_offset)
 
         # don't ever convolve the nodata value
         if signal_nodata is not None:

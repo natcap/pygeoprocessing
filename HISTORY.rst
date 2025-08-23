@@ -55,6 +55,8 @@ Unreleased Changes
   so it is now used correctly. https://github.com/natcap/pygeoprocessing/issues/360
 * Handling GDAL-based ``RuntimeError`` raised during ``pygeoprocessing.reproject_vector``.
   https://github.com/natcap/pygeoprocessing/issues/409
+* An LRU Cache has been added to ``convolve_2d`` which should reduce runtimes
+  on large rasters by approximately 10%. https://github.com/natcap/pygeoprocessing/issues/373
 
 2.4.5 (2024-10-08)
 ------------------
