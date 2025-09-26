@@ -31,4 +31,3 @@ def gdal_use_exceptions(func):
         with GDALUseExceptions():
             return func(*args, **kwargs)
     return wrapper
-    
