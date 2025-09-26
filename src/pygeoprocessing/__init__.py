@@ -50,6 +50,8 @@ from .geoprocessing import zonal_statistics
 from .geoprocessing_core import calculate_slope
 from .geoprocessing_core import raster_band_percentile
 from .slurm_utils import log_warning_if_gdal_will_exhaust_slurm_memory
+from .utils import GDALUseExceptions
+from .utils import gdal_use_exceptions
 
 try:
     __version__ = version('pygeoprocessing')

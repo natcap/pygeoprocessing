@@ -28,6 +28,7 @@ from osgeo import osr
 import numpy
 import pygeoprocessing
 from .extensions cimport FastFileIterator, FastFileIteratorCompare, is_close
+from .utils import gdal_use_exceptions
 
 
 BLOCK_BITS = 8
@@ -49,38 +50,6 @@ INT8_GTIFF_CREATION_TUPLE_OPTIONS = ('GTIFF', INT8_CREATION_OPTIONS)
 DEFAULT_OSR_AXIS_MAPPING_STRATEGY = osr.OAMS_TRADITIONAL_GIS_ORDER
 
 LOGGER = logging.getLogger('pygeoprocessing.geoprocessing_core')
-
-
-class GDALUseExceptions:
-    """Context manager that enables GDAL exceptions and restores state after."""
-
-    def __init__(self):
-        pass
-
-    def __enter__(self):
-        self.currentUseExceptions = gdal.GetUseExceptions()
-        gdal.UseExceptions()
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        if self.currentUseExceptions == 0:
-            gdal.DontUseExceptions()
-
-
-def gdal_use_exceptions(func):
-    """Decorator that enables GDAL exceptions and restores state after.
-
-    Args:
-        func (callable): function to call with GDAL exceptions enabled
-
-    Returns:
-        Wrapper function that calls ``func`` with GDAL exceptions enabled
-    """
-    @functools.wraps(func)
-    def wrapper(*args, **kwargs):
-        with GDALUseExceptions():
-            return func(*args, **kwargs)
-    return wrapper
-
 
 cdef float _NODATA = -1.0
 

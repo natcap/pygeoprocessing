@@ -22,7 +22,7 @@ from ..geoprocessing import get_raster_info
 from ..geoprocessing import iterblocks
 from ..geoprocessing import LOGGER
 from ..geoprocessing_core import DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS
-from ..geoprocessing_core import GDALUseExceptions
+from ..utils import GDALUseExceptions
 
 if sys.version_info >= (3, 8):
     import multiprocessing.shared_memory

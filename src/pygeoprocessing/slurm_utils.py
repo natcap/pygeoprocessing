@@ -4,7 +4,7 @@ import warnings
 
 from osgeo import gdal
 
-from .geoprocessing_core import gdal_use_exceptions
+from .utils import gdal_use_exceptions
 
 LOGGER = logging.getLogger(__name__)
 

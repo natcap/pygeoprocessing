@@ -36,9 +36,8 @@ from . import geoprocessing_core
 from .geoprocessing_core import DEFAULT_CREATION_OPTIONS
 from .geoprocessing_core import DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS
 from .geoprocessing_core import DEFAULT_OSR_AXIS_MAPPING_STRATEGY
-from .geoprocessing_core import gdal_use_exceptions
-from .geoprocessing_core import GDALUseExceptions
 from .geoprocessing_core import INT8_CREATION_OPTIONS
+from .utils import GDALUseExceptions, gdal_use_exceptions
 
 # This is used to efficiently pass data to the raster stats worker if available
 if sys.version_info >= (3, 8):
