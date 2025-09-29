@@ -61,11 +61,11 @@ import shapely.ops
 import scipy.stats
 
 from ..geoprocessing_core import DEFAULT_OSR_AXIS_MAPPING_STRATEGY
-from ..geoprocessing_core import gdal_use_exceptions, GDALUseExceptions
 from ..geoprocessing_core import DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS
 from ..geoprocessing_core import SPARSE_CREATION_OPTIONS, BLOCK_BITS
 from ..extensions cimport ManagedRaster, is_close
 from ..extensions cimport COL_OFFSETS, ROW_OFFSETS, INFLOW_OFFSETS
+from ..utils import gdal_use_exceptions, GDALUseExceptions
 import pygeoprocessing
 
 LOGGER = logging.getLogger(__name__)

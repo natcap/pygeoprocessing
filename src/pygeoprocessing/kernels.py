@@ -41,7 +41,7 @@ import pygeoprocessing
 from numpy.typing import ArrayLike
 from osgeo import gdal
 
-from .geoprocessing_core import gdal_use_exceptions
+from .utils import gdal_use_exceptions
 
 FLOAT32_NODATA = float(numpy.finfo(numpy.float32).min)
 LOGGER = logging.getLogger(__name__)
