@@ -32,7 +32,7 @@ from osgeo import osr
 from pygeoprocessing.geoprocessing_core import DEFAULT_CREATION_OPTIONS
 from pygeoprocessing.geoprocessing_core import \
     DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS
-from pygeoprocessing.geoprocessing_core import gdal_use_exceptions
+from pygeoprocessing.utils import gdal_use_exceptions
 from pygeoprocessing.geoprocessing_core import INT8_CREATION_OPTIONS
 from pygeoprocessing.geoprocessing_core import \
     INT8_GTIFF_CREATION_TUPLE_OPTIONS
