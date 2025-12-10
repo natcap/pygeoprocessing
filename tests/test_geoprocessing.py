@@ -1333,6 +1333,95 @@ class TestGeoprocessing(unittest.TestCase):
                 'sum': 0.0}}
         self.assertEqual(result, expected_result)
 
+    def test_zonal_statistics_3d_polygon(self):
+        """PGP.geoprocessing: test zonal stats function with 3d polygon."""
+        # create aggregating polygon
+        pixel_size = 30.0
+        n_pixels = 9
+        origin = (444720, 3751320)
+
+        driver = ogr.GetDriverByName('GeoJSON')
+        aggregating_vector_path = os.path.join(
+            self.workspace_dir, 'aggregate_vector')
+        vector = driver.CreateDataSource(aggregating_vector_path)
+
+        projection = osr.SpatialReference()
+        projection.ImportFromEPSG(3116)
+        layer = vector.CreateLayer('aggregate', srs=projection, geom_type=ogr.wkbPolygon25D)
+        layer_defn = layer.GetLayerDefn()
+
+        polygon_a = [
+            (origin[0], origin[1]),
+            (origin[0], -pixel_size * n_pixels+origin[1]),
+            (origin[0]+pixel_size * n_pixels,
+             -pixel_size * n_pixels+origin[1]),
+            (origin[0]+pixel_size * n_pixels, origin[1]),
+            (origin[0], origin[1])]
+        polygon_b = [
+            (origin[0], origin[1]),
+            (origin[0], -pixel_size+origin[1]),
+            (origin[0]+pixel_size, -pixel_size+origin[1]),
+            (origin[0]+pixel_size, origin[1]),
+            (origin[0], origin[1])]
+        polygon_c = [
+            (origin[1]*2, origin[1]*3),
+            (origin[1]*2, -pixel_size+origin[1]*3),
+            (origin[1]*2+pixel_size,
+             -pixel_size+origin[1]*3),
+            (origin[1]*2+pixel_size, origin[1]*3),
+            (origin[1]*2, origin[1]*3)]
+
+        layer.StartTransaction()
+        for polygon in [polygon_a, polygon_b, polygon_c]:
+            ring = ogr.Geometry(ogr.wkbLinearRing)
+            for coords in polygon:
+                ring.AddPoint(coords[0], coords[1], 0)
+
+            poly = ogr.Geometry(ogr.wkbPolygon25D)
+            poly.AddGeometry(ring)
+
+            new_feature = ogr.Feature(layer_defn)
+            new_feature.SetGeometry(poly)
+            layer.CreateFeature(new_feature)
+
+        layer.CommitTransaction()
+        layer.SyncToDisk()
+        self.assertEqual(ogr.GeometryTypeToName(layer.GetGeomType()),
+                         ogr.GeometryTypeToName(ogr.wkbPolygon25D))
+        layer = None
+        vector = None
+
+        pixel_matrix = numpy.ones((n_pixels, n_pixels), numpy.float32)
+        target_nodata = None
+        raster_path = os.path.join(self.workspace_dir, 'raster.tif')
+        _array_to_raster(
+            pixel_matrix, target_nodata, raster_path)
+        result = pygeoprocessing.zonal_statistics(
+            (raster_path, 1), aggregating_vector_path,
+            aggregate_layer_name=None,
+            ignore_nodata=True,
+            polygons_might_overlap=True)
+        expected_result = {
+            0: {
+                'count': 81,
+                'max': 1.0,
+                'min': 1.0,
+                'nodata_count': 0,
+                'sum': 81.0},
+            1: {
+                'count': 1,
+                'max': 1.0,
+                'min': 1.0,
+                'nodata_count': 0,
+                'sum': 1.0},
+            2: {
+                'min': None,
+                'max': None,
+                'count': 0,
+                'nodata_count': 0,
+                'sum': 0.0}}
+        self.assertEqual(result, expected_result)
+
     def test_zonal_statistics_multipolygon(self):
         """PGP.geoprocessing: test zonal stats function with multipolygons."""
         # create aggregating polygon
@@ -1356,6 +1445,80 @@ class TestGeoprocessing(unittest.TestCase):
         aggregating_vector_path = os.path.join(
             self.workspace_dir, 'aggregate_vector')
         _geometry_to_vector([multipolygon], aggregating_vector_path)
+        pixel_matrix = numpy.ones((n_pixels, n_pixels), numpy.float32)
+        target_nodata = None
+        raster_path = os.path.join(self.workspace_dir, 'raster.tif')
+        _array_to_raster(
+            pixel_matrix, target_nodata, raster_path)
+        result = pygeoprocessing.zonal_statistics(
+            (raster_path, 1), aggregating_vector_path,
+            aggregate_layer_name=None,
+            ignore_nodata=True,
+            polygons_might_overlap=True)
+        self.assertEqual(result, {
+            0: {
+                'count': 2,
+                'max': 1.0,
+                'min': 1.0,
+                'nodata_count': 0,
+                'sum': 2
+        }})
+
+    def test_zonal_statistics_3d_multipolygon(self):
+        """PGP.geoprocessing: test zonal stats function with 3d multipolygons."""
+        # create aggregating polygon
+        pixel_size = 30.0
+        n_pixels = 9
+
+        driver = ogr.GetDriverByName('GeoJSON')
+        aggregating_vector_path = os.path.join(
+            self.workspace_dir, 'aggregate_vector_3d')
+        vector = driver.CreateDataSource(aggregating_vector_path)
+
+        projection = osr.SpatialReference()
+        projection.ImportFromEPSG(3116)
+        layer = vector.CreateLayer('aggregate', srs=projection,
+                                   geom_type=ogr.wkbMultiPolygon25D)
+        layer_defn = layer.GetLayerDefn()
+
+        origin = (444720, 3751320)
+        polygon_a = [
+            (origin[0], origin[1]),
+            (origin[0], -pixel_size + origin[1]),
+            (origin[0] + pixel_size, -pixel_size + origin[1]),
+            (origin[0] + pixel_size, origin[1]),
+            (origin[0], origin[1])]
+        origin = (origin[0] + pixel_size, origin[1] - pixel_size)
+        polygon_b = [
+            (origin[0], origin[1]),
+            (origin[0], -pixel_size + origin[1]),
+            (origin[0] + pixel_size, -pixel_size + origin[1]),
+            (origin[0] + pixel_size, origin[1]),
+            (origin[0], origin[1])]
+
+        multipolygon = ogr.Geometry(ogr.wkbMultiPolygon25D)
+
+        layer.StartTransaction()
+        for polygon in [polygon_a, polygon_b]:
+            ring = ogr.Geometry(ogr.wkbLinearRing)
+            for coords in polygon:
+                ring.AddPoint(coords[0], coords[1], 0)
+
+            poly = ogr.Geometry(ogr.wkbPolygon25D)
+            poly.AddGeometry(ring)
+            multipolygon.AddGeometry(poly)
+
+        new_feature = ogr.Feature(layer_defn)
+        new_feature.SetGeometry(multipolygon)
+        layer.CreateFeature(new_feature)
+
+        layer.CommitTransaction()
+        layer.SyncToDisk()
+        self.assertEqual(ogr.GeometryTypeToName(layer.GetGeomType()),
+                         ogr.GeometryTypeToName(ogr.wkbMultiPolygon25D))
+        layer = None
+        vector = None
+
         pixel_matrix = numpy.ones((n_pixels, n_pixels), numpy.float32)
         target_nodata = None
         raster_path = os.path.join(self.workspace_dir, 'raster.tif')
