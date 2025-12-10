@@ -1347,7 +1347,8 @@ class TestGeoprocessing(unittest.TestCase):
 
         projection = osr.SpatialReference()
         projection.ImportFromEPSG(3116)
-        layer = vector.CreateLayer('aggregate', srs=projection, geom_type=ogr.wkbPolygon25D)
+        layer = vector.CreateLayer('aggregate', srs=projection,
+                                   geom_type=ogr.wkbPolygon25D)
         layer_defn = layer.GetLayerDefn()
 
         polygon_a = [
@@ -1478,33 +1479,33 @@ class TestGeoprocessing(unittest.TestCase):
         projection = osr.SpatialReference()
         projection.ImportFromEPSG(3116)
         layer = vector.CreateLayer('aggregate', srs=projection,
-                                   geom_type=ogr.wkbMultiPolygon25D)
+                                   geom_type=ogr.wkbMultiPolygonZM)
         layer_defn = layer.GetLayerDefn()
 
         origin = (444720, 3751320)
         polygon_a = [
-            (origin[0], origin[1]),
-            (origin[0], -pixel_size + origin[1]),
-            (origin[0] + pixel_size, -pixel_size + origin[1]),
-            (origin[0] + pixel_size, origin[1]),
-            (origin[0], origin[1])]
+            (origin[0], origin[1], 0, 1),
+            (origin[0], -pixel_size + origin[1], 0, 2),
+            (origin[0] + pixel_size, -pixel_size + origin[1], 0, 0),
+            (origin[0] + pixel_size, origin[1], 0, 0),
+            (origin[0], origin[1], 0, 1)]
         origin = (origin[0] + pixel_size, origin[1] - pixel_size)
         polygon_b = [
-            (origin[0], origin[1]),
-            (origin[0], -pixel_size + origin[1]),
-            (origin[0] + pixel_size, -pixel_size + origin[1]),
-            (origin[0] + pixel_size, origin[1]),
-            (origin[0], origin[1])]
+            (origin[0], origin[1], 0, 0),
+            (origin[0], -pixel_size + origin[1], 0, 1),
+            (origin[0] + pixel_size, -pixel_size + origin[1], 0, 2),
+            (origin[0] + pixel_size, origin[1], 0, 1),
+            (origin[0], origin[1], 0, 0)]
 
-        multipolygon = ogr.Geometry(ogr.wkbMultiPolygon25D)
+        multipolygon = ogr.Geometry(ogr.wkbMultiPolygonZM)
 
         layer.StartTransaction()
         for polygon in [polygon_a, polygon_b]:
             ring = ogr.Geometry(ogr.wkbLinearRing)
             for coords in polygon:
-                ring.AddPoint(coords[0], coords[1], 0)
+                ring.AddPointZM(coords[0], coords[1], coords[2], coords[3])
 
-            poly = ogr.Geometry(ogr.wkbPolygon25D)
+            poly = ogr.Geometry(ogr.wkbPolygonZM)
             poly.AddGeometry(ring)
             multipolygon.AddGeometry(poly)
 
@@ -1515,7 +1516,7 @@ class TestGeoprocessing(unittest.TestCase):
         layer.CommitTransaction()
         layer.SyncToDisk()
         self.assertEqual(ogr.GeometryTypeToName(layer.GetGeomType()),
-                         ogr.GeometryTypeToName(ogr.wkbMultiPolygon25D))
+                         ogr.GeometryTypeToName(ogr.wkbMultiPolygonZM))
         layer = None
         vector = None
 
