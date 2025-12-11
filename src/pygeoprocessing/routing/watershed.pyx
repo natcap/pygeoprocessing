@@ -364,7 +364,7 @@ def delineate_watersheds_d8(
     LOGGER.debug('Creating flow dir managed raster')
     flow_dir_managed_raster = ManagedRaster(
         d8_flow_dir_raster_path_band[0].encode('utf-8'),
-        d8_flow_dir_raster_path_band[1], 0)
+        d8_flow_dir_raster_path_band[1], False)
     gtiff_driver = gdal.GetDriverByName('GTiff')
     flow_dir_srs = osr.SpatialReference()
     if flow_dir_info['projection_wkt']:
@@ -488,7 +488,8 @@ def delineate_watersheds_d8(
         # strictly speaking, there's no need to set the nodata value on the band.
         scratch_raster = None
 
-        scratch_managed_raster = ManagedRaster(scratch_raster_path.encode('utf-8'), 1, 1)
+        scratch_managed_raster = ManagedRaster(
+            scratch_raster_path.encode('utf-8'), 1, True)
         ix_min = flow_dir_n_cols
         iy_min = flow_dir_n_rows
         ix_max = 0

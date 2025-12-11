@@ -372,7 +372,7 @@ def fill_pits(
         [mask_nodata],
         raster_driver_creation_tuple=raster_driver_creation_tuple)
     flat_region_mask_managed_raster = ManagedRaster(
-        flat_region_mask_path.encode('utf-8'), 1, 1)
+        flat_region_mask_path.encode('utf-8'), 1, True)
 
     # this raster will have the value of 'feature_id' set to it if it has
     # been searched as part of the search for a pour point for pit number
@@ -383,7 +383,7 @@ def fill_pits(
         [mask_nodata],
         raster_driver_creation_tuple=raster_driver_creation_tuple)
     pit_mask_managed_raster = ManagedRaster(
-        pit_mask_path.encode('utf-8'), 1, 1)
+        pit_mask_path.encode('utf-8'), 1, True)
 
     # copy the base DEM to the target and set up for writing
     base_datatype = pygeoprocessing.get_raster_info(
@@ -404,7 +404,7 @@ def fill_pits(
     filled_dem_band = None
     filled_dem_raster = None
     filled_dem_managed_raster = ManagedRaster(
-        target_filled_dem_raster_path.encode('utf-8'), 1, 1)
+        target_filled_dem_raster_path.encode('utf-8'), 1, True)
 
     # feature_id will start at 1 since the mask nodata is 0.
     feature_id = 0
@@ -790,14 +790,15 @@ def flow_dir_d8(
         [mask_nodata],
         raster_driver_creation_tuple=raster_driver_creation_tuple)
     flat_region_mask_managed_raster = ManagedRaster(
-        flat_region_mask_path.encode('utf-8'), 1, 1)
+        flat_region_mask_path.encode('utf-8'), 1, True)
 
     flow_dir_nodata = 128
     pygeoprocessing.new_raster_from_base(
         dem_raster_path_band[0], target_flow_dir_path, gdal.GDT_Byte,
         [flow_dir_nodata],
         raster_driver_creation_tuple=raster_driver_creation_tuple)
-    flow_dir_managed_raster = ManagedRaster(target_flow_dir_path.encode('utf-8'), 1, 1)
+    flow_dir_managed_raster = ManagedRaster(
+        target_flow_dir_path.encode('utf-8'), 1, True)
 
     # this creates a raster that's used for a dynamic programming solution to
     # shortest path to the drain for plateaus. the raster is filled with
@@ -810,7 +811,7 @@ def flow_dir_d8(
         [-1], fill_value_list=[raster_x_size * raster_y_size],
         raster_driver_creation_tuple=raster_driver_creation_tuple)
     plateau_distance_managed_raster = ManagedRaster(
-        plateau_distance_path.encode('utf-8'), 1, 1)
+        plateau_distance_path.encode('utf-8'), 1, True)
 
     # this raster is for random access of the DEM
 
@@ -833,7 +834,7 @@ def flow_dir_d8(
         compatable_dem_raster_path_band = dem_raster_path_band
     dem_managed_raster = ManagedRaster(
         compatable_dem_raster_path_band[0].encode('utf-8'),
-        compatable_dem_raster_path_band[1], 0)
+        compatable_dem_raster_path_band[1], False)
 
     # and this raster is for efficient block-by-block reading of the dem
     dem_raster = gdal.OpenEx(
@@ -1149,10 +1150,11 @@ def flow_accumulation_d8(
         gdal.GDT_Float64, [flow_accum_nodata],
         raster_driver_creation_tuple=raster_driver_creation_tuple)
     flow_accum_managed_raster = ManagedRaster(
-        target_flow_accum_raster_path.encode('utf-8'), 1, 1)
+        target_flow_accum_raster_path.encode('utf-8'), 1, True)
 
     flow_dir_managed_raster = ManagedRaster(
-        flow_dir_raster_path_band[0].encode('utf-8'), flow_dir_raster_path_band[1], 0)
+        flow_dir_raster_path_band[0].encode('utf-8'),
+        flow_dir_raster_path_band[1], False)
     flow_dir_raster = gdal.OpenEx(
         flow_dir_raster_path_band[0], gdal.OF_RASTER)
     flow_dir_band = flow_dir_raster.GetRasterBand(
@@ -1161,7 +1163,8 @@ def flow_accumulation_d8(
     cdef ManagedRaster weight_raster
     if weight_raster_path_band:
         weight_raster = ManagedRaster(
-            weight_raster_path_band[0].encode('utf-8'), weight_raster_path_band[1], 0)
+            weight_raster_path_band[0].encode('utf-8'),
+            weight_raster_path_band[1], False)
         raw_weight_nodata = pygeoprocessing.get_raster_info(
             weight_raster_path_band[0])['nodata'][
                 weight_raster_path_band[1]-1]
@@ -1183,7 +1186,8 @@ def flow_accumulation_d8(
                     "%s is supposed to be a raster band tuple but it's not." % (
                         custom_decay_factor))
             decay_factor_managed_raster = ManagedRaster(
-                custom_decay_factor[0].encode('utf-8'), custom_decay_factor[1], 0)
+                custom_decay_factor[0].encode('utf-8'),
+                custom_decay_factor[1], False)
             _tmp_decay_factor_nodata = pygeoprocessing.get_raster_info(
                 custom_decay_factor[0])['nodata'][0]
             if _tmp_decay_factor_nodata is None:
@@ -1499,14 +1503,15 @@ def flow_dir_mfd(
         [mask_nodata],
         raster_driver_creation_tuple=raster_driver_creation_tuple)
     flat_region_mask_managed_raster = ManagedRaster(
-        flat_region_mask_path.encode('utf-8'), 1, 1)
+        flat_region_mask_path.encode('utf-8'), 1, True)
 
     flow_dir_nodata = 0
     pygeoprocessing.new_raster_from_base(
         dem_raster_path_band[0], target_flow_dir_path, gdal.GDT_Int32,
         [flow_dir_nodata],
         raster_driver_creation_tuple=raster_driver_creation_tuple)
-    flow_dir_managed_raster = ManagedRaster(target_flow_dir_path.encode('utf-8'), 1, 1)
+    flow_dir_managed_raster = ManagedRaster(
+        target_flow_dir_path.encode('utf-8'), 1, True)
 
     plateu_drain_mask_path = os.path.join(
         working_dir_path, 'plateu_drain_mask.tif')
@@ -1515,7 +1520,7 @@ def flow_dir_mfd(
         [mask_nodata],
         raster_driver_creation_tuple=raster_driver_creation_tuple)
     plateau_drain_mask_managed_raster = ManagedRaster(
-        plateu_drain_mask_path.encode('utf-8'), 1, 1)
+        plateu_drain_mask_path.encode('utf-8'), 1, True)
 
     # this creates a raster that's used for a dynamic programming solution to
     # shortest path to the drain for plateaus. the raster is filled with
@@ -1530,7 +1535,7 @@ def flow_dir_mfd(
         fill_value_list=[plateau_distance_nodata],
         raster_driver_creation_tuple=raster_driver_creation_tuple)
     plateau_distance_managed_raster = ManagedRaster(
-        plateau_distance_path.encode('utf-8'), 1, 1)
+        plateau_distance_path.encode('utf-8'), 1, True)
 
     # this raster is for random access of the DEM
     compatable_dem_raster_path_band = None
@@ -1552,7 +1557,7 @@ def flow_dir_mfd(
         compatable_dem_raster_path_band = dem_raster_path_band
     dem_managed_raster = ManagedRaster(
         compatable_dem_raster_path_band[0].encode('utf-8'),
-        compatable_dem_raster_path_band[1], 0)
+        compatable_dem_raster_path_band[1], False)
 
     # and this raster is for efficient block-by-block reading of the dem
     dem_raster = gdal.OpenEx(
@@ -1960,7 +1965,7 @@ def flow_accumulation_mfd(
         raster_driver_creation_tuple=raster_driver_creation_tuple)
 
     flow_accum_managed_raster = ManagedRaster(
-        target_flow_accum_raster_path.encode('utf-8'), 1, 1)
+        target_flow_accum_raster_path.encode('utf-8'), 1, True)
 
     # make a temporary raster to mark where we have visisted
     LOGGER.debug('creating visited raster layer')
@@ -1971,10 +1976,12 @@ def flow_accumulation_mfd(
         flow_dir_mfd_raster_path_band[0], visited_raster_path,
         gdal.GDT_Byte, [0],
         raster_driver_creation_tuple=('GTiff', SPARSE_CREATION_OPTIONS))
-    visited_managed_raster = ManagedRaster(visited_raster_path.encode('utf-8'), 1, 1)
+    visited_managed_raster = ManagedRaster(
+        visited_raster_path.encode('utf-8'), 1, True)
 
     flow_dir_managed_raster = ManagedRaster(
-        flow_dir_mfd_raster_path_band[0].encode('utf-8'), flow_dir_mfd_raster_path_band[1], 0)
+        flow_dir_mfd_raster_path_band[0].encode('utf-8'),
+        flow_dir_mfd_raster_path_band[1], False)
     flow_dir_raster = gdal.OpenEx(
         flow_dir_mfd_raster_path_band[0], gdal.OF_RASTER)
     flow_dir_band = flow_dir_raster.GetRasterBand(
@@ -1983,7 +1990,8 @@ def flow_accumulation_mfd(
     cdef ManagedRaster weight_raster
     if weight_raster_path_band:
         weight_raster = ManagedRaster(
-            weight_raster_path_band[0].encode('utf-8'), weight_raster_path_band[1], 0)
+            weight_raster_path_band[0].encode('utf-8'),
+            weight_raster_path_band[1], False)
         raw_weight_nodata = pygeoprocessing.get_raster_info(
             weight_raster_path_band[0])['nodata'][
                 weight_raster_path_band[1]-1]
@@ -2220,12 +2228,13 @@ def distance_to_channel_d8(
         gdal.GDT_Float64, [distance_nodata],
         raster_driver_creation_tuple=raster_driver_creation_tuple)
     distance_to_channel_managed_raster = ManagedRaster(
-        target_distance_to_channel_raster_path.encode('utf-8'), 1, 1)
+        target_distance_to_channel_raster_path.encode('utf-8'), 1, True)
 
     cdef ManagedRaster weight_raster
     if weight_raster_path_band:
         weight_raster = ManagedRaster(
-            weight_raster_path_band[0].encode('utf-8'), weight_raster_path_band[1], 0)
+            weight_raster_path_band[0].encode('utf-8'),
+            weight_raster_path_band[1], False)
         raw_weight_nodata = pygeoprocessing.get_raster_info(
             weight_raster_path_band[0])['nodata'][
                 weight_raster_path_band[1]-1]
@@ -2233,10 +2242,12 @@ def distance_to_channel_d8(
             weight_nodata = raw_weight_nodata
 
     channel_managed_raster = ManagedRaster(
-        channel_raster_path_band[0].encode('utf-8'), channel_raster_path_band[1], 0)
+        channel_raster_path_band[0].encode('utf-8'),
+        channel_raster_path_band[1], False)
 
     flow_dir_d8_managed_raster = ManagedRaster(
-        flow_dir_d8_raster_path_band[0].encode('utf-8'), flow_dir_d8_raster_path_band[1], 0)
+        flow_dir_d8_raster_path_band[0].encode('utf-8'),
+        flow_dir_d8_raster_path_band[1], False)
     channel_raster = gdal.OpenEx(channel_raster_path_band[0], gdal.OF_RASTER)
     channel_band = channel_raster.GetRasterBand(channel_raster_path_band[1])
 
@@ -2451,9 +2462,10 @@ def distance_to_channel_mfd(
         gdal.GDT_Float64, [distance_nodata],
         raster_driver_creation_tuple=raster_driver_creation_tuple)
     distance_to_channel_managed_raster = ManagedRaster(
-        target_distance_to_channel_raster_path.encode('utf-8'), 1, 1)
+        target_distance_to_channel_raster_path.encode('utf-8'), 1, True)
     channel_managed_raster = ManagedRaster(
-        channel_raster_path_band[0].encode('utf-8'), channel_raster_path_band[1], 0)
+        channel_raster_path_band[0].encode('utf-8'),
+        channel_raster_path_band[1], False)
 
     tmp_work_dir = tempfile.mkdtemp(
         suffix=None, prefix='dist_to_channel_mfd_work_dir',
@@ -2464,10 +2476,12 @@ def distance_to_channel_mfd(
         visited_raster_path,
         gdal.GDT_Byte, [0],
         raster_driver_creation_tuple=raster_driver_creation_tuple)
-    visited_managed_raster = ManagedRaster(visited_raster_path.encode('utf-8'), 1, 1)
+    visited_managed_raster = ManagedRaster(
+        visited_raster_path.encode('utf-8'), 1, True)
 
     flow_dir_mfd_managed_raster = ManagedRaster(
-        flow_dir_mfd_raster_path_band[0].encode('utf-8'), flow_dir_mfd_raster_path_band[1], 0)
+        flow_dir_mfd_raster_path_band[0].encode('utf-8'),
+        flow_dir_mfd_raster_path_band[1], False)
     channel_raster = gdal.OpenEx(channel_raster_path_band[0], gdal.OF_RASTER)
     channel_band = channel_raster.GetRasterBand(channel_raster_path_band[1])
 
@@ -2479,7 +2493,8 @@ def distance_to_channel_mfd(
     cdef ManagedRaster weight_raster
     if weight_raster_path_band:
         weight_raster = ManagedRaster(
-            weight_raster_path_band[0].encode('utf-8'), weight_raster_path_band[1], 0)
+            weight_raster_path_band[0].encode('utf-8'),
+            weight_raster_path_band[1], False)
         raw_weight_nodata = pygeoprocessing.get_raster_info(
             weight_raster_path_band[0])['nodata'][
                 weight_raster_path_band[1]-1]
@@ -2725,11 +2740,13 @@ def extract_streams_mfd(
         raster_driver_creation_tuple=raster_driver_creation_tuple)
 
     cdef ManagedRaster flow_accum_mr = ManagedRaster(
-        flow_accum_raster_path_band[0].encode('utf-8'), flow_accum_raster_path_band[1], 0)
+        flow_accum_raster_path_band[0].encode('utf-8'),
+        flow_accum_raster_path_band[1], False)
     cdef ManagedRaster stream_mr = ManagedRaster(
-        target_stream_raster_path.encode('utf-8'), 1, 1)
+        target_stream_raster_path.encode('utf-8'), 1, True)
     cdef ManagedRaster flow_dir_mfd_mr = ManagedRaster(
-        flow_dir_mfd_path_band[0].encode('utf-8'), flow_dir_mfd_path_band[1], 0)
+        flow_dir_mfd_path_band[0].encode('utf-8'),
+        flow_dir_mfd_path_band[1], False)
 
     cdef unsigned int xoff, yoff, win_xsize, win_ysize
     cdef unsigned int xi, yi, xi_root, yi_root, i_n, xi_n, yi_n, i_sn, xi_sn, yi_sn
@@ -2988,13 +3005,15 @@ def extract_strahler_streams_d8(
     stream_layer.CreateField(ogr.FieldDefn('us_x', ogr.OFTInteger))
     stream_layer.CreateField(ogr.FieldDefn('us_y', ogr.OFTInteger))
     flow_dir_managed_raster = ManagedRaster(
-        flow_dir_d8_raster_path_band[0].encode('utf-8'), flow_dir_d8_raster_path_band[1], 0)
+        flow_dir_d8_raster_path_band[0].encode('utf-8'),
+        flow_dir_d8_raster_path_band[1], False)
 
     flow_accum_managed_raster = ManagedRaster(
-        flow_accum_raster_path_band[0].encode('utf-8'), flow_accum_raster_path_band[1], 0)
+        flow_accum_raster_path_band[0].encode('utf-8'),
+        flow_accum_raster_path_band[1], False)
 
     dem_managed_raster = ManagedRaster(
-        dem_raster_path_band[0].encode('utf-8'), dem_raster_path_band[1], 0)
+        dem_raster_path_band[0].encode('utf-8'), dem_raster_path_band[1], False)
 
     cdef int flow_nodata = pygeoprocessing.get_raster_info(
         flow_dir_d8_raster_path_band[0])['nodata'][
@@ -3594,16 +3613,18 @@ def _build_discovery_finish_rasters(
         flow_dir_info['nodata'][flow_dir_d8_raster_path_band[1]-1])
 
     flow_dir_managed_raster = ManagedRaster(
-        flow_dir_d8_raster_path_band[0].encode('utf-8'), flow_dir_d8_raster_path_band[1], 0)
+        flow_dir_d8_raster_path_band[0].encode('utf-8'),
+        flow_dir_d8_raster_path_band[1], False)
     pygeoprocessing.new_raster_from_base(
         flow_dir_d8_raster_path_band[0], target_discovery_raster_path,
         gdal.GDT_Float64, [-1])
     discovery_managed_raster = ManagedRaster(
-        target_discovery_raster_path.encode('utf-8'), 1, 1)
+        target_discovery_raster_path.encode('utf-8'), 1, True)
     pygeoprocessing.new_raster_from_base(
         flow_dir_d8_raster_path_band[0], target_finish_raster_path,
         gdal.GDT_Float64, [-1])
-    finish_managed_raster = ManagedRaster(target_finish_raster_path.encode('utf-8'), 1, 1)
+    finish_managed_raster = ManagedRaster(
+        target_finish_raster_path.encode('utf-8'), 1, True)
 
     cdef stack[CoordinateType] discovery_stack
     cdef stack[FinishType] finish_stack
@@ -3772,10 +3793,12 @@ def calculate_subwatershed_boundary(
     # the discovery raster is filled with nodata around the edges of
     # discovered watersheds, so it is opened for writing
     discovery_managed_raster = ManagedRaster(
-        discovery_time_raster_path.encode('utf-8'), 1, 1)
-    finish_managed_raster = ManagedRaster(finish_time_raster_path.encode('utf-8'), 1, 0)
+        discovery_time_raster_path.encode('utf-8'), 1, True)
+    finish_managed_raster = ManagedRaster(
+        finish_time_raster_path.encode('utf-8'), 1, False)
     d8_flow_dir_managed_raster = ManagedRaster(
-        d8_flow_dir_raster_path_band[0].encode('utf-8'), d8_flow_dir_raster_path_band[1], 0)
+        d8_flow_dir_raster_path_band[0].encode('utf-8'),
+        d8_flow_dir_raster_path_band[1], False)
 
     discovery_info = pygeoprocessing.get_raster_info(
         discovery_time_raster_path)
@@ -4100,7 +4123,7 @@ def detect_lowest_drain_and_sink(dem_raster_path_band):
     raster_x_size, raster_y_size = dem_raster_info['raster_size']
 
     cdef ManagedRaster dem_managed_raster = ManagedRaster(
-        dem_raster_path_band[0].encode('utf-8'), dem_raster_path_band[1], 0)
+        dem_raster_path_band[0].encode('utf-8'), dem_raster_path_band[1], False)
 
     cdef time_t last_log_time = ctime(NULL)
 
