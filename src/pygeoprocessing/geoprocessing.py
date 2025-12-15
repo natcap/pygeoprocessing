@@ -1667,7 +1667,7 @@ def zonal_statistics(
 
         ValueError
             if ``aggregate_vector_path`` has a geometry type other than
-            Polygon or MultiPolygon
+            2D/Measured/3D/3D-Measured Polygon or MultiPolygon
 
         RuntimeError
             if the aggregate vector or layer cannot be opened
