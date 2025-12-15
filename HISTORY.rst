@@ -8,6 +8,10 @@ Unreleased Changes
   class (which was previously implemented in Cython).
   https://github.com/natcap/pygeoprocessing/issues/439
 
+* Added support for 3D, Measured, and 3D Measured Polygon and MultiPolygon
+  geometries to ``zonal_statistics``.
+  https://github.com/natcap/pygeoprocessing/issues/448
+
 2.4.9 (2025-07-10)
 ------------------
 * Watershed delineation will now always create a layer of type MultiPolygon.

@@ -1667,7 +1667,7 @@ def zonal_statistics(
 
         ValueError
             if ``aggregate_vector_path`` has a geometry type other than
-            Polygon or MultiPolygon
+            2D/Measured/3D/3D-Measured Polygon or MultiPolygon
 
         RuntimeError
             if the aggregate vector or layer cannot be opened
@@ -1709,8 +1709,10 @@ def zonal_statistics(
             f"Could not open layer {aggregate_layer_name} of {aggregate_vector_path}")
 
     # Check that the vector geometry type is polygon or multipolygon
-    if aggregate_layer.GetGeomType() not in [ogr.wkbPolygon, ogr.wkbMultiPolygon]:
-        raise ValueError('Vector geometry type must be Polygon or MultiPolygon')
+    if aggregate_layer.GetGeomType() not in [ogr.wkbPolygon, ogr.wkbPolygonM,
+            ogr.wkbPolygonZM, ogr.wkbPolygon25D, ogr.wkbMultiPolygon,
+            ogr.wkbMultiPolygonM, ogr.wkbMultiPolygonZM, ogr.wkbMultiPolygon25D]:
+        raise ValueError(f'Vector geometry type must be Polygon or MultiPolygon')
 
     # Define the default/empty statistics values
     # These values will be returned for features that have no geometry or
