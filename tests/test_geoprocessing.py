@@ -1353,23 +1353,23 @@ class TestGeoprocessing(unittest.TestCase):
 
         polygon_a = [
             (origin[0], origin[1]),
-            (origin[0], -pixel_size * n_pixels+origin[1]),
-            (origin[0]+pixel_size * n_pixels,
-             -pixel_size * n_pixels+origin[1]),
-            (origin[0]+pixel_size * n_pixels, origin[1]),
+            (origin[0], -pixel_size * n_pixels + origin[1]),
+            (origin[0] + pixel_size * n_pixels,
+             -pixel_size * n_pixels + origin[1]),
+            (origin[0] + pixel_size * n_pixels, origin[1]),
             (origin[0], origin[1])]
         polygon_b = [
             (origin[0], origin[1]),
-            (origin[0], -pixel_size+origin[1]),
-            (origin[0]+pixel_size, -pixel_size+origin[1]),
-            (origin[0]+pixel_size, origin[1]),
+            (origin[0], -pixel_size + origin[1]),
+            (origin[0] + pixel_size, -pixel_size + origin[1]),
+            (origin[0] + pixel_size, origin[1]),
             (origin[0], origin[1])]
         polygon_c = [
             (origin[1]*2, origin[1]*3),
-            (origin[1]*2, -pixel_size+origin[1]*3),
-            (origin[1]*2+pixel_size,
-             -pixel_size+origin[1]*3),
-            (origin[1]*2+pixel_size, origin[1]*3),
+            (origin[1]*2, -pixel_size + origin[1]*3),
+            (origin[1]*2 + pixel_size,
+             -pixel_size + origin[1]*3),
+            (origin[1]*2 + pixel_size, origin[1]*3),
             (origin[1]*2, origin[1]*3)]
 
         layer.StartTransaction()
