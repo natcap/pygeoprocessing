@@ -1,13 +1,12 @@
 Release History
 ===============
 
-Unreleased Changes
-------------------
+2.4.10 (2026-01-13)
+-------------------
 * A new module, ``pygeoprocessing.extensions``, exposes the C++ extensions
   ``FastFileIterator`` and ``LRUCache``, as well as the new ``ManagedRaster``
   class (which was previously implemented in Cython).
   https://github.com/natcap/pygeoprocessing/issues/439
-
 * Added support for 3D, Measured, and 3D Measured Polygon and MultiPolygon
   geometries to ``zonal_statistics``.
   https://github.com/natcap/pygeoprocessing/issues/448
