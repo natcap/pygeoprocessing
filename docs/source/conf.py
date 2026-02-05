@@ -20,8 +20,8 @@ from pkg_resources import get_distribution
 # -- Project information -----------------------------------------------------
 
 project = 'PyGeoprocessing'
-copyright = f'{datetime.datetime.today().year}, The Natural Capital Project'
-author = 'The Natural Capital Project'
+copyright = f'{datetime.datetime.today().year}, The Natural Capital Alliance'
+author = 'The Natural Capital Alliance'
 
 
 # -- General configuration ---------------------------------------------------
