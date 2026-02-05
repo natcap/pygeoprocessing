@@ -1,4 +1,4 @@
-// Copyright 2019 The Natural Capital Project
+// Copyright 2026 The Natural Capital Alliance
 #ifndef SRC_PYGEOPROCESSING_FASTFILEITERATOR_H_
 #define SRC_PYGEOPROCESSING_FASTFILEITERATOR_H_
 
