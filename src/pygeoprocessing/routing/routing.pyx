@@ -3026,13 +3026,12 @@ def extract_strahler_streams_d8(
     # 321
     # 4x0
     # 567
-    cdef unsigned int xoff, yoff, i, j, d, d_n, n_cols, n_rows
+    cdef unsigned int xoff, yoff, i, j, d, d_n
     cdef unsigned int win_xsize, win_ysize
 
-    n_cols, n_rows = flow_dir_info['raster_size']
-
     LOGGER.info('(extract_strahler_streams_d8): seed the drains')
-    cdef unsigned long n_pixels = n_cols * n_rows
+    cdef unsigned long n_pixels = (
+        flow_dir_managed_raster.raster_x_size * flow_dir_managed_raster.raster_y_size)
     cdef long n_processed = 0
     cdef time_t last_log_time
     last_log_time = ctime(NULL)
@@ -3093,7 +3092,7 @@ def extract_strahler_streams_d8(
                 d_n = <int>flow_dir_managed_raster.get(x_l, y_l)
                 x_n = x_l + COL_OFFSETS[d_n]
                 y_n = y_l + ROW_OFFSETS[d_n]
-                if (x_n < 0 or y_n < 0 or x_n >= n_cols or y_n >= n_rows or
+                if (flow_dir_managed_raster.is_out_of_bounds(x_n, y_n) or
                         <int>flow_dir_managed_raster.get(
                             x_n, y_n) == flow_nodata):
                     is_drain = 1
@@ -3109,7 +3108,7 @@ def extract_strahler_streams_d8(
                     x_n = x_l + COL_OFFSETS[d]
                     y_n = y_l + ROW_OFFSETS[d]
                     # check if on border
-                    if x_n < 0 or y_n < 0 or x_n >= n_cols or y_n >= n_rows:
+                    if flow_dir_managed_raster.is_out_of_bounds(x_n, y_n):
                         continue
                     d_n = <int>flow_dir_managed_raster.get(x_n, y_n)
                     if d_n == flow_nodata:
@@ -3160,8 +3159,8 @@ def extract_strahler_streams_d8(
         payload = _calculate_stream_geometry(
             source_stream_point.xi, source_stream_point.yi,
             source_stream_point.upstream_d8_dir,
-            flow_dir_info['geotransform'], n_cols, n_rows,
-            flow_accum_managed_raster, flow_dir_managed_raster, flow_nodata,
+            flow_dir_info['geotransform'], flow_accum_managed_raster,
+            flow_dir_managed_raster, flow_nodata,
             min_flow_accum_threshold, coord_to_stream_ids)
         if payload is None:
             LOGGER.debug(
@@ -3401,7 +3400,7 @@ def extract_strahler_streams_d8(
                                 'upstream_d8_dir')
                             payload = _calculate_stream_geometry(
                                 ds_x, ds_y, upstream_d8_dir,
-                                flow_dir_info['geotransform'], n_cols, n_rows,
+                                flow_dir_info['geotransform'],
                                 flow_accum_managed_raster,
                                 flow_dir_managed_raster, flow_nodata,
                                 working_flow_accum_threshold,
@@ -3593,6 +3592,10 @@ def _build_discovery_finish_rasters(
         target_finish_raster_path):
     """Generates a discovery and finish time raster for a given d8 flow path.
 
+    The discovery raster records the order in which each pixel is visited, from
+    0 (visited first) to the total number of pixels (visited last). Pixels are
+    visited by starting from drain points and working upslope.
+
     Args:
         flow_dir_d8_raster_path_band (tuple): a D8 flow raster path band tuple.
             Paths may use any GDAL-supported scheme, including virtual file
@@ -3607,8 +3610,6 @@ def _build_discovery_finish_rasters(
     """
     flow_dir_info = pygeoprocessing.get_raster_info(
         flow_dir_d8_raster_path_band[0])
-    cdef int n_cols, n_rows
-    n_cols, n_rows = flow_dir_info['raster_size']
     cdef int flow_dir_nodata = (
         flow_dir_info['nodata'][flow_dir_d8_raster_path_band[1]-1])
 
@@ -3633,12 +3634,14 @@ def _build_discovery_finish_rasters(
 
     cdef long discovery_count = 0
     cdef int n_processed, n_pixels
-    n_pixels = n_rows * n_cols
+    n_pixels = (
+        flow_dir_managed_raster.raster_x_size *
+        flow_dir_managed_raster.raster_x_size)
     n_processed = 0
     cdef time_t last_log_time = ctime(NULL)
     cdef int n_pushed
 
-    cdef int i, j, xoff, yoff, win_xsize, win_ysize, x_l, y_l, x_n, y_n
+    cdef int i, j, xoff, yoff, win_xsize, win_ysize, x, y, x_n, y_n
     cdef int n_dir, test_dir
 
     for offset_dict in pygeoprocessing.iterblocks(
@@ -3655,24 +3658,26 @@ def _build_discovery_finish_rasters(
         win_ysize = offset_dict['win_ysize']
         n_processed += win_xsize * win_ysize
 
-        for i in range(win_xsize):
-            for j in range(win_ysize):
-                x_l = xoff + i
-                y_l = yoff + j
+        for xi in range(win_xsize):
+            for yi in range(win_ysize):
+                x = xoff + xi
+                y = yoff + yi
                 # check to see if this pixel is a drain
-                d_n = <int>flow_dir_managed_raster.get(x_l, y_l)
-                if d_n == flow_dir_nodata:
+                flow_dir = <int>flow_dir_managed_raster.get(x, y)
+                if flow_dir == flow_dir_nodata:
                     continue
 
-                # check if downstream neighbor runs off raster or is nodata
-                x_n = x_l + COL_OFFSETS[d_n]
-                y_n = y_l + ROW_OFFSETS[d_n]
+                # find the downstream neighbor (the pixel that this pixel drains to)
+                x_n = x + COL_OFFSETS[flow_dir]
+                y_n = y + ROW_OFFSETS[flow_dir]
 
-                if (x_n < 0 or y_n < 0 or x_n >= n_cols or y_n >= n_rows or
+                # if the downstream neighbor runs off raster or is nodata, then
+                # this pixel is a drain point, so we can push it to the stack
+                if (flow_dir_managed_raster.is_out_of_bounds(x_n, y_n) or
                         <int>flow_dir_managed_raster.get(
                             x_n, y_n) == flow_dir_nodata):
-                    discovery_stack.push(CoordinateType(x_l, y_l))
-                    finish_stack.push(FinishType(x_l, y_l, 1))
+                    discovery_stack.push(CoordinateType(x, y))
+                    finish_stack.push(FinishType(x, y, 1))
 
                 while not discovery_stack.empty():
                     # This coordinate is the downstream end of the stream
@@ -3689,15 +3694,20 @@ def _build_discovery_finish_rasters(
                     for test_dir in range(8):
                         x_n = raster_coord.xi + COL_OFFSETS[test_dir % 8]
                         y_n = raster_coord.yi + ROW_OFFSETS[test_dir % 8]
-                        if x_n < 0 or y_n < 0 or \
-                                x_n >= n_cols or y_n >= n_rows:
+
+                        # skip neighbors that are outside of the raster bounds,
+                        # or that have nodata
+                        if flow_dir_managed_raster.is_out_of_bounds(x_n, y_n):
                             continue
                         n_dir = <int>flow_dir_managed_raster.get(x_n, y_n)
                         if n_dir == flow_dir_nodata:
                             continue
+
+                        # if the neighbor drains to this pixel, push it to the stack
                         if INFLOW_OFFSETS[test_dir] == n_dir:
                             discovery_stack.push(CoordinateType(x_n, y_n))
                             n_pushed += 1
+
                     # this reference is for the previous top and represents
                     # how many elements must be processed before finish
                     # time can be defined
@@ -3803,9 +3813,6 @@ def calculate_subwatershed_boundary(
     discovery_info = pygeoprocessing.get_raster_info(
         discovery_time_raster_path)
     cdef long discovery_nodata = discovery_info['nodata'][0]
-
-    cdef unsigned int n_cols, n_rows
-    n_cols, n_rows = discovery_info['raster_size']
 
     geotransform = discovery_info['geotransform']
     cdef double g0, g1, g2, g3, g4, g5
@@ -3988,7 +3995,6 @@ def calculate_subwatershed_boundary(
             edge_dir = (cell_to_test+2) % 8
             if _in_watershed(
                     x_l, y_l, cell_to_test, discovery, finish,
-                    n_cols, n_rows,
                     discovery_managed_raster, discovery_nodata):
                 edge_side = (edge_side-2) % 8
                 edge_dir = (edge_dir-2) % 8
@@ -4015,12 +4021,12 @@ def calculate_subwatershed_boundary(
                 LOGGER.warning('quitting, too many steps')
                 terminated_early = 1
                 break
-            if x_l < 0 or y_l < 0 or x_l >= n_cols or y_l >= n_rows:
+            if discovery_managed_raster.is_out_of_bounds(x_l, y_l):
                 # This is unexpected but worth checking since missing this
                 # error would be very difficult to debug.
                 raise RuntimeError(
-                    f'{x_l}, {y_l} out of bounds for '
-                    f'{n_cols}x{n_rows} raster.')
+                    f'{x_l}, {y_l} out of bounds for {discovery_managed_raster.raster_x_size}'
+                    f'x{discovery_managed_raster.raster_y_size} raster.')
             if edge_side - ((edge_dir-2) % 8) == 0:
                 # counterclockwise configuration
                 left = edge_dir
@@ -4032,10 +4038,10 @@ def calculate_subwatershed_boundary(
                 left = (edge_side+1)
                 out_dir_increase = -2
             left_in = _in_watershed(
-                x_l, y_l, left, discovery, finish, n_cols, n_rows,
+                x_l, y_l, left, discovery, finish,
                 discovery_managed_raster, discovery_nodata)
             right_in = _in_watershed(
-                x_l, y_l, right, discovery, finish, n_cols, n_rows,
+                x_l, y_l, right, discovery, finish,
                 discovery_managed_raster, discovery_nodata)
             if right_in:
                 # turn right
@@ -4501,7 +4507,6 @@ cdef void _diagonal_fill_step(
 
 cdef int _in_watershed(
         int x_l, int y_l, int direction_to_test, int discovery, int finish,
-        int n_cols, int n_rows,
         ManagedRaster discovery_managed_raster,
         long discovery_nodata):
     """Test if pixel in direction is in the watershed.
@@ -4513,8 +4518,6 @@ cdef int _in_watershed(
             came from
         discovery/finish (long): the discovery and finish time that defines
             whether a pixel discovery time is inside a watershed or not.
-        n_cols/n_rows (int): number of columns/rows in the discovery raster,
-            used to ensure step does not go out of bounds.
         discovery_managed_raster (ManagedRaster): discovery time raster
             x/y gives the discovery time for that pixel.
         discovery_nodata (long): nodata value for discovery raster
@@ -4524,7 +4527,8 @@ cdef int _in_watershed(
     """
     cdef int x_n = x_l + COL_OFFSETS[direction_to_test]
     cdef int y_n = y_l + ROW_OFFSETS[direction_to_test]
-    if x_n < 0 or y_n < 0 or x_n >= n_cols or y_n >= n_rows:
+    if (x_n < 0 or y_n < 0 or x_n >= discovery_managed_raster.raster_x_size or
+            y_n >= discovery_managed_raster.raster_y_size):
         return 0
     cdef long point_discovery = <long>discovery_managed_raster.get(x_n, y_n)
     return (point_discovery != discovery_nodata and
@@ -4533,8 +4537,8 @@ cdef int _in_watershed(
 
 
 cdef _calculate_stream_geometry(
-        int x_l, int y_l, int upstream_d8_dir, geotransform, int n_cols,
-        int n_rows, ManagedRaster flow_accum_managed_raster,
+        int x_l, int y_l, int upstream_d8_dir, geotransform,
+        ManagedRaster flow_accum_managed_raster,
         ManagedRaster flow_dir_managed_raster, int flow_dir_nodata,
         int flow_accum_threshold, coord_to_stream_ids):
     """Calculate the upstream geometry from the given point.
@@ -4548,7 +4552,6 @@ cdef _calculate_stream_geometry(
         upstream_d8_dir (int): upstream D8 direction to search
         geotransform (list): 6 element list representing the geotransform
             used to convert to georeferenced coordinates.
-        n_cols/n_rows (int): number of columns and rows in raster.
         flow_accum_managed_raster (ManagedRaster): flow accumulation raster
         flow_dir_managed_raster (ManagedRaster): d8 flow direction raster
         flow_dir_nodata (int): nodata for flow direction
@@ -4622,7 +4625,7 @@ cdef _calculate_stream_geometry(
                     y_n = y_l + ROW_OFFSETS[d]
 
                     # check out of bounds
-                    if x_n < 0 or y_n < 0 or x_n >= n_cols or y_n >= n_rows:
+                    if flow_dir_managed_raster.is_out_of_bounds(x_n, y_n):
                         continue
 
                     # check for nodata

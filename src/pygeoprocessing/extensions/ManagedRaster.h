@@ -380,6 +380,13 @@ class ManagedRaster {
       delete lru_cache;
       free(actualBlockWidths);
     }
+
+    bool is_out_of_bounds(long x, long y) {
+      if (x < 0 or x >= raster_x_size or y < 0 or y >= raster_y_size) {
+        return true;
+      }
+      return false;
+    }
 };
 
 // Represents a flow direction raster, which may be of type MFD or D8
