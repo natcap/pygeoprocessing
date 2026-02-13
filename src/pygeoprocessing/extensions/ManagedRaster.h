@@ -400,10 +400,14 @@ class ManagedRaster {
     }
 
     bool is_out_of_bounds_or_nodata(long x, long y) {
-      if (is_out_of_bounds(x, y) or is_close(get(x, y), nodata)) {
+      if (is_out_of_bounds(x, y) or is_nodata(x, y)) {
         return true;
       }
       return false;
+    }
+
+    bool is_nodata(long x, long y) {
+      return is_close(get(x, y), nodata);
     }
 };
 

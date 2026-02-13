@@ -53,8 +53,9 @@ cdef extern from "extensions/ManagedRaster.h":
         double get(long xi, long yi)
         void _load_block(int block_index) except *
         void close()
-        bint is_out_of_bounds(int x, int y)
-        bint is_out_of_bounds_or_nodata(int x, int y)
+        bint is_out_of_bounds(long x, long y)
+        bint is_out_of_bounds_or_nodata(long x, long y)
+        bint is_nodata(long x, long y)
 
     cdef cppclass ManagedFlowDirRaster[T]:
         LRUCache[int, double*]* lru_cache

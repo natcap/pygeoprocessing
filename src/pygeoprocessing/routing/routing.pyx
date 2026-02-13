@@ -3156,7 +3156,7 @@ def extract_strahler_streams_d8(
             source_stream_point.xi, source_stream_point.yi,
             source_stream_point.upstream_d8_dir,
             flow_dir_info['geotransform'], flow_accum_managed_raster,
-            flow_dir_managed_raster, flow_nodata,
+            flow_dir_managed_raster,
             min_flow_accum_threshold, coord_to_stream_ids)
         if payload is None:
             LOGGER.debug(
@@ -3398,7 +3398,7 @@ def extract_strahler_streams_d8(
                                 ds_x, ds_y, upstream_d8_dir,
                                 flow_dir_info['geotransform'],
                                 flow_accum_managed_raster,
-                                flow_dir_managed_raster, flow_nodata,
+                                flow_dir_managed_raster,
                                 working_flow_accum_threshold,
                                 coord_to_stream_ids)
                             if payload is None:
@@ -4531,7 +4531,7 @@ cdef int _in_watershed(
 cdef _calculate_stream_geometry(
         int x_l, int y_l, int upstream_d8_dir, geotransform,
         ManagedRaster flow_accum_managed_raster,
-        ManagedRaster flow_dir_managed_raster, int flow_dir_nodata,
+        ManagedRaster flow_dir_managed_raster,
         int flow_accum_threshold, coord_to_stream_ids):
     """Calculate the upstream geometry from the given point.
 
@@ -4546,7 +4546,6 @@ cdef _calculate_stream_geometry(
             used to convert to georeferenced coordinates.
         flow_accum_managed_raster (ManagedRaster): flow accumulation raster
         flow_dir_managed_raster (ManagedRaster): d8 flow direction raster
-        flow_dir_nodata (int): nodata for flow direction
         flow_accum_threshold (int): minimum flow accumulation value to define
             string.
         coord_to_stream_ids (dict): map raster space coordinate tuple to
