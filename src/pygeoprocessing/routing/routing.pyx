@@ -3092,9 +3092,7 @@ def extract_strahler_streams_d8(
                 d_n = <int>flow_dir_managed_raster.get(x_l, y_l)
                 x_n = x_l + COL_OFFSETS[d_n]
                 y_n = y_l + ROW_OFFSETS[d_n]
-                if (flow_dir_managed_raster.is_out_of_bounds(x_n, y_n) or
-                        <int>flow_dir_managed_raster.get(
-                            x_n, y_n) == flow_nodata):
+                if flow_dir_managed_raster.is_out_of_bounds_or_nodata(x_n, y_n):
                     is_drain = 1
 
                 if not is_drain and (
@@ -3108,11 +3106,9 @@ def extract_strahler_streams_d8(
                     x_n = x_l + COL_OFFSETS[d]
                     y_n = y_l + ROW_OFFSETS[d]
                     # check if on border
-                    if flow_dir_managed_raster.is_out_of_bounds(x_n, y_n):
+                    if flow_dir_managed_raster.is_out_of_bounds_or_nodata(x_n, y_n):
                         continue
                     d_n = <int>flow_dir_managed_raster.get(x_n, y_n)
-                    if d_n == flow_nodata:
-                        continue
                     if (INFLOW_OFFSETS[d] == d_n and
                             <double>flow_accum_managed_raster.get(
                                 x_n, y_n) >= min_flow_accum_threshold):
@@ -3673,9 +3669,7 @@ def _build_discovery_finish_rasters(
 
                 # if the downstream neighbor runs off raster or is nodata, then
                 # this pixel is a drain point, so we can push it to the stack
-                if (flow_dir_managed_raster.is_out_of_bounds(x_n, y_n) or
-                        <int>flow_dir_managed_raster.get(
-                            x_n, y_n) == flow_dir_nodata):
+                if flow_dir_managed_raster.is_out_of_bounds_or_nodata(x_n, y_n):
                     discovery_stack.push(CoordinateType(x, y))
                     finish_stack.push(FinishType(x, y, 1))
 
@@ -3697,13 +3691,11 @@ def _build_discovery_finish_rasters(
 
                         # skip neighbors that are outside of the raster bounds,
                         # or that have nodata
-                        if flow_dir_managed_raster.is_out_of_bounds(x_n, y_n):
-                            continue
-                        n_dir = <int>flow_dir_managed_raster.get(x_n, y_n)
-                        if n_dir == flow_dir_nodata:
+                        if flow_dir_managed_raster.is_out_of_bounds_or_nodata(x_n, y_n):
                             continue
 
                         # if the neighbor drains to this pixel, push it to the stack
+                        n_dir = <int>flow_dir_managed_raster.get(x_n, y_n)
                         if INFLOW_OFFSETS[test_dir] == n_dir:
                             discovery_stack.push(CoordinateType(x_n, y_n))
                             n_pushed += 1
@@ -4624,17 +4616,13 @@ cdef _calculate_stream_geometry(
                     x_n = x_l + COL_OFFSETS[d]
                     y_n = y_l + ROW_OFFSETS[d]
 
-                    # check out of bounds
-                    if flow_dir_managed_raster.is_out_of_bounds(x_n, y_n):
-                        continue
-
-                    # check for nodata
-                    d_n = <int>flow_dir_managed_raster.get(x_n, y_n)
-                    if d_n == flow_dir_nodata:
+                    # check out of bounds or nodata
+                    if flow_dir_managed_raster.is_out_of_bounds_or_nodata(x_n, y_n):
                         continue
 
                     # check if there's an upstream inflow pixel with flow accum
                     # greater than the threshold
+                    d_n = <int>flow_dir_managed_raster.get(x_n, y_n)
                     if INFLOW_OFFSETS[d] == d_n and (
                             <int>flow_accum_managed_raster.get(
                              x_n, y_n) > flow_accum_threshold):

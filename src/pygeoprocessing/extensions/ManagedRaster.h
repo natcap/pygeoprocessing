@@ -73,6 +73,17 @@ static void log_msg(LogLevel level, string msg)
   Py_DECREF(pyString);
 }
 
+// Note: I was concerned that checking each value for nan would be too slow, but
+// I compared its performance against another implementation where we first reclassify
+// nans to a regular float, and then skip the nan check, and that was much slower:
+// https://github.com/natcap/invest/issues/1714#issuecomment-2762134419
+inline bool is_close(double x, double y) {
+  if (isnan(x) and isnan(y)) {
+    return true;
+  }
+  return abs(x - y) <= (pow(10, -8) + pow(10, -05) * abs(y));
+}
+
 class NeighborTuple {
 public:
   int direction, x, y;
@@ -383,6 +394,13 @@ class ManagedRaster {
 
     bool is_out_of_bounds(long x, long y) {
       if (x < 0 or x >= raster_x_size or y < 0 or y >= raster_y_size) {
+        return true;
+      }
+      return false;
+    }
+
+    bool is_out_of_bounds_or_nodata(long x, long y) {
+      if (is_out_of_bounds(x, y) or is_close(get(x, y), nodata)) {
         return true;
       }
       return false;
@@ -857,16 +875,5 @@ public:
   UpslopeNeighborNoDivideIterator<T> begin() { return UpslopeNeighborNoDivideIterator<T>(this->pixel); }
   UpslopeNeighborNoDivideIterator<T> end() { return UpslopeNeighborNoDivideIterator<T>(&endVal); }
 };
-
-// Note: I was concerned that checking each value for nan would be too slow, but
-// I compared its performance against another implementation where we first reclassify
-// nans to a regular float, and then skip the nan check, and that was much slower:
-// https://github.com/natcap/invest/issues/1714#issuecomment-2762134419
-inline bool is_close(double x, double y) {
-  if (isnan(x) and isnan(y)) {
-    return true;
-  }
-  return abs(x - y) <= (pow(10, -8) + pow(10, -05) * abs(y));
-}
 
 #endif  // NATCAP_INVEST_MANAGEDRASTER_H_
