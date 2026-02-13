@@ -115,6 +115,7 @@ class ManagedRaster {
     long raster_y_size;
     int block_nx;
     int block_ny;
+    long n_pixels;
     char* raster_path;
     int band_id;
     GDALDataset* dataset;
@@ -149,6 +150,7 @@ class ManagedRaster {
 
       raster_x_size = dataset->GetRasterXSize();
       raster_y_size = dataset->GetRasterYSize();
+      n_pixels = raster_x_size * raster_y_size;
 
       if (band_id < 1 or band_id > dataset->GetRasterCount()) {
         throw std::invalid_argument(

@@ -39,6 +39,7 @@ cdef extern from "extensions/ManagedRaster.h":
         int block_ybits
         long raster_x_size
         long raster_y_size
+        long n_pixels
         int block_nx
         int block_ny
         int write_mode

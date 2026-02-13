@@ -852,10 +852,10 @@ def flow_dir_d8(
 
         if ctime(NULL) - last_log_time > _LOGGING_PERIOD:
             last_log_time = ctime(NULL)
-            current_pixel = xoff + yoff * raster_x_size
+            current_pixel = xoff + yoff * dem_managed_raster.raster_x_size
             LOGGER.info(
                 '(flow dir d8): '
-                f'{current_pixel} of {raster_x_size*raster_y_size} '
+                f'{current_pixel} of {dem_managed_raster.n_pixels} '
                 f'pixels complete')
 
         # make a buffer big enough to capture block and boundaries around it
@@ -866,7 +866,8 @@ def flow_dir_d8(
 
         # attempt to expand read block by a pixel boundary
         (xa, xb, ya, yb), modified_offset_dict = _generate_read_bounds(
-            offset_dict, raster_x_size, raster_y_size)
+            offset_dict, dem_managed_raster.raster_x_size,
+            dem_managed_raster.raster_y_size)
         dem_buffer_array[ya:yb, xa:xb] = dem_band.ReadAsArray(
                 **modified_offset_dict).astype(numpy.float64)
 
@@ -939,8 +940,7 @@ def flow_dir_d8(
                         xi_n = xi_q+COL_OFFSETS[i_n]
                         yi_n = yi_q+ROW_OFFSETS[i_n]
 
-                        if (xi_n < 0 or xi_n >= raster_x_size or
-                                yi_n < 0 or yi_n >= raster_y_size):
+                        if dem_managed_raster.is_out_of_bounds(xi_n, yi_n):
                             n_height = dem_nodata
                         else:
                             n_height = dem_managed_raster.get(xi_n, yi_n)
@@ -1013,8 +1013,7 @@ def flow_dir_d8(
                     for i_n in range(8):
                         xi_n = xi_q+COL_OFFSETS[i_n]
                         yi_n = yi_q+ROW_OFFSETS[i_n]
-                        if (xi_n < 0 or xi_n >= raster_x_size or
-                                yi_n < 0 or yi_n >= raster_y_size):
+                        if dem_managed_raster.is_out_of_bounds(xi_n, yi_n):
                             continue
 
                         n_drain_distance = drain_distance + (
@@ -1285,8 +1284,7 @@ def flow_accumulation_d8(
                     for i_n in range(flow_pixel.last_flow_dir, 8):
                         xi_n = flow_pixel.xi+COL_OFFSETS[i_n]
                         yi_n = flow_pixel.yi+ROW_OFFSETS[i_n]
-                        if (xi_n < 0 or xi_n >= raster_x_size or
-                                yi_n < 0 or yi_n >= raster_y_size):
+                        if flow_dir_managed_raster.is_out_of_bounds(xi_n, yi_n):
                             # neighbor not upstream: off edges of the raster
                             continue
                         upstream_flow_dir = <int>flow_dir_managed_raster.get(
@@ -1576,9 +1574,9 @@ def flow_dir_mfd(
 
         if ctime(NULL) - last_log_time > _LOGGING_PERIOD:
             last_log_time = ctime(NULL)
-            current_pixel = xoff + yoff * raster_x_size
+            current_pixel = xoff + yoff * dem_managed_raster.raster_x_size
             LOGGER.info('%.1f%% complete', 100.0 * current_pixel / <float>(
-                raster_x_size * raster_y_size))
+                dem_managed_raster.n_pixels))
 
         # make a buffer big enough to capture block and boundaries around it
         dem_buffer_array = numpy.empty(
@@ -1589,7 +1587,8 @@ def flow_dir_mfd(
         # check if we can widen the border to include real data from the
         # raster
         (xa, xb, ya, yb), modified_offset_dict = _generate_read_bounds(
-            offset_dict, raster_x_size, raster_y_size)
+            offset_dict, dem_managed_raster.raster_x_size,
+            dem_managed_raster.raster_y_size)
         dem_buffer_array[ya:yb, xa:xb] = dem_band.ReadAsArray(
                 **modified_offset_dict).astype(numpy.float64)
 
@@ -1673,8 +1672,7 @@ def flow_dir_mfd(
                         xi_n = xi_q+COL_OFFSETS[i_n]
                         yi_n = yi_q+ROW_OFFSETS[i_n]
 
-                        if (xi_n < 0 or xi_n >= raster_x_size or
-                                yi_n < 0 or yi_n >= raster_y_size):
+                        if dem_managed_raster.is_out_of_bounds(xi_n, yi_n):
                             n_height = dem_nodata
                         else:
                             n_height = dem_managed_raster.get(xi_n, yi_n)
@@ -1780,8 +1778,7 @@ def flow_dir_mfd(
                     for i_n in range(8):
                         xi_n = xi_q+COL_OFFSETS[i_n]
                         yi_n = yi_q+ROW_OFFSETS[i_n]
-                        if (xi_n < 0 or xi_n >= raster_x_size or
-                                yi_n < 0 or yi_n >= raster_y_size):
+                        if dem_managed_raster.is_out_of_bounds(xi_n, yi_n):
                             continue
 
                         n_drain_distance = drain_distance + (
@@ -1814,8 +1811,7 @@ def flow_dir_mfd(
                         yi_n = yi_q+ROW_OFFSETS[i_n]
                         downhill_slope_array[i_n] = 0.0
 
-                        if (xi_n < 0 or xi_n >= raster_x_size or
-                                yi_n < 0 or yi_n >= raster_y_size):
+                        if dem_managed_raster.is_out_of_bounds(xi_n, yi_n):
                             continue
 
                         if dem_managed_raster.get(xi_n, yi_n) != root_height:
@@ -1906,7 +1902,7 @@ def flow_accumulation_mfd(
     cdef unsigned long win_ysize, win_xsize, xoff, yoff
 
     # These are used to estimate % complete
-    cdef unsigned long long visit_count, pixel_count
+    cdef unsigned long long visit_count
 
     # the _root variables remembers the pixel index where the plateau/pit
     # region was first detected when iterating over the DEM.
@@ -2001,7 +1997,6 @@ def flow_accumulation_mfd(
     flow_dir_raster_info = pygeoprocessing.get_raster_info(
         flow_dir_mfd_raster_path_band[0])
     raster_x_size, raster_y_size = flow_dir_raster_info['raster_size']
-    pixel_count = raster_x_size * raster_y_size
     visit_count = 0
 
     LOGGER.debug('starting search')
@@ -2016,9 +2011,9 @@ def flow_accumulation_mfd(
 
         if ctime(NULL) - last_log_time > _LOGGING_PERIOD:
             last_log_time = ctime(NULL)
-            current_pixel = xoff + yoff * raster_x_size
+            current_pixel = xoff + yoff * flow_dir_managed_raster.raster_x_size
             LOGGER.info('Flow accum MFD %.1f%% complete', 100.0 * current_pixel / <float>(
-                raster_x_size * raster_y_size))
+                flow_dir_managed_raster.n_pixels))
 
         # make a buffer big enough to capture block and boundaries around it
         flow_dir_mfd_buffer_array = numpy.empty(
@@ -2029,7 +2024,8 @@ def flow_accumulation_mfd(
         # check if we can widen the border to include real data from the
         # raster
         (xa, xb, ya, yb), modified_offset_dict = _generate_read_bounds(
-            offset_dict, raster_x_size, raster_y_size)
+            offset_dict, flow_dir_managed_raster.raster_x_size,
+            flow_dir_managed_raster.raster_y_size)
         flow_dir_mfd_buffer_array[ya:yb, xa:xb] = flow_dir_band.ReadAsArray(
                 **modified_offset_dict).astype(numpy.int32)
 
@@ -2079,14 +2075,13 @@ def flow_accumulation_mfd(
                         last_log_time = ctime(NULL)
                         LOGGER.info(
                             'Flow accum MFD %.1f%% complete',
-                            100.0 * visit_count / float(pixel_count))
+                            100.0 * visit_count / float(flow_dir_managed_raster.n_pixels))
 
                     preempted = 0
                     for i_n in range(flow_pixel.last_flow_dir, 8):
                         xi_n = flow_pixel.xi+COL_OFFSETS[i_n]
                         yi_n = flow_pixel.yi+ROW_OFFSETS[i_n]
-                        if (xi_n < 0 or xi_n >= raster_x_size or
-                                yi_n < 0 or yi_n >= raster_y_size):
+                        if flow_dir_managed_raster.is_out_of_bounds(xi_n, yi_n):
                             # no upstream here
                             continue
                         compressed_upstream_flow_dir = (
@@ -2265,9 +2260,9 @@ def distance_to_channel_d8(
 
         if ctime(NULL) - last_log_time > _LOGGING_PERIOD:
             last_log_time = ctime(NULL)
-            current_pixel = xoff + yoff * raster_x_size
+            current_pixel = xoff + yoff * flow_dir_d8_managed_raster.raster_x_size
             LOGGER.info('Dist to channel D8 %.1f%% complete', 100.0 * current_pixel / <float>(
-                raster_x_size * raster_y_size))
+                flow_dir_d8_managed_raster.n_pixels))
 
         # make a buffer big enough to capture block and boundaries around it
         channel_buffer_array = numpy.empty(
@@ -2278,7 +2273,8 @@ def distance_to_channel_d8(
         # check if we can widen the border to include real data from the
         # raster
         (xa, xb, ya, yb), modified_offset_dict = _generate_read_bounds(
-            offset_dict, raster_x_size, raster_y_size)
+            offset_dict, flow_dir_d8_managed_raster.raster_x_size,
+            flow_dir_d8_managed_raster.raster_y_size)
         channel_buffer_array[ya:yb, xa:xb] = channel_band.ReadAsArray(
             **modified_offset_dict).astype(numpy.int8)
 
@@ -2309,8 +2305,7 @@ def distance_to_channel_d8(
                         xi_n = xi_q+COL_OFFSETS[i_n]
                         yi_n = yi_q+ROW_OFFSETS[i_n]
 
-                        if (xi_n < 0 or xi_n >= raster_x_size or
-                                yi_n < 0 or yi_n >= raster_y_size):
+                        if flow_dir_d8_managed_raster.is_out_of_bounds(xi_n, yi_n):
                             continue
 
                         if channel_managed_raster.get(xi_n, yi_n) == 1:
@@ -2517,9 +2512,9 @@ def distance_to_channel_mfd(
 
         if ctime(NULL) - last_log_time > _LOGGING_PERIOD:
             last_log_time = ctime(NULL)
-            current_pixel = xoff + yoff * raster_x_size
+            current_pixel = xoff + yoff * flow_dir_mfd_managed_raster.raster_x_size
             LOGGER.info('Dist to channel MFD %.1f%% complete', 100.0 * current_pixel / <float>(
-                raster_x_size * raster_y_size))
+                flow_dir_mfd_managed_raster.n_pixels))
 
         # make a buffer big enough to capture block and boundaries around it
         channel_buffer_array = numpy.empty(
@@ -2534,7 +2529,8 @@ def distance_to_channel_mfd(
         # check if we can widen the border to include real data from the
         # raster
         (xa, xb, ya, yb), modified_offset_dict = _generate_read_bounds(
-            offset_dict, raster_x_size, raster_y_size)
+            offset_dict, flow_dir_mfd_managed_raster.raster_x_size,
+            flow_dir_mfd_managed_raster.raster_y_size)
         channel_buffer_array[ya:yb, xa:xb] = channel_band.ReadAsArray(
             **modified_offset_dict).astype(numpy.int8)
 
@@ -2601,8 +2597,7 @@ def distance_to_channel_mfd(
 
                         xi_n = pixel.xi+COL_OFFSETS[i_n]
                         yi_n = pixel.yi+ROW_OFFSETS[i_n]
-                        if (xi_n < 0 or xi_n >= raster_x_size or
-                                yi_n < 0 or yi_n >= raster_y_size):
+                        if flow_dir_mfd_managed_raster.is_out_of_bounds(xi_n, yi_n):
                             continue
 
                         # if the pixel has a neighbor that hasn't been visited yet,
@@ -2778,9 +2773,9 @@ def extract_streams_mfd(
             yi_root = yi+yoff
             if ctime(NULL) - last_log_time > _LOGGING_PERIOD:
                 last_log_time = ctime(NULL)
-                current_pixel = xoff + yoff * raster_x_size
+                current_pixel = xoff + yoff * flow_accum_mr.raster_x_size
                 LOGGER.info('Extract streams MFD %.1f%% complete', 100.0 * current_pixel / <float>(
-                    raster_x_size * raster_y_size))
+                    flow_accum_mr.n_pixels))
             for xi in range(win_xsize):
                 xi_root = xi+xoff
                 flow_accum = flow_accum_mr.get(xi_root, yi_root)
@@ -2800,8 +2795,7 @@ def extract_streams_mfd(
                         continue
                     xi_n = xi_root+COL_OFFSETS[i_n]
                     yi_n = yi_root+ROW_OFFSETS[i_n]
-                    if (xi_n < 0 or xi_n >= raster_x_size or
-                            yi_n < 0 or yi_n >= raster_y_size):
+                    if flow_accum_mr.is_out_of_bounds(xi_n, yi_n):
                         # it'll drain off the edge of the raster
                         is_outlet = 1
                         break
@@ -2821,8 +2815,7 @@ def extract_streams_mfd(
                     for i_sn in range(8):
                         xi_sn = xi_n+COL_OFFSETS[i_sn]
                         yi_sn = yi_n+ROW_OFFSETS[i_sn]
-                        if (xi_sn < 0 or xi_sn >= raster_x_size or
-                                yi_sn < 0 or yi_sn >= raster_y_size):
+                        if flow_accum_mr.is_out_of_bounds(xi_sn, yi_sn):
                             continue
                         flow_dir_mfd = <int>flow_dir_mfd_mr.get(xi_sn, yi_sn)
                         if flow_dir_mfd == flow_dir_nodata:
@@ -2852,8 +2845,7 @@ def extract_streams_mfd(
                                             if (flow_dir_mfd >> (i_sn*4)) & 0xF > 0:
                                                 xi_sn = xi_bn+COL_OFFSETS[i_sn]
                                                 yi_sn = yi_bn+ROW_OFFSETS[i_sn]
-                                                if (xi_sn < 0 or xi_sn >= raster_x_size or
-                                                        yi_sn < 0 or yi_sn >= raster_y_size):
+                                                if flow_accum_mr.is_out_of_bounds(xi_sn, yi_sn):
                                                     continue
                                                 if stream_mr.get(xi_sn, yi_sn) == 2:
                                                     stream_mr.set(xi_sn, yi_sn, 1)
@@ -3030,8 +3022,6 @@ def extract_strahler_streams_d8(
     cdef unsigned int win_xsize, win_ysize
 
     LOGGER.info('(extract_strahler_streams_d8): seed the drains')
-    cdef unsigned long n_pixels = (
-        flow_dir_managed_raster.raster_x_size * flow_dir_managed_raster.raster_y_size)
     cdef long n_processed = 0
     cdef time_t last_log_time
     last_log_time = ctime(NULL)
@@ -3070,7 +3060,7 @@ def extract_strahler_streams_d8(
         if ctime(NULL)-last_log_time > _LOGGING_PERIOD:
             LOGGER.info(
                 '(extract_strahler_streams_d8): drain seeding '
-                f'{n_processed} of {n_pixels} pixels complete')
+                f'{n_processed} of {flow_dir_managed_raster.n_pixels} pixels complete')
             last_log_time = ctime(NULL)
         xoff = offset_dict['xoff']
         yoff = offset_dict['yoff']
@@ -3629,11 +3619,7 @@ def _build_discovery_finish_rasters(
     cdef FinishType finish_coordinate
 
     cdef long discovery_count = 0
-    cdef int n_processed, n_pixels
-    n_pixels = (
-        flow_dir_managed_raster.raster_x_size *
-        flow_dir_managed_raster.raster_x_size)
-    n_processed = 0
+    cdef int n_processed = 0
     cdef time_t last_log_time = ctime(NULL)
     cdef int n_pushed
 
@@ -3646,7 +3632,7 @@ def _build_discovery_finish_rasters(
         if ctime(NULL)-last_log_time > _LOGGING_PERIOD:
             LOGGER.info(
                 f'(discovery time processing): '
-                f'{n_processed/n_pixels*100:.1f}% complete')
+                f'{n_processed/flow_dir_managed_raster.n_pixels*100:.1f}% complete')
             last_log_time = ctime(NULL)
         xoff = offset_dict['xoff']
         yoff = offset_dict['yoff']
@@ -4519,8 +4505,7 @@ cdef int _in_watershed(
     """
     cdef int x_n = x_l + COL_OFFSETS[direction_to_test]
     cdef int y_n = y_l + ROW_OFFSETS[direction_to_test]
-    if (x_n < 0 or y_n < 0 or x_n >= discovery_managed_raster.raster_x_size or
-            y_n >= discovery_managed_raster.raster_y_size):
+    if discovery_managed_raster.is_out_of_bounds(x_n, y_n):
         return 0
     cdef long point_discovery = <long>discovery_managed_raster.get(x_n, y_n)
     return (point_discovery != discovery_nodata and
