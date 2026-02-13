@@ -3848,6 +3848,18 @@ def calculate_subwatershed_boundary(
     stream_layer = stream_vector.GetLayer()
 
     # construct linkage data structure for upstream streams
+    #
+    # each stream feature starts and ends at a confluence point.
+    # there are no confluence points midway along a stream.
+    # a stream may have multiple tributaries only if they share a confluence point.
+    #
+    # therefore if stream B is a tributary of stream A, then
+    # stream A's upstream coordinate (its starting point) equals
+    # stream B's downstream coordinate (its end point)
+    #
+    # map each stream's downstream endpoint to its FID
+    # we will use this to look up a stream's tributaries
+    # given its upstream coordinate.
     upstream_fid_map = collections.defaultdict(list)
     for stream_feature in stream_layer:
         ds_x = int(stream_feature.GetField('ds_x'))
@@ -3864,6 +3876,11 @@ def calculate_subwatershed_boundary(
     # first
     stream_layer.SetAttributeFilter(f'"outlet"=1')
     # these are done last
+    #
+    # outlet streams are the lowest/final streams, they are not a tributary
+    # to any other stream.
+    #
+    # visit outlet streams in strahler stream order from largest to smallest
     for _, outlet_fid in sorted([
             (x.GetField('order'), x.GetFID()) for x in stream_layer],
             reverse=True):
@@ -3876,12 +3893,17 @@ def calculate_subwatershed_boundary(
 
             us_x = int(working_feature.GetField('us_x'))
             us_y = int(working_feature.GetField('us_y'))
+            ds_x = int(working_feature.GetField('ds_x'))
+            ds_y = int(working_feature.GetField('ds_y'))
             ds_x_1 = int(working_feature.GetField('ds_x_1'))
             ds_y_1 = int(working_feature.GetField('ds_y_1'))
 
-            upstream_coord = (us_x, us_y)
+            # if this stream has any tributaries that have not yet been
+            # processed, add them to the stack.
+            # otherwise, if all tributaries have been processed, we can
+            # proceed to calculate the subwatershed.
             upstream_fids = [
-                fid for fid in upstream_fid_map[upstream_coord]
+                fid for fid in upstream_fid_map[(us_x, us_y)]
                 if fid not in processed_nodes]
             if upstream_fids:
                 working_stack.extend(upstream_fids)
@@ -3890,26 +3912,27 @@ def calculate_subwatershed_boundary(
                 # the `not outlet_at_confluence` bit allows us to seed
                 # even if the order is 1, otherwise confluences fill
                 # the order 1 streams
-                if (working_feature.GetField('order') > 1 or
-                        not outlet_at_confluence):
-                    if outlet_at_confluence:
-                        # seed the upstream point
-                        visit_order_stack.append((working_fid, us_x, us_y))
-                    else:
-                        # seed the downstream but +1 step point
-                        visit_order_stack.append(
-                            (working_fid, ds_x_1, ds_y_1))
+                #
+                # if order == 1: is a headwater stream (has no tributaries)
+                # if order > 1: has tributaries
+
+                # if this stream has tributaries, and we are using the confluence
+                # point as the outlet, then we can seed the upstream point
+                # (which is the downstream point of the tributaries)
+                if working_feature.GetField('order') > 1 and outlet_at_confluence:
+                    visit_order_stack.append((working_fid, us_x, us_y))
+                # if this stream is an outlet, we need to push its downstream point
+                # onto the stack, because there are no further streams to do so
                 if working_feature.GetField('outlet') == 1:
                     # an outlet is a special case where the outlet itself
                     # should be a subwatershed done last.
-                    ds_x = int(working_feature.GetField('ds_x'))
-                    ds_y = int(working_feature.GetField('ds_y'))
-                    if not outlet_at_confluence:
-                        # undo the previous visit because it will be at
-                        # one pixel up and we want the pixel right at
-                        # the outlet
-                        visit_order_stack.pop()
                     visit_order_stack.append((working_fid, ds_x, ds_y))
+                # if not an outlet and we are using 1 pixel up from the confluence
+                # point, seed the downstream+1 point
+                # TODO: why does this add DS+1 point of this stream and not of its tributaries?
+                elif not outlet_at_confluence:
+                    visit_order_stack.append((working_fid, ds_x_1, ds_y_1))
+
 
     cdef int edge_side, edge_dir, cell_to_test, out_dir_increase=-1
     cdef int left, right, n_steps, terminated_early
