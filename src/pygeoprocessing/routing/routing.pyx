@@ -744,9 +744,6 @@ def flow_dir_d8(
     # a plateau in case no other valid drain was found
     cdef queue[int] nodata_flow_dir_queue
 
-    # properties of the parallel rasters
-    cdef unsigned int raster_x_size, raster_y_size
-
     cdef unsigned long current_pixel
 
     # used for time-delayed logging
@@ -763,9 +760,6 @@ def flow_dir_d8(
     else:
         # pick some very improbable value since it's hard to deal with NaNs
         dem_nodata = IMPROBABLE_FLOAT_NODATA
-
-    # these are used to determine if a sample is within the raster
-    raster_x_size, raster_y_size = dem_raster_info['raster_size']
 
     # this is the nodata value for all the flat region and pit masks
     mask_nodata = 0
@@ -800,19 +794,6 @@ def flow_dir_d8(
     flow_dir_managed_raster = ManagedRaster(
         target_flow_dir_path.encode('utf-8'), 1, True)
 
-    # this creates a raster that's used for a dynamic programming solution to
-    # shortest path to the drain for plateaus. the raster is filled with
-    # raster_x_size * raster_y_size as a distance that's greater than the
-    # longest plateau drain distance possible for this raster.
-    plateau_distance_path = os.path.join(
-        working_dir_path, 'plateau_distance.tif')
-    pygeoprocessing.new_raster_from_base(
-        dem_raster_path_band[0], plateau_distance_path, gdal.GDT_Float64,
-        [-1], fill_value_list=[raster_x_size * raster_y_size],
-        raster_driver_creation_tuple=raster_driver_creation_tuple)
-    plateau_distance_managed_raster = ManagedRaster(
-        plateau_distance_path.encode('utf-8'), 1, True)
-
     # this raster is for random access of the DEM
 
     compatable_dem_raster_path_band = None
@@ -835,6 +816,19 @@ def flow_dir_d8(
     dem_managed_raster = ManagedRaster(
         compatable_dem_raster_path_band[0].encode('utf-8'),
         compatable_dem_raster_path_band[1], False)
+
+    # this creates a raster that's used for a dynamic programming solution to
+    # shortest path to the drain for plateaus. the raster is filled with
+    # the number of pixels as a distance that's greater than the
+    # longest plateau drain distance possible for this raster.
+    plateau_distance_path = os.path.join(
+        working_dir_path, 'plateau_distance.tif')
+    pygeoprocessing.new_raster_from_base(
+        dem_raster_path_band[0], plateau_distance_path, gdal.GDT_Float64,
+        [-1], fill_value_list=[dem_managed_raster.n_pixels],
+        raster_driver_creation_tuple=raster_driver_creation_tuple)
+    plateau_distance_managed_raster = ManagedRaster(
+        plateau_distance_path.encode('utf-8'), 1, True)
 
     # and this raster is for efficient block-by-block reading of the dem
     dem_raster = gdal.OpenEx(
@@ -1124,9 +1118,6 @@ def flow_accumulation_d8(
     cdef stack[WeightedFlowPixelType] search_stack
     cdef WeightedFlowPixelType flow_pixel
 
-    # properties of the parallel rasters
-    cdef unsigned int raster_x_size, raster_y_size
-
     cdef unsigned long current_pixel
 
     # used for time-delayed logging
@@ -1196,7 +1187,6 @@ def flow_accumulation_d8(
 
     flow_dir_raster_info = pygeoprocessing.get_raster_info(
         flow_dir_raster_path_band[0])
-    raster_x_size, raster_y_size = flow_dir_raster_info['raster_size']
 
     tmp_flow_dir_nodata = flow_dir_raster_info['nodata'][
         flow_dir_raster_path_band[1]-1]
@@ -1217,9 +1207,9 @@ def flow_accumulation_d8(
 
         if ctime(NULL) - last_log_time > _LOGGING_PERIOD:
             last_log_time = ctime(NULL)
-            current_pixel = xoff + yoff * raster_x_size
+            current_pixel = xoff + yoff * flow_dir_managed_raster.raster_x_size
             LOGGER.info('Flow accumulation D8 %.1f%% complete', 100.0 * current_pixel / <float>(
-                raster_x_size * raster_y_size))
+                flow_dir_managed_raster.n_pixels))
 
         # make a buffer big enough to capture block and boundaries around it
         flow_dir_buffer_array = numpy.empty(
@@ -1229,7 +1219,8 @@ def flow_accumulation_d8(
 
         # attempt to expand read block by a pixel boundary
         (xa, xb, ya, yb), modified_offset_dict = _generate_read_bounds(
-            offset_dict, raster_x_size, raster_y_size)
+            offset_dict, flow_dir_managed_raster.raster_x_size,
+            flow_dir_managed_raster.raster_y_size)
         flow_dir_buffer_array[ya:yb, xa:xb] = flow_dir_band.ReadAsArray(
                 **modified_offset_dict).astype(numpy.uint8)
 
@@ -1452,9 +1443,6 @@ def flow_dir_mfd(
     # a plateau in case no other valid drain was found
     cdef queue[int] nodata_flow_dir_queue
 
-    # properties of the parallel rasters
-    cdef unsigned long raster_x_size, raster_y_size
-
     # used for time-delayed logging
     cdef time_t last_log_time
     last_log_time = ctime(NULL)
@@ -1473,9 +1461,6 @@ def flow_dir_mfd(
     else:
         # pick some very improbable value since it's hard to deal with NaNs
         dem_nodata = IMPROBABLE_FLOAT_NODATA
-
-    # these are used to determine if a sample is within the raster
-    raster_x_size, raster_y_size = dem_raster_info['raster_size']
 
     # this is the nodata value for all the flat region and pit masks
     mask_nodata = 0
@@ -1520,21 +1505,6 @@ def flow_dir_mfd(
     plateau_drain_mask_managed_raster = ManagedRaster(
         plateu_drain_mask_path.encode('utf-8'), 1, True)
 
-    # this creates a raster that's used for a dynamic programming solution to
-    # shortest path to the drain for plateaus. the raster is filled with
-    # raster_x_size * raster_y_size as a distance that's greater than the
-    # longest plateau drain distance possible for this raster.
-    plateau_distance_path = os.path.join(
-        working_dir_path, 'plateau_distance.tif')
-    cdef unsigned long plateau_distance_nodata = raster_x_size * raster_y_size
-    pygeoprocessing.new_raster_from_base(
-        dem_raster_path_band[0], plateau_distance_path, gdal.GDT_Float64,
-        [plateau_distance_nodata],
-        fill_value_list=[plateau_distance_nodata],
-        raster_driver_creation_tuple=raster_driver_creation_tuple)
-    plateau_distance_managed_raster = ManagedRaster(
-        plateau_distance_path.encode('utf-8'), 1, True)
-
     # this raster is for random access of the DEM
     compatable_dem_raster_path_band = None
     dem_block_xsize, dem_block_ysize = dem_raster_info['block_size']
@@ -1556,6 +1526,21 @@ def flow_dir_mfd(
     dem_managed_raster = ManagedRaster(
         compatable_dem_raster_path_band[0].encode('utf-8'),
         compatable_dem_raster_path_band[1], False)
+
+    # this creates a raster that's used for a dynamic programming solution to
+    # shortest path to the drain for plateaus. the raster is filled with
+    # the number of pixels as a distance that's greater than the
+    # longest plateau drain distance possible for this raster.
+    plateau_distance_path = os.path.join(
+        working_dir_path, 'plateau_distance.tif')
+    cdef unsigned long plateau_distance_nodata = dem_managed_raster.n_pixels
+    pygeoprocessing.new_raster_from_base(
+        dem_raster_path_band[0], plateau_distance_path, gdal.GDT_Float64,
+        [plateau_distance_nodata],
+        fill_value_list=[plateau_distance_nodata],
+        raster_driver_creation_tuple=raster_driver_creation_tuple)
+    plateau_distance_managed_raster = ManagedRaster(
+        plateau_distance_path.encode('utf-8'), 1, True)
 
     # and this raster is for efficient block-by-block reading of the dem
     dem_raster = gdal.OpenEx(
@@ -1935,9 +1920,6 @@ def flow_accumulation_mfd(
     cdef stack[FlowPixelType] search_stack
     cdef FlowPixelType flow_pixel
 
-    # properties of the parallel rasters
-    cdef unsigned long raster_x_size, raster_y_size
-
     # used for time-delayed logging
     cdef time_t last_log_time
     last_log_time = ctime(NULL)
@@ -1994,9 +1976,6 @@ def flow_accumulation_mfd(
         if raw_weight_nodata is not None:
             weight_nodata = raw_weight_nodata
 
-    flow_dir_raster_info = pygeoprocessing.get_raster_info(
-        flow_dir_mfd_raster_path_band[0])
-    raster_x_size, raster_y_size = flow_dir_raster_info['raster_size']
     visit_count = 0
 
     LOGGER.debug('starting search')
@@ -2194,9 +2173,6 @@ def distance_to_channel_d8(
     # from a defined flow distance pixel
     cdef stack[PixelType] distance_to_channel_stack
 
-    # properties of the parallel rasters
-    cdef unsigned int raster_x_size, raster_y_size
-
     # these area used to store custom per-pixel weights and per-pixel values
     # for distance updates
     cdef double weight_val, pixel_val
@@ -2245,10 +2221,6 @@ def distance_to_channel_d8(
         flow_dir_d8_raster_path_band[1], False)
     channel_raster = gdal.OpenEx(channel_raster_path_band[0], gdal.OF_RASTER)
     channel_band = channel_raster.GetRasterBand(channel_raster_path_band[1])
-
-    flow_dir_raster_info = pygeoprocessing.get_raster_info(
-        flow_dir_d8_raster_path_band[0])
-    raster_x_size, raster_y_size = flow_dir_raster_info['raster_size']
 
     # this outer loop searches for undefined channels
     for offset_dict in pygeoprocessing.iterblocks(
@@ -2428,9 +2400,6 @@ def distance_to_channel_mfd(
     # from a defined flow distance pixel
     cdef stack[MFDFlowPixelType] distance_to_channel_stack
 
-    # properties of the parallel rasters
-    cdef unsigned int raster_x_size, raster_y_size
-
     # this value is used to store the current weight which might be 1 or
     # come from a predefined flow accumulation weight raster
     cdef double weight_val
@@ -2497,10 +2466,6 @@ def distance_to_channel_mfd(
             weight_nodata = raw_weight_nodata
         else:
             weight_nodata = IMPROBABLE_FLOAT_NODATA
-
-    flow_dir_raster_info = pygeoprocessing.get_raster_info(
-        flow_dir_mfd_raster_path_band[0])
-    raster_x_size, raster_y_size = flow_dir_raster_info['raster_size']
 
     # this outer loop searches for undefined channels
     for offset_dict in pygeoprocessing.iterblocks(
@@ -2725,9 +2690,6 @@ def extract_streams_mfd(
     cdef double flow_accum_nodata = flow_accum_info['nodata'][
         flow_accum_raster_path_band[1]-1]
     stream_nodata = 255
-
-    cdef int raster_x_size, raster_y_size
-    raster_x_size, raster_y_size = flow_accum_info['raster_size']
 
     pygeoprocessing.new_raster_from_base(
         flow_accum_raster_path_band[0], target_stream_raster_path,
@@ -4127,8 +4089,6 @@ def detect_lowest_drain_and_sink(dem_raster_path_band):
     else:
         dem_nodata = IMPROBABLE_FLOAT_NODATA
 
-    raster_x_size, raster_y_size = dem_raster_info['raster_size']
-
     cdef ManagedRaster dem_managed_raster = ManagedRaster(
         dem_raster_path_band[0].encode('utf-8'), dem_raster_path_band[1], False)
 
@@ -4143,10 +4103,10 @@ def detect_lowest_drain_and_sink(dem_raster_path_band):
 
         if ctime(NULL) - last_log_time > _LOGGING_PERIOD:
             last_log_time = ctime(NULL)
-            current_pixel = xoff + yoff * raster_x_size
+            current_pixel = xoff + yoff * dem_managed_raster.raster_x_size
             LOGGER.info(
                 '(infer_sinks): '
-                f'{current_pixel} of {raster_x_size * raster_y_size} '
+                f'{current_pixel} of {dem_managed_raster.n_pixels} '
                 'pixels complete')
 
         # search block for local sinks
@@ -4169,8 +4129,7 @@ def detect_lowest_drain_and_sink(dem_raster_path_band):
                     xi_n = xi_root+COL_OFFSETS[i_n]
                     yi_n = yi_root+ROW_OFFSETS[i_n]
 
-                    if (xi_n < 0 or xi_n >= raster_x_size or
-                            yi_n < 0 or yi_n >= raster_y_size):
+                    if dem_managed_raster.is_out_of_bounds(xi_n, yi_n):
                         # it'll drain off the edge of the raster
                         if center_val < lowest_drain_height:
                             # found a new lower edge height
