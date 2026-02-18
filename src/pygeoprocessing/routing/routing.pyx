@@ -3538,12 +3538,19 @@ def extract_strahler_streams_d8(
 def _build_discovery_finish_rasters(
         flow_dir_d8_raster_path_band, target_discovery_raster_path,
         target_finish_raster_path):
-    """Generates a discovery and finish time raster for a given d8 flow path.
+    """Generate discovery and finish time rasters from a D8 flow dir raster.
+
+    This algorithm traverses the flow path starting from drain points and
+    working upslope using a depth-first search. The terms "discovery time" and
+    "finish time" come from graph theory and refer to the order in which a
+    pixel is first visited vs. marked completed by the algorithm.
 
     The discovery raster records the order in which each pixel is visited, from
-    0 (visited first) to the total number of pixels (visited last). Pixels are
-    visited by starting from drain points and working upslope.
+    0 (visited first) to the total number of pixels minus 1 (visited last).
 
+    The finish raster records when the "branch" of the watershed originating
+    from each pixel is complete. A pixel's finish time is equal to the largest
+    discovery time of any pixel upslope of it.
 
     Considering an example watershed, where A is the drain point:
 
@@ -3567,36 +3574,13 @@ def _build_discovery_finish_rasters(
 
     and the finish order would be
 
-              9
+             10
              / \
-            9   5
+           10   6
            /   / \
-          9   5   3
+         10   6   4
          / \  |  / \
-        9   8 5 3   2
-
-
-    thus given a pixel P and its neighbor Q,
-
-    if Q's discovery time is greater than or equal to P's discovery time,
-        (ie. Q is either upslope of P or it is in a different branch)
-
-    and Q's discovery time is less than or equal to P's finish time,
-        (ie. Q is first visited before P's branch is complete)
-    then Q is in the same watershed as P. ???
-
-
-    P  Q   Pd   Qd   Pf   (Qd >= Pd and Qd <= Pf)
-    -----------------------------
-    G  O   2    3    3     True
-    G  N   2    4    3     False
-    C  G   1    2    5     True
-    C  F   1    5    5     True
-    F  L   5    6    5     False
-    C  L   1    6    5     False
-
-
-
+       10   9 6 4   3
 
     Args:
         flow_dir_d8_raster_path_band (tuple): a D8 flow raster path band tuple.
@@ -4036,12 +4020,12 @@ def calculate_subwatershed_boundary(
         # (x + x_corner_offsets[flow_dir], y + y_corner_offsets[flow_dir])
         # is the coordinate of the pixel corner to start delineating from.
         #
-        # for diagonal outflow, this is the corner point shared with the neighbor.
-        # for orthogonal outflow, there are two corner points shared with the neighbor.
-        # this chooses the corner that is farther "clockwise".
+        # for diagonal outflow, this is the corner point shared
+        #   with the downslope neighbor.
+        # for orthogonal outflow, there are two corner points shared with the
+        #   downslope neighbor. this chooses the corner that is farther "clockwise".
         x_corner_offsets = [1, 1, 1, 0, 0, 0, 0, 1]
         y_corner_offsets = [1, 0, 0, 0, 0, 1, 1, 1]
-
 
         # move from the centerpoint to the point along the pixel border
         # corresponding to the pixel's outflow direction.
@@ -4055,10 +4039,16 @@ def calculate_subwatershed_boundary(
         delta_x, delta_y = 0, 0
 
         # determine the first edge
+        #
+        # outflow through a straight side, so trivial edge detection
         if outflow_dir % 2 == 0:
-            # outflow through a straight side, so trivial edge detection
+
             edge_side = outflow_dir # the outflow direction 0 - 7
-            edge_dir = (2+edge_side) % 8
+
+            # get the direction in which to step from the current vertex
+            # we don't move diagonally across pixels, so this is
+            # one of 0 (right), 2 (up), 4 (left), or 6 (down)
+            edge_dir = (2 + edge_side) % 8
 
         # diagonal outflow requires testing neighboring cells to determine first edge
         #
@@ -4083,7 +4073,10 @@ def calculate_subwatershed_boundary(
             # get the next neighbor going counterclockwise from outflow_dir
             cell_to_test = (outflow_dir + 1) % 8
             edge_side = cell_to_test
-            # get the neighbor 90 degrees counterclockwise from cell_to_test
+
+            # get the direction in which to step from the current vertex
+            # we don't move diagonally across pixels, so this is
+            # one of 0 (right), 2 (up), 4 (left), or 6 (down)
             edge_dir = (cell_to_test + 2) % 8
             if _in_watershed(
                     x_l, y_l, cell_to_test, discovery, finish,
@@ -4116,7 +4109,7 @@ def calculate_subwatershed_boundary(
                     f'{x_l}, {y_l} out of bounds for {discovery_managed_raster.raster_x_size}'
                     f'x{discovery_managed_raster.raster_y_size} raster.')
 
-            # step the edge then determine the projected coordinates
+            # step to the next vertex
             x_f += COL_OFFSETS[edge_dir]
             y_f += ROW_OFFSETS[edge_dir]
 
@@ -4134,9 +4127,9 @@ def calculate_subwatershed_boundary(
                 g3 + g4 * x_f + g5 * y_f)
 
             # counterclockwise configuration
-            if edge_side - ((edge_dir-2) % 8) == 0:
+            if edge_side - ((edge_dir - 2) % 8) == 0:
                 left = edge_dir
-                right = (left-1) % 8
+                right = (left - 1) % 8
                 out_dir_increase = 2
             # clockwise configuration (swapping "left" and "right")
             else:
@@ -4610,6 +4603,19 @@ cdef int _in_watershed(
         int x_l, int y_l, int direction_to_test, int discovery, int finish,
         ManagedRaster discovery_managed_raster):
     """Test if pixel in direction is in the watershed.
+
+    Given a pixel P and its neighbor Q,
+
+    if Q's discovery time >= P's discovery time,
+        then either Q is in P's branch, or it is in a later branch.
+
+    if Q's discovery time <= P's finish time,
+        then either Q is in P's branch, or it is in an earlier branch.
+        Because this is a depth-first traversal, we are not discovering pixels
+        in other branches until the current branch is finished.
+
+    If both these conditions are met, Q must be in P's branch
+    (i.e. Q is upslope of P in the same watershed).
 
     Args:
         x_l (int): x coordinate of the watershed boundary edge pixel to test
