@@ -8,7 +8,7 @@ commonly used raster, vector, and hydrological operations for GIS processing.
 Similar functionality can be found in ArcGIS/QGIS raster algebra, ArcGIS zonal
 statistics, and ArcGIS/GRASS/TauDEM hydrological routing routines.
 
-PyGeoprocessing is developed at the Natural Capital Project to create a
+PyGeoprocessing is developed at the Natural Capital Alliance to create a
 programmable, open source, and free Python based GIS processing library to
 support the InVEST toolset.  PyGeoprocessing's design prioritizes
 computation and memory efficient runtimes, easy installation and cross

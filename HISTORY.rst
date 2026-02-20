@@ -1,6 +1,13 @@
 Release History
 ===============
 
+Unreleased Changes
+------------------
+* The Natural Capital Project changed its name to the Natural Capital Alliance.
+  References to the old name and website domain have been updated to reflect
+  this change.
+  https://github.com/natcap/pygeoprocessing/issues/458
+
 2.4.10 (2026-01-13)
 -------------------
 * A new module, ``pygeoprocessing.extensions``, exposes the C++ extensions

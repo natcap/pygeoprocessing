@@ -4,7 +4,7 @@ description = "PyGeoprocessing: Geoprocessing routines for GIS"
 requires-python = ">=3.6"
 license = {file = "LICENSE.txt"}
 maintainers = [
-    {name = "Natural Capital Project Software Team"}
+    {name = "Natural Capital Alliance Software Team"}
 ]
 keywords = ['gis', 'geoprocessing', 'pygeoprocessing']
 classifiers = [
