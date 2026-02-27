@@ -129,7 +129,6 @@ class TestGeoprocessing(unittest.TestCase):
 
     def setUp(self):
         """Create a temporary workspace that's deleted later."""
-        self.maxDiff = None
         self.workspace_dir = tempfile.mkdtemp()
 
     def tearDown(self):
