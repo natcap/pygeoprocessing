@@ -7,6 +7,9 @@ Unreleased Changes
   References to the old name and website domain have been updated to reflect
   this change.
   https://github.com/natcap/pygeoprocessing/issues/458
+* Fixing a build issue with readthedocs builds due to the deprecation of
+  ``pkg_resources``.
+  https://github.com/natcap/pygeoprocessing/issues/469
 
 2.4.10 (2026-01-13)
 -------------------
