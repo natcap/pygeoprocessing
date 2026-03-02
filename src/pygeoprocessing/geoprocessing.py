@@ -2423,7 +2423,7 @@ def reclassify_raster(
     nodata_dest_value = target_nodata
     if nodata is not None:
         for key, val in value_map.items():
-            if numpy.isclose(key, nodata):
+            if numpy.isclose(key, nodata, equal_nan=True):
                 nodata_dest_value = val
                 del value_map_copy[key]
                 break
@@ -2450,7 +2450,7 @@ def reclassify_raster(
         if nodata is None:
             valid_mask = numpy.full(original_values.shape, True)
         else:
-            valid_mask = ~numpy.isclose(original_values, nodata)
+            valid_mask = ~array_equals_nodata(original_values, nodata)
             out_array[~valid_mask] = nodata_dest_value
 
         if values_required:
