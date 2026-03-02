@@ -2,7 +2,8 @@
 name = "pygeoprocessing"
 description = "PyGeoprocessing: Geoprocessing routines for GIS"
 requires-python = ">=3.6"
-license = {file = "LICENSE.txt"}
+license = "BSD-3-Clause"
+license-files = ["LICENSE.txt"]
 maintainers = [
     {name = "Natural Capital Alliance Software Team"}
 ]
@@ -22,7 +23,6 @@ classifiers = [
     'Programming Language :: Python :: 3.13',
     'Programming Language :: Python :: Implementation :: CPython',
     'Topic :: Scientific/Engineering :: GIS',
-    'License :: OSI Approved :: BSD License'
 ]
 # the version is provided dynamically by setuptools_scm
 # `dependencies` and `optional-dependencies` are provided by setuptools
