@@ -7,6 +7,9 @@ Unreleased Changes
   References to the old name and website domain have been updated to reflect
   this change.
   https://github.com/natcap/pygeoprocessing/issues/458
+* The average value of valid pixels is now computed in
+  ``pygeoprocessing.zonal_statistics`` for each feature.
+  https://github.com/natcap/pygeoprocessing/issues/370
 * Handling the case where a floating-point raster passed to
   ``pygeoprocessing.reclassify_raster`` may have a NaN nodata value.
   https://github.com/natcap/pygeoprocessing/issues/454
