@@ -37,7 +37,8 @@ from .geoprocessing_core import DEFAULT_CREATION_OPTIONS
 from .geoprocessing_core import DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS
 from .geoprocessing_core import DEFAULT_OSR_AXIS_MAPPING_STRATEGY
 from .geoprocessing_core import INT8_CREATION_OPTIONS
-from .utils import GDALUseExceptions, gdal_use_exceptions
+from .utils import gdal_use_exceptions
+from .utils import GDALUseExceptions
 
 # This is used to efficiently pass data to the raster stats worker if available
 if sys.version_info >= (3, 8):
@@ -1083,6 +1084,9 @@ def align_and_resize_raster_stack(
             [target_bounding_box, mask_vector_bb], 'intersection')
 
     if raster_align_index is not None and raster_align_index >= 0:
+        # ensure we are working with a copy of the bounding box so that the
+        # original is unmodified.
+        target_bounding_box = target_bounding_box[:]
         # bounding box needs alignment
         align_bounding_box = (
             raster_info_list[raster_align_index]['bounding_box'])
