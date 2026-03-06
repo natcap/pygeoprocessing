@@ -429,6 +429,33 @@ class TestGeoprocessing(unittest.TestCase):
         actual_message = str(cm.exception)
         self.assertIn(expected_message, actual_message)
 
+    def test_reclassify_raster_reclass_nan_nodata(self):
+        """PGP.geoprocessing: test reclassifying nan nodata value."""
+        n_pixels = 9
+        pixel_matrix = numpy.ones((n_pixels, n_pixels), numpy.float32)
+        test_value = 0.5
+        pixel_matrix[:] = test_value
+        nodata = numpy.nan
+        pixel_matrix[0,0] = nodata
+        pixel_matrix[5,7] = nodata
+        raster_path = os.path.join(self.workspace_dir, 'raster.tif')
+        target_path = os.path.join(self.workspace_dir, 'target.tif')
+        _array_to_raster(
+            pixel_matrix, nodata, raster_path)
+
+        value_map = {
+            test_value: 0,
+            nodata: 1,
+        }
+        target_nodata = -1
+        pygeoprocessing.reclassify_raster(
+            (raster_path, 1), value_map, target_path, gdal.GDT_Float32,
+            target_nodata, values_required=True)
+        target_info = pygeoprocessing.get_raster_info(target_path)
+        target_array = pygeoprocessing.raster_to_numpy_array(target_path)
+        self.assertAlmostEqual(numpy.sum(target_array), 2)
+        self.assertAlmostEqual(target_info['nodata'][0], target_nodata)
+
     def test_reproject_vector(self):
         """PGP.geoprocessing: test reproject vector."""
         # Create polygon shapefile to reproject
@@ -1156,11 +1183,13 @@ class TestGeoprocessing(unittest.TestCase):
                     'max': 1,
                     'min': 1,
                     'nodata_count': 0,
+                    'average': 1,
                     'sum': 81},
                 1: {
                     'count': 1,
                     'max': 1,
                     'min': 1,
+                    'average': 1,
                     'nodata_count': 0,
                     'sum': 1}
             }, {
@@ -1168,12 +1197,14 @@ class TestGeoprocessing(unittest.TestCase):
                     'count': 81,
                     'max': 2,
                     'min': 2,
+                    'average': 2,
                     'nodata_count': 0,
                     'sum': 162},
                 1: {
                     'count': 1,
                     'max': 2,
                     'min': 2,
+                    'average': 2,
                     'nodata_count': 0,
                     'sum': 2}
             }]
@@ -1318,16 +1349,19 @@ class TestGeoprocessing(unittest.TestCase):
                 'max': 1.0,
                 'min': 1.0,
                 'nodata_count': 0,
+                'average': 1,
                 'sum': 81.0},
             1: {
                 'count': 1,
                 'max': 1.0,
                 'min': 1.0,
                 'nodata_count': 0,
+                'average': 1,
                 'sum': 1.0},
             2: {
                 'min': None,
                 'max': None,
+                'average': None,
                 'count': 0,
                 'nodata_count': 0,
                 'sum': 0.0}}
@@ -1408,17 +1442,20 @@ class TestGeoprocessing(unittest.TestCase):
                 'max': 1.0,
                 'min': 1.0,
                 'nodata_count': 0,
+                'average': 1.0,
                 'sum': 81.0},
             1: {
                 'count': 1,
                 'max': 1.0,
                 'min': 1.0,
                 'nodata_count': 0,
+                'average': 1.0,
                 'sum': 1.0},
             2: {
                 'min': None,
                 'max': None,
                 'count': 0,
+                'average': None,
                 'nodata_count': 0,
                 'sum': 0.0}}
         self.assertEqual(result, expected_result)
@@ -1462,6 +1499,7 @@ class TestGeoprocessing(unittest.TestCase):
                 'max': 1.0,
                 'min': 1.0,
                 'nodata_count': 0,
+                'average': 1.0,
                 'sum': 2
         }})
 
@@ -1536,6 +1574,7 @@ class TestGeoprocessing(unittest.TestCase):
                 'max': 1.0,
                 'min': 1.0,
                 'nodata_count': 0,
+                'average': 1,
                 'sum': 2
         }})
 
@@ -1596,6 +1635,7 @@ class TestGeoprocessing(unittest.TestCase):
                 'min': 1.0,
                 'nodata_count': 0,
                 'sum': 81.0,
+                'average': 1,
                 'value_counts': {1.0: 81}},
             1: {
                 'count': 1,
@@ -1603,6 +1643,7 @@ class TestGeoprocessing(unittest.TestCase):
                 'min': 1.0,
                 'nodata_count': 0,
                 'sum': 1.0,
+                'average': 1,
                 'value_counts': {1.0: 1}},
             2: {
                 'min': None,
@@ -1610,6 +1651,7 @@ class TestGeoprocessing(unittest.TestCase):
                 'count': 0,
                 'nodata_count': 0,
                 'sum': 0.0,
+                'average': None,
                 'value_counts': {}}
         }
         self.assertEqual(result, expected_result)
@@ -1651,6 +1693,7 @@ class TestGeoprocessing(unittest.TestCase):
                 'max': None,
                 'min': None,
                 'nodata_count': 81,
+                'average': None,
                 'sum': 0.0}}
         self.assertEqual(result, expected_result)
 
@@ -1688,6 +1731,7 @@ class TestGeoprocessing(unittest.TestCase):
                 'max': 1,
                 'min': 1,
                 'nodata_count': 2,
+                'average': 1.0,
                 'sum': 2.0}}
         self.assertEqual(result, expected_result)
 
@@ -1725,6 +1769,7 @@ class TestGeoprocessing(unittest.TestCase):
                 'max': 1.0,
                 'min': 1.0,
                 'nodata_count': 0,
+                'average': 1.0,
                 'sum': 81.0}}
         self.assertEqual(result, expected_result)
 

@@ -1594,6 +1594,7 @@ def zonal_statistics(
     - 'max': maximum valid pixel value
     - 'sum': sum of valid pixel values
     - 'count': number of valid pixels
+    - 'average': the mean value of valid pixels
     - 'nodata_count': number of nodata pixels
     - 'value_counts': number of pixels having each unique value
 
@@ -1641,7 +1642,7 @@ def zonal_statistics(
         If `base_raster_path_band` is a tuple, the return value is a nested
         dictionary of stats for that raster band. Top-level keys are the
         aggregate feature FIDs. Each nested FID dictionary then contains
-        statistics about that feature: 'min', 'max', 'sum', 'count',
+        statistics about that feature: 'min', 'max', 'sum', 'count', 'average',
         'nodata_count', and optionally 'value_counts'. Example::
             {
                 0: {
@@ -1649,6 +1650,7 @@ def zonal_statistics(
                     'max': 14,
                     'sum': 42,
                     'count': 8,
+                    'average': 5.25,
                     'nodata_count': 1,
                     'value_counts': {
                         2: 5,
@@ -1723,7 +1725,8 @@ def zonal_statistics(
     # don't overlap any valid pixels.
     def default_aggregate_dict():
         default_aggregate_dict = {
-            'min': None, 'max': None, 'count': 0, 'nodata_count': 0, 'sum': 0}
+            'min': None, 'max': None, 'count': 0, 'nodata_count': 0, 'sum': 0,
+            'average': None}
         if include_value_counts:
             default_aggregate_dict['value_counts'] = collections.Counter()
         return default_aggregate_dict
@@ -1910,6 +1913,10 @@ def zonal_statistics(
                         feature_data.max(), aggregate_stats_list[i][fid]['max'])
                     aggregate_stats_list[i][fid]['sum'] += feature_data.sum()
                     aggregate_stats_list[i][fid]['count'] += feature_data.size
+                    aggregate_stats_list[i][fid]['average'] = (
+                        aggregate_stats_list[i][fid]['sum'] /
+                        aggregate_stats_list[i][fid]['count']
+                    )
                     if include_value_counts:
                         # .update() here is operating on a Counter, so values are
                         # ADDED, not replaced.
@@ -1980,6 +1987,7 @@ def zonal_statistics(
                 aggregate_stats_list[i][unset_fid]['min'] = 0
                 aggregate_stats_list[i][unset_fid]['max'] = 0
                 aggregate_stats_list[i][unset_fid]['sum'] = 0
+                aggregate_stats_list[i][unset_fid]['average'] = 0
             else:
                 aggregate_stats_list[i][unset_fid]['min'] = numpy.min(
                     unset_fid_block)
@@ -1990,6 +1998,12 @@ def zonal_statistics(
             aggregate_stats_list[i][unset_fid]['count'] = unset_fid_block.size
             aggregate_stats_list[i][unset_fid]['nodata_count'] = numpy.sum(
                 unset_fid_nodata_mask)
+            if aggregate_stats_list[i][unset_fid]['count'] == 0:
+                aggregate_stats_list[i][unset_fid]['average'] = None
+            else:
+                aggregate_stats_list[i][unset_fid]['average'] = (
+                    aggregate_stats_list[i][unset_fid]['sum'] /
+                    aggregate_stats_list[i][unset_fid]['count'])
             if include_value_counts:
                 # .update() here is operating on a Counter, so values are ADDED,
                 # not replaced.
@@ -2412,7 +2426,7 @@ def reclassify_raster(
     nodata_dest_value = target_nodata
     if nodata is not None:
         for key, val in value_map.items():
-            if numpy.isclose(key, nodata):
+            if numpy.isclose(key, nodata, equal_nan=True):
                 nodata_dest_value = val
                 del value_map_copy[key]
                 break
@@ -2439,7 +2453,7 @@ def reclassify_raster(
         if nodata is None:
             valid_mask = numpy.full(original_values.shape, True)
         else:
-            valid_mask = ~numpy.isclose(original_values, nodata)
+            valid_mask = ~array_equals_nodata(original_values, nodata)
             out_array[~valid_mask] = nodata_dest_value
 
         if values_required:
