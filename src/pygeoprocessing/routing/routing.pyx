@@ -3044,7 +3044,8 @@ def extract_strahler_streams_d8(
                 d_n = <int>flow_dir_managed_raster.get(x_l, y_l)
                 x_n = x_l + COL_OFFSETS[d_n]
                 y_n = y_l + ROW_OFFSETS[d_n]
-                if flow_dir_managed_raster.is_out_of_bounds_or_nodata(x_n, y_n):
+                if (flow_dir_managed_raster.is_out_of_bounds(x_n, y_n) or
+                    flow_dir_managed_raster.is_nodata(x_n, y_n)):
                     is_drain = 1
 
                 if not is_drain and (
@@ -3058,7 +3059,8 @@ def extract_strahler_streams_d8(
                     x_n = x_l + COL_OFFSETS[d]
                     y_n = y_l + ROW_OFFSETS[d]
                     # check if on border
-                    if flow_dir_managed_raster.is_out_of_bounds_or_nodata(x_n, y_n):
+                    if (flow_dir_managed_raster.is_out_of_bounds(x_n, y_n) or
+                        flow_dir_managed_raster.is_nodata(x_n, y_n)):
                         continue
                     d_n = <int>flow_dir_managed_raster.get(x_n, y_n)
                     if (INFLOW_OFFSETS[d] == d_n and
@@ -3671,41 +3673,10 @@ def _build_discovery_finish_rasters(
 
                 # if the downstream neighbor runs off raster or is nodata, then
                 # this pixel is a drain point, so we can push it to the stack
-                if flow_dir_managed_raster.is_out_of_bounds_or_nodata(x_n, y_n):
+                if (flow_dir_managed_raster.is_out_of_bounds(x_n, y_n) or
+                    flow_dir_managed_raster.is_nodata(x_n, y_n)):
                     discovery_stack.push(CoordinateType(x, y))
                     finish_stack.push(FinishType(x, y, 1))
-
-
-
-    # [A]                  [(A,1)]
-    # [B C]        A 0     [(A,1), (A,2)]
-    # [B F G]      C 1     [(A,1), (A,2), (C,2)]
-    # [B F N O]    G 2     [(A,1), (A,2), (C,2), (G,2)]
-    # [B F N]      O 3     [(A,1), (A,2), (C,2), (G,2), (O,0)]
-    #                      [(A,1), (A,2), (C,2), (G,2)]  -> set finish raster at O to (3-1) = 2
-    #                      [(A,1), (A,2), (C,2), (G,1)]
-    # [B F]        N 4     [(A,1), (A,2), (C,2), (G,1), (N,0)]
-    #                      [(A,1), (A,2), (C,2), (G,1)]  -> set finish raster at N to (4-1) = 3
-    #                      [(A,1), (A,2), (C,2)]         -> set finish raster at G to (4-1) = 3
-    #                      [(A,1), (A,2), (C,1)]
-    # [B L]        F 5     [(A,1), (A,2), (C,1), (F,1)]
-    # [B]          L 6     [(A,1), (A,2), (C,1), (F,1), (L,0)]
-    #                      [(A,1), (A,2), (C,1), (F,1)]  -> set finish raster at L to (6-1) = 5
-    #                      [(A,1), (A,2), (C,1)]         -> set finish raster at F to (6-1) = 5
-    #                      [(A,1), (A,2)]                -> set finish raster at C to (6-1) = 5
-    #                      [(A,1), (A,1)]
-    # [E]          B 7     [(A,1), (A,1), (B,1)]
-    # [J K]        E 8     [(A,1), (A,1), (B,1), (E,2)]
-    # [J]          K 9     [(A,1), (A,1), (B,1), (E,2), (K,0)]
-    #                      [(A,1), (A,1), (B,1), (E,2)]  -> set finish raster at K to 8
-    #                      [(A,1), (A,1), (B,1), (E,1)]
-    # []           J 10    [(A,1), (A,1), (B,1), (E,1), (J,0)]
-    #                      [(A,1), (A,1), (B,1), (E,1)]  -> set finish raster at J to 9
-    #                      [(A,1), (A,1), (B,1)]         -> set finish raster at E to 9
-    #                      [(A,1), (A,1)]                -> set finish raster at B to 9
-    #                      [(A,1)]                       -> set finish raster at A to 9
-    #                      []                            -> set finish raster at A to 9
-
 
                 while not discovery_stack.empty():
                     # This coordinate is the downstream end of the stream
@@ -3725,7 +3696,8 @@ def _build_discovery_finish_rasters(
 
                         # skip neighbors that are outside of the raster bounds,
                         # or that have nodata
-                        if flow_dir_managed_raster.is_out_of_bounds_or_nodata(x_n, y_n):
+                        if (flow_dir_managed_raster.is_out_of_bounds(x_n, y_n) or
+                            flow_dir_managed_raster.is_nodata(x_n, y_n)):
                             continue
 
                         # if the neighbor drains to this pixel, push it to the stack
@@ -4219,8 +4191,6 @@ def calculate_subwatershed_boundary(
         #
         #
         for boundary_x, boundary_y in boundary_list:
-            if (boundary_x, boundary_y) == (3203, 8357):
-                print('marking boundary of watershed with stream_fid', stream_fid)
             discovery_managed_raster.set(boundary_x, boundary_y, -1)
     watershed_layer.CommitTransaction()
     watershed_layer = None
@@ -4711,7 +4681,8 @@ cdef _calculate_stream_geometry(
                     y_n = y_l + ROW_OFFSETS[d]
 
                     # check out of bounds or nodata
-                    if flow_dir_managed_raster.is_out_of_bounds_or_nodata(x_n, y_n):
+                    if (flow_dir_managed_raster.is_out_of_bounds(x_n, y_n) or
+                        flow_dir_managed_raster.is_nodata(x_n, y_n)):
                         continue
 
                     # check if there's an upstream inflow pixel with flow accum

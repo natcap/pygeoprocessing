@@ -401,11 +401,8 @@ class ManagedRaster {
       return false;
     }
 
-    bool is_out_of_bounds_or_nodata(long x, long y) {
-      if (is_out_of_bounds(x, y) or is_nodata(x, y)) {
-        return true;
-      }
-      return false;
+    bool is_nodata(double val) {
+      return is_close(val, nodata);
     }
 
     bool is_nodata(long x, long y) {

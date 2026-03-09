@@ -55,7 +55,7 @@ cdef extern from "extensions/ManagedRaster.h":
         void _load_block(int block_index) except *
         void close()
         bint is_out_of_bounds(long x, long y)
-        bint is_out_of_bounds_or_nodata(long x, long y)
+        bint is_nodata(double val)
         bint is_nodata(long x, long y)
 
     cdef cppclass ManagedFlowDirRaster[T]:
@@ -84,6 +84,9 @@ cdef extern from "extensions/ManagedRaster.h":
         void set(long xi, long yi, double value)
         double get(long xi, long yi)
         void close()
+        bint is_out_of_bounds(long x, long y)
+        bint is_nodata(double val)
+        bint is_nodata(long x, long y)
 
     cdef cppclass D8
     cdef cppclass MFD
