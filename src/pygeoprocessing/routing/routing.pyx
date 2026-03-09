@@ -3985,9 +3985,17 @@ def calculate_subwatershed_boundary(
                 f'(calculate_subwatershed_boundary): watershed building '
                 f'{(index/len(visit_order_stack))*100:.1f}% complete')
             last_log_time = ctime(NULL)
+
+
         discovery = <long>discovery_managed_raster.get(x_l, y_l)
+
+        # We reach this case if the current pixel is a boundary pixel of
+        # a previously calculated watershed.
         if discovery_managed_raster.is_nodata(discovery):
             continue
+
+        # keep a list of pixels that are within the watershed along the boundary
+        # these will later be filled in with -1 in the discovery raster
         boundary_list = [(x_l, y_l)]
         finish = <long>finish_managed_raster.get(x_l, y_l)
         outlet_x = x_l
@@ -3995,24 +4003,6 @@ def calculate_subwatershed_boundary(
 
         watershed_boundary = ogr.Geometry(ogr.wkbLinearRing)
         outflow_dir = <int>d8_flow_dir_managed_raster.get(x_l, y_l)
-
-        # x_offsets = [0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5]
-        #           + [0.5, 0.5, 0, -0.5, -0.5, -0.5, 0, 0.5]
-
-        #           = [1, 1, 0.5, 0, 0, 0, 0.5, 1]
-        #           - [0, 0, -0.5, 0, 0, 0, 0.5, 0]
-
-        #           = [1, 1, 1, 0, 0, 0, 0, 1]
-
-
-        # y_offsets = [0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5]
-        #           + [0, -0.5, -0.5, -0.5, 0, 0.5, 0.5, 0.5]
-
-        #           = [0.5, 0, 0, 0, 0.5, 1, 1, 1]
-        #           + [0.5, 0, 0, 0, -0.5, 0, 0, 0]
-
-        #           = [1, 0, 0, 0, 0, 1, 1, 1]
-
 
         # offsets:
         # given a pixel coordinate (x, y) representing the top left corner of the pixel,
@@ -4041,8 +4031,13 @@ def calculate_subwatershed_boundary(
         # determine the first edge
         #
         # outflow through a straight side, so trivial edge detection
+        #
+        # if outflow is in an orthogonal direction (0, 2, 4, or 6),
+        # draw the first edge perpendicular to the outflow
+        # because this is a drain point
         if outflow_dir % 2 == 0:
-
+            # the edge side indicates which side of the pixel we're drawing
+            # the edge on: one of 0 (right), 2 (top), 4 (left), or 6 (bottom)
             edge_side = outflow_dir # the outflow direction 0 - 7
 
             # get the direction in which to step from the current vertex
@@ -4050,6 +4045,8 @@ def calculate_subwatershed_boundary(
             # one of 0 (right), 2 (up), 4 (left), or 6 (down)
             edge_dir = (2 + edge_side) % 8
 
+        # if outflow is in a diagonal direction (1, 3, 5, or 7),
+        #
         # diagonal outflow requires testing neighboring cells to determine first edge
         #
         # if i drains to a diagonal neighbor,
@@ -4072,12 +4069,19 @@ def calculate_subwatershed_boundary(
         else:
             # get the next neighbor going counterclockwise from outflow_dir
             cell_to_test = (outflow_dir + 1) % 8
+
+            # the edge side indicates which side of the pixel we're drawing
+            # the edge on: one of 0 (right), 2 (top), 4 (left), or 6 (bottom)
             edge_side = cell_to_test
 
             # get the direction in which to step from the current vertex
             # we don't move diagonally across pixels, so this is
             # one of 0 (right), 2 (up), 4 (left), or 6 (down)
             edge_dir = (cell_to_test + 2) % 8
+
+            # if the neighbor being tested is within the same watershed as
+            # pixel l, then the edge between them is not the watershed boundary.
+            # move to the next edge over in a clockwise direction.
             if _in_watershed(
                     x_l, y_l, cell_to_test, discovery, finish,
                     discovery_managed_raster):
@@ -4091,6 +4095,24 @@ def calculate_subwatershed_boundary(
         # walk the watershed boundary until we come back to the starting point
         # this loop repeats until it has outlined a complete watershed,
         # or it reaches the maximum allowed number of steps.
+        #
+        # This algorithm tracks a current pixel (x_l, y_l) and a
+        # current vertex (x_f, y_f). Pixels are always referenced by the coordinate of
+        # their top-left corner, but the watershed boundary may trace around any edge
+        # of a pixel. So the current vertex (f) is the leading point of the watershed
+        # boundary linestring.
+        #
+        # We know that we're on the watershed boundary when the current edge is between
+        # a pixel that's in the watershed and a pixel that's not. The algorithm walks
+        # counterclockwise around the watershed boundary, so that the "left" side of the
+        # boundary is the watershed interior, and the right side is the exterior.
+        #
+        # The algorithm proceeds by considering adjacent pairs of neighbors of the
+        # current pixel. If the "left" neighbor is in the watershed and the "right"
+        # neighbor isn't, we know we're on the boundary. If both are in the watershed,
+        # we turn right. If neither are in the watershed, we turn left.
+        #
+        #
         n_steps = 0
         terminated_early = 0
         while True:
@@ -4127,39 +4149,46 @@ def calculate_subwatershed_boundary(
                 g3 + g4 * x_f + g5 * y_f)
 
             # counterclockwise configuration
+            # edge_dir is two "directions" counterclockwise of edge_side
+            # this is always true ?
+            #
+            # the "left" pixel to test is the neighbor in the edge direction
+            # the "right" pixel to test is the next neighbor clockwise from that
             if edge_side - ((edge_dir - 2) % 8) == 0:
                 left = edge_dir
                 right = (left - 1) % 8
                 out_dir_increase = 2
             # clockwise configuration (swapping "left" and "right")
+            # When is this case ever reached?
             else:
+                print('Reached unexpected case!!!')
                 right = edge_dir
                 left = (edge_side+1)
                 out_dir_increase = -2
-            left_in = _in_watershed(
-                x_l, y_l, left, discovery, finish,
-                discovery_managed_raster)
-            right_in = _in_watershed(
-                x_l, y_l, right, discovery, finish,
-                discovery_managed_raster)
-            if right_in:
+
+            # if the "right" pixel to test is in the watershed,
+            # turn right so that we can draw the boundary around the right pixel
+            if _in_watershed(x_l, y_l, right, discovery, finish, discovery_managed_raster):
                 # turn right
                 out_dir = edge_side
-                edge_side = (edge_side-out_dir_increase) % 8
+                edge_side = (edge_side - out_dir_increase) % 8
                 edge_dir = out_dir
                 # pixel moves to be the right cell
                 x_l += COL_OFFSETS[right]
                 y_l += ROW_OFFSETS[right]
-                _diagonal_fill_step(
-                    x_l, y_l, right,
-                    discovery, finish, discovery_managed_raster,
-                    boundary_list)
-            elif left_in:
+                # add the current pixel to the boundary list
+                boundary_list.append((x_l, y_l))
+
+            # otherwise if the "left" pixel to test is in the watershed,
+            # continue straight - we are on a boundary edge
+            elif _in_watershed(x_l, y_l, left, discovery, finish, discovery_managed_raster):
                 # step forward
                 x_l += COL_OFFSETS[edge_dir]
                 y_l += ROW_OFFSETS[edge_dir]
                 # the pixel moves forward
                 boundary_list.append((x_l, y_l))
+            # if neither the "left" or "right" pixel is in the watershed,
+            # turn left
             else:
                 # turn left
                 edge_side = edge_dir
@@ -4183,7 +4212,15 @@ def calculate_subwatershed_boundary(
         # this loop fills in the raster at the boundary, done at end so it
         # doesn't interfere with the loop return to think the cells are no
         # longer in the watershed
+        #
+        # setting the discovery value to -1 guaranteeds that the _in_watershed
+        # test will always return False - if we reach one of these boundary pixels
+        # from another watershed, it won't be added to that watershed.
+        #
+        #
         for boundary_x, boundary_y in boundary_list:
+            if (boundary_x, boundary_y) == (3203, 8357):
+                print('marking boundary of watershed with stream_fid', stream_fid)
             discovery_managed_raster.set(boundary_x, boundary_y, -1)
     watershed_layer.CommitTransaction()
     watershed_layer = None
@@ -4537,66 +4574,6 @@ def detect_outlets(
     outlet_layer = None
     outlet_vector = None
     LOGGER.info('outlet detection: done')
-
-
-cdef void _diagonal_fill_step(
-        int x_l, int y_l, int edge_dir,
-        long discovery, long finish,
-        ManagedRaster discovery_managed_raster, boundary_list):
-    """Fill diagonal that are in the watershed behind the new edge.
-
-    Used as a helper function to mark pixels as part of the watershed
-    boundary in one step if they are diagonal and also contained within the
-    watershed. Prevents a case like this:
-
-    iii
-    ii1
-    i1o
-
-    Instead would fill the diagonal like this:
-
-    iii
-    i11
-    i1o
-
-    Args:
-        x_l/y_l (int): leading coordinate of the watershed boundary
-            edge.
-        edge_dir (int): D8 direction that points which direction the edge
-            came from
-        discovery/finish (long): the discovery and finish time that defines
-            whether a pixel discovery time is inside a watershed or not.
-        discovery_managed_raster (ManagedRaster): discovery time raster
-            x/y gives the discovery time for that pixel.
-        boundary_list (list): this list is appended to for new pixels that
-            should be neighbors in the fill.
-
-    Return:
-        None.
-    """
-    # always add the current pixel
-    boundary_list.append((x_l, y_l))
-
-    # this section determines which back diagonal was in the watershed and
-    # fills it. if none are we pick one so there's no degenerate case
-    cdef int xdelta = COL_OFFSETS[edge_dir]
-    cdef int ydelta = ROW_OFFSETS[edge_dir]
-    test_list = [
-        (x_l - xdelta, y_l),
-        (x_l, y_l - ydelta)]
-    for x_t, y_t in test_list:
-        point_discovery = <long>discovery_managed_raster.get(
-            x_t, y_t)
-        if (not discovery_managed_raster.is_nodata(point_discovery) and
-                point_discovery >= discovery and
-                point_discovery <= finish):
-            boundary_list.append((int(x_t), int(y_t)))
-            # there's only one diagonal to fill in so it's done here
-            return
-
-    # if there's a degenerate case then just add the xdelta,
-    # it doesn't matter
-    boundary_list.append(test_list[0])
 
 
 cdef int _in_watershed(
