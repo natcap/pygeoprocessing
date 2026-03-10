@@ -1183,11 +1183,13 @@ class TestGeoprocessing(unittest.TestCase):
                     'max': 1,
                     'min': 1,
                     'nodata_count': 0,
+                    'average': 1,
                     'sum': 81},
                 1: {
                     'count': 1,
                     'max': 1,
                     'min': 1,
+                    'average': 1,
                     'nodata_count': 0,
                     'sum': 1}
             }, {
@@ -1195,12 +1197,14 @@ class TestGeoprocessing(unittest.TestCase):
                     'count': 81,
                     'max': 2,
                     'min': 2,
+                    'average': 2,
                     'nodata_count': 0,
                     'sum': 162},
                 1: {
                     'count': 1,
                     'max': 2,
                     'min': 2,
+                    'average': 2,
                     'nodata_count': 0,
                     'sum': 2}
             }]
@@ -1345,16 +1349,19 @@ class TestGeoprocessing(unittest.TestCase):
                 'max': 1.0,
                 'min': 1.0,
                 'nodata_count': 0,
+                'average': 1,
                 'sum': 81.0},
             1: {
                 'count': 1,
                 'max': 1.0,
                 'min': 1.0,
                 'nodata_count': 0,
+                'average': 1,
                 'sum': 1.0},
             2: {
                 'min': None,
                 'max': None,
+                'average': None,
                 'count': 0,
                 'nodata_count': 0,
                 'sum': 0.0}}
@@ -1435,17 +1442,20 @@ class TestGeoprocessing(unittest.TestCase):
                 'max': 1.0,
                 'min': 1.0,
                 'nodata_count': 0,
+                'average': 1.0,
                 'sum': 81.0},
             1: {
                 'count': 1,
                 'max': 1.0,
                 'min': 1.0,
                 'nodata_count': 0,
+                'average': 1.0,
                 'sum': 1.0},
             2: {
                 'min': None,
                 'max': None,
                 'count': 0,
+                'average': None,
                 'nodata_count': 0,
                 'sum': 0.0}}
         self.assertEqual(result, expected_result)
@@ -1489,6 +1499,7 @@ class TestGeoprocessing(unittest.TestCase):
                 'max': 1.0,
                 'min': 1.0,
                 'nodata_count': 0,
+                'average': 1.0,
                 'sum': 2
         }})
 
@@ -1563,6 +1574,7 @@ class TestGeoprocessing(unittest.TestCase):
                 'max': 1.0,
                 'min': 1.0,
                 'nodata_count': 0,
+                'average': 1,
                 'sum': 2
         }})
 
@@ -1623,6 +1635,7 @@ class TestGeoprocessing(unittest.TestCase):
                 'min': 1.0,
                 'nodata_count': 0,
                 'sum': 81.0,
+                'average': 1,
                 'value_counts': {1.0: 81}},
             1: {
                 'count': 1,
@@ -1630,6 +1643,7 @@ class TestGeoprocessing(unittest.TestCase):
                 'min': 1.0,
                 'nodata_count': 0,
                 'sum': 1.0,
+                'average': 1,
                 'value_counts': {1.0: 1}},
             2: {
                 'min': None,
@@ -1637,6 +1651,7 @@ class TestGeoprocessing(unittest.TestCase):
                 'count': 0,
                 'nodata_count': 0,
                 'sum': 0.0,
+                'average': None,
                 'value_counts': {}}
         }
         self.assertEqual(result, expected_result)
@@ -1678,6 +1693,7 @@ class TestGeoprocessing(unittest.TestCase):
                 'max': None,
                 'min': None,
                 'nodata_count': 81,
+                'average': None,
                 'sum': 0.0}}
         self.assertEqual(result, expected_result)
 
@@ -1715,6 +1731,7 @@ class TestGeoprocessing(unittest.TestCase):
                 'max': 1,
                 'min': 1,
                 'nodata_count': 2,
+                'average': 1.0,
                 'sum': 2.0}}
         self.assertEqual(result, expected_result)
 
@@ -1752,6 +1769,7 @@ class TestGeoprocessing(unittest.TestCase):
                 'max': 1.0,
                 'min': 1.0,
                 'nodata_count': 0,
+                'average': 1.0,
                 'sum': 81.0}}
         self.assertEqual(result, expected_result)
 
@@ -2533,17 +2551,39 @@ class TestGeoprocessing(unittest.TestCase):
         # goes first in the following bounding box construction
         base_a_raster_info = pygeoprocessing.get_raster_info(base_a_path)
 
+        # Make a new bounding box that's in between the two and not perfectly
+        # aligned to the pixels in base_a_raster.
+        xmin, ymin, xmax, ymax = base_a_raster_info['bounding_box']
+        target_bbox = [
+            xmin+23,
+            ymin+23,
+            xmax-46,
+            ymax-46,
+        ]
+
+        # REGRESSION TEST: make sure this input variable is unmodified after
+        # execution
+        # https://github.com/natcap/pygeoprocessing/issues/471
+        target_bbox_copy = target_bbox[:]
+
         pygeoprocessing.align_and_resize_raster_stack(
             base_raster_path_list, target_raster_path_list,
             resample_method_list,
-            base_a_raster_info['pixel_size'], 'intersection',
+            base_a_raster_info['pixel_size'],
+            target_bbox,
             base_vector_path_list=None, raster_align_index=0)
+
+        # REGRESSION TEST: make sure this input variable is unmodified after
+        # execution.
+        # https://github.com/natcap/pygeoprocessing/issues/471
+        self.assertEqual(target_bbox, target_bbox_copy)
 
         # we expect this to be twice as big since second base raster has a
         # pixel size twice that of the first.
         target_array = pygeoprocessing.raster_to_numpy_array(
             target_raster_path_list[0])
-        numpy.testing.assert_array_equal(pixel_a_matrix, target_array)
+        numpy.testing.assert_array_equal(
+            numpy.ones((4, 4), pixel_a_matrix.dtype), target_array)
 
     def test_raster_calculator(self):
         """PGP.geoprocessing: raster_calculator identity test."""

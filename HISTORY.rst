@@ -10,12 +10,19 @@ Unreleased Changes
 * Fixing a build issue with readthedocs builds due to the deprecation of
   ``pkg_resources``.
   https://github.com/natcap/pygeoprocessing/issues/469
+* The average value of valid pixels is now computed in
+  ``pygeoprocessing.zonal_statistics`` for each feature.
+  https://github.com/natcap/pygeoprocessing/issues/370
 * Handling the case where a floating-point raster passed to
   ``pygeoprocessing.reclassify_raster`` may have a NaN nodata value.
   https://github.com/natcap/pygeoprocessing/issues/454
 * Updating pyproject.toml to use the standard ``license-files`` key and
   replacing the license-related Trove classifier with the approved SPDX string.
   https://github.com/natcap/pygeoprocessing/issues/466
+* Fixing a side effect in ``pygeoprocessing.align_and_resize_raster_stack``
+  where aligning a raster stack using the bounding box mode would result in the
+  input bounding box being modified in-place.
+  https://github.com/natcap/pygeoprocessing/issues/471
 
 2.4.10 (2026-01-13)
 -------------------
