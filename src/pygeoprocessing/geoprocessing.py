@@ -1084,6 +1084,9 @@ def align_and_resize_raster_stack(
             [target_bounding_box, mask_vector_bb], 'intersection')
 
     if raster_align_index is not None and raster_align_index >= 0:
+        # ensure we are working with a copy of the bounding box so that the
+        # original is unmodified.
+        target_bounding_box = target_bounding_box[:]
         # bounding box needs alignment
         align_bounding_box = (
             raster_info_list[raster_align_index]['bounding_box'])
