@@ -16,6 +16,9 @@ Unreleased Changes
 * Updating pyproject.toml to use the standard ``license-files`` key and
   replacing the license-related Trove classifier with the approved SPDX string.
   https://github.com/natcap/pygeoprocessing/issues/466
+* Fixed a bug where ``convolve_2d`` was not handling ``nan`` NoData
+  values correctly.
+  https://github.com/natcap/pygeoprocessing/issues/473
 
 2.4.10 (2026-01-13)
 -------------------
