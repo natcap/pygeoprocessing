@@ -20,6 +20,9 @@ Unreleased Changes
   where aligning a raster stack using the bounding box mode would result in the
   input bounding box being modified in-place.
   https://github.com/natcap/pygeoprocessing/issues/471
+* Fixed a bug where ``convolve_2d`` was not handling ``nan`` NoData
+  values correctly.
+  https://github.com/natcap/pygeoprocessing/issues/473
 
 2.4.10 (2026-01-13)
 -------------------

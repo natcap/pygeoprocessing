@@ -3730,6 +3730,32 @@ class TestGeoprocessing(unittest.TestCase):
             numpy.isclose(signal_nodata_array, signal_nodata_none_array).all(),
             'signal with nodata should be the same as signal with none')
 
+    def test_convolve_2d_nan_nodata(self):
+        """PGP.geoprocessing: test convolve_2d on raster w nan nodata value."""
+        # Create signal array with one nan pixel
+        signal_array = numpy.arange(25).reshape(5, 5).astype(numpy.float32)
+        signal_array = numpy.ones((5, 5), numpy.float32)
+        signal_array[1, 1] = numpy.nan
+        signal_path = os.path.join(self.workspace_dir, 'signal.tif')
+        _array_to_raster(signal_array, numpy.nan, signal_path)
+
+        kernel_array = numpy.array(((0, 1, 0),
+                                    (1, 1, 1),
+                                    (0, 1, 0)), numpy.float32)
+        kernel_path = os.path.join(self.workspace_dir, 'kernel.tif')
+        _array_to_raster(kernel_array, numpy.nan, kernel_path)
+
+        target_path = os.path.join(self.workspace_dir, 'target.tif')
+        pygeoprocessing.convolve_2d(
+                (signal_path, 1), (kernel_path, 1), target_path,
+                ignore_nodata_and_edges=True, mask_nodata=True,
+                normalize_kernel=True, target_datatype=6,
+                target_nodata=numpy.nan)
+
+        expected_output = pygeoprocessing.raster_to_numpy_array(target_path)
+        numpy.testing.assert_allclose(signal_array, expected_output)
+        self.assertEqual(1, numpy.count_nonzero(numpy.isnan(expected_output)))
+
     def test_convolve_2d_error_on_worker_timeout(self):
         """PGP.geoprocessing: test convolve 2d error when worker times out."""
         n_pixels = 10000

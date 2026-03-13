@@ -3338,7 +3338,7 @@ def convolve_2d(
     kernel_sum = 0.0
     for _, kernel_block in iterblocks(kernel_path_band):
         if kernel_nodata is not None and ignore_nodata_and_edges:
-            kernel_block[numpy.isclose(kernel_block, kernel_nodata)] = 0.0
+            kernel_block[array_equals_nodata(kernel_block, kernel_nodata)] = 0.0
         kernel_sum += numpy.sum(kernel_block)
 
     # limit the size of the work queue since a large kernel / signal with small
@@ -3429,7 +3429,7 @@ def convolve_2d(
         # guard against a None nodata value
         if s_nodata is not None and mask_nodata:
             valid_mask[:] = (
-                ~numpy.isclose(potential_nodata_signal_array, s_nodata))
+                ~array_equals_nodata(potential_nodata_signal_array, s_nodata))
         output_array[:] = target_nodata
         output_array[valid_mask] = (
             (result[top_index_result:bottom_index_result,
@@ -3477,7 +3477,7 @@ def convolve_2d(
             signal_block = signal_band.ReadAsArray(**target_offset_data)
             mask_block = mask_band.ReadAsArray(**target_offset_data)
             if mask_nodata and signal_nodata is not None:
-                valid_mask = ~numpy.isclose(signal_block, signal_nodata)
+                valid_mask = ~array_equals_nodata(signal_block, signal_nodata)
             else:
                 valid_mask = numpy.ones(target_block.shape, dtype=bool)
             valid_mask &= (mask_block > 0)
@@ -4074,7 +4074,7 @@ def _convolve_2d_worker(
     kernel_sum = 0.0
     for _, kernel_block in iterblocks(kernel_path_band):
         if kernel_nodata is not None and ignore_nodata:
-            kernel_block[numpy.isclose(kernel_block, kernel_nodata)] = 0.0
+            kernel_block[array_equals_nodata(kernel_block, kernel_nodata)] = 0.0
         kernel_sum += numpy.sum(kernel_block)
 
     while True:
@@ -4093,7 +4093,7 @@ def _convolve_2d_worker(
 
         # don't ever convolve the nodata value
         if signal_nodata is not None:
-            signal_nodata_mask = numpy.isclose(signal_block, signal_nodata)
+            signal_nodata_mask = array_equals_nodata(signal_block, signal_nodata)
             signal_block[signal_nodata_mask] = 0.0
             if not ignore_nodata:
                 signal_nodata_mask[:] = 0
@@ -4125,7 +4125,7 @@ def _convolve_2d_worker(
             continue
 
         if kernel_nodata is not None:
-            kernel_block[numpy.isclose(kernel_block, kernel_nodata)] = 0.0
+            kernel_block[array_equals_nodata(kernel_block, kernel_nodata)] = 0.0
 
         if normalize_kernel:
             kernel_block /= kernel_sum
