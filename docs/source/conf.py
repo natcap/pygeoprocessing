@@ -6,16 +6,17 @@
 
 # -- Path setup --------------------------------------------------------------
 
+import datetime
+import os
 # If extensions (or modules to document with autodoc) are in another directory,
 # add these directories to sys.path here. If the directory is relative to the
 # documentation root, use os.path.abspath to make it absolute, like shown here.
 #
 # import sys
 # sys.path.insert(0, os.path.abspath('.'))
-import datetime
-import os
+from importlib.metadata import version
+
 import sphinx.ext.apidoc
-from pkg_resources import get_distribution
 
 # -- Project information -----------------------------------------------------
 
@@ -77,5 +78,5 @@ sphinx.ext.apidoc.main([
     os.path.join(DOCS_SOURCE_DIR, '..', '..', 'src', 'pygeoprocessing'),
 ])
 
-release = get_distribution('pygeoprocessing').version
+release = version('pygeoprocessing')
 version = '.'.join(release.split('.')[:2])
