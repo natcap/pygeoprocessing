@@ -3591,7 +3591,49 @@ def extract_strahler_streams_d8(
 def _build_discovery_finish_rasters(
         flow_dir_d8_raster_path_band, target_discovery_raster_path,
         target_finish_raster_path):
-    """Generates a discovery and finish time raster for a given d8 flow path.
+    """Generate discovery and finish time rasters from a D8 flow dir raster.
+
+    This algorithm traverses the flow path starting from drain points and
+    working upslope using a depth-first search. The terms "discovery time" and
+    "finish time" come from graph theory and refer to the order in which a
+    pixel is first visited vs. marked completed by the algorithm.
+
+    The discovery raster records the order in which each pixel is visited, from
+    0 (visited first) to the total number of pixels minus 1 (visited last).
+
+    The finish raster records when the "branch" of the watershed originating
+    from each pixel is complete. A pixel's finish time is equal to the largest
+    discovery time of any pixel upslope of it.
+
+    Considering an example watershed, where A is the drain point:
+
+              A
+             / \
+            B   C
+           /   / \
+          E   F   G
+         / \  |  / \
+        J   K L N   O
+
+    the discovery order would be
+
+              0
+             / \
+            7   1
+           /   / \
+          8   5   2
+         / \  |  / \
+       10   9 6 4   3
+
+    and the finish order would be
+
+             10
+             / \
+           10   6
+           /   / \
+         10   6   4
+         / \  |  / \
+       10   9 6 4   3
 
     Args:
         flow_dir_d8_raster_path_band (tuple): a D8 flow raster path band tuple.
@@ -3641,6 +3683,22 @@ def _build_discovery_finish_rasters(
     cdef int i, j, xoff, yoff, win_xsize, win_ysize, x_l, y_l, x_n, y_n
     cdef int n_dir, test_dir
 
+    # this essentially does a depth-first traversal of the watershed,
+    # starting from drain points and working upslope.
+    #
+    # iterate over each pixel in the flow dir raster, block by block
+    # if a pixel is a drain point, push it onto the stack
+    # while the stack isn't empty,
+    #   pop a pixel from the stack
+    #   check each neighbor to see if it drains to the pixel
+    #   for each neighbor pixel, if it drains to i, push it to the stack
+    #
+    #   after checking all neighbors, push an item to the finish stack
+    #   that consists of (x_i, y_i, number of neighbors pushed)
+    #
+    #   if no neighbors were pushed, (no pixels drain to i, so i is a local high point),
+    #
+    #
     for offset_dict in pygeoprocessing.iterblocks(
             flow_dir_d8_raster_path_band, offset_only=True):
         # search raster block by raster block
@@ -3664,10 +3722,12 @@ def _build_discovery_finish_rasters(
                 if d_n == flow_dir_nodata:
                     continue
 
-                # check if downstream neighbor runs off raster or is nodata
+                # find the downstream neighbor (the pixel that this pixel drains to)
                 x_n = x_l + COL_OFFSETS[d_n]
                 y_n = y_l + ROW_OFFSETS[d_n]
 
+                # if the downstream neighbor runs off raster or is nodata, then
+                # this pixel is a drain point, so we can push it to the stack
                 if (x_n < 0 or y_n < 0 or x_n >= n_cols or y_n >= n_rows or
                         <int>flow_dir_managed_raster.get(
                             x_n, y_n) == flow_dir_nodata):
@@ -3689,9 +3749,14 @@ def _build_discovery_finish_rasters(
                     for test_dir in range(8):
                         x_n = raster_coord.xi + COL_OFFSETS[test_dir % 8]
                         y_n = raster_coord.yi + ROW_OFFSETS[test_dir % 8]
+
+                        # skip neighbors that are outside of the raster bounds,
+                        # or that have nodata
                         if x_n < 0 or y_n < 0 or \
                                 x_n >= n_cols or y_n >= n_rows:
                             continue
+
+                        # if the neighbor drains to this pixel, push it to the stack
                         n_dir = <int>flow_dir_managed_raster.get(x_n, y_n)
                         if n_dir == flow_dir_nodata:
                             continue
@@ -3705,7 +3770,13 @@ def _build_discovery_finish_rasters(
                         FinishType(
                             raster_coord.xi, raster_coord.yi, n_pushed))
 
-                    # pop the finish stack until n_pushed > 1
+                    # if n_pushed is 0, that means no neighbors drain to pixel i,
+                    # and so i is a local high point.
+                    #
+                    # pop the finish stack until n_pushed > 1.
+                    # the top item will be (xi, yi, 0)
+                    # set the finish order raster at (xi, yi) to discovery order - 1 (why?)
+                    #
                     if n_pushed == 0:
                         while (not finish_stack.empty() and
                                finish_stack.top().n_pushed <= 1):
@@ -3848,6 +3919,18 @@ def calculate_subwatershed_boundary(
     stream_layer = stream_vector.GetLayer()
 
     # construct linkage data structure for upstream streams
+    #
+    # each stream feature starts and ends at a confluence point.
+    # there are no confluence points midway along a stream.
+    # a stream may have multiple tributaries only if they share a confluence point.
+    #
+    # therefore if stream B is a tributary of stream A, then
+    # stream A's upstream coordinate (its starting point) equals
+    # stream B's downstream coordinate (its end point)
+    #
+    # map each stream's downstream endpoint to its FID
+    # we will use this to look up a stream's tributaries
+    # given its upstream coordinate.
     upstream_fid_map = collections.defaultdict(list)
     for stream_feature in stream_layer:
         ds_x = int(stream_feature.GetField('ds_x'))
@@ -3864,6 +3947,11 @@ def calculate_subwatershed_boundary(
     # first
     stream_layer.SetAttributeFilter(f'"outlet"=1')
     # these are done last
+    #
+    # outlet streams are the lowest/final streams, they are not a tributary
+    # to any other stream.
+    #
+    # visit outlet streams in strahler stream order from largest to smallest
     for _, outlet_fid in sorted([
             (x.GetField('order'), x.GetFID()) for x in stream_layer],
             reverse=True):
@@ -3879,6 +3967,10 @@ def calculate_subwatershed_boundary(
             ds_x_1 = int(working_feature.GetField('ds_x_1'))
             ds_y_1 = int(working_feature.GetField('ds_y_1'))
 
+            # if this stream has any tributaries that have not yet been
+            # processed, add them to the stack.
+            # otherwise, if all tributaries have been processed, we can
+            # proceed to calculate the subwatershed.
             upstream_coord = (us_x, us_y)
             upstream_fids = [
                 fid for fid in upstream_fid_map[upstream_coord]
@@ -3890,26 +3982,26 @@ def calculate_subwatershed_boundary(
                 # the `not outlet_at_confluence` bit allows us to seed
                 # even if the order is 1, otherwise confluences fill
                 # the order 1 streams
-                if (working_feature.GetField('order') > 1 or
-                        not outlet_at_confluence):
-                    if outlet_at_confluence:
-                        # seed the upstream point
-                        visit_order_stack.append((working_fid, us_x, us_y))
-                    else:
-                        # seed the downstream but +1 step point
-                        visit_order_stack.append(
-                            (working_fid, ds_x_1, ds_y_1))
+                #
+                # if order == 1: is a headwater stream (has no tributaries)
+                # if order > 1: has tributaries
+
+                # if this stream has tributaries, and we are using the confluence
+                # point as the outlet, then we can seed the upstream point
+                # (which is the downstream point of the tributaries)
+                if working_feature.GetField('order') > 1 and outlet_at_confluence:
+                    visit_order_stack.append((working_fid, us_x, us_y))
+                # if this stream is an outlet, we need to push its downstream point
+                # onto the stack, because there are no further streams to do so
                 if working_feature.GetField('outlet') == 1:
                     # an outlet is a special case where the outlet itself
                     # should be a subwatershed done last.
-                    ds_x = int(working_feature.GetField('ds_x'))
-                    ds_y = int(working_feature.GetField('ds_y'))
-                    if not outlet_at_confluence:
-                        # undo the previous visit because it will be at
-                        # one pixel up and we want the pixel right at
-                        # the outlet
-                        visit_order_stack.pop()
                     visit_order_stack.append((working_fid, ds_x, ds_y))
+                # if not an outlet and we are using 1 pixel up from the confluence
+                # point, seed the downstream+1 point
+                # TODO: why does this add DS+1 point of this stream and not of its tributaries?
+                elif not outlet_at_confluence:
+                    visit_order_stack.append((working_fid, ds_x_1, ds_y_1))
 
     cdef int edge_side, edge_dir, cell_to_test, out_dir_increase=-1
     cdef int left, right, n_steps, terminated_early
@@ -3923,8 +4015,13 @@ def calculate_subwatershed_boundary(
                 f'{(index/len(visit_order_stack))*100:.1f}% complete')
             last_log_time = ctime(NULL)
         discovery = <long>discovery_managed_raster.get(x_l, y_l)
+        # We reach this case if the current pixel is a boundary pixel of
+        # a previously calculated watershed.
         if discovery == -1:
             continue
+            
+        # keep a list of pixels that are within the watershed along the boundary
+        # these will later be filled in with -1 in the discovery raster
         boundary_list = [(x_l, y_l)]
         finish = <long>finish_managed_raster.get(x_l, y_l)
         outlet_x = x_l
