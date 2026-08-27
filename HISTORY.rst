@@ -15,6 +15,11 @@ Unreleased Changes
   ``align_and_resize_raster_stack`` would pad rasters that were smaller
   than the target extent and didn't have a defined NoData value with 0s.
   https://github.com/natcap/pygeoprocessing/issues/476
+* Cythonized C++ and C files are no longer packaged in source distributions.
+  https://github.com/natcap/pygeoprocessing/issues/489
+* Fixed a type comparison issue preventing pygeoprocessing from compiling
+  from source when compiled with Cython==3.3.0.
+  https://github.com/natcap/pygeoprocessing/issues/490
 
 2.4.11 (2026-04-10)
 -------------------
