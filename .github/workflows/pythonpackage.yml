@@ -25,28 +25,30 @@ jobs:
             python-version: 3.13
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # Fetch all history so that setuptool_scm can build the correct
           # version string.
           fetch-depth: 0
 
       - name: setup-micromamba
-        uses: mamba-org/setup-micromamba@v1
+        uses: mamba-org/setup-micromamba@v3
         with:
           # Grab requirements from pip-compatible requirements.txt
           environment-file: requirements.txt
           condarc: |
-              channels:
-                - conda-forge
+            channels:
+              - conda-forge
           create-args: >-
-              python=${{ matrix.python-version }}
-              gdal=${{ matrix.gdal }}
-              setuptools
-              python-build
-              flake8
-              pytest
-              numpy
+            python=${{ matrix.python-version }}
+            gdal=${{ matrix.gdal }}
+            libtiff
+            pkg-config
+            setuptools
+            python-build
+            flake8
+            pytest
+            numpy
           environment-name: pyenv
 
       - name: Lint with flake8
@@ -60,8 +62,8 @@ jobs:
 
       - name: Build and Install PyGeoprocessing
         run: |
-            PYGEOPROCESSING_GDAL_LIB_PATH="$CONDA_PREFIX/Library" python -m build --wheel --verbose
-            python -m pip install $(find dist -name "*.whl")
+          PYGEOPROCESSING_TIFF_LIB_PATH="$CONDA_PREFIX/Library" python -m build --wheel --verbose
+          python -m pip install $(find dist -name "*.whl")
 
       - name: Test with pytest
         run: python -m pytest tests

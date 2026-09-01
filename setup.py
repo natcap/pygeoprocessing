@@ -24,24 +24,30 @@ include_dirs = [
 if platform.system() == 'Windows':
     compiler_args = ['/std:c++20']
     compiler_and_linker_args = []
-    if 'PYGEOPROCESSING_GDAL_LIB_PATH' not in os.environ:
+    if 'PYGEOPROCESSING_TIFF_LIB_PATH' not in os.environ:
         raise RuntimeError(
-            'env variable PYGEOPROCESSING_GDAL_LIB_PATH is not defined. '
+            'env variable PYGEOPROCESSING_TIFF_LIB_PATH is not defined. '
             'This env variable is required when building on Windows. If '
-            'using conda to manage your gdal installation, you may set '
-            'PYGEOPROCESSING_GDAL_LIB_PATH=%CONDA_PREFIX%/Library".')
+            'using conda to manage your libtiff installation, you may set '
+            'PYGEOPROCESSING_TIFF_LIB_PATH=%CONDA_PREFIX%/Library".')
     library_dirs = [os.path.join(
-        os.environ["PYGEOPROCESSING_GDAL_LIB_PATH"].rstrip(), "lib")]
+        os.environ["PYGEOPROCESSING_TIFF_LIB_PATH"].rstrip(), "lib")]
     include_dirs.append(os.path.join(
-        os.environ["PYGEOPROCESSING_GDAL_LIB_PATH"].rstrip(), "include"))
+        os.environ["PYGEOPROCESSING_TIFF_LIB_PATH"].rstrip(), "include"))
 else:
-    compiler_args = [subprocess.run(
-        ['gdal-config', '--cflags'], capture_output=True, text=True
-    ).stdout.strip()]
+    tiff_cflags = subprocess.run(
+        ['pkg-config', '--cflags', 'libtiff-4'],
+        capture_output=True, text=True, check=True).stdout.split()
+    tiff_libs = subprocess.run(
+        ['pkg-config', '--libs', 'libtiff-4'],
+        capture_output=True, text=True, check=True).stdout.split()
+    compiler_args = tiff_cflags
     compiler_and_linker_args = ['-std=c++20']
-    library_dirs = [subprocess.run(
-        ['gdal-config', '--libs'], capture_output=True, text=True
-    ).stdout.split()[0][2:]] # get the first argument which is the library path
+    library_dirs = [
+        lib_arg[2:] for lib_arg in tiff_libs if lib_arg.startswith('-L')]
+    compiler_and_linker_args.extend([
+        lib_arg for lib_arg in tiff_libs
+        if not lib_arg.startswith('-L') and lib_arg != '-ltiff'])
 
 setup(
     name='pygeoprocessing',
@@ -69,7 +75,7 @@ setup(
             sources=["src/pygeoprocessing/routing/routing.pyx"],
             include_dirs=include_dirs,
             library_dirs=library_dirs,
-            libraries=['gdal'],
+            libraries=['tiff'],
             extra_compile_args=compiler_args + compiler_and_linker_args,
             extra_link_args=compiler_and_linker_args,
             define_macros=[('NPY_NO_DEPRECATED_API', 'NPY_1_7_API_VERSION')],
@@ -80,7 +86,7 @@ setup(
             sources=["src/pygeoprocessing/routing/watershed.pyx"],
             include_dirs=include_dirs,
             library_dirs=library_dirs,
-            libraries=['gdal'],
+            libraries=['tiff'],
             extra_compile_args=compiler_args + compiler_and_linker_args,
             extra_link_args=compiler_and_linker_args,
             define_macros=[('NPY_NO_DEPRECATED_API', 'NPY_1_7_API_VERSION')],
@@ -92,7 +98,7 @@ setup(
                 'src/pygeoprocessing/geoprocessing_core.pyx'],
             include_dirs=include_dirs,
             library_dirs=library_dirs,
-            libraries=['gdal'],
+            libraries=['tiff'],
             extra_compile_args=compiler_args + compiler_and_linker_args,
             extra_link_args=compiler_and_linker_args,
             define_macros=[('NPY_NO_DEPRECATED_API', 'NPY_1_7_API_VERSION')],

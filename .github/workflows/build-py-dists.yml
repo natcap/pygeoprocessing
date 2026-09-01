@@ -19,84 +19,90 @@ env:
   GDAL_VERSION_FOR_WHEEL_BUILD: "3.10.*"
 
 jobs:
-    build-wheels:
-        name: Wheel
-        runs-on: ${{ matrix.os }}
-        strategy:
-            fail-fast: false
-            matrix:
-                os: [windows-latest, macos-latest]
-                python-version: [3.9, "3.10", "3.11", "3.12", "3.13"]
+  build-wheels:
+    name: Wheel
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+        python-version: [3.9, "3.10", "3.11", "3.12", "3.13"]
 
-        steps:
-            - uses: actions/checkout@v4
-              with:
-                  # Fetch all history so that setuptools_scm can build the correct version string.
-                  fetch-depth: 0
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # Fetch all history so that setuptools_scm can build the correct version string.
+          fetch-depth: 0
 
-            - name: Fetch git tags
-              run: git fetch origin +refs/tags/*:refs/tags/*
+      - name: Fetch git tags
+        run: git fetch origin +refs/tags/*:refs/tags/*
 
-            - name: setup-micromamba
-              uses: mamba-org/setup-micromamba@v1
-              with:
-                condarc: |
-                  channels:
-                    - conda-forge
-                create-args: >-
-                  python=${{ matrix.python-version }}
-                  gdal==${{ env.GDAL_VERSION_FOR_WHEEL_BUILD }}
-                  setuptools
-                  python-build
-                  wheel
-                environment-name: env
+      - name: setup-micromamba
+        uses: mamba-org/setup-micromamba@v3
+        with:
+          condarc: |
+            channels:
+              - conda-forge
+          create-args: >-
+            python=${{ matrix.python-version }}
+            gdal==${{ env.GDAL_VERSION_FOR_WHEEL_BUILD }}
+            libtiff
+            pkg-config
+            setuptools
+            python-build
+            wheel
+          environment-name: env
 
-            - name: Build wheel
-              run: PYGEOPROCESSING_GDAL_LIB_PATH="$CONDA_PREFIX/Library" python -m build --wheel
 
-            # Modify the wheel metadata to require the same minor version of gdal that we built against
-            # This should prevent libgdal version conflicts
-            - name: Modify wheel to add gdal constraint
-              run: |
-                wheel unpack dist/*.whl --dest tmp
-                sed -i.bak 's/Requires-Dist: gdal.*/Requires-Dist: gdal==${{ env.GDAL_VERSION_FOR_WHEEL_BUILD }}/I' tmp/*/*.dist-info/METADATA
-                rm tmp/*/*.dist-info/*.bak
-                wheel pack tmp/* --dest-dir dist
+      - name: Build wheel
+        run: PYGEOPROCESSING_TIFF_LIB_PATH="$CONDA_PREFIX/Library" python -m build --wheel
 
-            - uses: actions/upload-artifact@v4
-              with:
-                  name: Wheel for ${{ matrix.os }} ${{ matrix.python-version }}
-                  path: dist
+      # Modify the wheel metadata to require the same minor version of gdal that we built against
+      # This should prevent libgdal version conflicts
+      - name: Modify wheel to add gdal constraint
+        run: |
+          wheel unpack dist/*.whl --dest tmp
+          sed -i.bak 's/Requires-Dist: gdal.*/Requires-Dist: gdal==${{ env.GDAL_VERSION_FOR_WHEEL_BUILD }}/I' tmp/*/*.dist-info/METADATA
+          rm tmp/*/*.dist-info/*.bak
+          wheel pack tmp/* --dest-dir dist
 
-    build-sdist:
-        name: Source Dist
-        runs-on: ubuntu-latest
-        steps:
-            - uses: actions/checkout@v4
-              with:
-                  # Fetch all history so that setuptools_scm can build the correct version string.
-                  fetch-depth: 0
+      - uses: actions/upload-artifact@v7
+        with:
+          name: Wheel for ${{ matrix.os }} ${{ matrix.python-version }}
+          path: dist
 
-            - name: Fetch git tags
-              run: git fetch origin +refs/tags/*:refs/tags/*
 
-            - name: setup-micromamba
-              uses: mamba-org/setup-micromamba@v1
-              with:
-                condarc: |
-                  channels:
-                    - conda-forge
-                create-args: >-
-                  python=3.13
-                  gdal
-                  setuptools
-                  python-build
-                environment-name: env
+  build-sdist:
+    name: Source Dist
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # Fetch all history so that setuptools_scm can build the correct version string.
+          fetch-depth: 0
 
-            - name: Build source distribution
-              run: python -m build --sdist
+      - name: Fetch git tags
+        run: git fetch origin +refs/tags/*:refs/tags/*
 
-            - uses: actions/upload-artifact@v4
-              with:
-                  name: Source distribution
-                  path: dist
+      - name: setup-micromamba
+        uses: mamba-org/setup-micromamba@v3
+        with:
+          condarc: |
+            channels:
+              - conda-forge
+          create-args: >-
+            python=3.13
+            gdal
+            libtiff
+            pkg-config
+            setuptools
+            python-build
+          environment-name: env
+
+      - name: Build source distribution
+        run: python -m build --sdist
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: Source distribution
+          path: dist

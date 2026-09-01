@@ -1,14 +1,48 @@
 #ifndef NATCAP_INVEST_MANAGEDRASTER_H_
 #define NATCAP_INVEST_MANAGEDRASTER_H_
 
-#include "gdal.h"
-#include "gdal_priv.h"
+#include "tiffio.h"
 #include <Python.h>
 
+#include <cstdarg>
+#include <cmath>
+#include <cstdint>
+#include <cstdlib>
+#include <cstring>
 #include <iostream>
+#include <limits>
+#include <stdexcept>
 #include <string>
 
 #include "LRUCache.h"
+
+static TIFFErrorHandler PARENT_TIFF_WARNING_HANDLER = NULL;
+
+static void managed_raster_tiff_warning_handler(
+    const char* module, const char* fmt, va_list ap) {
+  char message[512];
+  va_list ap_copy;
+  va_copy(ap_copy, ap);
+  vsnprintf(message, sizeof(message), fmt, ap_copy);
+  va_end(ap_copy);
+
+  if (strstr(message, "Unknown field with tag") != NULL) {
+    return;
+  }
+
+  if (PARENT_TIFF_WARNING_HANDLER != NULL) {
+    (*PARENT_TIFF_WARNING_HANDLER)(module, fmt, ap);
+  }
+}
+
+static void ensure_tiff_warning_handler_registered() {
+  static bool registered = false;
+  if (!registered) {
+    PARENT_TIFF_WARNING_HANDLER = TIFFSetWarningHandler(
+      managed_raster_tiff_warning_handler);
+    registered = true;
+  }
+}
 
 int MANAGED_RASTER_N_BLOCKS = static_cast<int>(pow(2, 6));
 // given the pixel neighbor numbering system
@@ -34,7 +68,7 @@ enum class LogLevel {debug, info, warning, error};
 
 // Largely copied from:
 // https://gist.github.com/hensing/0db3f8e3a99590006368
-static void log_msg(LogLevel level, string msg)
+static void log_msg(LogLevel level, std::string msg)
 {
   static PyObject *logging = NULL;
   static PyObject *pyString = NULL;
@@ -106,8 +140,12 @@ class ManagedRaster {
     int block_ny;
     char* raster_path;
     int band_id;
-    GDALDataset* dataset;
-    GDALRasterBand* band;
+    TIFF* dataset;
+    uint16_t bits_per_sample;
+    uint16_t sample_format;
+    uint16_t samples_per_pixel;
+    uint16_t planar_config;
+    tsize_t native_tile_size;
     int write_mode;
     int closed;
     double nodata;
@@ -116,13 +154,13 @@ class ManagedRaster {
 
     ManagedRaster() { }
 
-    // Creates new instance of ManagedRaster. Opens the raster with GDAL,
+    // Creates new instance of ManagedRaster. Opens the raster with libtiff,
     // stores important information about the dataset, and creates a cache
     // that will be used to efficiently read blocks from the raster.
     // Args:
     //   raster_path: path to raster that has block sizes that are
     //     powers of 2. If not, an exception is raised.
-    //   band_id: which band in `raster_path` to index. Uses GDAL
+    //   band_id: which band in `raster_path` to index. Uses GDAL-style
     //     notation that starts at 1.
     //   write_mode: if true, this raster is writable and dirty
     //     memory blocks will be written back to the raster as blocks
@@ -132,28 +170,59 @@ class ManagedRaster {
       , band_id { band_id }
       , write_mode { write_mode }
     {
-      GDALAllRegister();
-
-      dataset = (GDALDataset *) GDALOpen( raster_path, GA_Update );
-
-      raster_x_size = dataset->GetRasterXSize();
-      raster_y_size = dataset->GetRasterYSize();
-
-      if (band_id < 1 or band_id > dataset->GetRasterCount()) {
+      ensure_tiff_warning_handler_registered();
+      dataset = TIFFOpen(raster_path, write_mode ? "r+" : "r");
+      if (dataset == nullptr) {
         throw std::invalid_argument(
-          "Error: band ID is not a valid band number. "
+          "Error: Could not open TIFF raster. "
           "This error is happening in the ManagedRaster.h extension.");
       }
-      band = dataset->GetRasterBand(band_id);
-      band->GetBlockSize( &block_xsize, &block_ysize );
+
+      uint32_t image_width;
+      uint32_t image_length;
+      uint32_t tile_width;
+      uint32_t tile_length;
+      TIFFGetField(dataset, TIFFTAG_IMAGEWIDTH, &image_width);
+      TIFFGetField(dataset, TIFFTAG_IMAGELENGTH, &image_length);
+      raster_x_size = image_width;
+      raster_y_size = image_length;
+
+      if (!TIFFIsTiled(dataset)) {
+        throw std::invalid_argument(
+          "Error: ManagedRaster requires a tiled TIFF raster. "
+          "This error is happening in the ManagedRaster.h extension.");
+      }
+      TIFFGetField(dataset, TIFFTAG_TILEWIDTH, &tile_width);
+      TIFFGetField(dataset, TIFFTAG_TILELENGTH, &tile_length);
+      block_xsize = tile_width;
+      block_ysize = tile_length;
+
+      TIFFGetFieldDefaulted(dataset, TIFFTAG_BITSPERSAMPLE, &bits_per_sample);
+      TIFFGetFieldDefaulted(dataset, TIFFTAG_SAMPLESPERPIXEL, &samples_per_pixel);
+      TIFFGetFieldDefaulted(dataset, TIFFTAG_SAMPLEFORMAT, &sample_format);
+      TIFFGetFieldDefaulted(dataset, TIFFTAG_PLANARCONFIG, &planar_config);
+      native_tile_size = TIFFTileSize(dataset);
+      validate_sample_type();
+
+      if (band_id < 1 or band_id > samples_per_pixel) {
+        throw std::invalid_argument(
+          "Error: band ID is not a valid TIFF sample number. "
+          "This error is happening in the ManagedRaster.h extension.");
+      }
 
       block_xmod = block_xsize - 1;
       block_ymod = block_ysize - 1;
 
-      nodata = band->GetNoDataValue( &hasNodata );
+      hasNodata = 0;
+      nodata = std::numeric_limits<double>::quiet_NaN();
 
-      geotransform = (double *) CPLMalloc(sizeof(double) * 6);
-      dataset->GetGeoTransform(geotransform);
+      geotransform = (double *) malloc(sizeof(double) * 6);
+      geotransform[0] = 0.0;
+      geotransform[1] = 1.0;
+      geotransform[2] = 0.0;
+      geotransform[3] = 0.0;
+      geotransform[4] = 0.0;
+      geotransform[5] = 1.0;
 
       if (((block_xsize & (block_xsize - 1)) != 0) or (
           (block_ysize & (block_ysize - 1)) != 0)) {
@@ -171,11 +240,20 @@ class ManagedRaster {
 
       int actual_x = 0;
       int actual_y = 0;
-      actualBlockWidths = (int *) CPLMalloc(sizeof(int) * block_nx * block_ny);
+      actualBlockWidths = (int *) malloc(sizeof(int) * block_nx * block_ny);
 
       for (int block_yi = 0; block_yi < block_ny; block_yi++) {
         for (int block_xi = 0; block_xi < block_nx; block_xi++) {
-          band->GetActualBlockSize(block_xi, block_yi, &actual_x, &actual_y);
+          actual_x = block_xsize;
+          actual_y = block_ysize;
+          int xoff = block_xi << block_xbits;
+          int yoff = block_yi << block_ybits;
+          if (xoff + actual_x > raster_x_size) {
+            actual_x = actual_x - (xoff + actual_x - raster_x_size);
+          }
+          if (yoff + actual_y > raster_y_size) {
+            actual_y = actual_y - (yoff + actual_y - raster_y_size);
+          }
           actualBlockWidths[block_yi * block_nx + block_xi] = actual_x;
         }
       }
@@ -229,6 +307,189 @@ class ManagedRaster {
       return value;
     }
 
+    int bytes_per_sample() {
+      return bits_per_sample / 8;
+    }
+
+    void validate_sample_type() {
+      if (bits_per_sample != 8 and bits_per_sample != 16 and
+          bits_per_sample != 32 and bits_per_sample != 64) {
+        throw std::invalid_argument(
+          "Error: Unsupported TIFF bits per sample in ManagedRaster.");
+      }
+      if (sample_format != SAMPLEFORMAT_UINT and
+          sample_format != SAMPLEFORMAT_INT and
+          sample_format != SAMPLEFORMAT_IEEEFP) {
+        throw std::invalid_argument(
+          "Error: Unsupported TIFF sample format in ManagedRaster.");
+      }
+      if (sample_format == SAMPLEFORMAT_IEEEFP and
+          bits_per_sample != 32 and bits_per_sample != 64) {
+        throw std::invalid_argument(
+          "Error: Unsupported TIFF floating point width in ManagedRaster.");
+      }
+      if (planar_config != PLANARCONFIG_CONTIG and
+          planar_config != PLANARCONFIG_SEPARATE) {
+        throw std::invalid_argument(
+          "Error: Unsupported TIFF planar configuration in ManagedRaster.");
+      }
+    }
+
+    size_t native_offset(int col, int row) {
+      int sample_index = (
+        planar_config == PLANARCONFIG_CONTIG ? band_id - 1 : 0);
+      return (
+        (static_cast<size_t>(row) * block_xsize + col) *
+        (planar_config == PLANARCONFIG_CONTIG ? samples_per_pixel : 1) +
+        sample_index) * bytes_per_sample();
+    }
+
+    double read_native_value(unsigned char* native_buffer, int col, int row) {
+      size_t offset = native_offset(col, row);
+      if (sample_format == SAMPLEFORMAT_IEEEFP) {
+        if (bits_per_sample == 32) {
+          float value;
+          memcpy(&value, native_buffer + offset, sizeof(float));
+          return static_cast<double>(value);
+        }
+        double value;
+        memcpy(&value, native_buffer + offset, sizeof(double));
+        return value;
+      }
+      if (sample_format == SAMPLEFORMAT_INT) {
+        if (bits_per_sample == 8) {
+          int8_t value;
+          memcpy(&value, native_buffer + offset, sizeof(int8_t));
+          return static_cast<double>(value);
+        }
+        if (bits_per_sample == 16) {
+          int16_t value;
+          memcpy(&value, native_buffer + offset, sizeof(int16_t));
+          return static_cast<double>(value);
+        }
+        if (bits_per_sample == 32) {
+          int32_t value;
+          memcpy(&value, native_buffer + offset, sizeof(int32_t));
+          return static_cast<double>(value);
+        }
+        int64_t value;
+        memcpy(&value, native_buffer + offset, sizeof(int64_t));
+        return static_cast<double>(value);
+      }
+      if (bits_per_sample == 8) {
+        uint8_t value;
+        memcpy(&value, native_buffer + offset, sizeof(uint8_t));
+        return static_cast<double>(value);
+      }
+      if (bits_per_sample == 16) {
+        uint16_t value;
+        memcpy(&value, native_buffer + offset, sizeof(uint16_t));
+        return static_cast<double>(value);
+      }
+      if (bits_per_sample == 32) {
+        uint32_t value;
+        memcpy(&value, native_buffer + offset, sizeof(uint32_t));
+        return static_cast<double>(value);
+      }
+      uint64_t value;
+      memcpy(&value, native_buffer + offset, sizeof(uint64_t));
+      return static_cast<double>(value);
+    }
+
+    void write_native_value(
+        unsigned char* native_buffer, int col, int row, double double_value) {
+      size_t offset = native_offset(col, row);
+      if (sample_format == SAMPLEFORMAT_IEEEFP) {
+        if (bits_per_sample == 32) {
+          float value = static_cast<float>(double_value);
+          memcpy(native_buffer + offset, &value, sizeof(float));
+          return;
+        }
+        memcpy(native_buffer + offset, &double_value, sizeof(double));
+        return;
+      }
+      if (sample_format == SAMPLEFORMAT_INT) {
+        if (bits_per_sample == 8) {
+          int8_t value = static_cast<int8_t>(double_value);
+          memcpy(native_buffer + offset, &value, sizeof(int8_t));
+          return;
+        }
+        if (bits_per_sample == 16) {
+          int16_t value = static_cast<int16_t>(double_value);
+          memcpy(native_buffer + offset, &value, sizeof(int16_t));
+          return;
+        }
+        if (bits_per_sample == 32) {
+          int32_t value = static_cast<int32_t>(double_value);
+          memcpy(native_buffer + offset, &value, sizeof(int32_t));
+          return;
+        }
+        int64_t value = static_cast<int64_t>(double_value);
+        memcpy(native_buffer + offset, &value, sizeof(int64_t));
+        return;
+      }
+      if (bits_per_sample == 8) {
+        uint8_t value = static_cast<uint8_t>(double_value);
+        memcpy(native_buffer + offset, &value, sizeof(uint8_t));
+        return;
+      }
+      if (bits_per_sample == 16) {
+        uint16_t value = static_cast<uint16_t>(double_value);
+        memcpy(native_buffer + offset, &value, sizeof(uint16_t));
+        return;
+      }
+      if (bits_per_sample == 32) {
+        uint32_t value = static_cast<uint32_t>(double_value);
+        memcpy(native_buffer + offset, &value, sizeof(uint32_t));
+        return;
+      }
+      uint64_t value = static_cast<uint64_t>(double_value);
+      memcpy(native_buffer + offset, &value, sizeof(uint64_t));
+    }
+
+    ttile_t tiff_tile_index(int xoff, int yoff) {
+      uint16_t sample = (
+        planar_config == PLANARCONFIG_SEPARATE ?
+        static_cast<uint16_t>(band_id - 1) : 0);
+      return TIFFComputeTile(dataset, xoff, yoff, 0, sample);
+    }
+
+    void write_block(int block_index, double* double_buffer) {
+      int block_xi = block_index % block_nx;
+      int block_yi = block_index / block_nx;
+      int xoff = block_xi << block_xbits;
+      int yoff = block_yi << block_ybits;
+      int win_xsize = block_xsize;
+      int win_ysize = block_ysize;
+      if (xoff + win_xsize > raster_x_size) {
+        win_xsize = win_xsize - (xoff + win_xsize - raster_x_size);
+      }
+      if (yoff + win_ysize > raster_y_size) {
+        win_ysize = win_ysize - (yoff + win_ysize - raster_y_size);
+      }
+
+      unsigned char* native_buffer = (unsigned char*) malloc(native_tile_size);
+      ttile_t tile_index = tiff_tile_index(xoff, yoff);
+      if (TIFFReadEncodedTile(
+            dataset, tile_index, native_buffer, native_tile_size) == -1) {
+        memset(native_buffer, 0, native_tile_size);
+      }
+
+      for (int row = 0; row < win_ysize; row++) {
+        for (int col = 0; col < win_xsize; col++) {
+          write_native_value(
+            native_buffer, col, row,
+            double_buffer[row * win_xsize + col]);
+        }
+      }
+
+      if (TIFFWriteEncodedTile(
+            dataset, tile_index, native_buffer, native_tile_size) == -1) {
+        std::cerr << "Error writing block\n";
+      }
+      free(native_buffer);
+    }
+
     // Reads a block from the raster and saves it to the cache.
     // Args:
     //   block_index: Index of the block to read, counted from the top-left
@@ -258,14 +519,24 @@ class ManagedRaster {
         win_ysize = win_ysize - (yoff + win_ysize - raster_y_size);
       }
 
-      double *pafScanline = (double *) CPLMalloc(sizeof(double) * win_xsize * win_ysize);
-      CPLErr err = band->RasterIO(GF_Read, xoff, yoff, win_xsize, win_ysize,
-            pafScanline, win_xsize, win_ysize, GDT_Float64,
-            0, 0 );
-
-      if (err != CE_None) {
+      unsigned char* native_buffer = (unsigned char*) malloc(native_tile_size);
+      ttile_t tile_index = tiff_tile_index(xoff, yoff);
+      if (TIFFReadEncodedTile(
+            dataset, tile_index, native_buffer, native_tile_size) == -1) {
         std::cerr << "Error reading block\n";
+        memset(native_buffer, 0, native_tile_size);
       }
+
+      double *pafScanline = (
+        double *) malloc(sizeof(double) * win_xsize * win_ysize);
+      for (int row = 0; row < win_ysize; row++) {
+        for (int col = 0; col < win_xsize; col++) {
+          pafScanline[row * win_xsize + col] = read_native_value(
+            native_buffer, col, row);
+        }
+      }
+      free(native_buffer);
+
       lru_cache->put(block_index, pafScanline, removed_value_list);
       while (not removed_value_list.empty()) {
         // write the changed value back if desired
@@ -279,37 +550,18 @@ class ManagedRaster {
           if (dirty_itr != dirty_blocks.end()) {
             dirty_blocks.erase(dirty_itr);
 
-            block_xi = block_index % block_nx;
-            block_yi = block_index / block_nx;
-
-            xoff = block_xi << block_xbits;
-            yoff = block_yi << block_ybits;
-
-            win_xsize = block_xsize;
-            win_ysize = block_ysize;
-
-            if (xoff + win_xsize > raster_x_size) {
-              win_xsize = win_xsize - (xoff + win_xsize - raster_x_size);
-            }
-            if (yoff + win_ysize > raster_y_size) {
-              win_ysize = win_ysize - (yoff + win_ysize - raster_y_size);
-            }
-            err = band->RasterIO( GF_Write, xoff, yoff, win_xsize, win_ysize,
-              double_buffer, win_xsize, win_ysize, GDT_Float64, 0, 0 );
-            if (err != CE_None) {
-              std::cerr << "Error writing block\n";
-            }
+            write_block(block_index, double_buffer);
           }
         }
 
-        CPLFree(double_buffer);
+        free(double_buffer);
         removed_value_list.pop_front();
       }
     }
 
     // Closes the ManagedRaster and frees up resources.
     // This call writes any dirty blocks to disk, frees up the memory
-    // allocated as part of the cache, and frees all GDAL references.
+    // allocated as part of the cache, and frees all TIFF references.
     // Any subsequent calls to any other functions in _ManagedRaster will
     // have undefined behavior.
     void close() {
@@ -319,24 +571,17 @@ class ManagedRaster {
       closed = 1;
 
       double *double_buffer;
-      int block_xi;
-      int block_yi;
       int block_index;
-      // initially the win size is the same as the block size unless
-      // we're at the edge of a raster
-      int win_xsize;
-      int win_ysize;
-
-      // we need the offsets to subtract from global indexes for cached array
-      int xoff;
-      int yoff;
 
       if (not write_mode) {
         for (auto it = lru_cache->begin(); it != lru_cache->end(); it++) {
           // write the changed value back if desired
-          CPLFree(it->second);
+          free(it->second);
         }
-        GDALClose( (GDALDatasetH) dataset );
+        TIFFClose(dataset);
+        delete lru_cache;
+        free(actualBlockWidths);
+        free(geotransform);
         return;
       }
 
@@ -350,33 +595,11 @@ class ManagedRaster {
         dirty_itr = dirty_blocks.find(block_index);
         if (dirty_itr != dirty_blocks.end()) {
           dirty_blocks.erase(dirty_itr);
-          block_xi = block_index % block_nx;
-          block_yi = block_index / block_nx;
-
-          // we need the offsets to subtract from global indexes for
-          // cached array
-          xoff = block_xi << block_xbits;
-          yoff = block_yi << block_ybits;
-
-          win_xsize = block_xsize;
-          win_ysize = block_ysize;
-
-          // clip window sizes if necessary
-          if (xoff + win_xsize > raster_x_size) {
-            win_xsize = win_xsize - (xoff + win_xsize - raster_x_size);
-          }
-          if (yoff + win_ysize > raster_y_size) {
-            win_ysize = win_ysize - (yoff + win_ysize - raster_y_size);
-          }
-          CPLErr err = band->RasterIO( GF_Write, xoff, yoff, win_xsize, win_ysize,
-            double_buffer, win_xsize, win_ysize, GDT_Float64, 0, 0 );
-          if (err != CE_None) {
-            std::cerr << "Error writing block\n";
-          }
+          write_block(block_index, double_buffer);
         }
-        CPLFree(double_buffer);
+        free(double_buffer);
       }
-      GDALClose( (GDALDatasetH) dataset );
+      TIFFClose(dataset);
       delete lru_cache;
       free(actualBlockWidths);
       free(geotransform);
