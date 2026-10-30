@@ -14,6 +14,7 @@ import tempfile
 import threading
 import time
 import warnings
+import multiprocessing.shared_memory
 
 import numpy
 import numpy.ma
@@ -28,21 +29,14 @@ import shapely.prepared
 import shapely.wkb
 from osgeo import gdal
 from osgeo import gdal_array
-from osgeo import gdalconst
 from osgeo import ogr
 from osgeo import osr
 
 from . import geoprocessing_core
-from .geoprocessing_core import DEFAULT_CREATION_OPTIONS
 from .geoprocessing_core import DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS
 from .geoprocessing_core import DEFAULT_OSR_AXIS_MAPPING_STRATEGY
-from .geoprocessing_core import INT8_CREATION_OPTIONS
 from .utils import gdal_use_exceptions
 from .utils import GDALUseExceptions
-
-# This is used to efficiently pass data to the raster stats worker if available
-if sys.version_info >= (3, 8):
-    import multiprocessing.shared_memory
 
 GDAL_VERSION = tuple(int(_) for _ in gdal.__version__.split('.'))
 
