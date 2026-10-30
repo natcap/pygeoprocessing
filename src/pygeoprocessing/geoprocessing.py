@@ -1612,8 +1612,6 @@ def zonal_statistics(
             geometric features indicate the areas in
             ``base_raster_path_band`` to calculate zonal statistics. Paths may
             use any GDAL-supported scheme, including virtual file system /vsi schemes.
-            This layer must have the same projection as the rasters in
-            ``base_raster_path_band``.
         aggregate_layer_name (string): name of vector layer that will be
             used to aggregate results over.  If set to None, the first layer
             in the DataSource will be used as retrieved by ``.GetLayer()``.
@@ -1743,9 +1741,10 @@ def zonal_statistics(
     copy_path = os.path.join(temp_working_dir, 'vector_copy.gpkg')
     target_vector = ogr.GetDriverByName('GPKG').CreateDataSource(copy_path)
     target_layer_id = 'disjoint_vector'
+    aggregate_layer_srs = aggregate_layer.GetSpatialRef()
     target_layer = target_vector.CreateLayer(
         name=target_layer_id,
-        srs=aggregate_layer.GetSpatialRef(),
+        srs=aggregate_layer_srs,
         geom_type=aggregate_layer.GetGeomType())
     fid_field_name = 'original_fid'
     target_layer.CreateField(ogr.FieldDefn(fid_field_name, ogr.OFTInteger))
@@ -1835,8 +1834,14 @@ def zonal_statistics(
         LOGGER.info('calculating disjoint polygon sets')
         # Only consider polygons that overlap the rasters
         # Use the original vector to be sure that the correct FIDs are returned
+        # To do this, transform bbox_intersection (which is in the raster's
+        # projection) back into the aggregate layer's projection.
+        bbox_in_aggregate_vector_projection = transform_bounding_box(
+            bbox_intersection, raster_info['projection_wkt'],
+            aggregate_layer_srs.ExportToWkt())
         disjoint_fid_sets = calculate_disjoint_polygon_set(
-            aggregate_vector_path, bounding_box=bbox_intersection)
+            aggregate_vector_path,
+            bounding_box=bbox_in_aggregate_vector_projection)
     else:
         disjoint_fid_sets = [valid_fid_set]
 
