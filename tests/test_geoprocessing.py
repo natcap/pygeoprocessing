@@ -1279,8 +1279,13 @@ class TestGeoprocessing(unittest.TestCase):
         aggregate_vector_path = os.path.join(
             self.workspace_dir, 'vector.geojson')
         origin = (1014318, 994578)
-        geometry = shapely.geometry.box(
-            origin[0], origin[1], origin[0]+500, origin[1]+500)
+        # use a non-square geometry to make sure our stats aren't caught by
+        # the bounding box case at the end of zonal_statistics
+        square_geometry = shapely.geometry.box(
+            origin[0], origin[1], origin[0]+1000, origin[1]+1000)
+        circle_geometry = shapely.geometry.Point(
+            origin[0], origin[1]).buffer(500)
+        geometry = square_geometry.difference(circle_geometry)
         _geometry_to_vector(
             [geometry], aggregate_vector_path, projection_epsg=3116)
 
@@ -1294,6 +1299,12 @@ class TestGeoprocessing(unittest.TestCase):
             pixel_size=(0.001, 0.001),
             origin=_transform_point(origin, 3116, 4326))
 
+        # Sanity check
+        vector_info = pygeoprocessing.get_vector_info(aggregate_vector_path)
+        raster_info = pygeoprocessing.get_raster_info(raster_path)
+        self.assertNotEqual(
+            raster_info['projection_wkt'], vector_info['projection_wkt'])
+
         stats = pygeoprocessing.zonal_statistics(
             [(raster_path, 1)], aggregate_vector_path,
             polygons_might_overlap=True
@@ -1302,13 +1313,18 @@ class TestGeoprocessing(unittest.TestCase):
             0: {
                 'min': numpy.int8(3),
                 'max': numpy.int8(3),
-                'count': 25,
+                'count': 66,
                 'average': numpy.float64(3),
                 'nodata_count': numpy.int64(0),
-                'sum': numpy.int64(75)
+                'sum': numpy.int64(198)
             }
         }]
         self.assertEqual(expected_results, stats)
+
+        # If the zonal_stats base case was used (bbox of geometry), the sum
+        # will be 300. Asserting against this as a sanity check for future us.
+        # ALSO LOOK AT THE LOGS FOR A WARNING THAT NO POLYGONS INTERSECTED BBOX
+        self.assertNotEqual(stats[0][0]['sum'], 300)
 
     def test_mask_raster(self):
         """PGP.geoprocessing: test mask raster."""
@@ -1819,6 +1835,7 @@ class TestGeoprocessing(unittest.TestCase):
         raster_path = os.path.join(self.workspace_dir, 'raster.tif')
         _array_to_raster(
             pixel_matrix, target_nodata, raster_path)
+
         result = pygeoprocessing.zonal_statistics(
             (raster_path, 1), aggregating_vector_path,
             aggregate_layer_name='aggregate_vector',
