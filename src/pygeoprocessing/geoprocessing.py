@@ -1612,6 +1612,8 @@ def zonal_statistics(
             geometric features indicate the areas in
             ``base_raster_path_band`` to calculate zonal statistics. Paths may
             use any GDAL-supported scheme, including virtual file system /vsi schemes.
+            This layer must have the same projection as the rasters in
+            ``base_raster_path_band``.
         aggregate_layer_name (string): name of vector layer that will be
             used to aggregate results over.  If set to None, the first layer
             in the DataSource will be used as retrieved by ``.GetLayer()``.
