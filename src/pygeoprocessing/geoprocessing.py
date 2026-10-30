@@ -7,7 +7,6 @@ import math
 import os
 import pprint
 import queue
-import re
 import shutil
 import sys
 import tempfile
@@ -1685,7 +1684,7 @@ def zonal_statistics(
         if not _is_raster_path_band_formatted(path_band_tuple):
             raise ValueError(
                 '`base_raster_path_band` not formatted as expected.  Expected '
-                f'(path, band_index), received {repr(path_band_tuple)}')
+                f'(path, band_index), received {path_band_tuple}')
 
     # Check that all input rasters are aligned. This should hold true if they
     # have the same projection, geotransform, and bounding box.
@@ -1698,6 +1697,10 @@ def zonal_statistics(
             raise ValueError(
                 'All input rasters must be aligned. Multiple values of '
                 f'"{attr}" were found among the input rasters: {vals}')
+
+    # Reassign raster_info to be the first item in the list.
+    # Avoids linting issues later.
+    raster_info = get_raster_info(base_raster_path_band[0][0])
 
     # Check that the aggregate vector and layer can be opened
     aggregate_vector = gdal.OpenEx(aggregate_vector_path, gdal.OF_VECTOR)
@@ -1716,7 +1719,7 @@ def zonal_statistics(
     if aggregate_layer.GetGeomType() not in [ogr.wkbPolygon, ogr.wkbPolygonM,
             ogr.wkbPolygonZM, ogr.wkbPolygon25D, ogr.wkbMultiPolygon,
             ogr.wkbMultiPolygonM, ogr.wkbMultiPolygonZM, ogr.wkbMultiPolygon25D]:
-        raise ValueError(f'Vector geometry type must be Polygon or MultiPolygon')
+        raise ValueError('Vector geometry type must be Polygon or MultiPolygon')
 
     # Define the default/empty statistics values
     # These values will be returned for features that have no geometry or
@@ -1805,11 +1808,11 @@ def zonal_statistics(
     LOGGER.info('Clipping rasters to their intersection with the vector')
     target_raster_path_band_list = []
     for i, (base_path, band) in enumerate(base_raster_path_band):
-        raster_info = get_raster_info(path)
+        raster_info = get_raster_info(base_path)
         if (raster_info['datatype'] in {gdal.GDT_Float32, gdal.GDT_Float64}
                 and include_value_counts):
             LOGGER.warning(
-                f'Value counts requested on a floating-point raster: {path}. '
+                f'Value counts requested on a floating-point raster: {base_path}. '
                 'This can cause excessive memory usage if the raster has '
                 'continuous values.')
         target_path = os.path.join(temp_working_dir, f'{i}.tif')
@@ -2010,7 +2013,7 @@ def zonal_statistics(
 
         # Convert counter object to dictionary
         if include_value_counts:
-            for key, value in aggregate_stats_list[i].items():
+            for key in aggregate_stats_list[i]:
                 aggregate_stats_list[i][key]['value_counts'] = dict(
                     aggregate_stats_list[i][key]['value_counts'])
         LOGGER.info(
@@ -2018,7 +2021,7 @@ def zonal_statistics(
 
     # dereference gdal objects
     data_band, data_source = None, None
-    disjoint_layer, target_layer, target_vector = None, None, None
+    target_layer, target_vector = None, None
 
     shutil.rmtree(temp_working_dir)
     if multi_raster_mode:
@@ -2194,7 +2197,7 @@ def reproject_vector(
         target_projection_wkt (string): the desired output projection in Well
             Known Text (by layer.GetSpatialRef().ExportToWkt())
         target_path (string): the filepath to the transformed shapefile
-        layer_id (str/int): name or index of layer in ``base_vector_path`` to
+        layer_id (str, int): name or index of layer in ``base_vector_path`` to
             reproject. Defaults to 0.
         driver_name (string): String to pass to ogr.GetDriverByName, defaults
             to 'ESRI Shapefile'.
