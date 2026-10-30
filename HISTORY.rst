@@ -3,6 +3,11 @@ Release History
 
 Unreleased Changes
 ------------------
+* Fixed an issue where the correct bounding box was in an incorrect projection
+  and used to filter geometries when calculating disjoint polygon sets.  This
+  was only being triggered in ``pygeoprocessing.zonal_statistics`` when
+  ``polygons_might_overlap=True``, but could lead to incorrect statistics.
+  https://github.com/natcap/pygeoprocessing/issues/493
 * Added a new function, ``pygeoprocessing.get_include()`` that returns the
   path to the ``extensions`` folder within your pygeoprocessing install.
   To make compilation on cross-compiled systems easier, all top-level imports

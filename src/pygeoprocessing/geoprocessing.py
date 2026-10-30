@@ -7,13 +7,13 @@ import math
 import os
 import pprint
 import queue
-import re
 import shutil
 import sys
 import tempfile
 import threading
 import time
 import warnings
+import multiprocessing.shared_memory
 
 import numpy
 import numpy.ma
@@ -28,21 +28,14 @@ import shapely.prepared
 import shapely.wkb
 from osgeo import gdal
 from osgeo import gdal_array
-from osgeo import gdalconst
 from osgeo import ogr
 from osgeo import osr
 
 from . import geoprocessing_core
-from .geoprocessing_core import DEFAULT_CREATION_OPTIONS
 from .geoprocessing_core import DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS
 from .geoprocessing_core import DEFAULT_OSR_AXIS_MAPPING_STRATEGY
-from .geoprocessing_core import INT8_CREATION_OPTIONS
 from .utils import gdal_use_exceptions
 from .utils import GDALUseExceptions
-
-# This is used to efficiently pass data to the raster stats worker if available
-if sys.version_info >= (3, 8):
-    import multiprocessing.shared_memory
 
 GDAL_VERSION = tuple(int(_) for _ in gdal.__version__.split('.'))
 
@@ -1691,7 +1684,7 @@ def zonal_statistics(
         if not _is_raster_path_band_formatted(path_band_tuple):
             raise ValueError(
                 '`base_raster_path_band` not formatted as expected.  Expected '
-                f'(path, band_index), received {repr(path_band_tuple)}')
+                f'(path, band_index), received {path_band_tuple}')
 
     # Check that all input rasters are aligned. This should hold true if they
     # have the same projection, geotransform, and bounding box.
@@ -1704,6 +1697,10 @@ def zonal_statistics(
             raise ValueError(
                 'All input rasters must be aligned. Multiple values of '
                 f'"{attr}" were found among the input rasters: {vals}')
+
+    # Reassign raster_info to be the first item in the list.
+    # Avoids linting issues later.
+    raster_info = get_raster_info(base_raster_path_band[0][0])
 
     # Check that the aggregate vector and layer can be opened
     aggregate_vector = gdal.OpenEx(aggregate_vector_path, gdal.OF_VECTOR)
@@ -1722,7 +1719,7 @@ def zonal_statistics(
     if aggregate_layer.GetGeomType() not in [ogr.wkbPolygon, ogr.wkbPolygonM,
             ogr.wkbPolygonZM, ogr.wkbPolygon25D, ogr.wkbMultiPolygon,
             ogr.wkbMultiPolygonM, ogr.wkbMultiPolygonZM, ogr.wkbMultiPolygon25D]:
-        raise ValueError(f'Vector geometry type must be Polygon or MultiPolygon')
+        raise ValueError('Vector geometry type must be Polygon or MultiPolygon')
 
     # Define the default/empty statistics values
     # These values will be returned for features that have no geometry or
@@ -1744,9 +1741,10 @@ def zonal_statistics(
     copy_path = os.path.join(temp_working_dir, 'vector_copy.gpkg')
     target_vector = ogr.GetDriverByName('GPKG').CreateDataSource(copy_path)
     target_layer_id = 'disjoint_vector'
+    aggregate_layer_srs = aggregate_layer.GetSpatialRef()
     target_layer = target_vector.CreateLayer(
         name=target_layer_id,
-        srs=aggregate_layer.GetSpatialRef(),
+        srs=aggregate_layer_srs,
         geom_type=aggregate_layer.GetGeomType())
     fid_field_name = 'original_fid'
     target_layer.CreateField(ogr.FieldDefn(fid_field_name, ogr.OFTInteger))
@@ -1811,11 +1809,11 @@ def zonal_statistics(
     LOGGER.info('Clipping rasters to their intersection with the vector')
     target_raster_path_band_list = []
     for i, (base_path, band) in enumerate(base_raster_path_band):
-        raster_info = get_raster_info(path)
+        raster_info = get_raster_info(base_path)
         if (raster_info['datatype'] in {gdal.GDT_Float32, gdal.GDT_Float64}
                 and include_value_counts):
             LOGGER.warning(
-                f'Value counts requested on a floating-point raster: {path}. '
+                f'Value counts requested on a floating-point raster: {base_path}. '
                 'This can cause excessive memory usage if the raster has '
                 'continuous values.')
         target_path = os.path.join(temp_working_dir, f'{i}.tif')
@@ -1836,8 +1834,14 @@ def zonal_statistics(
         LOGGER.info('calculating disjoint polygon sets')
         # Only consider polygons that overlap the rasters
         # Use the original vector to be sure that the correct FIDs are returned
+        # To do this, transform bbox_intersection (which is in the raster's
+        # projection) back into the aggregate layer's projection.
+        bbox_in_aggregate_vector_projection = transform_bounding_box(
+            bbox_intersection, raster_info['projection_wkt'],
+            aggregate_layer_srs.ExportToWkt())
         disjoint_fid_sets = calculate_disjoint_polygon_set(
-            aggregate_vector_path, bounding_box=bbox_intersection)
+            aggregate_vector_path,
+            bounding_box=bbox_in_aggregate_vector_projection)
     else:
         disjoint_fid_sets = [valid_fid_set]
 
@@ -2016,7 +2020,7 @@ def zonal_statistics(
 
         # Convert counter object to dictionary
         if include_value_counts:
-            for key, value in aggregate_stats_list[i].items():
+            for key in aggregate_stats_list[i]:
                 aggregate_stats_list[i][key]['value_counts'] = dict(
                     aggregate_stats_list[i][key]['value_counts'])
         LOGGER.info(
@@ -2024,7 +2028,7 @@ def zonal_statistics(
 
     # dereference gdal objects
     data_band, data_source = None, None
-    disjoint_layer, target_layer, target_vector = None, None, None
+    target_layer, target_vector = None, None
 
     shutil.rmtree(temp_working_dir)
     if multi_raster_mode:
@@ -2200,7 +2204,7 @@ def reproject_vector(
         target_projection_wkt (string): the desired output projection in Well
             Known Text (by layer.GetSpatialRef().ExportToWkt())
         target_path (string): the filepath to the transformed shapefile
-        layer_id (str/int): name or index of layer in ``base_vector_path`` to
+        layer_id (str, int): name or index of layer in ``base_vector_path`` to
             reproject. Defaults to 0.
         driver_name (string): String to pass to ogr.GetDriverByName, defaults
             to 'ESRI Shapefile'.
