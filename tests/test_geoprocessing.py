@@ -94,6 +94,22 @@ def _array_to_raster(
         target_path, raster_driver_creation_tuple=('GTiff', creation_options))
 
 
+@gdal_use_exceptions
+def _transform_point(point, source_srs_epsg, dest_srs_epsg):
+    source_srs = osr.SpatialReference()
+    source_srs.ImportFromEPSG(source_srs_epsg)
+
+    dest_srs = osr.SpatialReference()
+    dest_srs.ImportFromEPSG(dest_srs_epsg)
+
+    source_srs.SetAxisMappingStrategy(osr.OAMS_TRADITIONAL_GIS_ORDER)
+    dest_srs.SetAxisMappingStrategy(osr.OAMS_TRADITIONAL_GIS_ORDER)
+
+    transform = osr.CoordinateTransformation(source_srs, dest_srs)
+    new_point = transform.TransformPoint(point[0], point[1])
+    return (new_point[0], new_point[1])
+
+
 @contextlib.contextmanager
 def capture_logging(logger):
     """Capture logging within a context manager.
@@ -1252,6 +1268,47 @@ class TestGeoprocessing(unittest.TestCase):
             ('All input rasters must be aligned. Multiple values of '
              '"bounding_box" were found among the input rasters'),
             actual_message, actual_message)
+
+    def test_zonal_stats_mismatched_srs(self):
+        """PGP.geoprocessing: test zonal stats on different SRSs.
+
+        Both areas overlap part of Bogota, Colombia, just with different
+        projections.
+        """
+        # Vector is in EPSG:3116
+        aggregate_vector_path = os.path.join(
+            self.workspace_dir, 'vector.geojson')
+        origin = (1014318, 994578)
+        geometry = shapely.geometry.box(
+            origin[0], origin[1], origin[0]+500, origin[1]+500)
+        _geometry_to_vector(
+            [geometry], aggregate_vector_path, projection_epsg=3116)
+
+        # Raster is in EPSG:4326
+        raster_path = os.path.join(
+            self.workspace_dir, 'raster.tif')
+        array = numpy.full((20, 20), 3, dtype=numpy.int8)
+
+        _array_to_raster(
+            array, 255, raster_path, projection_epsg=4326,
+            pixel_size=(0.001, 0.001),
+            origin=_transform_point(origin, 3116, 4326))
+
+        stats = pygeoprocessing.zonal_statistics(
+            [(raster_path, 1)], aggregate_vector_path,
+            polygons_might_overlap=True
+        )
+        expected_results = [{
+            0: {
+                'min': numpy.int8(3),
+                'max': numpy.int8(3),
+                'count': 25,
+                'average': numpy.float64(3),
+                'nodata_count': numpy.int64(0),
+                'sum': numpy.int64(75)
+            }
+        }]
+        self.assertEqual(expected_results, stats)
 
     def test_mask_raster(self):
         """PGP.geoprocessing: test mask raster."""
