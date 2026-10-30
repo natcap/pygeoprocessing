@@ -4513,7 +4513,7 @@ cdef _calculate_stream_geometry(
         int x_l, int y_l, int upstream_d8_dir, geotransform, int n_cols,
         int n_rows, ManagedRaster flow_accum_managed_raster,
         ManagedRaster flow_dir_managed_raster, int flow_dir_nodata,
-        int flow_accum_threshold, coord_to_stream_ids):
+        double flow_accum_threshold, coord_to_stream_ids):
     """Calculate the upstream geometry from the given point.
 
     Creates a new georeferenced linestring geometry that maps the source x/y
@@ -4529,8 +4529,9 @@ cdef _calculate_stream_geometry(
         flow_accum_managed_raster (ManagedRaster): flow accumulation raster
         flow_dir_managed_raster (ManagedRaster): d8 flow direction raster
         flow_dir_nodata (int): nodata for flow direction
-        flow_accum_threshold (int): minimum flow accumulation value to define
-            string.
+        flow_accum_threshold (double): minimum flow accumulation value to define
+            string. This will usually be an int value, but it's easier to
+            promote an int to a double than the other way around.
         coord_to_stream_ids (dict): map raster space coordinate tuple to
             a list of stream ids
 
