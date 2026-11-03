@@ -1,8 +1,10 @@
 Release History
 ===============
 
-Unreleased Changes
-------------------
+.. Unreleased Changes
+
+2.4.12 (2026-11-03)
+-------------------
 * Fixed an issue where the correct bounding box was in an incorrect projection
   and used to filter geometries when calculating disjoint polygon sets.  This
   was only being triggered in ``pygeoprocessing.zonal_statistics`` when
