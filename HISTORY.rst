@@ -1,7 +1,14 @@
 Release History
 ===============
 
-.. Unreleased Changes
+Unreleased Changes
+------------------
+* Updating GitHub Actions-based build matrix for package builds and tests to
+  run against python 3.11-3.15, and to test against GDAL 3.10-3.13.
+  This reflects the currently-supported python versions, and the minimum GDAL 
+  version that is in the Debian:stable (Trixie) apt repository.
+  https://github.com/natcap/pygeoprocessing/issues/492
+
 
 2.4.12 (2026-11-03)
 -------------------
