@@ -13,16 +13,16 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
-        gdal: ["3.6", "3.7", "3.8", "3.9", "3.10", "3.11"]
+        # Covering all python versions currently supported by PSF.
+        # NOTE: as of 2026-11-04, GDAL does not yet have a python 3.15 build
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
+        # Debian:stable (trixie) has gdal 3.10, so testing aginst at least GDAL 3.10
+        gdal: ["3.10", "3.11", "3.12", "3.13"]
         os: [ubuntu-latest, windows-latest, macos-latest]
-        exclude:
-          - gdal: "3.6"
-            python-version: 3.13
-          - gdal: "3.7"
-            python-version: 3.13
-          - gdal: "3.8"
-            python-version: 3.13
+        # If there are specific version combinations to exclude, note them below.
+        #exclude:  # Example
+        #  - gdal: "3.6"
+        #    python-version: 3.13
 
     steps:
       - uses: actions/checkout@v4
