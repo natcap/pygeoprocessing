@@ -1,1 +1,2 @@
 global-exclude *.cpp *.c
+recursive-include src/pygeoprocessing *.pxd *.h
