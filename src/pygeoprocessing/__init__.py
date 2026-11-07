@@ -4,6 +4,7 @@ __init__ module imports all the geoprocessing functions into this namespace.
 """
 import logging
 import os
+import platform
 from importlib.metadata import PackageNotFoundError, version
 
 import lazy_loader
@@ -80,6 +81,12 @@ __getattr__, __dir__, __all__ = lazy_loader.attach(
 def get_include():
     """Return the directory that includes the pygeoprocessing *.h header files.
 
+    If any environment variables are included in the package location path
+    (which sometimes happens in conda-forge), then these are expanded.
+
     Returns:
         The string path to the header files location."""
-    return os.path.join(os.path.dirname(__file__), 'extensions')
+    package_location = os.path.dirname(os.path.expandvars(__file__))
+    ext_location = os.path.join(package_location, 'extensions')
+    LOGGER.info(f"Pygeoprocessing extensions location: {ext_location}")
+    return ext_location
