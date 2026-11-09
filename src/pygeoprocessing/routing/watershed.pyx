@@ -145,7 +145,11 @@ cdef cset[CoordinatePair] _c_split_geometry_into_seeds(
     with GDALUseExceptions():
         # The geometry does not fit into a single pixel, so let's create a new
         # raster onto which to rasterize it.
-        memory_driver = gdal.GetDriverByName('Memory')
+        # The 'Memory' driver is deprecated since GDAL 3.11, which added vector
+        # support to 'MEM'.  Older GDAL versions still need 'Memory'.
+        memory_driver = gdal.GetDriverByName('MEM')
+        if memory_driver.GetMetadataItem(gdal.DCAP_VECTOR) != 'YES':
+            memory_driver = gdal.GetDriverByName('Memory')
         new_vector = memory_driver.Create('mem', 0, 0, 0, gdal.GDT_Unknown)
         new_layer = new_vector.CreateLayer('user_geometry', flow_dir_srs, ogr.wkbUnknown)
         new_layer.StartTransaction()

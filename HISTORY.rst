@@ -8,6 +8,10 @@ Unreleased Changes
   This reflects the currently-supported python versions, and the minimum GDAL 
   version that is in the Debian:stable (Trixie) apt repository.
   https://github.com/natcap/pygeoprocessing/issues/492
+* ``pygeoprocessing.routing.delineate_watersheds_d8`` now uses GDAL's ``MEM``
+  driver for in-memory vectors where it supports them (GDAL 3.11 and later),
+  avoiding the deprecation warning from the ``Memory`` driver.
+  https://github.com/natcap/pygeoprocessing/issues/501
 
 
 2.4.12 (2026-11-03)
