@@ -1,2 +1,11 @@
+# Always exclude C++ and C source files.  These are created by Cython, and
+# Cython is a build-time dependency defined in pyproject.toml.
 global-exclude *.cpp *.c
+
+# On Windows, sdists (which are what conda-forge builds use), get package
+# data from the metadata file SOURCES.txt, which compares os-specific path 
+# separators.  This is a problem on Windows because the separator is \\, not /.
+# This incorrect comparison leads to .pxd and .h data files being silently dropped.
+#
+# https://github.com/natcap/pygeoprocessing/issues/505
 recursive-include src/pygeoprocessing *.pxd *.h
