@@ -3,6 +3,8 @@ Release History
 
 Unreleased Changes
 ------------------
+* Updating ``MANIFEST.in`` to include ``*.pxd`` and ``*.h``.
+  https://github.com/natcap/pygeoprocessing/issues/505
 * Updating GitHub Actions-based build matrix for package builds and tests to
   run against python 3.11-3.15, and to test against GDAL 3.10-3.13.
   This reflects the currently-supported python versions, and the minimum GDAL 
