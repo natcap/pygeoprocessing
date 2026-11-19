@@ -39,6 +39,7 @@ cdef extern from "extensions/ManagedRaster.h":
         int block_ybits
         long raster_x_size
         long raster_y_size
+        long n_pixels
         int block_nx
         int block_ny
         int write_mode
@@ -53,6 +54,9 @@ cdef extern from "extensions/ManagedRaster.h":
         double get(long xi, long yi)
         void _load_block(int block_index) except *
         void close()
+        bint is_out_of_bounds(long x, long y)
+        bint is_nodata(double val)
+        bint is_nodata(long x, long y)
 
     cdef cppclass ManagedFlowDirRaster[T]:
         LRUCache[int, double*]* lru_cache
@@ -80,6 +84,9 @@ cdef extern from "extensions/ManagedRaster.h":
         void set(long xi, long yi, double value)
         double get(long xi, long yi)
         void close()
+        bint is_out_of_bounds(long x, long y)
+        bint is_nodata(double val)
+        bint is_nodata(long x, long y)
 
     cdef cppclass D8
     cdef cppclass MFD
