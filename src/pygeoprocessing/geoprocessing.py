@@ -803,8 +803,8 @@ def align_and_resize_raster_stack(
         base_raster_path_list, target_raster_path_list, resample_method_list,
         target_pixel_size, bounding_box_mode, base_vector_path_list=None,
         raster_align_index=None, base_projection_wkt_list=None,
-        target_projection_wkt=None, mask_options=None,
-        vector_mask_options=None, gdal_warp_options=None,
+        target_projection_wkt=None, compare_in_equal_earth=True,
+        mask_options=None, vector_mask_options=None, gdal_warp_options=None,
         raster_driver_creation_tuple=DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS,
         osr_axis_mapping_strategy=DEFAULT_OSR_AXIS_MAPPING_STRATEGY,
         working_dir=None):
@@ -858,6 +858,12 @@ def align_and_resize_raster_stack(
             ``base_raster_path_list``. If a value is ``None``, the projection
             is read directly from the raster. Use this argument if there are
             rasters with no projection defined, but the projections are known.
+        compare_in_equal_earth (bool): if True, transform bounding boxes into
+            Equal Earth (EPSG:8857) before calculating their intersection or
+            union. This is needed when an input bounding box might extend
+            beyond the usable extent of the target projection (for instance, a
+            global layer in WGS84 being aligned to a small area in a UTM zone
+            projection). Otherwise, the results may be inaccurate.
         target_projection_wkt (string): if not ``None``, this is the desired
             projection of all target rasters in Well Known Text format, and
             target rasters will be warped to this projection. If ``None``,
@@ -973,6 +979,11 @@ def align_and_resize_raster_stack(
             "Alignment index is out of bounds of the datasets index: %s"
             " n_elements %s" % (raster_align_index, n_rasters))
 
+    if compare_in_equal_earth and target_projection_wkt is None:
+        raise ValueError(
+            "compare_in_equal_earth must be set to False if "
+            "target_projection_wkt is None")
+
     _assert_is_valid_pixel_size(target_pixel_size)
 
     # used to get bounding box, projection, and possible alignment info
@@ -996,7 +1007,11 @@ def align_and_resize_raster_stack(
         else:
             vector_info_list = []
 
-        raster_bounding_box_list = []
+        equal_earth_ref = osr.SpatialReference()
+        equal_earth_ref.ImportFromEPSG(8857)  # Equal Earth
+        equal_earth_wkt = equal_earth_ref.ExportToWkt()
+
+        bounding_box_list = []
         for raster_index, raster_info in enumerate(raster_info_list):
             # this block calculates the base projection of ``raster_info`` if
             # ``target_projection_wkt`` is defined, thus implying a
@@ -1020,24 +1035,45 @@ def align_and_resize_raster_stack(
                 # box into target coordinates so later we can calculate
                 # accurate bounding box overlaps in the target coordinate
                 # system
-                raster_bounding_box_list.append(
-                    transform_bounding_box(
-                        raster_info['bounding_box'],
-                        base_raster_projection_wkt, target_projection_wkt))
+                if compare_in_equal_earth:
+                    bounding_box_list.append(
+                        transform_bounding_box(
+                            raster_info['bounding_box'],
+                            base_raster_projection_wkt, equal_earth_wkt))
+                else:
+                    bounding_box_list.append(
+                        transform_bounding_box(
+                            raster_info['bounding_box'],
+                            base_raster_projection_wkt, target_projection_wkt))
             else:
-                raster_bounding_box_list.append(raster_info['bounding_box'])
+                bounding_box_list.append(raster_info['bounding_box'])
 
-        # include the vector bounding box information to make a global list
-        # of target bounding boxes
-        bounding_box_list = [
-            vector_info['bounding_box'] if target_projection_wkt is None else
-            transform_bounding_box(
-                vector_info['bounding_box'],
-                vector_info['projection_wkt'], target_projection_wkt)
-            for vector_info in vector_info_list] + raster_bounding_box_list
+        for vector_info in vector_info_list:
+            # include the vector bounding box information to make a global list
+            # of target bounding boxes
+            if target_projection_wkt:
+                if compare_in_equal_earth:
+                    bounding_box_list.append(
+                        transform_bounding_box(
+                            vector_info['bounding_box'],
+                            vector_info['projection_wkt'],
+                            equal_earth_wkt))
+                else:
+                    bounding_box_list.append(
+                        transform_bounding_box(
+                            vector_info['bounding_box'],
+                            vector_info['projection_wkt'],
+                            target_projection_wkt))
+            else:
+                bounding_box_list.append(vector_info['bounding_box'])
 
         target_bounding_box = merge_bounding_box_list(
             bounding_box_list, bounding_box_mode)
+        if compare_in_equal_earth:
+            target_bounding_box = transform_bounding_box(
+                bounding_box=target_bounding_box,
+                base_projection_wkt=equal_earth_wkt,
+                target_projection_wkt=target_projection_wkt)
 
     if mask_options:
         # ensure the mask exists and intersects with the target bounding box
@@ -3696,37 +3732,13 @@ def transform_bounding_box(
 
     # Create a coordinate transformation
     transformer = osr.CreateCoordinateTransformation(base_ref, target_ref)
-
-    def _transform_point(point):
-        """Transform an (x,y) point tuple from base_ref to target_ref."""
-        trans_x, trans_y, _ = (transformer.TransformPoint(*point))
-        return (trans_x, trans_y)
-
-    # The following list comprehension iterates over each edge of the bounding
-    # box, divides each edge into ``edge_samples`` number of points, then
-    # reduces that list to an appropriate ``bounding_fn`` given the edge.
-    # For example the left edge needs to be the minimum x coordinate so
-    # we generate ``edge_samples` number of points between the upper left and
-    # lower left point, transform them all to the new coordinate system
-    # then get the minimum x coordinate "min(p[0] ...)" of the batch.
-    # points are numbered from 0 starting upper right as follows:
-    # 0--3
-    # |  |
-    # 1--2
-    p_0 = numpy.array((bounding_box[0], bounding_box[3]))
-    p_1 = numpy.array((bounding_box[0], bounding_box[1]))
-    p_2 = numpy.array((bounding_box[2], bounding_box[1]))
-    p_3 = numpy.array((bounding_box[2], bounding_box[3]))
-    raw_bounding_box = [
-        bounding_fn(
-            [_transform_point(
-                p_a * v + p_b * (1 - v)) for v in numpy.linspace(
-                    0, 1, edge_samples)])
-        for p_a, p_b, bounding_fn in [
-            (p_0, p_1, lambda p_list: min([p[0] for p in p_list])),
-            (p_1, p_2, lambda p_list: min([p[1] for p in p_list])),
-            (p_2, p_3, lambda p_list: max([p[0] for p in p_list])),
-            (p_3, p_0, lambda p_list: max([p[1] for p in p_list]))]]
+    raw_bounding_box = transformer.TransformBounds(
+        xmin=bounding_box[0],
+        ymin=bounding_box[1],
+        xmax=bounding_box[2],
+        ymax=bounding_box[3],
+        densify_pts=21  # as recommended by the gdal docs
+    )
 
     # sometimes a transform will be so tight that a sampling around it may
     # flip the coordinate system. This flips it back. I found this when
